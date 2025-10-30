@@ -1,6 +1,6 @@
 {
   "name": "@farukada/aws-langgraph-dynamodb-ts",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "license": "MIT",
   "description": "AWS DynamoDB implementation for LangGraph Memory Store and Checkpoint Saver in TypeScript",
   "keywords": [
