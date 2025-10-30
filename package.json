@@ -1,0 +1,85 @@
+{
+  "name": "@farukada/aws-langgraph-dynamodb-ts",
+  "version": "0.0.1",
+  "license": "MIT",
+  "description": "AWS DynamoDB implementation for LangGraph Memory Store and Checkpoint Saver in TypeScript",
+  "keywords": [
+    "aws",
+    "dynamodb",
+    "langchain",
+    "langgraph",
+    "checkpointer",
+    "memory-store"
+  ],
+  "author": "Faruk Ada <info@farukada.com>",
+  "homepage": "https://github.com/farukada/aws-langgraph-dynamodb-ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/farukada/aws-langgraph-dynamodb-ts"
+  },
+  "bugs": {
+    "url": "https://github.com/farukada/aws-langgraph-dynamodb-ts/issues"
+  },
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts",
+    "format": "prettier --write \"src/**/*.{ts,js,json,md}\" \"test/**/*.{ts,js,json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,js,json,md}\" \"test/**/*.{ts,js,json,md}\"",
+    "test": "jest",
+    "docs": "typedoc",
+    "docs:watch": "typedoc --watch"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.918.0",
+    "@aws-sdk/lib-dynamodb": "^3.918.0",
+    "@langchain/aws": "^1.0.0",
+    "@langchain/core": "^1.0.2",
+    "@langchain/langgraph": "^1.0.1",
+    "@langchain/langgraph-checkpoint": "^1.0.0",
+    "jsonpath": "^1.1.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.38.0",
+    "@tsconfig/recommended": "^1.0.10",
+    "@types/jest": "^30.0.0",
+    "@types/jsonpath": "^0.2.4",
+    "aws-sdk-client-mock": "^4.1.0",
+    "eslint": "^9.38.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-no-instanceof": "^1.0.1",
+    "eslint-plugin-prettier": "^5.5.4",
+    "globals": "^16.4.0",
+    "jest": "^30.2.0",
+    "jest-sonar": "^0.2.16",
+    "jiti": "^2.6.1",
+    "prettier": "^3.6.2",
+    "ts-jest": "^29.4.5",
+    "ts-loader": "^9.5.4",
+    "ts-node": "^10.9.2",
+    "typedoc": "^0.28.14",
+    "typedoc-plugin-markdown": "^4.9.0",
+    "typescript": "^5.5.3",
+    "typescript-eslint": "^8.46.2"
+  },
+  "prettier": {
+    "semi": true,
+    "singleQuote": true,
+    "printWidth": 100,
+    "tabWidth": 2,
+    "trailingComma": "all"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ]
+}
