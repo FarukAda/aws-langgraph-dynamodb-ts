@@ -82,5 +82,9 @@
     "dist",
     "LICENSE",
     "README.md"
+  ],
+  "bundledDependencies": [
+    "jsonpath",
+    "esprima"
   ]
 }
