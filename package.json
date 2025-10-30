@@ -43,15 +43,14 @@
     "@langchain/core": "^1.0.2",
     "@langchain/langgraph": "^1.0.1",
     "@langchain/langgraph-checkpoint": "^1.0.0",
-    "esprima": "^4.0.1",
-    "jsonpath": "^1.1.1"
+    "jsonpath-plus": "^10.3.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.38.0",
     "@tsconfig/recommended": "^1.0.10",
     "@types/jest": "^30.0.0",
-    "@types/jsonpath": "^0.2.4",
+    "@types/jsonpath-plus": "^5.0.5",
     "aws-sdk-client-mock": "^4.1.0",
     "eslint": "^9.38.0",
     "eslint-config-prettier": "^10.1.8",
@@ -82,9 +81,5 @@
     "dist",
     "LICENSE",
     "README.md"
-  ],
-  "bundledDependencies": [
-    "jsonpath",
-    "esprima"
   ]
 }

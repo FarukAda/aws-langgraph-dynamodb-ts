@@ -1,4 +1,4 @@
-import jp from 'jsonpath';
+import { JSONPath } from 'jsonpath-plus';
 import { PutOperationActionParams } from '../types';
 import {
   validateNamespace,
@@ -39,8 +39,9 @@ export const putOperationAction = async (params: PutOperationActionParams): Prom
 
     const textToEmbed: string[] = [];
     for (const path of op.index) {
-      const value = jp.query(op.value, path);
-      for (const v of value) {
+      const value = JSONPath({ path, json: op.value, wrap: false });
+      const values = Array.isArray(value) ? value : [value];
+      for (const v of values) {
         if (typeof v === 'string') {
           textToEmbed.push(v);
         } else if (typeof v === 'number' || typeof v === 'boolean') {

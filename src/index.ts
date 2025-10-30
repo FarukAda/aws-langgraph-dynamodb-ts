@@ -1,4 +1,3 @@
-import './esbuild-bundle-hints';
 export { DynamoDBSaver } from './checkpointer';
 export type { DynamoDBSaverOptions } from './checkpointer/types';
 export { DynamoDBStore } from './store';
