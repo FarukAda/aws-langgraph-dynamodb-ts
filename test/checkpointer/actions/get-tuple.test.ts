@@ -1,21 +1,40 @@
-import { getTupleAction } from '../../../src/checkpointer/actions/get-tuple';
-import {
-  createMockDynamoDBClient,
-  mockDynamoDBGet,
-  mockDynamoDBQuery,
-} from '../../shared/mocks/dynamodb-mock';
+import { getTupleAction } from '../../../src/checkpointer/actions';
+import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
 import {
   createMockCheckpointItem,
   createMockWriteItem,
   createMockRunnableConfig,
   createMockSerde,
 } from '../../shared/fixtures/test-data';
+import { AwsStub } from 'aws-sdk-client-mock';
+import {
+  DynamoDBDocument,
+  DynamoDBDocumentClientResolvedConfig,
+  ServiceInputTypes,
+  ServiceOutputTypes,
+} from '@aws-sdk/lib-dynamodb';
 
 describe('getTupleAction', () => {
-  it('should get checkpoint by checkpoint_id', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
+  let ddbDocMock: AwsStub<
+    ServiceInputTypes,
+    ServiceOutputTypes,
+    DynamoDBDocumentClientResolvedConfig
+  >;
+  let client: DynamoDBDocument;
+  let serde: any;
 
+  beforeEach(() => {
+    const mockClients = createMockDynamoDBClient();
+    ddbDocMock = mockClients.ddbDocMock;
+    client = mockClients.client;
+    serde = createMockSerde();
+  });
+
+  afterEach(() => {
+    ddbDocMock.reset();
+  });
+
+  it('should get checkpoint by checkpoint_id', async () => {
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-456', 'ns');
 
     // Mock get checkpoint
@@ -45,9 +64,6 @@ describe('getTupleAction', () => {
   });
 
   it('should get latest checkpoint without checkpoint_id', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-latest', 'ns');
 
     // Mock query for latest checkpoint
@@ -73,9 +89,6 @@ describe('getTupleAction', () => {
   });
 
   it('should filter by checkpoint_ns when querying latest', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-1', 'custom-ns');
 
     // Mock query with namespace filter
@@ -101,9 +114,6 @@ describe('getTupleAction', () => {
   });
 
   it('should return undefined when checkpoint not found', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     // Mock empty get
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
@@ -119,9 +129,6 @@ describe('getTupleAction', () => {
   });
 
   it('should return undefined when latest checkpoint not found', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     // Mock empty query
     ddbDocMock.onAnyCommand().resolvesOnce({
       Items: [],
@@ -139,9 +146,6 @@ describe('getTupleAction', () => {
   });
 
   it('should include pending writes', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-456', 'ns');
     const writes = [
       createMockWriteItem('thread-123', 'checkpoint-456', 'ns', 'task-1', 0),
@@ -168,14 +172,11 @@ describe('getTupleAction', () => {
 
     expect(result).toBeDefined();
     expect(result!.pendingWrites).toHaveLength(2);
-    expect(result!.pendingWrites[0][0]).toBe('task-1'); // task_id
-    expect(result!.pendingWrites[0][1]).toBe('test-channel'); // channel
+    expect(result!.pendingWrites![0][0]).toBe('task-1'); // task_id
+    expect(result!.pendingWrites![0][1]).toBe('test-channel'); // channel
   });
 
   it('should include parent config when parent_checkpoint_id exists', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpointItem = {
       ...createMockCheckpointItem('thread-123', 'checkpoint-456', 'ns'),
       parent_checkpoint_id: 'checkpoint-parent',
@@ -206,9 +207,6 @@ describe('getTupleAction', () => {
   });
 
   it('should not include parent config when parent_checkpoint_id is undefined', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-456', 'ns');
 
     // Mock get checkpoint
@@ -234,9 +232,6 @@ describe('getTupleAction', () => {
   });
 
   it('should use ConsistentRead for query', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-1', '');
 
     // Mock query
@@ -262,9 +257,6 @@ describe('getTupleAction', () => {
   });
 
   it('should deserialize checkpoint and metadata', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-456', 'ns');
 
     // Mock get checkpoint
@@ -291,9 +283,6 @@ describe('getTupleAction', () => {
   });
 
   it('should handle empty checkpoint_ns', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-456', '');
 
     // Mock get checkpoint
@@ -319,9 +308,6 @@ describe('getTupleAction', () => {
   });
 
   it('should throw error for invalid thread_id', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     await expect(
       getTupleAction({
         client,
@@ -334,9 +320,6 @@ describe('getTupleAction', () => {
   });
 
   it('should handle DynamoDB errors with retry', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-456', 'ns');
 
     // First attempt fails, second succeeds
@@ -362,9 +345,6 @@ describe('getTupleAction', () => {
   });
 
   it('should handle writes query with no Items field', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-456', 'ns');
 
     // First call: GetCommand for checkpoint

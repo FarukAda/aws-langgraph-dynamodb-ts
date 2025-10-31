@@ -1,4 +1,4 @@
-import { DynamoDBStore } from '../../src/store';
+import { DynamoDBStore } from '../../src';
 import { createMockEmbedding } from '../shared/mocks/embedding-mock';
 import { createMockStoreItem } from '../shared/fixtures/test-data';
 import { mockClient } from 'aws-sdk-client-mock';
@@ -412,7 +412,7 @@ describe('DynamoDBStore', () => {
       const totalTime = Date.now() - startTime;
 
       // If operations were sequential, it would take 30ms+
-      // If parallel, should be close to 10ms (but allow some variance for CI/slow systems)
+      // If parallel, should be close to 10 ms (but allow some variance for CI/slow systems)
       expect(totalTime).toBeLessThan(30);
     });
   });

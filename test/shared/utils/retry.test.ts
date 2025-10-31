@@ -1,4 +1,4 @@
-import { withRetry, withDynamoDBRetry } from '../../../src/shared/utils/retry';
+import { withRetry, withDynamoDBRetry } from '../../../src/shared';
 
 describe('retry utility', () => {
   describe('withRetry', () => {

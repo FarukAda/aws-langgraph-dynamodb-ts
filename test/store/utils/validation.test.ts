@@ -11,7 +11,7 @@ import {
   validateBatchSize,
   ValidationError,
   ValidationConstants,
-} from '../../../src/store/utils/validation';
+} from '../../../src/store/utils';
 
 describe('store validation', () => {
   describe('validateNamespace', () => {
@@ -381,10 +381,11 @@ describe('store validation', () => {
   });
 });
 
-// Test re-exported utilities from index
+// Test re-exported utilities from the index
 describe('store utils index re-exports', () => {
   it('should re-export retry and result utilities from index', () => {
-    // These imports are from the index file which re-exports from other modules
+    // These imports are from the index file that re-exports from other modules
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { withRetry, withDynamoDBRetry, Ok, Err } = require('../../../src/store/utils');
     expect(withRetry).toBeDefined();
     expect(withDynamoDBRetry).toBeDefined();

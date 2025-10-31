@@ -1,16 +1,39 @@
-import { putWritesAction } from '../../../src/checkpointer/actions/put-writes';
-import { createMockDynamoDBClient, mockDynamoDBBatchWrite } from '../../shared/mocks/dynamodb-mock';
+import { putWritesAction } from '../../../src/checkpointer/actions';
+import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
 import {
   createMockPendingWrite,
   createMockRunnableConfig,
   createMockSerde,
 } from '../../shared/fixtures/test-data';
+import { AwsStub } from 'aws-sdk-client-mock';
+import {
+  DynamoDBDocument,
+  DynamoDBDocumentClientResolvedConfig,
+  ServiceInputTypes,
+  ServiceOutputTypes,
+} from '@aws-sdk/lib-dynamodb';
 
 describe('putWritesAction', () => {
-  it('should save writes successfully', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
+  let ddbDocMock: AwsStub<
+    ServiceInputTypes,
+    ServiceOutputTypes,
+    DynamoDBDocumentClientResolvedConfig
+  >;
+  let client: DynamoDBDocument;
+  let serde: any;
 
+  beforeEach(() => {
+    const mockClients = createMockDynamoDBClient();
+    ddbDocMock = mockClients.ddbDocMock;
+    client = mockClients.client;
+    serde = createMockSerde();
+  });
+
+  afterEach(() => {
+    ddbDocMock.reset();
+  });
+
+  it('should save writes successfully', async () => {
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const writes = [
@@ -32,9 +55,6 @@ describe('putWritesAction', () => {
   });
 
   it('should save writes with TTL', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const writes = [createMockPendingWrite('channel1', { data: 'value1' })];
@@ -53,9 +73,6 @@ describe('putWritesAction', () => {
   });
 
   it('should handle multiple writes in batches of 25', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolves({});
 
     const writes = Array(60)
@@ -76,9 +93,6 @@ describe('putWritesAction', () => {
   });
 
   it('should throw error when checkpoint_id is missing', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const writes = [createMockPendingWrite('channel1', { data: 'value1' })];
 
     await expect(
@@ -94,9 +108,6 @@ describe('putWritesAction', () => {
   });
 
   it('should validate writes count exceeding maximum', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const writes = Array(1001)
       .fill(null)
       .map((_, i) => createMockPendingWrite(`channel${i}`, { data: `value${i}` }));
@@ -114,9 +125,6 @@ describe('putWritesAction', () => {
   });
 
   it('should handle empty writes array', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     await putWritesAction({
       client,
       writesTableName: 'writes',
@@ -126,14 +134,11 @@ describe('putWritesAction', () => {
       taskId: 'task-789',
     });
 
-    // No batch writes should be called for empty array
+    // No batch writes should be called for an empty array
     expect(ddbDocMock.calls()).toHaveLength(0);
   });
 
   it('should validate task_id', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const writes = [createMockPendingWrite('channel1', { data: 'value1' })];
 
     await expect(
@@ -149,9 +154,6 @@ describe('putWritesAction', () => {
   });
 
   it('should validate task_id with separator', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const writes = [createMockPendingWrite('channel1', { data: 'value1' })];
 
     await expect(
@@ -167,9 +169,6 @@ describe('putWritesAction', () => {
   });
 
   it('should validate TTL days', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const writes = [createMockPendingWrite('channel1', { data: 'value1' })];
 
     await expect(
@@ -186,9 +185,6 @@ describe('putWritesAction', () => {
   });
 
   it('should validate thread_id', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const writes = [createMockPendingWrite('channel1', { data: 'value1' })];
 
     await expect(
@@ -204,9 +200,6 @@ describe('putWritesAction', () => {
   });
 
   it('should serialize each write value', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const writes = [
@@ -228,9 +221,6 @@ describe('putWritesAction', () => {
   });
 
   it('should handle DynamoDB errors with retry', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     // First attempt fails, second succeeds
     const error = new Error('Throttling error');
     error.name = 'ThrottlingException';
@@ -252,9 +242,6 @@ describe('putWritesAction', () => {
   });
 
   it('should handle exactly 25 writes in single batch', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const writes = Array(25)
@@ -274,9 +261,6 @@ describe('putWritesAction', () => {
   });
 
   it('should handle 26 writes in two batches', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolves({});
 
     const writes = Array(26)
@@ -296,9 +280,6 @@ describe('putWritesAction', () => {
   });
 
   it('should create correct idx for each write', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const writes = [
@@ -319,9 +300,6 @@ describe('putWritesAction', () => {
   });
 
   it('should handle checkpoint_ns as empty string', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const writes = [createMockPendingWrite('channel1', { data: 'value1' })];

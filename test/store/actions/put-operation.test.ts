@@ -1,4 +1,4 @@
-import { putOperationAction } from '../../../src/store/actions/put-operation';
+import { putOperationAction } from '../../../src/store/actions';
 import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
 import { createMockEmbedding } from '../../shared/mocks/embedding-mock';
 

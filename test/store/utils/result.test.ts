@@ -1,19 +1,11 @@
-import {
-  Ok,
-  Err,
-  isOk,
-  isErr,
-  unwrap,
-  unwrapOr,
-  type Result,
-} from '../../../src/store/utils/result';
+import { Ok, Err, isOk, isErr, unwrap, unwrapOr, type Result } from '../../../src/store/utils';
 
 describe('result utility', () => {
   describe('Ok', () => {
     it('should create a successful result', () => {
       const result = Ok('success');
       expect(result.success).toBe(true);
-      expect(result.data).toBe('success');
+      expect((result as any).data).toBe('success');
     });
 
     it('should work with different data types', () => {
@@ -21,9 +13,9 @@ describe('result utility', () => {
       const objectResult = Ok({ key: 'value' });
       const arrayResult = Ok([1, 2, 3]);
 
-      expect(numberResult.data).toBe(42);
-      expect(objectResult.data).toEqual({ key: 'value' });
-      expect(arrayResult.data).toEqual([1, 2, 3]);
+      expect((numberResult as any).data).toBe(42);
+      expect((objectResult as any).data).toEqual({ key: 'value' });
+      expect((arrayResult as any).data).toEqual([1, 2, 3]);
     });
   });
 
@@ -31,14 +23,14 @@ describe('result utility', () => {
     it('should create an error result', () => {
       const result = Err(new Error('failed'));
       expect(result.success).toBe(false);
-      expect(result.error).toBeInstanceOf(Error);
-      expect(result.error.message).toBe('failed');
+      expect((result as any).error).toBeInstanceOf(Error);
+      expect((result as any).error.message).toBe('failed');
     });
 
     it('should work with custom error types', () => {
       const result = Err('string error');
       expect(result.success).toBe(false);
-      expect(result.error).toBe('string error');
+      expect((result as any).error).toBe('string error');
     });
   });
 
@@ -56,7 +48,7 @@ describe('result utility', () => {
     it('should narrow type correctly', () => {
       const result: Result<string> = Ok('success');
       if (isOk(result)) {
-        // TypeScript should know result.data exists here
+        // TypeScript should now result.data existing here
         expect(result.data).toBe('success');
       }
     });
@@ -76,7 +68,7 @@ describe('result utility', () => {
     it('should narrow type correctly', () => {
       const result: Result<string> = Err(new Error('failed'));
       if (isErr(result)) {
-        // TypeScript should know result.error exists here
+        // TypeScript should know the result.error exists here
         expect(result.error).toBeInstanceOf(Error);
       }
     });

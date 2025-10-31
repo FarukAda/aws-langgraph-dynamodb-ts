@@ -1,17 +1,40 @@
-import { putAction } from '../../../src/checkpointer/actions/put';
-import { createMockDynamoDBClient, mockDynamoDBPut } from '../../shared/mocks/dynamodb-mock';
+import { putAction } from '../../../src/checkpointer/actions';
+import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
 import {
   createMockCheckpoint,
   createMockMetadata,
   createMockRunnableConfig,
   createMockSerde,
 } from '../../shared/fixtures/test-data';
+import { AwsStub } from 'aws-sdk-client-mock';
+import {
+  DynamoDBDocument,
+  DynamoDBDocumentClientResolvedConfig,
+  ServiceInputTypes,
+  ServiceOutputTypes,
+} from '@aws-sdk/lib-dynamodb';
 
 describe('putAction', () => {
-  it('should save checkpoint successfully', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
+  let ddbDocMock: AwsStub<
+    ServiceInputTypes,
+    ServiceOutputTypes,
+    DynamoDBDocumentClientResolvedConfig
+  >;
+  let client: DynamoDBDocument;
+  let serde: any;
 
+  beforeEach(() => {
+    const mockClients = createMockDynamoDBClient();
+    ddbDocMock = mockClients.ddbDocMock;
+    client = mockClients.client;
+    serde = createMockSerde();
+  });
+
+  afterEach(() => {
+    ddbDocMock.reset();
+  });
+
+  it('should save checkpoint successfully', async () => {
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const checkpoint = createMockCheckpoint('checkpoint-123');
@@ -33,9 +56,6 @@ describe('putAction', () => {
   });
 
   it('should save checkpoint with TTL', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const checkpoint = createMockCheckpoint('checkpoint-123');
@@ -56,9 +76,6 @@ describe('putAction', () => {
   });
 
   it('should throw error when checkpoint.id is missing', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpoint = createMockCheckpoint('checkpoint-123');
     checkpoint.id = undefined as any;
     const metadata = createMockMetadata();
@@ -76,9 +93,6 @@ describe('putAction', () => {
   });
 
   it('should throw error when checkpoint.id is empty', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpoint = createMockCheckpoint('');
     const metadata = createMockMetadata();
 
@@ -95,9 +109,6 @@ describe('putAction', () => {
   });
 
   it('should throw error when checkpoint.id contains separator', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpoint = createMockCheckpoint('checkpoint:::123');
     const metadata = createMockMetadata();
 
@@ -114,7 +125,6 @@ describe('putAction', () => {
   });
 
   it('should throw error when serialization types mismatch', async () => {
-    const { client } = createMockDynamoDBClient();
     const serde = {
       dumpsTyped: jest
         .fn()
@@ -139,9 +149,6 @@ describe('putAction', () => {
   });
 
   it('should include parent_checkpoint_id when provided', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const checkpoint = createMockCheckpoint('checkpoint-123');
@@ -160,9 +167,6 @@ describe('putAction', () => {
   });
 
   it('should default checkpoint_ns to empty string', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const checkpoint = createMockCheckpoint('checkpoint-123');
@@ -181,15 +185,10 @@ describe('putAction', () => {
   });
 
   it('should calculate TTL correctly', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const checkpoint = createMockCheckpoint('checkpoint-123');
     const metadata = createMockMetadata();
-
-    const beforeTimestamp = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
 
     await putAction({
       client,
@@ -201,15 +200,10 @@ describe('putAction', () => {
       ttlDays: 30,
     });
 
-    const afterTimestamp = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
-
     expect(ddbDocMock.calls()).toHaveLength(1);
   });
 
   it('should validate TTL days', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpoint = createMockCheckpoint('checkpoint-123');
     const metadata = createMockMetadata();
 
@@ -227,9 +221,6 @@ describe('putAction', () => {
   });
 
   it('should validate invalid TTL days type', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpoint = createMockCheckpoint('checkpoint-123');
     const metadata = createMockMetadata();
 
@@ -247,9 +238,6 @@ describe('putAction', () => {
   });
 
   it('should throw error for invalid thread_id', async () => {
-    const { client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     const checkpoint = createMockCheckpoint('checkpoint-123');
     const metadata = createMockMetadata();
 
@@ -266,9 +254,6 @@ describe('putAction', () => {
   });
 
   it('should handle DynamoDB errors with retry', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     // First attempt fails, second succeeds
     const error = new Error('Throttling error');
     error.name = 'ThrottlingException';
@@ -292,9 +277,6 @@ describe('putAction', () => {
   });
 
   it('should not include TTL when ttlDays is undefined', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-    const serde = createMockSerde();
-
     ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const checkpoint = createMockCheckpoint('checkpoint-123');

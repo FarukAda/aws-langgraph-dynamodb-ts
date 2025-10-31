@@ -276,10 +276,11 @@ describe('checkpointer validation', () => {
   });
 });
 
-// Test re-exported utilities from index
+// Test re-exported utilities from the index
 describe('checkpointer utils index re-exports', () => {
   it('should re-export retry utilities from index', () => {
-    // These imports are from the index file which re-exports from shared
+    // These imports are from the index file that re-exports from shared
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { withRetry, withDynamoDBRetry } = require('../../../src/checkpointer/utils');
     expect(withRetry).toBeDefined();
     expect(withDynamoDBRetry).toBeDefined();

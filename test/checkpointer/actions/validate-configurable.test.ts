@@ -1,5 +1,5 @@
 import { validateConfigurable } from '../../../src/checkpointer/actions/validate-configurable';
-import { CheckpointerValidationError } from '../../../src/checkpointer/utils/validation';
+import { CheckpointerValidationError } from '../../../src/checkpointer/utils';
 
 describe('validateConfigurable', () => {
   it('should validate valid configurable with all fields', () => {

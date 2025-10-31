@@ -1,4 +1,4 @@
-import { listNamespacesOperationAction } from '../../../src/store/actions/list-namespaces-operation';
+import { listNamespacesOperationAction } from '../../../src/store/actions';
 import {
   createMockDynamoDBClient,
   mockDynamoDBQueryPaginated,

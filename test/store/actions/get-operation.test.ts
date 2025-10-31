@@ -1,4 +1,4 @@
-import { getOperationAction } from '../../../src/store/actions/get-operation';
+import { getOperationAction } from '../../../src/store/actions';
 import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
 import { createMockStoreItem } from '../../shared/fixtures/test-data';
 

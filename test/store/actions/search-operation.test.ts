@@ -1,12 +1,9 @@
-import { searchOperationAction } from '../../../src/store/actions/search-operation';
+import { searchOperationAction } from '../../../src/store/actions';
 import {
   createMockDynamoDBClient,
   mockDynamoDBQueryPaginated,
 } from '../../shared/mocks/dynamodb-mock';
-import {
-  createMockEmbedding,
-  createMockEmbeddingWithVector,
-} from '../../shared/mocks/embedding-mock';
+import { createMockEmbeddingWithVector } from '../../shared/mocks/embedding-mock';
 import { createMockStoreItem } from '../../shared/fixtures/test-data';
 
 describe('searchOperationAction', () => {
@@ -300,7 +297,7 @@ describe('searchOperationAction', () => {
         },
         {
           ...createMockStoreItem('user-123', ['docs'], 'doc2', { text: 'world' }),
-          embedding: [[1, 0, 0]], // 3D item embedding - matches query
+          embedding: [[1, 0, 0]], // 3D item embedding - matches a query
         },
       ];
 
@@ -432,7 +429,7 @@ describe('searchOperationAction', () => {
       const { ddbDocMock, client } = createMockDynamoDBClient();
 
       // Mock infinite pagination - each iteration returns 1 item
-      // With limit=1000 and 1 item per iteration, needs >100 iterations to satisfy limit
+      // With limit=1000 and 1 item per iteration, needs >100 iterations to satisfy the limit
       ddbDocMock.onAnyCommand().resolves({
         Items: [createMockStoreItem('user-123', ['docs'], 'doc1', { title: 'Doc 1' })],
         ScannedCount: 1,

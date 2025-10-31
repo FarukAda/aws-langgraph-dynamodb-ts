@@ -1,4 +1,4 @@
-import { buildFilterExpression } from '../../../src/store/utils/filter';
+import { buildFilterExpression } from '../../../src/store/utils';
 
 describe('filter utility', () => {
   describe('buildFilterExpression', () => {

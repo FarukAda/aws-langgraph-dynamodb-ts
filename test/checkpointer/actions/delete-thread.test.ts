@@ -1,15 +1,33 @@
-import { deleteThreadAction } from '../../../src/checkpointer/actions/delete-thread';
-import {
-  createMockDynamoDBClient,
-  mockDynamoDBQueryPaginated,
-  mockDynamoDBBatchWrite,
-} from '../../shared/mocks/dynamodb-mock';
+import { deleteThreadAction } from '../../../src/checkpointer/actions';
+import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
 import { createMockCheckpointItem, createMockWriteItem } from '../../shared/fixtures/test-data';
+import { AwsStub } from 'aws-sdk-client-mock';
+import {
+  DynamoDBDocument,
+  DynamoDBDocumentClientResolvedConfig,
+  ServiceInputTypes,
+  ServiceOutputTypes,
+} from '@aws-sdk/lib-dynamodb';
 
 describe('deleteThreadAction', () => {
-  it('should delete thread with checkpoints and writes', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
+  let ddbDocMock: AwsStub<
+    ServiceInputTypes,
+    ServiceOutputTypes,
+    DynamoDBDocumentClientResolvedConfig
+  >;
+  let client: DynamoDBDocument;
 
+  beforeEach(() => {
+    const mockClients = createMockDynamoDBClient();
+    ddbDocMock = mockClients.ddbDocMock;
+    client = mockClients.client;
+  });
+
+  afterEach(() => {
+    ddbDocMock.reset();
+  });
+
+  it('should delete thread with checkpoints and writes', async () => {
     const checkpoints = [
       createMockCheckpointItem('thread-123', 'checkpoint-1', 'ns'),
       createMockCheckpointItem('thread-123', 'checkpoint-2', 'ns'),
@@ -39,8 +57,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should handle pagination for many checkpoints', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
     const batch1 = Array(50)
       .fill(null)
       .map((_, i) => createMockCheckpointItem('thread-123', `checkpoint-${i}`, 'ns'));
@@ -74,8 +90,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should handle empty thread', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
     ddbDocMock.onAnyCommand().resolvesOnce({
       Items: [],
       LastEvaluatedKey: undefined,
@@ -92,8 +106,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should throw error for invalid thread_id', async () => {
-    const { client } = createMockDynamoDBClient();
-
     await expect(
       deleteThreadAction({
         client,
@@ -105,8 +117,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should throw error when exceeding max iterations', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
     // Mock infinite pagination
     ddbDocMock.onAnyCommand().resolves({
       Items: [createMockCheckpointItem('thread-123', 'checkpoint-1', 'ns')],
@@ -124,8 +134,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should throw error when exceeding max delete batch size', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
     const manyCheckpoints = Array(101)
       .fill(null)
       .map((_, i) => createMockCheckpointItem('thread-123', `checkpoint-${i}`, 'ns'));
@@ -146,8 +154,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should delete checkpoints in batches of 25', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
     const checkpoints = Array(60)
       .fill(null)
       .map((_, i) => createMockCheckpointItem('thread-123', `checkpoint-${i}`, 'ns'));
@@ -174,8 +180,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should handle checkpoints with multiple writes', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
     const checkpoints = [createMockCheckpointItem('thread-123', 'checkpoint-1', 'ns')];
 
     const writes = Array(30)
@@ -210,8 +214,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should throw error for thread_id with separator', async () => {
-    const { client } = createMockDynamoDBClient();
-
     await expect(
       deleteThreadAction({
         client,
@@ -223,8 +225,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should throw error for thread_id with control characters', async () => {
-    const { client } = createMockDynamoDBClient();
-
     await expect(
       deleteThreadAction({
         client,
@@ -236,8 +236,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should handle checkpoints without writes', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
     const checkpoints = [createMockCheckpointItem('thread-123', 'checkpoint-1', 'ns')];
 
     // Mock checkpoint query
@@ -262,8 +260,6 @@ describe('deleteThreadAction', () => {
   });
 
   it('should handle DynamoDB errors with retry', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
     const checkpoints = [createMockCheckpointItem('thread-123', 'checkpoint-1', 'ns')];
 
     // First attempt fails, second succeeds

@@ -1,4 +1,4 @@
-import { DynamoDBSaver } from '../../src/checkpointer';
+import { DynamoDBSaver } from '../../src';
 import {
   createMockCheckpoint,
   createMockMetadata,

@@ -25,7 +25,7 @@ export function createMockCheckpoint(id: string): Checkpoint {
  */
 export function createMockMetadata(
   source: 'input' | 'update' | 'loop' | 'fork' = 'input',
-): CheckpointMetadata {
+): CheckpointMetadata<{ writes: any }> {
   return {
     source,
     step: 1,
@@ -104,7 +104,7 @@ export function createMockCheckpointItem(
 }
 
 /**
- * Create mock DynamoDB write item
+ * Create a mock DynamoDB write item
  */
 export function createMockWriteItem(
   threadId: string,
@@ -136,13 +136,4 @@ export function createMockStoreItem(userId: string, namespace: string[], key: st
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
-}
-
-/**
- * Create a mock DynamoDB error
- */
-export function createMockDynamoDBError(errorName: string, message: string): Error {
-  const error = new Error(message);
-  error.name = errorName;
-  return error;
 }

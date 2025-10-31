@@ -1,4 +1,4 @@
-import { validateTTLDays, MAX_TTL_DAYS } from '../../../src/shared/utils/constants';
+import { validateTTLDays, MAX_TTL_DAYS } from '../../../src/shared';
 
 describe('constants utility', () => {
   describe('validateTTLDays', () => {
@@ -45,7 +45,7 @@ describe('constants utility', () => {
       const mockDate = new Date('2037-01-01T00:00:00Z').getTime();
       jest.spyOn(Date, 'now').mockReturnValue(mockDate);
 
-      // 400 days from 2037 would overflow 2038-01-19 limit
+      // 400 days from 2037 would overflow the 2038-01-19 limit
       expect(() => validateTTLDays(400)).toThrow('TTL would overflow Unix timestamp');
 
       // Restore Date.now()
