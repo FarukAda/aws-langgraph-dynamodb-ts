@@ -44,7 +44,7 @@ export function createMockSerde() {
       const serialized = new Uint8Array(Buffer.from(JSON.stringify(value)));
       return ['json', serialized];
     }),
-    loadsTyped: jest.fn(async (type: string, value: Uint8Array): Promise<any> => {
+    loadsTyped: jest.fn(async (_type: string, value: Uint8Array): Promise<any> => {
       return JSON.parse(Buffer.from(value).toString());
     }),
   };

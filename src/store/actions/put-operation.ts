@@ -11,6 +11,7 @@ import {
   validateJSONPath,
   withDynamoDBRetry,
 } from '../utils';
+import { calculateTTLTimestamp } from '../../shared';
 
 /**
  * Put a memory item into DynamoDB
@@ -87,8 +88,7 @@ export const putOperationAction = async (params: PutOperationActionParams): Prom
 
   // Add TTL if configured
   if (ttlDays && ttlDays > 0) {
-    updateExpressionParts.push('ttl = :ttl');
-    expressionAttributeValues[':ttl'] = Math.floor(Date.now() / 1000) + ttlDays * 24 * 60 * 60;
+    expressionAttributeValues[':ttl'] = calculateTTLTimestamp(ttlDays);
   }
 
   // Execute with retry logic

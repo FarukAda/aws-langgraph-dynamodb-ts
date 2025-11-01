@@ -275,6 +275,14 @@ const sessions = await history.listSessions('user-123');
 await history.clear('user-123', 'session-456');
 ```
 
+## Documentation
+
+Comprehensive guides for each module:
+
+- **[Checkpointer Guide](./docs/checkpointer.md)** - Complete guide to DynamoDBSaver with checkpoint management, workflow persistence, and recovery strategies
+- **[Store Guide](./docs/store.md)** - Detailed documentation for DynamoDBStore covering memory storage, semantic search, filtering, and namespace organization
+- **[History Guide](./docs/history.md)** - Full guide to DynamoDBChatMessageHistory for chat message storage, session management, and conversation tracking
+
 ## API Reference
 
 For detailed API documentation, see the [TypeDoc documentation](./docs/README.md):

@@ -1,9 +1,4 @@
-import type {
-  Checkpoint,
-  CheckpointMetadata,
-  CheckpointPendingWrite,
-  CheckpointTuple,
-} from '@langchain/langgraph-checkpoint';
+import type { CheckpointPendingWrite, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
 import { Writer } from './writer';
 import { validateConfigurable } from './validate-configurable';
@@ -13,6 +8,7 @@ import {
   GetTupleActionParams,
   ValidatedConfigurable,
 } from '../types';
+import { deserializeCheckpointTuple } from '../utils';
 import { withDynamoDBRetry } from '../../shared';
 
 /**
@@ -65,9 +61,7 @@ export const getTupleAction = async (
     return undefined;
   }
 
-  const checkpoint = (await params.serde.loadsTyped(item.type, item.checkpoint)) as Checkpoint;
-  const metadata = (await params.serde.loadsTyped(item.type, item.metadata)) as CheckpointMetadata;
-
+  // Get pending writes for this checkpoint
   const writesResult = await withDynamoDBRetry(async () => {
     return await params.client.query({
       TableName: params.writesTableName,
@@ -88,25 +82,12 @@ export const getTupleAction = async (
     }
   }
 
+  // Get the base checkpoint tuple using a utility
+  const checkpointTuple = await deserializeCheckpointTuple(item, params.serde);
+
+  // Add pending writes to the tuple
   return {
-    config: {
-      configurable: {
-        thread_id: item.thread_id,
-        checkpoint_ns: item.checkpoint_ns,
-        checkpoint_id: item.checkpoint_id,
-      },
-    },
-    checkpoint,
-    metadata,
-    parentConfig: item.parent_checkpoint_id
-      ? {
-          configurable: {
-            thread_id: item.thread_id,
-            checkpoint_ns: item.checkpoint_ns,
-            checkpoint_id: item.parent_checkpoint_id,
-          },
-        }
-      : undefined,
+    ...checkpointTuple,
     pendingWrites,
   };
 };

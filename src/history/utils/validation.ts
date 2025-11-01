@@ -28,7 +28,7 @@ export class HistoryValidationError extends Error {
  * @param userId - User identifier to validate
  * @throws HistoryValidationError if validation fails
  */
-export function validateUserId(userId: string): void {
+export function validateUserId(userId: any): void {
   if (typeof userId !== 'string') {
     throw new HistoryValidationError('User ID must be a string');
   }
@@ -56,7 +56,7 @@ export function validateUserId(userId: string): void {
  * @param sessionId - Session identifier to validate
  * @throws HistoryValidationError if validation fails
  */
-export function validateSessionId(sessionId: string): void {
+export function validateSessionId(sessionId: any): void {
   if (typeof sessionId !== 'string') {
     throw new HistoryValidationError('Session ID must be a string');
   }
@@ -138,7 +138,7 @@ export function validateMessages(messages: BaseMessage[]): void {
  * @param title - Optional title string to validate
  * @throws HistoryValidationError if validation fails
  */
-export function validateTitle(title: string | undefined): void {
+export function validateTitle(title: any): void {
   if (title === undefined) {
     return;
   }
@@ -160,7 +160,7 @@ export function validateTitle(title: string | undefined): void {
  * @param limit - Optional maximum number of items to return
  * @throws HistoryValidationError if validation fails
  */
-export function validateLimit(limit: number | undefined): void {
+export function validateLimit(limit: any): void {
   if (limit === undefined) {
     return;
   }

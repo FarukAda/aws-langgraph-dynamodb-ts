@@ -1,6 +1,7 @@
 /**
- * Shared utilities for store and checkpointer
+ * Shared utilities and types
  */
 
-export * from './retry';
 export * from './constants';
+export * from './retry';
+export * from './ttl';

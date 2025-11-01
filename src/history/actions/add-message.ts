@@ -11,6 +11,7 @@ import {
   validateTTLDays,
   withDynamoDBRetry,
   generateTitle,
+  buildMessageUpdateExpression,
 } from '../utils';
 
 /**
@@ -30,40 +31,17 @@ export const addMessageAction = async (params: AddMessageActionParams): Promise<
   validateTitle(title);
   validateTTLDays(ttlDays);
 
-  const now = Date.now();
-
   // Generate a title if this is the first message and no title provided
   let sessionTitle = title;
   if (!sessionTitle) {
     sessionTitle = generateTitle(message);
   }
-
-  // Build update expression
-  const updateExpressionParts: string[] = ['updatedAt = :updatedAt'];
-  const expressionAttributeValues: Record<string, any> = {
-    ':updatedAt': now,
-    ':createdAt': now,
-    ':emptyList': [],
-    ':one': 1,
-    ':message': [message],
-  };
-
-  if (sessionTitle) {
-    updateExpressionParts.push('title = if_not_exists(title, :title)');
-    expressionAttributeValues[':title'] = sessionTitle;
-  }
-
-  updateExpressionParts.push(
-    'messages = list_append(if_not_exists(messages, :emptyList), :message)',
-  );
-  updateExpressionParts.push('messageCount = if_not_exists(messageCount, :zero) + :one');
-  expressionAttributeValues[':zero'] = 0;
-
-  // Add TTL if configured
-  if (ttlDays !== undefined) {
-    updateExpressionParts.push('ttl = :ttl');
-    expressionAttributeValues[':ttl'] = Math.floor(Date.now() / 1000) + ttlDays * 24 * 60 * 60;
-  }
+  // Build update expression using utility
+  const { updateExpression, expressionAttributeValues } = buildMessageUpdateExpression({
+    messages: message,
+    title: sessionTitle,
+    ttlDays,
+  });
 
   // Execute with retry logic
   await withDynamoDBRetry(async () => {
@@ -73,7 +51,7 @@ export const addMessageAction = async (params: AddMessageActionParams): Promise<
         userId,
         sessionId,
       },
-      UpdateExpression: `SET ${updateExpressionParts.join(', ')}, createdAt = if_not_exists(createdAt, :createdAt)`,
+      UpdateExpression: updateExpression,
       ExpressionAttributeValues: expressionAttributeValues,
     });
   });

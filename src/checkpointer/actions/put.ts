@@ -3,7 +3,7 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import { validateConfigurable } from './validate-configurable';
 import { CheckpointItem, PutActionParams } from '../types';
 import { validateCheckpointId, validateTTLDays } from '../utils';
-import { withDynamoDBRetry } from '../../shared';
+import { withDynamoDBRetry, calculateTTLTimestamp } from '../../shared';
 
 /**
  * Save a checkpoint to DynamoDB
@@ -40,7 +40,7 @@ export const putAction = async (params: PutActionParams): Promise<RunnableConfig
   };
 
   if (params.ttlDays !== undefined) {
-    item.ttl = Math.floor(Date.now() / 1000) + params.ttlDays * 24 * 60 * 60;
+    item.ttl = calculateTTLTimestamp(params.ttlDays);
   }
 
   // Execute with retry logic

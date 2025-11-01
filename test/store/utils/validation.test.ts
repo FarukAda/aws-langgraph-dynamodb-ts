@@ -12,38 +12,23 @@ import {
   ValidationError,
   ValidationConstants,
 } from '../../../src/store/utils';
+import { testArrayValidation } from '../../shared/helpers/validation-tests';
 
 describe('store validation', () => {
   describe('validateNamespace', () => {
+    testArrayValidation({
+      validateFn: validateNamespace,
+      fieldName: 'Namespace',
+      minLength: 1,
+      maxLength: 20,
+      validItem: 'level',
+      invalidItem: 123,
+      errorClass: ValidationError,
+    });
+
     it('should accept valid namespaces', () => {
       expect(() => validateNamespace(['user', 'session'])).not.toThrow();
-      expect(() => validateNamespace(['a'])).not.toThrow();
       expect(() => validateNamespace(['level1', 'level2', 'level3'])).not.toThrow();
-    });
-
-    it('should reject non-array values', () => {
-      expect(() => validateNamespace('not-array' as any)).toThrow('Namespace must be an array');
-    });
-
-    it('should reject empty arrays', () => {
-      expect(() => validateNamespace([])).toThrow('Namespace cannot be empty');
-    });
-
-    it('should reject namespaces exceeding max depth', () => {
-      const deepNamespace = Array(21).fill('level');
-      expect(() => validateNamespace(deepNamespace)).toThrow('Namespace depth exceeds maximum');
-    });
-
-    it('should accept namespace at max depth', () => {
-      const maxNamespace = Array(20).fill('level');
-      expect(() => validateNamespace(maxNamespace)).not.toThrow();
-    });
-
-    it('should reject non-string parts', () => {
-      expect(() => validateNamespace([123 as any])).toThrow('Namespace parts must be strings');
-      expect(() => validateNamespace(['valid', null as any])).toThrow(
-        'Namespace parts must be strings',
-      );
     });
 
     it('should reject empty string parts', () => {
@@ -133,28 +118,15 @@ describe('store validation', () => {
       expect(() => validatePagination(undefined, 10)).not.toThrow();
     });
 
-    it('should reject non-integer limit', () => {
-      expect(() => validatePagination(1.5, 0)).toThrow('Limit must be an integer');
-    });
-
-    it('should reject negative limit', () => {
-      expect(() => validatePagination(-1, 0)).toThrow('Limit cannot be negative');
-    });
-
-    it('should reject limit exceeding max', () => {
-      expect(() => validatePagination(1001, 0)).toThrow('Limit cannot exceed 1000');
-    });
-
-    it('should reject non-integer offset', () => {
-      expect(() => validatePagination(10, 1.5)).toThrow('Offset must be an integer');
-    });
-
-    it('should reject negative offset', () => {
-      expect(() => validatePagination(10, -1)).toThrow('Offset cannot be negative');
-    });
-
-    it('should reject offset exceeding max', () => {
-      expect(() => validatePagination(10, 10001)).toThrow('Offset cannot exceed 10000');
+    it.each([
+      { limit: 1.5, offset: 0, error: 'Limit must be an integer' },
+      { limit: -1, offset: 0, error: 'Limit cannot be negative' },
+      { limit: 1001, offset: 0, error: 'Limit cannot exceed 1000' },
+      { limit: 10, offset: 1.5, error: 'Offset must be an integer' },
+      { limit: 10, offset: -1, error: 'Offset cannot be negative' },
+      { limit: 10, offset: 10001, error: 'Offset cannot exceed 10000' },
+    ])('should throw error for limit=$limit, offset=$offset', ({ limit, offset, error }) => {
+      expect(() => validatePagination(limit, offset)).toThrow(error);
     });
   });
 

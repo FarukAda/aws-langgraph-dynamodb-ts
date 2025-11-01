@@ -24,7 +24,7 @@ export class CheckpointerValidationError extends Error {
 /**
  * Validate thread ID
  */
-export function validateThreadId(threadId: string): void {
+export function validateThreadId(threadId: any): void {
   if (typeof threadId !== 'string') {
     throw new CheckpointerValidationError('thread_id must be a string');
   }
@@ -54,10 +54,7 @@ export function validateThreadId(threadId: string): void {
 /**
  * Validate checkpoint ID
  */
-export function validateCheckpointId(
-  checkpointId: string | undefined,
-  required: boolean = false,
-): void {
+export function validateCheckpointId(checkpointId: any, required: boolean = false): void {
   if (checkpointId === undefined) {
     if (required) {
       throw new CheckpointerValidationError('checkpoint_id is required');
@@ -94,7 +91,7 @@ export function validateCheckpointId(
 /**
  * Validate checkpoint namespace
  */
-export function validateCheckpointNs(checkpointNs: string | undefined): void {
+export function validateCheckpointNs(checkpointNs: any): void {
   if (checkpointNs === undefined || checkpointNs === '') {
     return; // Empty namespace is allowed
   }
@@ -124,7 +121,7 @@ export function validateCheckpointNs(checkpointNs: string | undefined): void {
 /**
  * Validate task ID
  */
-export function validateTaskId(taskId: string): void {
+export function validateTaskId(taskId: any): void {
   if (typeof taskId !== 'string') {
     throw new CheckpointerValidationError('task_id must be a string');
   }
@@ -148,7 +145,7 @@ export function validateTaskId(taskId: string): void {
 /**
  * Validate channel name
  */
-export function validateChannel(channel: string): void {
+export function validateChannel(channel: any): void {
   if (typeof channel !== 'string') {
     throw new CheckpointerValidationError('channel must be a string');
   }
@@ -167,7 +164,7 @@ export function validateChannel(channel: string): void {
 /**
  * Validate writes array length
  */
-export function validateWritesCount(writesCount: number): void {
+export function validateWritesCount(writesCount: any): void {
   if (typeof writesCount !== 'number' || !Number.isInteger(writesCount)) {
     throw new CheckpointerValidationError('Writes count must be an integer');
   }
@@ -186,7 +183,7 @@ export function validateWritesCount(writesCount: number): void {
 /**
  * Validate list limit parameter
  */
-export function validateListLimit(limit: number | undefined): void {
+export function validateListLimit(limit: any): void {
   if (limit === undefined) {
     return;
   }

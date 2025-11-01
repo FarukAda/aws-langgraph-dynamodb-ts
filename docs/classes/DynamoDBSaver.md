@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.0.7**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.0.9**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBSaver
 
-Defined in: [checkpointer/index.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L24)
+Defined in: [checkpointer/index.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L24)
 
 ## Extends
 
@@ -18,7 +18,7 @@ Defined in: [checkpointer/index.ts:24](https://github.com/FarukAda/aws-langgraph
 
 > **new DynamoDBSaver**(`options`): `DynamoDBSaver`
 
-Defined in: [checkpointer/index.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L41)
+Defined in: [checkpointer/index.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L41)
 
 Create a new DynamoDB checkpoint saver
 
@@ -44,7 +44,7 @@ Configuration options for the saver
 
 > `private` `readonly` **checkpointsTableName**: `string`
 
-Defined in: [checkpointer/index.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L27)
+Defined in: [checkpointer/index.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L27)
 
 ***
 
@@ -52,7 +52,7 @@ Defined in: [checkpointer/index.ts:27](https://github.com/FarukAda/aws-langgraph
 
 > `private` `readonly` **client**: `DynamoDBDocument`
 
-Defined in: [checkpointer/index.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L26)
+Defined in: [checkpointer/index.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L26)
 
 ***
 
@@ -60,7 +60,7 @@ Defined in: [checkpointer/index.ts:26](https://github.com/FarukAda/aws-langgraph
 
 > `private` `readonly` **ddbClient**: `DynamoDBClient`
 
-Defined in: [checkpointer/index.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L25)
+Defined in: [checkpointer/index.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L25)
 
 ***
 
@@ -68,7 +68,7 @@ Defined in: [checkpointer/index.ts:25](https://github.com/FarukAda/aws-langgraph
 
 > `private` `readonly` `optional` **ttlDays**: `number`
 
-Defined in: [checkpointer/index.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L29)
+Defined in: [checkpointer/index.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L29)
 
 ***
 
@@ -76,7 +76,7 @@ Defined in: [checkpointer/index.ts:29](https://github.com/FarukAda/aws-langgraph
 
 > `private` `readonly` **writesTableName**: `string`
 
-Defined in: [checkpointer/index.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L28)
+Defined in: [checkpointer/index.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L28)
 
 ## Methods
 
@@ -84,7 +84,7 @@ Defined in: [checkpointer/index.ts:28](https://github.com/FarukAda/aws-langgraph
 
 > **deleteThread**(`threadId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/index.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L56)
+Defined in: [checkpointer/index.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L56)
 
 Delete a thread and all its checkpoints and writes
 
@@ -114,7 +114,7 @@ Error if validation fails or operation fails
 
 > **getTuple**(`config`): `Promise`\<`CheckpointTuple` \| `undefined`\>
 
-Defined in: [checkpointer/index.ts:72](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L72)
+Defined in: [checkpointer/index.ts:72](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L72)
 
 Get a checkpoint tuple from DynamoDB
 
@@ -146,7 +146,7 @@ Error if validation fails or operation fails
 
 > **list**(`config`, `options`): `AsyncGenerator`\<`CheckpointTuple`\>
 
-Defined in: [checkpointer/index.ts:137](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L137)
+Defined in: [checkpointer/index.ts:138](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L138)
 
 List checkpoints for a thread
 
@@ -186,7 +186,7 @@ Error if validation fails or operation fails
 
 > **put**(`config`, `checkpoint`, `metadata`, `newVersions`): `Promise`\<`RunnableConfig`\<`Record`\<`string`, `any`\>\>\>
 
-Defined in: [checkpointer/index.ts:92](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L92)
+Defined in: [checkpointer/index.ts:92](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L92)
 
 Save a checkpoint to DynamoDB
 
@@ -236,7 +236,7 @@ Error if validation fails or operation fails
 
 > **putWrites**(`config`, `writes`, `taskId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/index.ts:117](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/checkpointer/index.ts#L117)
+Defined in: [checkpointer/index.ts:118](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/checkpointer/index.ts#L118)
 
 Save pending writes to DynamoDB
 

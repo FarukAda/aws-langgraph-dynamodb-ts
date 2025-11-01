@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.0.7**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.0.9**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBStore
 
-Defined in: [store/index.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L31)
+Defined in: [store/index.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L31)
 
 ## Extends
 
@@ -18,7 +18,7 @@ Defined in: [store/index.ts:31](https://github.com/FarukAda/aws-langgraph-dynamo
 
 > **new DynamoDBStore**(`options`): `DynamoDBStore`
 
-Defined in: [store/index.ts:47](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L47)
+Defined in: [store/index.ts:47](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L47)
 
 Create a new DynamoDB store instance
 
@@ -44,7 +44,7 @@ Configuration options for the store
 
 > `private` `readonly` **client**: `DynamoDBDocument`
 
-Defined in: [store/index.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L33)
+Defined in: [store/index.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L33)
 
 ***
 
@@ -52,7 +52,7 @@ Defined in: [store/index.ts:33](https://github.com/FarukAda/aws-langgraph-dynamo
 
 > `private` `readonly` **ddbClient**: `DynamoDBClient`
 
-Defined in: [store/index.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L32)
+Defined in: [store/index.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L32)
 
 ***
 
@@ -60,7 +60,7 @@ Defined in: [store/index.ts:32](https://github.com/FarukAda/aws-langgraph-dynamo
 
 > `private` `readonly` `optional` **embedding**: `BedrockEmbeddings`
 
-Defined in: [store/index.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L35)
+Defined in: [store/index.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L35)
 
 ***
 
@@ -68,7 +68,7 @@ Defined in: [store/index.ts:35](https://github.com/FarukAda/aws-langgraph-dynamo
 
 > `private` `readonly` **memoryTableName**: `string`
 
-Defined in: [store/index.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L34)
+Defined in: [store/index.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L34)
 
 ***
 
@@ -76,7 +76,7 @@ Defined in: [store/index.ts:34](https://github.com/FarukAda/aws-langgraph-dynamo
 
 > `private` `readonly` `optional` **ttlDays**: `number`
 
-Defined in: [store/index.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L36)
+Defined in: [store/index.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L36)
 
 ## Methods
 
@@ -84,7 +84,7 @@ Defined in: [store/index.ts:36](https://github.com/FarukAda/aws-langgraph-dynamo
 
 > **batch**\<`Op`\>(`operations`, `config?`): `Promise`\<`OperationResults`\<`Op`\>\>
 
-Defined in: [store/index.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L79)
+Defined in: [store/index.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L79)
 
 Execute a batch of operations in parallel
 
@@ -128,7 +128,7 @@ Error if user_id is not provided in config or if any operation fails
 
 > `private` **getOperation**(`userId`, `op`): `Promise`\<`Item` \| `null`\>
 
-Defined in: [store/index.ts:117](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L117)
+Defined in: [store/index.ts:117](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L117)
 
 Get a single item from the store
 
@@ -158,7 +158,7 @@ The item if found, null otherwise
 
 > `private` **getUserId**(`config?`): `string`
 
-Defined in: [store/index.ts:63](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L63)
+Defined in: [store/index.ts:63](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L63)
 
 Extract and validate user ID from config
 
@@ -186,7 +186,7 @@ Error if user_id is not provided or invalid
 
 > `private` **listNamespacesOperation**(`userId`, `op`): `Promise`\<`string`[][]\>
 
-Defined in: [store/index.ts:167](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L167)
+Defined in: [store/index.ts:167](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L167)
 
 List unique namespaces in the store
 
@@ -216,7 +216,7 @@ Array of namespace paths
 
 > `private` **putOperation**(`userId`, `op`): `Promise`\<`void`\>
 
-Defined in: [store/index.ts:132](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L132)
+Defined in: [store/index.ts:132](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L132)
 
 Put an item into the store
 
@@ -244,7 +244,7 @@ Put operation parameters
 
 > `private` **searchOperation**(`userId`, `op`): `Promise`\<`SearchItem`[]\>
 
-Defined in: [store/index.ts:150](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/2063c8662e43fe7414f92d4d22aec4daf96d6417/src/store/index.ts#L150)
+Defined in: [store/index.ts:150](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/store/index.ts#L150)
 
 Search for items in the store with optional semantic search
 

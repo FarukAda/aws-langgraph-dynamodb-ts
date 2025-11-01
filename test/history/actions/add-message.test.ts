@@ -1,39 +1,46 @@
 import { addMessageAction } from '../../../src/history/actions';
-import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
+import { setupHistoryTest, type HistoryTestSetup } from '../../shared/helpers/test-setup';
+import { expectDynamoDBCalled, expectValidationError } from '../../shared/helpers/assertions';
 import { createMockMessage } from '../../shared/fixtures/test-data';
 
 describe('addMessageAction', () => {
-  it('should add message to new session with auto-generated title', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
+  let setup: HistoryTestSetup;
 
+  beforeEach(() => {
+    setup = setupHistoryTest();
+  });
+
+  afterEach(() => {
+    setup.cleanup();
+  });
+
+  it('should add message to new session with auto-generated title', async () => {
     // Mock get call returns no item (new session)
-    ddbDocMock.onAnyCommand().resolvesOnce({});
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
     // Mock update call
-    ddbDocMock.onAnyCommand().resolvesOnce({});
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const message = createMockMessage('Hello, world!');
 
     await addMessageAction({
-      client,
+      client: setup.client,
       tableName: 'history',
       userId: 'user-123',
       sessionId: 'session-1',
       message,
     });
 
-    expect(ddbDocMock.calls()).toHaveLength(1);
+    expectDynamoDBCalled(setup.ddbDocMock, 1);
   });
 
   it('should add message to new session with provided title', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
-    ddbDocMock.onAnyCommand().resolvesOnce({});
-    ddbDocMock.onAnyCommand().resolvesOnce({});
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const message = createMockMessage('Hello, world!');
 
     await addMessageAction({
-      client,
+      client: setup.client,
       tableName: 'history',
       userId: 'user-123',
       sessionId: 'session-1',
@@ -41,14 +48,11 @@ describe('addMessageAction', () => {
       title: 'Custom Title',
     });
 
-    expect(ddbDocMock.calls()).toHaveLength(1);
+    expectDynamoDBCalled(setup.ddbDocMock, 1);
   });
 
   it('should add message to existing session', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
-    // Mock get call returns existing item
-    ddbDocMock.onAnyCommand().resolvesOnce({
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({
       Item: {
         userId: 'user-123',
         sessionId: 'session-1',
@@ -57,41 +61,38 @@ describe('addMessageAction', () => {
         messageCount: 1,
       },
     });
-    ddbDocMock.onAnyCommand().resolvesOnce({});
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const message = createMockMessage('New message');
 
     await addMessageAction({
-      client,
+      client: setup.client,
       tableName: 'history',
       userId: 'user-123',
       sessionId: 'session-1',
       message,
     });
 
-    expect(ddbDocMock.calls()).toHaveLength(1);
+    expectDynamoDBCalled(setup.ddbDocMock, 1);
   });
 
   it('should throw error for invalid user ID', async () => {
-    const { client } = createMockDynamoDBClient();
-
-    await expect(
+    await expectValidationError(
       addMessageAction({
-        client,
+        client: setup.client,
         tableName: 'history',
         userId: '',
         sessionId: 'session-1',
         message: createMockMessage('Test'),
       }),
-    ).rejects.toThrow('User ID cannot be empty');
+      'User ID cannot be empty',
+    );
   });
 
   it('should throw error for invalid session ID', async () => {
-    const { client } = createMockDynamoDBClient();
-
     await expect(
       addMessageAction({
-        client,
+        client: setup.client,
         tableName: 'history',
         userId: 'user-123',
         sessionId: '',
@@ -101,11 +102,9 @@ describe('addMessageAction', () => {
   });
 
   it('should throw error for invalid message', async () => {
-    const { client } = createMockDynamoDBClient();
-
     await expect(
       addMessageAction({
-        client,
+        client: setup.client,
         tableName: 'history',
         userId: 'user-123',
         sessionId: 'session-1',
@@ -115,13 +114,11 @@ describe('addMessageAction', () => {
   });
 
   it('should throw error for invalid title', async () => {
-    const { client } = createMockDynamoDBClient();
-
     const longTitle = 'a'.repeat(201);
 
     await expect(
       addMessageAction({
-        client,
+        client: setup.client,
         tableName: 'history',
         userId: 'user-123',
         sessionId: 'session-1',
@@ -132,15 +129,13 @@ describe('addMessageAction', () => {
   });
 
   it('should add message to new session with TTL', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
-    ddbDocMock.onAnyCommand().resolvesOnce({});
-    ddbDocMock.onAnyCommand().resolvesOnce({});
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const message = createMockMessage('Hello, world!');
 
     await addMessageAction({
-      client,
+      client: setup.client,
       tableName: 'history',
       userId: 'user-123',
       sessionId: 'session-1',
@@ -148,13 +143,11 @@ describe('addMessageAction', () => {
       ttlDays: 7,
     });
 
-    expect(ddbDocMock.calls()).toHaveLength(1);
+    expectDynamoDBCalled(setup.ddbDocMock, 1);
   });
 
   it('should add message to existing session with TTL', async () => {
-    const { ddbDocMock, client } = createMockDynamoDBClient();
-
-    ddbDocMock.onAnyCommand().resolvesOnce({
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({
       Item: {
         userId: 'user-123',
         sessionId: 'session-1',
@@ -163,12 +156,12 @@ describe('addMessageAction', () => {
         messageCount: 1,
       },
     });
-    ddbDocMock.onAnyCommand().resolvesOnce({});
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const message = createMockMessage('New message');
 
     await addMessageAction({
-      client,
+      client: setup.client,
       tableName: 'history',
       userId: 'user-123',
       sessionId: 'session-1',
@@ -176,6 +169,6 @@ describe('addMessageAction', () => {
       ttlDays: 30,
     });
 
-    expect(ddbDocMock.calls()).toHaveLength(1);
+    expectDynamoDBCalled(setup.ddbDocMock, 1);
   });
 });

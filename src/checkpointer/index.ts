@@ -18,7 +18,7 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 
 import { deleteThreadAction, getTupleAction, putAction, putWritesAction } from './actions';
 import type { CheckpointItem, DynamoDBSaverOptions } from './types';
-import { validateListLimit, validateThreadId } from './utils';
+import { validateListLimit, validateThreadId, deserializeCheckpointTuple } from './utils';
 import { withDynamoDBRetry } from '../shared';
 
 export class DynamoDBSaver extends BaseCheckpointSaver {
@@ -93,6 +93,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     config: RunnableConfig,
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata,
+    // eslint-disable-next-line unused-imports/no-unused-vars
     newVersions: ChannelVersions,
   ): Promise<RunnableConfig> {
     return await putAction({
@@ -172,32 +173,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
 
     if (result.Items) {
       for (const item of result.Items as CheckpointItem[]) {
-        const checkpoint = (await this.serde.loadsTyped(item.type, item.checkpoint)) as Checkpoint;
-        const metadata = (await this.serde.loadsTyped(
-          item.type,
-          item.metadata,
-        )) as CheckpointMetadata;
-
-        yield {
-          config: {
-            configurable: {
-              thread_id: item.thread_id,
-              checkpoint_ns: item.checkpoint_ns,
-              checkpoint_id: item.checkpoint_id,
-            },
-          },
-          checkpoint,
-          metadata,
-          parentConfig: item.parent_checkpoint_id
-            ? {
-                configurable: {
-                  thread_id: item.thread_id,
-                  checkpoint_ns: item.checkpoint_ns,
-                  checkpoint_id: item.parent_checkpoint_id,
-                },
-              }
-            : undefined,
-        };
+        yield await deserializeCheckpointTuple(item, this.serde);
       }
     }
   }

@@ -1,12 +1,13 @@
-**AWS LangGraph DynamoDB TypeScript v0.0.7**
+**AWS LangGraph DynamoDB TypeScript v0.0.9**
 
 ***
 
-# AWS LangGraph DynamoDB TypeScript v0.0.7
+# AWS LangGraph DynamoDB TypeScript v0.0.9
 
 ## Classes
 
 - [DynamoDBChatMessageHistory](classes/DynamoDBChatMessageHistory.md)
+- [DynamoDBFactory](classes/DynamoDBFactory.md)
 - [DynamoDBSaver](classes/DynamoDBSaver.md)
 - [DynamoDBStore](classes/DynamoDBStore.md)
 

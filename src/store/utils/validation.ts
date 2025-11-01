@@ -63,7 +63,7 @@ export function validateNamespace(namespace: string[]): void {
 /**
  * Validate key string
  */
-export function validateKey(key: string): void {
+export function validateKey(key: any): void {
   if (typeof key !== 'string') {
     throw new ValidationError('Key must be a string');
   }
@@ -100,7 +100,7 @@ export function validateValue(value: any): void {
 /**
  * Validate pagination parameters
  */
-export function validatePagination(limit?: number, offset?: number): void {
+export function validatePagination(limit?: any, offset?: any): void {
   if (limit !== undefined) {
     if (typeof limit !== 'number' || !Number.isInteger(limit)) {
       throw new ValidationError('Limit must be an integer');
@@ -186,7 +186,7 @@ export function validateEmbeddings(embeddings?: number[][]): void {
 /**
  * Validate user ID
  */
-export function validateUserId(userId: string): void {
+export function validateUserId(userId: any): void {
   if (typeof userId !== 'string') {
     throw new ValidationError('User ID must be a string');
   }
@@ -241,7 +241,7 @@ export function validateJSONPath(paths: string[]): void {
 /**
  * Validate maxDepth parameter
  */
-export function validateMaxDepth(maxDepth?: number): void {
+export function validateMaxDepth(maxDepth?: any): void {
   if (maxDepth === undefined) {
     return;
   }
@@ -262,7 +262,7 @@ export function validateMaxDepth(maxDepth?: number): void {
 /**
  * Validate batch operations count
  */
-export function validateBatchSize(operationsCount: number): void {
+export function validateBatchSize(operationsCount: any): void {
   if (typeof operationsCount !== 'number' || !Number.isInteger(operationsCount)) {
     throw new ValidationError('Operations count must be an integer');
   }

@@ -2,7 +2,7 @@ import { validateConfigurable } from './validate-configurable';
 import { Writer } from './writer';
 import { PutWritesActionParams } from '../types';
 import { validateWritesCount, validateTTLDays, validateTaskId } from '../utils';
-import { withDynamoDBRetry } from '../../shared';
+import { withDynamoDBRetry, calculateTTLTimestamp } from '../../shared';
 
 /**
  * Save pending writes to DynamoDB
@@ -42,7 +42,7 @@ export const putWritesAction = async (params: PutWritesActionParams): Promise<vo
 
       // FIX: Add TTL to the item that will actually be saved
       if (params.ttlDays !== undefined) {
-        (dynamoItem as any).ttl = Math.floor(Date.now() / 1000) + params.ttlDays * 24 * 60 * 60;
+        (dynamoItem as any).ttl = calculateTTLTimestamp(params.ttlDays);
       }
 
       return {

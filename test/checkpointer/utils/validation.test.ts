@@ -10,50 +10,21 @@ import {
   CheckpointerValidationError,
   CheckpointerValidationConstants,
 } from '../../../src/checkpointer/utils';
+import { testIdValidation } from '../../shared/helpers/validation-tests';
 
 describe('checkpointer validation', () => {
   describe('validateThreadId', () => {
-    it('should accept valid thread IDs', () => {
-      expect(() => validateThreadId('thread-123')).not.toThrow();
-      expect(() => validateThreadId('a')).not.toThrow();
+    testIdValidation({
+      validateFn: validateThreadId,
+      fieldName: 'thread_id',
+      maxLength: 256,
+      separator: ':::',
+      errorClass: CheckpointerValidationError,
+    });
+
+    it('should accept valid thread IDs with underscores and dashes', () => {
       expect(() => validateThreadId('thread_id_with_underscores')).not.toThrow();
       expect(() => validateThreadId('thread-with-dashes')).not.toThrow();
-    });
-
-    it('should reject non-string values', () => {
-      expect(() => validateThreadId(123 as any)).toThrow('thread_id must be a string');
-      expect(() => validateThreadId(null as any)).toThrow('thread_id must be a string');
-      expect(() => validateThreadId(undefined as any)).toThrow('thread_id must be a string');
-    });
-
-    it('should reject empty string', () => {
-      expect(() => validateThreadId('')).toThrow('thread_id cannot be empty');
-    });
-
-    it('should reject thread IDs exceeding max length', () => {
-      const longId = 'a'.repeat(257);
-      expect(() => validateThreadId(longId)).toThrow('thread_id exceeds maximum length');
-    });
-
-    it('should accept thread ID at max length', () => {
-      const maxId = 'a'.repeat(256);
-      expect(() => validateThreadId(maxId)).not.toThrow();
-    });
-
-    it('should reject thread IDs containing separator', () => {
-      expect(() => validateThreadId('thread:::id')).toThrow('thread_id cannot contain separator');
-    });
-
-    it('should reject thread IDs with control characters', () => {
-      expect(() => validateThreadId('thread\x00id')).toThrow(
-        'thread_id cannot contain control characters',
-      );
-      expect(() => validateThreadId('thread\nid')).toThrow(
-        'thread_id cannot contain control characters',
-      );
-      expect(() => validateThreadId('thread\tid')).toThrow(
-        'thread_id cannot contain control characters',
-      );
     });
   });
 
@@ -71,33 +42,13 @@ describe('checkpointer validation', () => {
       expect(() => validateCheckpointId(undefined, true)).toThrow('checkpoint_id is required');
     });
 
-    it('should reject non-string values', () => {
-      expect(() => validateCheckpointId(123 as any, true)).toThrow(
-        'checkpoint_id must be a string',
-      );
-    });
-
-    it('should reject empty string', () => {
-      expect(() => validateCheckpointId('', true)).toThrow('checkpoint_id cannot be empty');
-    });
-
-    it('should reject checkpoint IDs exceeding max length', () => {
-      const longId = 'a'.repeat(257);
-      expect(() => validateCheckpointId(longId, true)).toThrow(
-        'checkpoint_id exceeds maximum length',
-      );
-    });
-
-    it('should reject checkpoint IDs containing separator', () => {
-      expect(() => validateCheckpointId('checkpoint:::id', true)).toThrow(
-        'checkpoint_id cannot contain separator',
-      );
-    });
-
-    it('should reject checkpoint IDs with control characters', () => {
-      expect(() => validateCheckpointId('checkpoint\x00id', true)).toThrow(
-        'checkpoint_id cannot contain control characters',
-      );
+    // Use shared validation helper for common patterns
+    testIdValidation({
+      validateFn: (value: any) => validateCheckpointId(value, true),
+      fieldName: 'checkpoint_id',
+      maxLength: 256,
+      separator: ':::',
+      errorClass: CheckpointerValidationError,
     });
   });
 

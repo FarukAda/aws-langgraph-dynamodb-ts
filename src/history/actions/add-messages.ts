@@ -11,6 +11,7 @@ import {
   validateTTLDays,
   withDynamoDBRetry,
   generateTitle,
+  buildMessageUpdateExpression,
 } from '../utils';
 
 /**
@@ -31,40 +32,17 @@ export const addMessagesAction = async (params: AddMessagesActionParams): Promis
   validateTitle(title);
   validateTTLDays(ttlDays);
 
-  const now = Date.now();
-
   // Generate a title if this is the first message batch and no title provided
   let sessionTitle = title;
   if (!sessionTitle) {
     sessionTitle = generateTitle(messages[0]);
   }
-
-  // Build update expression
-  const updateExpressionParts: string[] = ['updatedAt = :updatedAt'];
-  const expressionAttributeValues: Record<string, any> = {
-    ':updatedAt': now,
-    ':createdAt': now,
-    ':emptyList': [],
-    ':messageCount': messages.length,
-    ':messages': messages,
-  };
-
-  if (sessionTitle) {
-    updateExpressionParts.push('title = if_not_exists(title, :title)');
-    expressionAttributeValues[':title'] = sessionTitle;
-  }
-
-  updateExpressionParts.push(
-    'messages = list_append(if_not_exists(messages, :emptyList), :messages)',
-  );
-  updateExpressionParts.push('messageCount = if_not_exists(messageCount, :zero) + :messageCount');
-  expressionAttributeValues[':zero'] = 0;
-
-  // Add TTL if configured
-  if (ttlDays !== undefined) {
-    updateExpressionParts.push('ttl = :ttl');
-    expressionAttributeValues[':ttl'] = Math.floor(Date.now() / 1000) + ttlDays * 24 * 60 * 60;
-  }
+  // Build update expression using utility
+  const { updateExpression, expressionAttributeValues } = buildMessageUpdateExpression({
+    messages,
+    title: sessionTitle,
+    ttlDays,
+  });
 
   // Execute with retry logic
   await withDynamoDBRetry(async () => {
@@ -74,7 +52,7 @@ export const addMessagesAction = async (params: AddMessagesActionParams): Promis
         userId,
         sessionId,
       },
-      UpdateExpression: `SET ${updateExpressionParts.join(', ')}, createdAt = if_not_exists(createdAt, :createdAt)`,
+      UpdateExpression: updateExpression,
       ExpressionAttributeValues: expressionAttributeValues,
     });
   });

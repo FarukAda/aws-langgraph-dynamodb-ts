@@ -9,52 +9,31 @@ import {
   HistoryValidationError,
 } from '../../../src/history/utils';
 import { createMockMessage } from '../../shared/fixtures/test-data';
+import {
+  testStringValidation,
+  testOptionalValidation,
+  testArrayValidation,
+  testNumericValidation,
+} from '../../shared/helpers/validation-tests';
 
 describe('History Validation', () => {
   describe('validateUserId', () => {
-    it('should accept valid user ID', () => {
-      expect(() => validateUserId('user-123')).not.toThrow();
-    });
-
-    it('should throw error for empty user ID', () => {
-      expect(() => validateUserId('')).toThrow(HistoryValidationError);
-      expect(() => validateUserId('')).toThrow('User ID cannot be empty');
-    });
-
-    it('should throw error for non-string user ID', () => {
-      expect(() => validateUserId(123 as any)).toThrow('User ID must be a string');
-    });
-
-    it('should throw error for too long user ID', () => {
-      const longId = 'a'.repeat(257);
-      expect(() => validateUserId(longId)).toThrow('exceeds maximum length');
-    });
-
-    it('should throw error for user ID with control characters', () => {
-      expect(() => validateUserId('user\x00id')).toThrow('cannot contain control characters');
+    testStringValidation({
+      validateFn: validateUserId,
+      fieldName: 'User ID',
+      maxLength: 256,
+      allowEmpty: false,
+      errorClass: HistoryValidationError,
     });
   });
 
   describe('validateSessionId', () => {
-    it('should accept valid session ID', () => {
-      expect(() => validateSessionId('session-123')).not.toThrow();
-    });
-
-    it('should throw error for empty session ID', () => {
-      expect(() => validateSessionId('')).toThrow('Session ID cannot be empty');
-    });
-
-    it('should throw error for non-string session ID', () => {
-      expect(() => validateSessionId(123 as any)).toThrow('Session ID must be a string');
-    });
-
-    it('should throw error for too long session ID', () => {
-      const longId = 'a'.repeat(257);
-      expect(() => validateSessionId(longId)).toThrow('exceeds maximum length');
-    });
-
-    it('should throw error for session ID with control characters', () => {
-      expect(() => validateSessionId('session\x00id')).toThrow('cannot contain control characters');
+    testStringValidation({
+      validateFn: validateSessionId,
+      fieldName: 'Session ID',
+      maxLength: 256,
+      allowEmpty: false,
+      errorClass: HistoryValidationError,
     });
   });
 
@@ -79,24 +58,16 @@ describe('History Validation', () => {
   });
 
   describe('validateMessages', () => {
-    it('should accept valid messages array', () => {
-      const messages = [createMockMessage('Test 1'), createMockMessage('Test 2')];
-      expect(() => validateMessages(messages)).not.toThrow();
-    });
+    const validMessage = createMockMessage('Test');
 
-    it('should throw error for non-array', () => {
-      expect(() => validateMessages('not-array' as any)).toThrow('Messages must be an array');
-    });
-
-    it('should throw error for empty array', () => {
-      expect(() => validateMessages([])).toThrow('Messages array cannot be empty');
-    });
-
-    it('should throw error for too many messages', () => {
-      const manyMessages = Array(101)
-        .fill(null)
-        .map(() => createMockMessage('Test'));
-      expect(() => validateMessages(manyMessages)).toThrow('exceeds maximum of 100');
+    testArrayValidation({
+      validateFn: validateMessages,
+      fieldName: 'Messages',
+      minLength: 1,
+      maxLength: 100,
+      validItem: validMessage,
+      invalidItem: null,
+      errorClass: HistoryValidationError,
     });
 
     it('should throw error with index for invalid message', () => {
@@ -106,43 +77,37 @@ describe('History Validation', () => {
   });
 
   describe('validateTitle', () => {
-    it('should accept valid title', () => {
-      expect(() => validateTitle('My Session')).not.toThrow();
-    });
-
-    it('should accept undefined title', () => {
-      expect(() => validateTitle(undefined)).not.toThrow();
+    testOptionalValidation({
+      validateFn: validateTitle,
+      fieldName: 'Title',
+      validValue: 'My Session',
+      invalidValue: 'a'.repeat(201),
+      expectedError: 'exceeds maximum length',
+      errorClass: HistoryValidationError,
     });
 
     it('should throw error for non-string title', () => {
       expect(() => validateTitle(123 as any)).toThrow('Title must be a string');
     });
-
-    it('should throw error for too long title', () => {
-      const longTitle = 'a'.repeat(201);
-      expect(() => validateTitle(longTitle)).toThrow('exceeds maximum length');
-    });
   });
 
   describe('validateLimit', () => {
-    it('should accept valid limit', () => {
-      expect(() => validateLimit(10)).not.toThrow();
+    testOptionalValidation({
+      validateFn: validateLimit,
+      fieldName: 'Limit',
+      validValue: 10,
+      invalidValue: 1001,
+      expectedError: 'cannot exceed 1000',
+      errorClass: HistoryValidationError,
     });
 
-    it('should accept undefined limit', () => {
-      expect(() => validateLimit(undefined)).not.toThrow();
-    });
-
-    it('should throw error for non-integer limit', () => {
-      expect(() => validateLimit(10.5)).toThrow('Limit must be an integer');
-    });
-
-    it('should throw error for negative limit', () => {
-      expect(() => validateLimit(-1)).toThrow('Limit must be positive');
-    });
-
-    it('should throw error for limit exceeding maximum', () => {
-      expect(() => validateLimit(1001)).toThrow('Limit cannot exceed 1000');
+    testNumericValidation({
+      validateFn: validateLimit,
+      fieldName: 'Limit',
+      min: 0,
+      max: 1000,
+      mustBeInteger: true,
+      errorClass: HistoryValidationError,
     });
   });
 

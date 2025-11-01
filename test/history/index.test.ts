@@ -1,4 +1,4 @@
-import { DynamoDBChatMessageHistory } from '../../src/history';
+import { DynamoDBChatMessageHistory } from '../../src';
 import * as actions from '../../src/history/actions';
 
 // Mock all the action functions
