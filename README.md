@@ -255,9 +255,14 @@ const history = new DynamoDBChatMessageHistory({
   clientConfig: { region: 'us-east-1' }, // Optional
 });
 
+// Add message with session title
+await history.addMessage('user-123', 'session-456', new HumanMessage('Hello!'), 'Greeting Session');
+
 // Add messages (title auto-generated from first message)
-await history.addMessage('user-123', 'session-456', new HumanMessage('Hello!'));
-await history.addMessage('user-123', 'session-456', new AIMessage('Hi there!'));
+await history.addMessages('user-123', 'session-457', [
+  new HumanMessage('Hello!'),
+  new AIMessage('Hi there!'),
+]);
 
 // Get all messages for a session
 const messages = await history.getMessages('user-123', 'session-456');
