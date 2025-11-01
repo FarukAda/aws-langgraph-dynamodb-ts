@@ -1,0 +1,9 @@
+{
+  ignores: [
+    "@types/jest",
+    ts-loader,
+    ts-node,
+    globals,
+    typedoc-plugin-markdown
+  ]
+}

@@ -1,4 +1,5 @@
 import { JSONPath } from 'jsonpath-plus';
+
 import { PutOperationActionParams } from '../types';
 import {
   validateNamespace,

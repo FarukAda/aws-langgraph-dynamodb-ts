@@ -1,11 +1,12 @@
-import { Writer } from './writer';
-import { validateConfigurable } from './validate-configurable';
 import type {
   Checkpoint,
   CheckpointMetadata,
   CheckpointPendingWrite,
   CheckpointTuple,
 } from '@langchain/langgraph-checkpoint';
+
+import { Writer } from './writer';
+import { validateConfigurable } from './validate-configurable';
 import {
   CheckpointItem,
   DynamoDBWriteItem,

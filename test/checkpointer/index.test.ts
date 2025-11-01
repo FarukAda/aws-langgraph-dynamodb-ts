@@ -1,3 +1,6 @@
+import { mockClient } from 'aws-sdk-client-mock';
+import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+
 import { DynamoDBSaver } from '../../src';
 import {
   createMockCheckpoint,
@@ -5,8 +8,6 @@ import {
   createMockPendingWrite,
   createMockCheckpointItem,
 } from '../shared/fixtures/test-data';
-import { mockClient } from 'aws-sdk-client-mock';
-import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 describe('DynamoDBSaver', () => {
   let ddbDocMock: any;

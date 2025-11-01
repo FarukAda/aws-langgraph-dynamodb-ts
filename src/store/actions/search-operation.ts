@@ -1,7 +1,8 @@
 import type { SearchItem } from '@langchain/langgraph-checkpoint';
-import { SearchOperationActionParams } from '../types';
 import { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import { BedrockEmbeddings } from '@langchain/aws';
+
+import { SearchOperationActionParams } from '../types';
 import {
   validateNamespace,
   validateUserId,

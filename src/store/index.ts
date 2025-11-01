@@ -1,3 +1,8 @@
+/**
+ * DynamoDB-based store implementation for LangGraph
+ * Provides persistent storage for memory items with optional semantic search via embeddings
+ */
+
 import {
   BaseStore,
   type GetOperation,
@@ -11,9 +16,10 @@ import {
 import type { SearchItem } from '@langchain/langgraph-checkpoint';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { BedrockEmbeddings } from '@langchain/aws';
-import type { DynamoDBStoreOptions } from './types';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+
+import type { DynamoDBStoreOptions } from './types';
 import {
   getOperationAction,
   putOperationAction,
@@ -22,10 +28,6 @@ import {
 } from './actions';
 import { validateBatchSize } from './utils';
 
-/**
- * DynamoDB-based store implementation for LangGraph
- * Provides persistent storage for memory items with optional semantic search via embeddings
- */
 export class DynamoDBStore extends BaseStore {
   private readonly ddbClient: DynamoDBClient;
   private readonly client: DynamoDBDocument;

@@ -1,10 +1,3 @@
-import { putWritesAction } from '../../../src/checkpointer/actions';
-import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
-import {
-  createMockPendingWrite,
-  createMockRunnableConfig,
-  createMockSerde,
-} from '../../shared/fixtures/test-data';
 import { AwsStub } from 'aws-sdk-client-mock';
 import {
   DynamoDBDocument,
@@ -12,6 +5,14 @@ import {
   ServiceInputTypes,
   ServiceOutputTypes,
 } from '@aws-sdk/lib-dynamodb';
+
+import { putWritesAction } from '../../../src/checkpointer/actions';
+import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
+import {
+  createMockPendingWrite,
+  createMockRunnableConfig,
+  createMockSerde,
+} from '../../shared/fixtures/test-data';
 
 describe('putWritesAction', () => {
   let ddbDocMock: AwsStub<

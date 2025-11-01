@@ -70,6 +70,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
       // Don't retry if the error is not retryable
       if (!isRetryableError(error, opts.retryableErrors)) {
         // Convert to Error if needed, preserving properties
+        // eslint-disable-next-line no-instanceof/no-instanceof
         if (error instanceof Error) {
           throw error;
         }
@@ -91,6 +92,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
   if (!lastError) {
     throw new Error('Retry failed without error');
   }
+  // eslint-disable-next-line no-instanceof/no-instanceof
   if (lastError instanceof Error) {
     throw lastError;
   }

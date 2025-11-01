@@ -1,4 +1,5 @@
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
+import { BaseMessage } from '@langchain/core/messages';
 
 /**
  * Create a mock checkpoint for testing
@@ -135,5 +136,44 @@ export function createMockStoreItem(userId: string, namespace: string[], key: st
     value,
     createdAt: Date.now(),
     updatedAt: Date.now(),
+  };
+}
+
+/**
+ * Create a mock BaseMessage for history tests
+ */
+export function createMockMessage(content: string, role: 'human' | 'ai' = 'human') {
+  return {
+    lc: 1,
+    type: role === 'human' ? 'human' : 'ai',
+    id: ['langchain', 'schema', role === 'human' ? 'HumanMessage' : 'AIMessage'],
+    kwargs: {
+      content,
+      additional_kwargs: {},
+    },
+    content,
+    name: undefined,
+    additional_kwargs: {},
+  } as unknown as BaseMessage;
+}
+
+/**
+ * Create a mock DynamoDB session item for history tests
+ */
+export function createMockSessionItem(
+  userId: string,
+  sessionId: string,
+  messages: any[],
+  title: string = 'Test Session',
+) {
+  const now = Date.now();
+  return {
+    userId,
+    sessionId,
+    messages,
+    title,
+    createdAt: now,
+    updatedAt: now,
+    messageCount: messages.length,
   };
 }

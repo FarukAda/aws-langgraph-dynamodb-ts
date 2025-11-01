@@ -1,6 +1,3 @@
-import { deleteThreadAction } from '../../../src/checkpointer/actions';
-import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
-import { createMockCheckpointItem, createMockWriteItem } from '../../shared/fixtures/test-data';
 import { AwsStub } from 'aws-sdk-client-mock';
 import {
   DynamoDBDocument,
@@ -8,6 +5,10 @@ import {
   ServiceInputTypes,
   ServiceOutputTypes,
 } from '@aws-sdk/lib-dynamodb';
+
+import { deleteThreadAction } from '../../../src/checkpointer/actions';
+import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
+import { createMockCheckpointItem, createMockWriteItem } from '../../shared/fixtures/test-data';
 
 describe('deleteThreadAction', () => {
   let ddbDocMock: AwsStub<

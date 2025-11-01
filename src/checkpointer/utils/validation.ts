@@ -211,6 +211,7 @@ export function validateTTLDays(ttlDays: number | undefined): void {
   try {
     sharedValidateTTL(ttlDays);
   } catch (error) {
+    // eslint-disable-next-line no-instanceof/no-instanceof
     throw new CheckpointerValidationError(error instanceof Error ? error.message : String(error));
   }
 }

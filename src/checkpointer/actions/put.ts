@@ -1,5 +1,6 @@
-import { validateConfigurable } from './validate-configurable';
 import type { RunnableConfig } from '@langchain/core/runnables';
+
+import { validateConfigurable } from './validate-configurable';
 import { CheckpointItem, PutActionParams } from '../types';
 import { validateCheckpointId, validateTTLDays } from '../utils';
 import { withDynamoDBRetry } from '../../shared';

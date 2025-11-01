@@ -10,4 +10,9 @@ describe('index exports', () => {
     expect(indexExports.DynamoDBStore).toBeDefined();
     expect(typeof indexExports.DynamoDBStore).toBe('function');
   });
+
+  it('should export DynamoDBChatMessageHistory', () => {
+    expect(indexExports.DynamoDBChatMessageHistory).toBeDefined();
+    expect(typeof indexExports.DynamoDBChatMessageHistory).toBe('function');
+  });
 });

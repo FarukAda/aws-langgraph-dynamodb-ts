@@ -131,12 +131,13 @@ export function validatePagination(limit?: number, offset?: number): void {
 }
 
 /**
- * Validate TTL days (wraps shared validation with store-specific error type)
+ * Validate TTL days (wraps shared validation with a store-specific error type)
  */
 export function validateTTL(ttlDays?: number): void {
   try {
     sharedValidateTTL(ttlDays);
   } catch (error) {
+    // eslint-disable-next-line no-instanceof/no-instanceof
     throw new ValidationError(error instanceof Error ? error.message : String(error));
   }
 }

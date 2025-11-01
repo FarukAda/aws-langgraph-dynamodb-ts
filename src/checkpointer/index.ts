@@ -1,3 +1,8 @@
+/**
+ * DynamoDB-based checkpoint saver for LangGraph
+ * Provides persistent storage for checkpoints and pending writes
+ */
+
 import {
   BaseCheckpointSaver,
   type Checkpoint,
@@ -9,16 +14,13 @@ import {
 } from '@langchain/langgraph-checkpoint';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-import { deleteThreadAction, getTupleAction, putAction, putWritesAction } from './actions';
 import type { RunnableConfig } from '@langchain/core/runnables';
+
+import { deleteThreadAction, getTupleAction, putAction, putWritesAction } from './actions';
 import type { CheckpointItem, DynamoDBSaverOptions } from './types';
 import { validateListLimit, validateThreadId } from './utils';
 import { withDynamoDBRetry } from '../shared';
 
-/**
- * DynamoDB-based checkpoint saver for LangGraph
- * Provides persistent storage for checkpoints and pending writes
- */
 export class DynamoDBSaver extends BaseCheckpointSaver {
   private readonly ddbClient: DynamoDBClient;
   private readonly client: DynamoDBDocument;
