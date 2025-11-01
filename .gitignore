@@ -13,6 +13,5 @@ yarn-error.log*
 
 coverage
 dist
-docs
 .DS_Store
 .env
