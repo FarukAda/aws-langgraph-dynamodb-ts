@@ -279,9 +279,9 @@ await history.clear('user-123', 'session-456');
 
 Comprehensive guides for each module:
 
-- **[Checkpointer Guide](./docs/checkpointer.md)** - Complete guide to DynamoDBSaver with checkpoint management, workflow persistence, and recovery strategies
-- **[Store Guide](./docs/store.md)** - Detailed documentation for DynamoDBStore covering memory storage, semantic search, filtering, and namespace organization
-- **[History Guide](./docs/history.md)** - Full guide to DynamoDBChatMessageHistory for chat message storage, session management, and conversation tracking
+- **[Checkpointer Guide](./src/checkpointer/checkpointer.md)** - Complete guide to DynamoDBSaver with checkpoint management, workflow persistence, and recovery strategies
+- **[Store Guide](./src/store/store.md)** - Detailed documentation for DynamoDBStore covering memory storage, semantic search, filtering, and namespace organization
+- **[History Guide](./src/history/history.md)** - Full guide to DynamoDBChatMessageHistory for chat message storage, session management, and conversation tracking
 
 ## API Reference
 
