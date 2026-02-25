@@ -7,7 +7,6 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { BaseMessage } from '@langchain/core/messages';
 
-import type { DynamoDBChatMessageHistoryOptions, SessionMetadata } from './types';
 import {
   getMessagesAction,
   addMessageAction,
@@ -15,12 +14,14 @@ import {
   clearAction,
   listSessionsAction,
 } from './actions';
+import type { DynamoDBChatMessageHistoryOptions, SessionMetadata } from './types';
 
 export class DynamoDBChatMessageHistory {
-  private readonly ddbClient: DynamoDBClient;
+  private readonly ddbClient: DynamoDBClient | undefined;
   private readonly client: DynamoDBDocument;
   private readonly tableName: string;
   private readonly ttlDays?: number;
+  private readonly ownsClient: boolean;
 
   /**
    * Create a new DynamoDB chat message history instance
@@ -29,12 +30,31 @@ export class DynamoDBChatMessageHistory {
    * @param options.tableName - Name of the DynamoDB table to use
    * @param options.ttlDays - Optional TTL in days for automatic cleanup (1-1825 days)
    * @param options.clientConfig - Optional DynamoDB client configuration
+   * @param options.client - Optional pre-built DynamoDBDocument client (takes precedence over clientConfig)
    */
   constructor(options: DynamoDBChatMessageHistoryOptions) {
-    this.ddbClient = new DynamoDBClient(options.clientConfig || {});
-    this.client = DynamoDBDocument.from(this.ddbClient);
+    if (options.client) {
+      this.client = options.client;
+      this.ddbClient = undefined;
+      this.ownsClient = false;
+    } else {
+      this.ddbClient = new DynamoDBClient(options.clientConfig || {});
+      this.client = DynamoDBDocument.from(this.ddbClient);
+      this.ownsClient = true;
+    }
     this.tableName = options.tableName;
     this.ttlDays = options.ttlDays;
+  }
+
+  /**
+   * Release underlying DynamoDB client resources.
+   * Call this when the history is no longer needed to prevent resource leaks.
+   * Skips cleanup if a shared client was injected via options.
+   */
+  destroy(): void {
+    if (this.ownsClient && this.ddbClient) {
+      this.ddbClient.destroy();
+    }
   }
 
   /**

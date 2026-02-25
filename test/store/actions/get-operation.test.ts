@@ -1,6 +1,6 @@
 import { getOperationAction } from '../../../src/store/actions';
-import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
 import { createMockStoreItem } from '../../shared/fixtures/test-data';
+import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
 
 describe('getOperationAction', () => {
   it('should get item successfully', async () => {
@@ -208,7 +208,7 @@ describe('getOperationAction', () => {
     expect(result).toBeDefined();
     expect(result!.key).toBe('key1');
     expect(result!.value).toEqual({ data: 'value', nested: { field: 'test' } });
-    expect(result!.createdAt).toBe(now - 1000);
-    expect(result!.updatedAt).toBe(now);
+    expect(result!.createdAt).toEqual(new Date(now - 1000));
+    expect(result!.updatedAt).toEqual(new Date(now));
   });
 });

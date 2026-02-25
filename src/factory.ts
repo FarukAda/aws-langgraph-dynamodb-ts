@@ -3,16 +3,17 @@
  * Provides convenient methods for instantiating checkpointer, store, and chat history
  */
 
-import type { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
-import type { BedrockEmbeddings } from '@langchain/aws';
+import { DynamoDBClient, type DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import type { EmbeddingsInterface } from '@langchain/core/embeddings';
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBSaver } from './checkpointer';
-import { DynamoDBStore } from './store';
-import { DynamoDBChatMessageHistory } from './history';
 import type { DynamoDBSaverOptions } from './checkpointer/types';
-import type { DynamoDBStoreOptions } from './store/types';
+import { DynamoDBChatMessageHistory } from './history';
 import type { DynamoDBChatMessageHistoryOptions } from './history/types';
+import { DynamoDBStore } from './store';
+import type { DynamoDBStoreOptions } from './store/types';
 
 /**
  * Default table names with standard prefix
@@ -54,8 +55,12 @@ export class DynamoDBFactory {
       checkpointsTableName: options.checkpointsTableName ?? `${DEFAULT_TABLE_PREFIX}-checkpoints`,
       writesTableName: options.writesTableName ?? `${DEFAULT_TABLE_PREFIX}-writes`,
       ttlDays: options.ttlDays,
+      ttlSeconds: options.ttlSeconds,
+      compression: options.compression,
+      s3OffloadConfig: options.s3OffloadConfig,
       serde: options.serde,
       clientConfig: options.clientConfig,
+      client: options.client,
     };
 
     return new DynamoDBSaver(config);
@@ -95,6 +100,7 @@ export class DynamoDBFactory {
       embedding: options.embedding,
       ttlDays: options.ttlDays,
       clientConfig: options.clientConfig,
+      client: options.client,
     };
 
     return new DynamoDBStore(config);
@@ -130,6 +136,7 @@ export class DynamoDBFactory {
       tableName: options.tableName ?? `${DEFAULT_TABLE_PREFIX}-chat-history`,
       ttlDays: options.ttlDays,
       clientConfig: options.clientConfig,
+      client: options.client,
     };
 
     return new DynamoDBChatMessageHistory(config);
@@ -167,15 +174,21 @@ export class DynamoDBFactory {
       tablePrefix?: string;
       ttlDays?: number;
       clientConfig?: DynamoDBClientConfig;
-      embedding?: BedrockEmbeddings;
+      embedding?: EmbeddingsInterface;
       serde?: SerializerProtocol;
     } = {},
   ): {
     checkpointer: DynamoDBSaver;
     store: DynamoDBStore;
     chatHistory: DynamoDBChatMessageHistory;
+    /** Destroy the shared DynamoDB client created by createAll(). Call when no longer needed. */
+    destroy: () => void;
   } {
     const prefix = options.tablePrefix ?? DEFAULT_TABLE_PREFIX;
+
+    // Create a single shared DynamoDB client for all modules
+    const ddbClient = new DynamoDBClient(options.clientConfig || {});
+    const sharedClient = DynamoDBDocument.from(ddbClient);
 
     return {
       checkpointer: this.createSaver({
@@ -183,19 +196,20 @@ export class DynamoDBFactory {
         writesTableName: `${prefix}-writes`,
         ttlDays: options.ttlDays,
         serde: options.serde,
-        clientConfig: options.clientConfig,
+        client: sharedClient,
       }),
       store: this.createStore({
         memoryTableName: `${prefix}-memory`,
         embedding: options.embedding,
         ttlDays: options.ttlDays,
-        clientConfig: options.clientConfig,
+        client: sharedClient,
       }),
       chatHistory: this.createChatMessageHistory({
         tableName: `${prefix}-chat-history`,
         ttlDays: options.ttlDays,
-        clientConfig: options.clientConfig,
+        client: sharedClient,
       }),
+      destroy: () => ddbClient.destroy(),
     };
   }
 }

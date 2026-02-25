@@ -1,3 +1,6 @@
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+
 import { DynamoDBFactory, DynamoDBSaver, DynamoDBStore, DynamoDBChatMessageHistory } from '../src';
 
 describe('DynamoDBFactory', () => {
@@ -147,6 +150,60 @@ describe('DynamoDBFactory', () => {
       expect(result.checkpointer).toBeInstanceOf(DynamoDBSaver);
       expect(result.store).toBeInstanceOf(DynamoDBStore);
       expect(result.chatHistory).toBeInstanceOf(DynamoDBChatMessageHistory);
+    });
+
+    it('createAll should return a destroy function for the shared client', () => {
+      const result = DynamoDBFactory.createAll();
+      expect(result.destroy).toBeDefined();
+      expect(typeof result.destroy).toBe('function');
+      expect(() => result.destroy()).not.toThrow();
+    });
+  });
+
+  describe('shared client forwarding', () => {
+    it('createAll should share a single client across all modules', () => {
+      const { checkpointer, store, chatHistory } = DynamoDBFactory.createAll({
+        tablePrefix: 'shared-client-test',
+      });
+
+      // All modules should use the shared client (ownsClient = false)
+      expect((checkpointer as any).ownsClient).toBe(false);
+      expect((store as any).ownsClient).toBe(false);
+      expect((chatHistory as any).ownsClient).toBe(false);
+
+      // All modules should reference the same client instance
+      const saverClient = (checkpointer as any).client;
+      const storeClient = (store as any).client;
+      const historyClient = (chatHistory as any).client;
+      expect(saverClient).toBe(storeClient);
+      expect(storeClient).toBe(historyClient);
+    });
+
+    it('createSaver should forward client option', () => {
+      const externalClient = DynamoDBDocument.from(new DynamoDBClient({}));
+
+      const saver = DynamoDBFactory.createSaver({ client: externalClient });
+
+      expect((saver as any).ownsClient).toBe(false);
+      expect((saver as any).client).toBe(externalClient);
+    });
+
+    it('createStore should forward client option', () => {
+      const externalClient = DynamoDBDocument.from(new DynamoDBClient({}));
+
+      const store = DynamoDBFactory.createStore({ client: externalClient });
+
+      expect((store as any).ownsClient).toBe(false);
+      expect((store as any).client).toBe(externalClient);
+    });
+
+    it('createChatMessageHistory should forward client option', () => {
+      const externalClient = DynamoDBDocument.from(new DynamoDBClient({}));
+
+      const history = DynamoDBFactory.createChatMessageHistory({ client: externalClient });
+
+      expect((history as any).ownsClient).toBe(false);
+      expect((history as any).client).toBe(externalClient);
     });
   });
 

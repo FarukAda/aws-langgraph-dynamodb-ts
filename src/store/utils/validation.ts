@@ -89,7 +89,7 @@ export function validateValue(value: any): void {
     throw new ValidationError('Value cannot be undefined');
   }
 
-  const size = JSON.stringify(value).length;
+  const size = new TextEncoder().encode(JSON.stringify(value)).byteLength;
   if (size > MAX_VALUE_SIZE) {
     throw new ValidationError(
       `Value size (${size} bytes) exceeds maximum of ${MAX_VALUE_SIZE} bytes`,

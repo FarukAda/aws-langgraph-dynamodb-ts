@@ -1,12 +1,25 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 
-import { validateConfigurable } from './validate-configurable';
-import { CheckpointItem, PutActionParams } from '../types';
+import {
+  withDynamoDBRetry,
+  calculateTTLTimestamp,
+  calculateTTLTimestampFromSeconds,
+} from '../../shared';
+import {
+  type CheckpointItem,
+  type CheckpointPayloadItem,
+  PAYLOAD_SK_PREFIX,
+  type PutActionParams,
+} from '../types';
 import { validateCheckpointId, validateTTLDays } from '../utils';
-import { withDynamoDBRetry, calculateTTLTimestamp } from '../../shared';
+import { validateConfigurable } from './validate-configurable';
 
 /**
- * Save a checkpoint to DynamoDB
+ * Save a checkpoint to DynamoDB as two items:
+ * 1. Metadata item (SK = checkpoint_id) — lightweight, queried by list()
+ * 2. Payload item  (SK = PAYLOAD#checkpoint_id) — heavy blob, fetched only by getTuple()
+ *
+ * Both items are written atomically via transactWrite.
  *
  * @param params - Parameters for the put operation
  * @returns RunnableConfig with the saved checkpoint information
@@ -22,40 +35,108 @@ export const putAction = async (params: PutActionParams): Promise<RunnableConfig
   validateCheckpointId(params.checkpoint.id, true);
   validateTTLDays(params.ttlDays);
 
-  const [type1, serializedCheckpoint] = await params.serde.dumpsTyped(params.checkpoint);
-  const [type2, serializedMetadata] = await params.serde.dumpsTyped(params.metadata);
+  const [type1, rawCheckpoint] = await params.serde.dumpsTyped(params.checkpoint);
+  const [type2, rawMetadata] = await params.serde.dumpsTyped(params.metadata);
 
   if (type1 !== type2) {
     throw new Error('Failed to serialize checkpoint and metadata to the same type.');
   }
 
-  const item: CheckpointItem & { ttl?: number } = {
-    thread_id,
-    checkpoint_ns: params.config.configurable?.checkpoint_ns ?? '',
-    checkpoint_id: params.checkpoint.id,
-    parent_checkpoint_id: params.config.configurable?.checkpoint_id,
-    type: type1,
-    checkpoint: serializedCheckpoint,
-    metadata: serializedMetadata,
-  };
+  // Compress after serialization if compressor is provided
+  const serializedCheckpoint = params.compressor
+    ? await params.compressor.compress(rawCheckpoint)
+    : rawCheckpoint;
+  const serializedMetadata = params.compressor
+    ? await params.compressor.compress(rawMetadata)
+    : rawMetadata;
 
-  if (params.ttlDays !== undefined) {
-    item.ttl = calculateTTLTimestamp(params.ttlDays);
+  // S3 offloading for large payloads
+  let s3CheckpointKey: string | undefined;
+  let s3MetadataKey: string | undefined;
+  let storedCheckpoint: Uint8Array = serializedCheckpoint;
+  let storedMetadata: Uint8Array = serializedMetadata;
+
+  if (params.s3Offloader) {
+    const checkpointId = params.checkpoint.id;
+    if (params.s3Offloader.shouldOffload(serializedCheckpoint)) {
+      s3CheckpointKey = await params.s3Offloader.upload(
+        params.s3Offloader.buildKey(thread_id, checkpointId, 'checkpoint'),
+        serializedCheckpoint,
+      );
+      storedCheckpoint = new Uint8Array(0); // Empty placeholder in DynamoDB
+    }
+    if (params.s3Offloader.shouldOffload(serializedMetadata)) {
+      s3MetadataKey = await params.s3Offloader.upload(
+        params.s3Offloader.buildKey(thread_id, checkpointId, 'metadata'),
+        serializedMetadata,
+      );
+      storedMetadata = new Uint8Array(0); // Empty placeholder in DynamoDB
+    }
   }
 
-  // Execute with retry logic
+  // Compute TTL once for both items
+  let ttl: number | undefined;
+  if (params.ttlSeconds !== undefined) {
+    ttl = calculateTTLTimestampFromSeconds(params.ttlSeconds);
+  } else if (params.ttlDays !== undefined) {
+    ttl = calculateTTLTimestamp(params.ttlDays);
+  }
+
+  const checkpointNs = params.config.configurable?.checkpoint_ns ?? '';
+  const checkpointId = params.checkpoint.id;
+
+  // Metadata item — lightweight, read by list() queries
+  const metadataItem: CheckpointItem & { ttl?: number } = {
+    thread_id,
+    checkpoint_ns: checkpointNs,
+    checkpoint_id: checkpointId,
+    parent_checkpoint_id: params.config.configurable?.checkpoint_id,
+    type: type1,
+    metadata: storedMetadata,
+    s3_checkpoint_key: s3CheckpointKey,
+    s3_metadata_key: s3MetadataKey,
+  };
+
+  if (ttl !== undefined) {
+    metadataItem.ttl = ttl;
+  }
+
+  // Payload item — heavy blob, fetched only by getTuple()
+  const payloadItem: CheckpointPayloadItem & { ttl?: number } = {
+    thread_id,
+    checkpoint_id: `${PAYLOAD_SK_PREFIX}${checkpointId}`,
+    checkpoint: storedCheckpoint,
+  };
+
+  if (ttl !== undefined) {
+    payloadItem.ttl = ttl;
+  }
+
+  // Atomic write: both items must succeed or both fail
   await withDynamoDBRetry(async () => {
-    await params.client.put({
-      TableName: params.checkpointsTableName,
-      Item: item,
+    await params.client.transactWrite({
+      TransactItems: [
+        {
+          Put: {
+            TableName: params.checkpointsTableName,
+            Item: metadataItem,
+          },
+        },
+        {
+          Put: {
+            TableName: params.checkpointsTableName,
+            Item: payloadItem,
+          },
+        },
+      ],
     });
   });
 
   return {
     configurable: {
-      thread_id: item.thread_id,
-      checkpoint_ns: item.checkpoint_ns,
-      checkpoint_id: item.checkpoint_id,
+      thread_id: metadataItem.thread_id,
+      checkpoint_ns: metadataItem.checkpoint_ns,
+      checkpoint_id: metadataItem.checkpoint_id,
     },
   };
 };

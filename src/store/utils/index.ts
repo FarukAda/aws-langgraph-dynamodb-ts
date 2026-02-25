@@ -2,7 +2,6 @@
  * Store utilities
  */
 
-export * from './result';
 export * from './validation';
 export * from './filter';
 // Retry utilities re-exported from shared

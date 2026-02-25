@@ -1,9 +1,9 @@
-import { mockClient } from 'aws-sdk-client-mock';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBStore } from '../../src';
-import { createMockEmbedding } from '../shared/mocks/embedding-mock';
 import { createMockStoreItem } from '../shared/fixtures/test-data';
+import { createMockEmbedding } from '../shared/mocks/embedding-mock';
 
 describe('DynamoDBStore', () => {
   let ddbDocMock: any;

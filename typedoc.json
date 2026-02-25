@@ -10,7 +10,7 @@
     "**/*+(.spec|.test).ts",
     "**/node_modules/**"
   ],
-  "excludePrivate": false,
+  "excludePrivate": true,
   "excludeProtected": false,
   "excludeExternals": true,
   "excludeInternal": false,

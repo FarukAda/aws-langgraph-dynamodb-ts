@@ -3,8 +3,6 @@
  * Provides centralized setup for mocks and common test patterns
  */
 
-import type { AwsStub } from 'aws-sdk-client-mock';
-import { mockClient } from 'aws-sdk-client-mock';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocument,
@@ -13,6 +11,8 @@ import {
   type ServiceInputTypes,
   type ServiceOutputTypes,
 } from '@aws-sdk/lib-dynamodb';
+import type { AwsStub } from 'aws-sdk-client-mock';
+import { mockClient } from 'aws-sdk-client-mock';
 
 import { createMockSerde } from '../fixtures/test-data';
 import { createMockEmbedding } from '../mocks/embedding-mock';

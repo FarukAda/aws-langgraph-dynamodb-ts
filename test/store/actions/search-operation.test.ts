@@ -1,10 +1,10 @@
 import { searchOperationAction } from '../../../src/store/actions';
+import { createMockStoreItem } from '../../shared/fixtures/test-data';
 import {
   createMockDynamoDBClient,
   mockDynamoDBQueryPaginated,
 } from '../../shared/mocks/dynamodb-mock';
 import { createMockEmbeddingWithVector } from '../../shared/mocks/embedding-mock';
-import { createMockStoreItem } from '../../shared/fixtures/test-data';
 
 describe('searchOperationAction', () => {
   describe('basic search without semantic search', () => {
@@ -567,8 +567,8 @@ describe('searchOperationAction', () => {
       expect(results[0].namespace).toEqual(['docs', 'guides']);
       expect(results[0].key).toBe('guide1');
       expect(results[0].value).toEqual({ title: 'Guide 1' });
-      expect(results[0].createdAt).toBe(now - 1000);
-      expect(results[0].updatedAt).toBe(now);
+      expect(results[0].createdAt).toEqual(new Date(now - 1000));
+      expect(results[0].updatedAt).toEqual(new Date(now));
     });
   });
 

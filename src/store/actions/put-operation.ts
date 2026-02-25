@@ -1,5 +1,6 @@
 import { JSONPath } from 'jsonpath-plus';
 
+import { calculateTTLTimestamp } from '../../shared';
 import { PutOperationActionParams } from '../types';
 import {
   validateNamespace,
@@ -11,7 +12,6 @@ import {
   validateJSONPath,
   withDynamoDBRetry,
 } from '../utils';
-import { calculateTTLTimestamp } from '../../shared';
 
 /**
  * Put a memory item into DynamoDB
@@ -88,6 +88,7 @@ export const putOperationAction = async (params: PutOperationActionParams): Prom
 
   // Add TTL if configured
   if (ttlDays && ttlDays > 0) {
+    updateExpressionParts.push('ttl = :ttl');
     expressionAttributeValues[':ttl'] = calculateTTLTimestamp(ttlDays);
   }
 

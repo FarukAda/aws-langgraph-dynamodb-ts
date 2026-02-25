@@ -1,5 +1,5 @@
+import { BaseMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
-import { BaseMessage } from '@langchain/core/messages';
 
 /**
  * Create a mock checkpoint for testing
@@ -141,39 +141,47 @@ export function createMockStoreItem(userId: string, namespace: string[], key: st
 
 /**
  * Create a mock BaseMessage for history tests
+ * Returns proper HumanMessage/AIMessage instances that work with mapChatMessagesToStoredMessages
  */
-export function createMockMessage(content: string, role: 'human' | 'ai' = 'human') {
-  return {
-    lc: 1,
-    type: role === 'human' ? 'human' : 'ai',
-    id: ['langchain', 'schema', role === 'human' ? 'HumanMessage' : 'AIMessage'],
-    kwargs: {
-      content,
-      additional_kwargs: {},
-    },
-    content,
-    name: undefined,
-    additional_kwargs: {},
-  } as unknown as BaseMessage;
+export function createMockMessage(content: string, role: 'human' | 'ai' = 'human'): BaseMessage {
+  if (role === 'ai') {
+    return new AIMessage({ content });
+  }
+  return new HumanMessage({ content });
 }
 
 /**
- * Create a mock DynamoDB session item for history tests
+ * Create a mock StoredMessage (serialized format as stored in DynamoDB)
+ */
+export function createMockStoredMessage(content: string, role: 'human' | 'ai' = 'human') {
+  return {
+    type: role,
+    data: {
+      content,
+      additional_kwargs: {},
+      response_metadata: {},
+    },
+  };
+}
+
+/**
+ * Create a mock DynamoDB session metadata item for history tests
+ * Matches the new per-message storage schema
  */
 export function createMockSessionItem(
   userId: string,
   sessionId: string,
-  messages: any[],
+  messageCount: number = 0,
   title: string = 'Test Session',
 ) {
   const now = Date.now();
   return {
     userId,
     sessionId,
-    messages,
+    itemType: 'metadata' as const,
     title,
     createdAt: now,
     updatedAt: now,
-    messageCount: messages.length,
+    messageCount,
   };
 }

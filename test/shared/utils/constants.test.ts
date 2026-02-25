@@ -1,4 +1,9 @@
-import { validateTTLDays, MAX_TTL_DAYS } from '../../../src/shared';
+import {
+  validateTTLDays,
+  MAX_TTL_DAYS,
+  BATCH_WRITE_MAX,
+  MAX_UNPROCESSED_RETRIES,
+} from '../../../src/shared';
 
 describe('constants utility', () => {
   describe('validateTTLDays', () => {
@@ -39,32 +44,24 @@ describe('constants utility', () => {
       );
     });
 
-    it('should reject values that would overflow Unix timestamp', () => {
-      // Mock Date.now() to simulate being close to 2038
-      // Set date to 2037-01-01 to ensure overflow with reasonable TTL
-      const mockDate = new Date('2037-01-01T00:00:00Z').getTime();
-      jest.spyOn(Date, 'now').mockReturnValue(mockDate);
-
-      // 400 days from 2037 would overflow the 2038-01-19 limit
-      expect(() => validateTTLDays(400)).toThrow('TTL would overflow Unix timestamp');
-
-      // Restore Date.now()
-      jest.restoreAllMocks();
-    });
-
     it('should accept boundary values', () => {
       expect(() => validateTTLDays(1)).not.toThrow();
-
-      // Test a safe value near the boundary
-      const safeDays = Math.floor((2147483647 - Date.now() / 1000) / (24 * 60 * 60)) - 10;
-      if (safeDays > 0 && safeDays <= MAX_TTL_DAYS) {
-        expect(() => validateTTLDays(safeDays)).not.toThrow();
-      }
+      expect(() => validateTTLDays(MAX_TTL_DAYS)).not.toThrow();
     });
 
     it('should validate MAX_TTL_DAYS constant is set correctly', () => {
       expect(MAX_TTL_DAYS).toBe(365 * 5);
       expect(MAX_TTL_DAYS).toBe(1825);
+    });
+  });
+
+  describe('shared constants', () => {
+    it('should export BATCH_WRITE_MAX as 25', () => {
+      expect(BATCH_WRITE_MAX).toBe(25);
+    });
+
+    it('should export MAX_UNPROCESSED_RETRIES as 10', () => {
+      expect(MAX_UNPROCESSED_RETRIES).toBe(10);
     });
   });
 });

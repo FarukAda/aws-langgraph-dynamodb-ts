@@ -3,6 +3,7 @@ import {
   validateSessionId,
   validateMessage,
   validateMessages,
+  validateMessagesSize,
   validateTitle,
   validateLimit,
   validateTTLDays,
@@ -130,6 +131,25 @@ describe('History Validation', () => {
     it('should wrap error message from shared validation', () => {
       expect(() => validateTTLDays(10.5)).toThrow(HistoryValidationError);
       expect(() => validateTTLDays(10.5)).toThrow('must be an integer');
+    });
+  });
+  describe('validateMessagesSize', () => {
+    it('should accept messages within 4MB limit', () => {
+      const messages = Array(10)
+        .fill(null)
+        .map(() => createMockMessage('Short message'));
+      expect(() => validateMessagesSize(messages)).not.toThrow();
+    });
+
+    it('should throw HistoryValidationError for messages exceeding 4MB', () => {
+      // Each message ~50KB content + 500 bytes overhead = ~50.5KB
+      // 100 messages × ~50.5KB = ~5MB > 4MB limit
+      const largeContent = 'x'.repeat(50 * 1024);
+      const messages = Array(100)
+        .fill(null)
+        .map(() => createMockMessage(largeContent));
+      expect(() => validateMessagesSize(messages)).toThrow(HistoryValidationError);
+      expect(() => validateMessagesSize(messages)).toThrow('exceeds DynamoDB transaction limit');
     });
   });
 });

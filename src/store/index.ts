@@ -3,6 +3,10 @@
  * Provides persistent storage for memory items with optional semantic search via embeddings
  */
 
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import type { EmbeddingsInterface } from '@langchain/core/embeddings';
+import type { RunnableConfig } from '@langchain/core/runnables';
 import {
   BaseStore,
   type GetOperation,
@@ -14,43 +18,59 @@ import {
   type OperationResults,
 } from '@langchain/langgraph';
 import type { SearchItem } from '@langchain/langgraph-checkpoint';
-import type { RunnableConfig } from '@langchain/core/runnables';
-import type { BedrockEmbeddings } from '@langchain/aws';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
-import type { DynamoDBStoreOptions } from './types';
 import {
   getOperationAction,
   putOperationAction,
   searchOperationAction,
   listNamespacesOperationAction,
 } from './actions';
+import type { DynamoDBStoreOptions } from './types';
 import { validateBatchSize } from './utils';
 
 export class DynamoDBStore extends BaseStore {
-  private readonly ddbClient: DynamoDBClient;
+  private readonly ddbClient: DynamoDBClient | undefined;
   private readonly client: DynamoDBDocument;
   private readonly memoryTableName: string;
-  private readonly embedding?: BedrockEmbeddings;
+  private readonly embedding?: EmbeddingsInterface;
   private readonly ttlDays?: number;
+  private readonly ownsClient: boolean;
 
   /**
    * Create a new DynamoDB store instance
    *
    * @param options - Configuration options for the store
    * @param options.memoryTableName - Name of the DynamoDB table to use
-   * @param options.embedding - Optional Bedrock embeddings for semantic search
+   * @param options.embedding - Optional embeddings for semantic search (any LangChain Embeddings provider)
    * @param options.clientConfig - Optional DynamoDB client configuration
+   * @param options.client - Optional pre-built DynamoDBDocument client (takes precedence over clientConfig)
    * @param options.ttlDays - Optional TTL in days for stored items
    */
   constructor(options: DynamoDBStoreOptions) {
     super();
     this.memoryTableName = options.memoryTableName;
-    this.ddbClient = new DynamoDBClient(options.clientConfig || {});
-    this.client = DynamoDBDocument.from(this.ddbClient);
+    if (options.client) {
+      this.client = options.client;
+      this.ddbClient = undefined;
+      this.ownsClient = false;
+    } else {
+      this.ddbClient = new DynamoDBClient(options.clientConfig || {});
+      this.client = DynamoDBDocument.from(this.ddbClient);
+      this.ownsClient = true;
+    }
     this.embedding = options.embedding;
     this.ttlDays = options.ttlDays;
+  }
+
+  /**
+   * Release underlying DynamoDB client resources.
+   * Call this when the store is no longer needed to prevent resource leaks.
+   * Skips cleanup if a shared client was injected via options.
+   */
+  destroy(): void {
+    if (this.ownsClient && this.ddbClient) {
+      this.ddbClient.destroy();
+    }
   }
 
   /**
@@ -85,7 +105,10 @@ export class DynamoDBStore extends BaseStore {
     // Validate batch size to prevent resource exhaustion
     validateBatchSize(operations.length);
 
-    // Execute all operations in parallel for better performance
+    // Operation type dispatch — relies on LangGraph's Operation union discriminating
+    // properties: GetOperation has {namespace, key}, PutOperation adds {value},
+    // SearchOperation has {namespacePrefix}, ListNamespacesOperation has {limit, offset}
+    // without {namespacePrefix} or {key}. This mirrors the official LangGraph stores.
     const promises = operations.map(async (op, index) => {
       if ('key' in op && !('value' in op)) {
         return await this.getOperation(userId, op as GetOperation);

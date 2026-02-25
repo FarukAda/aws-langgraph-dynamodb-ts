@@ -1,14 +1,14 @@
-import { AwsStub } from 'aws-sdk-client-mock';
 import {
   DynamoDBDocument,
   DynamoDBDocumentClientResolvedConfig,
   ServiceInputTypes,
   ServiceOutputTypes,
 } from '@aws-sdk/lib-dynamodb';
+import { AwsStub } from 'aws-sdk-client-mock';
 
 import { deleteThreadAction } from '../../../src/checkpointer/actions';
-import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
 import { createMockCheckpointItem, createMockWriteItem } from '../../shared/fixtures/test-data';
+import { createMockDynamoDBClient } from '../../shared/mocks/dynamodb-mock';
 
 describe('deleteThreadAction', () => {
   let ddbDocMock: AwsStub<
@@ -135,7 +135,7 @@ describe('deleteThreadAction', () => {
   });
 
   it('should throw error when exceeding max delete batch size', async () => {
-    const manyCheckpoints = Array(101)
+    const manyCheckpoints = Array(1001)
       .fill(null)
       .map((_, i) => createMockCheckpointItem('thread-123', `checkpoint-${i}`, 'ns'));
 
@@ -151,7 +151,7 @@ describe('deleteThreadAction', () => {
         writesTableName: 'writes',
         threadId: 'thread-123',
       }),
-    ).rejects.toThrow('Thread has too many checkpoints');
+    ).rejects.toThrow('Thread has too many items');
   });
 
   it('should delete checkpoints in batches of 25', async () => {
@@ -187,22 +187,13 @@ describe('deleteThreadAction', () => {
       .fill(null)
       .map((_, i) => createMockWriteItem('thread-123', 'checkpoint-1', 'ns', 'task-1', i));
 
-    // Mock checkpoint query
-    ddbDocMock.onAnyCommand().resolvesOnce({
-      Items: checkpoints,
-      LastEvaluatedKey: undefined,
-    });
-
-    // Mock checkpoint batch write
-    ddbDocMock.onAnyCommand().resolvesOnce({});
-
-    // Mock writes query
-    ddbDocMock.onAnyCommand().resolvesOnce({
-      Items: writes,
-    });
-
-    // Mock writes batch writes (25+5)
-    ddbDocMock.onAnyCommand().resolves({});
+    // Chain all mock responses in order on a single handler
+    ddbDocMock
+      .onAnyCommand()
+      .resolvesOnce({ Items: checkpoints, LastEvaluatedKey: undefined }) // checkpoint query
+      .resolvesOnce({}) // checkpoint batch delete
+      .resolvesOnce({ Items: writes }) // writes query
+      .resolves({}); // writes batch deletes (25+5)
 
     await deleteThreadAction({
       client,

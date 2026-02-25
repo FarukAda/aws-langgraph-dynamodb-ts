@@ -11,7 +11,7 @@ export interface RetryOptions {
 }
 
 const DEFAULT_OPTIONS: Required<RetryOptions> = {
-  maxAttempts: 3,
+  maxAttempts: 5,
   baseDelayMs: 100,
   maxDelayMs: 5000,
   retryableErrors: [
@@ -20,6 +20,7 @@ const DEFAULT_OPTIONS: Required<RetryOptions> = {
     'RequestLimitExceeded',
     'InternalServerError',
     'ServiceUnavailable',
+    'TransactionCanceledException',
   ],
 };
 
@@ -42,10 +43,11 @@ function calculateDelay(attempt: number, baseDelayMs: number, maxDelayMs: number
 /**
  * Check if an error is retryable
  */
-function isRetryableError(error: any, retryableErrors: string[]): boolean {
+function isRetryableError(error: unknown, retryableErrors: string[]): boolean {
   if (!error) return false;
 
-  const errorName = error.name || error.code || '';
+  const errObj = error as Record<string, unknown>;
+  const errorName = String(errObj.name ?? errObj.code ?? '');
   return retryableErrors.some((retryable) => errorName.includes(retryable));
 }
 
@@ -54,7 +56,7 @@ function isRetryableError(error: any, retryableErrors: string[]): boolean {
  */
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
-  let lastError: any;
+  let lastError: unknown;
 
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
     try {
@@ -74,7 +76,11 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
         if (error instanceof Error) {
           throw error;
         }
-        const wrappedError = new Error((error as any)?.message || String(error));
+        const wrappedError = new Error(
+          error && typeof error === 'object' && 'message' in error
+            ? String((error as { message: unknown }).message)
+            : String(error),
+        );
         // Preserve name and other properties from the original error
         if (error && typeof error === 'object') {
           Object.assign(wrappedError, error);
@@ -97,7 +103,11 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
     throw lastError;
   }
   // Convert to Error while preserving properties
-  const wrappedError = new Error((lastError as any)?.message || String(lastError));
+  const wrappedError = new Error(
+    lastError && typeof lastError === 'object' && 'message' in lastError
+      ? String((lastError as { message: unknown }).message)
+      : String(lastError),
+  );
   if (lastError && typeof lastError === 'object') {
     Object.assign(wrappedError, lastError);
   }
@@ -107,10 +117,14 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
 /**
  * Specialized retry for DynamoDB operations
  */
-export async function withDynamoDBRetry<T>(fn: () => Promise<T>): Promise<T> {
+export async function withDynamoDBRetry<T>(
+  fn: () => Promise<T>,
+  overrides?: Partial<RetryOptions>,
+): Promise<T> {
   return withRetry(fn, {
-    maxAttempts: 3,
+    maxAttempts: 5,
     baseDelayMs: 100,
     maxDelayMs: 5000,
+    ...overrides,
   });
 }

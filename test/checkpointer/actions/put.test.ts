@@ -1,15 +1,15 @@
 import { putAction } from '../../../src/checkpointer/actions';
-import { setupCheckpointerTest, type CheckpointerTestSetup } from '../../shared/helpers/test-setup';
-import {
-  expectDynamoDBCalled,
-  expectSerdeCalledTimes,
-  expectValidationError,
-} from '../../shared/helpers/assertions';
 import {
   createMockCheckpoint,
   createMockMetadata,
   createMockRunnableConfig,
 } from '../../shared/fixtures/test-data';
+import {
+  expectDynamoDBCalled,
+  expectSerdeCalledTimes,
+  expectValidationError,
+} from '../../shared/helpers/assertions';
+import { setupCheckpointerTest, type CheckpointerTestSetup } from '../../shared/helpers/test-setup';
 
 describe('putAction', () => {
   let setup: CheckpointerTestSetup;

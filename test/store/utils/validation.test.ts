@@ -103,6 +103,18 @@ describe('store validation', () => {
       const maxValue = { data: 'a'.repeat(400 * 1024 - 20) }; // Subtract for JSON overhead
       expect(() => validateValue(maxValue)).not.toThrow();
     });
+
+    it('should correctly measure multi-byte characters in byte size', () => {
+      // Each emoji is 4 bytes in UTF-8, each CJK character is 3 bytes
+      // A string of emojis has a larger byte size than its JS string .length
+      // Create a value that is just under the limit by string length but over by byte size
+      const emoji = '🚀'; // 4 bytes per emoji in UTF-8, but length 2 in JS
+      const emojiCount = 120 * 1024; // ~480KB in bytes, ~240K in JS string length
+      const largeEmojiValue = { data: emoji.repeat(emojiCount) };
+
+      // This should be rejected based on byte size, not string length
+      expect(() => validateValue(largeEmojiValue)).toThrow('Value size');
+    });
   });
 
   describe('validatePagination', () => {
@@ -355,17 +367,13 @@ describe('store validation', () => {
 
 // Test re-exported utilities from the index
 describe('store utils index re-exports', () => {
-  it('should re-export retry and result utilities from index', () => {
+  it('should re-export retry utilities from index', () => {
     // These imports are from the index file that re-exports from other modules
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { withRetry, withDynamoDBRetry, Ok, Err } = require('../../../src/store/utils');
+    const { withRetry, withDynamoDBRetry } = require('../../../src/store/utils');
     expect(withRetry).toBeDefined();
     expect(withDynamoDBRetry).toBeDefined();
-    expect(Ok).toBeDefined();
-    expect(Err).toBeDefined();
     expect(typeof withRetry).toBe('function');
     expect(typeof withDynamoDBRetry).toBe('function');
-    expect(typeof Ok).toBe('function');
-    expect(typeof Err).toBe('function');
   });
 });

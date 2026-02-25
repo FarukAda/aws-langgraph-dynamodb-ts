@@ -219,7 +219,7 @@ describe('checkpointer validation', () => {
 
   describe('CheckpointerValidationConstants', () => {
     it('should export expected constants', () => {
-      expect(CheckpointerValidationConstants.MAX_DELETE_BATCH_SIZE).toBe(100);
+      expect(CheckpointerValidationConstants.MAX_DELETE_BATCH_SIZE).toBe(1000);
       expect(CheckpointerValidationConstants.MAX_WRITES_PER_BATCH).toBe(1000);
       expect(CheckpointerValidationConstants.MAX_LIST_LIMIT).toBe(1000);
       expect(CheckpointerValidationConstants.SEPARATOR).toBe(':::');

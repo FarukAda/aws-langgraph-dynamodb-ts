@@ -28,7 +28,7 @@ export function generateTitle(message: BaseMessage): string {
       .map((part) => {
         if (typeof part === 'string') return part;
         if (typeof part === 'object' && part !== null && 'text' in part) {
-          return (part as any).text;
+          return (part as { text: string }).text;
         }
         return '';
       })

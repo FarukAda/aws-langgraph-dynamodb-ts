@@ -1,8 +1,12 @@
-import { validateConfigurable } from './validate-configurable';
-import { Writer } from './writer';
+import {
+  calculateTTLTimestamp,
+  calculateTTLTimestampFromSeconds,
+  batchWriteAllWithRetry,
+} from '../../shared';
 import { PutWritesActionParams } from '../types';
 import { validateWritesCount, validateTTLDays, validateTaskId } from '../utils';
-import { withDynamoDBRetry, calculateTTLTimestamp } from '../../shared';
+import { validateConfigurable } from './validate-configurable';
+import { Writer } from './writer';
 
 /**
  * Save pending writes to DynamoDB
@@ -26,7 +30,25 @@ export const putWritesAction = async (params: PutWritesActionParams): Promise<vo
 
   const writeItems = await Promise.all(
     params.writes.map(async (write, idx) => {
-      const [type, serializedValue] = await params.serde.dumpsTyped(write[1]);
+      const [type, rawValue] = await params.serde.dumpsTyped(write[1]);
+
+      // Compress after serialization if compressor is provided
+      const serializedValue = params.compressor
+        ? await params.compressor.compress(rawValue)
+        : rawValue;
+
+      // S3 offloading for large write values
+      let s3ValueKey: string | undefined;
+      let storedValue: Uint8Array = serializedValue;
+
+      if (params.s3Offloader && params.s3Offloader.shouldOffload(serializedValue)) {
+        s3ValueKey = await params.s3Offloader.upload(
+          params.s3Offloader.buildKey(thread_id, checkpoint_id!, `write-${idx}`),
+          serializedValue,
+        );
+        storedValue = new Uint8Array(0); // Empty placeholder in DynamoDB
+      }
+
       const item = new Writer({
         thread_id,
         checkpoint_ns,
@@ -35,38 +57,31 @@ export const putWritesAction = async (params: PutWritesActionParams): Promise<vo
         idx,
         channel: write[0],
         type,
-        value: serializedValue,
+        value: storedValue,
       });
 
       const dynamoItem = item.toDynamoDBItem();
 
-      // FIX: Add TTL to the item that will actually be saved
-      if (params.ttlDays !== undefined) {
-        (dynamoItem as any).ttl = calculateTTLTimestamp(params.ttlDays);
+      // Add S3 reference if offloaded
+      if (s3ValueKey) {
+        dynamoItem.s3_value_key = s3ValueKey;
+      }
+
+      // Add TTL to the item that will actually be saved (ttlSeconds takes precedence)
+      if (params.ttlSeconds !== undefined) {
+        dynamoItem.ttl = calculateTTLTimestampFromSeconds(params.ttlSeconds);
+      } else if (params.ttlDays !== undefined) {
+        dynamoItem.ttl = calculateTTLTimestamp(params.ttlDays);
       }
 
       return {
         PutRequest: {
-          Item: dynamoItem, // Use the same item with TTL
+          Item: dynamoItem,
         },
       };
     }),
   );
 
-  // Batch writes in groups of 25 (DynamoDB limit)
-  const batches = [];
-  for (let i = 0; i < writeItems.length; i += 25) {
-    batches.push(writeItems.slice(i, i + 25));
-  }
-
-  // Execute batches with retry logic
-  for (const batch of batches) {
-    await withDynamoDBRetry(async () => {
-      await params.client.batchWrite({
-        RequestItems: {
-          [params.writesTableName]: batch,
-        },
-      });
-    });
-  }
+  // Batch writes using shared utility with retry logic
+  await batchWriteAllWithRetry(params.client, params.writesTableName, writeItems);
 };

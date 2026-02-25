@@ -1,8 +1,8 @@
-**AWS LangGraph DynamoDB TypeScript v0.0.9**
+**AWS LangGraph DynamoDB TypeScript v0.1.0**
 
 ***
 
-# AWS LangGraph DynamoDB TypeScript v0.0.9
+# AWS LangGraph DynamoDB TypeScript v0.1.0
 
 ## Classes
 
@@ -16,4 +16,11 @@
 - [DynamoDBChatMessageHistoryOptions](interfaces/DynamoDBChatMessageHistoryOptions.md)
 - [DynamoDBSaverOptions](interfaces/DynamoDBSaverOptions.md)
 - [DynamoDBStoreOptions](interfaces/DynamoDBStoreOptions.md)
+- [Logger](interfaces/Logger.md)
 - [SessionMetadata](interfaces/SessionMetadata.md)
+
+## Functions
+
+- [getLogger](functions/getLogger.md)
+- [resetLogger](functions/resetLogger.md)
+- [setGlobalLogger](functions/setGlobalLogger.md)

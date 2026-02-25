@@ -11,7 +11,7 @@ const MAX_TASK_ID_LENGTH = 256;
 const MAX_CHANNEL_LENGTH = 256;
 const MAX_WRITES_PER_BATCH = 1000;
 const MAX_LIST_LIMIT = 1000;
-const MAX_DELETE_BATCH_SIZE = 100; // Maximum checkpoints to delete at once
+const MAX_DELETE_BATCH_SIZE = 1000; // Maximum items (metadata + payload) to delete at once
 const SEPARATOR = ':::';
 
 export class CheckpointerValidationError extends Error {

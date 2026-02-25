@@ -1,10 +1,11 @@
 /**
  * Type definitions for chat message history
+ * Uses per-message storage pattern: each message is a separate DynamoDB item
  */
 
 import { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-import { BaseMessage } from '@langchain/core/messages';
+import type { BaseMessage, StoredMessage } from '@langchain/core/messages';
 
 /**
  * Configuration options for DynamoDBChatMessageHistory
@@ -16,18 +17,21 @@ export interface DynamoDBChatMessageHistoryOptions {
   ttlDays?: number;
   /** Optional DynamoDB client configuration */
   clientConfig?: DynamoDBClientConfig;
+  /** Optional pre-built DynamoDBDocument client (takes precedence over clientConfig) */
+  client?: DynamoDBDocument;
 }
 
 /**
- * DynamoDB item structure for a chat session
+ * DynamoDB item for session metadata
+ * PK: userId, SK: sessionId
  */
-export interface DynamoDBSessionItem {
+export interface DynamoDBSessionMetadataItem {
   /** User identifier (partition key) */
   userId: string;
   /** Session identifier (sort key) */
   sessionId: string;
-  /** Array of messages in chronological order */
-  messages: BaseMessage[];
+  /** Item type discriminator */
+  itemType: 'metadata';
   /** Session title (auto-generated from the first message) */
   title: string;
   /** Timestamp when session was created (milliseconds) */
@@ -36,6 +40,25 @@ export interface DynamoDBSessionItem {
   updatedAt: number;
   /** Number of messages in the session */
   messageCount: number;
+  /** Optional TTL timestamp (Unix timestamp in seconds) */
+  ttl?: number;
+}
+
+/**
+ * DynamoDB item for an individual message
+ * PK: userId, SK: sessionId#msg#NNNNNN
+ */
+export interface DynamoDBMessageItem {
+  /** User identifier (partition key) */
+  userId: string;
+  /** Composite sort key: sessionId#msg#NNNNNN */
+  sessionId: string;
+  /** Item type discriminator */
+  itemType: 'message';
+  /** Zero-based message index */
+  messageIndex: number;
+  /** Serialized message in LangChain StoredMessage format */
+  message: StoredMessage;
   /** Optional TTL timestamp (Unix timestamp in seconds) */
   ttl?: number;
 }

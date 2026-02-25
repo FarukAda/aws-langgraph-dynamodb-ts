@@ -3,7 +3,8 @@ import js from '@eslint/js';
 import ts from 'typescript-eslint';
 import prettier from 'eslint-plugin-prettier';
 import prettierConfig from 'eslint-config-prettier';
-import importPlugin from 'eslint-plugin-import';
+// @ts-expect-error
+import perfectionist from 'eslint-plugin-perfectionist';
 import noInstanceof from 'eslint-plugin-no-instanceof';
 import unusedImports from 'eslint-plugin-unused-imports';
 
@@ -16,7 +17,7 @@ export default defineConfig([
     ignores: ['dist'],
     plugins: {
       prettier: prettier as any,
-      import: importPlugin as any,
+      perfectionist: perfectionist as any,
       'no-instanceof': noInstanceof as any,
       'unused-imports': unusedImports as any,
     },
@@ -38,15 +39,22 @@ export default defineConfig([
       // Prettier integration
       'prettier/prettier': 'error',
 
-      // Import plugin rules
-      'import/order': [
+      // Import ordering (replaces eslint-plugin-import/order)
+      'perfectionist/sort-imports': [
         'error',
         {
-          groups: ['builtin', 'external', 'internal', ['parent', 'sibling']],
-          'newlines-between': 'always',
+          type: 'natural',
+          groups: [
+            'builtin',
+            'external',
+            'internal',
+            ['parent', 'sibling'],
+            'index',
+          ],
+          newlinesBetween: 1,
         },
       ],
-      'import/no-duplicates': 'error',
+
       'unused-imports/no-unused-vars': [
         'error',
         {

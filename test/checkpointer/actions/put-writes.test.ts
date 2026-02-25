@@ -1,7 +1,7 @@
 import { putWritesAction } from '../../../src/checkpointer/actions';
-import { setupCheckpointerTest, type CheckpointerTestSetup } from '../../shared/helpers/test-setup';
-import { expectDynamoDBCalled } from '../../shared/helpers/assertions';
 import { createMockPendingWrite, createMockRunnableConfig } from '../../shared/fixtures/test-data';
+import { expectDynamoDBCalled } from '../../shared/helpers/assertions';
+import { setupCheckpointerTest, type CheckpointerTestSetup } from '../../shared/helpers/test-setup';
 
 describe('putWritesAction', () => {
   let setup: CheckpointerTestSetup;

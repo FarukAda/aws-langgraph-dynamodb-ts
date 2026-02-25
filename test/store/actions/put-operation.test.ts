@@ -1,10 +1,10 @@
 import { putOperationAction } from '../../../src/store/actions';
+import { expectDynamoDBCalled } from '../../shared/helpers/assertions';
 import {
   setupStoreTest,
   setupStoreTestWithEmbedding,
   type StoreTestSetup,
 } from '../../shared/helpers/test-setup';
-import { expectDynamoDBCalled } from '../../shared/helpers/assertions';
 import { createMockEmbedding } from '../../shared/mocks/embedding-mock';
 
 describe('putOperationAction', () => {

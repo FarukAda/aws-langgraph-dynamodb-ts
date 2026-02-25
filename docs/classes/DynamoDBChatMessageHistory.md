@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.0.9**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.1.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBChatMessageHistory
 
-Defined in: [history/index.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L19)
+Defined in: [history/index.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/index.ts#L19)
 
 ## Constructors
 
@@ -14,7 +14,7 @@ Defined in: [history/index.ts:19](https://github.com/FarukAda/aws-langgraph-dyna
 
 > **new DynamoDBChatMessageHistory**(`options`): `DynamoDBChatMessageHistory`
 
-Defined in: [history/index.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L33)
+Defined in: [history/index.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/index.ts#L35)
 
 Create a new DynamoDB chat message history instance
 
@@ -30,45 +30,13 @@ Configuration options for the chat message history
 
 `DynamoDBChatMessageHistory`
 
-## Properties
-
-### client
-
-> `private` `readonly` **client**: `DynamoDBDocument`
-
-Defined in: [history/index.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L21)
-
-***
-
-### ddbClient
-
-> `private` `readonly` **ddbClient**: `DynamoDBClient`
-
-Defined in: [history/index.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L20)
-
-***
-
-### tableName
-
-> `private` `readonly` **tableName**: `string`
-
-Defined in: [history/index.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L22)
-
-***
-
-### ttlDays?
-
-> `private` `readonly` `optional` **ttlDays**: `number`
-
-Defined in: [history/index.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L23)
-
 ## Methods
 
 ### addMessage()
 
 > **addMessage**(`userId`, `sessionId`, `message`, `title?`): `Promise`\<`void`\>
 
-Defined in: [history/index.ts:68](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L68)
+Defined in: [history/index.ts:88](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/index.ts#L88)
 
 Add a single message to a session
 Generates title from the first message if this is a new session
@@ -113,7 +81,7 @@ Error if the operation fails or validation fails
 
 > **addMessages**(`userId`, `sessionId`, `messages`, `title?`): `Promise`\<`void`\>
 
-Defined in: [history/index.ts:96](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L96)
+Defined in: [history/index.ts:116](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/index.ts#L116)
 
 Add multiple messages to a session
 Generates title from the first message if this is a new session
@@ -135,7 +103,7 @@ Session identifier
 
 ##### messages
 
-`BaseMessage`\<`MessageStructure`, `MessageType`\>[]
+`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]
 
 Array of BaseMessage objects to add
 
@@ -159,7 +127,7 @@ Error if the operation fails or validation fails
 
 > **clear**(`userId`, `sessionId`): `Promise`\<`void`\>
 
-Defined in: [history/index.ts:121](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L121)
+Defined in: [history/index.ts:141](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/index.ts#L141)
 
 Clear all messages in a session
 Deletes the session item from DynamoDB
@@ -188,11 +156,27 @@ Error if the operation fails or validation fails
 
 ***
 
+### destroy()
+
+> **destroy**(): `void`
+
+Defined in: [history/index.ts:54](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/index.ts#L54)
+
+Release underlying DynamoDB client resources.
+Call this when the history is no longer needed to prevent resource leaks.
+Skips cleanup if a shared client was injected via options.
+
+#### Returns
+
+`void`
+
+***
+
 ### getMessages()
 
-> **getMessages**(`userId`, `sessionId`): `Promise`\<`BaseMessage`\<`MessageStructure`, `MessageType`\>[]\>
+> **getMessages**(`userId`, `sessionId`): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/index.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L49)
+Defined in: [history/index.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/index.ts#L69)
 
 Get all messages for a session
 Messages are returned in chronological order
@@ -213,7 +197,7 @@ Session identifier
 
 #### Returns
 
-`Promise`\<`BaseMessage`\<`MessageStructure`, `MessageType`\>[]\>
+`Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
 Array of BaseMessage objects in chronological order
 
@@ -227,7 +211,7 @@ Error if the operation fails or validation fails
 
 > **listSessions**(`userId`, `limit?`): `Promise`\<[`SessionMetadata`](../interfaces/SessionMetadata.md)[]\>
 
-Defined in: [history/index.ts:139](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/history/index.ts#L139)
+Defined in: [history/index.ts:159](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/index.ts#L159)
 
 List all sessions for a user, sorted by most recent
 Returns metadata only (excludes messages for performance)

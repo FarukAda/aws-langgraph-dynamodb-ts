@@ -114,4 +114,57 @@ describe('listSessionsAction', () => {
       }),
     ).rejects.toThrow('Limit cannot exceed 1000');
   });
+
+  it('should return most recent sessions regardless of DynamoDB page order', async () => {
+    const { ddbDocMock, client } = createMockDynamoDBClient();
+
+    const now = Date.now();
+
+    // First page: older sessions (first by sessionId sort key)
+    ddbDocMock
+      .onAnyCommand()
+      .resolvesOnce({
+        Items: [
+          {
+            sessionId: 'aaa-session',
+            title: 'Oldest Session',
+            createdAt: now - 5000,
+            updatedAt: now - 5000,
+            messageCount: 2,
+          },
+          {
+            sessionId: 'bbb-session',
+            title: 'Old Session',
+            createdAt: now - 3000,
+            updatedAt: now - 3000,
+            messageCount: 3,
+          },
+        ],
+        LastEvaluatedKey: { userId: 'user-123', sessionId: 'bbb-session' },
+      })
+      // Second page: the newest session (later in sort key order)
+      .resolvesOnce({
+        Items: [
+          {
+            sessionId: 'zzz-session',
+            title: 'Newest Session',
+            createdAt: now - 1000,
+            updatedAt: now,
+            messageCount: 10,
+          },
+        ],
+      });
+
+    const result = await listSessionsAction({
+      client,
+      tableName: 'history',
+      userId: 'user-123',
+      limit: 1,
+    });
+
+    // Should return the newest session, not the first by sort key
+    expect(result).toHaveLength(1);
+    expect(result[0].sessionId).toBe('zzz-session');
+    expect(result[0].title).toBe('Newest Session');
+  });
 });

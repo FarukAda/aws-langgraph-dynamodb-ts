@@ -1,7 +1,7 @@
 import { addMessageAction } from '../../../src/history/actions';
-import { setupHistoryTest, type HistoryTestSetup } from '../../shared/helpers/test-setup';
-import { expectDynamoDBCalled, expectValidationError } from '../../shared/helpers/assertions';
 import { createMockMessage } from '../../shared/fixtures/test-data';
+import { expectDynamoDBCalled, expectValidationError } from '../../shared/helpers/assertions';
+import { setupHistoryTest, type HistoryTestSetup } from '../../shared/helpers/test-setup';
 
 describe('addMessageAction', () => {
   let setup: HistoryTestSetup;
@@ -15,9 +15,11 @@ describe('addMessageAction', () => {
   });
 
   it('should add message to new session with auto-generated title', async () => {
-    // Mock get call returns no item (new session)
-    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
-    // Mock update call
+    // Mock atomic counter update (returns new messageCount)
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({
+      Attributes: { messageCount: 1 },
+    });
+    // Mock put for message item
     setup.ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const message = createMockMessage('Hello, world!');
@@ -30,11 +32,14 @@ describe('addMessageAction', () => {
       message,
     });
 
-    expectDynamoDBCalled(setup.ddbDocMock, 1);
+    // 1 update (atomic counter) + 1 put (message item) = 2 calls
+    expectDynamoDBCalled(setup.ddbDocMock, 2);
   });
 
   it('should add message to new session with provided title', async () => {
-    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({
+      Attributes: { messageCount: 1 },
+    });
     setup.ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const message = createMockMessage('Hello, world!');
@@ -48,18 +53,13 @@ describe('addMessageAction', () => {
       title: 'Custom Title',
     });
 
-    expectDynamoDBCalled(setup.ddbDocMock, 1);
+    expectDynamoDBCalled(setup.ddbDocMock, 2);
   });
 
-  it('should add message to existing session', async () => {
+  it('should add message to existing session with correct index', async () => {
+    // Atomic counter returns new count of 4 (was 3, incremented by 1)
     setup.ddbDocMock.onAnyCommand().resolvesOnce({
-      Item: {
-        userId: 'user-123',
-        sessionId: 'session-1',
-        messages: [createMockMessage('Previous message')],
-        title: 'Existing Session',
-        messageCount: 1,
-      },
+      Attributes: { messageCount: 4 },
     });
     setup.ddbDocMock.onAnyCommand().resolvesOnce({});
 
@@ -73,7 +73,7 @@ describe('addMessageAction', () => {
       message,
     });
 
-    expectDynamoDBCalled(setup.ddbDocMock, 1);
+    expectDynamoDBCalled(setup.ddbDocMock, 2);
   });
 
   it('should throw error for invalid user ID', async () => {
@@ -129,7 +129,9 @@ describe('addMessageAction', () => {
   });
 
   it('should add message to new session with TTL', async () => {
-    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({
+      Attributes: { messageCount: 1 },
+    });
     setup.ddbDocMock.onAnyCommand().resolvesOnce({});
 
     const message = createMockMessage('Hello, world!');
@@ -143,18 +145,12 @@ describe('addMessageAction', () => {
       ttlDays: 7,
     });
 
-    expectDynamoDBCalled(setup.ddbDocMock, 1);
+    expectDynamoDBCalled(setup.ddbDocMock, 2);
   });
 
   it('should add message to existing session with TTL', async () => {
     setup.ddbDocMock.onAnyCommand().resolvesOnce({
-      Item: {
-        userId: 'user-123',
-        sessionId: 'session-1',
-        messages: [createMockMessage('Previous message')],
-        title: 'Existing Session',
-        messageCount: 1,
-      },
+      Attributes: { messageCount: 2 },
     });
     setup.ddbDocMock.onAnyCommand().resolvesOnce({});
 
@@ -169,6 +165,6 @@ describe('addMessageAction', () => {
       ttlDays: 30,
     });
 
-    expectDynamoDBCalled(setup.ddbDocMock, 1);
+    expectDynamoDBCalled(setup.ddbDocMock, 2);
   });
 });

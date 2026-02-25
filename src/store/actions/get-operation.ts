@@ -42,7 +42,7 @@ export const getOperationAction = async (
     key: ddbItem.Item.key,
     namespace: op.namespace,
     value: ddbItem.Item.value,
-    createdAt: ddbItem.Item.createdAt,
-    updatedAt: ddbItem.Item.updatedAt,
+    createdAt: new Date(ddbItem.Item.createdAt),
+    updatedAt: new Date(ddbItem.Item.updatedAt),
   };
 };

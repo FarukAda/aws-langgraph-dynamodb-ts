@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.0.9**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.1.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/factory.ts#L25)
+Defined in: [factory.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/factory.ts#L26)
 
 Factory class for creating DynamoDB persistence instances
 
@@ -24,15 +24,15 @@ Factory class for creating DynamoDB persistence instances
 
 ### createAll()
 
-> `static` **createAll**(`options`): `object`
+> `static` **createAll**(`options?`): `object`
 
-Defined in: [factory.ts:165](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/factory.ts#L165)
+Defined in: [factory.ts:172](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/factory.ts#L172)
 
 Create all DynamoDB persistence instances at once with a shared configuration
 
 #### Parameters
 
-##### options
+##### options?
 
 Configuration options
 
@@ -44,7 +44,7 @@ Optional DynamoDB client configuration (shared)
 
 ###### embedding?
 
-`BedrockEmbeddings`
+`EmbeddingsInterface`\<`number`[]\>
 
 Optional Bedrock embeddings for semantic search in store
 
@@ -68,8 +68,6 @@ Optional TTL in days for automatic cleanup (applies to all)
 
 #### Returns
 
-`object`
-
 Object containing all three persistence instances
 
 ##### chatHistory
@@ -79,6 +77,16 @@ Object containing all three persistence instances
 ##### checkpointer
 
 > **checkpointer**: [`DynamoDBSaver`](DynamoDBSaver.md)
+
+##### destroy()
+
+> **destroy**: () => `void`
+
+Destroy the shared DynamoDB client created by createAll(). Call when no longer needed.
+
+###### Returns
+
+`void`
 
 ##### store
 
@@ -105,15 +113,15 @@ const app = workflow.compile({
 
 ### createChatMessageHistory()
 
-> `static` **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
+> `static` **createChatMessageHistory**(`options?`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/factory.ts#L126)
+Defined in: [factory.ts:132](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/factory.ts#L132)
 
 Create a DynamoDBChatMessageHistory instance with sensible defaults
 
 #### Parameters
 
-##### options
+##### options?
 
 `Partial`\<[`DynamoDBChatMessageHistoryOptions`](../interfaces/DynamoDBChatMessageHistoryOptions.md)\> = `{}`
 
@@ -144,15 +152,15 @@ const history = DynamoDBFactory.createChatMessageHistory({
 
 ### createSaver()
 
-> `static` **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
+> `static` **createSaver**(`options?`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/factory.ts#L52)
+Defined in: [factory.ts:53](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/factory.ts#L53)
 
 Create a DynamoDBSaver instance with sensible defaults
 
 #### Parameters
 
-##### options
+##### options?
 
 `Partial`\<[`DynamoDBSaverOptions`](../interfaces/DynamoDBSaverOptions.md)\> = `{}`
 
@@ -184,15 +192,15 @@ const checkpointer = DynamoDBFactory.createSaver({
 
 ### createStore()
 
-> `static` **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
+> `static` **createStore**(`options?`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory.ts:92](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/aa020601b05dff0f72f65954c786d026ab47f57b/src/factory.ts#L92)
+Defined in: [factory.ts:97](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/factory.ts#L97)
 
 Create a DynamoDBStore instance with sensible defaults
 
 #### Parameters
 
-##### options
+##### options?
 
 `Partial`\<[`DynamoDBStoreOptions`](../interfaces/DynamoDBStoreOptions.md)\> = `{}`
 

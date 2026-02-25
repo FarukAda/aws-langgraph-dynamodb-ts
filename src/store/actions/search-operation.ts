@@ -1,7 +1,8 @@
-import type { SearchItem } from '@langchain/langgraph-checkpoint';
 import { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
-import { BedrockEmbeddings } from '@langchain/aws';
+import type { EmbeddingsInterface } from '@langchain/core/embeddings';
+import type { SearchItem } from '@langchain/langgraph-checkpoint';
 
+import { getLogger } from '../../shared/utils';
 import { SearchOperationActionParams } from '../types';
 import {
   validateNamespace,
@@ -14,6 +15,12 @@ import {
 
 /**
  * Search for memory items in DynamoDB
+ *
+ * @remarks
+ * **Pagination trade-off:** DynamoDB does not support native offset-based pagination.
+ * When `offset` is used, `limit + offset` items are loaded into memory and sliced.
+ * For large offsets (up to 10,000), this can be memory-intensive.
+ * Consider cursor-based pagination for high-offset use cases.
  *
  * @param params - Parameters for the search operation
  * @returns Array of matching items with optional similarity scores
@@ -74,6 +81,12 @@ export const searchOperationAction = async (
     }
   }
 
+  // When semantic search is requested, we must fetch ALL matching items so that
+  // cosine similarity ranking operates on the full corpus — not just an arbitrary
+  // DynamoDB page.  For non-semantic queries we keep the original capped fetch.
+  const isSemanticSearch = !!op.query && !!embedding;
+  const fetchTarget = isSemanticSearch ? undefined : limit + offset;
+
   const items: any[] = [];
   let lastEvaluatedKey: Record<string, any> | undefined;
   let scannedCount = 0;
@@ -87,7 +100,7 @@ export const searchOperationAction = async (
       throw new Error('Search operation exceeded maximum iteration limit');
     }
 
-    queryParams.Limit = Math.max(1, limit + offset - scannedCount);
+    queryParams.Limit = fetchTarget ? Math.max(1, fetchTarget - scannedCount) : undefined;
 
     if (lastEvaluatedKey) {
       queryParams.ExclusiveStartKey = lastEvaluatedKey;
@@ -110,25 +123,33 @@ export const searchOperationAction = async (
     lastEvaluatedKey = response.LastEvaluatedKey;
 
     if (!lastEvaluatedKey) break;
-    if (items.length >= limit + offset) break;
-    if (scannedCount >= limit + offset) break;
-  } while (
-    // eslint-disable-next-line no-constant-condition
-    true
-  );
+    if (fetchTarget && items.length >= fetchTarget) break;
+    if (fetchTarget && scannedCount >= fetchTarget) break;
+  } while (lastEvaluatedKey);
+
+  // Warn if semantic search corpus was truncated
+  if (isSemanticSearch && lastEvaluatedKey) {
+    getLogger().warn(
+      `Semantic search corpus truncated at ${ValidationConstants.MAX_TOTAL_ITEMS_IN_MEMORY} items — results may not include the most relevant matches`,
+    );
+  }
 
   if (items.length > 0) {
-    let paginatedItems = items.slice(offset, offset + limit);
-    if (op.query && embedding) {
-      paginatedItems = await applySemanticSearch(paginatedItems, op.query, embedding);
+    let paginatedItems: any[];
+    if (isSemanticSearch) {
+      // Rank the ENTIRE corpus by similarity, then paginate
+      const ranked = await applySemanticSearch(items, op.query!, embedding!);
+      paginatedItems = ranked.slice(offset, offset + limit);
+    } else {
+      paginatedItems = items.slice(offset, offset + limit);
     }
     return paginatedItems.map(
       (item): SearchItem => ({
         namespace: item.namespace.split('/'),
         key: item.key,
         value: item.value,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
+        createdAt: new Date(item.createdAt),
+        updatedAt: new Date(item.updatedAt),
         score: item.score,
       }),
     );
@@ -144,7 +165,7 @@ export const searchOperationAction = async (
 async function applySemanticSearch(
   items: any[],
   query: string,
-  embedding: BedrockEmbeddings,
+  embedding: EmbeddingsInterface,
 ): Promise<any[]> {
   try {
     const queryEmbedding = await embedding.embedQuery(query);
@@ -173,8 +194,10 @@ async function applySemanticSearch(
     // Sort by similarity score (highest first)
     itemsWithScores.sort((a, b) => b.score - a.score);
     return itemsWithScores.map((result) => result.item);
-  } catch {
-    // Fall back to returning original items if semantic search fails
+  } catch (error) {
+    // Log the failure for observability but fall back to returning original items
+
+    getLogger().warn('Semantic search failed, falling back to unranked results:', error);
     return items;
   }
 }

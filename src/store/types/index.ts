@@ -1,6 +1,6 @@
-import { BedrockEmbeddings } from '@langchain/aws';
 import { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import type { EmbeddingsInterface } from '@langchain/core/embeddings';
 import {
   GetOperation,
   type ListNamespacesOperation,
@@ -19,12 +19,14 @@ export type NamespacePath = (string | '*')[];
 export interface DynamoDBStoreOptions {
   /** Name of the DynamoDB table to use for storage */
   memoryTableName: string;
-  /** Optional Bedrock embeddings for semantic search */
-  embedding?: BedrockEmbeddings;
+  /** Optional embeddings for semantic search (any LangChain Embeddings provider) */
+  embedding?: EmbeddingsInterface;
   /** Optional DynamoDB client configuration */
   clientConfig?: DynamoDBClientConfig;
   /** Optional TTL in days for stored items (1-1825 days) */
   ttlDays?: number;
+  /** Optional pre-built DynamoDBDocument client (takes precedence over clientConfig) */
+  client?: DynamoDBDocument;
 }
 
 /**
@@ -40,7 +42,7 @@ export interface PutOperationActionParams {
   /** Put operation parameters */
   op: PutOperation;
   /** Optional embeddings for semantic search */
-  embedding?: BedrockEmbeddings;
+  embedding?: EmbeddingsInterface;
   /** Optional TTL in days */
   ttlDays?: number;
 }
@@ -72,7 +74,7 @@ export interface SearchOperationActionParams {
   /** Search operation parameters */
   op: SearchOperation;
   /** Optional embeddings for semantic search */
-  embedding?: BedrockEmbeddings;
+  embedding?: EmbeddingsInterface;
 }
 
 /**

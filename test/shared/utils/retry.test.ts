@@ -238,13 +238,13 @@ describe('retry utility', () => {
       expect(fn).toHaveBeenCalledTimes(1);
     });
 
-    it('should throw after 3 attempts', async () => {
+    it('should throw after 5 attempts', async () => {
       const fn = jest.fn().mockRejectedValue({ name: 'ThrottlingException' });
 
       await expect(withDynamoDBRetry(fn)).rejects.toMatchObject({
         name: 'ThrottlingException',
       });
-      expect(fn).toHaveBeenCalledTimes(3);
+      expect(fn).toHaveBeenCalledTimes(5);
     });
   });
 });

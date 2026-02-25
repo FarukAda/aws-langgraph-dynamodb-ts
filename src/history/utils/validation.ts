@@ -192,3 +192,29 @@ export function validateTTLDays(ttlDays: number | undefined): void {
     throw new HistoryValidationError(error instanceof Error ? error.message : String(error));
   }
 }
+
+/** DynamoDB transactWrite limit: 4MB total across all items */
+const MAX_TRANSACTION_SIZE_BYTES = 4 * 1024 * 1024;
+/** Estimated per-item overhead: PK, SK, itemType, messageIndex, ttl, DynamoDB encoding */
+const PER_ITEM_OVERHEAD_BYTES = 500;
+
+/**
+ * Validate total estimated size of messages for DynamoDB transaction limits.
+ * Prevents runtime `TransactionCanceledException` due to 4MB size exceeded.
+ *
+ * @param messages - Array of BaseMessage objects to validate
+ * @throws HistoryValidationError if estimated size exceeds 4MB
+ */
+export function validateMessagesSize(messages: BaseMessage[]): void {
+  let totalSize = 0;
+  for (const message of messages) {
+    const content =
+      typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+    totalSize += new TextEncoder().encode(content).byteLength + PER_ITEM_OVERHEAD_BYTES;
+  }
+  if (totalSize > MAX_TRANSACTION_SIZE_BYTES) {
+    throw new HistoryValidationError(
+      `Estimated batch size (~${Math.round(totalSize / 1024)}KB) exceeds DynamoDB transaction limit of 4MB`,
+    );
+  }
+}

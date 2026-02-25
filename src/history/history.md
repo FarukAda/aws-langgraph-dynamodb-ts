@@ -25,22 +25,35 @@ npm install @farukada/aws-langgraph-dynamodb-ts @langchain/core
 
 ## Table Schema
 
-### Chat History Table
+The chat history module uses a **per-message storage pattern**. Each session has two types of DynamoDB items:
+
+### Session Metadata Item
 
 | Attribute | Type | Key | Description |
 |-----------|------|-----|-------------|
-| `user_id` | String | Partition Key | User identifier for data isolation |
-| `session_id` | String | Sort Key | Unique session identifier |
+| `userId` | String | Partition Key | User identifier for data isolation |
+| `sessionId` | String | Sort Key | Session identifier |
+| `itemType` | String | - | Discriminator: `'metadata'` |
 | `title` | String | - | Human-readable session title |
-| `messages` | List | - | Array of serialized BaseMessage objects |
-| `message_count` | Number | - | Count of messages in the session |
-| `created_at` | Number | - | Timestamp (milliseconds since epoch) |
-| `updated_at` | Number | - | Timestamp (milliseconds since epoch) |
-| `ttl` | Number | - | Optional expiration timestamp (Unix epoch) |
+| `createdAt` | Number | - | Timestamp (milliseconds since epoch) |
+| `updatedAt` | Number | - | Timestamp (milliseconds since epoch) |
+| `messageCount` | Number | - | Count of messages in the session |
+| `ttl` | Number | - | Optional expiration timestamp (Unix epoch seconds) |
 
-### Message Structure
+### Message Item
 
-Each message in the `messages` array contains:
+| Attribute | Type | Key | Description |
+|-----------|------|-----|-------------|
+| `userId` | String | Partition Key | User identifier for data isolation |
+| `sessionId` | String | Sort Key | Composite key: `{sessionId}#msg#{NNNNNN}` |
+| `itemType` | String | - | Discriminator: `'message'` |
+| `messageIndex` | Number | - | Zero-based message index |
+| `message` | Map | - | Serialized LangChain `StoredMessage` object |
+| `ttl` | Number | - | Optional expiration timestamp (Unix epoch seconds) |
+
+### StoredMessage Format
+
+Each `message` field follows the LangChain `StoredMessage` format:
 
 ```typescript
 {
@@ -67,9 +80,16 @@ const history = new DynamoDBChatMessageHistory({
   ttlDays: 30, // Optional: Auto-delete after 30 days
   clientConfig: {
     region: 'us-east-1',
-    // ... other AWS SDK config
   },
 });
+```
+
+### Resource Cleanup
+
+```typescript
+// Release underlying DynamoDB client resources when done
+// Skips cleanup if a shared client was injected via options
+history.destroy();
 ```
 
 ### Adding Messages
@@ -343,12 +363,10 @@ interface DynamoDBChatMessageHistoryOptions {
   ttlDays?: number;
 
   /** Optional: AWS SDK DynamoDB client configuration */
-  clientConfig?: {
-    region?: string;
-    credentials?: AwsCredentialIdentity;
-    endpoint?: string;
-    // ... other AWS SDK config
-  };
+  clientConfig?: DynamoDBClientConfig;
+
+  /** Optional: Pre-built DynamoDBDocument client (takes precedence over clientConfig) */
+  client?: DynamoDBDocument;
 }
 ```
 
@@ -535,11 +553,11 @@ const archiveHistory = new DynamoDBChatMessageHistory({
 
 - **User ID**: Max 256 characters, cannot be empty, cannot contain control characters
 - **Session ID**: Max 256 characters, cannot be empty, cannot contain control characters
-- **Message Content**: Max 400 KB total per session (DynamoDB item size limit)
-- **Message Array**: Recommended max 100-200 messages per session for performance
+- **Message Content**: Max 400 KB per individual message (DynamoDB item size limit)
+- **Message Retrieval**: Subject to DynamoDB's 1 MB query page limit per query
 - **Session Title**: Max 200 characters, auto-truncated if generated from long messages
 - **List Sessions**: Returns all sessions for a user (use limit parameter for pagination)
-- **Timestamps**: Stored in milliseconds (JavaScript Date.now() format)
+- **Timestamps**: Stored in milliseconds (JavaScript `Date.now()` format)
 
 ## Performance Tips
 
@@ -554,12 +572,12 @@ const archiveHistory = new DynamoDBChatMessageHistory({
 
 For detailed API documentation, see:
 
-- [DynamoDBChatMessageHistory Class](./classes/DynamoDBChatMessageHistory.md)
-- [DynamoDBChatMessageHistoryOptions Interface](./interfaces/DynamoDBChatMessageHistoryOptions.md)
-- [SessionMetadata Interface](./interfaces/SessionMetadata.md)
+- [DynamoDBChatMessageHistory Class](../../docs/classes/DynamoDBChatMessageHistory.md)
+- [DynamoDBChatMessageHistoryOptions Interface](../../docs/interfaces/DynamoDBChatMessageHistoryOptions.md)
+- [SessionMetadata Interface](../../docs/interfaces/SessionMetadata.md)
 
 ## Related Documentation
 
-- [DynamoDBSaver](./checkpointer.md) - Checkpoint storage for workflows
-- [DynamoDBStore](./store.md) - Memory/knowledge storage
+- [DynamoDBSaver](../checkpointer/checkpointer.md) - Checkpoint storage for workflows
+- [DynamoDBStore](../store/store.md) - Memory/knowledge storage
 - [LangChain Messages Documentation](https://js.langchain.com/docs/modules/model_io/messages/)

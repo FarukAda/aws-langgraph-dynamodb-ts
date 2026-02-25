@@ -1,5 +1,5 @@
-import type { MatchCondition } from '@langchain/langgraph-checkpoint';
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
+import type { MatchCondition } from '@langchain/langgraph-checkpoint';
 
 import type { ListNamespacesOperationActionParams, NamespacePath } from '../types';
 import {

@@ -77,6 +77,8 @@ const storeWithEmbeddings = new DynamoDBStore({
     model: 'amazon.titan-embed-text-v1',
   }),
 });
+
+// Any LangChain Embeddings provider works — not limited to Bedrock
 ```
 
 ### Basic Operations
@@ -121,6 +123,14 @@ const [namespaces] = await store.batch([
 ], config);
 
 console.log(namespaces); // [['user', 'preferences'], ['user', 'settings'], ...]
+```
+
+### Resource Cleanup
+
+```typescript
+// Release underlying DynamoDB client resources when done
+// Skips cleanup if a shared client was injected via options
+store.destroy();
 ```
 
 ## Advanced Usage
@@ -386,19 +396,17 @@ interface DynamoDBStoreOptions {
   /** Name of the DynamoDB table for memory storage */
   memoryTableName: string;
 
-  /** Optional: Bedrock embeddings for semantic search */
-  embedding?: BedrockEmbeddings;
+  /** Optional: Any LangChain Embeddings provider for semantic search */
+  embedding?: EmbeddingsInterface;
 
   /** Optional: TTL in days for automatic expiration (1-1825 days) */
   ttlDays?: number;
 
   /** Optional: AWS SDK DynamoDB client configuration */
-  clientConfig?: {
-    region?: string;
-    credentials?: AwsCredentialIdentity;
-    endpoint?: string;
-    // ... other AWS SDK config
-  };
+  clientConfig?: DynamoDBClientConfig;
+
+  /** Optional: Pre-built DynamoDBDocument client (takes precedence over clientConfig) */
+  client?: DynamoDBDocument;
 }
 ```
 
@@ -626,11 +634,11 @@ const permanentStore = new DynamoDBStore({
 
 For detailed API documentation, see:
 
-- [DynamoDBStore Class](./classes/DynamoDBStore.md)
-- [DynamoDBStoreOptions Interface](./interfaces/DynamoDBStoreOptions.md)
+- [DynamoDBStore Class](../../docs/classes/DynamoDBStore.md)
+- [DynamoDBStoreOptions Interface](../../docs/interfaces/DynamoDBStoreOptions.md)
 
 ## Related Documentation
 
-- [DynamoDBSaver](./checkpointer.md) - Checkpoint storage for workflows
-- [DynamoDBChatMessageHistory](./history.md) - Chat message history
+- [DynamoDBSaver](../checkpointer/checkpointer.md) - Checkpoint storage for workflows
+- [DynamoDBChatMessageHistory](../history/history.md) - Chat message history
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraphjs/)
