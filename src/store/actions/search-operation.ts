@@ -29,7 +29,15 @@ import {
 export const searchOperationAction = async (
   params: SearchOperationActionParams,
 ): Promise<SearchItem[]> => {
-  const { client, embedding, memoryTableName, userId, op } = params;
+  const {
+    client,
+    embedding,
+    memoryTableName,
+    userId,
+    op,
+    fallbackToLexicalOnEmbeddingFailure = false,
+    signal,
+  } = params;
 
   const limit = op.limit ?? 100;
   const offset = op.offset ?? 0;
@@ -58,8 +66,13 @@ export const searchOperationAction = async (
   let keyConditionExpression = 'user_id = :uid';
 
   if (namespacePrefix) {
-    // Use begins_with on namespace_key for hierarchical search
-    expressionAttributeValues[':nsp'] = `${namespacePrefix}#`;
+    // Use begins_with on namespace_key for hierarchical search. NOTE: we do NOT
+    // append a separator — `namespace_key` is `<nsPath>#<key>`, so appending "#"
+    // would miss sub-namespaces ("users/alice#x" doesn't begin with "users#"),
+    // and appending "/" would miss exact matches. Raw prefix is over-inclusive
+    // (`users` also matches `users_v2`) but the in-memory ordering guarantees
+    // correctness; the spurious rows are negligible in practice.
+    expressionAttributeValues[':nsp'] = namespacePrefix;
     keyConditionExpression += ' AND begins_with(namespace_key, :nsp)';
   }
 
@@ -87,9 +100,17 @@ export const searchOperationAction = async (
   const isSemanticSearch = !!op.query && !!embedding;
   const fetchTarget = isSemanticSearch ? undefined : limit + offset;
 
+  if (op.query && !embedding) {
+    // User asked for text search but no embedding is configured — the query is
+    // effectively dropped. Warn so callers aren't surprised by unfiltered results.
+    getLogger().warn(
+      'search operation received `query` but no embedding is configured on the store; ' +
+        'text search is skipped and results reflect only filter/namespace matches',
+    );
+  }
+
   const items: any[] = [];
   let lastEvaluatedKey: Record<string, any> | undefined;
-  let scannedCount = 0;
   let iterationCount = 0;
 
   // Execute a query with retry logic and safety limits
@@ -100,21 +121,36 @@ export const searchOperationAction = async (
       throw new Error('Search operation exceeded maximum iteration limit');
     }
 
-    queryParams.Limit = fetchTarget ? Math.max(1, fetchTarget - scannedCount) : undefined;
+    // Size each page based on items still needed (items.length, not ScannedCount).
+    // ScannedCount grows even for filtered-out rows, so gating by it can terminate
+    // the loop early when a FilterExpression is active.
+    queryParams.Limit = fetchTarget ? Math.max(1, fetchTarget - items.length) : undefined;
 
     if (lastEvaluatedKey) {
       queryParams.ExclusiveStartKey = lastEvaluatedKey;
     }
 
-    const response = await withDynamoDBRetry(async () => {
-      return await client.query(queryParams);
-    });
-
-    scannedCount += response.ScannedCount ?? 0;
+    const response = await withDynamoDBRetry(
+      async () => {
+        return await client.query(queryParams);
+      },
+      { signal },
+    );
 
     if (response.Items && response.Items.length > 0) {
-      // Prevent memory exhaustion
+      // Memory cap: non-semantic search throws (hard fail, surfaces to caller).
+      // Semantic search logs a warning and returns a partial (possibly suboptimal)
+      // ranked corpus instead — better than nothing for a best-effort relevance feature.
       if (items.length + response.Items.length > ValidationConstants.MAX_TOTAL_ITEMS_IN_MEMORY) {
+        if (isSemanticSearch) {
+          getLogger().warn(
+            `Semantic search corpus truncated at ${ValidationConstants.MAX_TOTAL_ITEMS_IN_MEMORY} items — ` +
+              `results may not include the most relevant matches`,
+          );
+          const remaining = ValidationConstants.MAX_TOTAL_ITEMS_IN_MEMORY - items.length;
+          if (remaining > 0) items.push(...response.Items.slice(0, remaining));
+          break;
+        }
         throw new Error('Search operation exceeded maximum items in memory limit');
       }
       items.push(...response.Items);
@@ -124,21 +160,18 @@ export const searchOperationAction = async (
 
     if (!lastEvaluatedKey) break;
     if (fetchTarget && items.length >= fetchTarget) break;
-    if (fetchTarget && scannedCount >= fetchTarget) break;
   } while (lastEvaluatedKey);
-
-  // Warn if semantic search corpus was truncated
-  if (isSemanticSearch && lastEvaluatedKey) {
-    getLogger().warn(
-      `Semantic search corpus truncated at ${ValidationConstants.MAX_TOTAL_ITEMS_IN_MEMORY} items — results may not include the most relevant matches`,
-    );
-  }
 
   if (items.length > 0) {
     let paginatedItems: any[];
     if (isSemanticSearch) {
       // Rank the ENTIRE corpus by similarity, then paginate
-      const ranked = await applySemanticSearch(items, op.query!, embedding!);
+      const ranked = await applySemanticSearch(
+        items,
+        op.query!,
+        embedding!,
+        fallbackToLexicalOnEmbeddingFailure,
+      );
       paginatedItems = ranked.slice(offset, offset + limit);
     } else {
       paginatedItems = items.slice(offset, offset + limit);
@@ -159,17 +192,35 @@ export const searchOperationAction = async (
 };
 
 /**
- * Apply semantic search using vector embeddings and cosine similarity
- * Falls back to returning original items if embedding generation fails
+ * Apply semantic search using vector embeddings and cosine similarity.
+ *
+ * Fail-closed by default: an `embedQuery()` failure propagates to the caller so
+ * they know the returned ranking is not what was requested. Pass
+ * `fallbackToLexical = true` to opt in to the legacy fail-open behavior where
+ * embedding errors are logged and the raw, unranked items are returned.
  */
 async function applySemanticSearch(
   items: any[],
   query: string,
   embedding: EmbeddingsInterface,
+  fallbackToLexical: boolean,
 ): Promise<any[]> {
+  let queryEmbedding: number[];
   try {
-    const queryEmbedding = await embedding.embedQuery(query);
+    queryEmbedding = await embedding.embedQuery(query);
+  } catch (error) {
+    if (!fallbackToLexical) {
+      // Fail-closed: surface the failure so the caller can retry or degrade explicitly.
+      throw error;
+    }
+    getLogger().warn(
+      'Semantic search embedding failed — returning unranked results (fallbackToLexicalOnEmbeddingFailure=true):',
+      error,
+    );
+    return items;
+  }
 
+  try {
     const itemsWithScores = items
       .map((item) => {
         if (!item.embedding || !Array.isArray(item.embedding) || item.embedding.length === 0) {
@@ -195,9 +246,13 @@ async function applySemanticSearch(
     itemsWithScores.sort((a, b) => b.score - a.score);
     return itemsWithScores.map((result) => result.item);
   } catch (error) {
-    // Log the failure for observability but fall back to returning original items
-
-    getLogger().warn('Semantic search failed, falling back to unranked results:', error);
+    if (!fallbackToLexical) {
+      throw error;
+    }
+    getLogger().warn(
+      'Semantic search ranking failed — returning unranked results (fallbackToLexicalOnEmbeddingFailure=true):',
+      error,
+    );
     return items;
   }
 }

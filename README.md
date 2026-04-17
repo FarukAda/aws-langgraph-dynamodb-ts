@@ -171,6 +171,14 @@ await history.addMessages('user-123', 'session-456', [
 const sessions = await history.listSessions('user-123');
 ```
 
+> **TTL semantics.** The session metadata item's TTL is refreshed on every
+> `addMessage`/`addMessages` call, so `listSessions()` keeps reporting the
+> session as live while activity continues. Individual message items get their
+> TTL stamped at write time and expire independently — a long-lived session can
+> develop gaps where older messages drop out while recent ones persist. If that
+> isn't acceptable, set `ttlDays` well above your expected session lifetime or
+> manage deletion explicitly via `clear()`.
+
 ### Factory (One-Liner)
 
 ```typescript
@@ -327,13 +335,16 @@ When TTL and S3 offloading are both enabled, the library automatically configure
 ### Store Filters
 
 ```typescript
-// JSONPath-based filtering: $eq, $ne, $gt, $gte, $lt, $lte
+// Supported operators: $eq, $ne, $gt, $gte, $lt, $lte, $in, $nin.
+// Filter keys are fields inside the stored `value` — the library wraps each
+// key as `value.<key>` when building the DynamoDB FilterExpression.
 const [results] = await store.batch([
   {
     namespacePrefix: ['products'],
     filter: {
-      'value.price': { $gte: 10, $lte: 100 },
-      'value.category': { $eq: 'electronics' },
+      price: { $gte: 10, $lte: 100 },
+      category: { $in: ['electronics', 'books'] },
+      status: { $ne: 'archived' },
     },
     limit: 10,
   },
@@ -348,6 +359,89 @@ const [results] = await store.batch([
 ['user', userId, 'conversations', threadId]
 ['documents', 'category', 'subcategory']
 ```
+
+### LangChain `RunnableWithMessageHistory` integration
+
+`DynamoDBChatMessageHistory` is a multi-session store; to hand a single
+`(userId, sessionId)` pair to LangChain's `RunnableWithMessageHistory`, bind it
+with `forSession()` which returns a `BaseListChatMessageHistory` compatible
+instance:
+
+```typescript
+import { RunnableWithMessageHistory } from '@langchain/core/runnables';
+import { DynamoDBChatMessageHistory } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const store = new DynamoDBChatMessageHistory({ tableName: 'chat-sessions' });
+
+const chain = new RunnableWithMessageHistory({
+  runnable,
+  getMessageHistory: (sessionId) => store.forSession(userId, sessionId),
+  inputMessagesKey: 'input',
+  historyMessagesKey: 'history',
+});
+```
+
+### Atomicity contract
+
+| Operation | Atomicity scope | Failure mode |
+|---|---|---|
+| `DynamoDBSaver.put()` | Single `TransactWrite` on the **checkpoints** table. Both the metadata item and the payload item either both persist or neither does. | Throws; any S3 objects already uploaded are best-effort cleaned, otherwise swept by the S3 lifecycle rule. |
+| `DynamoDBSaver.putWrites()` | `BatchWriteItem` against the **writes** table, chunked in groups of 25. Each 25-item batch is independently atomic at the DynamoDB level; batches are *not* transactional with each other. | On retry exhaustion, throws `BatchWriteIncompleteError` with `.succeededCount` and `.unprocessed` so callers can drive reconciliation. Items already acked by DynamoDB remain persisted. |
+| `put()` ↔ `putWrites()` | **Not** atomic across tables. LangGraph calls them as distinct steps; a crash between them leaves a checkpoint without its writes (or vice versa). | LangGraph's node-retry loop will re-invoke both; the idempotency guard on `put()` makes re-submission safe. |
+| `DynamoDBChatMessageHistory.addMessage(s)` | `TransactWriteItems` — up to 99 message items plus the metadata counter update, guarded by an optimistic `messageCount` condition. All-or-nothing per call. | Throws on conflict; the helper retries up to 5× on `ConditionalCheckFailed` sub-reasons. |
+| `DynamoDBStore.batch()` (Put) | Per-item `UpdateItem` / `PutItem`. Batch failure is per-operation. | Each op's error propagates via `Promise.all`. |
+
+### `put()` optimistic-concurrency guard
+
+Every `put()` writes metadata with a `ConditionExpression` that rejects the
+transaction when a pre-existing row for the same `(thread_id, checkpoint_id)`
+disagrees on `parent_checkpoint_id` or serializer `type`. Effect:
+
+- A fresh checkpoint always succeeds.
+- A retry after a transient error (network blip, throttling) re-issues the same
+  `(parent, type)` and succeeds as if idempotent.
+- Two concurrent workers writing the same `checkpoint_id` but with different
+  lineage surface a `ConditionalCheckFailedException` instead of silently
+  last-writer-wins. Treat it as a signal that your application is accidentally
+  racing two graphs on the same thread.
+
+### Limits and safety caps
+
+The library enforces a set of client-side caps to produce clean, actionable
+errors before DynamoDB / zlib / memory blow up on pathological inputs. All of
+them are configurable or can be raised if a legitimate workload needs more.
+
+| Cap | Default | Raise via | Hit when |
+|---|---|---|---|
+| Decompressed checkpoint size | 50 MiB | `compression.maxDecompressedBytes` | Gzip payload expands beyond the cap — defends against gzip bombs. |
+| Filter expression string | 3.5 KiB | not configurable — simplify the filter | Complex / deeply-nested `Store.batch` searches. DynamoDB's hard limit is 4 KiB. |
+| `$in` / `$nin` array size | 50 values | not configurable — split the query | Store filter with oversized enum sets. |
+| `list()` page iterations | 1000 pages | not configurable — narrow the filter or add a GSI | Filters that match almost nothing across a very large thread. |
+| `deleteThread()` page iterations | 10 000 pages | not configurable — investigate the thread | Effectively "unbounded for real workloads"; only trips on extreme datasets. |
+| Retry `cause`-chain depth | 32 | not configurable | Hostile error with an absurd nesting depth; prevents stack-overflow DoS. |
+
+### S3 encryption
+
+Offloaded checkpoint payloads are written with `ServerSideEncryption: AES256`
+by default (matching S3's own default since 2023). If your bucket policy
+enforces a different algorithm (e.g. `aws:kms`), set it explicitly:
+
+```typescript
+s3OffloadConfig: {
+  bucketName: 'my-checkpoints-bucket',
+  serverSideEncryption: 'aws:kms',
+  sseKmsKeyId: 'alias/my-key',
+}
+```
+
+IAM: the `s3:PutObject` permission granted in the minimum policy above is
+sufficient. If your bucket policy denies the `AES256` algorithm, either grant
+the key permissions required for `aws:kms` or set `serverSideEncryption`
+explicitly to match the bucket policy.
+
+### Checkpoint data migration (v<4)
+
+LangGraph bumped the `Checkpoint.v` field to **4** in `@langchain/langgraph-checkpoint@1.0`. Reading data written by older versions (v<4) requires synthesizing the `TASKS` channel from parent-checkpoint writes — this library does not migrate on read. If you have pre-1.0 data, run LangGraph's reference migration before switching to this saver, or drop the older checkpoints.
 
 <a id="configuration-reference"></a>
 
@@ -473,12 +567,44 @@ const [results] = await store.batch([
 
 ## Testing
 
+### Unit tests
+
 ```bash
-npm test              # Run all tests
+npm test              # Run all tests (672 unit tests, ~28s)
 npm test -- --coverage # With coverage
 npm run build         # Type-check + compile
 npm run lint          # ESLint
 ```
+
+### Integration tests (DynamoDB Local)
+
+A dedicated integration tier verifies the library against a real DynamoDB API
+(catches things `aws-sdk-client-mock` cannot, such as `ValidationException` on
+malformed filter expressions, `ConditionExpression` enforcement, primary-key
+attribute rules, and lex-sort assumptions on sort keys).
+
+```bash
+npm run test:integration:up    # docker compose up (amazon/dynamodb-local)
+npm run test:integration       # 15 e2e tests against localhost:8000
+npm run test:integration:down  # docker compose down
+```
+
+CI runs the same suite via a `DynamoDB Local` GitHub Actions service container
+on every pull request.
+
+### Mutation testing (Stryker)
+
+Line coverage tells you what code ran; **mutation coverage** tells you what
+tests would *catch regressions*. Run against a hot spot:
+
+```bash
+npm run test:mutate:quick  # retry.ts, compressor.ts, filter.ts (~15 min)
+npm run test:mutate        # full src/ (long — use incremental mode)
+```
+
+Stryker runs with `incremental: true`, so re-runs only re-check files that
+changed since the last run. Baseline kill-rate goal: **≥80%** for new code in
+`src/shared/` and `src/checkpointer/`.
 
 <a id="project-structure"></a>
 

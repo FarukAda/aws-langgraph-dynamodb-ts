@@ -162,6 +162,8 @@ export interface DeleteThreadActionParams {
   threadId: string;
   /** Optional S3 offloader for cleaning up offloaded payloads */
   s3Offloader?: S3Offloader;
+  /** Optional AbortSignal for cancelling in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
@@ -183,6 +185,8 @@ export interface GetTupleActionParams {
   compressor?: Compressor;
   /** Optional S3 offloader for downloading offloaded payloads */
   s3Offloader?: S3Offloader;
+  /** Optional AbortSignal for cancelling in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
@@ -210,6 +214,8 @@ export interface PutActionParams {
   compressor?: Compressor;
   /** Optional S3 offloader for large payloads */
   s3Offloader?: S3Offloader;
+  /** Optional AbortSignal for cancelling in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
@@ -237,4 +243,6 @@ export interface PutWritesActionParams {
   compressor?: Compressor;
   /** Optional S3 offloader for large write payloads */
   s3Offloader?: S3Offloader;
+  /** Optional AbortSignal for cancelling in-flight retries */
+  signal?: AbortSignal;
 }

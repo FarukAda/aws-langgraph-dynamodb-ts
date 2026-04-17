@@ -359,7 +359,7 @@ interface DynamoDBChatMessageHistoryOptions {
   /** Name of the DynamoDB table for chat history */
   tableName: string;
 
-  /** Optional: TTL in days for automatic expiration (1-1825 days) */
+  /** Optional: TTL in days for automatic expiration (1-1825 days). See "TTL semantics" below. */
   ttlDays?: number;
 
   /** Optional: AWS SDK DynamoDB client configuration */
@@ -369,6 +369,54 @@ interface DynamoDBChatMessageHistoryOptions {
   client?: DynamoDBDocument;
 }
 ```
+
+### TTL semantics — important
+
+The library applies TTL at two different levels, and they behave differently:
+
+| Item | TTL behavior | Implication |
+|---|---|---|
+| **Session metadata** | **Sliding** — refreshed on every `addMessage` / `addMessages` call | `listSessions()` keeps reporting the session as live while activity continues |
+| **Individual messages** | **Fixed at write time** — each message stamps its own expiration based on when it was added | Long-lived sessions can develop gaps where old messages drop out while newer ones persist |
+
+Concretely: with `ttlDays: 7`, a session that starts on day 0 and receives a
+new message every day keeps its metadata alive (always 7 days from latest
+write), but message 0 will expire on day 7 regardless. If you need the entire
+conversation to survive as long as the session is active, set `ttlDays` well
+above the expected session lifetime — the library does not re-stamp older
+messages on every update (that would be an N-write fan-out).
+
+### Optimistic-concurrency retry
+
+`addMessage` / `addMessages` use `TransactWriteItems` with a conditional check
+on the observed `messageCount`. Two concurrent writers on the same session
+race — the loser's transaction is cancelled with `ConditionalCheckFailed`,
+the helper re-reads `messageCount`, and retries up to **5 times** before
+giving up. Mixed-reason cancellations (e.g. `ConditionalCheckFailed` alongside
+a permanent `ValidationError`) propagate immediately rather than burning all
+5 retries.
+
+### Cancellation via `options.signal`
+
+Every method accepts an optional trailing `options` argument with an
+`AbortSignal`:
+
+```typescript
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 5000);
+
+await history.addMessages(userId, sessionId, messages, undefined, {
+  signal: controller.signal,
+});
+
+const sessions = await history.listSessions(userId, 20, {
+  signal: controller.signal,
+});
+```
+
+A pre-aborted signal short-circuits the call without consuming a retry
+attempt; mid-flight aborts cancel retry backoff and the in-flight SDK
+request.
 
 ### SessionMetadata
 

@@ -33,13 +33,25 @@ export async function deserializeCheckpointTuple(
 ): Promise<CheckpointTuple> {
   // Download checkpoint from S3 if offloaded (checked first to maintain original S3 call order)
   let rawCheckpoint: Uint8Array = checkpointData;
-  if (item.s3_checkpoint_key && s3Offloader) {
+  if (item.s3_checkpoint_key) {
+    if (!s3Offloader) {
+      throw new Error(
+        `Checkpoint references S3 key '${item.s3_checkpoint_key}' but no S3 offloader is configured. ` +
+          `Pass s3OffloadConfig when constructing DynamoDBSaver to read offloaded checkpoints.`,
+      );
+    }
     rawCheckpoint = await s3Offloader.download(item.s3_checkpoint_key);
   }
 
   // Download metadata from S3 if offloaded, otherwise use DynamoDB data
   let rawMetadata: Uint8Array = item.metadata;
-  if (item.s3_metadata_key && s3Offloader) {
+  if (item.s3_metadata_key) {
+    if (!s3Offloader) {
+      throw new Error(
+        `Checkpoint metadata references S3 key '${item.s3_metadata_key}' but no S3 offloader is configured. ` +
+          `Pass s3OffloadConfig when constructing DynamoDBSaver to read offloaded metadata.`,
+      );
+    }
     rawMetadata = await s3Offloader.download(item.s3_metadata_key);
   }
 
@@ -48,8 +60,24 @@ export async function deserializeCheckpointTuple(
     : rawCheckpoint;
   const decompressedMetadata = compressor ? await compressor.decompress(rawMetadata) : rawMetadata;
 
-  const checkpoint = (await serde.loadsTyped(item.type, decompressedCheckpoint)) as Checkpoint;
-  const metadata = (await serde.loadsTyped(item.type, decompressedMetadata)) as CheckpointMetadata;
+  // Deserialization failures are the canonical signal of data corruption, a broken
+  // serializer, or a mismatched library version. Bare serde errors are opaque
+  // ("unexpected token") — re-throw with thread/checkpoint context so production
+  // incidents are diagnosable from a single log line.
+  const checkpoint = await loadWithContext<Checkpoint>(
+    serde,
+    item.type,
+    decompressedCheckpoint,
+    'checkpoint',
+    item,
+  );
+  const metadata = await loadWithContext<CheckpointMetadata>(
+    serde,
+    item.type,
+    decompressedMetadata,
+    'metadata',
+    item,
+  );
 
   return {
     config: {
@@ -71,4 +99,26 @@ export async function deserializeCheckpointTuple(
         }
       : undefined,
   };
+}
+
+async function loadWithContext<T>(
+  serde: SerializerProtocol,
+  type: string,
+  data: Uint8Array,
+  field: 'checkpoint' | 'metadata',
+  item: CheckpointItem,
+): Promise<T> {
+  try {
+    return (await serde.loadsTyped(type, data)) as T;
+  } catch (err) {
+    const message =
+      err && typeof err === 'object' && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : String(err);
+    throw new Error(
+      `Failed to deserialize ${field} for thread_id=${item.thread_id}, ` +
+        `checkpoint_id=${item.checkpoint_id}, type=${type}: ${message}`,
+      { cause: err },
+    );
+  }
 }

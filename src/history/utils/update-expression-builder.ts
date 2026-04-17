@@ -10,8 +10,14 @@ import { calculateTTLTimestamp } from '../../shared';
 import type { DynamoDBMessageItem } from '../types';
 
 /**
- * Format a message index as a zero-padded 6-digit string
- * Supports up to 999,999 messages per session while maintaining sort order
+ * Format a message index as a zero-padded 6-digit string.
+ *
+ * @remarks
+ * The 6-digit width caps a session at **999 999 messages** while preserving
+ * lexicographic sort order on the composite SK. Beyond that, index 1 000 000
+ * would sort *before* 999 999 as a string, corrupting replay order. If you
+ * expect sessions to approach this bound, either shard by sub-session or widen
+ * the padding here (and migrate existing data).
  */
 export function formatMessageIndex(index: number): string {
   return String(index).padStart(6, '0');
@@ -65,81 +71,52 @@ export function buildMessageItems(
 }
 
 /**
- * Build or update a session metadata item
+ * Build an optimistic-lock metadata update expression.
  *
- * @param userId - User identifier
- * @param sessionId - Session identifier
- * @param title - Session title
- * @param messageCount - New total message count
+ * Writes a new messageCount conditional on the caller's observed previous value
+ * (or on the metadata item not existing yet). The caller handles the
+ * ConditionalCheckFailed case by re-reading and retrying, which prevents the
+ * counter from getting ahead of the actual messages on transient put failures.
+ *
+ * @param title - Session title (only set on first write via if_not_exists)
+ * @param newCount - Target total messageCount after this write
+ * @param expectedCount - Previously observed messageCount (undefined for new session)
  * @param ttlDays - Optional TTL in days
- * @param isNew - Whether this is a new session (sets createdAt)
  */
-export function buildMetadataUpdateExpression(
+export function buildOptimisticMetadataUpdate(
   title: string,
-  messageCount: number,
+  newCount: number,
+  expectedCount: number | undefined,
   ttlDays?: number,
 ): {
   updateExpression: string;
-  expressionAttributeValues: Record<string, any>;
-} {
-  const now = Date.now();
-  const updateParts = [
-    'updatedAt = :updatedAt',
-    'messageCount = :messageCount',
-    'itemType = :itemType',
-    'title = if_not_exists(title, :title)',
-    'createdAt = if_not_exists(createdAt, :createdAt)',
-  ];
-  const expressionAttributeValues: Record<string, any> = {
-    ':updatedAt': now,
-    ':createdAt': now,
-    ':messageCount': messageCount,
-    ':itemType': 'metadata',
-    ':title': title,
-  };
-
-  if (ttlDays !== undefined) {
-    updateParts.push('ttl = :ttl');
-    expressionAttributeValues[':ttl'] = calculateTTLTimestamp(ttlDays);
-  }
-
-  return {
-    updateExpression: `SET ${updateParts.join(', ')}`,
-    expressionAttributeValues,
-  };
-}
-
-/**
- * Build an atomic metadata update expression using DynamoDB's ADD operation
- * Atomically increments messageCount by incrementBy, preventing race conditions
- *
- * @param title - Session title (only set if not already present via if_not_exists)
- * @param incrementBy - Number to add to messageCount
- * @param ttlDays - Optional TTL in days
- * @returns UpdateExpression and ExpressionAttributeValues for DynamoDB update
- */
-export function buildAtomicMetadataUpdate(
-  title: string,
-  incrementBy: number,
-  ttlDays?: number,
-): {
-  updateExpression: string;
+  conditionExpression: string;
   expressionAttributeValues: Record<string, any>;
 } {
   const now = Date.now();
   const setParts = [
     'updatedAt = :updatedAt',
     'itemType = :itemType',
+    'messageCount = :newCount',
     'title = if_not_exists(title, :title)',
     'createdAt = if_not_exists(createdAt, :createdAt)',
   ];
   const expressionAttributeValues: Record<string, any> = {
     ':updatedAt': now,
     ':createdAt': now,
-    ':inc': incrementBy,
+    ':newCount': newCount,
     ':itemType': 'metadata',
     ':title': title,
   };
+
+  let conditionExpression: string;
+  if (expectedCount === undefined) {
+    // New session: metadata item must not exist yet.
+    conditionExpression = 'attribute_not_exists(messageCount)';
+  } else {
+    conditionExpression = 'messageCount = :expectedCount';
+    expressionAttributeValues[':expectedCount'] = expectedCount;
+  }
 
   if (ttlDays !== undefined) {
     setParts.push('ttl = :ttl');
@@ -147,7 +124,8 @@ export function buildAtomicMetadataUpdate(
   }
 
   return {
-    updateExpression: `SET ${setParts.join(', ')} ADD messageCount :inc`,
+    updateExpression: `SET ${setParts.join(', ')}`,
+    conditionExpression,
     expressionAttributeValues,
   };
 }

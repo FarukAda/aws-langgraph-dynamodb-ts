@@ -4,7 +4,12 @@
 
 import { BaseMessage } from '@langchain/core/messages';
 
-const MAX_TITLE_LENGTH = 100;
+/**
+ * Cap for *auto-generated* titles. Separate from the user-facing
+ * validation cap in utils/validation.ts (MAX_TITLE_LENGTH = 200): we deliberately
+ * produce shorter previews when auto-deriving a title from a long first message.
+ */
+const GENERATED_TITLE_MAX_LENGTH = 100;
 const DEFAULT_TITLE = 'New Conversation';
 
 /**
@@ -46,10 +51,10 @@ export function generateTitle(message: BaseMessage): string {
   }
 
   // Truncate to max length
-  if (cleaned.length <= MAX_TITLE_LENGTH) {
+  if (cleaned.length <= GENERATED_TITLE_MAX_LENGTH) {
     return cleaned;
   }
 
   // Truncate and add ellipsis
-  return cleaned.substring(0, MAX_TITLE_LENGTH - 3) + '...';
+  return cleaned.substring(0, GENERATED_TITLE_MAX_LENGTH - 3) + '...';
 }

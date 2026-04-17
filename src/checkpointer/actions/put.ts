@@ -4,6 +4,7 @@ import {
   withDynamoDBRetry,
   calculateTTLTimestamp,
   calculateTTLTimestampFromSeconds,
+  cleanUpS3Orphans,
 } from '../../shared';
 import {
   type CheckpointItem,
@@ -112,25 +113,90 @@ export const putAction = async (params: PutActionParams): Promise<RunnableConfig
     payloadItem.ttl = ttl;
   }
 
-  // Atomic write: both items must succeed or both fail
-  await withDynamoDBRetry(async () => {
-    await params.client.transactWrite({
-      TransactItems: [
-        {
-          Put: {
-            TableName: params.checkpointsTableName,
-            Item: metadataItem,
-          },
-        },
-        {
-          Put: {
-            TableName: params.checkpointsTableName,
-            Item: payloadItem,
-          },
-        },
-      ],
-    });
-  });
+  // Optimistic-concurrency guard on the metadata Put.
+  //
+  // Two concurrent workers racing on the same (thread_id, checkpoint_id) with
+  // *different* parent/type (= divergent lineage) is a bug we want to surface,
+  // not silently resolve last-writer-wins. Two writers agreeing on parent+type
+  // (= legitimate idempotent retry after a transient error) must still succeed.
+  //
+  //   attribute_not_exists(checkpoint_id)                 -- first write ever: OK
+  //   OR (#type = :expected_type AND (                     -- OR same content as prior:
+  //         attribute_not_exists(parent_checkpoint_id)     --    initial checkpoint
+  //         OR parent_checkpoint_id = :expected_parent     --    with named parent
+  //       ))
+  //
+  // The payload Put is left unconditional: payloads are keyed by PAYLOAD#<id>
+  // and contain content-for-content equal data for a given checkpoint, so an
+  // overwrite on retry is always safe.
+  // Normalize `''` to `undefined` so an empty-string parent and an unset parent
+  // are treated as the same "no parent" state. This keeps the ConditionExpression
+  // stable across idempotent retries that might represent "initial checkpoint"
+  // either way (e.g. a migration or a caller that stringifies nulls).
+  const rawExpectedParent = params.config.configurable?.checkpoint_id;
+  const expectedParent =
+    typeof rawExpectedParent === 'string' && rawExpectedParent.length > 0
+      ? rawExpectedParent
+      : undefined;
+  const metadataExpressionAttributeNames: Record<string, string> = { '#type': 'type' };
+  const metadataExpressionAttributeValues: Record<string, unknown> = {
+    ':expected_type': type1,
+  };
+  const parentClause =
+    expectedParent !== undefined
+      ? 'parent_checkpoint_id = :expected_parent'
+      : 'attribute_not_exists(parent_checkpoint_id)';
+  if (expectedParent !== undefined) {
+    metadataExpressionAttributeValues[':expected_parent'] = expectedParent;
+  }
+  const metadataConditionExpression =
+    'attribute_not_exists(checkpoint_id) ' + `OR (#type = :expected_type AND (${parentClause}))`;
+
+  // Atomic write: both items must succeed or both fail.
+  // On failure, best-effort-clean any S3 objects we uploaded so they don't linger
+  // until the lifecycle rule sweeps them. Errors during cleanup are only logged.
+  try {
+    await withDynamoDBRetry(
+      async () => {
+        await params.client.transactWrite({
+          TransactItems: [
+            {
+              Put: {
+                TableName: params.checkpointsTableName,
+                Item: metadataItem,
+                ConditionExpression: metadataConditionExpression,
+                ExpressionAttributeNames: metadataExpressionAttributeNames,
+                ExpressionAttributeValues: metadataExpressionAttributeValues,
+              },
+            },
+            { Put: { TableName: params.checkpointsTableName, Item: payloadItem } },
+          ],
+        });
+      },
+      { signal: params.signal },
+    );
+  } catch (err) {
+    // Skip S3 orphan cleanup on the optimistic-lock conflict path. S3 keys are
+    // derived deterministically from (thread_id, checkpoint_id), so a divergent
+    // put() on the same checkpoint_id uploads to the *same* keys as the
+    // canonical write already occupies — cleaning them up after a
+    // ConditionalCheckFailed would delete live data still referenced by the
+    // winning transaction. The S3 lifecycle rule is the safe backstop for the
+    // rare case where an overwrite did occur; data integrity beats a few stale
+    // bytes in S3.
+    const isConditionalFailure =
+      err &&
+      typeof err === 'object' &&
+      ('name' in err
+        ? (err as { name?: unknown }).name === 'ConditionalCheckFailedException' ||
+          (err as { name?: unknown }).name === 'TransactionCanceledException'
+        : false);
+
+    if (params.s3Offloader && !isConditionalFailure) {
+      await cleanUpS3Orphans(params.s3Offloader, [s3CheckpointKey, s3MetadataKey], 'put failure');
+    }
+    throw err;
+  }
 
   return {
     configurable: {

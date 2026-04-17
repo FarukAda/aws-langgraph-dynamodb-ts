@@ -26,6 +26,10 @@ describe('History Validation', () => {
       allowEmpty: false,
       errorClass: HistoryValidationError,
     });
+
+    it('rejects "#" to prevent composite-sort-key collision', () => {
+      expect(() => validateUserId('user#admin')).toThrow(HistoryValidationError);
+    });
   });
 
   describe('validateSessionId', () => {
@@ -35,6 +39,11 @@ describe('History Validation', () => {
       maxLength: 256,
       allowEmpty: false,
       errorClass: HistoryValidationError,
+    });
+
+    it('rejects "#" to prevent sort-key injection', () => {
+      expect(() => validateSessionId('session#msg#000001')).toThrow(HistoryValidationError);
+      expect(() => validateSessionId('session#')).toThrow(HistoryValidationError);
     });
   });
 

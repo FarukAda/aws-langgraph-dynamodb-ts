@@ -309,7 +309,9 @@ describe('S3 Offloading Integration', () => {
       expect(lifecycleCalls.length).toBe(2);
 
       const putCall = lifecycleCalls[1][0];
-      expect(putCall.LifecycleConfiguration.Rules[0].ID).toBe('langgraph-ttl-30d');
+      expect(putCall.LifecycleConfiguration.Rules[0].ID).toBe(
+        'langgraph-ttl-langgraph-checkpoints',
+      );
       expect(putCall.LifecycleConfiguration.Rules[0].Expiration.Days).toBe(30);
     });
 
@@ -332,7 +334,9 @@ describe('S3 Offloading Integration', () => {
         (call: any) => call[0]?._type === 'PutLifecycle',
       );
       expect(putCalls.length).toBe(1);
-      expect(putCalls[0][0].LifecycleConfiguration.Rules[0].ID).toBe('langgraph-ttl-7d');
+      expect(putCalls[0][0].LifecycleConfiguration.Rules[0].ID).toBe(
+        'langgraph-ttl-langgraph-checkpoints',
+      );
       expect(putCalls[0][0].LifecycleConfiguration.Rules[0].Expiration.Days).toBe(7);
     });
 

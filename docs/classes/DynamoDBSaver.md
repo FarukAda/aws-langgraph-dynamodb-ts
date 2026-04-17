@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.1.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.2.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBSaver
 
-Defined in: [checkpointer/index.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/checkpointer/index.ts#L34)
+Defined in: [checkpointer/index.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L51)
 
 DynamoDB-based checkpoint saver for LangGraph.
 Provides persistent storage for checkpoints and pending writes.
@@ -27,7 +27,7 @@ affect DynamoDB key ordering, which relies on checkpoint IDs.
 
 > **new DynamoDBSaver**(`options`): `DynamoDBSaver`
 
-Defined in: [checkpointer/index.ts:59](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/checkpointer/index.ts#L59)
+Defined in: [checkpointer/index.ts:76](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L76)
 
 Create a new DynamoDB checkpoint saver
 
@@ -51,9 +51,9 @@ Configuration options for the saver
 
 ### deleteThread()
 
-> **deleteThread**(`threadId`): `Promise`\<`void`\>
+> **deleteThread**(`threadId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/index.ts:113](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/checkpointer/index.ts#L113)
+Defined in: [checkpointer/index.ts:127](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L127)
 
 Delete a thread and all its checkpoints and writes
 
@@ -64,6 +64,14 @@ Delete a thread and all its checkpoints and writes
 `string`
 
 The thread ID to delete
+
+##### options?
+
+###### signal?
+
+`AbortSignal`
+
+Optional AbortSignal for cancelling in-flight retries
 
 #### Returns
 
@@ -83,7 +91,7 @@ Error if validation fails or operation fails
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/index.ts:100](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/checkpointer/index.ts#L100)
+Defined in: [checkpointer/index.ts:113](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L113)
 
 Release underlying DynamoDB and S3 client resources.
 Call this when the saver is no longer needed to prevent resource leaks.
@@ -99,7 +107,7 @@ Skips DynamoDB client cleanup if a shared client was injected via options.
 
 > **getTuple**(`config`): `Promise`\<`CheckpointTuple` \| `undefined`\>
 
-Defined in: [checkpointer/index.ts:130](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/checkpointer/index.ts#L130)
+Defined in: [checkpointer/index.ts:147](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L147)
 
 Get a checkpoint tuple from DynamoDB
 
@@ -109,7 +117,9 @@ Get a checkpoint tuple from DynamoDB
 
 `RunnableConfig`
 
-Runnable configuration containing thread_id and optional checkpoint_id
+Runnable configuration containing thread_id and optional checkpoint_id.
+  `config.signal` is honored as an AbortSignal: in-flight retries short-circuit
+  and the returned promise rejects with the signal's abort reason.
 
 #### Returns
 
@@ -131,7 +141,7 @@ Error if validation fails or operation fails
 
 > **list**(`config`, `options`): `AsyncGenerator`\<`CheckpointTuple`\>
 
-Defined in: [checkpointer/index.ts:204](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/checkpointer/index.ts#L204)
+Defined in: [checkpointer/index.ts:226](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L226)
 
 List checkpoints for a thread
 
@@ -145,9 +155,9 @@ Runnable configuration containing thread_id
 
 ##### options
 
-List options including limit, before checkpoint, and metadata filter
+`CheckpointListOptions` \| `undefined`
 
-`CheckpointListOptions` | `undefined`
+List options including limit, before checkpoint, and metadata filter
 
 #### Returns
 
@@ -171,7 +181,7 @@ Error if validation fails or operation fails
 
 > **put**(`config`, `checkpoint`, `metadata`, `newVersions`): `Promise`\<`RunnableConfig`\<`Record`\<`string`, `any`\>\>\>
 
-Defined in: [checkpointer/index.ts:152](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/checkpointer/index.ts#L152)
+Defined in: [checkpointer/index.ts:171](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L171)
 
 Save a checkpoint to DynamoDB
 
@@ -181,7 +191,8 @@ Save a checkpoint to DynamoDB
 
 `RunnableConfig`
 
-Runnable configuration
+Runnable configuration. `config.signal` is honored as an
+  AbortSignal and short-circuits retry backoff.
 
 ##### checkpoint
 
@@ -221,7 +232,7 @@ Error if validation fails or operation fails
 
 > **putWrites**(`config`, `writes`, `taskId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/index.ts:181](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/checkpointer/index.ts#L181)
+Defined in: [checkpointer/index.ts:202](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L202)
 
 Save pending writes to DynamoDB
 
@@ -231,7 +242,8 @@ Save pending writes to DynamoDB
 
 `RunnableConfig`
 
-Runnable configuration
+Runnable configuration. `config.signal` is honored as an
+  AbortSignal and short-circuits retry backoff.
 
 ##### writes
 

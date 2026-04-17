@@ -7,6 +7,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { BaseMessage } from '@langchain/core/messages';
 
+import { resolveDynamoDBClient } from '../shared';
 import {
   getMessagesAction,
   addMessageAction,
@@ -14,8 +15,17 @@ import {
   clearAction,
   listSessionsAction,
 } from './actions';
+import { DynamoDBSessionChatMessageHistory } from './session-adapter';
 import type { DynamoDBChatMessageHistoryOptions, SessionMetadata } from './types';
 
+/**
+ * DynamoDB-backed chat message history with per-message-item storage.
+ *
+ * @remarks
+ * Each session is capped at ~999 999 messages by the 6-digit message-index
+ * sort-key padding. Sessions approaching this bound should be sharded by the
+ * caller; see `formatMessageIndex` for details.
+ */
 export class DynamoDBChatMessageHistory {
   private readonly ddbClient: DynamoDBClient | undefined;
   private readonly client: DynamoDBDocument;
@@ -33,15 +43,11 @@ export class DynamoDBChatMessageHistory {
    * @param options.client - Optional pre-built DynamoDBDocument client (takes precedence over clientConfig)
    */
   constructor(options: DynamoDBChatMessageHistoryOptions) {
-    if (options.client) {
-      this.client = options.client;
-      this.ddbClient = undefined;
-      this.ownsClient = false;
-    } else {
-      this.ddbClient = new DynamoDBClient(options.clientConfig || {});
-      this.client = DynamoDBDocument.from(this.ddbClient);
-      this.ownsClient = true;
-    }
+    ({
+      ddbClient: this.ddbClient,
+      client: this.client,
+      ownsClient: this.ownsClient,
+    } = resolveDynamoDBClient(options));
     this.tableName = options.tableName;
     this.ttlDays = options.ttlDays;
   }
@@ -66,12 +72,17 @@ export class DynamoDBChatMessageHistory {
    * @returns Array of BaseMessage objects in chronological order
    * @throws Error if the operation fails or validation fails
    */
-  async getMessages(userId: string, sessionId: string): Promise<BaseMessage[]> {
+  async getMessages(
+    userId: string,
+    sessionId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<BaseMessage[]> {
     return await getMessagesAction({
       client: this.client,
       tableName: this.tableName,
       userId,
       sessionId,
+      signal: options.signal,
     });
   }
 
@@ -90,6 +101,7 @@ export class DynamoDBChatMessageHistory {
     sessionId: string,
     message: BaseMessage,
     title?: string,
+    options: { signal?: AbortSignal } = {},
   ): Promise<void> {
     await addMessageAction({
       client: this.client,
@@ -99,6 +111,7 @@ export class DynamoDBChatMessageHistory {
       message,
       title,
       ttlDays: this.ttlDays,
+      signal: options.signal,
     });
   }
 
@@ -118,6 +131,7 @@ export class DynamoDBChatMessageHistory {
     sessionId: string,
     messages: BaseMessage[],
     title?: string,
+    options: { signal?: AbortSignal } = {},
   ): Promise<void> {
     await addMessagesAction({
       client: this.client,
@@ -127,6 +141,7 @@ export class DynamoDBChatMessageHistory {
       messages,
       title,
       ttlDays: this.ttlDays,
+      signal: options.signal,
     });
   }
 
@@ -138,12 +153,17 @@ export class DynamoDBChatMessageHistory {
    * @param sessionId - Session identifier
    * @throws Error if the operation fails or validation fails
    */
-  async clear(userId: string, sessionId: string): Promise<void> {
+  async clear(
+    userId: string,
+    sessionId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<void> {
     await clearAction({
       client: this.client,
       tableName: this.tableName,
       userId,
       sessionId,
+      signal: options.signal,
     });
   }
 
@@ -156,12 +176,44 @@ export class DynamoDBChatMessageHistory {
    * @returns Array of session metadata, sorted by most recent first
    * @throws Error if the operation fails or validation fails
    */
-  async listSessions(userId: string, limit?: number): Promise<SessionMetadata[]> {
+  async listSessions(
+    userId: string,
+    limit?: number,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<SessionMetadata[]> {
     return await listSessionsAction({
       client: this.client,
       tableName: this.tableName,
       userId,
       limit,
+      signal: options.signal,
+    });
+  }
+
+  /**
+   * Bind this store to a single `(userId, sessionId)` pair and return a
+   * `BaseListChatMessageHistory` compatible instance — the shape LangChain's
+   * `RunnableWithMessageHistory` expects from `getMessageHistory(sessionId)`.
+   *
+   * @example
+   * ```ts
+   * const store = new DynamoDBChatMessageHistory({ tableName });
+   * new RunnableWithMessageHistory({
+   *   runnable,
+   *   getMessageHistory: (sessionId) => store.forSession(userId, sessionId),
+   *   // ...
+   * });
+   * ```
+   */
+  forSession(userId: string, sessionId: string): DynamoDBSessionChatMessageHistory {
+    return new DynamoDBSessionChatMessageHistory({
+      client: this.client,
+      tableName: this.tableName,
+      userId,
+      sessionId,
+      ttlDays: this.ttlDays,
     });
   }
 }
+
+export { DynamoDBSessionChatMessageHistory } from './session-adapter';

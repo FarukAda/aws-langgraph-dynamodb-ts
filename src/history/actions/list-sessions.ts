@@ -2,7 +2,7 @@
  * List all sessions for a user
  */
 
-import { MAX_TOTAL_ITEMS_IN_MEMORY } from '../../shared';
+import { MAX_TOTAL_ITEMS_IN_MEMORY, getLogger } from '../../shared';
 import type { ListSessionsActionParams, SessionMetadata } from '../types';
 import { validateUserId, validateLimit, withDynamoDBRetry } from '../utils';
 
@@ -28,7 +28,7 @@ import { validateUserId, validateLimit, withDynamoDBRetry } from '../utils';
 export const listSessionsAction = async (
   params: ListSessionsActionParams,
 ): Promise<SessionMetadata[]> => {
-  const { client, tableName, userId, limit } = params;
+  const { client, tableName, userId, limit, signal } = params;
 
   // Validate inputs
   validateUserId(userId);
@@ -41,19 +41,22 @@ export const listSessionsAction = async (
   // DynamoDB sorts by SK (sessionId), not updatedAt, so we cannot rely on
   // DynamoDB's Limit to return the most recent sessions
   do {
-    const result = await withDynamoDBRetry(async () => {
-      return await client.query({
-        TableName: tableName,
-        KeyConditionExpression: 'userId = :userId',
-        FilterExpression: 'itemType = :metadata',
-        ExpressionAttributeValues: {
-          ':userId': userId,
-          ':metadata': 'metadata',
-        },
-        ProjectionExpression: 'sessionId, title, createdAt, updatedAt, messageCount',
-        ExclusiveStartKey: lastEvaluatedKey,
-      });
-    });
+    const result = await withDynamoDBRetry(
+      async () => {
+        return await client.query({
+          TableName: tableName,
+          KeyConditionExpression: 'userId = :userId',
+          FilterExpression: 'itemType = :metadata',
+          ExpressionAttributeValues: {
+            ':userId': userId,
+            ':metadata': 'metadata',
+          },
+          ProjectionExpression: 'sessionId, title, createdAt, updatedAt, messageCount',
+          ExclusiveStartKey: lastEvaluatedKey,
+        });
+      },
+      { signal },
+    );
 
     if (!result.Items || result.Items.length === 0) {
       break;
@@ -70,8 +73,13 @@ export const listSessionsAction = async (
 
     sessions.push(...mappedSessions);
 
-    // Safety limit: prevent unbounded memory growth
+    // Safety limit: prevent unbounded memory growth. Users near this bound should
+    // add a (userId, updatedAt) GSI — see method JSDoc.
     if (sessions.length >= MAX_TOTAL_ITEMS_IN_MEMORY) {
+      getLogger().warn(
+        `listSessions truncated at ${MAX_TOTAL_ITEMS_IN_MEMORY} items for userId="${userId}"; ` +
+          `older sessions are not returned. Add a GSI on (userId, updatedAt) for full coverage.`,
+      );
       break;
     }
 

@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test *)",
+      "Bash(npx jest *)",
+      "Bash(npm run *)",
+      "Bash(node -e ' *)",
+      "Bash(npx jscpd *)",
+      "Bash(npm audit *)",
+      "Bash(xargs grep *)",
+      "Bash(npm outdated *)",
+      "Bash(grep *)",
+      "WebSearch",
+      "Bash(npm view *)",
+      "Bash(node -e \"const zlib = require\\('zlib'\\); const data = Buffer.alloc\\(100*1024*1024\\); zlib.gunzip\\(Buffer.from\\([0x1f, 0x8b]\\), {maxOutputLength: 1024}, \\(err\\) => console.log\\(err?.code || 'no error'\\)\\)\")",
+      "Bash(npm install *)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(NODE_OPTIONS='--experimental-vm-modules' ./node_modules/.bin/stryker run --mutate 'src/shared/utils/retry.ts' --reporters progress,clear-text)",
+      "Bash(curl -s http://localhost:4566/_localstack/health)",
+      "Bash(curl -v http://localhost:4566/_localstack/health)",
+      "Bash(curl -sf http://localhost:4566/_localstack/health)",
+      "Read(//tmp/**)",
+      "Bash(npx depcheck *)"
+    ]
+  }
+}

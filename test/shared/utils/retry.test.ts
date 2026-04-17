@@ -53,6 +53,15 @@ describe('retry utility', () => {
       expect(fn).toHaveBeenCalledTimes(2);
     });
 
+    it('should NOT retry on TransactionCanceledException (CancellationReasons may be permanent)', async () => {
+      const fn = jest.fn().mockRejectedValue({ name: 'TransactionCanceledException' });
+
+      await expect(withRetry(fn, { maxAttempts: 3, baseDelayMs: 10 })).rejects.toMatchObject({
+        name: 'TransactionCanceledException',
+      });
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
     it('should retry on ServiceUnavailable', async () => {
       const fn = jest
         .fn()
@@ -168,7 +177,11 @@ describe('retry utility', () => {
       expect(fn).toHaveBeenCalledTimes(3);
     });
 
-    it('should apply exponential backoff with jitter', async () => {
+    it('should apply bounded backoff with full jitter', async () => {
+      // With full jitter, delay is random(0, min(cap, base * 2^(attempt-1))). We can't
+      // assert a lower bound because a legitimate random draw can return ~0; instead we
+      // assert the upper bound: two retries at base=50, cap=1000 cannot exceed 50 + 100
+      // plus a generous scheduler margin.
       const fn = jest
         .fn()
         .mockRejectedValueOnce({ name: 'ThrottlingException' })
@@ -177,11 +190,11 @@ describe('retry utility', () => {
 
       const startTime = Date.now();
       await withRetry(fn, { maxAttempts: 3, baseDelayMs: 50, maxDelayMs: 1000 });
-      const endTime = Date.now();
+      const elapsed = Date.now() - startTime;
 
       expect(fn).toHaveBeenCalledTimes(3);
-      // Should have some delay (at least baseDelayMs * 2 attempts)
-      expect(endTime - startTime).toBeGreaterThan(50);
+      // Upper bound: 50 (attempt 1 cap) + 100 (attempt 2 cap) + 300ms scheduler slack.
+      expect(elapsed).toBeLessThan(450);
     });
 
     it('should respect maxDelayMs', async () => {
@@ -209,6 +222,63 @@ describe('retry utility', () => {
       const result = await withRetry(fn, { maxAttempts: 3, baseDelayMs: 10 });
       expect(result).toBe('success');
       expect(fn).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([['ECONNRESET'], ['ECONNREFUSED'], ['ETIMEDOUT'], ['EPIPE'], ['EAI_AGAIN']])(
+      'should retry on Node network error code %s',
+      async (code) => {
+        const fn = jest
+          .fn()
+          .mockRejectedValueOnce({ code, message: `socket ${code}` })
+          .mockResolvedValueOnce('success');
+
+        const result = await withRetry(fn, { maxAttempts: 3, baseDelayMs: 1 });
+        expect(result).toBe('success');
+        expect(fn).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it('should retry when retryable error is nested in cause chain', async () => {
+      const cause = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+      const wrapper = Object.assign(new Error('request failed'), { cause });
+      const fn = jest.fn().mockRejectedValueOnce(wrapper).mockResolvedValueOnce('success');
+
+      const result = await withRetry(fn, { maxAttempts: 3, baseDelayMs: 1 });
+      expect(result).toBe('success');
+      expect(fn).toHaveBeenCalledTimes(2);
+    });
+
+    it('should reject immediately when signal is already aborted', async () => {
+      const controller = new AbortController();
+      controller.abort(new Error('pre-aborted'));
+      const fn = jest.fn(async () => 'success');
+
+      await expect(withRetry(fn, { signal: controller.signal })).rejects.toThrow('pre-aborted');
+      expect(fn).not.toHaveBeenCalled();
+    });
+
+    it('should short-circuit backoff when signal aborts mid-retry', async () => {
+      const controller = new AbortController();
+      const fn = jest.fn().mockRejectedValue({ name: 'ThrottlingException' });
+
+      // Abort shortly after the first failure so the retry loop is in the middle of sleep().
+      const abortTimer = setTimeout(() => controller.abort(new Error('timeout')), 10);
+
+      const startTime = Date.now();
+      await expect(
+        withRetry(fn, {
+          maxAttempts: 10,
+          baseDelayMs: 5000,
+          maxDelayMs: 5000,
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow('timeout');
+      const elapsed = Date.now() - startTime;
+
+      clearTimeout(abortTimer);
+      // Should have cancelled the sleep far before the 5000ms backoff would expire.
+      expect(elapsed).toBeLessThan(500);
+      expect(fn).toHaveBeenCalledTimes(1);
     });
   });
 

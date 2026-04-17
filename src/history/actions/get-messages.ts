@@ -20,7 +20,7 @@ import { validateUserId, validateSessionId, withDynamoDBRetry } from '../utils';
 export const getMessagesAction = async (
   params: GetMessagesActionParams,
 ): Promise<BaseMessage[]> => {
-  const { client, tableName, userId, sessionId } = params;
+  const { client, tableName, userId, sessionId, signal } = params;
 
   // Validate inputs
   validateUserId(userId);
@@ -39,17 +39,20 @@ export const getMessagesAction = async (
       throw new Error('getMessages operation exceeded maximum iteration limit');
     }
 
-    const result = await withDynamoDBRetry(async () => {
-      return await client.query({
-        TableName: tableName,
-        KeyConditionExpression: 'userId = :userId AND begins_with(sessionId, :prefix)',
-        ExpressionAttributeValues: {
-          ':userId': userId,
-          ':prefix': messagePrefix,
-        },
-        ExclusiveStartKey: lastEvaluatedKey,
-      });
-    });
+    const result = await withDynamoDBRetry(
+      async () => {
+        return await client.query({
+          TableName: tableName,
+          KeyConditionExpression: 'userId = :userId AND begins_with(sessionId, :prefix)',
+          ExpressionAttributeValues: {
+            ':userId': userId,
+            ':prefix': messagePrefix,
+          },
+          ExclusiveStartKey: lastEvaluatedKey,
+        });
+      },
+      { signal },
+    );
 
     if (result.Items && result.Items.length > 0) {
       // Prevent memory exhaustion

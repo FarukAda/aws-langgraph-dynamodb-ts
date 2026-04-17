@@ -1,10 +1,15 @@
+import { setGlobalLogger, resetLogger, getLogger } from '../../../src/shared/utils/logger';
 import { searchOperationAction } from '../../../src/store/actions';
 import { createMockStoreItem } from '../../shared/fixtures/test-data';
 import {
   createMockDynamoDBClient,
   mockDynamoDBQueryPaginated,
 } from '../../shared/mocks/dynamodb-mock';
-import { createMockEmbeddingWithVector } from '../../shared/mocks/embedding-mock';
+import {
+  createMockEmbedding,
+  createMockEmbeddingWithVector,
+  hashEmbedding,
+} from '../../shared/mocks/embedding-mock';
 
 describe('searchOperationAction', () => {
   describe('basic search without semantic search', () => {
@@ -325,7 +330,40 @@ describe('searchOperationAction', () => {
       expect(results[0].key).toBe('doc2');
     });
 
-    it('should fallback to original items on embedding error', async () => {
+    it('should throw on embedding error by default (fail-closed)', async () => {
+      const { ddbDocMock, client } = createMockDynamoDBClient();
+      const embedding = {
+        embedQuery: jest.fn().mockRejectedValue(new Error('Embedding failed')),
+      } as any;
+
+      ddbDocMock.onAnyCommand().resolvesOnce({
+        Items: [
+          {
+            ...createMockStoreItem('user-123', ['docs'], 'doc1', { text: 'hello' }),
+            embedding: [[1, 0, 0]],
+          },
+        ],
+        ScannedCount: 1,
+        LastEvaluatedKey: undefined,
+      });
+
+      await expect(
+        searchOperationAction({
+          client,
+          memoryTableName: 'memory',
+          userId: 'user-123',
+          op: {
+            namespacePrefix: ['docs'],
+            limit: 10,
+            offset: 0,
+            query: 'hello',
+          },
+          embedding,
+        }),
+      ).rejects.toThrow('Embedding failed');
+    });
+
+    it('should fall back to unranked items when fallbackToLexicalOnEmbeddingFailure=true', async () => {
       const { ddbDocMock, client } = createMockDynamoDBClient();
       const embedding = {
         embedQuery: jest.fn().mockRejectedValue(new Error('Embedding failed')),
@@ -355,10 +393,138 @@ describe('searchOperationAction', () => {
           query: 'hello',
         },
         embedding,
+        fallbackToLexicalOnEmbeddingFailure: true,
       });
 
       expect(results).toHaveLength(1);
       expect(results[0].key).toBe('doc1');
+    });
+  });
+
+  describe('semantic search ranking (hash-based embeddings)', () => {
+    // These tests exercise the full similarity-ranking pipeline with
+    // embeddings derived from the input text — same inputs → same vectors,
+    // different inputs → different vectors. Earlier tests used orthogonal
+    // [1,0,0] / [0,1,0] vectors to verify the cosine math; these verify that
+    // the end-to-end path correctly distinguishes content, not just geometry.
+
+    it('ranks an exact-text match above unrelated content with score 1', async () => {
+      const { ddbDocMock, client } = createMockDynamoDBClient();
+      const embedding = createMockEmbedding();
+
+      // Each item carries the embedding its text would produce in real usage.
+      const items = [
+        {
+          ...createMockStoreItem('user-123', ['docs'], 'alpha', { text: 'the quick brown fox' }),
+          embedding: [hashEmbedding('the quick brown fox')],
+        },
+        {
+          ...createMockStoreItem('user-123', ['docs'], 'beta', { text: 'unrelated lorem ipsum' }),
+          embedding: [hashEmbedding('unrelated lorem ipsum')],
+        },
+        {
+          ...createMockStoreItem('user-123', ['docs'], 'gamma', { text: 'completely different' }),
+          embedding: [hashEmbedding('completely different')],
+        },
+      ];
+
+      ddbDocMock.onAnyCommand().resolvesOnce({
+        Items: items,
+        ScannedCount: items.length,
+        LastEvaluatedKey: undefined,
+      });
+
+      const results = await searchOperationAction({
+        client,
+        memoryTableName: 'memory',
+        userId: 'user-123',
+        op: { namespacePrefix: ['docs'], limit: 10, offset: 0, query: 'the quick brown fox' },
+        embedding,
+      });
+
+      expect(results).toHaveLength(3);
+      // Exact-text match at rank 1 with cosine similarity 1 (identical vectors).
+      expect(results[0].key).toBe('alpha');
+      expect(results[0].score).toBeCloseTo(1, 6);
+      // Other items have scores strictly less than 1 — distinct content
+      // produces distinct vectors.
+      expect(results[1].score).toBeLessThan(1);
+      expect(results[2].score).toBeLessThan(1);
+    });
+
+    it('produces deterministic rank ordering across re-runs of the same query', async () => {
+      const { ddbDocMock, client } = createMockDynamoDBClient();
+      const embedding = createMockEmbedding();
+
+      const items = [
+        {
+          ...createMockStoreItem('user-123', ['docs'], 'a', { text: 'cats are great' }),
+          embedding: [hashEmbedding('cats are great')],
+        },
+        {
+          ...createMockStoreItem('user-123', ['docs'], 'b', { text: 'dogs are best' }),
+          embedding: [hashEmbedding('dogs are best')],
+        },
+        {
+          ...createMockStoreItem('user-123', ['docs'], 'c', { text: 'fish swim' }),
+          embedding: [hashEmbedding('fish swim')],
+        },
+      ];
+
+      ddbDocMock.onAnyCommand().resolves({
+        Items: items,
+        ScannedCount: items.length,
+        LastEvaluatedKey: undefined,
+      });
+
+      const run = (): Promise<string[]> =>
+        searchOperationAction({
+          client,
+          memoryTableName: 'memory',
+          userId: 'user-123',
+          op: { namespacePrefix: ['docs'], limit: 10, offset: 0, query: 'pets' },
+          embedding,
+        }).then((r) => r.map((i) => i.key));
+
+      const first = await run();
+      const second = await run();
+      const third = await run();
+
+      // Same corpus + same query → same rank order every time.
+      expect(first).toEqual(second);
+      expect(second).toEqual(third);
+      expect(new Set(first)).toEqual(new Set(['a', 'b', 'c']));
+    });
+
+    it('assigns strictly monotonic scores from best to worst match', async () => {
+      const { ddbDocMock, client } = createMockDynamoDBClient();
+      const embedding = createMockEmbedding();
+
+      const corpus = ['apple', 'banana', 'cherry', 'durian', 'elderberry'];
+      const items = corpus.map((text) => ({
+        ...createMockStoreItem('user-123', ['docs'], text, { text }),
+        embedding: [hashEmbedding(text)],
+      }));
+
+      ddbDocMock.onAnyCommand().resolvesOnce({
+        Items: items,
+        ScannedCount: items.length,
+        LastEvaluatedKey: undefined,
+      });
+
+      const results = await searchOperationAction({
+        client,
+        memoryTableName: 'memory',
+        userId: 'user-123',
+        op: { namespacePrefix: ['docs'], limit: 10, offset: 0, query: 'apple' },
+        embedding,
+      });
+
+      // Every rank's score >= the next. Exact match first with score 1.
+      expect(results[0].score).toBeCloseTo(1, 6);
+      for (let i = 0; i < results.length - 1; i++) {
+        expect(results[i].score).toBeGreaterThanOrEqual(results[i + 1].score as number);
+      }
     });
   });
 
@@ -428,11 +594,14 @@ describe('searchOperationAction', () => {
     it('should throw error when exceeding max iterations', async () => {
       const { ddbDocMock, client } = createMockDynamoDBClient();
 
-      // Mock infinite pagination - each iteration returns 1 item
-      // With limit=1000 and 1 item per iteration, needs >100 iterations to satisfy the limit
+      // Simulate a heavily-filtered paginated query that returns 0 matches per
+      // page but always has LastEvaluatedKey. Without the old scannedCount break
+      // the loop runs until MAX_LOOP_ITERATIONS trips, which is the safety we
+      // want to verify.
       ddbDocMock.onAnyCommand().resolves({
-        Items: [createMockStoreItem('user-123', ['docs'], 'doc1', { title: 'Doc 1' })],
-        ScannedCount: 1,
+        Items: [],
+        Count: 0,
+        ScannedCount: 50,
         LastEvaluatedKey: { user_id: 'user-123', namespace_key: 'docs#doc1' },
       });
 
@@ -443,8 +612,9 @@ describe('searchOperationAction', () => {
           userId: 'user-123',
           op: {
             namespacePrefix: ['docs'],
-            limit: 1000,
+            limit: 10,
             offset: 0,
+            filter: { 'value.title': 'never-matches' },
           },
         }),
       ).rejects.toThrow('Search operation exceeded maximum iteration limit');
@@ -666,6 +836,53 @@ describe('searchOperationAction', () => {
       });
 
       expect(results).toEqual([]);
+    });
+  });
+
+  describe('semantic search corpus truncation', () => {
+    it('returns a partial ranked corpus + warns when semantic search hits the memory cap', async () => {
+      const warn = jest.fn();
+      const origLogger = getLogger();
+      setGlobalLogger({
+        info: origLogger.info,
+        warn,
+        error: origLogger.error,
+        debug: origLogger.debug,
+      });
+
+      try {
+        const { ddbDocMock, client } = createMockDynamoDBClient();
+
+        // Two pages that together exceed MAX_TOTAL_ITEMS_IN_MEMORY (10 000).
+        const firstPage = Array.from({ length: 9000 }, (_, i) =>
+          createMockStoreItem('user-123', ['docs'], `doc${i}`, { text: `t${i}` }),
+        );
+        const secondPage = Array.from({ length: 2000 }, (_, i) =>
+          createMockStoreItem('user-123', ['docs'], `more${i}`, { text: `m${i}` }),
+        );
+
+        ddbDocMock
+          .onAnyCommand()
+          .resolvesOnce({ Items: firstPage, ScannedCount: 9000, LastEvaluatedKey: { k: 'x' } })
+          .resolvesOnce({ Items: secondPage, ScannedCount: 2000, LastEvaluatedKey: undefined });
+
+        const embedding = createMockEmbeddingWithVector([0.1, 0.2, 0.3]);
+
+        const results = await searchOperationAction({
+          client,
+          memoryTableName: 'memory',
+          userId: 'user-123',
+          embedding,
+          op: { namespacePrefix: ['docs'], query: 'hello', limit: 5 },
+        });
+
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('Semantic search corpus truncated'),
+        );
+        expect(Array.isArray(results)).toBe(true);
+      } finally {
+        resetLogger();
+      }
     });
   });
 });

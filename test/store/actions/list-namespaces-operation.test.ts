@@ -29,9 +29,9 @@ describe('listNamespacesOperationAction', () => {
       });
 
       expect(results).toHaveLength(3);
-      expect(results[0]).toEqual(['user-123', 'blog', 'posts']);
-      expect(results[1]).toEqual(['user-123', 'docs', 'guides']);
-      expect(results[2]).toEqual(['user-123', 'docs', 'tutorials']);
+      expect(results[0]).toEqual(['blog', 'posts']);
+      expect(results[1]).toEqual(['docs', 'guides']);
+      expect(results[2]).toEqual(['docs', 'tutorials']);
     });
 
     it('should apply limit and offset', async () => {
@@ -57,8 +57,8 @@ describe('listNamespacesOperationAction', () => {
       });
 
       expect(results).toHaveLength(2);
-      expect(results[0]).toEqual(['user-123', 'docs', 'guides']);
-      expect(results[1]).toEqual(['user-123', 'docs', 'tutorials']);
+      expect(results[0]).toEqual(['docs', 'guides']);
+      expect(results[1]).toEqual(['docs', 'tutorials']);
     });
 
     it('should deduplicate namespaces', async () => {
@@ -84,7 +84,7 @@ describe('listNamespacesOperationAction', () => {
       });
 
       expect(results).toHaveLength(1);
-      expect(results[0]).toEqual(['user-123', 'docs', 'guides']);
+      expect(results[0]).toEqual(['docs', 'guides']);
     });
 
     it('should sort namespaces', async () => {
@@ -105,9 +105,9 @@ describe('listNamespacesOperationAction', () => {
         },
       });
 
-      expect(results[0]).toEqual(['user-123', 'alpha']);
-      expect(results[1]).toEqual(['user-123', 'beta']);
-      expect(results[2]).toEqual(['user-123', 'zebra']);
+      expect(results[0]).toEqual(['alpha']);
+      expect(results[1]).toEqual(['beta']);
+      expect(results[2]).toEqual(['zebra']);
     });
   });
 
@@ -130,7 +130,7 @@ describe('listNamespacesOperationAction', () => {
           matchConditions: [
             {
               matchType: 'prefix',
-              path: ['user-123', 'docs'],
+              path: ['docs'],
             },
           ],
         },
@@ -161,7 +161,7 @@ describe('listNamespacesOperationAction', () => {
           matchConditions: [
             {
               matchType: 'prefix',
-              path: ['user-123', '*', 'guides'],
+              path: ['*', 'guides'],
             },
           ],
         },
@@ -169,7 +169,7 @@ describe('listNamespacesOperationAction', () => {
 
       // Only 'docs/guides' should match ['user-123', '*', 'guides']
       expect(results).toHaveLength(1);
-      expect(results[0]).toEqual(['user-123', 'docs', 'guides']);
+      expect(results[0]).toEqual(['docs', 'guides']);
     });
 
     it('should match prefix with leading wildcard', async () => {
@@ -194,7 +194,7 @@ describe('listNamespacesOperationAction', () => {
           matchConditions: [
             {
               matchType: 'prefix',
-              path: ['user-123', '*'],
+              path: ['*'],
             },
           ],
         },
@@ -234,8 +234,8 @@ describe('listNamespacesOperationAction', () => {
       });
 
       expect(results).toHaveLength(2);
-      expect(results[0][2]).toBe('guides');
-      expect(results[1][2]).toBe('guides');
+      expect(results[0][1]).toBe('guides');
+      expect(results[1][1]).toBe('guides');
     });
 
     it('should match suffix with wildcards', async () => {
@@ -267,7 +267,7 @@ describe('listNamespacesOperationAction', () => {
       });
 
       expect(results).toHaveLength(1);
-      expect(results[0]).toEqual(['user-123', 'docs', '2024', 'reports']);
+      expect(results[0]).toEqual(['docs', '2024', 'reports']);
     });
   });
 
@@ -294,7 +294,7 @@ describe('listNamespacesOperationAction', () => {
           matchConditions: [
             {
               matchType: 'prefix',
-              path: ['user-123', 'docs'],
+              path: ['docs'],
             },
             {
               matchType: 'suffix',
@@ -305,7 +305,7 @@ describe('listNamespacesOperationAction', () => {
       });
 
       expect(results).toHaveLength(1);
-      expect(results[0]).toEqual(['user-123', 'docs', 'guides']);
+      expect(results[0]).toEqual(['docs', 'guides']);
     });
 
     it('should filter out when prefix pattern is longer than namespace', async () => {
@@ -326,7 +326,7 @@ describe('listNamespacesOperationAction', () => {
           matchConditions: [
             {
               matchType: 'prefix',
-              path: ['user-123', 'docs', 'guides', 'advanced'],
+              path: ['docs', 'guides', 'advanced'],
             },
           ],
         },
@@ -383,13 +383,13 @@ describe('listNamespacesOperationAction', () => {
         op: {
           limit: 10,
           offset: 0,
-          maxDepth: 2,
+          maxDepth: 1,
         },
       });
 
-      // maxDepth = 2 means ['user-123', 'docs']
+      // maxDepth = 1 (excludes userId from depth count): only ['docs'] qualifies
       expect(results).toHaveLength(1);
-      expect(results[0]).toEqual(['user-123', 'docs']);
+      expect(results[0]).toEqual(['docs']);
     });
 
     it('should apply maxDepth correctly', async () => {
@@ -412,11 +412,11 @@ describe('listNamespacesOperationAction', () => {
         op: {
           limit: 10,
           offset: 0,
-          maxDepth: 3,
+          maxDepth: 2,
         },
       });
 
-      // maxDepth = 3: ['user-123', 'a'], ['user-123', 'a', 'b']
+      // maxDepth = 2 (excludes userId): ['a'] and ['a', 'b']
       expect(results).toHaveLength(2);
     });
   });
@@ -592,7 +592,7 @@ describe('listNamespacesOperationAction', () => {
       });
 
       expect(results).toHaveLength(1);
-      expect(results[0]).toEqual(['user-123']);
+      expect(results[0]).toEqual([]);
     });
   });
 
@@ -615,7 +615,7 @@ describe('listNamespacesOperationAction', () => {
           matchConditions: [
             {
               matchType: 'prefix',
-              path: ['user-123', 'docs'],
+              path: ['docs'],
             },
           ],
         },
@@ -707,6 +707,26 @@ describe('listNamespacesOperationAction', () => {
 
       // With invalid matchType, matchesCondition returns false, filtering out all results
       expect(results).toHaveLength(0);
+    });
+
+    it('regression: undefined limit/offset fall back to sane defaults (no NaN target)', async () => {
+      const { ddbDocMock, client } = createMockDynamoDBClient();
+
+      ddbDocMock.onAnyCommand().resolvesOnce({
+        Items: [{ namespace: 'docs' }, { namespace: 'docs/guides' }],
+        LastEvaluatedKey: undefined,
+      });
+
+      const results = await listNamespacesOperationAction({
+        client,
+        memoryTableName: 'memory',
+        userId: 'user-123',
+        op: { limit: undefined as unknown as number, offset: undefined as unknown as number },
+      });
+
+      // Bug before fix: (undefined + undefined) * 10 = NaN → safety cap never applied,
+      // and slice(undefined, NaN) returned an empty array. With defaults it returns both.
+      expect(results).toHaveLength(2);
     });
   });
 });

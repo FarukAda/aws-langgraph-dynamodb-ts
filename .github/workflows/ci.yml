@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['22', '24']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test -- --ci
+
+  audit:
+    name: npm audit (high+)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fail the build only on high/critical advisories. Moderate/low are surfaced
+      # by dependabot PRs and shouldn't block merges.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  integration:
+    name: integration (DynamoDB Local + LocalStack)
+    runs-on: ubuntu-latest
+    services:
+      dynamodb-local:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8000:8000
+        # DDB Local's image has no healthcheck; the job waits below via a curl
+        # poll before kicking off tests.
+      localstack:
+        # Pinned: :latest now requires a paid LOCALSTACK_AUTH_TOKEN; the :3 tag
+        # stays on the community release line with S3 in the free tier.
+        image: localstack/localstack:3
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: s3
+          DEBUG: '0'
+          PERSISTENCE: '0'
+          AWS_DEFAULT_REGION: us-east-1
+        options: >-
+          --health-cmd="curl -sf http://localhost:4566/_localstack/health || exit 1"
+          --health-interval=3s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for DynamoDB Local
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf -X POST http://localhost:8000/ \
+                -H "X-Amz-Target: DynamoDB_20120810.ListTables" \
+                -H "Content-Type: application/x-amz-json-1.0" \
+                -d '{}' >/dev/null; then
+              echo "DynamoDB Local is up."
+              exit 0
+            fi
+            echo "Waiting for DynamoDB Local... ($i/30)"
+            sleep 1
+          done
+          echo "DynamoDB Local never came up." >&2
+          exit 1
+
+      - name: Wait for LocalStack S3
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:4566/_localstack/health 2>/dev/null | grep -q '"s3"'; then
+              echo "LocalStack S3 is up."
+              exit 0
+            fi
+            echo "Waiting for LocalStack... ($i/60)"
+            sleep 2
+          done
+          echo "LocalStack never came up." >&2
+          exit 1
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          DDB_LOCAL_ENDPOINT: http://localhost:8000
+          LOCALSTACK_ENDPOINT: http://localhost:4566

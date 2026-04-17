@@ -49,6 +49,27 @@ describe('store validation', () => {
         'Namespace parts cannot contain "/" character',
       );
     });
+
+    it('should reject parts containing .', () => {
+      // LangGraph base-class contract — `.` is reserved as a path separator in search index fields
+      expect(() => validateNamespace(['part.with.dot'])).toThrow(
+        'Namespace parts cannot contain "." character',
+      );
+    });
+
+    it('should reject reserved "langgraph" root label', () => {
+      expect(() => validateNamespace(['langgraph'])).toThrow(
+        'Namespace root label "langgraph" is reserved',
+      );
+      expect(() => validateNamespace(['langgraph', 'sub'])).toThrow(
+        'Namespace root label "langgraph" is reserved',
+      );
+    });
+
+    it('should accept "langgraph" as a non-root label', () => {
+      // Only the first label is reserved
+      expect(() => validateNamespace(['users', 'langgraph'])).not.toThrow();
+    });
   });
 
   describe('validateKey', () => {
@@ -356,7 +377,7 @@ describe('store validation', () => {
 
   describe('ValidationConstants', () => {
     it('should export expected constants', () => {
-      expect(ValidationConstants.MAX_LOOP_ITERATIONS).toBe(100);
+      expect(ValidationConstants.MAX_LOOP_ITERATIONS).toBe(1000);
       expect(ValidationConstants.MAX_TOTAL_ITEMS_IN_MEMORY).toBe(10000);
       expect(ValidationConstants.MAX_OFFSET).toBe(10000);
       expect(ValidationConstants.MAX_DEPTH).toBe(100);

@@ -9,11 +9,32 @@ import type { BaseMessage, StoredMessage } from '@langchain/core/messages';
 
 /**
  * Configuration options for DynamoDBChatMessageHistory
+ *
+ * @remarks
+ * **TTL semantics — important:**
+ *
+ * - The **session metadata** item's `ttl` attribute is refreshed on every
+ *   `addMessage` / `addMessages` call, so `listSessions()` reflects a session as
+ *   live as long as new messages keep arriving within `ttlDays`.
+ * - Individual **message items** get a TTL stamped at write time and each
+ *   expires independently. A long-lived session that ingests new messages every
+ *   few days can develop gaps where old messages expire while newer ones
+ *   persist.
+ *
+ * If you need a strict "keep the whole conversation as long as it is active"
+ * contract, set `ttlDays` significantly larger than your expected session
+ * lifetime, or manage deletion yourself via `clear()`.
  */
 export interface DynamoDBChatMessageHistoryOptions {
   /** Name of the DynamoDB table to use for storage */
   tableName: string;
-  /** Optional TTL in days for stored items (1-1825 days) */
+  /**
+   * Optional TTL in days for stored items (1-1825 days).
+   *
+   * Metadata TTL is sliding (refreshed on every write). Per-message TTL is
+   * fixed at each message's write time — see the class-level remarks for
+   * implications on long-lived sessions.
+   */
   ttlDays?: number;
   /** Optional DynamoDB client configuration */
   clientConfig?: DynamoDBClientConfig;
@@ -91,6 +112,8 @@ export interface GetMessagesActionParams {
   userId: string;
   /** Session identifier */
   sessionId: string;
+  /** Optional AbortSignal — cancels in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
@@ -111,6 +134,8 @@ export interface AddMessageActionParams {
   title?: string;
   /** Optional TTL in days */
   ttlDays?: number;
+  /** Optional AbortSignal — cancels in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
@@ -131,6 +156,8 @@ export interface AddMessagesActionParams {
   title?: string;
   /** Optional TTL in days */
   ttlDays?: number;
+  /** Optional AbortSignal — cancels in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
@@ -145,6 +172,8 @@ export interface ClearActionParams {
   userId: string;
   /** Session identifier */
   sessionId: string;
+  /** Optional AbortSignal — cancels in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
@@ -159,4 +188,6 @@ export interface ListSessionsActionParams {
   userId: string;
   /** Optional maximum number of sessions to return */
   limit?: number;
+  /** Optional AbortSignal — cancels in-flight retries */
+  signal?: AbortSignal;
 }

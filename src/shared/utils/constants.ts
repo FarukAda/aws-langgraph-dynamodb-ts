@@ -4,7 +4,11 @@
 
 // Common DynamoDB limits
 export const MAX_TTL_DAYS = 365 * 5; // 5 years
-export const MAX_LOOP_ITERATIONS = 100; // Maximum loop iterations to prevent infinite loops
+// A DynamoDB Query page is bounded by ~1MB. 1000 iterations × 1MB = ~1GB of data,
+// which is well beyond MAX_TOTAL_ITEMS_IN_MEMORY anyway, so the lower memory cap
+// stays the real guard. Previously 100 — too tight for long chat histories or
+// filter-heavy searches where many pages yield few matching items.
+export const MAX_LOOP_ITERATIONS = 1000;
 export const MAX_TOTAL_ITEMS_IN_MEMORY = 10000; // Maximum items to collect in memory
 export const BATCH_WRITE_MAX = 25; // DynamoDB BatchWriteItem limit per request
 export const MAX_UNPROCESSED_RETRIES = 10; // Maximum retries for UnprocessedItems loops

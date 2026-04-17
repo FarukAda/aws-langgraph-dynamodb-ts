@@ -3,60 +3,122 @@
  * Shared between store and checkpointer
  */
 
+import { sleep } from './sleep';
+
 export interface RetryOptions {
   maxAttempts?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
   retryableErrors?: string[];
+  /**
+   * Optional abort signal. When aborted, any in-flight sleep between retries
+   * resolves immediately and `withRetry` rejects with the signal's abort reason.
+   * The signal is checked before every attempt, so an abort mid-backoff short-
+   * circuits the remaining retries rather than consuming the full schedule.
+   */
+  signal?: AbortSignal;
 }
 
-const DEFAULT_OPTIONS: Required<RetryOptions> = {
+// TransactionCanceledException is NOT retried here: its CancellationReasons include
+// permanent failures (ConditionalCheckFailed, ValidationError, ItemCollectionSizeLimitExceeded)
+// that must not be retried blindly. Callers that need to retry on specific sub-reasons
+// (e.g. ThrottlingError) must inspect CancellationReasons themselves.
+//
+// TransactionConflictException (the *transient* sibling — one row racing with another
+// concurrent transaction) IS retried. It's the recommended retry path for writes under
+// contention and is distinct from TransactionCanceledException.
+const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'signal'>> = {
   maxAttempts: 5,
   baseDelayMs: 100,
   maxDelayMs: 5000,
   retryableErrors: [
+    // DynamoDB throttling / capacity
     'ProvisionedThroughputExceededException',
     'ThrottlingException',
     'RequestLimitExceeded',
+    // Service-side transient
     'InternalServerError',
     'ServiceUnavailable',
-    'TransactionCanceledException',
+    // Transaction contention (transient — distinct from TransactionCanceledException)
+    'TransactionConflictException',
+    // Node-level network transients. Matched against both the error `code` and
+    // `name` fields so we catch plain socket errors as well as SDK-wrapped ones.
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'EPIPE',
+    'EAI_AGAIN',
+    'NetworkingError',
+    'TimeoutError',
   ],
 };
 
 /**
- * Sleep for a specified number of milliseconds
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Calculate delay with exponential backoff and jitter
+ * Calculate delay with full jitter (AWS recommended) and a max-delay cap.
+ *
+ * `delay = random(0, min(cap, base * 2^(attempt-1)))` — spreads retries
+ * uniformly across the backoff window so concurrent clients don't synchronize
+ * into a thundering herd.
+ * See https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
  */
 function calculateDelay(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
   const exponentialDelay = baseDelayMs * Math.pow(2, attempt - 1);
-  const jitter = Math.random() * 0.3 * exponentialDelay; // Add up to 30% jitter
-  return Math.min(exponentialDelay + jitter, maxDelayMs);
+  const cap = Math.min(exponentialDelay, maxDelayMs);
+  return Math.random() * cap;
 }
 
 /**
- * Check if an error is retryable
+ * Check if an error is retryable.
+ *
+ * Matches against the error's `name` and `code` fields (and, when available,
+ * a nested `$metadata`/`cause`) so we catch AWS SDK exceptions, Node socket
+ * errors (`ECONNRESET`, `ETIMEDOUT`, …), and wrapped `cause` chains.
  */
 function isRetryableError(error: unknown, retryableErrors: string[]): boolean {
   if (!error) return false;
 
-  const errObj = error as Record<string, unknown>;
-  const errorName = String(errObj.name ?? errObj.code ?? '');
-  return retryableErrors.some((retryable) => errorName.includes(retryable));
+  const seen = new WeakSet<object>();
+  const signals: string[] = [];
+
+  // Bound recursion depth — WeakSet breaks cycles but does not bound unique chain
+  // length. An attacker (or a buggy SDK middleware) could craft a 10k-deep
+  // `cause` chain and stack-overflow the process. 32 is generous: realistic AWS
+  // SDK wrapping nests 3-5 deep.
+  const MAX_CAUSE_DEPTH = 32;
+
+  const collect = (err: unknown, depth: number): void => {
+    if (depth > MAX_CAUSE_DEPTH) return;
+    if (!err || typeof err !== 'object') return;
+    if (seen.has(err as object)) return;
+    seen.add(err as object);
+
+    const o = err as Record<string, unknown>;
+    if (typeof o.name === 'string') signals.push(o.name);
+    if (typeof o.code === 'string') signals.push(o.code);
+    if (typeof o.errno === 'string') signals.push(o.errno);
+    if (typeof o.syscall === 'string') signals.push(o.syscall);
+    collect(o.cause, depth + 1);
+  };
+
+  collect(error, 0);
+
+  if (signals.length === 0) return false;
+
+  return retryableErrors.some((retryable) => signals.some((sig) => sig.includes(retryable)));
 }
 
 /**
  * Retry a function with exponential backoff
  */
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const { signal, ...rest } = options;
+  const opts = { ...DEFAULT_OPTIONS, ...rest };
   let lastError: unknown;
+
+  // Surface pre-aborted signals before consuming an attempt.
+  if (signal?.aborted) {
+    throw signal.reason ?? new Error('Aborted');
+  }
 
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
     try {
@@ -88,9 +150,11 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
         throw wrappedError;
       }
 
-      // Calculate delay and wait
+      // Abort mid-backoff short-circuits the remaining retries — sleep() rejects
+      // with the signal's reason, which we re-throw so the caller sees the abort
+      // rather than the last retry error.
       const delay = calculateDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
-      await sleep(delay);
+      await sleep(delay, signal);
     }
   }
 

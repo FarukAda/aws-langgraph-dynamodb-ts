@@ -103,7 +103,8 @@ describe('Writer', () => {
       ).toThrow('channel cannot be empty');
     });
 
-    it('should reject negative idx', () => {
+    it('should allow WRITES_IDX_MAP negative idx values', () => {
+      // WRITES_IDX_MAP reserves negative slots for __error__=-1, __scheduled__=-2, etc.
       expect(
         () =>
           new Writer({
@@ -112,11 +113,11 @@ describe('Writer', () => {
             checkpoint_id: 'checkpoint-456',
             task_id: 'task-789',
             idx: -1,
-            channel: 'messages',
+            channel: '__error__',
             type: 'json',
             value: new Uint8Array([1, 2, 3]),
           }),
-      ).toThrow('idx must be a non-negative integer');
+      ).not.toThrow();
     });
 
     it('should reject non-integer idx', () => {
@@ -132,7 +133,7 @@ describe('Writer', () => {
             type: 'json',
             value: new Uint8Array([1, 2, 3]),
           }),
-      ).toThrow('idx must be a non-negative integer');
+      ).toThrow('idx must be an integer');
     });
   });
 
@@ -289,9 +290,9 @@ describe('Writer', () => {
     });
   });
 
-  describe('separator', () => {
-    it('should return correct separator', () => {
-      expect(Writer.separator()).toBe(':::');
+  describe('SEPARATOR', () => {
+    it('should expose the separator as a static constant', () => {
+      expect(Writer.SEPARATOR).toBe(':::');
     });
   });
 });

@@ -117,11 +117,15 @@ describe('deleteThreadAction', () => {
     ).rejects.toThrow('thread_id cannot be empty');
   });
 
-  it('should throw error when exceeding max iterations', async () => {
-    // Mock infinite pagination
+  it('should throw when exceeding max delete batch size during infinite pagination', async () => {
+    // Return a large-enough page on each call so the total-item cap trips before
+    // the iteration cap; covers the safety path that protects against runaway pagination.
+    const bigPage = Array(1000)
+      .fill(null)
+      .map((_, i) => createMockCheckpointItem('thread-123', `checkpoint-p-${i}`, 'ns'));
     ddbDocMock.onAnyCommand().resolves({
-      Items: [createMockCheckpointItem('thread-123', 'checkpoint-1', 'ns')],
-      LastEvaluatedKey: { thread_id: 'thread-123', checkpoint_id: 'checkpoint-1' },
+      Items: bigPage,
+      LastEvaluatedKey: { thread_id: 'thread-123', checkpoint_id: 'checkpoint-p-last' },
     });
 
     await expect(
@@ -131,18 +135,26 @@ describe('deleteThreadAction', () => {
         writesTableName: 'writes',
         threadId: 'thread-123',
       }),
-    ).rejects.toThrow('Delete operation exceeded maximum iteration limit');
+    ).rejects.toThrow('Thread has too many items');
   });
 
   it('should throw error when exceeding max delete batch size', async () => {
-    const manyCheckpoints = Array(1001)
+    // Cap is 100k; an inline array of that size would slow the test suite, so we
+    // return 50k per page across two pages to hit the threshold cleanly.
+    const page = Array(50_001)
       .fill(null)
       .map((_, i) => createMockCheckpointItem('thread-123', `checkpoint-${i}`, 'ns'));
 
-    ddbDocMock.onAnyCommand().resolvesOnce({
-      Items: manyCheckpoints,
-      LastEvaluatedKey: undefined,
-    });
+    ddbDocMock
+      .onAnyCommand()
+      .resolvesOnce({
+        Items: page,
+        LastEvaluatedKey: { thread_id: 'thread-123', checkpoint_id: 'checkpoint-50000' },
+      })
+      .resolvesOnce({
+        Items: page,
+        LastEvaluatedKey: undefined,
+      });
 
     await expect(
       deleteThreadAction({

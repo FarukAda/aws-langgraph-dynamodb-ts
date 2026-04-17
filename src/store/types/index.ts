@@ -27,6 +27,19 @@ export interface DynamoDBStoreOptions {
   ttlDays?: number;
   /** Optional pre-built DynamoDBDocument client (takes precedence over clientConfig) */
   client?: DynamoDBDocument;
+  /**
+   * Controls behavior when a semantic-search embedding call (e.g. `embedding.embedQuery`)
+   * fails — for example because Bedrock is rate-limited or unreachable.
+   *
+   * - `false` (default, **fail-closed**): the error propagates to the caller so
+   *   semantic search never silently degrades to unranked results. Recommended
+   *   for production to preserve the caller's trust that "a result ranked by
+   *   similarity" is what was actually returned.
+   * - `true` (fail-open): the error is logged and the raw (unranked) DynamoDB
+   *   result set is returned instead. Only set this if your application has
+   *   explicit, user-visible handling for degraded search quality.
+   */
+  fallbackToLexicalOnEmbeddingFailure?: boolean;
 }
 
 /**
@@ -45,6 +58,8 @@ export interface PutOperationActionParams {
   embedding?: EmbeddingsInterface;
   /** Optional TTL in days */
   ttlDays?: number;
+  /** Optional AbortSignal — cancels in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
@@ -59,6 +74,8 @@ export interface GetOperationActionParams {
   userId: string;
   /** Get operation parameters */
   op: GetOperation;
+  /** Optional AbortSignal — cancels in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
@@ -75,6 +92,13 @@ export interface SearchOperationActionParams {
   op: SearchOperation;
   /** Optional embeddings for semantic search */
   embedding?: EmbeddingsInterface;
+  /**
+   * When true, embedding failures log a warning and return lexical (unranked)
+   * results instead of throwing. Defaults to false (fail-closed).
+   */
+  fallbackToLexicalOnEmbeddingFailure?: boolean;
+  /** Optional AbortSignal — cancels in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
@@ -89,10 +113,14 @@ export interface ListNamespacesOperationActionParams {
   userId: string;
   /** List namespaces operation parameters */
   op: ListNamespacesOperation;
+  /** Optional AbortSignal — cancels in-flight retries */
+  signal?: AbortSignal;
 }
 
 /**
- * Filter value with comparison operators
+ * Filter value with comparison operators.
+ * Matches the operator set implemented by LangGraph's reference InMemoryStore
+ * (`@langchain/langgraph-checkpoint/store/utils.js:62`).
  */
 export type FilterValue = {
   /** Equal to */
@@ -107,4 +135,8 @@ export type FilterValue = {
   $lt?: number;
   /** Less than or equal to */
   $lte?: number;
+  /** In a list of values */
+  $in?: any[];
+  /** Not in a list of values */
+  $nin?: any[];
 };

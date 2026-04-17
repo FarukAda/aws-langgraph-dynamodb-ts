@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.1.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.2.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Interface: SessionMetadata
 
-Defined in: [history/types/index.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/types/index.ts#L69)
+Defined in: [history/types/index.ts:90](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/history/types/index.ts#L90)
 
 Session metadata for listing (excludes messages)
 
@@ -16,7 +16,7 @@ Session metadata for listing (excludes messages)
 
 > **createdAt**: `number`
 
-Defined in: [history/types/index.ts:75](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/types/index.ts#L75)
+Defined in: [history/types/index.ts:96](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/history/types/index.ts#L96)
 
 Timestamp when session was created (milliseconds)
 
@@ -26,7 +26,7 @@ Timestamp when session was created (milliseconds)
 
 > **messageCount**: `number`
 
-Defined in: [history/types/index.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/types/index.ts#L79)
+Defined in: [history/types/index.ts:100](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/history/types/index.ts#L100)
 
 Number of messages in the session
 
@@ -36,7 +36,7 @@ Number of messages in the session
 
 > **sessionId**: `string`
 
-Defined in: [history/types/index.ts:71](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/types/index.ts#L71)
+Defined in: [history/types/index.ts:92](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/history/types/index.ts#L92)
 
 Session identifier
 
@@ -46,7 +46,7 @@ Session identifier
 
 > **title**: `string`
 
-Defined in: [history/types/index.ts:73](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/types/index.ts#L73)
+Defined in: [history/types/index.ts:94](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/history/types/index.ts#L94)
 
 Session title
 
@@ -56,6 +56,6 @@ Session title
 
 > **updatedAt**: `number`
 
-Defined in: [history/types/index.ts:77](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/history/types/index.ts#L77)
+Defined in: [history/types/index.ts:98](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/history/types/index.ts#L98)
 
 Timestamp when the session was last updated (milliseconds)

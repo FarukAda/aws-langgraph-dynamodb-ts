@@ -175,14 +175,15 @@ const results = await store.batch([
 Use JSONPath-based filters to query stored values:
 
 ```typescript
-// Filter with comparison operators
+// Filter keys are fields INSIDE the stored `value` — the library wraps each
+// as `value.<key>` when building the DynamoDB FilterExpression.
 const [results] = await store.batch([
   {
     namespacePrefix: ['products'],
     filter: {
-      'value.price': { $gte: 10, $lte: 100 },
-      'value.category': { $eq: 'electronics' },
-      'value.inStock': { $eq: true },
+      price: { $gte: 10, $lte: 100 },
+      category: { $eq: 'electronics' },
+      inStock: { $eq: true },
     },
     limit: 10,
   }
@@ -193,12 +194,25 @@ const [results] = await store.batch([
 
 | Operator | Description | Example |
 |----------|-------------|---------|
-| `$eq` | Equal to | `{ 'value.status': { $eq: 'active' } }` |
-| `$ne` | Not equal to | `{ 'value.type': { $ne: 'archived' } }` |
-| `$gt` | Greater than | `{ 'value.score': { $gt: 50 } }` |
-| `$gte` | Greater than or equal | `{ 'value.age': { $gte: 18 } }` |
-| `$lt` | Less than | `{ 'value.price': { $lt: 100 } }` |
-| `$lte` | Less than or equal | `{ 'value.rating': { $lte: 5 } }` |
+| `$eq` | Equal to | `{ status: { $eq: 'active' } }` |
+| `$ne` | Not equal to | `{ type: { $ne: 'archived' } }` |
+| `$gt` | Greater than | `{ score: { $gt: 50 } }` |
+| `$gte` | Greater than or equal | `{ age: { $gte: 18 } }` |
+| `$lt` | Less than | `{ price: { $lt: 100 } }` |
+| `$lte` | Less than or equal | `{ rating: { $lte: 5 } }` |
+| `$in` | Value in list (max 50 items) | `{ status: { $in: ['active', 'pending'] } }` |
+| `$nin` | Value not in list (max 50 items) | `{ status: { $nin: ['archived', 'deleted'] } }` |
+
+#### Filter expression limits
+
+The library enforces client-side caps so DynamoDB never rejects your query with
+an opaque `ValidationException`:
+
+| Cap | Limit | Reason |
+|---|---|---|
+| `$in` / `$nin` array size | 50 values | DDB limits ExpressionAttributeValues to 100 entries per expression |
+| Assembled FilterExpression | 3.5 KiB | DDB hard limit is 4 KiB (expression string only, not values) |
+| Unknown operator | Rejected | Surfaces typos like `$contains` instead of silently returning zero results |
 
 #### Complex Filters
 
@@ -208,21 +222,21 @@ const [results] = await store.batch([
   {
     namespacePrefix: ['tasks'],
     filter: {
-      'value.priority': { $gte: 7 },
-      'value.status': { $eq: 'pending' },
-      'value.assignee': { $ne: 'unassigned' },
+      priority: { $gte: 7 },
+      status: { $eq: 'pending' },
+      assignee: { $ne: 'unassigned' },
     },
     limit: 20,
   }
 ], config);
 
-// Nested object filtering
+// Nested object filtering — dot-paths inside `value.*` are supported.
 const [userResults] = await store.batch([
   {
     namespacePrefix: ['users'],
     filter: {
-      'value.profile.age': { $gte: 21 },
-      'value.profile.country': { $eq: 'US' },
+      'profile.age': { $gte: 21 },
+      'profile.country': { $eq: 'US' },
     },
   }
 ], config);
@@ -407,7 +421,34 @@ interface DynamoDBStoreOptions {
 
   /** Optional: Pre-built DynamoDBDocument client (takes precedence over clientConfig) */
   client?: DynamoDBDocument;
+
+  /**
+   * Optional: behavior when a semantic-search embedding call fails.
+   *
+   * - `false` (default, fail-closed): the embedding error propagates to the
+   *   caller so semantic search never silently degrades to unranked results.
+   * - `true` (fail-open): the error is logged and the raw DynamoDB result is
+   *   returned instead. Only use when your app has explicit, user-visible
+   *   handling for degraded search quality.
+   */
+  fallbackToLexicalOnEmbeddingFailure?: boolean;
 }
+```
+
+### Cancellation via `config.signal`
+
+The store honors LangChain's `RunnableConfig.signal` convention. A pre-aborted
+signal short-circuits every operation in the batch; mid-flight aborts cancel
+retry backoff and the SDK request:
+
+```typescript
+const controller = new AbortController();
+setTimeout(() => controller.abort(new Error('request timeout')), 5000);
+
+await store.batch(operations, {
+  configurable: { user_id: 'user-123' },
+  signal: controller.signal,
+});
 ```
 
 ## Operation Types
@@ -616,8 +657,9 @@ const permanentStore = new DynamoDBStore({
 - **Batch Size**: Max 100 operations per batch call
 - **Pagination**: Max limit 1000, max offset 10000
 - **Embeddings**: Max 100 embeddings per batch, max 10000 dimensions per embedding
-- **Filter Expressions**: Max 50 filter conditions
-- **Search Iterations**: Max 100 query iterations (safety limit)
+- **Filter `$in`/`$nin`**: Max 50 values per operator
+- **FilterExpression string**: Max 3.5 KiB assembled (DDB hard limit is 4 KiB)
+- **Search Iterations**: Max 1000 query pages (safety limit against runaway scans)
 
 ## Performance Tips
 

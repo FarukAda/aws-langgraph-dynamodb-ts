@@ -1,3 +1,5 @@
+import { DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+
 import { putOperationAction } from '../../../src/store/actions';
 import { expectDynamoDBCalled } from '../../shared/helpers/assertions';
 import {
@@ -372,5 +374,49 @@ describe('putOperationAction', () => {
     });
 
     expectDynamoDBCalled(setup.ddbDocMock, 1);
+  });
+
+  describe('delete semantics (value: null)', () => {
+    it('issues a DeleteCommand when op.value is null', async () => {
+      setup.ddbDocMock.onAnyCommand().resolvesOnce({});
+
+      await putOperationAction({
+        client: setup.client,
+        memoryTableName: 'memory',
+        userId: 'user-123',
+        op: {
+          namespace: ['docs'],
+          key: 'k1',
+          value: null as any,
+        },
+      });
+
+      const calls = setup.ddbDocMock.calls();
+      expect(calls).toHaveLength(1);
+      // aws-sdk-client-mock records the Command instance as the first arg
+      expect(calls[0].args[0]).toBeInstanceOf(DeleteCommand);
+      const cmdInput = (calls[0].args[0] as InstanceType<typeof DeleteCommand>).input;
+      expect(cmdInput.Key).toEqual({
+        user_id: 'user-123',
+        namespace_key: 'docs#k1',
+      });
+    });
+
+    it('does not run validateValue on null (null previously slipped through as stored value)', async () => {
+      setup.ddbDocMock.onAnyCommand().resolvesOnce({});
+
+      // If the null-path were routed through validateValue it would pass (null is not undefined),
+      // but the resulting update would store null instead of deleting. Assert the command type.
+      await putOperationAction({
+        client: setup.client,
+        memoryTableName: 'memory',
+        userId: 'user-123',
+        op: { namespace: ['n'], key: 'k', value: null as any },
+      });
+
+      const cmd = setup.ddbDocMock.calls()[0].args[0];
+      expect(cmd).toBeInstanceOf(DeleteCommand);
+      expect(cmd).not.toBeInstanceOf(UpdateCommand);
+    });
   });
 });

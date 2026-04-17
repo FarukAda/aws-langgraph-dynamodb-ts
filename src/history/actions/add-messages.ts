@@ -1,7 +1,10 @@
 /**
- * Add multiple messages to a session
- * Uses an atomic counter to claim a unique message index range, preventing race conditions
- * Uses transactWrite for message items (≤100, enforced by validation)
+ * Add multiple messages to a session using optimistic concurrency control.
+ *
+ * Reads the current messageCount, writes N message items and the updated counter
+ * in a single TransactWrite (N ≤ 99, leaving room for the metadata item in the
+ * 100-item transaction limit). The metadata update has a conditional check on the
+ * observed count; on concurrent modification we re-read and retry.
  */
 
 import type { AddMessagesActionParams } from '../types';
@@ -13,22 +16,15 @@ import {
   validateTitle,
   validateTTLDays,
   withDynamoDBRetry,
+  withOptimisticRetry,
   generateTitle,
   buildMessageItems,
-  buildAtomicMetadataUpdate,
+  buildOptimisticMetadataUpdate,
 } from '../utils';
 
-/**
- * Add multiple messages to a session
- * Atomically claims message indices via DynamoDB's ADD operation, then writes message items
- *
- * @param params - Parameters for the add messages operation
- * @throws Error if the operation fails or validation fails
- */
 export const addMessagesAction = async (params: AddMessagesActionParams): Promise<void> => {
-  const { client, tableName, userId, sessionId, messages, title, ttlDays } = params;
+  const { client, tableName, userId, sessionId, messages, title, ttlDays, signal } = params;
 
-  // Validate inputs (enforces max 100 messages per batch)
   validateUserId(userId);
   validateSessionId(sessionId);
   validateMessages(messages);
@@ -36,43 +32,43 @@ export const addMessagesAction = async (params: AddMessagesActionParams): Promis
   validateTitle(title);
   validateTTLDays(ttlDays);
 
-  // Generate a title if this is the first message batch and no title provided
   const sessionTitle = title ?? generateTitle(messages[0]);
 
-  // Atomically claim a range of message indices via ADD messageCount
-  const { updateExpression, expressionAttributeValues } = buildAtomicMetadataUpdate(
-    sessionTitle,
-    messages.length, // Claiming N indices
-    ttlDays,
-  );
-
-  const updateResult = await withDynamoDBRetry(async () => {
-    return await client.update({
-      TableName: tableName,
-      Key: { userId, sessionId },
-      UpdateExpression: updateExpression,
-      ExpressionAttributeValues: expressionAttributeValues,
-      ReturnValues: 'ALL_NEW',
-    });
-  });
-
-  // The new messageCount is the count AFTER incrementing by messages.length
-  // So our claimed starting index is newCount - messages.length
-  const newCount = (updateResult.Attributes?.messageCount as number) ?? messages.length;
-  const startIndex = newCount - messages.length;
-
-  // Build all message items
-  const messageItems = buildMessageItems(userId, sessionId, messages, startIndex, ttlDays);
-
-  // Write all message items in a single transaction (max 100 items, enforced by validation)
-  await withDynamoDBRetry(async () => {
-    await client.transactWrite({
-      TransactItems: messageItems.map((item) => ({
-        Put: {
+  await withOptimisticRetry(`addMessages:${sessionId}`, async () => {
+    signal?.throwIfAborted();
+    const existing = await withDynamoDBRetry(
+      async () => {
+        return await client.get({
           TableName: tableName,
-          Item: item,
+          Key: { userId, sessionId },
+          ConsistentRead: true,
+          ProjectionExpression: 'messageCount',
+        });
+      },
+      { signal },
+    );
+
+    const expectedCount = existing.Item?.messageCount as number | undefined;
+    const currentCount = expectedCount ?? 0;
+    const newCount = currentCount + messages.length;
+
+    const messageItems = buildMessageItems(userId, sessionId, messages, currentCount, ttlDays);
+    const { updateExpression, conditionExpression, expressionAttributeValues } =
+      buildOptimisticMetadataUpdate(sessionTitle, newCount, expectedCount, ttlDays);
+
+    await client.transactWrite({
+      TransactItems: [
+        ...messageItems.map((item) => ({ Put: { TableName: tableName, Item: item } })),
+        {
+          Update: {
+            TableName: tableName,
+            Key: { userId, sessionId },
+            UpdateExpression: updateExpression,
+            ConditionExpression: conditionExpression,
+            ExpressionAttributeValues: expressionAttributeValues,
+          },
         },
-      })),
+      ],
     });
   });
 };

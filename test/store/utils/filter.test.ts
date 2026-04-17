@@ -240,5 +240,86 @@ describe('filter utility', () => {
       expect(result.filterExpression.split(' AND ')).toHaveLength(4);
       expect(expressionAttributeValues[':val0']).toBe('John');
     });
+
+    it('should build expression for $in operator', () => {
+      const expressionAttributeNames: Record<string, string> = {};
+      const expressionAttributeValues: Record<string, any> = {};
+
+      const result = buildFilterExpression(
+        { status: { $in: ['active', 'pending'] } },
+        expressionAttributeNames,
+        expressionAttributeValues,
+      );
+
+      expect(result.filterExpression).toBe('#value.#attr0 IN (:val0, :val1)');
+      expect(expressionAttributeValues).toEqual({
+        ':val0': 'active',
+        ':val1': 'pending',
+      });
+    });
+
+    it('should build expression for $nin operator', () => {
+      const expressionAttributeNames: Record<string, string> = {};
+      const expressionAttributeValues: Record<string, any> = {};
+
+      const result = buildFilterExpression(
+        { status: { $nin: ['deleted', 'archived'] } },
+        expressionAttributeNames,
+        expressionAttributeValues,
+      );
+
+      expect(result.filterExpression).toBe('NOT (#value.#attr0 IN (:val0, :val1))');
+      expect(expressionAttributeValues).toEqual({
+        ':val0': 'deleted',
+        ':val1': 'archived',
+      });
+    });
+
+    it('should reject $in with non-array value', () => {
+      expect(() =>
+        buildFilterExpression({ status: { $in: 'active' as unknown as any[] } }, {}, {}),
+      ).toThrow('$in operator for "status" requires a non-empty array');
+    });
+
+    it('should reject empty $in array', () => {
+      expect(() => buildFilterExpression({ status: { $in: [] } }, {}, {})).toThrow(
+        '$in operator for "status" requires a non-empty array',
+      );
+    });
+
+    it('should reject $in arrays exceeding the 50-value cap', () => {
+      const oversized = Array.from({ length: 51 }, (_, i) => `v${i}`);
+      expect(() => buildFilterExpression({ status: { $in: oversized } }, {}, {})).toThrow(
+        /\$in operator for "status" supports at most 50 values/,
+      );
+    });
+
+    it('should reject $nin arrays exceeding the 50-value cap', () => {
+      const oversized = Array.from({ length: 51 }, (_, i) => `v${i}`);
+      expect(() => buildFilterExpression({ status: { $nin: oversized } }, {}, {})).toThrow(
+        /\$nin operator for "status" supports at most 50 values/,
+      );
+    });
+
+    it('should accept $in arrays at exactly the 50-value cap', () => {
+      const atCap = Array.from({ length: 50 }, (_, i) => `v${i}`);
+      expect(() => buildFilterExpression({ status: { $in: atCap } }, {}, {})).not.toThrow();
+    });
+
+    it('should reject filter expressions that would exceed the 4 KiB DynamoDB cap', () => {
+      // Build enough distinct fields to push the assembled expression past 3.5 KiB.
+      // Each "#attrN.#value = :valN" clause is ~20 bytes once joined with " AND ".
+      const filter: Record<string, unknown> = {};
+      for (let i = 0; i < 300; i++) {
+        filter[`very_long_field_name_number_${i}`] = `v${i}`;
+      }
+      expect(() => buildFilterExpression(filter, {}, {})).toThrow(/Filter expression is .* bytes/);
+    });
+
+    it('should reject unknown operators to surface typos', () => {
+      expect(() =>
+        buildFilterExpression({ field: { $contains: 'x' } as unknown as any }, {}, {}),
+      ).toThrow(/Unsupported filter operator.*\$contains/);
+    });
   });
 });

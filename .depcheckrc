@@ -1,9 +1,12 @@
 {
-  ignores: [
+  "ignores": [
     "@types/jest",
-    ts-loader,
-    ts-node,
-    globals,
-    typedoc-plugin-markdown
+    "ts-loader",
+    "ts-node",
+    "globals",
+    "typedoc-plugin-markdown",
+    "@stryker-mutator/core",
+    "@stryker-mutator/jest-runner",
+    "@stryker-mutator/typescript-checker"
   ]
 }

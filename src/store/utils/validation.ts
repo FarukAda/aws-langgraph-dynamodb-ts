@@ -13,6 +13,7 @@ const MAX_NAMESPACE_DEPTH = 20;
 const MAX_VALUE_SIZE = 400 * 1024; // 400KB (DynamoDB item size limit is 400KB)
 const MAX_EMBEDDING_DIMENSIONS = 10000;
 const MAX_EMBEDDINGS_PER_ITEM = 100;
+const MAX_LIST_LIMIT = 1000; // Maximum list/search limit
 const MAX_OFFSET = 10000; // Prevent resource exhaustion
 const MAX_DEPTH = 100; // Maximum depth for namespace listing
 const MAX_BATCH_SIZE = 100; // Maximum operations in a single batch
@@ -26,7 +27,11 @@ export class ValidationError extends Error {
 }
 
 /**
- * Validate namespace array
+ * Validate namespace array.
+ *
+ * Enforces the same invariants as LangGraph's base `validateNamespace`
+ * (`@langchain/langgraph-checkpoint/store/base.js:16-24`) plus the
+ * separators we use internally for the DynamoDB sort-key composite.
  */
 export function validateNamespace(namespace: string[]): void {
   if (!Array.isArray(namespace)) {
@@ -41,6 +46,11 @@ export function validateNamespace(namespace: string[]): void {
     throw new ValidationError(`Namespace depth exceeds maximum of ${MAX_NAMESPACE_DEPTH} levels`);
   }
 
+  // Reserved root label per LangGraph base-class contract
+  if (namespace[0] === 'langgraph') {
+    throw new ValidationError('Namespace root label "langgraph" is reserved');
+  }
+
   for (const part of namespace) {
     if (typeof part !== 'string') {
       throw new ValidationError('Namespace parts must be strings');
@@ -48,6 +58,12 @@ export function validateNamespace(namespace: string[]): void {
 
     if (part.length === 0) {
       throw new ValidationError('Namespace parts cannot be empty strings');
+    }
+
+    // Reserved characters per LangGraph base-class contract (".") and DynamoDB
+    // sort-key separators we use internally ("#", "/").
+    if (part.includes('.')) {
+      throw new ValidationError('Namespace parts cannot contain "." character');
     }
 
     if (part.includes('#')) {
@@ -110,8 +126,8 @@ export function validatePagination(limit?: any, offset?: any): void {
       throw new ValidationError('Limit cannot be negative');
     }
 
-    if (limit > 1000) {
-      throw new ValidationError('Limit cannot exceed 1000');
+    if (limit > MAX_LIST_LIMIT) {
+      throw new ValidationError(`Limit cannot exceed ${MAX_LIST_LIMIT}`);
     }
   }
 
@@ -231,8 +247,10 @@ export function validateJSONPath(paths: string[]): void {
       );
     }
 
-    // Basic safety checks - disallow potentially dangerous patterns
-    if (path.includes('__proto__') || path.includes('constructor') || path.includes('prototype')) {
+    // Block prototype-pollution-shaped access, but only when it's used as a
+    // property step (preceded by `.` or `[`). Plain substrings like `$.constructors[0]`
+    // or `$.data.prototyping` are legitimate paths and must pass through.
+    if (/(?:^|\.|\[)(?:__proto__|constructor|prototype)(?:$|[.[\]])/.test(path)) {
       throw new ValidationError('JSONPath expression contains disallowed patterns');
     }
   }

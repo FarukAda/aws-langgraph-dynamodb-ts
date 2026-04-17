@@ -112,7 +112,7 @@ describe('clearAction', () => {
         userId: 'user-123',
         sessionId: 'session-1',
       }),
-    ).rejects.toThrow('Failed to process all items after 10 retries');
+    ).rejects.toThrow(/batchWrite did not drain after 10 UnprocessedItems retries/);
   });
 
   it('should throw error for invalid user ID', async () => {

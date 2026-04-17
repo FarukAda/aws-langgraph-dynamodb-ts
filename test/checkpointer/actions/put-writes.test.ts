@@ -282,4 +282,56 @@ describe('putWritesAction', () => {
 
     expectDynamoDBCalled(setup.ddbDocMock, 1);
   });
+
+  it('should map special channels to WRITES_IDX_MAP negative indices', async () => {
+    // Per memory.js:178 in @langchain/langgraph-checkpoint, special channels must
+    // be stored at stable negative slots so repeated putWrites for the same taskId
+    // dedupe correctly. Regular writes stay at positional indices.
+    setup.ddbDocMock.onAnyCommand().resolvesOnce({});
+
+    const writes = [
+      createMockPendingWrite('regular', { a: 1 }),
+      createMockPendingWrite('__error__', { err: 'boom' }),
+      createMockPendingWrite('__resume__', { r: 1 }),
+      createMockPendingWrite('__interrupt__', { i: 1 }),
+      createMockPendingWrite('__scheduled__', { s: 1 }),
+    ];
+
+    await putWritesAction({
+      client: setup.client,
+      writesTableName: 'writes',
+      serde: setup.serde,
+      config: createMockRunnableConfig('thread-123', 'checkpoint-456', 'ns'),
+      writes,
+      taskId: 'task-789',
+    });
+
+    const batchWriteCall = setup.ddbDocMock
+      .calls()
+      .find((c) => (c.firstArg as { input?: { RequestItems?: unknown } }).input?.RequestItems);
+    const requestItems = (
+      batchWriteCall!.firstArg as {
+        input: {
+          RequestItems: Record<
+            string,
+            Array<{ PutRequest: { Item: { task_id_idx: string; channel: string } } }>
+          >;
+        };
+      }
+    ).input.RequestItems.writes;
+
+    const channelToIdx = Object.fromEntries(
+      requestItems.map((r) => {
+        const sk = r.PutRequest.Item.task_id_idx;
+        const idx = sk.split(':::')[1];
+        return [r.PutRequest.Item.channel, idx];
+      }),
+    );
+
+    expect(channelToIdx.regular).toBe('0');
+    expect(channelToIdx.__error__).toBe('-1');
+    expect(channelToIdx.__scheduled__).toBe('-2');
+    expect(channelToIdx.__interrupt__).toBe('-3');
+    expect(channelToIdx.__resume__).toBe('-4');
+  });
 });

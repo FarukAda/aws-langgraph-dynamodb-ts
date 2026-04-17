@@ -30,30 +30,41 @@ export const deleteThreadAction = async (params: DeleteThreadActionParams): Prom
   // Validate thread ID
   validateThreadId(params.threadId);
 
-  // Query returns BOTH metadata items and PAYLOAD# items for the thread
+  // Query returns BOTH metadata items and PAYLOAD# items for the thread.
+  // We don't set a per-query Limit — DynamoDB's default 1 MB page is far more
+  // efficient than many small 100-item queries. The real safeguard is the
+  // MAX_DELETE_BATCH_SIZE total-item cap below.
   const allItems: RawCheckpointTableItem[] = [];
   let lastEvaluatedKey: Record<string, unknown> | undefined;
   let iterationCount = 0;
-  const MAX_ITERATIONS = 10;
+  // Deliberately higher than `MAX_LOOP_ITERATIONS` used in list()/search: deletes
+  // must walk every page of a thread (there's no early-exit when a user limit is
+  // satisfied), so the bound is set to "effectively unbounded for practical
+  // workloads". The real guard is MAX_DELETE_BATCH_SIZE total items held in memory.
+  const MAX_DELETE_PAGES = 10_000;
 
-  // Fetch all items with pagination and safety limits
   do {
     iterationCount++;
-    if (iterationCount > MAX_ITERATIONS) {
-      throw new Error('Delete operation exceeded maximum iteration limit');
+    if (iterationCount > MAX_DELETE_PAGES) {
+      throw new Error(
+        `deleteThread scanned more than ${MAX_DELETE_PAGES} DynamoDB pages without completing. ` +
+          `The thread has an extreme number of checkpoints — investigate before retrying.`,
+      );
     }
 
-    const result = await withDynamoDBRetry(async () => {
-      return await params.client.query({
-        TableName: params.checkpointsTableName,
-        KeyConditionExpression: 'thread_id = :thread_id',
-        ExpressionAttributeValues: {
-          ':thread_id': params.threadId,
-        },
-        Limit: 100, // Fetch in smaller batches
-        ExclusiveStartKey: lastEvaluatedKey,
-      });
-    });
+    const result = await withDynamoDBRetry(
+      async () => {
+        return await params.client.query({
+          TableName: params.checkpointsTableName,
+          KeyConditionExpression: 'thread_id = :thread_id',
+          ExpressionAttributeValues: {
+            ':thread_id': params.threadId,
+          },
+          ExclusiveStartKey: lastEvaluatedKey,
+        });
+      },
+      { signal: params.signal },
+    );
 
     if (result.Items && result.Items.length > 0) {
       allItems.push(...(result.Items as RawCheckpointTableItem[]));
@@ -110,6 +121,7 @@ export const deleteThreadAction = async (params: DeleteThreadActionParams): Prom
     params.client,
     params.checkpointsTableName,
     checkpointDeleteRequests,
+    { signal: params.signal },
   );
 
   // Fetch writes for metadata items only (payload items don't have associated writes)
@@ -156,7 +168,9 @@ export const deleteThreadAction = async (params: DeleteThreadActionParams): Prom
   }
 
   // Delete all writes using shared batch write utility
-  await batchWriteAllWithRetry(params.client, params.writesTableName, allWriteDeleteRequests);
+  await batchWriteAllWithRetry(params.client, params.writesTableName, allWriteDeleteRequests, {
+    signal: params.signal,
+  });
 
   // Clean up S3 offloaded data
   if (params.s3Offloader && s3KeysToDelete.length > 0) {

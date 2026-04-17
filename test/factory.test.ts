@@ -158,6 +158,15 @@ describe('DynamoDBFactory', () => {
       expect(typeof result.destroy).toBe('function');
       expect(() => result.destroy()).not.toThrow();
     });
+
+    it('createAll destroy() should be idempotent', () => {
+      const result = DynamoDBFactory.createAll();
+      // Second and third invocations must be no-ops, not throws — callers may
+      // wire destroy() into both a finally block and an on-exit hook.
+      expect(() => result.destroy()).not.toThrow();
+      expect(() => result.destroy()).not.toThrow();
+      expect(() => result.destroy()).not.toThrow();
+    });
   });
 
   describe('shared client forwarding', () => {

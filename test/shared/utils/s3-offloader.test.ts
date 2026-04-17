@@ -124,6 +124,34 @@ describe('S3Offloader', () => {
         }),
       );
     });
+
+    it('should default ServerSideEncryption to AES256 when not configured', async () => {
+      mockSend.mockResolvedValueOnce({});
+
+      await offloader.upload('test-key', new Uint8Array([1]));
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({ ServerSideEncryption: 'AES256' }),
+      );
+    });
+
+    it('should honor an explicit serverSideEncryption override', async () => {
+      const kmsOffloader = new S3Offloader({
+        bucketName: 'test-bucket',
+        serverSideEncryption: 'aws:kms',
+        sseKmsKeyId: 'alias/my-key',
+      });
+      mockSend.mockResolvedValueOnce({});
+
+      await kmsOffloader.upload('test-key', new Uint8Array([1]));
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ServerSideEncryption: 'aws:kms',
+          SSEKMSKeyId: 'alias/my-key',
+        }),
+      );
+    });
   });
 
   describe('download', () => {
@@ -244,7 +272,7 @@ describe('S3Offloader', () => {
       expect(putCall._type).toBe('PutLifecycle');
       expect(putCall.LifecycleConfiguration.Rules).toHaveLength(1);
       expect(putCall.LifecycleConfiguration.Rules[0]).toEqual({
-        ID: 'langgraph-ttl-30d',
+        ID: 'langgraph-ttl-langgraph-checkpoints',
         Filter: { Prefix: 'langgraph-checkpoints/' },
         Status: 'Enabled',
         Expiration: { Days: 30 },
@@ -270,12 +298,14 @@ describe('S3Offloader', () => {
       // Existing rule preserved
       expect(putCall.LifecycleConfiguration.Rules[0]).toEqual(existingRule);
       // New rule appended
-      expect(putCall.LifecycleConfiguration.Rules[1].ID).toBe('langgraph-ttl-7d');
+      expect(putCall.LifecycleConfiguration.Rules[1].ID).toBe(
+        'langgraph-ttl-langgraph-checkpoints',
+      );
     });
 
     it('should skip if matching rule already exists with correct days', async () => {
       const matchingRule = {
-        ID: 'langgraph-ttl-30d',
+        ID: 'langgraph-ttl-langgraph-checkpoints',
         Filter: { Prefix: 'langgraph-checkpoints/' },
         Status: 'Enabled',
         Expiration: { Days: 30 },
@@ -301,12 +331,14 @@ describe('S3Offloader', () => {
 
       expect(mockSend).toHaveBeenCalledTimes(2);
       const putCall = mockSend.mock.calls[1][0];
-      expect(putCall.LifecycleConfiguration.Rules[0].ID).toBe('langgraph-ttl-14d');
+      expect(putCall.LifecycleConfiguration.Rules[0].ID).toBe(
+        'langgraph-ttl-langgraph-checkpoints',
+      );
     });
 
-    it('should update rule if days changed', async () => {
+    it('should update rule in place when TTL changes (no stale rule left behind)', async () => {
       const oldRule = {
-        ID: 'langgraph-ttl-30d',
+        ID: 'langgraph-ttl-langgraph-checkpoints',
         Filter: { Prefix: 'langgraph-checkpoints/' },
         Status: 'Enabled',
         Expiration: { Days: 30 },
@@ -318,10 +350,8 @@ describe('S3Offloader', () => {
         Expiration: { Days: 365 },
       };
 
-      // Rule exists but user has changed TTL — ensureLifecycleRule(30) still matches
-      // by ID, so if we call it with a *different* ruleId (different days), it appends.
-      // Here we simulate the rule ID matching ('langgraph-ttl-30d') but Expiration.Days
-      // being different (e.g. was manually changed to 60). The method should replace it.
+      // Rule ID is TTL-independent, so raising the TTL from 30 to 60 must update
+      // the same rule in place rather than appending a new one.
       const modifiedRule = { ...oldRule, Expiration: { Days: 60 } };
 
       mockSend.mockResolvedValueOnce({ Rules: [otherRule, modifiedRule] });
@@ -336,6 +366,26 @@ describe('S3Offloader', () => {
       expect(putCall.LifecycleConfiguration.Rules[0]).toEqual(otherRule);
       // Our rule updated with correct days
       expect(putCall.LifecycleConfiguration.Rules[1].Expiration.Days).toBe(30);
+    });
+
+    it('regression: raising TTL on an existing rule updates it instead of appending', async () => {
+      // Two sequential ensureLifecycleRule calls with different TTL values must result in
+      // ONE rule with the latest TTL, not two rules from different library versions.
+      const existing = {
+        ID: 'langgraph-ttl-langgraph-checkpoints',
+        Filter: { Prefix: 'langgraph-checkpoints/' },
+        Status: 'Enabled',
+        Expiration: { Days: 30 },
+      };
+
+      mockSend.mockResolvedValueOnce({ Rules: [existing] });
+      mockSend.mockResolvedValueOnce({});
+
+      await offloader.ensureLifecycleRule(90);
+
+      const putCall = mockSend.mock.calls[1][0];
+      expect(putCall.LifecycleConfiguration.Rules).toHaveLength(1);
+      expect(putCall.LifecycleConfiguration.Rules[0].Expiration.Days).toBe(90);
     });
 
     it('should re-throw non-lifecycle errors from GetBucketLifecycleConfiguration', async () => {

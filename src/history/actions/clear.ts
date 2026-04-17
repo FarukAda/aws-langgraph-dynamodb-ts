@@ -19,7 +19,7 @@ import { validateUserId, validateSessionId, withDynamoDBRetry } from '../utils';
  * @throws Error if the operation fails or validation fails
  */
 export const clearAction = async (params: ClearActionParams): Promise<void> => {
-  const { client, tableName, userId, sessionId } = params;
+  const { client, tableName, userId, sessionId, signal } = params;
 
   // Validate inputs
   validateUserId(userId);
@@ -43,18 +43,21 @@ export const clearAction = async (params: ClearActionParams): Promise<void> => {
       throw new Error('Clear operation exceeded maximum iteration limit');
     }
 
-    const result = await withDynamoDBRetry(async () => {
-      return await client.query({
-        TableName: tableName,
-        KeyConditionExpression: 'userId = :userId AND begins_with(sessionId, :prefix)',
-        ExpressionAttributeValues: {
-          ':userId': userId,
-          ':prefix': messagePrefix,
-        },
-        ProjectionExpression: 'userId, sessionId',
-        ExclusiveStartKey: lastEvaluatedKey,
-      });
-    });
+    const result = await withDynamoDBRetry(
+      async () => {
+        return await client.query({
+          TableName: tableName,
+          KeyConditionExpression: 'userId = :userId AND begins_with(sessionId, :prefix)',
+          ExpressionAttributeValues: {
+            ':userId': userId,
+            ':prefix': messagePrefix,
+          },
+          ProjectionExpression: 'userId, sessionId',
+          ExclusiveStartKey: lastEvaluatedKey,
+        });
+      },
+      { signal },
+    );
 
     if (result.Items && result.Items.length > 0) {
       // Prevent memory exhaustion
@@ -77,5 +80,5 @@ export const clearAction = async (params: ClearActionParams): Promise<void> => {
     DeleteRequest: { Key: key },
   }));
 
-  await batchWriteAllWithRetry(client, tableName, deleteRequests);
+  await batchWriteAllWithRetry(client, tableName, deleteRequests, { signal });
 };

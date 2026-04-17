@@ -19,6 +19,7 @@ import {
 } from '@langchain/langgraph';
 import type { SearchItem } from '@langchain/langgraph-checkpoint';
 
+import { resolveDynamoDBClient } from '../shared';
 import {
   getOperationAction,
   putOperationAction,
@@ -34,6 +35,7 @@ export class DynamoDBStore extends BaseStore {
   private readonly memoryTableName: string;
   private readonly embedding?: EmbeddingsInterface;
   private readonly ttlDays?: number;
+  private readonly fallbackToLexicalOnEmbeddingFailure: boolean;
   private readonly ownsClient: boolean;
 
   /**
@@ -49,17 +51,14 @@ export class DynamoDBStore extends BaseStore {
   constructor(options: DynamoDBStoreOptions) {
     super();
     this.memoryTableName = options.memoryTableName;
-    if (options.client) {
-      this.client = options.client;
-      this.ddbClient = undefined;
-      this.ownsClient = false;
-    } else {
-      this.ddbClient = new DynamoDBClient(options.clientConfig || {});
-      this.client = DynamoDBDocument.from(this.ddbClient);
-      this.ownsClient = true;
-    }
+    ({
+      ddbClient: this.ddbClient,
+      client: this.client,
+      ownsClient: this.ownsClient,
+    } = resolveDynamoDBClient(options));
     this.embedding = options.embedding;
     this.ttlDays = options.ttlDays;
+    this.fallbackToLexicalOnEmbeddingFailure = options.fallbackToLexicalOnEmbeddingFailure ?? false;
   }
 
   /**
@@ -105,22 +104,26 @@ export class DynamoDBStore extends BaseStore {
     // Validate batch size to prevent resource exhaustion
     validateBatchSize(operations.length);
 
+    // Honor LangChain's RunnableConfig.signal — aborted signals reject every op.
+    const signal = config?.signal;
+    signal?.throwIfAborted();
+
     // Operation type dispatch — relies on LangGraph's Operation union discriminating
     // properties: GetOperation has {namespace, key}, PutOperation adds {value},
     // SearchOperation has {namespacePrefix}, ListNamespacesOperation has {limit, offset}
     // without {namespacePrefix} or {key}. This mirrors the official LangGraph stores.
     const promises = operations.map(async (op, index) => {
       if ('key' in op && !('value' in op)) {
-        return await this.getOperation(userId, op as GetOperation);
+        return await this.getOperation(userId, op as GetOperation, signal);
       }
       if ('key' in op && 'value' in op) {
-        return await this.putOperation(userId, op as PutOperation);
+        return await this.putOperation(userId, op as PutOperation, signal);
       }
       if ('namespacePrefix' in op) {
-        return await this.searchOperation(userId, op as SearchOperation);
+        return await this.searchOperation(userId, op as SearchOperation, signal);
       }
       if (!('namespacePrefix' in op) && 'limit' in op && 'offset' in op) {
-        return await this.listNamespacesOperation(userId, op as ListNamespacesOperation);
+        return await this.listNamespacesOperation(userId, op as ListNamespacesOperation, signal);
       }
 
       // Unrecognized operation - sanitized error message to prevent information disclosure
@@ -137,12 +140,17 @@ export class DynamoDBStore extends BaseStore {
    * @param op - Get operation parameters
    * @returns The item if found, null otherwise
    */
-  private async getOperation(userId: string, op: GetOperation): Promise<Item | null> {
+  private async getOperation(
+    userId: string,
+    op: GetOperation,
+    signal?: AbortSignal,
+  ): Promise<Item | null> {
     return await getOperationAction({
       client: this.client,
       memoryTableName: this.memoryTableName,
       userId,
       op,
+      signal,
     });
   }
 
@@ -152,7 +160,11 @@ export class DynamoDBStore extends BaseStore {
    * @param userId - User ID for the item
    * @param op - Put operation parameters
    */
-  private async putOperation(userId: string, op: PutOperation): Promise<void> {
+  private async putOperation(
+    userId: string,
+    op: PutOperation,
+    signal?: AbortSignal,
+  ): Promise<void> {
     await putOperationAction({
       client: this.client,
       memoryTableName: this.memoryTableName,
@@ -160,6 +172,7 @@ export class DynamoDBStore extends BaseStore {
       op,
       embedding: this.embedding,
       ttlDays: this.ttlDays,
+      signal,
     });
   }
 
@@ -170,13 +183,19 @@ export class DynamoDBStore extends BaseStore {
    * @param op - Search operation parameters
    * @returns Array of matching items with optional similarity scores
    */
-  private async searchOperation(userId: string, op: SearchOperation): Promise<SearchItem[]> {
+  private async searchOperation(
+    userId: string,
+    op: SearchOperation,
+    signal?: AbortSignal,
+  ): Promise<SearchItem[]> {
     return await searchOperationAction({
       client: this.client,
       memoryTableName: this.memoryTableName,
       userId,
       op,
       embedding: this.embedding,
+      fallbackToLexicalOnEmbeddingFailure: this.fallbackToLexicalOnEmbeddingFailure,
+      signal,
     });
   }
 
@@ -190,12 +209,14 @@ export class DynamoDBStore extends BaseStore {
   private async listNamespacesOperation(
     userId: string,
     op: ListNamespacesOperation,
+    signal?: AbortSignal,
   ): Promise<string[][]> {
     return await listNamespacesOperationAction({
       client: this.client,
       memoryTableName: this.memoryTableName,
       userId,
       op,
+      signal,
     });
   }
 }

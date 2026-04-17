@@ -41,7 +41,7 @@ describe('Compressor', () => {
       const data = createCompressibleData(300);
       const result = await compressor.compress(data);
       // 300 > 256 custom threshold — should be compressed
-      expect(Compressor.isGzipped(result)).toBe(true);
+      expect(Compressor.hasCompressedMarker(result)).toBe(true);
     });
 
     it('should accept custom compression level', async () => {
@@ -53,8 +53,8 @@ describe('Compressor', () => {
       const resultBest = await compressorBest.compress(data);
 
       // Both should be gzipped
-      expect(Compressor.isGzipped(resultFast)).toBe(true);
-      expect(Compressor.isGzipped(resultBest)).toBe(true);
+      expect(Compressor.hasCompressedMarker(resultFast)).toBe(true);
+      expect(Compressor.hasCompressedMarker(resultBest)).toBe(true);
 
       // Level 9 should produce smaller or equal output than level 1
       expect(resultBest.length).toBeLessThanOrEqual(resultFast.length);
@@ -85,7 +85,7 @@ describe('Compressor', () => {
       const result = await compressor.compress(data);
 
       // Should be gzipped (starts with 0x1F 0x8B)
-      expect(Compressor.isGzipped(result)).toBe(true);
+      expect(Compressor.hasCompressedMarker(result)).toBe(true);
       // Compressed result should be different from input
       expect(result).not.toEqual(data);
     });
@@ -127,7 +127,7 @@ describe('Compressor', () => {
       // Highly compressible data (repeated text) should be compressed
       const compressibleData = createCompressibleData(2048);
       const compressedGood = await compressor.compress(compressibleData);
-      expect(Compressor.isGzipped(compressedGood)).toBe(true);
+      expect(Compressor.hasCompressedMarker(compressedGood)).toBe(true);
       expect(compressedGood.length).toBeLessThan(compressibleData.length * 0.9);
 
       // Truly random data should NOT be compressed (savings < 10%)
@@ -138,14 +138,15 @@ describe('Compressor', () => {
       expect(compressedBad).toBe(randomData);
     });
 
-    it('should produce valid gzip output with magic header bytes', async () => {
+    it('should produce output prefixed with the LGC marker (avoids gzip-magic ambiguity)', async () => {
       const compressor = new Compressor({ enabled: true, minSizeBytes: 10 });
       const data = createCompressibleData(100);
       const result = await compressor.compress(data);
 
-      // Gzip magic bytes: 0x1F 0x8B
-      expect(result[0]).toBe(0x1f);
-      expect(result[1]).toBe(0x8b);
+      // "LGC" marker: 0x4C 0x47 0x43
+      expect(result[0]).toBe(0x4c);
+      expect(result[1]).toBe(0x47);
+      expect(result[2]).toBe(0x43);
     });
 
     it('should compress with threshold of 0 (always compress)', async () => {
@@ -153,7 +154,7 @@ describe('Compressor', () => {
       const data = createCompressibleData(50); // Small data
       const result = await compressor.compress(data);
 
-      expect(Compressor.isGzipped(result)).toBe(true);
+      expect(Compressor.hasCompressedMarker(result)).toBe(true);
     });
 
     it('should respect different compression levels', async () => {
@@ -168,7 +169,7 @@ describe('Compressor', () => {
 
       // All should be valid gzip
       for (const result of results) {
-        expect(Compressor.isGzipped(result)).toBe(true);
+        expect(Compressor.hasCompressedMarker(result)).toBe(true);
       }
 
       // Higher levels should generally produce smaller output
@@ -227,6 +228,20 @@ describe('Compressor', () => {
 
       await expect(compressor.decompress(corruptGzip)).rejects.toThrow();
     });
+
+    it('should reject gzip bomb payloads that exceed maxDecompressedBytes', async () => {
+      // Build a real bomb: 2 MiB of zeros compresses to a few KiB. We then try to
+      // decompress with an 8 KiB cap, which is well below the 2 MiB that would come
+      // out the other side.
+      const bombSource = new Uint8Array(2 * 1024 * 1024);
+      const producer = new Compressor({ enabled: true, minSizeBytes: 0 });
+      const bomb = await producer.compress(bombSource);
+      // Sanity: compression was effective — the bomb is much smaller than its payload.
+      expect(bomb.byteLength).toBeLessThan(bombSource.byteLength / 10);
+
+      const guarded = new Compressor({ enabled: true, maxDecompressedBytes: 8 * 1024 });
+      await expect(guarded.decompress(bomb)).rejects.toThrow(/maxDecompressedBytes|8192 bytes/i);
+    });
   });
 
   describe('round-trip', () => {
@@ -266,7 +281,7 @@ describe('Compressor', () => {
       const data = new Uint8Array(Buffer.from(checkpointJson));
 
       const compressed = await compressor.compress(data);
-      expect(Compressor.isGzipped(compressed)).toBe(true);
+      expect(Compressor.hasCompressedMarker(compressed)).toBe(true);
 
       const decompressed = await compressor.decompress(compressed);
       expect(Buffer.from(decompressed).toString()).toEqual(checkpointJson);
@@ -295,13 +310,45 @@ describe('Compressor', () => {
       const compressedLarge = await compressor.compress(largeData);
 
       // Verify small was NOT compressed (identity passthrough)
-      expect(Compressor.isGzipped(compressedSmall)).toBe(false);
+      expect(Compressor.hasCompressedMarker(compressedSmall)).toBe(false);
       // Verify large WAS compressed
-      expect(Compressor.isGzipped(compressedLarge)).toBe(true);
+      expect(Compressor.hasCompressedMarker(compressedLarge)).toBe(true);
 
       // Both should decompress correctly
       expect(await compressor.decompress(compressedSmall)).toEqual(smallData);
       expect(await compressor.decompress(compressedLarge)).toEqual(largeData);
+    });
+  });
+
+  describe('marker-based detection (regression: raw binary starting with gzip magic)', () => {
+    it('round-trips raw binary that happens to start with the LGC marker-safe prefix', async () => {
+      // A payload that starts with the gzip magic bytes but is NOT library-compressed
+      // would still trip the legacy fallback (documented compatibility risk). The real
+      // guarantee is for newly-written data: once compressed by this library, reads
+      // use the LGC marker first and will not misfire on gzip-magic prefixes from
+      // unrelated binary. Round-trip proves marker detection wins.
+      const compressor = new Compressor({ enabled: true, minSizeBytes: 10 });
+      const payloadStartingWithMarkerBytes = new Uint8Array([
+        0x4c,
+        0x47,
+        0x43, // accidentally equal to marker
+        ...createCompressibleData(200),
+      ]);
+      const compressed = await compressor.compress(payloadStartingWithMarkerBytes);
+      const decompressed = await compressor.decompress(compressed);
+      expect(decompressed).toEqual(payloadStartingWithMarkerBytes);
+    });
+
+    it('still decompresses legacy pre-marker gzip payloads (backward compat)', async () => {
+      const compressor = new Compressor({ enabled: true, minSizeBytes: 10 });
+      const original = Buffer.from('Legacy payload repeated '.repeat(20));
+      // Legacy format: raw gzip without the LGC prefix.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { gzipSync } = require('zlib') as typeof import('zlib');
+      const legacyGzipped = new Uint8Array(gzipSync(original));
+
+      const decompressed = await compressor.decompress(legacyGzipped);
+      expect(Buffer.from(decompressed).equals(original)).toBe(true);
     });
   });
 

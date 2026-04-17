@@ -13,7 +13,7 @@ import { validateNamespace, validateKey, validateUserId, withDynamoDBRetry } fro
 export const getOperationAction = async (
   params: GetOperationActionParams,
 ): Promise<Item | null> => {
-  const { client, memoryTableName, userId, op } = params;
+  const { client, memoryTableName, userId, op, signal } = params;
 
   // Validate inputs
   validateUserId(userId);
@@ -24,15 +24,18 @@ export const getOperationAction = async (
   const sortKey = `${namespacePath}#${op.key}`;
 
   // Execute with retry logic
-  const ddbItem = await withDynamoDBRetry(async () => {
-    return await client.get({
-      TableName: memoryTableName,
-      Key: {
-        user_id: userId,
-        namespace_key: sortKey,
-      },
-    });
-  });
+  const ddbItem = await withDynamoDBRetry(
+    async () => {
+      return await client.get({
+        TableName: memoryTableName,
+        Key: {
+          user_id: userId,
+          namespace_key: sortKey,
+        },
+      });
+    },
+    { signal },
+  );
 
   if (!ddbItem.Item) {
     return null;

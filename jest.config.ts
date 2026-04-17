@@ -1,10 +1,15 @@
 export default {
     testMatch: ['**/*.test.ts'],
+    // Integration tests talk to real DynamoDB Local and have their own runner
+    // (see jest.integration.config.ts). Excluded here so `npm test` stays fast
+    // and deterministic without requiring docker.
+    testPathIgnorePatterns: ['/node_modules/', '/test/integration/'],
     transform: {
         '^.+\\.tsx?$': ['ts-jest', {
             tsconfig: {
                 esModuleInterop: true,
                 allowSyntheticDefaultImports: true,
+                rootDir: '.',
             }
         }]
     },

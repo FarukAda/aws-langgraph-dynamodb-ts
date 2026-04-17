@@ -232,18 +232,15 @@ describe('getTupleAction', () => {
     expect(result!.parentConfig).toBeUndefined();
   });
 
-  it('should use ConsistentRead for query', async () => {
+  it('should issue ConsistentRead on metadata, payload, and writes operations', async () => {
     const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-1', '');
 
-    // Mock query
-    ddbDocMock.onAnyCommand().resolvesOnce({
-      Items: [checkpointItem],
-    });
-
-    // Mock query writes
-    ddbDocMock.onAnyCommand().resolves({
-      Items: [],
-    });
+    // Metadata query → payload get → writes query.
+    ddbDocMock
+      .onAnyCommand()
+      .resolvesOnce({ Items: [checkpointItem] })
+      .resolvesOnce({ Item: { thread_id: 'thread-123', checkpoint: new Uint8Array(0) } })
+      .resolves({ Items: [] });
 
     await getTupleAction({
       client,
@@ -253,8 +250,15 @@ describe('getTupleAction', () => {
       config: createMockRunnableConfig('thread-123', undefined, ''),
     });
 
+    // Every read path getTuple issues must be strongly consistent: stale reads
+    // after a just-acked write would return phantom "payload not found" or
+    // drop fresh pending writes. Assert the flag explicitly on each DDB input.
     const calls = ddbDocMock.calls();
-    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    for (const call of calls) {
+      const input = call.args[0].input as { ConsistentRead?: boolean };
+      expect(input.ConsistentRead).toBe(true);
+    }
   });
 
   it('should deserialize checkpoint and metadata', async () => {
@@ -366,5 +370,27 @@ describe('getTupleAction', () => {
 
     expect(result).toBeDefined();
     expect(result?.pendingWrites).toEqual([]);
+  });
+
+  it('throws when a pending write references S3 but no offloader is configured', async () => {
+    const checkpointItem = createMockCheckpointItem('thread-123', 'checkpoint-456', 'ns');
+    const writeItem = {
+      ...createMockWriteItem('thread-123', 'checkpoint-456', 'ns', 'task-1', 0),
+      s3_value_key: 'prefix/thread-123/checkpoint-456/write-0.bin',
+      value: new Uint8Array(0),
+    };
+
+    ddbDocMock.onAnyCommand().resolvesOnce({ Item: checkpointItem });
+    ddbDocMock.onAnyCommand().resolves({ Items: [writeItem] });
+
+    await expect(
+      getTupleAction({
+        client,
+        checkpointsTableName: 'checkpoints',
+        writesTableName: 'writes',
+        serde,
+        config: createMockRunnableConfig('thread-123', 'checkpoint-456', 'ns'),
+      }),
+    ).rejects.toThrow(/no S3 offloader is configured/);
   });
 });

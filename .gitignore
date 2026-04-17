@@ -15,3 +15,8 @@ coverage
 dist
 .DS_Store
 .env
+
+# Stryker mutation testing artefacts
+reports/
+.stryker-tmp/
+.stryker-incremental.json

@@ -21,12 +21,23 @@ import {
   S3Offloader,
   withDynamoDBRetry,
   getLogger,
+  MAX_LOOP_ITERATIONS,
   MAX_UNPROCESSED_RETRIES,
+  resolveDynamoDBClient,
+  INITIAL_BACKOFF_DELAY_MS,
+  fullJitter,
+  nextBackoffDelay,
+  sleep,
 } from '../shared';
 import { deleteThreadAction, getTupleAction, putAction, putWritesAction } from './actions';
 import type { CheckpointItem, CheckpointPayloadItem, DynamoDBSaverOptions } from './types';
 import { PAYLOAD_SK_PREFIX } from './types';
-import { validateListLimit, validateThreadId, deserializeCheckpointTuple } from './utils';
+import {
+  validateCheckpointId,
+  validateListLimit,
+  validateThreadId,
+  deserializeCheckpointTuple,
+} from './utils';
 
 /**
  * DynamoDB-based checkpoint saver for LangGraph.
@@ -68,15 +79,11 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     this.writesTableName = options.writesTableName;
     this.ttlDays = options.ttlDays;
     this.ttlSeconds = options.ttlSeconds;
-    if (options.client) {
-      this.client = options.client;
-      this.ddbClient = undefined;
-      this.ownsClient = false;
-    } else {
-      this.ddbClient = new DynamoDBClient(options.clientConfig || {});
-      this.client = DynamoDBDocument.from(this.ddbClient);
-      this.ownsClient = true;
-    }
+    ({
+      ddbClient: this.ddbClient,
+      client: this.client,
+      ownsClient: this.ownsClient,
+    } = resolveDynamoDBClient(options));
     if (options.compression?.enabled) {
       this.compressor = new Compressor(options.compression);
     }
@@ -114,22 +121,26 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * Delete a thread and all its checkpoints and writes
    *
    * @param threadId - The thread ID to delete
+   * @param options.signal - Optional AbortSignal for cancelling in-flight retries
    * @throws Error if validation fails or operation fails
    */
-  async deleteThread(threadId: string): Promise<void> {
+  async deleteThread(threadId: string, options: { signal?: AbortSignal } = {}): Promise<void> {
     return await deleteThreadAction({
       client: this.client,
       checkpointsTableName: this.checkpointsTableName,
       writesTableName: this.writesTableName,
       threadId,
       s3Offloader: this.s3Offloader,
+      signal: options.signal,
     });
   }
 
   /**
    * Get a checkpoint tuple from DynamoDB
    *
-   * @param config - Runnable configuration containing thread_id and optional checkpoint_id
+   * @param config - Runnable configuration containing thread_id and optional checkpoint_id.
+   *   `config.signal` is honored as an AbortSignal: in-flight retries short-circuit
+   *   and the returned promise rejects with the signal's abort reason.
    * @returns CheckpointTuple if found, undefined otherwise
    * @throws Error if validation fails or operation fails
    */
@@ -142,13 +153,15 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
       config,
       compressor: this.compressor,
       s3Offloader: this.s3Offloader,
+      signal: config.signal,
     });
   }
 
   /**
    * Save a checkpoint to DynamoDB
    *
-   * @param config - Runnable configuration
+   * @param config - Runnable configuration. `config.signal` is honored as an
+   *   AbortSignal and short-circuits retry backoff.
    * @param checkpoint - Checkpoint to save
    * @param metadata - Checkpoint metadata
    * @param newVersions - Channel versions (not used in DynamoDB implementation)
@@ -173,13 +186,15 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
       ttlSeconds: this.ttlSeconds,
       compressor: this.compressor,
       s3Offloader: this.s3Offloader,
+      signal: config.signal,
     });
   }
 
   /**
    * Save pending writes to DynamoDB
    *
-   * @param config - Runnable configuration
+   * @param config - Runnable configuration. `config.signal` is honored as an
+   *   AbortSignal and short-circuits retry backoff.
    * @param writes - Array of pending writes to save
    * @param taskId - Task ID for the writes
    * @throws Error if validation fails or operation fails
@@ -196,6 +211,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
       ttlSeconds: this.ttlSeconds,
       compressor: this.compressor,
       s3Offloader: this.s3Offloader,
+      signal: config.signal,
     });
   }
 
@@ -214,6 +230,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     const { limit, before, filter } = options ?? {};
     const thread_id = config.configurable?.thread_id;
     const checkpoint_ns = config.configurable?.checkpoint_ns as string | undefined;
+    // `config.signal` is LangChain's idiomatic AbortSignal field. We propagate
+    // it into each retry cycle AND check it before yielding, so a consumer
+    // calling `controller.abort()` during iteration stops producing items.
+    const signal = config.signal;
 
     // Validate thread_id
     if (typeof thread_id !== 'string') {
@@ -224,85 +244,95 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     // Validate limit if provided
     validateListLimit(limit);
 
+    // Validate `before` checkpoint_id — LangGraph passes this back verbatim from
+    // a previous CheckpointTuple.config, but user callers can construct it
+    // manually. Without validation a malformed before-id could slip past the
+    // KeyCondition bound (payload items would get returned under `list({before})`).
+    const beforeCheckpointId = before?.configurable?.checkpoint_id;
+    if (beforeCheckpointId !== undefined) {
+      if (typeof beforeCheckpointId !== 'string') {
+        throw new Error('before.configurable.checkpoint_id must be a string');
+      }
+      validateCheckpointId(beforeCheckpointId, false);
+    }
+
     const expressionAttributeValues: Record<string, unknown> = {
       ':thread_id': thread_id,
-      ':payload_prefix': PAYLOAD_SK_PREFIX,
       ...(checkpoint_ns !== undefined && { ':checkpoint_ns': checkpoint_ns }),
     };
 
-    // Filter by namespace when provided — applied after reading (costs RCU for
-    // non-matching items, but avoids an additional GSI for the uncommon case).
-    const filterExpression =
-      checkpoint_ns !== undefined ? 'checkpoint_ns = :checkpoint_ns' : undefined;
+    // Filter to metadata items only via the non-key `type` attribute (payload
+    // items don't carry `type`). We intentionally avoid using checkpoint_id in
+    // the KeyCondition to exclude payload items — any lex-bound approach
+    // silently drops metadata whose IDs sort above `PAYLOAD#`, which includes
+    // the very common case of lowercase-letter-prefixed IDs.
+    const filterParts = ['attribute_exists(#type)'];
+    if (checkpoint_ns !== undefined) filterParts.push('checkpoint_ns = :checkpoint_ns');
+    const filterExpression = filterParts.join(' AND ');
 
-    // Key condition excludes PAYLOAD# items — only metadata items are returned.
-    // UUID checkpoint IDs (hex 0-9, a-f) sort before 'PAYLOAD#' in ASCII.
-    let keyConditionExpression = 'thread_id = :thread_id AND checkpoint_id < :payload_prefix';
+    // KeyCondition gates only by thread (and optional `before` sort-key bound).
+    let keyConditionExpression = 'thread_id = :thread_id';
 
     if (before?.configurable?.checkpoint_id) {
       keyConditionExpression = 'thread_id = :thread_id AND checkpoint_id < :before_checkpoint_id';
       expressionAttributeValues[':before_checkpoint_id'] = before.configurable.checkpoint_id;
-      // No need for :payload_prefix — before_checkpoint_id is always a UUID which is < PAYLOAD#
     }
 
-    // When filter is active, skip DynamoDB-level Limit since metadata filtering
-    // is a post-filter (metadata is stored as binary and cannot be filtered server-side).
-    const hasFilter = filter && Object.keys(filter).length > 0;
-    const queryLimit = hasFilter ? undefined : limit;
-
-    const result = await withDynamoDBRetry(async () => {
-      return await this.client.query({
-        TableName: this.checkpointsTableName,
-        KeyConditionExpression: keyConditionExpression,
-        ExpressionAttributeValues: expressionAttributeValues,
-        FilterExpression: filterExpression,
-        Limit: queryLimit,
-        ScanIndexForward: false, // Descending order
-      });
-    });
+    // When any server-side OR client-side filter reduces the returned set, we
+    // drop the DynamoDB Limit: Limit is applied BEFORE FilterExpression, so a
+    // small limit with heavy filtering truncates the result prematurely. The
+    // metadata filter (from CheckpointListOptions.filter) and the checkpoint_ns
+    // filter both qualify.
+    const hasMetadataFilter = filter && Object.keys(filter).length > 0;
+    const hasNsFilter = checkpoint_ns !== undefined;
+    const hasAnyFilter = hasMetadataFilter || hasNsFilter;
 
     let yieldedCount = 0;
-    if (result.Items) {
-      const items = result.Items as CheckpointItem[];
-      const payloadMap = await this.fetchCheckpointPayloadsBatch(items);
-      for (const item of items) {
-        const checkpointData = payloadMap.get(item.checkpoint_id) ?? new Uint8Array(0);
-        const tuple = await deserializeCheckpointTuple(
-          item,
-          checkpointData,
-          this.serde,
-          this.compressor,
-          this.s3Offloader,
+    let iterationCount = 0;
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
+
+    do {
+      // Safety net against pathological filter queries: if a thread has millions
+      // of checkpoints and the filter matches almost none, the scan could loop
+      // for minutes burning RCU. Abort with a clear error rather than hanging.
+      iterationCount++;
+      if (iterationCount > MAX_LOOP_ITERATIONS) {
+        throw new Error(
+          `list() exceeded ${MAX_LOOP_ITERATIONS} DynamoDB pages without reaching the requested limit. ` +
+            `This usually indicates a filter that matches very few items in a large thread — ` +
+            `narrow the filter, add a more selective namespace, or redesign with a GSI.`,
         );
-        // Apply metadata filter: skip checkpoints that don't match all filter entries
-        if (hasFilter && !this.matchesFilter(tuple.metadata, filter)) {
-          continue;
-        }
-        yield tuple;
-        yieldedCount++;
-        if (limit && yieldedCount >= limit) return;
       }
-    }
 
-    // Paginate through remaining results if LastEvaluatedKey is present
-    let lastEvaluatedKey = result.LastEvaluatedKey;
-    while (lastEvaluatedKey) {
-      const nextResult = await withDynamoDBRetry(async () => {
-        return await this.client.query({
-          TableName: this.checkpointsTableName,
-          KeyConditionExpression: keyConditionExpression,
-          ExpressionAttributeValues: expressionAttributeValues,
-          FilterExpression: filterExpression,
-          Limit: hasFilter ? undefined : limit ? limit - yieldedCount : undefined,
-          ScanIndexForward: false,
-          ExclusiveStartKey: lastEvaluatedKey,
-        });
-      });
+      const pageLimit = hasAnyFilter
+        ? undefined
+        : limit
+          ? Math.max(1, limit - yieldedCount)
+          : undefined;
 
-      if (nextResult.Items) {
-        const items = nextResult.Items as CheckpointItem[];
-        const payloadMap = await this.fetchCheckpointPayloadsBatch(items);
+      signal?.throwIfAborted();
+
+      const result = await withDynamoDBRetry(
+        async () => {
+          return await this.client.query({
+            TableName: this.checkpointsTableName,
+            KeyConditionExpression: keyConditionExpression,
+            ExpressionAttributeValues: expressionAttributeValues,
+            ExpressionAttributeNames: { '#type': 'type' },
+            FilterExpression: filterExpression,
+            Limit: pageLimit,
+            ScanIndexForward: false, // Descending order
+            ExclusiveStartKey: lastEvaluatedKey,
+          });
+        },
+        { signal },
+      );
+
+      if (result.Items) {
+        const items = result.Items as CheckpointItem[];
+        const payloadMap = await this.fetchCheckpointPayloadsBatch(items, signal);
         for (const item of items) {
+          signal?.throwIfAborted();
           const checkpointData = payloadMap.get(item.checkpoint_id) ?? new Uint8Array(0);
           const tuple = await deserializeCheckpointTuple(
             item,
@@ -311,7 +341,8 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
             this.compressor,
             this.s3Offloader,
           );
-          if (hasFilter && !this.matchesFilter(tuple.metadata, filter)) {
+          // Apply metadata filter: skip checkpoints that don't match all filter entries.
+          if (hasMetadataFilter && !this.matchesFilter(tuple.metadata, filter)) {
             continue;
           }
           yield tuple;
@@ -320,8 +351,8 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
         }
       }
 
-      lastEvaluatedKey = nextResult.LastEvaluatedKey;
-    }
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
   }
 
   /**
@@ -334,6 +365,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    */
   private async fetchCheckpointPayloadsBatch(
     items: CheckpointItem[],
+    signal?: AbortSignal,
   ): Promise<Map<string, Uint8Array>> {
     const payloadMap = new Map<string, Uint8Array>();
 
@@ -366,22 +398,34 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
       }));
 
       // Retry loop for UnprocessedKeys with exponential backoff
-      let retryDelay = 100;
+      let retryDelay = INITIAL_BACKOFF_DELAY_MS;
       let retryCount = 0;
       while (keys.length > 0) {
-        const batchResult = await withDynamoDBRetry(async () => {
-          return await this.client.batchGet({
-            RequestItems: {
-              [this.checkpointsTableName]: { Keys: keys },
-            },
-          });
-        });
+        const batchResult = await withDynamoDBRetry(
+          async () => {
+            return await this.client.batchGet({
+              RequestItems: {
+                [this.checkpointsTableName]: { Keys: keys },
+              },
+            });
+          },
+          { signal },
+        );
 
         // Map results — BatchGetItem returns items in arbitrary order
         const responses = batchResult.Responses?.[this.checkpointsTableName];
         if (responses) {
           for (const response of responses as CheckpointPayloadItem[]) {
-            // Extract original checkpoint_id from PAYLOAD#<id> sort key
+            // Sanity-check the sort key before trimming it. Without this, a corrupted
+            // or migrated row missing the PAYLOAD# prefix would silently produce a
+            // garbage `originalId` and ripple into the "payload not found" path below.
+            if (!response.checkpoint_id?.startsWith(PAYLOAD_SK_PREFIX)) {
+              throw new Error(
+                `Unexpected payload item sort key in ${this.checkpointsTableName}: ` +
+                  `expected to start with "${PAYLOAD_SK_PREFIX}" but got "${response.checkpoint_id}". ` +
+                  `This indicates table corruption or a stale migration — investigate before retrying.`,
+              );
+            }
             const originalId = response.checkpoint_id.substring(PAYLOAD_SK_PREFIX.length);
             payloadMap.set(originalId, response.checkpoint);
           }
@@ -397,8 +441,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
                 `${unprocessed.length} keys remain unprocessed.`,
             );
           }
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
-          retryDelay = Math.min(retryDelay * 2, 5000);
+          // Full jitter so list() calls across concurrent workers don't synchronize
+          // and re-pressure the partition on every retry cycle.
+          await sleep(fullJitter(retryDelay), signal);
+          retryDelay = nextBackoffDelay(retryDelay);
           keys = unprocessed as typeof keys;
         } else {
           break;

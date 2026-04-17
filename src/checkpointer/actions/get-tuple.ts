@@ -32,37 +32,68 @@ export const getTupleAction = async (
 ): Promise<CheckpointTuple | undefined> => {
   const getItem = async (configurable: ValidatedConfigurable) => {
     if (configurable.checkpoint_id != null) {
-      const item = await withDynamoDBRetry(async () => {
-        return await params.client.get({
-          TableName: params.checkpointsTableName,
-          Key: {
-            thread_id: configurable.thread_id,
-            checkpoint_id: configurable.checkpoint_id,
-          },
-        });
-      });
+      const item = await withDynamoDBRetry(
+        async () => {
+          return await params.client.get({
+            TableName: params.checkpointsTableName,
+            Key: {
+              thread_id: configurable.thread_id,
+              checkpoint_id: configurable.checkpoint_id,
+            },
+            ConsistentRead: true,
+          });
+        },
+        { signal: params.signal },
+      );
       return item.Item as CheckpointItem | undefined;
     } else {
-      const result = await withDynamoDBRetry(async () => {
-        return await params.client.query({
-          TableName: params.checkpointsTableName,
-          KeyConditionExpression: 'thread_id = :thread_id AND checkpoint_id < :payload_prefix',
-          ExpressionAttributeValues: {
-            ':thread_id': configurable.thread_id,
-            ':payload_prefix': PAYLOAD_SK_PREFIX,
-            ...(configurable.checkpoint_ns && {
-              ':checkpoint_ns': configurable.checkpoint_ns,
-            }),
+      // Select metadata items only. We cannot bound by `checkpoint_id` in the
+      // KeyCondition — any attempt to exclude payload items via `checkpoint_id
+      // < 'PAYLOAD#'` silently drops metadata whose IDs sort lexicographically
+      // above `PAYLOAD#` (e.g. anything starting with a lowercase letter,
+      // which includes common IDs like `ckpt-1`, `checkpoint-2`, etc.), and
+      // DynamoDB forbids primary-key attributes inside FilterExpression.
+      // Instead, filter on the non-key `type` attribute that only metadata
+      // items carry (`attribute_exists(#type)`). Payload items are never
+      // returned, regardless of user ID character set.
+      //
+      // Because Limit applies *before* FilterExpression in DynamoDB, when
+      // mixing metadata and payload pages we fetch a larger page and paginate
+      // until a metadata item is found. For high-volume threads the ordering
+      // still surfaces the newest metadata within the first 1-2 pages.
+      const hasNsFilter = !!configurable.checkpoint_ns;
+      const filterParts = ['attribute_exists(#type)'];
+      if (hasNsFilter) filterParts.push('checkpoint_ns = :checkpoint_ns');
+
+      const expressionValues: Record<string, unknown> = {
+        ':thread_id': configurable.thread_id,
+        ...(hasNsFilter && { ':checkpoint_ns': configurable.checkpoint_ns }),
+      };
+
+      let lastKey: Record<string, unknown> | undefined;
+      do {
+        const result = await withDynamoDBRetry(
+          async () => {
+            return await params.client.query({
+              TableName: params.checkpointsTableName,
+              KeyConditionExpression: 'thread_id = :thread_id',
+              ExpressionAttributeValues: expressionValues,
+              ExpressionAttributeNames: { '#type': 'type' },
+              FilterExpression: filterParts.join(' AND '),
+              ConsistentRead: true,
+              ScanIndexForward: false, // Descending — newest first
+              ExclusiveStartKey: lastKey,
+            });
           },
-          ...(configurable.checkpoint_ns && {
-            FilterExpression: 'checkpoint_ns = :checkpoint_ns',
-          }),
-          Limit: 1,
-          ConsistentRead: true,
-          ScanIndexForward: false, // Descending order
-        });
-      });
-      return result.Items?.[0] as CheckpointItem | undefined;
+          { signal: params.signal },
+        );
+        const items = result.Items as CheckpointItem[] | undefined;
+        if (items && items.length > 0) {
+          return items[0];
+        }
+        lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
+      return undefined;
     }
   };
 
@@ -82,16 +113,23 @@ export const getTupleAction = async (
     // Legacy single-item format — checkpoint blob is inline
     checkpointData = item.checkpoint;
   } else {
-    // New split format — fetch payload item separately
-    const payloadResult = await withDynamoDBRetry(async () => {
-      return await params.client.get({
-        TableName: params.checkpointsTableName,
-        Key: {
-          thread_id: item.thread_id,
-          checkpoint_id: `${PAYLOAD_SK_PREFIX}${item.checkpoint_id}`,
-        },
-      });
-    });
+    // New split format — fetch payload item separately.
+    // ConsistentRead must match the metadata read above: without it, a freshly-written
+    // payload can be missing from an eventually-consistent read even though the metadata
+    // item said it exists, producing spurious "payload not found" errors under write load.
+    const payloadResult = await withDynamoDBRetry(
+      async () => {
+        return await params.client.get({
+          TableName: params.checkpointsTableName,
+          Key: {
+            thread_id: item.thread_id,
+            checkpoint_id: `${PAYLOAD_SK_PREFIX}${item.checkpoint_id}`,
+          },
+          ConsistentRead: true,
+        });
+      },
+      { signal: params.signal },
+    );
 
     const payloadItem = payloadResult.Item as CheckpointPayloadItem | undefined;
     if (!payloadItem) {
@@ -107,17 +145,24 @@ export const getTupleAction = async (
   let writesLastEvaluatedKey: Record<string, unknown> | undefined;
 
   do {
-    const writesResult = await withDynamoDBRetry(async () => {
-      return await params.client.query({
-        TableName: params.writesTableName,
-        KeyConditionExpression:
-          'thread_id_checkpoint_id_checkpoint_ns = :thread_id_checkpoint_id_checkpoint_ns',
-        ExpressionAttributeValues: {
-          ':thread_id_checkpoint_id_checkpoint_ns': Writer.getPartitionKey(item),
-        },
-        ExclusiveStartKey: writesLastEvaluatedKey,
-      });
-    });
+    // ConsistentRead is required here: putWrites races with getTuple under concurrent
+    // workers, and an eventually-consistent Query can return a stale view that omits
+    // writes that have already been acked.
+    const writesResult = await withDynamoDBRetry(
+      async () => {
+        return await params.client.query({
+          TableName: params.writesTableName,
+          KeyConditionExpression:
+            'thread_id_checkpoint_id_checkpoint_ns = :thread_id_checkpoint_id_checkpoint_ns',
+          ExpressionAttributeValues: {
+            ':thread_id_checkpoint_id_checkpoint_ns': Writer.getPartitionKey(item),
+          },
+          ConsistentRead: true,
+          ExclusiveStartKey: writesLastEvaluatedKey,
+        });
+      },
+      { signal: params.signal },
+    );
 
     if (writesResult.Items) {
       allWriteItems.push(...(writesResult.Items as DynamoDBWriteItem[]));
@@ -125,19 +170,29 @@ export const getTupleAction = async (
     writesLastEvaluatedKey = writesResult.LastEvaluatedKey;
   } while (writesLastEvaluatedKey);
 
-  const pendingWrites: CheckpointPendingWrite[] = [];
-  for (const writeItem of allWriteItems) {
-    const write = Writer.fromDynamoDBItem(writeItem);
-    // Download from S3 if offloaded
-    let rawValue: Uint8Array = write.value;
-    if (writeItem.s3_value_key && params.s3Offloader) {
-      rawValue = await params.s3Offloader.download(writeItem.s3_value_key);
-    }
-    // Decompress write value if compressor is provided (auto-detects gzip)
-    const writeValue = params.compressor ? await params.compressor.decompress(rawValue) : rawValue;
-    const value = await params.serde.loadsTyped(write.type, writeValue);
-    pendingWrites.push([write.task_id, write.channel, value]);
-  }
+  // Deserialize pending writes in parallel. Each write may involve an S3 download
+  // plus decompress + serde — sequential awaits in a hot path were measurable on
+  // checkpoints with many offloaded writes.
+  const pendingWrites: CheckpointPendingWrite[] = await Promise.all(
+    allWriteItems.map(async (writeItem): Promise<CheckpointPendingWrite> => {
+      const write = Writer.fromDynamoDBItem(writeItem);
+      let rawValue: Uint8Array = write.value;
+      if (writeItem.s3_value_key) {
+        if (!params.s3Offloader) {
+          throw new Error(
+            `Pending write references S3 key '${writeItem.s3_value_key}' but no S3 offloader is configured. ` +
+              `Pass s3OffloadConfig when constructing DynamoDBSaver to read offloaded writes.`,
+          );
+        }
+        rawValue = await params.s3Offloader.download(writeItem.s3_value_key);
+      }
+      const writeValue = params.compressor
+        ? await params.compressor.decompress(rawValue)
+        : rawValue;
+      const value = await params.serde.loadsTyped(write.type, writeValue);
+      return [write.task_id, write.channel, value];
+    }),
+  );
 
   // Deserialize the checkpoint tuple from metadata item + payload data
   const checkpointTuple = await deserializeCheckpointTuple(

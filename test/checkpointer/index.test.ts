@@ -580,5 +580,21 @@ describe('DynamoDBSaver', () => {
       expect(results).toHaveLength(2);
       expect(results.every((r) => r.metadata?.source === 'input')).toBe(true);
     });
+
+    it('should validate before.configurable.checkpoint_id', async () => {
+      const saver = new DynamoDBSaver({
+        checkpointsTableName: 'checkpoints',
+        writesTableName: 'writes',
+      });
+
+      // A `before` id that collides with the internal PAYLOAD# prefix must be
+      // rejected up-front — otherwise payload items would leak into list results
+      // under that bound.
+      const iter = saver.list(
+        { configurable: { thread_id: 'thread-123' } },
+        { before: { configurable: { checkpoint_id: 'PAYLOAD#malformed' } } },
+      );
+      await expect(iter.next()).rejects.toThrow(/cannot begin with "PAYLOAD#"/);
+    });
   });
 });

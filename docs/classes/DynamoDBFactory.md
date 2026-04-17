@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.1.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.2.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/factory.ts#L26)
+Defined in: [factory.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/factory.ts#L27)
 
 Factory class for creating DynamoDB persistence instances
 
@@ -26,7 +26,7 @@ Factory class for creating DynamoDB persistence instances
 
 > `static` **createAll**(`options?`): `object`
 
-Defined in: [factory.ts:172](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/factory.ts#L172)
+Defined in: [factory.ts:174](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/factory.ts#L174)
 
 Create all DynamoDB persistence instances at once with a shared configuration
 
@@ -42,11 +42,32 @@ Configuration options
 
 Optional DynamoDB client configuration (shared)
 
+###### compression?
+
+[`CompressionConfig`](../interfaces/CompressionConfig.md)
+
+Compression configuration forwarded to the saver.
+
 ###### embedding?
 
 `EmbeddingsInterface`\<`number`[]\>
 
 Optional Bedrock embeddings for semantic search in store
+
+###### fallbackToLexicalOnEmbeddingFailure?
+
+`boolean`
+
+Forwarded to the store — if true, semantic-search calls that hit an
+embedding failure log a warning and return unranked results instead of
+throwing. Defaults to false (fail-closed). See
+[DynamoDBStoreOptions.fallbackToLexicalOnEmbeddingFailure](../interfaces/DynamoDBStoreOptions.md#fallbacktolexicalonembeddingfailure).
+
+###### s3OffloadConfig?
+
+[`S3OffloadConfig`](../interfaces/S3OffloadConfig.md)
+
+S3 offloading configuration forwarded to the saver.
 
 ###### serde?
 
@@ -66,6 +87,12 @@ Optional prefix for all table names (default: 'langgraph')
 
 Optional TTL in days for automatic cleanup (applies to all)
 
+###### ttlSeconds?
+
+`number`
+
+TTL in seconds for the saver (overrides ttlDays if both set).
+
 #### Returns
 
 Object containing all three persistence instances
@@ -78,7 +105,7 @@ Object containing all three persistence instances
 
 > **checkpointer**: [`DynamoDBSaver`](DynamoDBSaver.md)
 
-##### destroy()
+##### destroy
 
 > **destroy**: () => `void`
 
@@ -115,7 +142,7 @@ const app = workflow.compile({
 
 > `static` **createChatMessageHistory**(`options?`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory.ts:132](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/factory.ts#L132)
+Defined in: [factory.ts:134](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/factory.ts#L134)
 
 Create a DynamoDBChatMessageHistory instance with sensible defaults
 
@@ -154,7 +181,7 @@ const history = DynamoDBFactory.createChatMessageHistory({
 
 > `static` **createSaver**(`options?`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory.ts:53](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/factory.ts#L53)
+Defined in: [factory.ts:54](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/factory.ts#L54)
 
 Create a DynamoDBSaver instance with sensible defaults
 
@@ -194,7 +221,7 @@ const checkpointer = DynamoDBFactory.createSaver({
 
 > `static` **createStore**(`options?`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory.ts:97](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/factory.ts#L97)
+Defined in: [factory.ts:98](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/factory.ts#L98)
 
 Create a DynamoDBStore instance with sensible defaults
 

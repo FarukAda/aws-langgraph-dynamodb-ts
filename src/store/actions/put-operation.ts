@@ -20,17 +20,36 @@ import {
  * @throws Error if the operation fails or validation fails
  */
 export const putOperationAction = async (params: PutOperationActionParams): Promise<void> => {
-  const { client, embedding, memoryTableName, userId, op, ttlDays } = params;
+  const { client, embedding, memoryTableName, userId, op, ttlDays, signal } = params;
 
   // Validate inputs
   validateUserId(userId);
   validateNamespace(op.namespace);
   validateKey(op.key);
-  validateValue(op.value);
   validateTTL(ttlDays);
 
   const namespacePath = op.namespace.join('/');
   const namespace_key = `${namespacePath}#${op.key}`;
+
+  // LangGraph convention: PutOperation with value === null means delete the item.
+  // BaseStore.delete(ns, key) routes through batch([{namespace, key, value: null}]).
+  if (op.value === null) {
+    await withDynamoDBRetry(
+      async () => {
+        await client.delete({
+          TableName: memoryTableName,
+          Key: {
+            user_id: userId,
+            namespace_key: namespace_key,
+          },
+        });
+      },
+      { signal },
+    );
+    return;
+  }
+
+  validateValue(op.value);
   const now = Date.now();
 
   // Generate embeddings if requested
@@ -86,23 +105,26 @@ export const putOperationAction = async (params: PutOperationActionParams): Prom
     expressionAttributeValues[':embedding'] = embeddings;
   }
 
-  // Add TTL if configured
-  if (ttlDays && ttlDays > 0) {
+  // Add TTL if configured (validateTTL already rejected non-positive or non-integer values)
+  if (ttlDays !== undefined) {
     updateExpressionParts.push('ttl = :ttl');
     expressionAttributeValues[':ttl'] = calculateTTLTimestamp(ttlDays);
   }
 
   // Execute with retry logic
-  await withDynamoDBRetry(async () => {
-    await client.update({
-      TableName: memoryTableName,
-      Key: {
-        user_id: userId,
-        namespace_key: namespace_key,
-      },
-      UpdateExpression: `SET ${updateExpressionParts.join(', ')}, createdAt = if_not_exists(createdAt, :createdAt)`,
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: expressionAttributeValues,
-    });
-  });
+  await withDynamoDBRetry(
+    async () => {
+      await client.update({
+        TableName: memoryTableName,
+        Key: {
+          user_id: userId,
+          namespace_key: namespace_key,
+        },
+        UpdateExpression: `SET ${updateExpressionParts.join(', ')}, createdAt = if_not_exists(createdAt, :createdAt)`,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues,
+      });
+    },
+    { signal },
+  );
 };

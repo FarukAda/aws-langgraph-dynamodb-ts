@@ -60,8 +60,32 @@ describe('batchWriteWithRetry', () => {
     const requestItems = [{ PutRequest: { Item: { userId: 'user-1', data: 'value' } } }];
 
     await expect(batchWriteWithRetry(client, 'test-table', requestItems)).rejects.toThrow(
-      'Failed to process all items after 10 retries',
+      /batchWrite did not drain after 10 UnprocessedItems retries/,
     );
+  });
+
+  it('should surface unprocessed items on an exhaustion error for reconciliation', async () => {
+    const { ddbDocMock, client } = createMockDynamoDBClient();
+
+    const unprocessed = [{ PutRequest: { Item: { userId: 'user-1' } } }];
+    ddbDocMock.onAnyCommand().resolves({
+      UnprocessedItems: { 'test-table': unprocessed },
+    });
+
+    const initial = [
+      { PutRequest: { Item: { userId: 'user-1', data: 'A' } } },
+      { PutRequest: { Item: { userId: 'user-2', data: 'B' } } },
+    ];
+
+    try {
+      await batchWriteWithRetry(client, 'test-table', initial);
+      fail('expected batchWriteWithRetry to throw');
+    } catch (err: any) {
+      expect(err.name).toBe('BatchWriteIncompleteError');
+      expect(err.unprocessed).toHaveLength(1);
+      // DynamoDB acked 2 - 1 = 1 item before we gave up.
+      expect(err.succeededCount).toBe(1);
+    }
   });
 });
 

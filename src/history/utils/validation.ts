@@ -9,7 +9,9 @@ import { validateTTLDays as sharedValidateTTL } from '../../shared/utils';
 const MAX_USER_ID_LENGTH = 256;
 const MAX_SESSION_ID_LENGTH = 256;
 const MAX_TITLE_LENGTH = 200;
-const MAX_MESSAGES_PER_BATCH = 100;
+// 99 so that N message Puts + 1 metadata Update still fit in a single
+// 100-item DynamoDB TransactWrite (used for atomic index allocation).
+const MAX_MESSAGES_PER_BATCH = 99;
 const MAX_LIST_LIMIT = 1000;
 
 /**
@@ -48,6 +50,12 @@ export function validateUserId(userId: any): void {
   if (/[\x00-\x1F\x7F]/.test(userId)) {
     throw new HistoryValidationError('User ID cannot contain control characters');
   }
+
+  // Reject '#' to prevent collisions with the composite sort-key separator used for
+  // message items ("${sessionId}#msg#<idx>"). Defense in depth — userId is the PK today.
+  if (userId.includes('#')) {
+    throw new HistoryValidationError('User ID cannot contain "#" character');
+  }
 }
 
 /**
@@ -75,6 +83,13 @@ export function validateSessionId(sessionId: any): void {
   // eslint-disable-next-line no-control-regex
   if (/[\x00-\x1F\x7F]/.test(sessionId)) {
     throw new HistoryValidationError('Session ID cannot contain control characters');
+  }
+
+  // Reject '#' to prevent injection into the composite sort-key format
+  // "${sessionId}#msg#<idx>". A sessionId containing "#msg#" could otherwise let
+  // getMessages/clear cross into another of the same user's sessions.
+  if (sessionId.includes('#')) {
+    throw new HistoryValidationError('Session ID cannot contain "#" character');
   }
 }
 
@@ -208,9 +223,16 @@ const PER_ITEM_OVERHEAD_BYTES = 500;
 export function validateMessagesSize(messages: BaseMessage[]): void {
   let totalSize = 0;
   for (const message of messages) {
-    const content =
-      typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
-    totalSize += new TextEncoder().encode(content).byteLength + PER_ITEM_OVERHEAD_BYTES;
+    // Measure the WHOLE message, not just `content`. additional_kwargs, tool_calls,
+    // response_metadata, etc. are stored alongside and can be larger than content.
+    // Use `toJSON` when present (BaseMessage subclasses expose it) so we serialize
+    // the same shape that mapChatMessagesToStoredMessages produces.
+    const serializable =
+      typeof (message as unknown as { toJSON?: () => unknown }).toJSON === 'function'
+        ? (message as unknown as { toJSON: () => unknown }).toJSON()
+        : message;
+    const size = new TextEncoder().encode(JSON.stringify(serializable)).byteLength;
+    totalSize += size + PER_ITEM_OVERHEAD_BYTES;
   }
   if (totalSize > MAX_TRANSACTION_SIZE_BYTES) {
     throw new HistoryValidationError(

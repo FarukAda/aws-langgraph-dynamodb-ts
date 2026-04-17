@@ -22,6 +22,14 @@ const DEFAULT_THRESHOLD_BYTES = 350 * 1024;
 /** Default S3 key prefix for offloaded payloads */
 const DEFAULT_KEY_PREFIX = 'langgraph-checkpoints/';
 
+/**
+ * Default server-side encryption. Matches S3's own default (SSE-S3, AES256) since
+ * January 2023, but asserting it on the PutObject makes the intent explicit for
+ * compliance reviews and protects users running against older buckets or custom
+ * endpoints that don't inherit the modern default.
+ */
+const DEFAULT_SERVER_SIDE_ENCRYPTION = 'AES256';
+
 /* eslint-disable @typescript-eslint/no-require-imports -- TODO: migrate to dynamic import() when Jest ESM support is stable */
 
 // Lazy-loaded S3 SDK — uses require() for Jest CJS compatibility.
@@ -45,7 +53,11 @@ export interface S3OffloadConfig {
   keyPrefix?: string;
   /** Payload size threshold in bytes that triggers offloading (default: 358400 = 350KB) */
   thresholdBytes?: number;
-  /** Server-side encryption algorithm (e.g., 'AES256' or 'aws:kms'). Not set by default. */
+  /**
+   * Server-side encryption algorithm (`'AES256'` or `'aws:kms'`).
+   * Defaults to `'AES256'` — pass an explicit value to override (e.g. `'aws:kms'`
+   * together with `sseKmsKeyId`).
+   */
   serverSideEncryption?: string;
   /** KMS key ID or ARN. Only used when serverSideEncryption is 'aws:kms'. */
   sseKmsKeyId?: string;
@@ -86,7 +98,7 @@ export class S3Offloader {
   private readonly bucketName: string;
   private readonly keyPrefix: string;
   private readonly thresholdBytes: number;
-  private readonly serverSideEncryption?: string;
+  private readonly serverSideEncryption: string;
   private readonly sseKmsKeyId?: string;
   private readonly clientConfig?: S3OffloadConfig['clientConfig'];
 
@@ -94,7 +106,7 @@ export class S3Offloader {
     this.bucketName = config.bucketName;
     this.keyPrefix = config.keyPrefix ?? DEFAULT_KEY_PREFIX;
     this.thresholdBytes = config.thresholdBytes ?? DEFAULT_THRESHOLD_BYTES;
-    this.serverSideEncryption = config.serverSideEncryption;
+    this.serverSideEncryption = config.serverSideEncryption ?? DEFAULT_SERVER_SIDE_ENCRYPTION;
     this.sseKmsKeyId = config.sseKmsKeyId;
     this.clientConfig = config.clientConfig;
   }
@@ -150,10 +162,8 @@ export class S3Offloader {
         Key: key,
         Body: data,
         ContentType: 'application/octet-stream',
-        ...(this.serverSideEncryption && {
-          ServerSideEncryption: this
-            .serverSideEncryption as import('@aws-sdk/client-s3').ServerSideEncryption,
-        }),
+        ServerSideEncryption: this
+          .serverSideEncryption as import('@aws-sdk/client-s3').ServerSideEncryption,
         ...(this.sseKmsKeyId && { SSEKMSKeyId: this.sseKmsKeyId }),
       }),
     );
@@ -264,7 +274,7 @@ export class S3Offloader {
       getS3Sdk();
     const client = this.getClient();
 
-    const ruleId = this.buildLifecycleRuleId(ttlDays);
+    const ruleId = this.buildLifecycleRuleId();
 
     // 1. Read existing lifecycle configuration
     let existingRules: Array<{
@@ -340,11 +350,16 @@ export class S3Offloader {
   /**
    * Generate a deterministic lifecycle rule ID for idempotency.
    *
-   * @param ttlDays - Expiration in days
+   * The ID is scoped to the configured key prefix but intentionally TTL-independent:
+   * changing ttlDays updates the existing rule in place instead of leaving a stale
+   * rule behind that would still expire objects at the old cadence.
+   *
    * @returns Rule ID string
    */
-  private buildLifecycleRuleId(ttlDays: number): string {
-    return `langgraph-ttl-${ttlDays}d`;
+  private buildLifecycleRuleId(): string {
+    // Normalize the prefix into a lifecycle-rule-safe slug, trimming the trailing slash.
+    const slug = this.keyPrefix.replace(/\/+$/, '').replace(/[^a-zA-Z0-9-]/g, '-') || 'default';
+    return `langgraph-ttl-${slug}`;
   }
 
   /**

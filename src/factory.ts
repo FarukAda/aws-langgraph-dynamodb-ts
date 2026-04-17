@@ -12,6 +12,7 @@ import { DynamoDBSaver } from './checkpointer';
 import type { DynamoDBSaverOptions } from './checkpointer/types';
 import { DynamoDBChatMessageHistory } from './history';
 import type { DynamoDBChatMessageHistoryOptions } from './history/types';
+import type { CompressionConfig, S3OffloadConfig } from './shared';
 import { DynamoDBStore } from './store';
 import type { DynamoDBStoreOptions } from './store/types';
 
@@ -101,6 +102,7 @@ export class DynamoDBFactory {
       ttlDays: options.ttlDays,
       clientConfig: options.clientConfig,
       client: options.client,
+      fallbackToLexicalOnEmbeddingFailure: options.fallbackToLexicalOnEmbeddingFailure,
     };
 
     return new DynamoDBStore(config);
@@ -173,9 +175,22 @@ export class DynamoDBFactory {
     options: {
       tablePrefix?: string;
       ttlDays?: number;
+      /** TTL in seconds for the saver (overrides ttlDays if both set). */
+      ttlSeconds?: number;
       clientConfig?: DynamoDBClientConfig;
       embedding?: EmbeddingsInterface;
       serde?: SerializerProtocol;
+      /** Compression configuration forwarded to the saver. */
+      compression?: CompressionConfig;
+      /** S3 offloading configuration forwarded to the saver. */
+      s3OffloadConfig?: S3OffloadConfig;
+      /**
+       * Forwarded to the store — if true, semantic-search calls that hit an
+       * embedding failure log a warning and return unranked results instead of
+       * throwing. Defaults to false (fail-closed). See
+       * {@link DynamoDBStoreOptions.fallbackToLexicalOnEmbeddingFailure}.
+       */
+      fallbackToLexicalOnEmbeddingFailure?: boolean;
     } = {},
   ): {
     checkpointer: DynamoDBSaver;
@@ -190,26 +205,45 @@ export class DynamoDBFactory {
     const ddbClient = new DynamoDBClient(options.clientConfig || {});
     const sharedClient = DynamoDBDocument.from(ddbClient);
 
-    return {
-      checkpointer: this.createSaver({
-        checkpointsTableName: `${prefix}-checkpoints`,
-        writesTableName: `${prefix}-writes`,
-        ttlDays: options.ttlDays,
-        serde: options.serde,
-        client: sharedClient,
-      }),
-      store: this.createStore({
-        memoryTableName: `${prefix}-memory`,
-        embedding: options.embedding,
-        ttlDays: options.ttlDays,
-        client: sharedClient,
-      }),
-      chatHistory: this.createChatMessageHistory({
-        tableName: `${prefix}-chat-history`,
-        ttlDays: options.ttlDays,
-        client: sharedClient,
-      }),
-      destroy: () => ddbClient.destroy(),
+    const checkpointer = this.createSaver({
+      checkpointsTableName: `${prefix}-checkpoints`,
+      writesTableName: `${prefix}-writes`,
+      ttlDays: options.ttlDays,
+      ttlSeconds: options.ttlSeconds,
+      compression: options.compression,
+      s3OffloadConfig: options.s3OffloadConfig,
+      serde: options.serde,
+      client: sharedClient,
+    });
+    const store = this.createStore({
+      memoryTableName: `${prefix}-memory`,
+      embedding: options.embedding,
+      ttlDays: options.ttlDays,
+      client: sharedClient,
+      fallbackToLexicalOnEmbeddingFailure: options.fallbackToLexicalOnEmbeddingFailure,
+    });
+    const chatHistory = this.createChatMessageHistory({
+      tableName: `${prefix}-chat-history`,
+      ttlDays: options.ttlDays,
+      client: sharedClient,
+    });
+
+    let destroyed = false;
+    const destroy = (): void => {
+      // Idempotency: SDK v3 tolerates double-destroy today, but the contract is
+      // not part of the public v3 API — guard so a double-call (e.g. finally +
+      // on-exit hook) can never error or re-enter the shutdown path.
+      if (destroyed) return;
+      destroyed = true;
+      // Dispose module-local resources first (S3Offloader inside the saver) before
+      // tearing down the shared DDB client. Each sub-instance skips DDB teardown
+      // because it didn't own the shared client (ownsClient=false when injected).
+      checkpointer.destroy();
+      store.destroy();
+      chatHistory.destroy();
+      ddbClient.destroy();
     };
+
+    return { checkpointer, store, chatHistory, destroy };
   }
 }

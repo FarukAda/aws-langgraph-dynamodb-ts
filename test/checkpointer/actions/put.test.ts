@@ -284,4 +284,69 @@ describe('putAction', () => {
 
     expectDynamoDBCalled(setup.ddbDocMock, 1);
   });
+
+  describe('optimistic concurrency guard', () => {
+    const findTransactCall = (ddbDocMock: CheckpointerTestSetup['ddbDocMock']) => {
+      for (const c of ddbDocMock.calls()) {
+        const input = c.args[0].input as { TransactItems?: unknown[] };
+        if (Array.isArray(input.TransactItems)) return input;
+      }
+      throw new Error('no transactWrite call captured');
+    };
+
+    it('includes idempotent-safe ConditionExpression on metadata Put for initial checkpoint', async () => {
+      setup.ddbDocMock.onAnyCommand().resolvesOnce({});
+
+      await putAction({
+        client: setup.client,
+        checkpointsTableName: 'checkpoints',
+        serde: setup.serde,
+        config: createMockRunnableConfig('thread-123', undefined, 'ns'),
+        checkpoint: createMockCheckpoint('checkpoint-1'),
+        metadata: createMockMetadata(),
+      });
+
+      const call = findTransactCall(setup.ddbDocMock);
+      const metadataPut = (call.TransactItems as any[])[0].Put;
+      // Exact expression string — weaker substring checks let the logic be
+      // re-ordered in a way that breaks the intended semantics.
+      expect(metadataPut.ConditionExpression).toBe(
+        'attribute_not_exists(checkpoint_id) ' +
+          'OR (#type = :expected_type AND (attribute_not_exists(parent_checkpoint_id)))',
+      );
+      expect(metadataPut.ExpressionAttributeNames).toEqual({ '#type': 'type' });
+      expect(Object.keys(metadataPut.ExpressionAttributeValues)).toEqual([':expected_type']);
+      expect(metadataPut.ExpressionAttributeValues[':expected_type']).toBeDefined();
+      // Payload put stays unconditional.
+      const payloadPut = (call.TransactItems as any[])[1].Put;
+      expect(payloadPut.ConditionExpression).toBeUndefined();
+    });
+
+    it('includes parent_checkpoint_id equality clause when a parent is present', async () => {
+      setup.ddbDocMock.onAnyCommand().resolvesOnce({});
+
+      await putAction({
+        client: setup.client,
+        checkpointsTableName: 'checkpoints',
+        serde: setup.serde,
+        config: createMockRunnableConfig('thread-123', 'parent-42', 'ns'),
+        checkpoint: createMockCheckpoint('checkpoint-2'),
+        metadata: createMockMetadata(),
+      });
+
+      const call = findTransactCall(setup.ddbDocMock);
+      const metadataPut = (call.TransactItems as any[])[0].Put;
+      expect(metadataPut.ConditionExpression).toBe(
+        'attribute_not_exists(checkpoint_id) ' +
+          'OR (#type = :expected_type AND (parent_checkpoint_id = :expected_parent))',
+      );
+      expect(metadataPut.ExpressionAttributeValues[':expected_parent']).toBe('parent-42');
+    });
+
+    // Note: empty-string parent_checkpoint_id cannot reach put.ts in practice —
+    // `validateConfigurable` → `validateCheckpointId` rejects it upstream.
+    // The defensive normalization in put.ts is kept as belt-and-braces in case
+    // a future refactor widens the validator; there's no reachable test path
+    // for it to hit from the public API.
+  });
 });

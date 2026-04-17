@@ -82,7 +82,7 @@ describe('Compression Integration', () => {
 
       // Verify the stored payload item has compressed checkpoint data (gzip magic header)
       expect(storedPayloadItem).toBeDefined();
-      expect(Compressor.isGzipped(storedPayloadItem.checkpoint)).toBe(true);
+      expect(Compressor.hasCompressedMarker(storedPayloadItem.checkpoint)).toBe(true);
 
       // Now read it back — getTupleAction should decompress
       // Simulate: metadata item (first get), payload item (second get), writes (query)
@@ -150,7 +150,7 @@ describe('Compression Integration', () => {
       // Verify the write values are compressed
       expect(storedItems.length).toBeGreaterThan(0);
       for (const item of storedItems) {
-        expect(Compressor.isGzipped(item.value)).toBe(true);
+        expect(Compressor.hasCompressedMarker(item.value)).toBe(true);
       }
     });
 
@@ -282,7 +282,7 @@ describe('Compression Integration', () => {
 
       // Verify payload item has compressed data
       expect(storedPayloadItem).toBeDefined();
-      expect(Compressor.isGzipped(storedPayloadItem.checkpoint)).toBe(true);
+      expect(Compressor.hasCompressedMarker(storedPayloadItem.checkpoint)).toBe(true);
 
       // Now read it back via list() — the metadata item triggers a payload fetch
       // For list(), metadata items have no checkpoint field, so fetchCheckpointPayload
@@ -487,7 +487,7 @@ describe('Compression Integration', () => {
 
       expect(storedItems.length).toBeGreaterThan(0);
       for (const item of storedItems) {
-        expect(Compressor.isGzipped(item.value)).toBe(true);
+        expect(Compressor.hasCompressedMarker(item.value)).toBe(true);
       }
     });
 

@@ -20,10 +20,13 @@ import {
 export const listNamespacesOperationAction = async (
   params: ListNamespacesOperationActionParams,
 ): Promise<string[][]> => {
-  const { client, memoryTableName, userId, op } = params;
+  const { client, memoryTableName, userId, op, signal } = params;
 
-  const limit = op.limit;
-  const offset = op.offset;
+  // LangGraph's BaseStore.listNamespaces defaults these to 100 and 0 before dispatching
+  // through batch(), but nothing guarantees the caller went via that path. Fall back
+  // to the same defaults so `(limit + offset) * CANDIDATE_MULTIPLIER` below stays finite.
+  const limit = op.limit ?? 100;
+  const offset = op.offset ?? 0;
   const matchConditions = op.matchConditions ?? [];
   const maxDepth = op.maxDepth;
 
@@ -36,21 +39,31 @@ export const listNamespacesOperationAction = async (
   const prefixCondition = matchConditions.find((c) => c.matchType === 'prefix');
   const namespacePrefix = prefixCondition ? extractConcretePrefix(prefixCondition.path) : '';
 
-  // Build query parameters
+  // Build query parameters.
+  //
+  // IMPORTANT: ExpressionAttributeNames starts as a local accumulator rather
+  // than an always-present `{}` on the QueryInput — DynamoDB rejects requests
+  // that carry an empty ExpressionAttributeNames object with
+  // `ValidationException: ExpressionAttributeNames must not be empty`. We
+  // attach it to the input only when at least one entry has been added.
+  const expressionAttributeNames: Record<string, string> = {};
   const queryParams: QueryCommandInput = {
     TableName: memoryTableName,
     KeyConditionExpression: 'user_id = :uid',
     ExpressionAttributeValues: {
       ':uid': userId,
     },
-    ExpressionAttributeNames: {},
     ProjectionExpression: 'namespace',
   };
 
-  // Optimize a query with begins_with for prefix conditions
+  // Optimize a query with begins_with for prefix conditions.
+  // NOTE: we do NOT append a separator — the SK is `<nsPath>#<key>`; appending
+  // "#" misses sub-namespaces (`"users/alice#x"` would not begin with `"users#"`).
+  // Raw prefix is over-inclusive (`users` also matches `users_v2`) but the
+  // in-memory match filter eliminates false positives.
   if (namespacePrefix) {
     queryParams.KeyConditionExpression += ' AND begins_with(namespace_key, :nsPrefix)';
-    queryParams.ExpressionAttributeValues![':nsPrefix'] = `${namespacePrefix}#`;
+    queryParams.ExpressionAttributeValues![':nsPrefix'] = namespacePrefix;
   }
 
   // Build FilterExpression for suffix conditions using contains()
@@ -62,7 +75,7 @@ export const listNamespacesOperationAction = async (
     if (concreteSuffix) {
       const attrName = `#ns${index}`;
       const valueName = `:suffix${index}`;
-      queryParams.ExpressionAttributeNames![attrName] = 'namespace';
+      expressionAttributeNames[attrName] = 'namespace';
       queryParams.ExpressionAttributeValues![valueName] = concreteSuffix;
       filterExpressions.push(`contains(${attrName}, ${valueName})`);
     }
@@ -70,6 +83,11 @@ export const listNamespacesOperationAction = async (
 
   if (filterExpressions.length > 0) {
     queryParams.FilterExpression = filterExpressions.join(' AND ');
+  }
+
+  // Only attach ExpressionAttributeNames when non-empty — DDB rejects {}.
+  if (Object.keys(expressionAttributeNames).length > 0) {
+    queryParams.ExpressionAttributeNames = expressionAttributeNames;
   }
 
   // Use a Set to track unique namespaces
@@ -96,9 +114,12 @@ export const listNamespacesOperationAction = async (
       queryParams.ExclusiveStartKey = lastEvaluatedKey;
     }
 
-    const response = await withDynamoDBRetry(async () => {
-      return await client.query(queryParams);
-    });
+    const response = await withDynamoDBRetry(
+      async () => {
+        return await client.query(queryParams);
+      },
+      { signal },
+    );
 
     // Extract and deduplicate namespaces
     response.Items?.forEach((item) => {
@@ -119,40 +140,37 @@ export const listNamespacesOperationAction = async (
     }
   } while (lastEvaluatedKey);
 
-  // Convert Set to an array of namespace arrays (include userId)
-  const allNamespaces = Array.from(namespaceSet).map((ns) => {
-    const parts = ns ? ns.split('/') : [];
-    return [userId, ...parts];
-  });
+  // Convert Set to an array of namespace arrays.
+  // userId is the partition key and is NOT part of the namespace path, so it is
+  // excluded here to match the shape returned by other store methods and the
+  // LangGraph reference InMemoryStore implementation.
+  const allNamespaces = Array.from(namespaceSet).map((ns) => (ns ? ns.split('/') : []));
 
-  // Apply all match conditions
-  const filteredNamespaces = allNamespaces.filter((namespacePath) => {
-    // Check all match conditions (must match ALL)
+  // Apply all match conditions (reference: memory.js:122-138)
+  const matchedNamespaces = allNamespaces.filter((namespacePath) => {
     for (const condition of matchConditions) {
-      // Always check the condition, regardless of wildcards
-      // DynamoDB filtering is just an optimization, we verify all conditions here
       if (!matchesCondition(namespacePath, condition)) {
         return false;
       }
     }
-
-    // Check maxDepth if specified
-    if (maxDepth !== undefined) {
-      // Depth is measured from userId (first element)
-      const depth = namespacePath.length;
-      if (depth > maxDepth) {
-        return false;
-      }
-    }
-
     return true;
   });
 
+  // Apply maxDepth: truncate each namespace to its first N segments, then dedupe.
+  // This matches the reference impl (memory.js:115-121) where deeper namespaces
+  // collapse into their parent paths rather than being filtered out entirely.
+  const truncatedSet = new Set<string>();
+  for (const path of matchedNamespaces) {
+    const truncated = maxDepth !== undefined ? path.slice(0, maxDepth) : path;
+    truncatedSet.add(truncated.join('/'));
+  }
+  const dedupedNamespaces = Array.from(truncatedSet).map((ns) => (ns ? ns.split('/') : []));
+
   // Sort namespaces for consistent ordering
-  filteredNamespaces.sort((a, b) => a.join('/').localeCompare(b.join('/')));
+  dedupedNamespaces.sort((a, b) => a.join('/').localeCompare(b.join('/')));
 
   // Apply offset and limit
-  return filteredNamespaces.slice(offset, offset + limit);
+  return dedupedNamespaces.slice(offset, offset + limit);
 };
 
 /**

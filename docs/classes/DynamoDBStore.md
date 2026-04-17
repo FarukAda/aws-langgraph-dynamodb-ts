@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.1.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.2.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBStore
 
-Defined in: [store/index.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/store/index.ts#L31)
+Defined in: [store/index.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/store/index.ts#L32)
 
 ## Extends
 
@@ -18,7 +18,7 @@ Defined in: [store/index.ts:31](https://github.com/FarukAda/aws-langgraph-dynamo
 
 > **new DynamoDBStore**(`options`): `DynamoDBStore`
 
-Defined in: [store/index.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/store/index.ts#L49)
+Defined in: [store/index.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/store/index.ts#L51)
 
 Create a new DynamoDB store instance
 
@@ -44,7 +44,7 @@ Configuration options for the store
 
 > **batch**\<`Op`\>(`operations`, `config?`): `Promise`\<`OperationResults`\<`Op`\>\>
 
-Defined in: [store/index.ts:99](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/store/index.ts#L99)
+Defined in: [store/index.ts:98](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/store/index.ts#L98)
 
 Execute a batch of operations in parallel
 
@@ -88,7 +88,7 @@ Error if user_id is not provided in config or if any operation fails
 
 > **destroy**(): `void`
 
-Defined in: [store/index.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/9e71a27abaf2b0da566fa8a6f0702254a1cd0356/src/store/index.ts#L70)
+Defined in: [store/index.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/store/index.ts#L69)
 
 Release underlying DynamoDB client resources.
 Call this when the store is no longer needed to prevent resource leaks.

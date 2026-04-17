@@ -20,7 +20,9 @@ export class Writer {
   readonly checkpoint_id: string;
   /** Unique identifier for the task that created this write */
   readonly task_id: string;
-  /** Index of the write within the task (0-based) */
+  /** Index of the write within the task. Negative values correspond to
+   *  `WRITES_IDX_MAP` special-channel slots (__error__=-1, __scheduled__=-2,
+   *  __interrupt__=-3, __resume__=-4); non-negative values are positional. */
   readonly idx: number;
   /** Channel name for the write */
   readonly channel: string;
@@ -46,8 +48,8 @@ export class Writer {
     validateTaskId(task_id);
     validateChannel(channel);
 
-    if (!Number.isInteger(idx) || idx < 0) {
-      throw new Error('idx must be a non-negative integer');
+    if (!Number.isInteger(idx)) {
+      throw new Error('idx must be an integer');
     }
 
     this.thread_id = thread_id;
@@ -67,7 +69,7 @@ export class Writer {
         checkpoint_id: this.checkpoint_id,
         checkpoint_ns: this.checkpoint_ns,
       }),
-      task_id_idx: [this.task_id, this.idx].join(Writer.separator()),
+      task_id_idx: [this.task_id, this.idx].join(Writer.SEPARATOR),
       channel: this.channel,
       type: this.type,
       value: this.value,
@@ -88,13 +90,13 @@ export class Writer {
     type,
     value,
   }: DynamoDBWriteItem): Writer {
-    const parts = thread_id_checkpoint_id_checkpoint_ns.split(this.separator());
+    const parts = thread_id_checkpoint_id_checkpoint_ns.split(this.SEPARATOR);
     if (parts.length !== 3) {
       throw new Error(`Invalid partition key format: expected 3 parts, got ${parts.length}`);
     }
     const [thread_id, checkpoint_id, checkpoint_ns] = parts;
 
-    const idxParts = task_id_idx.split(this.separator());
+    const idxParts = task_id_idx.split(this.SEPARATOR);
     if (idxParts.length !== 2) {
       throw new Error(`Invalid sort key format: expected 2 parts, got ${idxParts.length}`);
     }
@@ -132,14 +134,12 @@ export class Writer {
     checkpoint_id: string;
     checkpoint_ns: string;
   }): string {
-    return [thread_id, checkpoint_id, checkpoint_ns].join(this.separator());
+    return [thread_id, checkpoint_id, checkpoint_ns].join(this.SEPARATOR);
   }
 
   /**
-   * Get the separator used for composite keys
-   * Note: Input validation ensures this separator cannot be in any component
+   * Separator used for composite keys.
+   * Note: input validation ensures this separator cannot appear in any component.
    */
-  static separator() {
-    return ':::';
-  }
+  static readonly SEPARATOR = ':::';
 }

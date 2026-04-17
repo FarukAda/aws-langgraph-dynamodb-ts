@@ -225,6 +225,11 @@ Compression is smart:
 - Only uses compressed output if it saves ≥ 10% space
 - Uses gzip level 6 (balanced speed/ratio) by default
 - Auto-detects gzip on decompression for full backward compatibility
+- **Gzip-bomb defense**: decompression is hard-capped at
+  `maxDecompressedBytes` (default **50 MiB**) — a compressed payload that
+  would expand beyond the cap throws a clear error instead of exhausting
+  memory. Raise the cap only if a legitimate workload needs bigger
+  checkpoints.
 
 ### S3 Offloading
 
@@ -245,7 +250,66 @@ const checkpointer = new DynamoDBSaver({
 });
 ```
 
-When TTL and S3 offloading are both enabled, the library automatically configures an S3 lifecycle expiration rule on the bucket (scoped to the key prefix). This is idempotent — existing rules are preserved.
+When TTL and S3 offloading are both enabled, the library automatically
+configures an S3 lifecycle expiration rule on the bucket (scoped to the key
+prefix). The rule ID is derived from the key prefix (not TTL), so changing
+`ttlDays` across deploys **updates the existing rule in place** instead of
+leaving a stale rule behind. User-defined rules on the bucket are preserved.
+
+S3 objects are uploaded with `ServerSideEncryption: AES256` by default
+(matching S3's modern default since 2023). Override to `'aws:kms'` with
+`sseKmsKeyId` if your bucket policy requires KMS.
+
+### Optimistic-concurrency guard on `put()`
+
+Every `put()` writes the metadata item with a `ConditionExpression`:
+
+```
+attribute_not_exists(checkpoint_id)
+OR (#type = :expected_type AND parent_checkpoint_id matches the expected parent)
+```
+
+Behavior:
+
+- **First write** of a `(thread_id, checkpoint_id)` always succeeds.
+- **Idempotent retry** with the same parent + type (e.g. LangGraph retrying
+  after a transient network error) succeeds — the condition accepts same-
+  content re-writes.
+- **Concurrent divergent writers** racing on the same `checkpoint_id` with
+  different `parent_checkpoint_id` or serializer `type` fail fast with
+  `TransactionCanceledException` / `ConditionalCheckFailedException`. Treat
+  this as a signal that two graphs are accidentally racing on the same
+  thread — it is not retried.
+
+S3 orphan cleanup is intentionally **skipped** on `ConditionalCheckFailed`
+failures: S3 keys are derived deterministically from `(thread_id,
+checkpoint_id)`, so a losing divergent put uploads to the same keys the
+winning writer already references. Cleaning them up would delete live data.
+The S3 lifecycle rule is the safe backstop for any residual staleness.
+Non-conflict failures (network, throttle, `ResourceNotFoundException`) still
+trigger synchronous cleanup.
+
+### Cancellation via `config.signal`
+
+The saver honors LangChain's `RunnableConfig.signal` convention on
+`put` / `putWrites` / `getTuple` / `list`. `deleteThread` takes an optional
+`options.signal` argument since it has no `config` parameter. A pre-aborted
+signal short-circuits the call without consuming a retry attempt; mid-flight
+aborts cancel retry backoff and the SDK request.
+
+```typescript
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 10_000);
+
+await checkpointer.put(
+  { configurable: { thread_id: 't1' }, signal: controller.signal },
+  checkpoint,
+  metadata,
+  {},
+);
+
+await checkpointer.deleteThread('t1', { signal: controller.signal });
+```
 
 ### Shared Client Injection
 
@@ -287,8 +351,9 @@ interface DynamoDBSaverOptions {
   /** Optional: Compression configuration */
   compression?: {
     enabled: boolean;
-    minSizeBytes?: number; // default: 1024 (1 KB)
-    level?: number;        // default: 6 (gzip level 1-9)
+    minSizeBytes?: number;          // default: 1024 (1 KB)
+    level?: number;                 // default: 6 (gzip level 1-9)
+    maxDecompressedBytes?: number;  // default: 52_428_800 (50 MiB) — gzip-bomb cap
   };
 
   /** Optional: S3 offloading for large payloads */
