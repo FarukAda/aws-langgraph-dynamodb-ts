@@ -259,10 +259,14 @@ describe('retry utility', () => {
 
     it('should short-circuit backoff when signal aborts mid-retry', async () => {
       const controller = new AbortController();
-      const fn = jest.fn().mockRejectedValue({ name: 'ThrottlingException' });
-
-      // Abort shortly after the first failure so the retry loop is in the middle of sleep().
-      const abortTimer = setTimeout(() => controller.abort(new Error('timeout')), 10);
+      // Abort deterministically from within the first fn() call itself. Relying
+      // on a `setTimeout(..., 10)` would race with full-jitter backoff — when
+      // the random sleep draws near zero, the retry loop can start attempt 2
+      // before the 10ms timer fires, producing `received: 2` flakes on CI.
+      const fn = jest.fn(async () => {
+        controller.abort(new Error('aborted'));
+        throw Object.assign(new Error('throttle'), { name: 'ThrottlingException' });
+      });
 
       const startTime = Date.now();
       await expect(
@@ -272,11 +276,11 @@ describe('retry utility', () => {
           maxDelayMs: 5000,
           signal: controller.signal,
         }),
-      ).rejects.toThrow('timeout');
+      ).rejects.toThrow('aborted');
       const elapsed = Date.now() - startTime;
 
-      clearTimeout(abortTimer);
-      // Should have cancelled the sleep far before the 5000ms backoff would expire.
+      // The sleep after attempt 1 must reject immediately on the already-aborted
+      // signal; total elapsed is well below the 5000ms backoff cap.
       expect(elapsed).toBeLessThan(500);
       expect(fn).toHaveBeenCalledTimes(1);
     });

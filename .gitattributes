@@ -1,0 +1,20 @@
+# Normalize every text file to LF in the repo and in working trees across all
+# platforms. This avoids the "prettier sees ␍" failure that trips Ubuntu CI
+# runners when Windows contributors commit files with CRLF endings.
+* text=auto eol=lf
+
+# Explicit exceptions where the file format requires CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files — prevent any normalization.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary

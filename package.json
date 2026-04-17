@@ -12,13 +12,13 @@
     "memory-store"
   ],
   "author": "Faruk Ada <info@farukada.com>",
-  "homepage": "https://github.com/farukada/aws-langgraph-dynamodb-ts",
+  "homepage": "https://github.com/FarukAda/aws-langgraph-dynamodb-ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/farukada/aws-langgraph-dynamodb-ts"
+    "url": "https://github.com/FarukAda/aws-langgraph-dynamodb-ts"
   },
   "bugs": {
-    "url": "https://github.com/farukada/aws-langgraph-dynamodb-ts/issues"
+    "url": "https://github.com/FarukAda/aws-langgraph-dynamodb-ts/issues"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

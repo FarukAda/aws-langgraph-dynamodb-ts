@@ -106,24 +106,31 @@ jobs:
 
       - name: Wait for DynamoDB Local
         run: |
-          for i in $(seq 1 30); do
-            if curl -sf -X POST http://localhost:8000/ \
-                -H "X-Amz-Target: DynamoDB_20120810.ListTables" \
-                -H "Content-Type: application/x-amz-json-1.0" \
-                -d '{}' >/dev/null; then
+          # DDB Local rejects unsigned requests with HTTP 400 — that is still
+          # proof the service bound the port. Accept ANY HTTP response
+          # (curl without `-f`, exit 0 on 4xx/5xx) as "up". Using -f here, as
+          # we did previously, caused the poll to hang for all 30 attempts
+          # because DDB Local never returns 2xx on a curl-unsigned request.
+          for i in $(seq 1 60); do
+            if curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/ \
+                2>/dev/null | grep -qE '^[1-5][0-9][0-9]$'; then
               echo "DynamoDB Local is up."
               exit 0
             fi
-            echo "Waiting for DynamoDB Local... ($i/30)"
-            sleep 1
+            echo "Waiting for DynamoDB Local... ($i/60)"
+            sleep 2
           done
           echo "DynamoDB Local never came up." >&2
           exit 1
 
       - name: Wait for LocalStack S3
         run: |
+          # Health endpoint reports "s3": "available" | "running" when ready;
+          # plain `grep '"s3"'` would also pass on "s3": "disabled". The
+          # alternation below only accepts the ready states.
           for i in $(seq 1 60); do
-            if curl -sf http://localhost:4566/_localstack/health 2>/dev/null | grep -q '"s3"'; then
+            if curl -sf http://localhost:4566/_localstack/health 2>/dev/null \
+                | grep -qE '"s3":[[:space:]]*"(running|available)"'; then
               echo "LocalStack S3 is up."
               exit 0
             fi

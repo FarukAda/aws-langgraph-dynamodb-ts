@@ -652,5 +652,5 @@ MIT © [FarukAda](https://github.com/farukada)
 <p align="center">
   Built with <a href="https://langchain-ai.github.io/langgraphjs/">LangGraph</a> · <a href="https://aws.amazon.com/sdk-for-javascript/">AWS SDK v3</a> · <a href="https://github.com/langchain-ai/langchainjs">LangChain</a>
   <br/>
-  <a href="https://www.npmjs.com/package/@farukada/aws-langgraph-dynamodb-ts">npm</a> · <a href="https://github.com/farukada/aws-langgraph-dynamodb-ts">GitHub</a> · <a href="https://github.com/farukada/aws-langgraph-dynamodb-ts/issues">Issues</a>
+  <a href="https://www.npmjs.com/package/@farukada/aws-langgraph-dynamodb-ts">npm</a> · <a href="https://github.com/FarukAda/aws-langgraph-dynamodb-ts">GitHub</a> · <a href="https://github.com/FarukAda/aws-langgraph-dynamodb-ts/issues">Issues</a>
 </p>
