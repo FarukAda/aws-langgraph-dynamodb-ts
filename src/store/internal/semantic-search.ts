@@ -28,13 +28,18 @@ export function extractText(value: Record<string, JsonValue>, fields: string[]):
   return parts.join(' ');
 }
 
-/** Embed a value for indexing, or undefined when indexing is off or text empty. */
+/**
+ * Embed a value for indexing, or undefined when indexing is off or the text is
+ * empty. `fieldsOverride` (from a put's `index` option) takes precedence over
+ * the store's configured fields.
+ */
 export async function embedValue(
   context: StoreContext,
   value: Record<string, JsonValue>,
+  fieldsOverride?: string[],
 ): Promise<number[] | undefined> {
   if (!context.index) return undefined;
-  const text = extractText(value, context.index.fields ?? ['$']);
+  const text = extractText(value, fieldsOverride ?? context.index.fields ?? ['$']);
   if (text.length === 0) return undefined;
   return context.index.embeddings.embedQuery(text);
 }

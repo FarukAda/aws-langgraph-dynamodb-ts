@@ -58,6 +58,16 @@ describe('embedValue', () => {
     expect(embeddings.embedQuery).toHaveBeenCalledWith(JSON.stringify({ a: 1 }));
   });
 
+  it('uses a fields override when provided', async () => {
+    embeddings.embedQuery.mockClear();
+    await embedValue(
+      context({ dims: 2, embeddings: embeddings as never, fields: ['title'] }),
+      { title: 'a', body: 'b' },
+      ['body'],
+    );
+    expect(embeddings.embedQuery).toHaveBeenCalledWith('b');
+  });
+
   it('returns undefined when the extracted text is empty', async () => {
     const vec = await embedValue(
       context({ dims: 2, embeddings: embeddings as never, fields: ['missing'] }),
