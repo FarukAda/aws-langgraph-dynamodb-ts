@@ -63,9 +63,13 @@ export function nextBackoffDelay(currentMs: number, maxMs: number = DEFAULT_MAX_
  * backoff window prevents the thundering-herd pattern where every throttled
  * client wakes up at the same instant and re-throttles the service.
  * See https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+ *
+ * @param delayMs - Upper bound of the jitter window.
+ * @param rng - RNG seam returning a value in `[0, 1)`. Defaults to `Math.random`;
+ *   injectable so backoff schedules are exactly assertable in tests.
  */
-export function fullJitter(delayMs: number): number {
-  return Math.random() * delayMs;
+export function fullJitter(delayMs: number, rng: () => number = Math.random): number {
+  return rng() * delayMs;
 }
 
 /**

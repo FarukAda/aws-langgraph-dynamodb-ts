@@ -4,9 +4,6 @@
     "ts-loader",
     "ts-node",
     "globals",
-    "typedoc-plugin-markdown",
-    "@stryker-mutator/core",
-    "@stryker-mutator/jest-runner",
-    "@stryker-mutator/typescript-checker"
+    "typedoc-plugin-markdown"
   ]
 }

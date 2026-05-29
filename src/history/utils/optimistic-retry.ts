@@ -59,10 +59,14 @@ export async function withOptimisticRetry<T>(
     try {
       return await fn(attempt);
     } catch (err) {
-      if (isConditionalCheckFailure(err) && attempt < MAX_OPTIMISTIC_RETRIES - 1) {
-        continue;
+      // Non-retryable errors propagate immediately. Conditional-check failures
+      // fall through to retry — and once the loop exhausts (including a failure
+      // on the final attempt) we surface the labelled exhaustion error below so
+      // the caller can distinguish "gave up after N races" from a one-off
+      // conditional failure.
+      if (!isConditionalCheckFailure(err)) {
+        throw err;
       }
-      throw err;
     }
   }
   throw new Error(`${label} failed after ${MAX_OPTIMISTIC_RETRIES} optimistic-lock retries`);

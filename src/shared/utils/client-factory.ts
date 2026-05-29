@@ -24,10 +24,18 @@ export interface ResolvedDynamoDBClient {
 export function resolveDynamoDBClient(options: {
   client?: DynamoDBDocument;
   clientConfig?: DynamoDBClientConfig;
+  /**
+   * Factory seam for constructing the underlying client. Defaults to
+   * `new DynamoDBClient(cfg)`; injectable so tests can assert construction
+   * without a live AWS client.
+   */
+  createClient?: (config: DynamoDBClientConfig) => DynamoDBClient;
 }): ResolvedDynamoDBClient {
   if (options.client) {
     return { ddbClient: undefined, client: options.client, ownsClient: false };
   }
-  const ddbClient = new DynamoDBClient(options.clientConfig || {});
+  const createClient =
+    options.createClient ?? ((cfg: DynamoDBClientConfig) => new DynamoDBClient(cfg));
+  const ddbClient = createClient(options.clientConfig || {});
   return { ddbClient, client: DynamoDBDocument.from(ddbClient), ownsClient: true };
 }

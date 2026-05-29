@@ -82,18 +82,22 @@ export function buildMessageItems(
  * @param newCount - Target total messageCount after this write
  * @param expectedCount - Previously observed messageCount (undefined for new session)
  * @param ttlDays - Optional TTL in days
+ * @param now - Clock seam returning the current epoch in ms. Defaults to
+ *   `Date.now`; injectable so `:updatedAt` / `:createdAt` / TTL are deterministic.
  */
 export function buildOptimisticMetadataUpdate(
   title: string,
   newCount: number,
   expectedCount: number | undefined,
   ttlDays?: number,
+  now: () => number = Date.now,
 ): {
   updateExpression: string;
   conditionExpression: string;
   expressionAttributeValues: Record<string, any>;
+  expressionAttributeNames?: Record<string, string>;
 } {
-  const now = Date.now();
+  const nowMs = now();
   const setParts = [
     'updatedAt = :updatedAt',
     'itemType = :itemType',
@@ -102,12 +106,13 @@ export function buildOptimisticMetadataUpdate(
     'createdAt = if_not_exists(createdAt, :createdAt)',
   ];
   const expressionAttributeValues: Record<string, any> = {
-    ':updatedAt': now,
-    ':createdAt': now,
+    ':updatedAt': nowMs,
+    ':createdAt': nowMs,
     ':newCount': newCount,
     ':itemType': 'metadata',
     ':title': title,
   };
+  const expressionAttributeNames: Record<string, string> = {};
 
   let conditionExpression: string;
   if (expectedCount === undefined) {
@@ -118,14 +123,17 @@ export function buildOptimisticMetadataUpdate(
     expressionAttributeValues[':expectedCount'] = expectedCount;
   }
 
+  // `ttl` is a DynamoDB reserved word — must be aliased via ExpressionAttributeNames.
   if (ttlDays !== undefined) {
-    setParts.push('ttl = :ttl');
-    expressionAttributeValues[':ttl'] = calculateTTLTimestamp(ttlDays);
+    setParts.push('#ttl = :ttl');
+    expressionAttributeNames['#ttl'] = 'ttl';
+    expressionAttributeValues[':ttl'] = calculateTTLTimestamp(ttlDays, now);
   }
 
   return {
     updateExpression: `SET ${setParts.join(', ')}`,
     conditionExpression,
     expressionAttributeValues,
+    ...(Object.keys(expressionAttributeNames).length > 0 ? { expressionAttributeNames } : {}),
   };
 }

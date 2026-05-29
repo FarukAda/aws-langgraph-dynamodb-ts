@@ -184,13 +184,13 @@ export const putAction = async (params: PutActionParams): Promise<RunnableConfig
     // winning transaction. The S3 lifecycle rule is the safe backstop for the
     // rare case where an overwrite did occur; data integrity beats a few stale
     // bytes in S3.
+    // `withDynamoDBRetry` always rejects with an `Error` instance, so reading
+    // `.name` is sufficient — a name that matches neither (or a non-object error)
+    // simply yields `undefined` and is treated as a non-conditional failure.
+    const errorName = (err as { name?: unknown } | null | undefined)?.name;
     const isConditionalFailure =
-      err &&
-      typeof err === 'object' &&
-      ('name' in err
-        ? (err as { name?: unknown }).name === 'ConditionalCheckFailedException' ||
-          (err as { name?: unknown }).name === 'TransactionCanceledException'
-        : false);
+      errorName === 'ConditionalCheckFailedException' ||
+      errorName === 'TransactionCanceledException';
 
     if (params.s3Offloader && !isConditionalFailure) {
       await cleanUpS3Orphans(params.s3Offloader, [s3CheckpointKey, s3MetadataKey], 'put failure');

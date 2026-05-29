@@ -53,8 +53,12 @@ export const addMessagesAction = async (params: AddMessagesActionParams): Promis
     const newCount = currentCount + messages.length;
 
     const messageItems = buildMessageItems(userId, sessionId, messages, currentCount, ttlDays);
-    const { updateExpression, conditionExpression, expressionAttributeValues } =
-      buildOptimisticMetadataUpdate(sessionTitle, newCount, expectedCount, ttlDays);
+    const {
+      updateExpression,
+      conditionExpression,
+      expressionAttributeValues,
+      expressionAttributeNames,
+    } = buildOptimisticMetadataUpdate(sessionTitle, newCount, expectedCount, ttlDays);
 
     await client.transactWrite({
       TransactItems: [
@@ -66,6 +70,9 @@ export const addMessagesAction = async (params: AddMessagesActionParams): Promis
             UpdateExpression: updateExpression,
             ConditionExpression: conditionExpression,
             ExpressionAttributeValues: expressionAttributeValues,
+            ...(expressionAttributeNames
+              ? { ExpressionAttributeNames: expressionAttributeNames }
+              : {}),
           },
         },
       ],

@@ -20,7 +20,8 @@ import {
  * @throws Error if the operation fails or validation fails
  */
 export const putOperationAction = async (params: PutOperationActionParams): Promise<void> => {
-  const { client, embedding, memoryTableName, userId, op, ttlDays, signal } = params;
+  const { client, embedding, memoryTableName, userId, op, ttlDays, signal, now: nowFn } = params;
+  const now = (nowFn ?? Date.now)();
 
   // Validate inputs
   validateUserId(userId);
@@ -50,7 +51,6 @@ export const putOperationAction = async (params: PutOperationActionParams): Prom
   }
 
   validateValue(op.value);
-  const now = Date.now();
 
   // Generate embeddings if requested
   let embeddings: number[][] | undefined;
@@ -105,10 +105,12 @@ export const putOperationAction = async (params: PutOperationActionParams): Prom
     expressionAttributeValues[':embedding'] = embeddings;
   }
 
-  // Add TTL if configured (validateTTL already rejected non-positive or non-integer values)
+  // Add TTL if configured (validateTTL already rejected non-positive or non-integer values).
+  // `ttl` is a DynamoDB reserved word — must be aliased via ExpressionAttributeNames.
   if (ttlDays !== undefined) {
-    updateExpressionParts.push('ttl = :ttl');
-    expressionAttributeValues[':ttl'] = calculateTTLTimestamp(ttlDays);
+    updateExpressionParts.push('#ttl = :ttl');
+    expressionAttributeNames['#ttl'] = 'ttl';
+    expressionAttributeValues[':ttl'] = calculateTTLTimestamp(ttlDays, nowFn ?? Date.now);
   }
 
   // Execute with retry logic

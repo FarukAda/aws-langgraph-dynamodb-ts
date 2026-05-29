@@ -60,6 +60,11 @@ export interface PutOperationActionParams {
   ttlDays?: number;
   /** Optional AbortSignal — cancels in-flight retries */
   signal?: AbortSignal;
+  /**
+   * Clock seam returning the current epoch in ms. Defaults to `Date.now`;
+   * injectable so `:updatedAt` / `:createdAt` / TTL are deterministic in tests.
+   */
+  now?: () => number;
 }
 
 /**

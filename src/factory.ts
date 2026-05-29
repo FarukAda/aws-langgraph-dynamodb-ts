@@ -191,6 +191,12 @@ export class DynamoDBFactory {
        * {@link DynamoDBStoreOptions.fallbackToLexicalOnEmbeddingFailure}.
        */
       fallbackToLexicalOnEmbeddingFailure?: boolean;
+      /**
+       * Factory seam for constructing the shared underlying client. Defaults to
+       * `new DynamoDBClient(cfg)`; injectable so tests can assert construction
+       * without a live AWS client.
+       */
+      createClient?: (config: DynamoDBClientConfig) => DynamoDBClient;
     } = {},
   ): {
     checkpointer: DynamoDBSaver;
@@ -202,7 +208,9 @@ export class DynamoDBFactory {
     const prefix = options.tablePrefix ?? DEFAULT_TABLE_PREFIX;
 
     // Create a single shared DynamoDB client for all modules
-    const ddbClient = new DynamoDBClient(options.clientConfig || {});
+    const createClient =
+      options.createClient ?? ((cfg: DynamoDBClientConfig) => new DynamoDBClient(cfg));
+    const ddbClient = createClient(options.clientConfig || {});
     const sharedClient = DynamoDBDocument.from(ddbClient);
 
     const checkpointer = this.createSaver({

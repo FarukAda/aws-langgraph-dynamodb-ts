@@ -71,6 +71,14 @@ export interface S3OffloadConfig {
     credentials?: unknown;
     [key: string]: unknown;
   };
+  /**
+   * Factory seam for constructing the S3 client. Defaults to
+   * `new S3Client(clientConfig)`; injectable so tests can supply a stub client
+   * without a live AWS connection.
+   */
+  createS3Client?: (
+    config: Record<string, unknown>,
+  ) => InstanceType<typeof import('@aws-sdk/client-s3').S3Client>;
 }
 
 /**
@@ -101,6 +109,7 @@ export class S3Offloader {
   private readonly serverSideEncryption: string;
   private readonly sseKmsKeyId?: string;
   private readonly clientConfig?: S3OffloadConfig['clientConfig'];
+  private readonly createS3Client?: S3OffloadConfig['createS3Client'];
 
   constructor(config: S3OffloadConfig) {
     this.bucketName = config.bucketName;
@@ -109,6 +118,7 @@ export class S3Offloader {
     this.serverSideEncryption = config.serverSideEncryption ?? DEFAULT_SERVER_SIDE_ENCRYPTION;
     this.sseKmsKeyId = config.sseKmsKeyId;
     this.clientConfig = config.clientConfig;
+    this.createS3Client = config.createS3Client;
   }
 
   /**
@@ -117,8 +127,13 @@ export class S3Offloader {
    */
   private getClient(): InstanceType<typeof import('@aws-sdk/client-s3').S3Client> {
     if (!this.s3Client) {
-      const { S3Client } = getS3Sdk();
-      this.s3Client = new S3Client((this.clientConfig ?? {}) as Record<string, unknown>);
+      const config = (this.clientConfig ?? {}) as Record<string, unknown>;
+      if (this.createS3Client) {
+        this.s3Client = this.createS3Client(config);
+      } else {
+        const { S3Client } = getS3Sdk();
+        this.s3Client = new S3Client(config);
+      }
     }
     return this.s3Client;
   }

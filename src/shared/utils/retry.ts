@@ -17,6 +17,12 @@ export interface RetryOptions {
    * circuits the remaining retries rather than consuming the full schedule.
    */
   signal?: AbortSignal;
+  /**
+   * RNG seam for full-jitter backoff, returning a value in `[0, 1)`. Defaults to
+   * `Math.random`; injectable so backoff schedules are exactly reproducible in
+   * tests. Does not affect control flow — only the jitter draw.
+   */
+  rng?: () => number;
 }
 
 // TransactionCanceledException is NOT retried here: its CancellationReasons include
@@ -31,6 +37,7 @@ const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'signal'>> = {
   maxAttempts: 5,
   baseDelayMs: 100,
   maxDelayMs: 5000,
+  rng: Math.random,
   retryableErrors: [
     // DynamoDB throttling / capacity
     'ProvisionedThroughputExceededException',
@@ -61,10 +68,15 @@ const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'signal'>> = {
  * into a thundering herd.
  * See https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
  */
-function calculateDelay(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
+function calculateDelay(
+  attempt: number,
+  baseDelayMs: number,
+  maxDelayMs: number,
+  rng: () => number,
+): number {
   const exponentialDelay = baseDelayMs * Math.pow(2, attempt - 1);
   const cap = Math.min(exponentialDelay, maxDelayMs);
-  return Math.random() * cap;
+  return rng() * cap;
 }
 
 /**
@@ -153,7 +165,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
       // Abort mid-backoff short-circuits the remaining retries — sleep() rejects
       // with the signal's reason, which we re-throw so the caller sees the abort
       // rather than the last retry error.
-      const delay = calculateDelay(attempt, opts.baseDelayMs, opts.maxDelayMs);
+      const delay = calculateDelay(attempt, opts.baseDelayMs, opts.maxDelayMs, opts.rng);
       await sleep(delay, signal);
     }
   }
@@ -166,15 +178,15 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
   if (lastError instanceof Error) {
     throw lastError;
   }
-  // Convert to Error while preserving properties
+  // Convert to Error while preserving properties. Reaching here means lastError
+  // survived the `!lastError` and `instanceof Error` guards above, and only
+  // objects are ever classified retryable — so lastError is always a non-Error
+  // object at this point.
+  const lastObj = lastError as Record<string, unknown>;
   const wrappedError = new Error(
-    lastError && typeof lastError === 'object' && 'message' in lastError
-      ? String((lastError as { message: unknown }).message)
-      : String(lastError),
+    'message' in lastObj ? String(lastObj.message) : String(lastError),
   );
-  if (lastError && typeof lastError === 'object') {
-    Object.assign(wrappedError, lastError);
-  }
+  Object.assign(wrappedError, lastObj);
   throw wrappedError;
 }
 

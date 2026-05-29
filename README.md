@@ -592,20 +592,6 @@ npm run test:integration:down  # docker compose down
 CI runs the same suite via a `DynamoDB Local` GitHub Actions service container
 on every pull request.
 
-### Mutation testing (Stryker)
-
-Line coverage tells you what code ran; **mutation coverage** tells you what
-tests would *catch regressions*. Run against a hot spot:
-
-```bash
-npm run test:mutate:quick  # retry.ts, compressor.ts, filter.ts (~15 min)
-npm run test:mutate        # full src/ (long — use incremental mode)
-```
-
-Stryker runs with `incremental: true`, so re-runs only re-check files that
-changed since the last run. Baseline kill-rate goal: **≥80%** for new code in
-`src/shared/` and `src/checkpointer/`.
-
 <a id="project-structure"></a>
 
 ## Project Structure
