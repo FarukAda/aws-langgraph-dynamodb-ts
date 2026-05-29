@@ -149,7 +149,6 @@ jobs:
   package-smoke:
     name: package smoke (npm pack + install + import)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
