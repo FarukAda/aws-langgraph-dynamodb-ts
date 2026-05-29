@@ -76,9 +76,8 @@ export default defineConfig([
   {
     files: ['test/**/*.ts'],
     rules: {
-      'max-lines': ['error', { max: 900, skipBlankLines: false, skipComments: false }],
+      'max-lines': ['error', { max: 400, skipBlankLines: false, skipComments: false }],
       '@typescript-eslint/no-explicit-any': 'off',
-      'no-inline-comments': 'off',
       'no-restricted-syntax': ['error', NO_EXPORT_ALL, NO_REEXPORT],
     },
   },
