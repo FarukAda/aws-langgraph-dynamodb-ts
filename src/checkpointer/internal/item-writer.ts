@@ -68,19 +68,15 @@ export async function buildWriteItems(
     const descriptor = await encodePayload(value, deps, {
       keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`],
     });
-    items.push(
-      withTtl(
-        {
-          PK: pk,
-          SK: writeSortKey(checkpointNs, checkpointId, taskId, index),
-          taskId,
-          index,
-          channel,
-          value: descriptor,
-        },
-        ttlTimestamp,
-      ),
-    );
+    const item: CheckpointWriteItem = {
+      PK: pk,
+      SK: writeSortKey(checkpointNs, checkpointId, taskId, index),
+      taskId,
+      index,
+      channel,
+      value: descriptor,
+    };
+    items.push(withTtl(item, ttlTimestamp));
   }
   return items;
 }

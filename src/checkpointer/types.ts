@@ -1,8 +1,14 @@
+import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
+
 import type { PayloadDescriptor } from '../shared/codec/codec';
 import type { BaseAdapterOptions, CodecOptions } from '../shared/options';
 
 /** Options for {@link DynamoDBSaver}. */
-export type DynamoDBSaverOptions = BaseAdapterOptions & CodecOptions;
+export type DynamoDBSaverOptions = BaseAdapterOptions &
+  CodecOptions & {
+    /** Optional serializer override (defaults to LangGraph's JSON serializer). */
+    serde?: SerializerProtocol;
+  };
 
 /** Narrowed shape of `RunnableConfig.configurable` the saver relies on. */
 export interface CheckpointConfigurable {
