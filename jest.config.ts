@@ -10,7 +10,14 @@ export default {
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',
-      { tsconfig: { esModuleInterop: true, allowSyntheticDefaultImports: true, rootDir: '.' } },
+      {
+        tsconfig: {
+          esModuleInterop: true,
+          allowSyntheticDefaultImports: true,
+          rootDir: '.',
+          module: 'commonjs',
+        },
+      },
     ],
   },
   verbose: true,
