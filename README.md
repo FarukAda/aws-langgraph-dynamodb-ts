@@ -311,6 +311,12 @@ This is a ground-up rewrite with intentional, breaking API and schema changes:
 - **Per-instance `logger` option** replaces the global `setGlobalLogger` singleton; default logging is now silent.
 - **Unified error model** — all errors extend `DynamoDbLangGraphError` with an `ErrorCode`.
 
+## Production notes
+
+- **Sharing one table** across all three adapters is supported — their key spaces don't collide, and the store/history table-wide reads filter to their own items. Checkpointer and chat-history reads are partition-scoped (`Query`/`GetItem`).
+- **`store.search`, `store.listNamespaces`, and `history.listSessions` use `Scan`**, so their read cost scales with table size. For large datasets prefer a **dedicated table per adapter** (pass a different `tableName`) and keep store namespaces reasonably scoped.
+- **TTL deletion timing** is governed by DynamoDB (typically within 48 h of expiry) and S3 lifecycle expiry is day-granular — the library writes the correct expiry timestamp / lifecycle rule but does not guarantee instant deletion.
+
 ## Testing
 
 ```bash
