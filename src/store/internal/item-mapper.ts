@@ -3,7 +3,7 @@ import type { Item } from '@langchain/langgraph-checkpoint';
 import { type CodecDeps, decodePayload, encodePayload } from '../../shared/codec/codec';
 import type { StoreItemRecord } from '../types';
 import type { JsonValue } from './filter';
-import { namespaceToPartition } from './keys';
+import { partitionKey, sortKey } from './keys';
 import type { StoreContext } from './setup';
 
 /** Map a store context to the codec collaborators. */
@@ -31,9 +31,10 @@ export async function buildStoreItem(
     keyParts: [...namespace, key],
   });
   const record: StoreItemRecord = {
-    PK: namespaceToPartition(namespace),
-    SK: key,
+    PK: partitionKey(namespace),
+    SK: sortKey(namespace, key),
     namespace,
+    key,
     value: descriptor,
     createdAt: options.createdAt,
     updatedAt: options.updatedAt,
@@ -51,7 +52,7 @@ export async function readStoreItem(context: StoreContext, record: StoreItemReco
   );
   return {
     namespace: record.namespace,
-    key: record.SK,
+    key: record.key,
     value,
     createdAt: new Date(record.createdAt),
     updatedAt: new Date(record.updatedAt),

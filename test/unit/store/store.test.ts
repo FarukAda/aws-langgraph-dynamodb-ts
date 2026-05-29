@@ -1,4 +1,10 @@
-import { DeleteCommand, GetCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  ScanCommand,
+} from '@aws-sdk/lib-dynamodb';
 
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
@@ -26,12 +32,12 @@ describe('DynamoDBStore', () => {
     expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
   });
 
-  it('search dispatches a Scan and returns matches', async () => {
+  it('search dispatches a scoped Query and returns matches', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(ScanCommand).resolves({ Items: [] });
+    mock.on(QueryCommand).resolves({ Items: [] });
     const store = new DynamoDBStore({ tableName: 'store', client });
     expect(await store.search(['users'])).toEqual([]);
-    expect(mock.commandCalls(ScanCommand)).toHaveLength(1);
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(1);
   });
 
   it('listNamespaces dispatches a Scan', async () => {
@@ -44,7 +50,7 @@ describe('DynamoDBStore', () => {
   it('executes a mixed batch in order', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(ScanCommand).resolves({ Items: [] });
+    mock.on(QueryCommand).resolves({ Items: [] });
     const store = new DynamoDBStore({ tableName: 'store', client });
     const results = await store.batch([{ namespace: ['n'], key: 'k' }, { namespacePrefix: ['n'] }]);
     expect(results).toEqual([null, []]);

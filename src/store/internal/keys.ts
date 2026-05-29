@@ -1,9 +1,24 @@
-/** Separator joining namespace elements into a partition key. */
+/** Separator joining namespace elements (and the trailing key) in the sort key. */
 export const NAMESPACE_SEPARATOR = '#';
 
-/** Join a hierarchical namespace into its DynamoDB partition key. */
-export function namespaceToPartition(namespace: string[]): string {
-  return namespace.join(NAMESPACE_SEPARATOR);
+/** Partition key for an item: the scope-root namespace element. */
+export function partitionKey(namespace: string[]): string {
+  return namespace[0];
+}
+
+/** Sort key: the rest of the namespace plus the key, separator-joined. */
+export function sortKey(namespace: string[], key: string): string {
+  return [...namespace.slice(1), key].join(NAMESPACE_SEPARATOR);
+}
+
+/**
+ * `begins_with` prefix selecting a scoped subtree within `prefix[0]`'s
+ * partition. Terminated with the separator so `['users','u1']` does not match a
+ * sibling like `u10`. An empty rest yields '' (matches the whole partition).
+ */
+export function sortKeyPrefix(prefix: string[]): string {
+  const rest = prefix.slice(1);
+  return rest.length === 0 ? '' : `${rest.join(NAMESPACE_SEPARATOR)}${NAMESPACE_SEPARATOR}`;
 }
 
 /**

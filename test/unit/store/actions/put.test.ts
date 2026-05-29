@@ -24,8 +24,8 @@ describe('putItem', () => {
     mock.on(PutCommand).resolves({});
     await putItem(context(client), op({}));
     const item = mock.commandCalls(PutCommand)[0].args[0].input.Item;
-    expect(item.PK).toBe('users#u1');
-    expect(item.SK).toBe('profile');
+    expect(item.PK).toBe('users');
+    expect(item.SK).toBe('u1#profile');
     expect(item.createdAt).toBe(item.updatedAt);
     expect(item.embedding).toBeUndefined();
   });
@@ -45,8 +45,8 @@ describe('putItem', () => {
     mock.on(DeleteCommand).resolves({});
     await putItem(context(client), op({ value: null }));
     expect(mock.commandCalls(DeleteCommand)[0].args[0].input.Key).toEqual({
-      PK: 'users#u1',
-      SK: 'profile',
+      PK: 'users',
+      SK: 'u1#profile',
     });
   });
 
@@ -123,5 +123,30 @@ describe('putItem', () => {
       putItem(context(client, { offloader: offloader as never }), op({})),
     ).rejects.toThrow('boom');
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['users/u1/profile']);
+  });
+
+  it('sends the embedding to a vector backend instead of storing it on the item', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    mock.on(PutCommand).resolves({});
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5, 0.6]) };
+    const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
+    await putItem(
+      context(client, {
+        index: { dims: 2, embeddings: embeddings as never },
+        vectorBackend: vectorBackend as never,
+      }),
+      op({}),
+    );
+    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item.embedding).toBeUndefined();
+    expect(vectorBackend.upsert).toHaveBeenCalledWith(['users', 'u1'], 'profile', [0.5, 0.6]);
+  });
+
+  it('deletes from the vector backend when removing an item', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(DeleteCommand).resolves({});
+    const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
+    await putItem(context(client, { vectorBackend: vectorBackend as never }), op({ value: null }));
+    expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
   });
 });

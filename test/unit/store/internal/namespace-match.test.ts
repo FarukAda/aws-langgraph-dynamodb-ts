@@ -1,4 +1,8 @@
-import { matchNamespace, truncateDepth } from '../../../../src/store/internal/namespace-match';
+import {
+  matchNamespace,
+  prefixRoot,
+  truncateDepth,
+} from '../../../../src/store/internal/namespace-match';
 
 describe('matchNamespace', () => {
   it('matches a prefix condition, honoring * wildcards', () => {
@@ -28,5 +32,24 @@ describe('truncateDepth', () => {
     expect(truncateDepth(['a', 'b', 'c'], 2)).toEqual(['a', 'b']);
     expect(truncateDepth(['a', 'b'], 5)).toEqual(['a', 'b']);
     expect(truncateDepth(['a', 'b'], undefined)).toEqual(['a', 'b']);
+  });
+});
+
+describe('prefixRoot', () => {
+  it('returns the leading concrete elements of the first prefix condition', () => {
+    expect(prefixRoot([{ matchType: 'prefix', path: ['users', 'u1'] }])).toEqual(['users', 'u1']);
+  });
+
+  it('stops at the first wildcard', () => {
+    expect(prefixRoot([{ matchType: 'prefix', path: ['users', '*', 'docs'] }])).toEqual(['users']);
+  });
+
+  it('returns an empty array when there is no prefix condition', () => {
+    expect(prefixRoot([{ matchType: 'suffix', path: ['v1'] }])).toEqual([]);
+    expect(prefixRoot(undefined)).toEqual([]);
+  });
+
+  it('returns an empty array when the prefix starts with a wildcard', () => {
+    expect(prefixRoot([{ matchType: 'prefix', path: ['*', 'u1'] }])).toEqual([]);
   });
 });

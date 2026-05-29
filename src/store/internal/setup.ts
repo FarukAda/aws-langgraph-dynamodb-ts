@@ -5,10 +5,12 @@ import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-check
 import type { CompressionConfig } from '../../shared/codec/compression';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
+import { DEFAULT_MAX_SEARCH_CANDIDATES } from '../../shared/constants';
 import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions } from '../types';
+import type { VectorBackend } from '../vector-backend';
 
 /** Resolved collaborators shared by every store action. */
 export interface StoreContext {
@@ -20,6 +22,8 @@ export interface StoreContext {
   ttl?: TtlOption;
   logger: Logger;
   index?: IndexConfig;
+  vectorBackend?: VectorBackend;
+  maxSearchCandidates: number;
 }
 
 /** Result of wiring up a store from its options. */
@@ -42,6 +46,8 @@ export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
       ttl: options.ttl,
       logger: resolveLogger(options.logger),
       index: options.index,
+      vectorBackend: options.vectorBackend,
+      maxSearchCandidates: options.maxSearchCandidates ?? DEFAULT_MAX_SEARCH_CANDIDATES,
     },
     ddbClient: resolved.ddbClient,
     ownsClient: resolved.ownsClient,

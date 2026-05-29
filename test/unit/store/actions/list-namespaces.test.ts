@@ -1,4 +1,4 @@
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -36,9 +36,9 @@ describe('listNamespaces', () => {
     expect(out).toEqual([['orgs'], ['users']]);
   });
 
-  it('applies match conditions', async () => {
+  it('scopes to a Query and applies match conditions for a concrete prefix root', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(ScanCommand).resolves({ Items: items });
+    mock.on(QueryCommand).resolves({ Items: items });
     const out = await listNamespaces(context(client), {
       limit: 100,
       offset: 0,
@@ -48,6 +48,20 @@ describe('listNamespaces', () => {
       ['users', 'u1'],
       ['users', 'u2'],
     ]);
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.ExpressionAttributeValues).toEqual({
+      ':pk': 'users',
+    });
+  });
+
+  it('falls back to a Scan when a prefix condition starts with a wildcard', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({ Items: items });
+    const out = await listNamespaces(context(client), {
+      limit: 100,
+      offset: 0,
+      matchConditions: [{ matchType: 'prefix', path: ['*', 'u1'] }],
+    });
+    expect(out).toEqual([['users', 'u1']]);
   });
 
   it('applies offset and limit', async () => {
@@ -63,7 +77,7 @@ describe('listNamespaces', () => {
     const out = await listNamespaces(context(client), { limit: 100, offset: 0 });
     expect(out).toEqual([['users', 'u1']]);
     expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toBe(
-      'attribute_exists(#n)',
+      'attribute_exists(#ns)',
     );
   });
 });

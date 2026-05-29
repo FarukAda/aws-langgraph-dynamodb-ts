@@ -21,3 +21,19 @@ export function matchNamespace(namespace: string[], condition: MatchCondition): 
 export function truncateDepth(namespace: string[], maxDepth?: number): string[] {
   return maxDepth === undefined ? namespace : namespace.slice(0, maxDepth);
 }
+
+/**
+ * Leading concrete (non-wildcard) elements of the first prefix condition. An
+ * empty result means the listing cannot be scoped to a single partition and
+ * must fall back to a Scan.
+ */
+export function prefixRoot(conditions?: MatchCondition[]): string[] {
+  const prefixCondition = conditions?.find((condition) => condition.matchType === 'prefix');
+  if (!prefixCondition) return [];
+  const root: string[] = [];
+  for (const element of prefixCondition.path) {
+    if (element === WILDCARD) break;
+    root.push(element);
+  }
+  return root;
+}

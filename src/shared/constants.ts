@@ -48,3 +48,6 @@ export const DEFAULT_MAX_DECOMPRESSED_BYTES = 50 * 1024 * 1024;
 
 /** Default maximum attempts for transient-error retries. */
 export const DEFAULT_RETRY_MAX_ATTEMPTS = 5;
+
+/** Default cap on candidates the in-DB semantic ranker will score. */
+export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;
