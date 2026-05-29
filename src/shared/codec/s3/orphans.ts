@@ -1,0 +1,66 @@
+import { fullJitter, nextBackoffDelay, sleep } from '../../dynamodb/backoff';
+import type { Logger } from '../../logging/logger';
+
+import type { S3Offloader } from './offloader';
+
+const DEFAULT_MAX_ATTEMPTS = 3;
+const BASE_DELAY_MS = 100;
+
+const RETRYABLE_S3_SIGNALS: readonly string[] = [
+  'SlowDown',
+  'InternalError',
+  'ServiceUnavailable',
+  'RequestTimeout',
+  'ThrottlingException',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'NetworkingError',
+];
+
+function isTransientS3Error(error: Error): boolean {
+  const fields = error as { name?: string; code?: string; $metadata?: { httpStatusCode?: number } };
+  const status = fields.$metadata?.httpStatusCode;
+  if (typeof status === 'number' && (status === 429 || (status >= 500 && status < 600))) return true;
+  const signals = [fields.name, fields.code].filter((value): value is string => typeof value === 'string');
+  return signals.some((signal) => RETRYABLE_S3_SIGNALS.some((retryable) => signal.includes(retryable)));
+}
+
+/** Options for {@link cleanUpS3Orphans}. */
+export interface OrphanCleanupOptions {
+  rng?: () => number;
+  maxAttempts?: number;
+}
+
+/**
+ * Best-effort delete of S3 objects orphaned by a failed DynamoDB write. Retries
+ * transient errors with full-jitter backoff; on persistent failure it logs at
+ * `warn` (the lifecycle rule is the backstop) and never throws — the sole
+ * non-throwing path in the library.
+ */
+export async function cleanUpS3Orphans(
+  offloader: S3Offloader,
+  keys: ReadonlyArray<string | undefined>,
+  context: string,
+  logger: Logger,
+  options: OrphanCleanupOptions = {},
+): Promise<void> {
+  const orphans = keys.filter((key): key is string => typeof key === 'string' && key.length > 0);
+  if (orphans.length === 0) return;
+  const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  let delay = BASE_DELAY_MS;
+  let lastError = new Error('S3 orphan cleanup did not run');
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await offloader.deleteBatch(orphans);
+      return;
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt >= maxAttempts || !isTransientS3Error(lastError)) break;
+      await sleep(fullJitter(delay, options.rng));
+      delay = nextBackoffDelay(delay);
+    }
+  }
+  logger.warn(`Failed to clean up orphaned S3 objects after ${context}; lifecycle rule will sweep`, {
+    message: lastError.message,
+  });
+}
