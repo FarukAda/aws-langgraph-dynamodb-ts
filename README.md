@@ -3,202 +3,246 @@
 [![npm version](https://img.shields.io/npm/v/%40farukada%2Faws-langgraph-dynamodb-ts)](https://www.npmjs.com/package/@farukada/aws-langgraph-dynamodb-ts)
 [![Sponsor](https://img.shields.io/badge/Sponsor-FarukAda-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/FarukAda)
 ![Node >=22](https://img.shields.io/badge/node-%3E%3D22-339933)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6)
+![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![AWS SDK v3](https://img.shields.io/badge/AWS%20SDK-v3-FF9900)
 
-AWS DynamoDB persistence layer for [LangGraph](https://langchain-ai.github.io/langgraphjs/) in TypeScript. Drop-in checkpoint storage, long-term memory with semantic search, and chat message history — all backed by DynamoDB with optional S3 offloading for large payloads.
+A DynamoDB persistence layer for [LangGraph](https://langchain-ai.github.io/langgraphjs/) in TypeScript (ESM, Node ≥ 22). It provides three LangGraph/LangChain adapters plus a factory:
+
+- **`DynamoDBSaver`** — checkpoint + pending-writes persistence (`extends BaseCheckpointSaver`).
+- **`DynamoDBStore`** — long-term memory with optional semantic search (`extends BaseStore`).
+- **`DynamoDBChatMessageHistory`** — multi-session chat history, with a single-session adapter for `RunnableWithMessageHistory`.
+- **`DynamoDBFactory`** — convenience constructors, including `createAll` (one shared client + a `destroy()`).
+
+Every adapter supports optional **gzip compression**, **S3 offloading** of payloads over DynamoDB's 400 KB item limit, and **TTL-based expiry**. The store additionally supports **vector semantic search** via any LangChain `Embeddings` implementation.
 
 ## Table of Contents
 
+- [Install](#install)
+- [Table schema](#table-schema)
+- [Quick start](#quick-start)
+  - [Checkpointer](#checkpointer)
+  - [Store + semantic search](#store--semantic-search)
+  - [Chat history](#chat-history)
+  - [Factory](#factory)
+- [Options](#options)
 - [Features](#features)
-- [Architecture](#architecture)
-- [Quick Start](#quick-start)
-- [Infrastructure Setup](#infrastructure-setup)
-- [Advanced Features](#advanced-features)
-- [Configuration Reference](#configuration-reference)
-- [IAM Permissions](#iam-permissions)
-- [Documentation](#documentation)
+- [Error handling](#error-handling)
+- [Logging](#logging)
+- [Infrastructure setup](#infrastructure-setup)
+- [IAM permissions](#iam-permissions)
+- [Migrating from earlier versions](#migrating-from-earlier-versions)
 - [Testing](#testing)
-- [Project Structure](#project-structure)
-- [Contributing](#contributing)
 - [License](#license)
 
 ---
 
-<a id="features"></a>
-
-## Features
-
-| Capability | Description |
-|---|---|
-| 🔄 **Checkpoint Saver** | Persistent checkpoint storage for LangGraph state management |
-| 💾 **Memory Store** | Long-term memory with namespace support and optional semantic search |
-| 💬 **Chat History** | Persistent chat message storage with auto-generated session titles |
-| 🗜️ **Compression** | Optional gzip compression with smart thresholds (auto-detect on read) |
-| ☁️ **S3 Offloading** | Transparent S3 offloading for payloads exceeding DynamoDB's 400 KB limit |
-| ⚡ **Performance** | Composite keys, batch operations, exponential-backoff retry |
-| ♻️ **TTL Support** | Automatic data expiration (days or seconds) |
-| 🔒 **Type-Safe** | Full TypeScript with comprehensive type definitions |
-| 🏭 **Factory** | One-line setup via `DynamoDBFactory.createAll()` |
-
-<a id="architecture"></a>
-
-## Architecture
-
-```mermaid
-flowchart LR
-    subgraph yourApp ["Your Application"]
-        graph_node["LangGraph Node"]
-    end
-
-    subgraph library ["@farukada/aws-langgraph-dynamodb-ts"]
-        saver["DynamoDBSaver"]
-        store["DynamoDBStore"]
-        history["DynamoDBChatMessageHistory"]
-        compressor["Compressor"]
-        offloader["S3Offloader"]
-    end
-
-    subgraph aws ["AWS"]
-        ddb[(DynamoDB)]
-        s3[(S3)]
-        bedrock["Bedrock Embeddings"]
-    end
-
-    graph_node --> saver
-    graph_node --> store
-    graph_node --> history
-    saver --> compressor
-    compressor --> offloader
-    offloader --> s3
-    saver --> ddb
-    store --> ddb
-    store -.-> bedrock
-    history --> ddb
-```
-
-<a id="quick-start"></a>
-
-## Quick Start
-
-### Install
+## Install
 
 ```bash
-npm install @farukada/aws-langgraph-dynamodb-ts
-```
-
-#### Peer Dependencies
-
-```bash
-npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb \
+npm install @farukada/aws-langgraph-dynamodb-ts \
+  @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb \
   @langchain/core @langchain/langgraph @langchain/langgraph-checkpoint
-
-# Optional — semantic search in Memory Store
-npm install @langchain/aws
-
-# Optional — S3 offloading for large payloads
-npm install @aws-sdk/client-s3
 ```
 
-### Checkpoint Storage
+Optional peer dependencies, installed only if you use the matching feature:
+
+```bash
+# Required only when S3 offloading is enabled
+npm install @aws-sdk/client-s3
+
+# Required only for semantic search in the store (any LangChain Embeddings works)
+npm install @langchain/aws        # e.g. Bedrock Titan embeddings
+```
+
+## Table schema
+
+Every adapter uses the **same simple key schema**: a string partition key `PK`, a string sort key `SK`, and an optional Number `ttl` attribute for expiry. Because the key spaces never collide, **a single table can back all three adapters**, or you can use a separate table per adapter — your choice via the `tableName` option.
+
+| Attribute | Type | Role |
+| --- | --- | --- |
+| `PK` | String (HASH) | partition key |
+| `SK` | String (RANGE) | sort key |
+| `ttl` | Number | (optional) Unix-epoch-seconds expiry; enable DynamoDB TTL on this attribute |
+
+How each adapter lays out keys (informational — you don't manage this):
+
+- **Checkpointer** — `PK = <thread_id>`; `SK` = `META#<ns>#<checkpoint_id>` (metadata), `PAYLOAD#<ns>#<checkpoint_id>` (checkpoint), `WRITE#<ns>#<checkpoint_id>#<task>#<idx>` (pending writes).
+- **Store** — `PK = <namespace joined by '#'>`; `SK = <key>`.
+- **Chat history** — `PK = <sessionId>`; `SK = SESSION` (one item per session).
+
+## Quick start
+
+### Checkpointer
 
 ```typescript
-import { StateGraph } from '@langchain/langgraph';
 import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts';
 
 const checkpointer = new DynamoDBSaver({
-  checkpointsTableName: 'langgraph-checkpoints',
-  writesTableName: 'langgraph-writes',
-  ttlDays: 30,
-  clientConfig: { region: 'us-east-1' },
+  tableName: 'langgraph',
+  clientConfig: { region: 'eu-west-1' },
 });
 
-const app = workflow.compile({ checkpointer });
+const graph = workflow.compile({ checkpointer });
 
-// State is automatically persisted and can be resumed
-await app.invoke(input, {
-  configurable: { thread_id: 'conversation-123' },
-});
+const config = { configurable: { thread_id: 'user-42' } };
+await graph.invoke({ messages: [/* ... */] }, config);
+
+// Resume later (even in a new process) — state is loaded from DynamoDB.
+const resumed = await graph.invoke({ messages: [/* ... */] }, config);
+
+checkpointer.destroy(); // releases the client this instance created
 ```
 
-### Memory Store
+### Store + semantic search
 
 ```typescript
 import { DynamoDBStore } from '@farukada/aws-langgraph-dynamodb-ts';
 import { BedrockEmbeddings } from '@langchain/aws';
 
 const store = new DynamoDBStore({
-  memoryTableName: 'langgraph-memory',
-  embedding: new BedrockEmbeddings({
-    region: 'us-east-1',
-    model: 'amazon.titan-embed-text-v1',
-  }),
-  ttlDays: 90,
+  tableName: 'langgraph',
+  clientConfig: { region: 'eu-west-1' },
+  index: {
+    dims: 1024,
+    embeddings: new BedrockEmbeddings({ model: 'amazon.titan-embed-text-v2:0', region: 'eu-west-1' }),
+    fields: ['text'], // which fields to embed; defaults to the whole document ('$')
+  },
 });
 
-// Put memories
-await store.batch([
-  {
-    namespace: ['user', 'preferences'],
-    key: 'theme',
-    value: { color: 'dark', fontSize: 14 },
-  },
-], { configurable: { user_id: 'user-123' } });
+await store.put(['library'], 'doc-1', { text: 'Amazon DynamoDB is a serverless NoSQL database' });
+await store.put(['library'], 'doc-2', { text: 'Espresso is a concentrated coffee' });
 
-// Semantic search
-const [results] = await store.batch([
-  { namespacePrefix: ['user'], query: 'color preferences', limit: 5 },
-], { configurable: { user_id: 'user-123' } });
+// Metadata filtering (operators: $eq, $ne, $gt, $gte, $lt, $lte)
+await store.search(['library'], { filter: { type: 'note', score: { $gte: 5 } } });
+
+// Semantic search — ranked by cosine similarity to the query embedding
+const hits = await store.search(['library'], { query: 'cloud database', limit: 5 });
+//=> doc-1 ranks first, with a `score` on each SearchItem
+
+await store.get(['library'], 'doc-1');
+await store.delete(['library'], 'doc-1');
+await store.listNamespaces({ prefix: ['library'], maxDepth: 1 });
 ```
 
-### Chat History
+### Chat history
 
 ```typescript
 import { DynamoDBChatMessageHistory } from '@farukada/aws-langgraph-dynamodb-ts';
-import { HumanMessage, AIMessage } from '@langchain/core/messages';
+import { HumanMessage } from '@langchain/core/messages';
 
 const history = new DynamoDBChatMessageHistory({
-  tableName: 'langgraph-chat-history',
-  ttlDays: 30,
+  tableName: 'langgraph',
+  clientConfig: { region: 'eu-west-1' },
 });
 
-await history.addMessages('user-123', 'session-456', [
-  new HumanMessage('Hello!'),
-  new AIMessage('Hi there!'),
-]);
-
-const sessions = await history.listSessions('user-123');
+await history.addMessages('session-1', [new HumanMessage('Hello!')]);
+const messages = await history.getMessages('session-1');
+const sessions = await history.listSessions(); // [{ sessionId, title, messageCount, ... }]
+await history.clear('session-1');
 ```
 
-> **TTL semantics.** The session metadata item's TTL is refreshed on every
-> `addMessage`/`addMessages` call, so `listSessions()` keeps reporting the
-> session as live while activity continues. Individual message items get their
-> TTL stamped at write time and expire independently — a long-lived session can
-> develop gaps where older messages drop out while recent ones persist. If that
-> isn't acceptable, set `ttlDays` well above your expected session lifetime or
-> manage deletion explicitly via `clear()`.
+Use it with LangChain's `RunnableWithMessageHistory` via the single-session adapter:
 
-### Factory (One-Liner)
+```typescript
+import { RunnableWithMessageHistory } from '@langchain/core/runnables';
+
+const withHistory = new RunnableWithMessageHistory({
+  runnable: chain,
+  getMessageHistory: (sessionId) => history.forSession(sessionId),
+  inputMessagesKey: 'input',
+  historyMessagesKey: 'history',
+});
+```
+
+### Factory
+
+`createAll` builds all three adapters on **one shared DynamoDB client** and returns a single `destroy()` that tears everything down.
 
 ```typescript
 import { DynamoDBFactory } from '@farukada/aws-langgraph-dynamodb-ts';
 
-const { checkpointer, store, chatHistory, destroy } = DynamoDBFactory.createAll({
-  tablePrefix: 'my-app',
-  ttlDays: 30,
-  clientConfig: { region: 'us-east-1' },
+const factory = new DynamoDBFactory({ clientConfig: { region: 'eu-west-1' } });
+
+const { saver, store, history, destroy } = factory.createAll({
+  saver: { tableName: 'langgraph' },
+  store: { tableName: 'langgraph', index: { dims: 1024, embeddings } },
+  history: { tableName: 'langgraph' },
 });
 
-// When done, release the shared DynamoDB client
-destroy();
+// ... use saver / store / history ...
+
+destroy(); // closes the one shared client
 ```
 
-<a id="infrastructure-setup"></a>
+## Options
 
-## Infrastructure Setup
+All adapters share a common base. Provide **either** a prebuilt `client` (which the adapter will not own/close) **or** `clientConfig` (the adapter builds and owns the client).
 
-Create the required DynamoDB tables using **AWS CDK** or **Terraform**.
+| Option | Type | Applies to | Notes |
+| --- | --- | --- | --- |
+| `tableName` | `string` | all | **required** |
+| `client` | `DynamoDBDocument` | all | reuse an existing client; not closed by `destroy()` |
+| `clientConfig` | `DynamoDBClientConfig` | all | used to build a client when `client` is omitted |
+| `ttl` | `{ days: number }` \| `{ seconds: number }` | all | expiry written to the `ttl` attribute |
+| `logger` | `Logger` | all | per-instance logger (default: silent) |
+| `compression` | `CompressionConfig` | all | `{ enabled, minSizeBytes?, level?, maxDecompressedBytes? }` |
+| `s3` | `S3OffloadConfig` | all | offload large payloads to S3 (see below) |
+| `serde` | `SerializerProtocol` | all | serializer override (checkpointer defaults to LangGraph's; store/history to JSON) |
+| `index` | `IndexConfig` | store only | `{ dims, embeddings, fields? }` for semantic search |
+
+`S3OffloadConfig`: `{ bucketName, keyPrefix?, thresholdBytes?, serverSideEncryption?, sseKmsKeyId?, clientConfig? }`.
+
+## Features
+
+**Gzip compression** — set `compression: { enabled: true }`. Payloads at or above `minSizeBytes` (default 1 KB) are gzipped transparently; decompression auto-detects on read and is guarded against decompression-bomb expansion (`maxDecompressedBytes`, default 50 MiB).
+
+**S3 offloading** — set `s3: { bucketName }`. Any serialized payload at or above `thresholdBytes` (default 350 KB) is written to S3, with only a reference stored in DynamoDB; reads rehydrate transparently. Requires the optional `@aws-sdk/client-s3` peer. When a `ttl` is also configured the library best-effort installs a matching S3 lifecycle expiration rule (logged, never fatal). Deleting a checkpoint thread / chat session also best-effort deletes its offloaded objects.
+
+**TTL expiry** — set `ttl: { days }` or `ttl: { seconds }`. The `ttl` attribute is written as a Unix-epoch-seconds timestamp; enable DynamoDB TTL on the `ttl` attribute for automatic deletion. Chat sessions store all messages in one item under one TTL, so a live session never develops mid-history gaps.
+
+**Semantic search** (store) — provide `index` with a LangChain `Embeddings` implementation. On `put`, the configured `fields` are embedded and the vector is stored on the item; on `search` with a `query`, results are ranked by cosine similarity. Per-item indexing can be overridden via the `index` argument to `put` (`false` to skip, or a `string[]` of fields).
+
+## Error handling
+
+All errors thrown by the library extend `DynamoDbLangGraphError` and carry a stable `code` from the `ErrorCode` enum plus a native `cause` chain. Branch on `code`:
+
+```typescript
+import { ErrorCode, DynamoDbLangGraphError } from '@farukada/aws-langgraph-dynamodb-ts';
+
+try {
+  await store.put([''], 'k', { v: 1 });
+} catch (error) {
+  if (error instanceof DynamoDbLangGraphError && error.code === ErrorCode.VALIDATION) {
+    // bad input
+  }
+}
+```
+
+`ErrorCode` values: `VALIDATION`, `NOT_FOUND`, `CONDITION_CONFLICT`, `RETRY_EXHAUSTED`, `BATCH_WRITE_INCOMPLETE`, `COMPRESSION_LIMIT`, `S3_OFFLOAD_FAILED`, `S3_ORPHAN_CLEANUP_FAILED`, `ABORTED`. Typed subclasses are exported where callers commonly branch: `ValidationError`, `ConflictError`, `RetryExhaustedError`, `BatchWriteIncompleteError`, `AbortError`.
+
+## Logging
+
+Logging is **per-instance and silent by default** — the library never writes to your console uninvited. Pass any object matching the `Logger` interface (`info`/`warn`/`error`/`debug`):
+
+```typescript
+import { redactLogger, type Logger } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const logger: Logger = {
+  info: (m, ...a) => console.info(m, ...a),
+  warn: (m, ...a) => console.warn(m, ...a),
+  error: (m, ...a) => console.error(m, ...a),
+  debug: () => {},
+};
+
+const store = new DynamoDBStore({ tableName: 'langgraph', logger: redactLogger(logger) });
+```
+
+`redactLogger` wraps a logger so secret-looking fields (access keys, tokens, passwords, …) are replaced with `[REDACTED]` in structured log arguments. `redactSecrets` exposes the same redaction for arbitrary objects.
+
+## Infrastructure setup
+
+One table backs all three adapters. Create it with **AWS CDK** or **Terraform**.
 
 <details>
 <summary><strong>AWS CDK (TypeScript)</strong></summary>
@@ -206,40 +250,12 @@ Create the required DynamoDB tables using **AWS CDK** or **Terraform**.
 ```typescript
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 
-// Checkpoints
-new dynamodb.Table(this, 'Checkpoints', {
-  tableName: 'langgraph-checkpoints',
-  partitionKey: { name: 'thread_id', type: dynamodb.AttributeType.STRING },
-  sortKey: { name: 'checkpoint_id', type: dynamodb.AttributeType.STRING },
+new dynamodb.Table(this, 'LangGraph', {
+  tableName: 'langgraph',
+  partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
   billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-  timeToLiveAttribute: 'ttl',
-});
-
-// Writes
-new dynamodb.Table(this, 'Writes', {
-  tableName: 'langgraph-writes',
-  partitionKey: { name: 'thread_id_checkpoint_id_checkpoint_ns', type: dynamodb.AttributeType.STRING },
-  sortKey: { name: 'task_id_idx', type: dynamodb.AttributeType.STRING },
-  billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-  timeToLiveAttribute: 'ttl',
-});
-
-// Memory
-new dynamodb.Table(this, 'Memory', {
-  tableName: 'langgraph-memory',
-  partitionKey: { name: 'user_id', type: dynamodb.AttributeType.STRING },
-  sortKey: { name: 'namespace_key', type: dynamodb.AttributeType.STRING },
-  billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-  timeToLiveAttribute: 'ttl',
-});
-
-// Chat History
-new dynamodb.Table(this, 'ChatHistory', {
-  tableName: 'langgraph-chat-history',
-  partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
-  sortKey: { name: 'sessionId', type: dynamodb.AttributeType.STRING },
-  billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-  timeToLiveAttribute: 'ttl',
+  timeToLiveAttribute: 'ttl', // optional; only needed if you use the `ttl` option
 });
 ```
 
@@ -249,389 +265,73 @@ new dynamodb.Table(this, 'ChatHistory', {
 <summary><strong>Terraform</strong></summary>
 
 ```hcl
-resource "aws_dynamodb_table" "checkpoints" {
-  name         = "langgraph-checkpoints"
+resource "aws_dynamodb_table" "langgraph" {
+  name         = "langgraph"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "thread_id"
-  range_key    = "checkpoint_id"
-  attribute { name = "thread_id"     type = "S" }
-  attribute { name = "checkpoint_id" type = "S" }
-  ttl { attribute_name = "ttl" enabled = true }
-}
+  hash_key     = "PK"
+  range_key    = "SK"
 
-resource "aws_dynamodb_table" "writes" {
-  name         = "langgraph-writes"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "thread_id_checkpoint_id_checkpoint_ns"
-  range_key    = "task_id_idx"
-  attribute { name = "thread_id_checkpoint_id_checkpoint_ns" type = "S" }
-  attribute { name = "task_id_idx" type = "S" }
-  ttl { attribute_name = "ttl" enabled = true }
-}
+  attribute { name = "PK" type = "S" }
+  attribute { name = "SK" type = "S" }
 
-resource "aws_dynamodb_table" "memory" {
-  name         = "langgraph-memory"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "user_id"
-  range_key    = "namespace_key"
-  attribute { name = "user_id"        type = "S" }
-  attribute { name = "namespace_key"  type = "S" }
-  ttl { attribute_name = "ttl" enabled = true }
-}
-
-resource "aws_dynamodb_table" "chat_history" {
-  name         = "langgraph-chat-history"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "userId"
-  range_key    = "sessionId"
-  attribute { name = "userId"    type = "S" }
-  attribute { name = "sessionId" type = "S" }
-  ttl { attribute_name = "ttl" enabled = true }
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
 }
 ```
 
 </details>
 
-<a id="advanced-features"></a>
+## IAM permissions
 
-## Advanced Features
+Minimum DynamoDB actions on the table:
 
-### Gzip Compression
-
-Reduce DynamoDB item sizes and costs by enabling transparent gzip compression:
-
-```typescript
-const checkpointer = new DynamoDBSaver({
-  checkpointsTableName: 'langgraph-checkpoints',
-  writesTableName: 'langgraph-writes',
-  compression: {
-    enabled: true,
-    minSizeBytes: 1024, // Only compress payloads ≥ 1 KB
-  },
-});
+```
+dynamodb:GetItem
+dynamodb:PutItem
+dynamodb:DeleteItem
+dynamodb:Query
+dynamodb:Scan
+dynamodb:BatchGetItem
+dynamodb:BatchWriteItem
+dynamodb:TransactWriteItems
 ```
 
-### S3 Offloading
+When S3 offloading is enabled, on the bucket/objects: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket`, and — only if TTL-driven lifecycle rules are desired — `s3:GetBucketLifecycleConfiguration` and `s3:PutBucketLifecycleConfiguration`. For semantic search via Bedrock embeddings: `bedrock:InvokeModel`.
 
-Automatically offload payloads exceeding DynamoDB's 400 KB item limit to S3:
+## Migrating from earlier versions
 
-```typescript
-const checkpointer = new DynamoDBSaver({
-  checkpointsTableName: 'langgraph-checkpoints',
-  writesTableName: 'langgraph-writes',
-  s3OffloadConfig: {
-    bucketName: 'my-checkpoints-bucket',
-    keyPrefix: 'langgraph/',              // default: 'langgraph-checkpoints/'
-    thresholdBytes: 350 * 1024,           // default: 350 KB
-    serverSideEncryption: 'aws:kms',      // optional: 'AES256' or 'aws:kms'
-    sseKmsKeyId: 'alias/my-key',          // optional: KMS key ID/ARN
-    clientConfig: { region: 'us-east-1' },
-  },
-});
-```
+This is a ground-up rewrite with intentional, breaking API and schema changes:
 
-When TTL and S3 offloading are both enabled, the library automatically configures an S3 lifecycle expiration rule on the bucket (scoped to the key prefix). This requires `s3:GetBucketLifecycleConfiguration` and `s3:PutBucketLifecycleConfiguration` permissions on the bucket. If these permissions are unavailable, a warning is logged but the saver continues to function normally.
-
-### Store Filters
-
-```typescript
-// Supported operators: $eq, $ne, $gt, $gte, $lt, $lte, $in, $nin.
-// Filter keys are fields inside the stored `value` — the library wraps each
-// key as `value.<key>` when building the DynamoDB FilterExpression.
-const [results] = await store.batch([
-  {
-    namespacePrefix: ['products'],
-    filter: {
-      price: { $gte: 10, $lte: 100 },
-      category: { $in: ['electronics', 'books'] },
-      status: { $ne: 'archived' },
-    },
-    limit: 10,
-  },
-], { configurable: { user_id: 'user-123' } });
-```
-
-### Namespace Organization
-
-```typescript
-// Hierarchical namespace patterns
-['user', userId, 'preferences']
-['user', userId, 'conversations', threadId]
-['documents', 'category', 'subcategory']
-```
-
-### LangChain `RunnableWithMessageHistory` integration
-
-`DynamoDBChatMessageHistory` is a multi-session store; to hand a single
-`(userId, sessionId)` pair to LangChain's `RunnableWithMessageHistory`, bind it
-with `forSession()` which returns a `BaseListChatMessageHistory` compatible
-instance:
-
-```typescript
-import { RunnableWithMessageHistory } from '@langchain/core/runnables';
-import { DynamoDBChatMessageHistory } from '@farukada/aws-langgraph-dynamodb-ts';
-
-const store = new DynamoDBChatMessageHistory({ tableName: 'chat-sessions' });
-
-const chain = new RunnableWithMessageHistory({
-  runnable,
-  getMessageHistory: (sessionId) => store.forSession(userId, sessionId),
-  inputMessagesKey: 'input',
-  historyMessagesKey: 'history',
-});
-```
-
-### Atomicity contract
-
-| Operation | Atomicity scope | Failure mode |
-|---|---|---|
-| `DynamoDBSaver.put()` | Single `TransactWrite` on the **checkpoints** table. Both the metadata item and the payload item either both persist or neither does. | Throws; any S3 objects already uploaded are best-effort cleaned, otherwise swept by the S3 lifecycle rule. |
-| `DynamoDBSaver.putWrites()` | `BatchWriteItem` against the **writes** table, chunked in groups of 25. Each 25-item batch is independently atomic at the DynamoDB level; batches are *not* transactional with each other. | On retry exhaustion, throws `BatchWriteIncompleteError` with `.succeededCount` and `.unprocessed` so callers can drive reconciliation. Items already acked by DynamoDB remain persisted. |
-| `put()` ↔ `putWrites()` | **Not** atomic across tables. LangGraph calls them as distinct steps; a crash between them leaves a checkpoint without its writes (or vice versa). | LangGraph's node-retry loop will re-invoke both; the idempotency guard on `put()` makes re-submission safe. |
-| `DynamoDBChatMessageHistory.addMessage(s)` | `TransactWriteItems` — up to 99 message items plus the metadata counter update, guarded by an optimistic `messageCount` condition. All-or-nothing per call. | Throws on conflict; the helper retries up to 5× on `ConditionalCheckFailed` sub-reasons. |
-| `DynamoDBStore.batch()` (Put) | Per-item `UpdateItem` / `PutItem`. Batch failure is per-operation. | Each op's error propagates via `Promise.all`. |
-
-### `put()` optimistic-concurrency guard
-
-Every `put()` writes metadata with a `ConditionExpression` that rejects the
-transaction when a pre-existing row for the same `(thread_id, checkpoint_id)`
-disagrees on `parent_checkpoint_id` or serializer `type`. Effect:
-
-- A fresh checkpoint always succeeds.
-- A retry after a transient error (network blip, throttling) re-issues the same
-  `(parent, type)` and succeeds as if idempotent.
-- Two concurrent workers writing the same `checkpoint_id` but with different
-  lineage surface a `ConditionalCheckFailedException` instead of silently
-  last-writer-wins. Treat it as a signal that your application is accidentally
-  racing two graphs on the same thread.
-
-### Limits and safety caps
-
-The library enforces a set of client-side caps to produce clean, actionable
-errors before DynamoDB / zlib / memory blow up on pathological inputs. All of
-them are configurable or can be raised if a legitimate workload needs more.
-
-| Cap | Default | Raise via | Hit when |
-|---|---|---|---|
-| Decompressed checkpoint size | 50 MiB | `compression.maxDecompressedBytes` | Gzip payload expands beyond the cap — defends against gzip bombs. |
-| Filter expression string | 3.5 KiB | not configurable — simplify the filter | Complex / deeply-nested `Store.batch` searches. DynamoDB's hard limit is 4 KiB. |
-| `$in` / `$nin` array size | 50 values | not configurable — split the query | Store filter with oversized enum sets. |
-| `list()` page iterations | 1000 pages | not configurable — narrow the filter or add a GSI | Filters that match almost nothing across a very large thread. |
-| `deleteThread()` page iterations | 10 000 pages | not configurable — investigate the thread | Effectively "unbounded for real workloads"; only trips on extreme datasets. |
-| Retry `cause`-chain depth | 32 | not configurable | Hostile error with an absurd nesting depth; prevents stack-overflow DoS. |
-
-### S3 encryption
-
-Offloaded checkpoint payloads are written with `ServerSideEncryption: AES256`
-by default (matching S3's own default since 2023). If your bucket policy
-enforces a different algorithm (e.g. `aws:kms`), set it explicitly:
-
-```typescript
-s3OffloadConfig: {
-  bucketName: 'my-checkpoints-bucket',
-  serverSideEncryption: 'aws:kms',
-  sseKmsKeyId: 'alias/my-key',
-}
-```
-
-IAM: the `s3:PutObject` permission granted in the minimum policy above is
-sufficient. If your bucket policy denies the `AES256` algorithm, either grant
-the key permissions required for `aws:kms` or set `serverSideEncryption`
-explicitly to match the bucket policy.
-
-### Checkpoint data migration (v<4)
-
-LangGraph bumped the `Checkpoint.v` field to **4** in `@langchain/langgraph-checkpoint@1.0`. Reading data written by older versions (v<4) requires synthesizing the `TASKS` channel from parent-checkpoint writes — this library does not migrate on read. If you have pre-1.0 data, run LangGraph's reference migration before switching to this saver, or drop the older checkpoints.
-
-<a id="configuration-reference"></a>
-
-## Configuration Reference
-
-### DynamoDBSaver
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `checkpointsTableName` | `string` | — | Checkpoints table name (**required**) |
-| `writesTableName` | `string` | — | Writes table name (**required**) |
-| `ttlDays` | `number` | — | TTL in days |
-| `ttlSeconds` | `number` | — | TTL in seconds (overrides `ttlDays`) |
-| `compression` | `object` | — | `{ enabled, minSizeBytes?, level? }` |
-| `s3OffloadConfig` | `object` | — | `{ bucketName, keyPrefix?, thresholdBytes?, serverSideEncryption?, sseKmsKeyId?, clientConfig? }` |
-| `clientConfig` | `object` | — | AWS SDK `DynamoDBClientConfig` |
-| `client` | `DynamoDBDocument` | — | Pre-built client (takes precedence over `clientConfig`) |
-
-### DynamoDBStore
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `memoryTableName` | `string` | — | Memory table name (**required**) |
-| `embedding` | `EmbeddingsInterface` | — | Any LangChain embeddings provider for semantic search |
-| `ttlDays` | `number` | — | TTL in days |
-| `clientConfig` | `object` | — | AWS SDK `DynamoDBClientConfig` |
-| `client` | `DynamoDBDocument` | — | Pre-built client (takes precedence over `clientConfig`) |
-
-### DynamoDBChatMessageHistory
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `tableName` | `string` | — | Chat history table name (**required**) |
-| `ttlDays` | `number` | — | TTL in days |
-| `clientConfig` | `object` | — | AWS SDK `DynamoDBClientConfig` |
-| `client` | `DynamoDBDocument` | — | Pre-built client (takes precedence over `clientConfig`) |
-
-<a id="iam-permissions"></a>
-
-## IAM Permissions
-
-<details>
-<summary><strong>Minimum IAM Policy</strong></summary>
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "CheckpointerAccess",
-      "Effect": "Allow",
-      "Action": [
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:Query",
-        "dynamodb:BatchGetItem",
-        "dynamodb:BatchWriteItem",
-        "dynamodb:TransactWriteItems"
-      ],
-      "Resource": [
-        "arn:aws:dynamodb:REGION:ACCOUNT:table/langgraph-checkpoints",
-        "arn:aws:dynamodb:REGION:ACCOUNT:table/langgraph-writes"
-      ]
-    },
-    {
-      "Sid": "StoreAndHistoryAccess",
-      "Effect": "Allow",
-      "Action": [
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:Query",
-        "dynamodb:BatchWriteItem"
-      ],
-      "Resource": [
-        "arn:aws:dynamodb:REGION:ACCOUNT:table/langgraph-memory",
-        "arn:aws:dynamodb:REGION:ACCOUNT:table/langgraph-chat-history"
-      ]
-    },
-    {
-      "Sid": "OptionalSemanticSearch",
-      "Effect": "Allow",
-      "Action": ["bedrock:InvokeModel"],
-      "Resource": "arn:aws:bedrock:REGION::foundation-model/amazon.titan-embed-text-v1"
-    },
-    {
-      "Sid": "OptionalS3Offloading",
-      "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:DeleteObject",
-        "s3:DeleteObjects"
-      ],
-      "Resource": "arn:aws:s3:::YOUR-BUCKET/langgraph-checkpoints/*"
-    },
-    {
-      "Sid": "OptionalS3LifecycleManagement",
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetBucketLifecycleConfiguration",
-        "s3:PutBucketLifecycleConfiguration"
-      ],
-      "Resource": "arn:aws:s3:::YOUR-BUCKET"
-    }
-  ]
-}
-```
-
-</details>
-
-<a id="documentation"></a>
-
-## Documentation
-
-- **[Checkpointer Guide](./src/checkpointer/checkpointer.md)** — Checkpoint management, workflow persistence, recovery
-- **[Store Guide](./src/store/store.md)** — Memory storage, semantic search, filtering, namespaces
-- **[History Guide](./src/history/history.md)** — Chat message storage, session management
-- **[API Reference (TypeDoc)](./docs/README.md)** — Full class & interface documentation
-
-<a id="testing"></a>
+- **Table schema is now `PK`/`SK` strings** (one table for all adapters) instead of per-adapter custom key names. Existing data is not compatible — create the new table.
+- **Single `tableName` option** per adapter (was `checkpointsTableName`/`writesTableName`, etc.).
+- **One `ttl` option** — `{ days }` or `{ seconds }` — replaces `ttlDays`/`ttlSeconds`.
+- **S3 config option renamed** `s3OffloadConfig` → `s3`.
+- **Per-instance `logger` option** replaces the global `setGlobalLogger` singleton; default logging is now silent.
+- **Unified error model** — all errors extend `DynamoDbLangGraphError` with an `ErrorCode`.
 
 ## Testing
 
-### Unit tests
+```bash
+npm test            # unit + static-guard + type tests, 100% coverage
+npm run typecheck
+npm run lint
+npm run build
+```
+
+Real-AWS verification scripts live in `examples/` (each creates and tears down its own resources):
 
 ```bash
-npm test              # Run all tests (672 unit tests, ~28s)
-npm test -- --coverage # With coverage
-npm run build         # Type-check + compile
-npm run lint          # ESLint
+node examples/verify-checkpointer.mjs   # save/resume/writes/list/delete, compression, S3, TTL
+node examples/verify-store.mjs          # filters, semantic search, S3 offload, TTL
+node examples/verify-history.mjs        # multi-session, concurrency, RunnableWithMessageHistory agent
+node examples/verify-factory.mjs        # shared-client createAll across all three adapters
 ```
-
-### Integration tests (DynamoDB Local)
-
-A dedicated integration tier verifies the library against a real DynamoDB API
-(catches things `aws-sdk-client-mock` cannot, such as `ValidationException` on
-malformed filter expressions, `ConditionExpression` enforcement, primary-key
-attribute rules, and lex-sort assumptions on sort keys).
-
-```bash
-npm run test:integration:up    # docker compose up (amazon/dynamodb-local)
-npm run test:integration       # 15 e2e tests against localhost:8000
-npm run test:integration:down  # docker compose down
-```
-
-CI runs the same suite via a `DynamoDB Local` GitHub Actions service container
-on every pull request.
-
-<a id="project-structure"></a>
-
-## Project Structure
-
-```text
-src/
-├── checkpointer/     # DynamoDBSaver — checkpoint persistence
-│   ├── actions/      # put, putWrites, getTuple, deleteThread, writer
-│   ├── types/        # TypeScript interfaces & constants
-│   └── utils/        # Deserialization, validation
-├── store/            # DynamoDBStore — long-term memory
-│   ├── actions/      # get, put, search, listNamespaces
-│   ├── types/        # TypeScript interfaces
-│   └── utils/        # Validation, filtering
-├── history/          # DynamoDBChatMessageHistory — chat sessions
-│   ├── actions/      # getMessages, addMessage(s), clear, listSessions
-│   ├── types/        # TypeScript interfaces
-│   └── utils/        # Validation, title generation
-├── shared/           # Cross-cutting utilities
-│   └── utils/        # Compressor, S3Offloader, retry, TTL, batch-write, logger
-└── factory.ts        # DynamoDBFactory one-liner setup
-```
-
-<a id="contributing"></a>
-
-## Contributing
-
-Contributions welcome! Please:
-
-1. Check existing issues or create a new one
-2. Fork the repository
-3. Create a feature branch
-4. Add tests for your changes
-5. Submit a pull request
-
-<a id="license"></a>
 
 ## License
 
-MIT © [FarukAda](https://github.com/farukada)
+MIT © [Faruk Ada](https://github.com/FarukAda)
 
 ---
 
