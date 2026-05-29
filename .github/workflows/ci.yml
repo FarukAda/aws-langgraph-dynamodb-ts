@@ -145,3 +145,26 @@ jobs:
         env:
           DDB_LOCAL_ENDPOINT: http://localhost:8000
           LOCALSTACK_ENDPOINT: http://localhost:4566
+
+  package-smoke:
+    name: package smoke (npm pack + install + import)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Pack and smoke-test the tarball
+        run: npm run test:package-smoke
