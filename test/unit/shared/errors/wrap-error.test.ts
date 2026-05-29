@@ -16,6 +16,11 @@ describe('wrapError', () => {
     const already = new ValidationError('bad');
     expect(wrapError(already, ErrorCode.NOT_FOUND)).toBe(already);
   });
+
+  it('defaults the context to an empty object when none is given', () => {
+    const wrapped = wrapError(new Error('boom'), ErrorCode.RETRY_EXHAUSTED);
+    expect(wrapped.context).toEqual({});
+  });
 });
 
 describe('toError', () => {
@@ -24,7 +29,11 @@ describe('toError', () => {
     expect(toError(e)).toBe(e);
   });
 
-  it('coerces a non-Error value to an Error', () => {
+  it('coerces a non-Error string value to an Error', () => {
     expect(toError('oops' as unknown as Error).message).toBe('oops');
+  });
+
+  it('JSON-stringifies a non-Error, non-string value', () => {
+    expect(toError({ reason: 'nope' } as unknown as Error).message).toBe('{"reason":"nope"}');
   });
 });
