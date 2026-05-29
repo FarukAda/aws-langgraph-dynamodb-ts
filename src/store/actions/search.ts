@@ -19,9 +19,14 @@ async function collectCandidates(context: StoreContext, op: SearchOperation): Pr
   const candidates: Candidate[] = [];
   for await (const raw of paginateScan({
     client: context.client,
-    params: { TableName: context.tableName },
+    params: {
+      TableName: context.tableName,
+      FilterExpression: 'attribute_exists(#ns)',
+      ExpressionAttributeNames: { '#ns': 'namespace' },
+    },
   })) {
     const record = raw as StoreItemRecord;
+    if (!record.namespace) continue;
     if (!namespaceMatchesPrefix(record.namespace, op.namespacePrefix)) continue;
     const item = await readStoreItem(context, record);
     if (

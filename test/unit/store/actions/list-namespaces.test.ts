@@ -56,4 +56,14 @@ describe('listNamespaces', () => {
     const out = await listNamespaces(context(client), { limit: 1, offset: 1 });
     expect(out).toEqual([['users', 'u1']]);
   });
+
+  it('filters to store items and skips foreign rows on a shared table', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({ Items: [{ SK: 'META##c' }, { namespace: ['users', 'u1'] }] });
+    const out = await listNamespaces(context(client), { limit: 100, offset: 0 });
+    expect(out).toEqual([['users', 'u1']]);
+    expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toBe(
+      'attribute_exists(#n)',
+    );
+  });
 });

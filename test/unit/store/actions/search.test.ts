@@ -100,6 +100,20 @@ describe('searchItems', () => {
     expect(items[1].score).toBe(0);
   });
 
+  it('skips foreign items (no namespace) when sharing a table with other adapters', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const storeItem = (await records(ctx)).find((r) => r.SK === 'a');
+    mock.on(ScanCommand).resolves({
+      Items: [{ PK: 'thread-1', SK: 'META##ckpt-1' }, { PK: 'sess-1', SK: 'SESSION' }, storeItem],
+    });
+    const items = await searchItems(ctx, { namespacePrefix: ['users'] });
+    expect(items.map((i) => i.key)).toEqual(['a']);
+    expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toBe(
+      'attribute_exists(#ns)',
+    );
+  });
+
   it('ignores a query when no index is configured (unranked matches)', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: await records(context(client)) });
