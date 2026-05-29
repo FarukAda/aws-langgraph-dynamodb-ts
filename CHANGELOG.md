@@ -5,11 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-05-29
+## [0.3.0] - 2026-05-29
 
-First production-ready release — a complete, ground-up rewrite. Earlier `0.x`
-releases were not reliable in production; `1.0.0` replaces the implementation
-entirely and is verified end-to-end against real AWS (DynamoDB, S3, Bedrock).
+A complete, ground-up rewrite. Earlier `0.x` releases were not reliable in
+production; `0.3.0` replaces the implementation entirely and is verified
+end-to-end against real AWS (DynamoDB, S3, Bedrock). Shipped pre-1.0
+intentionally, to allow real-world testing before committing to a stable
+`1.0.0` API.
 
 ### Added
 
