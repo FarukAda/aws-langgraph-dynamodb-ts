@@ -1,0 +1,52 @@
+import { DynamoDBSaver } from '../../../src/checkpointer/saver';
+import { DynamoDBFactory } from '../../../src/factory/factory';
+import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-history';
+import { DynamoDBStore } from '../../../src/store/store';
+import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+
+function fakeClientFactory() {
+  const destroy = jest.fn();
+  const client = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
+  return { destroy, create: () => client };
+}
+
+describe('DynamoDBFactory', () => {
+  it('builds each adapter individually', () => {
+    const factory = new DynamoDBFactory({ clientConfig: { region: 'eu-west-1' } });
+    const { client } = createStrictDocumentMock();
+    expect(factory.createSaver({ tableName: 'c', client })).toBeInstanceOf(DynamoDBSaver);
+    expect(factory.createStore({ tableName: 's', client })).toBeInstanceOf(DynamoDBStore);
+    expect(factory.createChatMessageHistory({ tableName: 'h', client })).toBeInstanceOf(
+      DynamoDBChatMessageHistory,
+    );
+  });
+
+  it('createAll shares one client and destroys it exactly once', () => {
+    const fake = fakeClientFactory();
+    const factory = new DynamoDBFactory({
+      clientConfig: { region: 'eu-west-1' },
+      createClient: fake.create,
+    });
+    const all = factory.createAll({
+      saver: { tableName: 'checkpoints' },
+      store: { tableName: 'store' },
+      history: { tableName: 'history' },
+    });
+    expect(all.saver).toBeInstanceOf(DynamoDBSaver);
+    expect(all.store).toBeInstanceOf(DynamoDBStore);
+    expect(all.history).toBeInstanceOf(DynamoDBChatMessageHistory);
+    all.destroy();
+    expect(fake.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('createAll builds a default client when no factory base options are given', () => {
+    const factory = new DynamoDBFactory();
+    const all = factory.createAll({
+      saver: { tableName: 'c' },
+      store: { tableName: 's' },
+      history: { tableName: 'h' },
+    });
+    expect(all.saver).toBeInstanceOf(DynamoDBSaver);
+    expect(() => all.destroy()).not.toThrow();
+  });
+});

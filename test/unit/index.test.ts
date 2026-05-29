@@ -1,5 +1,6 @@
 import {
   DynamoDBChatMessageHistory,
+  DynamoDBFactory,
   DynamoDBSaver,
   DynamoDBSessionChatMessageHistory,
   DynamoDBStore,
@@ -21,5 +22,10 @@ describe('public entry point', () => {
     expect(DynamoDBChatMessageHistory.prototype.forSession).toBeDefined();
     expect(typeof DynamoDBSessionChatMessageHistory).toBe('function');
     expect(DynamoDBSessionChatMessageHistory.prototype.getMessages).toBeDefined();
+  });
+
+  it('exports the DynamoDBFactory', () => {
+    expect(typeof DynamoDBFactory).toBe('function');
+    expect(DynamoDBFactory.prototype.createAll).toBeDefined();
   });
 });
