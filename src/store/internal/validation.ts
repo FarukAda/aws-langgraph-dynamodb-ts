@@ -13,8 +13,3 @@ export function validateNamespace(namespace: string[]): void {
 export function validateKey(key: string): void {
   validateNonEmptyString(key, 'key');
 }
-
-/** Current time as an ISO string, derived from the (test-freezable) clock. */
-export function nowIso(): string {
-  return new Date(Date.now()).toISOString();
-}

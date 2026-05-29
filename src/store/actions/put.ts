@@ -1,5 +1,6 @@
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
+import { nowIso } from '../../shared/clock';
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
@@ -9,7 +10,7 @@ import { buildStoreItem } from '../internal/item-mapper';
 import { namespaceToPartition } from '../internal/keys';
 import { embedValue } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
-import { nowIso, validateKey, validateNamespace } from '../internal/validation';
+import { validateKey, validateNamespace } from '../internal/validation';
 
 async function readCreatedAt(
   context: StoreContext,
