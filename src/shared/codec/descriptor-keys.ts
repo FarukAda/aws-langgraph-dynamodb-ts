@@ -1,4 +1,4 @@
-import { type PayloadDescriptor, PayloadLocation } from '../../shared/codec/codec';
+import { type PayloadDescriptor, PayloadLocation } from './codec';
 
 /** Collect the S3 keys of any offloaded descriptors, for orphan cleanup. */
 export function collectS3Keys(descriptors: readonly PayloadDescriptor[]): string[] {

@@ -1,10 +1,10 @@
 import type { PayloadDescriptor } from '../../shared/codec/codec';
+import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { validateNonEmptyString } from '../../shared/validation/primitives';
 import { partitionKey } from '../internal/keys';
-import { collectS3Keys } from '../internal/orphan-keys';
 import { partitionQuery } from '../internal/query';
 import type { CheckpointerContext } from '../internal/setup';
 

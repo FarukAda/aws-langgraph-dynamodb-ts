@@ -1,12 +1,12 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
+import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
 import { buildCheckpointItems } from '../internal/item-writer';
-import { collectS3Keys } from '../internal/orphan-keys';
 import type { CheckpointerContext } from '../internal/setup';
 
 /**

@@ -1,5 +1,5 @@
-import { collectS3Keys } from '../../../../src/checkpointer/internal/orphan-keys';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { collectS3Keys } from '../../../../src/shared/codec/descriptor-keys';
 
 describe('collectS3Keys', () => {
   it('returns only the keys of S3-located descriptors', () => {

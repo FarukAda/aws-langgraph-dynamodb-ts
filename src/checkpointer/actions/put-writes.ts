@@ -1,13 +1,13 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
+import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { ValidationError } from '../../shared/errors/errors';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
 import { buildWriteItems } from '../internal/item-writer';
-import { collectS3Keys } from '../internal/orphan-keys';
 import type { CheckpointerContext } from '../internal/setup';
 
 /**
