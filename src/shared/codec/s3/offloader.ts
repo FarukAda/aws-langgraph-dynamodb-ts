@@ -1,7 +1,6 @@
 import type { S3Client } from '@aws-sdk/client-s3';
 
 import { DEFAULT_S3_KEY_PREFIX, DEFAULT_S3_SSE, DEFAULT_S3_THRESHOLD_BYTES } from '../../constants';
-
 import { createDefaultS3Client } from './client';
 import { buildS3Key, S3OffloadConfig } from './config';
 import { deleteObjects } from './delete';

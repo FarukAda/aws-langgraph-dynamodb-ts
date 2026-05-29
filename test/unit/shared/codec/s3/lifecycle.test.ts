@@ -28,7 +28,9 @@ describe('ensureLifecycleRule', () => {
 
   it('replaces the existing rule in place when the ttl differs', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
-      Rules: [{ ID: 'langgraph-ttl-langgraph-checkpoints', Status: 'Enabled', Expiration: { Days: 7 } }],
+      Rules: [
+        { ID: 'langgraph-ttl-langgraph-checkpoints', Status: 'Enabled', Expiration: { Days: 7 } },
+      ],
     });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30);
@@ -41,7 +43,9 @@ describe('ensureLifecycleRule', () => {
 
   it('is a no-op when the matching rule already has the right ttl', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
-      Rules: [{ ID: 'langgraph-ttl-langgraph-checkpoints', Status: 'Enabled', Expiration: { Days: 30 } }],
+      Rules: [
+        { ID: 'langgraph-ttl-langgraph-checkpoints', Status: 'Enabled', Expiration: { Days: 30 } },
+      ],
     });
     await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30);
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
@@ -70,9 +74,9 @@ describe('ensureLifecycleRule', () => {
       s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0].args[0].input
         .LifecycleConfiguration?.Rules ?? [];
     expect(rules.find((r) => r.ID === 'user-rule')?.Expiration?.Days).toBe(99);
-    expect(rules.find((r) => r.ID === 'langgraph-ttl-langgraph-checkpoints')?.Expiration?.Days).toBe(
-      30,
-    );
+    expect(
+      rules.find((r) => r.ID === 'langgraph-ttl-langgraph-checkpoints')?.Expiration?.Days,
+    ).toBe(30);
   });
 
   it('treats NoSuchLifecycleConfiguration as an empty rule set', async () => {

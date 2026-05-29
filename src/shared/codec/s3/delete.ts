@@ -1,7 +1,6 @@
 import type { S3Client } from '@aws-sdk/client-s3';
 
 import { S3_DELETE_BATCH_MAX } from '../../constants';
-
 import { loadS3Sdk } from './client';
 
 /**

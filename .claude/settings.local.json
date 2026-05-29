@@ -28,7 +28,8 @@
       "Bash(ls test/)",
       "Bash(git status *)",
       "Bash(ls jest.config.* stryker.config.* eslint.config.* .eslintrc*)",
-      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")"
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
+      "Bash(echo \"LINT:$?\")"
     ],
     "deny": [
       "Bash(stryker *)",
@@ -45,8 +46,8 @@
         "hooks": [
           {
             "type": "command",
-            "shell": "bash",
-            "command": "jq -r '.tool_input.command // \"\"' | grep -Eiq 'stryker|test:mutate' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Stryker / mutation testing is forbidden on this machine per the user instruction (it overloads the CPU). Do not run it.\"}}' || true"
+            "command": "jq -r '.tool_input.command // \"\"' | grep -Eiq 'stryker|test:mutate' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Stryker / mutation testing is forbidden on this machine per the user instruction (it overloads the CPU). Do not run it.\"}}' || true",
+            "shell": "bash"
           }
         ]
       }

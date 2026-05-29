@@ -2,7 +2,6 @@ import type { S3Client, ServerSideEncryption } from '@aws-sdk/client-s3';
 
 import { ErrorCode } from '../../errors/error-code';
 import { wrapError } from '../../errors/wrap-error';
-
 import { loadS3Sdk } from './client';
 
 /** Parameters for {@link uploadObject}. */
