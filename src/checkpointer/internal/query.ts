@@ -6,6 +6,16 @@ export interface BeginsWithQueryOptions {
   ascending?: boolean;
 }
 
+/** Build a Query input selecting every item in a partition (all sort keys). */
+export function partitionQuery(tableName: string, partition: string): QueryCommandInput {
+  return {
+    TableName: tableName,
+    KeyConditionExpression: '#pk = :pk',
+    ExpressionAttributeNames: { '#pk': 'PK' },
+    ExpressionAttributeValues: { ':pk': partition },
+  };
+}
+
 /**
  * Build a Query input selecting items whose partition equals `partition` and
  * whose sort key begins with `skPrefix`. Names are aliased so reserved words

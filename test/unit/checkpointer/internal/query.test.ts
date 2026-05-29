@@ -1,4 +1,15 @@
-import { beginsWithQuery } from '../../../../src/checkpointer/internal/query';
+import { beginsWithQuery, partitionQuery } from '../../../../src/checkpointer/internal/query';
+
+describe('partitionQuery', () => {
+  it('selects every item in the partition with an aliased PK equality', () => {
+    expect(partitionQuery('ckpt', 'thread-1')).toEqual({
+      TableName: 'ckpt',
+      KeyConditionExpression: '#pk = :pk',
+      ExpressionAttributeNames: { '#pk': 'PK' },
+      ExpressionAttributeValues: { ':pk': 'thread-1' },
+    });
+  });
+});
 
 describe('beginsWithQuery', () => {
   it('builds an aliased PK-equals + SK-begins_with query, newest-first by default', () => {
