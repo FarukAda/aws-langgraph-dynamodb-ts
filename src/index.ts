@@ -7,3 +7,22 @@ export { DynamoDBSessionChatMessageHistory } from './history/session-adapter';
 export type { DynamoDBChatMessageHistoryOptions, SessionMetadata } from './history/types';
 export { DynamoDBFactory } from './factory/factory';
 export type { CreateAllOptions, CreatedAdapters, FactoryBaseOptions } from './factory/factory';
+
+export { DynamoDbLangGraphError } from './shared/errors/base-error';
+export type { ErrorContext } from './shared/errors/base-error';
+export { ErrorCode } from './shared/errors/error-code';
+export {
+  AbortError,
+  BatchWriteIncompleteError,
+  ConflictError,
+  RetryExhaustedError,
+  ValidationError,
+} from './shared/errors/errors';
+
+export type { Logger, LogArgument } from './shared/logging/logger';
+export { redactLogger, redactSecrets } from './shared/logging/redaction';
+
+export type { BaseAdapterOptions, CodecOptions } from './shared/options';
+export type { TtlOption } from './shared/validation/ttl';
+export type { CompressionConfig } from './shared/codec/compression';
+export type { S3OffloadConfig } from './shared/codec/s3/config';
