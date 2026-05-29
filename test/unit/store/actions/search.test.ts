@@ -76,6 +76,30 @@ describe('searchItems', () => {
     expect(items).toHaveLength(1);
   });
 
+  it('scores an indexed item that has no stored embedding as 0', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
+    const withVec = await buildStoreItem(
+      ctx,
+      ['users', 'u1'],
+      'b',
+      { score: 9 },
+      { createdAt: 'c', updatedAt: 'u', embedding: [0, 1] },
+    );
+    const noVec = await buildStoreItem(
+      ctx,
+      ['users', 'u1'],
+      'x',
+      { score: 1 },
+      { createdAt: 'c', updatedAt: 'u' },
+    );
+    mock.on(ScanCommand).resolves({ Items: [withVec, noVec] });
+    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    expect(items.map((i) => i.key)).toEqual(['b', 'x']);
+    expect(items[1].score).toBe(0);
+  });
+
   it('ignores a query when no index is configured (unranked matches)', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: await records(context(client)) });
