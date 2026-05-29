@@ -1,0 +1,20 @@
+import { beginsWithQuery } from '../../../../src/checkpointer/internal/query';
+
+describe('beginsWithQuery', () => {
+  it('builds an aliased PK-equals + SK-begins_with query, newest-first by default', () => {
+    const params = beginsWithQuery('ckpt', 'thread-1', 'META##');
+    expect(params).toEqual({
+      TableName: 'ckpt',
+      KeyConditionExpression: '#pk = :pk AND begins_with(#sk, :skPrefix)',
+      ExpressionAttributeNames: { '#pk': 'PK', '#sk': 'SK' },
+      ExpressionAttributeValues: { ':pk': 'thread-1', ':skPrefix': 'META##' },
+      ScanIndexForward: false,
+    });
+  });
+
+  it('applies a limit and ascending order when requested', () => {
+    const params = beginsWithQuery('ckpt', 't', 'WRITE##c#', { limit: 1, ascending: true });
+    expect(params.Limit).toBe(1);
+    expect(params.ScanIndexForward).toBe(true);
+  });
+});
