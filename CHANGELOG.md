@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-05-29
+
+First production-ready release — a complete, ground-up rewrite. Earlier `0.x`
+releases were not reliable in production; `1.0.0` replaces the implementation
+entirely and is verified end-to-end against real AWS (DynamoDB, S3, Bedrock).
+
+### Added
+
+- **`DynamoDBSaver`** — LangGraph checkpoint + pending-writes persistence
+  (`extends BaseCheckpointSaver`): `getTuple`, `list` (with `before`/`filter`/
+  `limit`), `put`, `putWrites`, `deleteThread`.
+- **`DynamoDBStore`** — long-term memory (`extends BaseStore`) with metadata
+  filters (`$eq`/`$ne`/`$gt`/`$gte`/`$lt`/`$lte`), hierarchical namespaces, and
+  optional **vector semantic search** via any LangChain `Embeddings`.
+- **`DynamoDBChatMessageHistory`** — multi-session chat history, plus
+  **`DynamoDBSessionChatMessageHistory`**, a single-session adapter for
+  `RunnableWithMessageHistory`.
+- **`DynamoDBFactory`** — convenience constructors and `createAll`, which builds
+  all three adapters on one shared client and returns a combined `destroy()`.
+- **Gzip compression** (with a decompression-bomb guard), **S3 offloading** of
+  payloads over DynamoDB's 400 KB limit (optional `@aws-sdk/client-s3` peer, with
+  best-effort orphan cleanup and TTL-driven lifecycle rules), and **TTL expiry**.
+- **Unified error model** — every error extends `DynamoDbLangGraphError` with a
+  stable `ErrorCode` and a native `cause` chain; typed subclasses
+  (`ValidationError`, `ConflictError`, `RetryExhaustedError`,
+  `BatchWriteIncompleteError`, `AbortError`).
+- **Injectable per-instance logger** with secret redaction (`redactLogger`,
+  `redactSecrets`).
+- 100% unit-test coverage with strict assertions, static rule-guards, and
+  re-runnable real-AWS verification scripts under `examples/`.
+
+### Changed (breaking)
+
+- **Table schema is now `PK`/`SK` strings** with an optional Number `ttl`
+  attribute. A single table can back all three adapters. Replaces the previous
+  per-adapter custom key schemas; existing data is not compatible.
+- **Single `tableName` option** per adapter (was `checkpointsTableName` /
+  `writesTableName` / `memoryTableName`).
+- **One `ttl` option** — `{ days }` or `{ seconds }` — replaces `ttlDays` /
+  `ttlSeconds`.
+- **S3 option renamed** `s3OffloadConfig` → `s3`.
+- **Per-instance `logger` option** replaces the global `setGlobalLogger`
+  singleton; default logging is now silent.
+- Checkpoint sort keys are separated into `META#` / `PAYLOAD#` / `WRITE#`, and
+  chat sessions are stored as a single item under one TTL (no mid-history gaps).
+
+### Removed
+
+- The global logger singleton (`setGlobalLogger` / `getLogger` / `resetLogger`).
+- Store filter operators `$in` / `$nin` (use the supported comparison operators).
+
 ## [0.2.0] - Unreleased
 
 A production-hardening pass. Every item below is either a security fix or a
