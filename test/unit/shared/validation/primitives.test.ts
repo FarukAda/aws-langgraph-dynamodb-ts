@@ -4,6 +4,7 @@ import {
   assertNoSeparator,
   validateArrayMaxDepth,
   validateInteger,
+  validateNonEmptyArray,
   validateNonEmptyString,
 } from '../../../../src/shared/validation/primitives';
 
@@ -32,6 +33,16 @@ describe('validateInteger', () => {
 
   it('accepts a valid integer when no bounds are supplied', () => {
     expect(() => validateInteger(42, 'count')).not.toThrow();
+  });
+});
+
+describe('validateNonEmptyArray', () => {
+  it('accepts a non-empty array', () => {
+    expect(() => validateNonEmptyArray(['a'], 'namespace')).not.toThrow();
+  });
+
+  it('rejects an empty array naming the field', () => {
+    expect(() => validateNonEmptyArray([], 'namespace')).toThrow(/namespace/);
   });
 });
 

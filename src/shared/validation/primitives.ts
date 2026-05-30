@@ -25,6 +25,13 @@ export function validateInteger(
   }
 }
 
+/** Throw {@link ValidationError} unless `value` is a non-empty array. */
+export function validateNonEmptyArray<T>(value: T[], field: string): void {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new ValidationError(`${field} must be a non-empty array`, field);
+  }
+}
+
 /** Return `true` if `value` contains any ASCII control character. */
 function hasControlChar(value: string): boolean {
   for (let i = 0; i < value.length; i++) {

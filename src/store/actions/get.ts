@@ -4,6 +4,7 @@ import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { readStoreItem } from '../internal/item-mapper';
 import { partitionKey, sortKey } from '../internal/keys';
 import type { StoreContext } from '../internal/setup';
+import { validateKey, validateNamespace } from '../internal/validation';
 import type { StoreItemRecord } from '../types';
 
 /** Retrieve a single item by namespace and key (strongly consistent), or null. */
@@ -12,6 +13,8 @@ export async function getItem(
   namespace: string[],
   key: string,
 ): Promise<Item | null> {
+  validateNamespace(namespace);
+  validateKey(key);
   const result = await withDynamoDBRetry(() =>
     context.client.get({
       TableName: context.tableName,
