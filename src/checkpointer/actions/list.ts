@@ -11,6 +11,30 @@ import { beginsWithQuery } from '../internal/query';
 import type { CheckpointerContext } from '../internal/setup';
 import type { CheckpointMetaItem } from '../types';
 
+/** Read list options into a flat, typed shape. */
+function readListOptions(options?: CheckpointListOptions): {
+  before: string | undefined;
+  filter: Record<string, FilterValue> | undefined;
+  limit: number | undefined;
+} {
+  return {
+    before: options?.before?.configurable?.checkpoint_id as string | undefined,
+    filter: options?.filter as Record<string, FilterValue> | undefined,
+    limit: options?.limit,
+  };
+}
+
+/** True when `meta` passes the (optional) metadata-equality filter. */
+async function passesMetadataFilter(
+  context: CheckpointerContext,
+  meta: CheckpointMetaItem,
+  filter: Record<string, FilterValue> | undefined,
+): Promise<boolean> {
+  if (!filter) return true;
+  const metadata = (await readMetadata(context, meta)) as Record<string, FilterValue>;
+  return matchesFilter(metadata, filter);
+}
+
 /**
  * Yield checkpoint tuples for a thread/namespace, newest first. Honors
  * `options.before` (only checkpoints older than the given id), `options.filter`
@@ -22,9 +46,7 @@ export async function* listCheckpoints(
   options?: CheckpointListOptions,
 ): AsyncGenerator<CheckpointTuple> {
   const { threadId, checkpointNs } = readConfigurable(config);
-  const before = options?.before?.configurable?.checkpoint_id as string | undefined;
-  const filter = options?.filter as Record<string, FilterValue> | undefined;
-  const limit = options?.limit;
+  const { before, filter, limit } = readListOptions(options);
   const params = beginsWithQuery(
     context.tableName,
     partitionKey(threadId),
@@ -35,10 +57,7 @@ export async function* listCheckpoints(
     if (limit !== undefined && yielded >= limit) return;
     const meta = raw as CheckpointMetaItem;
     if (before !== undefined && meta.checkpointId >= before) continue;
-    if (filter) {
-      const metadata = (await readMetadata(context, meta)) as Record<string, FilterValue>;
-      if (!matchesFilter(metadata, filter)) continue;
-    }
+    if (!(await passesMetadataFilter(context, meta, filter))) continue;
     const tuple = await assembleTuple(context, threadId, checkpointNs, meta);
     if (tuple) {
       yield tuple;
