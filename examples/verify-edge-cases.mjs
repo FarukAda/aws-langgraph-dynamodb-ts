@@ -2,7 +2,7 @@
  * Edge-case sweep against real AWS for the remaining cases not covered by the
  * per-adapter verify scripts: every store filter operator, filter+query
  * combined, offset, index:false, per-item field override, a REAL multi-page
- * scan (>1 MB), checkpointer compression+S3 together, concurrent putWrites,
+ * scoped Query (>1 MB), checkpointer compression+S3 together, concurrent putWrites,
  * long chat histories, and many sessions. Creates + tears down all resources.
  *
  * Run: node examples/verify-edge-cases.mjs
@@ -127,12 +127,12 @@ async function storeOperators() {
 }
 
 async function storeMultiPage() {
-  console.log('\n[B] store: REAL multi-page scan (>1 MB across pages)');
+  console.log('\n[B] store: REAL multi-page scoped Query (>1 MB across pages)');
   const store = new DynamoDBStore({ tableName: TABLE, clientConfig });
   const big = 'x'.repeat(40000);
   for (let i = 0; i < 30; i++) await store.put(['big'], `k-${i}`, { blob: big, i });
   const found = await store.search(['big'], { limit: 100 });
-  check('all 30 items (~1.2 MB) returned across scan pages', found.length === 30);
+  check('all 30 items (~1.2 MB) returned across Query pages', found.length === 30);
   store.destroy();
 }
 

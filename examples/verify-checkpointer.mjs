@@ -14,6 +14,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import {
+  CreateBucketCommand,
   DeleteBucketCommand,
   DeleteObjectsCommand,
   HeadObjectCommand,
@@ -91,20 +92,31 @@ async function setup() {
       TimeToLiveSpecification: { Enabled: true, AttributeName: 'ttl' },
     }),
   );
+  try {
+    await s3.send(
+      new CreateBucketCommand({ Bucket: BUCKET, CreateBucketConfiguration: { LocationConstraint: REGION } }),
+    );
+  } catch (e) {
+    if (e.name !== 'BucketAlreadyOwnedByYou' && e.name !== 'BucketAlreadyExists') throw e;
+  }
 }
 
 async function teardown() {
   await admin.send(new DeleteTableCommand({ TableName: TABLE }));
-  const objs = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET }));
-  if (objs.Contents?.length) {
-    await s3.send(
-      new DeleteObjectsCommand({
-        Bucket: BUCKET,
-        Delete: { Objects: objs.Contents.map((o) => ({ Key: o.Key })) },
-      }),
-    );
+  try {
+    const objs = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET }));
+    if (objs.Contents?.length) {
+      await s3.send(
+        new DeleteObjectsCommand({
+          Bucket: BUCKET,
+          Delete: { Objects: objs.Contents.map((o) => ({ Key: o.Key })) },
+        }),
+      );
+    }
+    await s3.send(new DeleteBucketCommand({ Bucket: BUCKET }));
+  } catch {
+    /* best effort */
   }
-  await s3.send(new DeleteBucketCommand({ Bucket: BUCKET }));
   admin.destroy();
   s3.destroy();
 }

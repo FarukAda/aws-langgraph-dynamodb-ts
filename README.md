@@ -14,7 +14,7 @@ A DynamoDB persistence layer for [LangGraph](https://langchain-ai.github.io/lang
 - **`DynamoDBChatMessageHistory`** — multi-session chat history, with a single-session adapter for `RunnableWithMessageHistory`.
 - **`DynamoDBFactory`** — convenience constructors, including `createAll` (one shared client + a `destroy()`).
 
-Every adapter supports optional **gzip compression**, **S3 offloading** of payloads over DynamoDB's 400 KB item limit, and **TTL-based expiry**. The store additionally supports **vector semantic search** via any LangChain `Embeddings` implementation.
+Every adapter supports optional **gzip compression**, **S3 offloading** of payloads over DynamoDB's 400 KB item limit, and **TTL-based expiry**. The store additionally supports **vector semantic search** — in-DynamoDB by default, or delegated to a **pluggable `VectorBackend`** (e.g. OpenSearch / pgvector) for large corpora — via any LangChain `Embeddings` implementation.
 
 ## Table of Contents
 
@@ -68,8 +68,8 @@ Every adapter uses the **same simple key schema**: a string partition key `PK`, 
 How each adapter lays out keys (informational — you don't manage this):
 
 - **Checkpointer** — `PK = <thread_id>`; `SK` = `META#<ns>#<checkpoint_id>` (metadata), `PAYLOAD#<ns>#<checkpoint_id>` (checkpoint), `WRITE#<ns>#<checkpoint_id>#<task>#<idx>` (pending writes).
-- **Store** — `PK = <namespace joined by '#'>`; `SK = <key>`.
-- **Chat history** — `PK = <sessionId>`; `SK = SESSION` (one item per session).
+- **Store** — `PK = <namespace[0]>` (the scope root); `SK = <namespace[1..]>#<key>`. This makes a scoped prefix search a native `Query` (`PK = root AND begins_with(SK, …)`); only a rootless "search everything" falls back to a `Scan`.
+- **Chat history** — `PK = <sessionId>`; one item per message at `SK = MSG#<ULID>` (ordered, append-only) plus one `SK = SESSION` metadata item.
 
 ## Quick start
 
@@ -190,6 +190,8 @@ All adapters share a common base. Provide **either** a prebuilt `client` (which 
 | `s3` | `S3OffloadConfig` | all | offload large payloads to S3 (see below) |
 | `serde` | `SerializerProtocol` | all | serializer override (checkpointer defaults to LangGraph's; store/history to JSON) |
 | `index` | `IndexConfig` | store only | `{ dims, embeddings, fields? }` for semantic search |
+| `vectorBackend` | `VectorBackend` | store only | delegate similarity search to an external index; DynamoDB keeps the canonical item |
+| `maxSearchCandidates` | `number` | store only | cap for the in-DB ranker before it errors (default 1000) |
 
 `S3OffloadConfig`: `{ bucketName, keyPrefix?, thresholdBytes?, serverSideEncryption?, sseKmsKeyId?, clientConfig? }`.
 
@@ -199,9 +201,11 @@ All adapters share a common base. Provide **either** a prebuilt `client` (which 
 
 **S3 offloading** — set `s3: { bucketName }`. Any serialized payload at or above `thresholdBytes` (default 350 KB) is written to S3, with only a reference stored in DynamoDB; reads rehydrate transparently. Requires the optional `@aws-sdk/client-s3` peer. When a `ttl` is also configured the library best-effort installs a matching S3 lifecycle expiration rule (logged, never fatal). Deleting a checkpoint thread / chat session also best-effort deletes its offloaded objects.
 
-**TTL expiry** — set `ttl: { days }` or `ttl: { seconds }`. The `ttl` attribute is written as a Unix-epoch-seconds timestamp; enable DynamoDB TTL on the `ttl` attribute for automatic deletion. Chat sessions store all messages in one item under one TTL, so a live session never develops mid-history gaps.
+**TTL expiry** — set `ttl: { days }` or `ttl: { seconds }`. The `ttl` attribute is written as a Unix-epoch-seconds timestamp; enable DynamoDB TTL on the `ttl` attribute for automatic deletion. Chat history anchors a single **uniform whole-conversation TTL** at session creation (via `if_not_exists`), shared by every message, so a live session never develops mid-history gaps; expired messages are also filtered out on read.
 
-**Semantic search** (store) — provide `index` with a LangChain `Embeddings` implementation. On `put`, the configured `fields` are embedded and the vector is stored on the item; on `search` with a `query`, results are ranked by cosine similarity. Per-item indexing can be overridden via the `index` argument to `put` (`false` to skip, or a `string[]` of fields).
+**Semantic search** (store) — provide `index` with a LangChain `Embeddings` implementation. On `put`, the configured `fields` are embedded; on `search` with a `query`, results are ranked by cosine similarity. By default the embedding is stored on the item and ranking happens in-process over the scoped candidate set (bounded by `maxSearchCandidates`, default 1000 — exceeding it throws, steering you to an external index). For large corpora, pass a `vectorBackend`: the embedding is sent there instead, similarity search is delegated to it, and DynamoDB still holds the canonical item. Per-item indexing can be overridden via the `index` argument to `put` (`false` to skip, or a `string[]` of fields).
+
+**Strong consistency** — checkpointer read-your-writes (`getTuple`) and every `store.get` use `ConsistentRead`, so a value written and immediately read back is never served a stale replica. Bulk reads (`list`, `listNamespaces`, `listSessions`) stay eventually consistent for lower cost.
 
 ## Error handling
 
@@ -302,7 +306,13 @@ When S3 offloading is enabled, on the bucket/objects: `s3:GetObject`, `s3:PutObj
 
 ## Migrating from earlier versions
 
-This is a ground-up rewrite with intentional, breaking API and schema changes:
+**0.3.0 → 0.4.0** changes the on-disk layout (the public API is unchanged):
+
+- **Store keys changed** to `PK = namespace[0]`, `SK = namespace[1..]#key` (was `PK = full namespace`, `SK = key`).
+- **Chat history is now one item per message** (`SK = MSG#<ULID>`) plus a `SESSION` metadata item, replacing the single per-session item.
+- Existing `0.3.0` data is **not readable** by `0.4.0` — recreate the table (the `PK`/`SK` schema itself is unchanged, so CDK/Terraform need no edits).
+
+The original ground-up rewrite also made these breaking changes versus the pre-rewrite `0.x` line:
 
 - **Table schema is now `PK`/`SK` strings** (one table for all adapters) instead of per-adapter custom key names. Existing data is not compatible — create the new table.
 - **Single `tableName` option** per adapter (was `checkpointsTableName`/`writesTableName`, etc.).
@@ -313,9 +323,11 @@ This is a ground-up rewrite with intentional, breaking API and schema changes:
 
 ## Production notes
 
-- **Sharing one table** across all three adapters is supported — their key spaces don't collide, and the store/history table-wide reads filter to their own items. Checkpointer and chat-history reads are partition-scoped (`Query`/`GetItem`).
-- **`store.search`, `store.listNamespaces`, and `history.listSessions` use `Scan`**, so their read cost scales with table size. For large datasets prefer a **dedicated table per adapter** (pass a different `tableName`) and keep store namespaces reasonably scoped.
-- **TTL deletion timing** is governed by DynamoDB (typically within 48 h of expiry) and S3 lifecycle expiry is day-granular — the library writes the correct expiry timestamp / lifecycle rule but does not guarantee instant deletion.
+- **Sharing one table** across all three adapters is supported — their key spaces don't collide, and table-wide reads filter to their own items. Checkpointer, chat-history, and *scoped* store reads are all partition-scoped (`Query`/`GetItem`).
+- **Scoped reads are `Query`s.** `store.search`/`store.listNamespaces` with a concrete namespace prefix and `history.getMessages` are native `Query`s. Only a rootless `store.search([])` / unprefixed `listNamespaces` and `history.listSessions` fall back to `Scan` (cost scales with table size) — keep those rare or use a dedicated table.
+- **Hot partitions.** The store's partition key is `namespace[0]` and chat history's is `sessionId`. A single partition tops out around ~1000 WCU / 3000 RCU, so avoid funneling very high write throughput through one tenant/session id; spread load across scope roots (e.g. include a tenant id as `namespace[0]`).
+- **Very large vector corpora** outgrow the in-DB ranker (`maxSearchCandidates`). Configure a `vectorBackend` (OpenSearch, pgvector, …) — the library keeps DynamoDB as the source of truth and only delegates similarity ranking.
+- **TTL deletion timing** is governed by DynamoDB (typically within 48 h of expiry) and S3 lifecycle expiry is day-granular — the library writes the correct expiry timestamp / lifecycle rule (and filters expired chat messages on read) but does not guarantee instant deletion.
 
 ## Testing
 
@@ -326,13 +338,23 @@ npm run lint
 npm run build
 ```
 
+Integration and contract tiers run against DynamoDB Local (Docker) and are kept out of the default `npm test`:
+
+```bash
+npm run test:integration:up     # docker compose up -d (DynamoDB Local + LocalStack)
+npm run test:integration        # integration flows + LangGraph/LangChain contract conformance
+npm run test:integration:down
+```
+
 Real-AWS verification scripts live in `examples/` (each creates and tears down its own resources):
 
 ```bash
 node examples/verify-checkpointer.mjs   # save/resume/writes/list/delete, compression, S3, TTL
 node examples/verify-store.mjs          # filters, semantic search, S3 offload, TTL
-node examples/verify-history.mjs        # multi-session, concurrency, RunnableWithMessageHistory agent
+node examples/verify-history.mjs        # per-message model, concurrency, RunnableWithMessageHistory agent
 node examples/verify-factory.mjs        # shared-client createAll across all three adapters
+node examples/verify-agents.mjs         # real LangGraph agents using the saver + store as memory
+node examples/verify-edge-cases.mjs     # filter operators, multi-page reads, compression+S3, scale
 ```
 
 ## License

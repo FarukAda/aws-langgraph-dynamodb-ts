@@ -5,13 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-30
+
+Scale and consistency hardening. The public API is unchanged, but the on-disk
+layout and read paths are re-architected to remove the store/history scale
+ceilings and tighten read-your-writes. **The on-disk layout changed — `0.3.0`
+data is not readable by `0.4.0`; recreate the table (the `PK`/`SK` schema itself
+is unchanged, so CDK/Terraform need no edits).**
+
+### Changed (breaking on-disk layout; API-compatible)
+
+- **Store base key redesigned** to `PK = namespace[0]` (scope root),
+  `SK = namespace[1..]#key` (was `PK = full namespace`, `SK = key`). Scoped
+  `search` / `listNamespaces` are now native `Query`s (`begins_with` on `SK`);
+  only a rootless prefix falls back to a `Scan`.
+- **Chat history is now one item per message** (`SK = MSG#<ULID>`, ordered by a
+  monotonic ULID) plus a `SESSION` metadata item, replacing the single
+  per-session item. Appends are O(1) and lock-free (batched put + one atomic
+  `ADD`); a uniform whole-conversation TTL is creation-anchored via
+  `if_not_exists`, and TTL-expired messages are filtered out on read.
+
+### Added
+
+- **Pluggable `VectorBackend`** (`vectorBackend` store option) — delegate
+  similarity search to an external index (OpenSearch, pgvector, …) while
+  DynamoDB keeps the canonical item. The in-DB ranker is bounded by
+  `maxSearchCandidates` (default 1000) and errors past the cap.
+- **Strongly-consistent reads** on the read-your-writes paths: checkpointer
+  `getTuple` and every `store.get` use `ConsistentRead`; bulk reads stay
+  eventually consistent.
+- **Monotonic ULID factory** for ordered, collision-resistant sort keys.
+- **New test tiers** — compile-time public-API type tests (`expect-type`),
+  end-to-end integration flows, and LangGraph/LangChain contract conformance
+  against DynamoDB Local.
+
 ## [0.3.0] - 2026-05-29
 
 A complete, ground-up rewrite. Earlier `0.x` releases were not reliable in
 production; `0.3.0` replaces the implementation entirely and is verified
-end-to-end against real AWS (DynamoDB, S3, Bedrock). Shipped pre-1.0
-intentionally, to allow real-world testing before committing to a stable
-`1.0.0` API.
+end-to-end against real AWS (DynamoDB, S3, Bedrock).
 
 ### Added
 

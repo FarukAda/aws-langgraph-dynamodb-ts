@@ -1,9 +1,10 @@
 /**
  * Full real-AWS acceptance run for DynamoDBChatMessageHistory: add/get,
- * multi-session isolation, auto title, optimistic concurrency (no lost
- * messages), single-item-per-session TTL consistency, listSessions, clear,
- * compression, S3 offload, edge cases, AND a real RunnableWithMessageHistory
- * agent (Bedrock) that remembers across turns. Asserts each, then cleans up.
+ * multi-session isolation, auto title, lock-free concurrent appends (no lost
+ * messages), per-message items under a uniform whole-conversation TTL,
+ * listSessions, clear, compression, S3 offload, edge cases, AND a real
+ * RunnableWithMessageHistory agent (Bedrock) that remembers across turns.
+ * Asserts each, then cleans up.
  *
  * Run: node examples/verify-history.mjs
  */
@@ -126,11 +127,14 @@ async function run() {
   check('auto title from first human message', chat1.title === 'What is DynamoDB?');
   check('message count tracked', chat1.messageCount === 3);
 
-  console.log('\n[C] TTL consistency: ONE item per session (no per-message gaps)');
+  console.log('\n[C] per-message items + one SESSION metadata item (uniform TTL, no gaps)');
   const scan = await doc.scan({ TableName: TABLE, FilterExpression: 'PK = :p', ExpressionAttributeValues: { ':p': 'chat-1' } });
-  check('a 3-message session is a single DynamoDB item', scan.Count === 1 && scan.Items[0].SK === 'SESSION');
+  const msgItems = scan.Items.filter((i) => i.SK.startsWith('MSG#'));
+  const sessionItems = scan.Items.filter((i) => i.SK === 'SESSION');
+  check('3 message items + 1 SESSION metadata item', msgItems.length === 3 && sessionItems.length === 1);
+  check('message items have distinct MSG# sort keys', new Set(msgItems.map((i) => i.SK)).size === 3);
 
-  console.log('\n[D] optimistic concurrency: concurrent appends do not lose messages');
+  console.log('\n[D] lock-free concurrency: concurrent appends do not lose messages');
   await Promise.all([
     history.addMessages('race', [new HumanMessage('A')]),
     history.addMessages('race', [new HumanMessage('B')]),
@@ -151,30 +155,37 @@ async function run() {
   check('ttl ~now+3600', Math.abs(ttlItem.Item.ttl - (Math.floor(Date.now() / 1000) + 3600)) < 120);
   tHistory.destroy();
 
-  console.log('\n[G] compression + S3 offload of a large history');
+  console.log('\n[G] per-message compression + S3 offload of a large message');
+  const msgQuery = (pk) =>
+    doc.query({
+      TableName: TABLE,
+      KeyConditionExpression: 'PK = :p AND begins_with(SK, :m)',
+      ExpressionAttributeValues: { ':p': pk, ':m': 'MSG#' },
+    });
+
   const cHistory = new DynamoDBChatMessageHistory({ tableName: TABLE, clientConfig, compression: { enabled: true } });
   await cHistory.addMessages('big', [new HumanMessage('x'.repeat(40000))]);
-  const cItem = await doc.get({ TableName: TABLE, Key: { PK: 'big', SK: 'SESSION' } });
-  check('large history compressed inline', cItem.Item.messages.location === 'INLINE' && cItem.Item.messages.bytes.length < 5000);
+  const cMsg = (await msgQuery('big')).Items[0];
+  check('large message compressed inline', cMsg.message.location === 'INLINE' && cMsg.message.bytes.length < 5000);
   cHistory.destroy();
 
   const oHistory = new DynamoDBChatMessageHistory({ tableName: TABLE, clientConfig, s3: { bucketName: BUCKET, thresholdBytes: 1024 } });
   await oHistory.addMessages('off', [new HumanMessage('y'.repeat(60000))]);
-  const oItem = await doc.get({ TableName: TABLE, Key: { PK: 'off', SK: 'SESSION' } });
-  check('huge history offloaded to S3', oItem.Item.messages.location === 'S3');
+  const oMsg = (await msgQuery('off')).Items[0];
+  check('huge message offloaded to S3', oMsg.message.location === 'S3');
   let exists = false;
   try {
-    await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: oItem.Item.messages.s3Key }));
+    await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: oMsg.message.s3Key }));
     exists = true;
   } catch {
     exists = false;
   }
-  check('offloaded messages object exists in S3', exists);
+  check('offloaded message object exists in S3', exists);
   check('offloaded history rehydrates', (await oHistory.getMessages('off'))[0].content.length === 60000);
   await oHistory.clear('off');
   let gone = false;
   try {
-    await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: oItem.Item.messages.s3Key }));
+    await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: oMsg.message.s3Key }));
   } catch (e) {
     gone = e.name === 'NotFound' || e.$metadata?.httpStatusCode === 404;
   }
