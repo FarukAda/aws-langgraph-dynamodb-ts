@@ -10,6 +10,7 @@ import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { validateNonEmptyString } from '../../shared/validation/primitives';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { buildMessageItem } from '../internal/item-mapper';
+import { chunkBySize } from '../internal/message-chunker';
 import { writeMessageChunk } from '../internal/message-transaction';
 import type { HistoryContext } from '../internal/setup';
 import { deriveTitle } from '../internal/title-generator';
@@ -18,6 +19,9 @@ import type { ChatMessageItem } from '../types';
 
 /** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
 const MAX_MESSAGES_PER_TRANSACTION = 99;
+
+/** Aggregate byte budget per transaction, kept under the 4 MB DynamoDB limit. */
+const MAX_TRANSACTION_BYTES = 3_500_000;
 
 /** Shared per-append values applied to every chunk. */
 interface AppendContext {
@@ -42,12 +46,13 @@ async function buildItems(
 async function flushChunk(
   context: HistoryContext,
   sessionId: string,
-  chunk: StoredMessage[],
+  chunks: ChatMessageItem[][],
+  index: number,
   append: AppendContext,
 ): Promise<void> {
-  const items = await buildItems(context, sessionId, chunk, append.ttlTimestamp);
+  const chunk = chunks[index];
   try {
-    await writeMessageChunk(context, items, {
+    await writeMessageChunk(context, chunk, {
       sessionId,
       count: chunk.length,
       now: append.now,
@@ -55,9 +60,10 @@ async function flushChunk(
     });
   } catch (error) {
     if (context.offloader) {
+      const uncommitted = chunks.slice(index).flat();
       await cleanUpS3Orphans(
         context.offloader,
-        collectS3Keys(items.map((item) => item.message)),
+        collectS3Keys(uncommitted.map((item) => item.message)),
         'history.addMessages',
         context.logger,
       );
@@ -71,12 +77,12 @@ async function flushChunk(
  * session-metadata count `ADD` are written together in a single
  * `TransactWriteItems`, so `messageCount` can never disagree with the stored
  * messages. The creation-anchored TTL is established once via a conditional
- * write so every item shares one expiry. Appends past the 100-item transaction
- * limit are split into successive atomic chunks.
+ * write so every item shares one expiry. Appends are split into successive
+ * atomic chunks bounded by both the 100-item and 4 MB transaction limits; an
+ * earlier chunk that already committed is never cleaned up on a later failure.
  *
- * Each chunk is bound by the DynamoDB transaction limits (100 items, 4 MB
- * aggregate, 400 KB per item). For large payloads, enable S3 offloading so each
- * item stays a small descriptor and the aggregate limit is not reached.
+ * Per item the 400 KB DynamoDB limit still applies; enable S3 offloading so
+ * large payloads become small descriptors and stay well under the limits.
  */
 export async function addMessages(
   context: HistoryContext,
@@ -93,8 +99,9 @@ export async function addMessages(
       ? await establishTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl))
       : undefined,
   };
-  for (let start = 0; start < stored.length; start += MAX_MESSAGES_PER_TRANSACTION) {
-    const chunk = stored.slice(start, start + MAX_MESSAGES_PER_TRANSACTION);
-    await flushChunk(context, sessionId, chunk, append);
+  const items = await buildItems(context, sessionId, stored, append.ttlTimestamp);
+  const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
+  for (let index = 0; index < chunks.length; index++) {
+    await flushChunk(context, sessionId, chunks, index, append);
   }
 }
