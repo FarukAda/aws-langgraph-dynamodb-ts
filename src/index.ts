@@ -15,6 +15,7 @@ export { ErrorCode } from './shared/errors/error-code';
 export {
   AbortError,
   BatchWriteIncompleteError,
+  CompensationFailedError,
   ConflictError,
   ResultTruncatedError,
   RetryExhaustedError,

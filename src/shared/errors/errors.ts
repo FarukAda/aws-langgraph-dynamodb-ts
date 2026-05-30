@@ -70,3 +70,24 @@ export class BatchWriteIncompleteError extends DynamoDbLangGraphError {
     this.unprocessed = unprocessed;
   }
 }
+
+/**
+ * A compensating rollback failed after an append-saga chunk error, so the
+ * trigger error could not be cleanly undone. Carries the original trigger as
+ * `cause` and the rollback failure as {@link rollbackError}; the session's
+ * `messageCount` may have drifted — repair it with `reconcileMessageCount`.
+ */
+export class CompensationFailedError extends DynamoDbLangGraphError {
+  readonly rollbackError: Error;
+
+  constructor(cause: Error, rollbackError: Error) {
+    super(
+      `compensation failed after an append error: ${cause.message} (rollback: ${rollbackError.message})`,
+      ErrorCode.COMPENSATION_FAILED,
+      {},
+      cause,
+    );
+    this.name = 'CompensationFailedError';
+    this.rollbackError = rollbackError;
+  }
+}

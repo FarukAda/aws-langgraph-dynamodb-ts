@@ -1,6 +1,7 @@
 import {
   AbortError,
   BatchWriteIncompleteError,
+  CompensationFailedError,
   ConflictError,
   DynamoDbLangGraphError,
   DynamoDBChatMessageHistory,
@@ -32,6 +33,9 @@ describe('public entry point', () => {
     }
     expect(new BatchWriteIncompleteError(1, [], 3)).toBeInstanceOf(DynamoDbLangGraphError);
     expect(new ResultTruncatedError('maxItems', 1)).toBeInstanceOf(DynamoDbLangGraphError);
+    expect(new CompensationFailedError(new Error('a'), new Error('b'))).toBeInstanceOf(
+      DynamoDbLangGraphError,
+    );
   });
 
   it('exports the logging redaction helpers', () => {
