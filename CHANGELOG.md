@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `DynamoDBStore.reconcileVectorIndex(namespacePrefix)` — a maintenance tool that
+  re-pushes embeddings and prunes orphaned vectors (prune requires the new optional
+  `VectorBackend.listKeys`), returning `{ upserted, pruned }`.
+- Optional `VectorBackend.listKeys(namespacePrefix)` plus the `VectorRef` type, so a
+  backend can enumerate its stored vectors for reconciliation.
+- `CompensationFailedError` — raised when an append-saga rollback itself fails,
+  carrying both the trigger error (as `cause`) and the `rollbackError`.
+
+### Changed
+
+- The post-write vector-index update is now **best-effort**: backend `upsert`/`delete`
+  failures are logged, not thrown, so they no longer fail a successful `put`/`delete`.
+  DynamoDB stays canonical; `reconcileVectorIndex` repairs any resulting drift.
+
 ## [0.4.0] - 2026-05-30
 
 Scale and consistency hardening. The public API is unchanged, but the on-disk
