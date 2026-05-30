@@ -36,6 +36,15 @@ describe('listNamespaces', () => {
     expect(out).toEqual([['orgs'], ['users']]);
   });
 
+  it('does not collapse namespaces that differ only at an element boundary', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({
+      Items: [{ namespace: ['a b', 'c'] }, { namespace: ['a', 'b c'] }],
+    });
+    const out = await listNamespaces(context(client), { limit: 100, offset: 0 });
+    expect(out).toHaveLength(2);
+  });
+
   it('scopes to a Query and applies match conditions for a concrete prefix root', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: items });
