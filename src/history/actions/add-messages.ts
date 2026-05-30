@@ -73,6 +73,10 @@ async function flushChunk(
  * messages. The creation-anchored TTL is established once via a conditional
  * write so every item shares one expiry. Appends past the 100-item transaction
  * limit are split into successive atomic chunks.
+ *
+ * Each chunk is bound by the DynamoDB transaction limits (100 items, 4 MB
+ * aggregate, 400 KB per item). For large payloads, enable S3 offloading so each
+ * item stays a small descriptor and the aggregate limit is not reached.
  */
 export async function addMessages(
   context: HistoryContext,

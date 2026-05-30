@@ -49,4 +49,34 @@ describe('writeMessageChunk', () => {
     );
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(2);
   });
+
+  it('reuses one ClientRequestToken across retries so a re-sent commit is idempotent', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const conflict = Object.assign(new Error('canceled'), {
+      name: 'TransactionCanceledException',
+    });
+    mock.on(TransactWriteCommand).rejectsOnce(conflict).resolves({});
+    await writeMessageChunk(
+      { client, tableName: 'history' } as never,
+      [messageItem('MSG#1')],
+      { sessionId: 's1', count: 1, now: 'u' },
+      { rng: () => 0 },
+    );
+    const calls = mock.commandCalls(TransactWriteCommand);
+    const firstToken = calls[0].args[0].input.ClientRequestToken;
+    expect(typeof firstToken).toBe('string');
+    expect(calls[1].args[0].input.ClientRequestToken).toBe(firstToken);
+  });
+
+  it('uses a distinct ClientRequestToken for separate chunks', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    const ctx = { client, tableName: 'history' } as never;
+    await writeMessageChunk(ctx, [messageItem('MSG#1')], { sessionId: 's1', count: 1, now: 'u' });
+    await writeMessageChunk(ctx, [messageItem('MSG#2')], { sessionId: 's1', count: 1, now: 'u' });
+    const calls = mock.commandCalls(TransactWriteCommand);
+    expect(calls[0].args[0].input.ClientRequestToken).not.toBe(
+      calls[1].args[0].input.ClientRequestToken,
+    );
+  });
 });
