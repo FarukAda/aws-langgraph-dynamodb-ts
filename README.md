@@ -7,7 +7,7 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![AWS SDK v3](https://img.shields.io/badge/AWS%20SDK-v3-FF9900)
 
-A DynamoDB persistence layer for [LangGraph](https://langchain-ai.github.io/langgraphjs/) in TypeScript (ESM, Node ≥ 22). It provides three LangGraph/LangChain adapters plus a factory:
+A DynamoDB persistence layer for [LangGraph](https://langchain-ai.github.io/langgraphjs/) in TypeScript (CommonJS build, consumable from both ESM and CommonJS; Node ≥ 22). It provides three LangGraph/LangChain adapters plus a factory:
 
 - **`DynamoDBSaver`** — checkpoint + pending-writes persistence (`extends BaseCheckpointSaver`).
 - **`DynamoDBStore`** — long-term memory with optional semantic search (`extends BaseStore`).

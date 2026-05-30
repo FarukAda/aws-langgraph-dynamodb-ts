@@ -10,7 +10,7 @@ The **Coding Rules** below remain the binding standard for every change and are 
 
 ## What this is (the product goal)
 
-`@farukada/aws-langgraph-dynamodb-ts` — a DynamoDB persistence layer for LangGraph (TypeScript, ESM, Node ≥22). It provides three LangGraph adapters plus a factory:
+`@farukada/aws-langgraph-dynamodb-ts` — a DynamoDB persistence layer for LangGraph (TypeScript, CommonJS build usable from ESM and CJS, Node ≥22). It provides three LangGraph adapters plus a factory:
 
 - **`DynamoDBSaver`** — `extends BaseCheckpointSaver`. Checkpoint + pending-writes persistence.
 - **`DynamoDBStore`** — `extends BaseStore`. Long-term memory with optional semantic search via a LangChain `EmbeddingsInterface`.
