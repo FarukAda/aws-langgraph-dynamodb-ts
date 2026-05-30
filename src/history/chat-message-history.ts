@@ -9,9 +9,11 @@ import { DynamoDBSessionChatMessageHistory } from './session-adapter';
 import type { DynamoDBChatMessageHistoryOptions, SessionMetadata } from './types';
 
 /**
- * DynamoDB-backed multi-session chat history. Each session is one item holding
- * its full message list (compressed / S3-offloaded as needed) under a single
- * TTL. Use {@link forSession} to get a single-session LangChain adapter.
+ * DynamoDB-backed multi-session chat history. Each message is its own item
+ * (ordered by a monotonic ULID, compressed / S3-offloaded as needed) alongside a
+ * per-session metadata item; every message in a session shares one uniform TTL.
+ * Appends are O(1) and lock-free. Use {@link forSession} to get a single-session
+ * LangChain adapter.
  */
 export class DynamoDBChatMessageHistory {
   private readonly context: HistoryContext;

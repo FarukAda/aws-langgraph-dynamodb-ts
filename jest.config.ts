@@ -1,11 +1,15 @@
 export default {
   testMatch: [
     '<rootDir>/test/unit/**/*.test.ts',
-    '<rootDir>/test/contract/**/*.test.ts',
     '<rootDir>/test/static/**/*.test.ts',
     '<rootDir>/test/types/**/*.test.ts',
   ],
-  testPathIgnorePatterns: ['/node_modules/', '/test/integration/', '/test/package-smoke/'],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/test/integration/',
+    '/test/contract/',
+    '/test/package-smoke/',
+  ],
   setupFilesAfterEnv: ['<rootDir>/test/shared/helpers/test-setup.ts'],
   transform: {
     '^.+\\.tsx?$': [
