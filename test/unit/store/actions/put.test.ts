@@ -142,6 +142,23 @@ describe('putItem', () => {
     expect(vectorBackend.upsert).toHaveBeenCalledWith(['users', 'u1'], 'profile', [0.5, 0.6]);
   });
 
+  it('removes the backend vector when a re-put yields no embedding (index:false)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({ Item: { createdAt: '2000-01-01T00:00:00.000Z' } });
+    mock.on(PutCommand).resolves({});
+    const embeddings = { embedQuery: jest.fn() };
+    const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
+    await putItem(
+      context(client, {
+        index: { dims: 2, embeddings: embeddings as never },
+        vectorBackend: vectorBackend as never,
+      }),
+      op({ index: false }),
+    );
+    expect(vectorBackend.upsert).not.toHaveBeenCalled();
+    expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
+  });
+
   it('deletes from the vector backend when removing an item', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(DeleteCommand).resolves({});

@@ -77,7 +77,8 @@ export async function putItem(context: StoreContext, op: PutOperation): Promise<
     }
     throw error;
   }
-  if (context.vectorBackend && embedding) {
-    await context.vectorBackend.upsert(op.namespace, op.key, embedding);
+  if (context.vectorBackend) {
+    if (embedding) await context.vectorBackend.upsert(op.namespace, op.key, embedding);
+    else await context.vectorBackend.delete(op.namespace, op.key);
   }
 }
