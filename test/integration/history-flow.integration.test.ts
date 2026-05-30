@@ -123,4 +123,32 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     const sessions = await history.listSessions();
     expect(sessions.find((s) => s.sessionId === 's-big')?.messageCount).toBe(60);
   });
+
+  it('does not double-count when a committed transaction is retried after a lost response', async () => {
+    const base = new DynamoDBClient(DDB_LOCAL_CONFIG);
+    let injected = 0;
+    base.middlewareStack.add(
+      (next) => async (args) => {
+        const input = args.input as { TransactItems?: unknown[] };
+        if (Array.isArray(input.TransactItems) && injected === 0) {
+          injected += 1;
+          await next(args);
+          throw Object.assign(new Error('simulated lost response'), { name: 'ServiceUnavailable' });
+        }
+        return next(args);
+      },
+      { step: 'initialize', name: 'lostResponseInjector', priority: 'high' },
+    );
+    const faulted = new DynamoDBChatMessageHistory({
+      tableName,
+      client: DynamoDBDocument.from(base),
+    });
+    await faulted.addMessages('s-fault', [new HumanMessage('only one')]);
+    base.destroy();
+    expect(injected).toBe(1);
+    const messages = await history.getMessages('s-fault');
+    expect(messages).toHaveLength(1);
+    const sessions = await history.listSessions();
+    expect(sessions.find((s) => s.sessionId === 's-fault')?.messageCount).toBe(1);
+  });
 });
