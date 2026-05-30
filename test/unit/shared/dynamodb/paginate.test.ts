@@ -1,7 +1,7 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { paginateQuery } from '../../../../src/shared/dynamodb/paginate';
-import { AbortError } from '../../../../src/shared/errors/errors';
+import { AbortError, ResultTruncatedError } from '../../../../src/shared/errors/errors';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 async function collect<T>(gen: AsyncGenerator<T>): Promise<T[]> {
@@ -33,23 +33,23 @@ describe('paginateQuery', () => {
     ).rejects.toBeInstanceOf(AbortError);
   });
 
-  it('stops yielding once maxItems is reached, even with more pages available', async () => {
+  it('throws ResultTruncatedError when maxItems is reached with more pages available', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(QueryCommand)
       .resolves({ Items: [{ pk: 'a' }, { pk: 'b' }], LastEvaluatedKey: { pk: 'b' } });
-    const items = await collect(paginateQuery({ client, params: { TableName: 't' }, maxItems: 1 }));
-    expect(items).toEqual([{ pk: 'a' }]);
+    await expect(
+      collect(paginateQuery({ client, params: { TableName: 't' }, maxItems: 1 })),
+    ).rejects.toBeInstanceOf(ResultTruncatedError);
     expect(mock.commandCalls(QueryCommand)).toHaveLength(1);
   });
 
-  it('stops at the iteration cap as a runaway guard', async () => {
+  it('throws ResultTruncatedError at the iteration cap when data remains', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [], LastEvaluatedKey: { pk: 'loop' } });
-    const items = await collect(
-      paginateQuery({ client, params: { TableName: 't' }, maxIterations: 2 }),
-    );
-    expect(items).toEqual([]);
+    await expect(
+      collect(paginateQuery({ client, params: { TableName: 't' }, maxIterations: 2 })),
+    ).rejects.toBeInstanceOf(ResultTruncatedError);
     expect(mock.commandCalls(QueryCommand)).toHaveLength(2);
   });
 

@@ -3,6 +3,7 @@ import { BatchWriteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { deleteThread } from '../../../../src/checkpointer/actions/delete-thread';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { MAX_LOOP_ITERATIONS } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -35,6 +36,29 @@ describe('deleteThread', () => {
       'PAYLOAD##c1',
       'WRITE##c1#task#0',
     ]);
+  });
+
+  it('deletes a partition that spans more pages than the default iteration cap', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const total = MAX_LOOP_ITERATIONS + 5;
+    let page = 0;
+    mock.on(QueryCommand).callsFake(() => {
+      page += 1;
+      const hasMore = page < total;
+      return {
+        Items: [{ PK: 't', SK: `WRITE##c#task#${page}` }],
+        LastEvaluatedKey: hasMore ? { PK: 't', SK: `${page}` } : undefined,
+      };
+    });
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    await deleteThread(context(client), 't');
+    const deleted = mock
+      .commandCalls(BatchWriteCommand)
+      .flatMap((call) =>
+        (call.args[0].input.RequestItems?.ckpt ?? []).map((r) => r.DeleteRequest?.Key?.SK),
+      );
+    expect(deleted).toHaveLength(total);
+    expect(new Set(deleted).size).toBe(total);
   });
 
   it('is a no-op when the thread has no items', async () => {

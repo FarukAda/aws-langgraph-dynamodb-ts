@@ -16,6 +16,7 @@ export {
   AbortError,
   BatchWriteIncompleteError,
   ConflictError,
+  ResultTruncatedError,
   RetryExhaustedError,
   ValidationError,
 } from './shared/errors/errors';

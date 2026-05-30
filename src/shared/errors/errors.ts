@@ -26,6 +26,22 @@ export class RetryExhaustedError extends DynamoDbLangGraphError {
   }
 }
 
+/**
+ * A paginated read hit its runaway guard (item or iteration cap) while more
+ * data remained, so the result would have been silently truncated. Narrow the
+ * query (filter/prefix) or raise the cap rather than trusting a partial result.
+ */
+export class ResultTruncatedError extends DynamoDbLangGraphError {
+  constructor(cap: string, limit: number) {
+    super(
+      `paginated read truncated at the ${cap} cap (${limit}) with more data remaining`,
+      ErrorCode.RESULT_TRUNCATED,
+      { operation: cap },
+    );
+    this.name = 'ResultTruncatedError';
+  }
+}
+
 /** An operation was cancelled via its AbortSignal. */
 export class AbortError extends DynamoDbLangGraphError {
   constructor(message = 'Operation aborted') {

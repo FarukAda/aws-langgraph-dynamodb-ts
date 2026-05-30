@@ -9,6 +9,7 @@ import {
   DynamoDBSessionChatMessageHistory,
   DynamoDBStore,
   ErrorCode,
+  ResultTruncatedError,
   RetryExhaustedError,
   ValidationError,
   redactLogger,
@@ -30,6 +31,7 @@ describe('public entry point', () => {
       expect(new ErrorClass('x')).toBeInstanceOf(DynamoDbLangGraphError);
     }
     expect(new BatchWriteIncompleteError(1, [], 3)).toBeInstanceOf(DynamoDbLangGraphError);
+    expect(new ResultTruncatedError('maxItems', 1)).toBeInstanceOf(DynamoDbLangGraphError);
   });
 
   it('exports the logging redaction helpers', () => {

@@ -3,6 +3,7 @@ import {
   AbortError,
   BatchWriteIncompleteError,
   ConflictError,
+  ResultTruncatedError,
   RetryExhaustedError,
   ValidationError,
 } from '../../../../src/shared/errors/errors';
@@ -13,6 +14,13 @@ describe('error subclasses', () => {
     expect(new ConflictError('c').code).toBe(ErrorCode.CONDITION_CONFLICT);
     expect(new RetryExhaustedError('r').code).toBe(ErrorCode.RETRY_EXHAUSTED);
     expect(new AbortError().code).toBe(ErrorCode.ABORTED);
+    expect(new ResultTruncatedError('maxItems', 10000).code).toBe(ErrorCode.RESULT_TRUNCATED);
+  });
+
+  it('ResultTruncatedError names the cap and limit it hit', () => {
+    const err = new ResultTruncatedError('maxIterations', 1000);
+    expect(err.message).toMatch(/maxIterations cap \(1000\)/);
+    expect(err.context).toEqual({ operation: 'maxIterations' });
   });
 
   it('BatchWriteIncompleteError keeps succeededCount and unprocessed', () => {
