@@ -15,6 +15,7 @@ import { buildMessageItem } from '../internal/item-mapper';
 import { buildSessionUpdate } from '../internal/session-update';
 import type { HistoryContext } from '../internal/setup';
 import { deriveTitle } from '../internal/title-generator';
+import { readSessionTtlAnchor } from '../internal/ttl-anchor';
 import type { ChatMessageItem } from '../types';
 
 async function buildItems(
@@ -31,10 +32,11 @@ async function buildItems(
 }
 
 /**
- * Append messages with an O(1) write: one item per message via a single batched
- * put, then one atomic `ADD` update of the session-metadata item. There is no
- * read-modify-write, so concurrent appends never clobber each other, and the
- * uniform whole-conversation TTL keeps a live session free of mid-history gaps.
+ * Append messages with one item per message via a single batched put, then one
+ * `ADD` update of the session-metadata item. The TTL is creation-anchored: the
+ * first append establishes `created + ttl`, and every later append reuses that
+ * same anchor (read from metadata), so the whole conversation expires together
+ * with no mid-history gaps.
  */
 export async function addMessages(
   context: HistoryContext,
@@ -45,7 +47,9 @@ export async function addMessages(
   if (messages.length === 0) return;
   const stored = mapChatMessagesToStoredMessages(messages);
   const now = nowIso();
-  const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
+  const ttlTimestamp = context.ttl
+    ? ((await readSessionTtlAnchor(context, sessionId)) ?? calculateTtlTimestamp(context.ttl))
+    : undefined;
   const items = await buildItems(context, sessionId, stored, ttlTimestamp);
   try {
     await batchWriteAll(

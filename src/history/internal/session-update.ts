@@ -13,9 +13,9 @@ export interface SessionUpdateFields {
 
 /**
  * Build the atomic session-metadata update: `ADD` the message count and `SET`
- * `updatedAt` every time, while `createdAt`, `sessionId`, `title`, and `ttl` are
- * written once (creation-anchored) via `if_not_exists`. This keeps appends O(1)
- * and the whole-conversation TTL uniform across every message.
+ * `updatedAt` every time, while `createdAt`, `sessionId`, `title`, and the
+ * creation-anchored `ttl` are written once via `if_not_exists`. Callers pass the
+ * anchor TTL so every message item in the session shares one expiry.
  */
 export function buildSessionUpdate(
   tableName: string,
