@@ -1,4 +1,4 @@
-import { BatchWriteCommand, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
 import { addMessages } from '../../../../src/history/actions/add-messages';
@@ -68,35 +68,34 @@ describe('addMessages', () => {
     });
   });
 
-  it('stamps a ttl on every message item and the session update on a new session', async () => {
+  it('stamps the authoritative ttl anchor on every message item via ReturnValues ALL_NEW', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
+    mock.on(UpdateCommand).resolves({ Attributes: { ttl: 4242 } });
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    mock.on(UpdateCommand).resolves({});
     await addMessages(context(client, { ttl: { seconds: 100 } }), 's1', [new HumanMessage('hi')]);
+    const upd = mock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(upd.ReturnValues).toBe('ALL_NEW');
+    expect(upd.UpdateExpression).toContain('#ttl');
     const item =
       mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history[0].PutRequest.Item;
-    expect(typeof item.ttl).toBe('number');
-    const upd = mock.commandCalls(UpdateCommand)[0].args[0].input;
-    expect(typeof upd.ExpressionAttributeValues[':ttl']).toBe('number');
-    expect(upd.UpdateExpression).toContain('#ttl');
+    expect(item.ttl).toBe(4242);
   });
 
-  it('reuses the stored creation-anchored ttl on a later append', async () => {
+  it('reuses the existing anchor returned by the conditional update on a later append', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: { ttl: 5000 } });
+    mock.on(UpdateCommand).resolves({ Attributes: { ttl: 5000 } });
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    mock.on(UpdateCommand).resolves({});
-    await addMessages(context(client, { ttl: { seconds: 100 } }), 's1', [new HumanMessage('hi')]);
-    const item =
-      mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history[0].PutRequest.Item;
-    expect(item.ttl).toBe(5000);
-    const upd = mock.commandCalls(UpdateCommand)[0].args[0].input;
-    expect(upd.ExpressionAttributeValues[':ttl']).toBe(5000);
+    await addMessages(context(client, { ttl: { seconds: 100 } }), 's1', [
+      new HumanMessage('hi'),
+      new AIMessage('yo'),
+    ]);
+    const writes = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history;
+    expect(writes.every((w) => w.PutRequest.Item.ttl === 5000)).toBe(true);
   });
 
   it('rethrows a batch-write failure without cleanup when no offloader is set', async () => {
     const { client, mock } = createStrictDocumentMock();
+    mock.on(UpdateCommand).resolves({});
     mock
       .on(BatchWriteCommand)
       .rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
@@ -107,6 +106,7 @@ describe('addMessages', () => {
 
   it('cleans up offloaded objects when the batch write fails', async () => {
     const { client, mock } = createStrictDocumentMock();
+    mock.on(UpdateCommand).resolves({});
     mock
       .on(BatchWriteCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));

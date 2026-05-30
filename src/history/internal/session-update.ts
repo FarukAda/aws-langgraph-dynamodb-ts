@@ -14,8 +14,9 @@ export interface SessionUpdateFields {
 /**
  * Build the atomic session-metadata update: `ADD` the message count and `SET`
  * `updatedAt` every time, while `createdAt`, `sessionId`, `title`, and the
- * creation-anchored `ttl` are written once via `if_not_exists`. Callers pass the
- * anchor TTL so every message item in the session shares one expiry.
+ * creation-anchored `ttl` are written once via `if_not_exists`. Returns
+ * `ALL_NEW` so the caller reads back the authoritative TTL anchor that every
+ * message item in the session shares.
  */
 export function buildSessionUpdate(
   tableName: string,
@@ -50,5 +51,6 @@ export function buildSessionUpdate(
     UpdateExpression: `ADD #count :n SET ${sets.join(', ')}`,
     ExpressionAttributeNames: names,
     ExpressionAttributeValues: values,
+    ReturnValues: 'ALL_NEW',
   };
 }

@@ -15,7 +15,6 @@ import { buildMessageItem } from '../internal/item-mapper';
 import { buildSessionUpdate } from '../internal/session-update';
 import type { HistoryContext } from '../internal/setup';
 import { deriveTitle } from '../internal/title-generator';
-import { readSessionTtlAnchor } from '../internal/ttl-anchor';
 import type { ChatMessageItem } from '../types';
 
 async function buildItems(
@@ -32,11 +31,12 @@ async function buildItems(
 }
 
 /**
- * Append messages with one item per message via a single batched put, then one
- * `ADD` update of the session-metadata item. The TTL is creation-anchored: the
- * first append establishes `created + ttl`, and every later append reuses that
- * same anchor (read from metadata), so the whole conversation expires together
- * with no mid-history gaps.
+ * Append messages as one item per message. The session-metadata item is updated
+ * first with `ReturnValues: ALL_NEW`, which atomically establishes and reads
+ * back the creation-anchored TTL: `if_not_exists` makes every caller — including
+ * simultaneous first appends — observe the same anchor, with no race. Each
+ * message item is then stamped with that anchor, so the whole conversation
+ * expires together with no mid-history gaps.
  */
 export async function addMessages(
   context: HistoryContext,
@@ -46,9 +46,20 @@ export async function addMessages(
   validateNonEmptyString(sessionId, 'sessionId');
   if (messages.length === 0) return;
   const stored = mapChatMessagesToStoredMessages(messages);
-  const now = nowIso();
-  const ttlTimestamp = context.ttl
-    ? ((await readSessionTtlAnchor(context, sessionId)) ?? calculateTtlTimestamp(context.ttl))
+  const candidateTtl = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
+  const updated = await withDynamoDBRetry(() =>
+    context.client.update(
+      buildSessionUpdate(context.tableName, {
+        sessionId,
+        count: stored.length,
+        now: nowIso(),
+        title: deriveTitle(stored),
+        ttlTimestamp: candidateTtl,
+      }),
+    ),
+  );
+  const ttlTimestamp = candidateTtl
+    ? (updated.Attributes as { ttl?: number } | undefined)?.ttl
     : undefined;
   const items = await buildItems(context, sessionId, stored, ttlTimestamp);
   try {
@@ -68,15 +79,4 @@ export async function addMessages(
     }
     throw error;
   }
-  await withDynamoDBRetry(() =>
-    context.client.update(
-      buildSessionUpdate(context.tableName, {
-        sessionId,
-        count: stored.length,
-        now,
-        title: deriveTitle(stored),
-        ttlTimestamp,
-      }),
-    ),
-  );
 }

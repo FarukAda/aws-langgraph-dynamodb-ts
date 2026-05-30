@@ -1,4 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
 import { DynamoDBChatMessageHistory } from '../../src/index';
@@ -50,5 +51,29 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     const messages = await history.getMessages('s4');
     expect(messages).toHaveLength(10);
     expect(new Set(messages.map((m) => m.content)).size).toBe(10);
+  });
+
+  it('stamps one uniform creation-anchored ttl across concurrent first appends', async () => {
+    const ttlHistory = new DynamoDBChatMessageHistory({
+      tableName,
+      clientConfig: DDB_LOCAL_CONFIG,
+      ttl: { seconds: 3600 },
+    });
+    await Promise.all(
+      Array.from({ length: 8 }, (_unused, index) =>
+        ttlHistory.addMessages('s5', [new HumanMessage(`c${index}`)]),
+      ),
+    );
+    ttlHistory.destroy();
+    const doc = DynamoDBDocument.from(admin);
+    const result = await doc.query({
+      TableName: tableName,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :msg)',
+      ExpressionAttributeValues: { ':pk': 's5', ':msg': 'MSG#' },
+    });
+    const ttls = new Set((result.Items ?? []).map((item) => item.ttl));
+    expect(result.Items).toHaveLength(8);
+    expect(ttls.size).toBe(1);
+    expect([...ttls][0]).toBeGreaterThan(0);
   });
 });
