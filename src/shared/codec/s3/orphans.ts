@@ -37,9 +37,9 @@ export interface OrphanCleanupOptions {
 
 /**
  * Best-effort delete of S3 objects orphaned by a failed DynamoDB write. Retries
- * transient errors with full-jitter backoff; on persistent failure it logs at
- * `warn` (the lifecycle rule is the backstop) and never throws — the sole
- * non-throwing path in the library.
+ * transient errors with full-jitter backoff; on persistent failure or when S3
+ * reports keys it could not delete, it logs at `warn` (the lifecycle rule is the
+ * backstop) and never throws — the sole non-throwing path in the library.
  */
 export async function cleanUpS3Orphans(
   offloader: S3Offloader,
@@ -55,7 +55,12 @@ export async function cleanUpS3Orphans(
   let lastError = new Error('S3 orphan cleanup did not run');
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      await offloader.deleteBatch(orphans);
+      const failed = await offloader.deleteBatch(orphans);
+      if (failed.length === 0) return;
+      logger.warn(
+        `Some orphaned S3 objects could not be deleted after ${context}; lifecycle rule will sweep`,
+        { failedCount: failed.length },
+      );
       return;
     } catch (error) {
       lastError = error as Error;

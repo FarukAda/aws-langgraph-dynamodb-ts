@@ -13,6 +13,14 @@ describe('cleanUpS3Orphans', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it('warns when deleteBatch reports keys it could not delete', async () => {
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue(['k1']) };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, ['k1', 'k2'], 'put', logger);
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
   it('is a no-op when there are no real keys', async () => {
     const offloader = { deleteBatch: jest.fn() };
     await cleanUpS3Orphans(offloader as never, [undefined, ''], 'put', fakeLogger());
