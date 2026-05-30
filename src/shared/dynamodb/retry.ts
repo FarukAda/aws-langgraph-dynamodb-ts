@@ -23,17 +23,32 @@ function delayForAttempt(attempt: number, base: number, max: number, rng: () => 
   return fullJitter(Math.min(exponential, max), rng);
 }
 
+interface ResolvedRetryOptions {
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  retryable: readonly string[];
+  rng: () => number;
+}
+
+/** Apply defaults to {@link RetryOptions}. */
+function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
+  return {
+    maxAttempts: options.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS,
+    baseDelayMs: options.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS,
+    maxDelayMs: options.maxDelayMs ?? MAX_BACKOFF_DELAY_MS,
+    retryable: options.retryableErrors ?? DEFAULT_RETRYABLE_ERRORS,
+    rng: options.rng ?? Math.random,
+  };
+}
+
 /**
  * Run `fn`, retrying retryable transient errors with full-jitter exponential
  * backoff. Non-retryable errors are re-thrown unchanged; exhaustion throws
  * {@link RetryExhaustedError}; an aborted signal throws {@link AbortError}.
  */
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
-  const maxAttempts = options.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS;
-  const baseDelayMs = options.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS;
-  const maxDelayMs = options.maxDelayMs ?? MAX_BACKOFF_DELAY_MS;
-  const retryable = options.retryableErrors ?? DEFAULT_RETRYABLE_ERRORS;
-  const rng = options.rng ?? Math.random;
+  const { maxAttempts, baseDelayMs, maxDelayMs, retryable, rng } = resolveRetryOptions(options);
 
   if (options.signal?.aborted) throw new AbortError();
 
