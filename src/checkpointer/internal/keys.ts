@@ -4,6 +4,13 @@ export const SORT_KEY_SEPARATOR = '#';
 /** Fixed digit width for the WRITE index so sort keys order numerically. */
 const WRITE_INDEX_PAD_WIDTH = 10;
 
+/**
+ * Added to every write index before padding so the special negative slots from
+ * `WRITES_IDX_MAP` (-1 ERROR .. -4 RESUME) encode as non-negative, sortable
+ * integers that order below positional (0+) writes.
+ */
+const WRITE_INDEX_OFFSET = 8;
+
 /** Sort-key kinds for the checkpoints table (the approved SK separation). */
 export enum CheckpointItemKind {
   META = 'META',
@@ -38,7 +45,7 @@ export function writeSortKey(
   taskId: string,
   index: number,
 ): string {
-  const paddedIndex = index.toString().padStart(WRITE_INDEX_PAD_WIDTH, '0');
+  const paddedIndex = (index + WRITE_INDEX_OFFSET).toString().padStart(WRITE_INDEX_PAD_WIDTH, '0');
   return [CheckpointItemKind.WRITE, checkpointNs, checkpointId, taskId, paddedIndex].join(
     SORT_KEY_SEPARATOR,
   );

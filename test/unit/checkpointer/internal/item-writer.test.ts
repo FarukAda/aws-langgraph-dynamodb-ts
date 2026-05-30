@@ -1,4 +1,5 @@
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
+import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
 import {
   buildCheckpointItems,
@@ -75,10 +76,23 @@ describe('buildWriteItems', () => {
       ['counter', 5],
     ]);
     expect(items).toHaveLength(2);
-    expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0000000000');
+    expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0000000008');
     expect(items[0].channel).toBe('messages');
-    expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000001');
+    expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000009');
     expect(items[1].index).toBe(1);
     expect(items[1].value.serdeType).toBe('json');
+  });
+
+  it('indexes special channels at their fixed WRITES_IDX_MAP slot, ordered before regular writes', async () => {
+    const items = await buildWriteItems(context(), 't', '', 'ckpt-1', 'task-7', [
+      ['regular', 'v'],
+      ['__interrupt__', { value: 'paused' }],
+    ]);
+    const regular = items.find((item) => item.channel === 'regular')!;
+    const interrupt = items.find((item) => item.channel === '__interrupt__')!;
+    expect(regular.index).toBe(0);
+    expect(interrupt.index).toBe(WRITES_IDX_MAP['__interrupt__']);
+    expect(interrupt.SK).toBe('WRITE##ckpt-1#task-7#0000000005');
+    expect(interrupt.SK < regular.SK).toBe(true);
   });
 });

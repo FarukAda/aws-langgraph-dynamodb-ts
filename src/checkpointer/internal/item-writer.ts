@@ -1,4 +1,5 @@
 import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
+import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
 import { type CodecDeps, encodePayload } from '../../shared/codec/codec';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
@@ -63,8 +64,9 @@ export async function buildWriteItems(
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];
-  for (let index = 0; index < writes.length; index++) {
-    const [channel, value] = writes[index];
+  for (let positional = 0; positional < writes.length; positional++) {
+    const [channel, value] = writes[positional];
+    const index = WRITES_IDX_MAP[channel] ?? positional;
     const descriptor = await encodePayload(value, deps, {
       keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`],
     });

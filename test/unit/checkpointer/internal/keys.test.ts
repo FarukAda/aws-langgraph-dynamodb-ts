@@ -24,7 +24,7 @@ describe('checkpointer keys', () => {
   });
 
   it('builds WRITE sort keys with a zero-padded index and the per-checkpoint prefix', () => {
-    expect(writeSortKey('', 'ckpt-1', 'task-9', 2)).toBe('WRITE##ckpt-1#task-9#0000000002');
+    expect(writeSortKey('', 'ckpt-1', 'task-9', 2)).toBe('WRITE##ckpt-1#task-9#0000000010');
     expect(writeSortKeyPrefix('', 'ckpt-1')).toBe('WRITE##ckpt-1#');
   });
 
@@ -32,5 +32,11 @@ describe('checkpointer keys', () => {
     const second = writeSortKey('', 'ckpt-1', 'task-9', 2);
     const tenth = writeSortKey('', 'ckpt-1', 'task-9', 10);
     expect(second < tenth).toBe(true);
+  });
+
+  it('orders special negative write indices below positional ones', () => {
+    const sk = (index: number): string => writeSortKey('ns', 'cp', 'task', index);
+    const ordered = [-4, -3, -2, -1, 0, 1, 2].map(sk);
+    expect([...ordered].sort()).toEqual(ordered);
   });
 });
