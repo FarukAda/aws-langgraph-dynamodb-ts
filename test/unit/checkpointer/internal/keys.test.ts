@@ -23,8 +23,14 @@ describe('checkpointer keys', () => {
     expect(metaSortKeyPrefix('inner')).toBe('META#inner#');
   });
 
-  it('builds WRITE sort keys and the per-checkpoint WRITE prefix', () => {
-    expect(writeSortKey('', 'ckpt-1', 'task-9', 2)).toBe('WRITE##ckpt-1#task-9#2');
+  it('builds WRITE sort keys with a zero-padded index and the per-checkpoint prefix', () => {
+    expect(writeSortKey('', 'ckpt-1', 'task-9', 2)).toBe('WRITE##ckpt-1#task-9#0000000002');
     expect(writeSortKeyPrefix('', 'ckpt-1')).toBe('WRITE##ckpt-1#');
+  });
+
+  it('orders WRITE sort keys numerically by index (10 after 2)', () => {
+    const second = writeSortKey('', 'ckpt-1', 'task-9', 2);
+    const tenth = writeSortKey('', 'ckpt-1', 'task-9', 10);
+    expect(second < tenth).toBe(true);
   });
 });

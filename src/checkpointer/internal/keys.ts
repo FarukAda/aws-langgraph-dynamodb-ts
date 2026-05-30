@@ -1,5 +1,8 @@
 const SEPARATOR = '#';
 
+/** Fixed digit width for the WRITE index so sort keys order numerically. */
+const WRITE_INDEX_PAD_WIDTH = 10;
+
 /** Sort-key kinds for the checkpoints table (the approved SK separation). */
 export enum CheckpointItemKind {
   META = 'META',
@@ -34,7 +37,10 @@ export function writeSortKey(
   taskId: string,
   index: number,
 ): string {
-  return [CheckpointItemKind.WRITE, checkpointNs, checkpointId, taskId, index].join(SEPARATOR);
+  const paddedIndex = index.toString().padStart(WRITE_INDEX_PAD_WIDTH, '0');
+  return [CheckpointItemKind.WRITE, checkpointNs, checkpointId, taskId, paddedIndex].join(
+    SEPARATOR,
+  );
 }
 
 /** `begins_with` prefix selecting every WRITE item for one checkpoint. */

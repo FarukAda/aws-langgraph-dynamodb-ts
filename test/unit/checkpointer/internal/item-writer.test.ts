@@ -75,9 +75,9 @@ describe('buildWriteItems', () => {
       ['counter', 5],
     ]);
     expect(items).toHaveLength(2);
-    expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0');
+    expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0000000000');
     expect(items[0].channel).toBe('messages');
-    expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#1');
+    expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000001');
     expect(items[1].index).toBe(1);
     expect(items[1].value.serdeType).toBe('json');
   });

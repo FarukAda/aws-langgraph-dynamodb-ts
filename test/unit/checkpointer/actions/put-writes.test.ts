@@ -33,8 +33,8 @@ describe('putWrites', () => {
     );
     const requests = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.ckpt ?? [];
     expect(requests).toHaveLength(2);
-    expect(requests[0].PutRequest?.Item?.SK).toBe('WRITE##c1#task-3#0');
-    expect(requests[1].PutRequest?.Item?.SK).toBe('WRITE##c1#task-3#1');
+    expect(requests[0].PutRequest?.Item?.SK).toBe('WRITE##c1#task-3#0000000000');
+    expect(requests[1].PutRequest?.Item?.SK).toBe('WRITE##c1#task-3#0000000001');
   });
 
   it('throws VALIDATION when checkpoint_id is missing', async () => {
