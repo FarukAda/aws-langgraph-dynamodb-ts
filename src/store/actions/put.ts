@@ -6,6 +6,7 @@ import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import type { JsonValue } from '../internal/filter';
+import { syncVectorIndex } from '../internal/index-sync';
 import { buildStoreItem } from '../internal/item-mapper';
 import { partitionKey, sortKey } from '../internal/keys';
 import { embedValue } from '../internal/semantic-search';
@@ -45,7 +46,9 @@ export async function putItem(context: StoreContext, op: PutOperation): Promise<
     await withDynamoDBRetry(() =>
       context.client.delete({ TableName: context.tableName, Key: { PK: pk, SK: sk } }),
     );
-    if (context.vectorBackend) await context.vectorBackend.delete(op.namespace, op.key);
+    if (context.vectorBackend) {
+      await syncVectorIndex(context.vectorBackend, op.namespace, op.key, undefined, context.logger);
+    }
     return;
   }
   const value = op.value as Record<string, JsonValue>;
@@ -78,7 +81,6 @@ export async function putItem(context: StoreContext, op: PutOperation): Promise<
     throw error;
   }
   if (context.vectorBackend) {
-    if (embedding) await context.vectorBackend.upsert(op.namespace, op.key, embedding);
-    else await context.vectorBackend.delete(op.namespace, op.key);
+    await syncVectorIndex(context.vectorBackend, op.namespace, op.key, embedding, context.logger);
   }
 }

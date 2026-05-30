@@ -166,4 +166,50 @@ describe('putItem', () => {
     await putItem(context(client, { vectorBackend: vectorBackend as never }), op({ value: null }));
     expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
   });
+
+  it('does not fail a put when the vector backend upsert throws', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    mock.on(PutCommand).resolves({});
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5, 0.6]) };
+    const vectorBackend = {
+      upsert: jest.fn().mockRejectedValue(new Error('backend down')),
+      query: jest.fn(),
+      delete: jest.fn(),
+    };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    await expect(
+      putItem(
+        context(client, {
+          index: { dims: 2, embeddings: embeddings as never },
+          vectorBackend: vectorBackend as never,
+          logger,
+        }),
+        op({}),
+      ),
+    ).resolves.toBeUndefined();
+    expect(mock.commandCalls(PutCommand)).toHaveLength(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('vector-index sync failed'),
+      expect.objectContaining({ key: 'profile' }),
+    );
+  });
+
+  it('does not fail a delete when the vector backend delete throws', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(DeleteCommand).resolves({});
+    const vectorBackend = {
+      upsert: jest.fn(),
+      query: jest.fn(),
+      delete: jest.fn().mockRejectedValue(new Error('backend down')),
+    };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    await expect(
+      putItem(
+        context(client, { vectorBackend: vectorBackend as never, logger }),
+        op({ value: null }),
+      ),
+    ).resolves.toBeUndefined();
+    expect(logger.warn).toHaveBeenCalled();
+  });
 });
