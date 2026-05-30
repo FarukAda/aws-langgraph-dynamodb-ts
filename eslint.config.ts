@@ -1,12 +1,25 @@
-import { defineConfig } from 'eslint/config';
 import js from '@eslint/js';
-import ts from 'typescript-eslint';
-import prettier from 'eslint-plugin-prettier';
+import type { ESLint } from 'eslint';
 import prettierConfig from 'eslint-config-prettier';
+import noInstanceof from 'eslint-plugin-no-instanceof';
 // @ts-expect-error perfectionist ships without bundled types
 import perfectionist from 'eslint-plugin-perfectionist';
-import noInstanceof from 'eslint-plugin-no-instanceof';
+import prettier from 'eslint-plugin-prettier';
 import unusedImports from 'eslint-plugin-unused-imports';
+import { defineConfig } from 'eslint/config';
+import ts from 'typescript-eslint';
+
+/**
+ * Third-party plugins typed through ESLint's own {@link ESLint.Plugin} contract.
+ * Annotating the map keeps the config free of `any` so it passes the same
+ * `no-explicit-any` rule it enforces on the rest of the repo.
+ */
+const plugins: Record<string, ESLint.Plugin> = {
+  'no-instanceof': noInstanceof,
+  perfectionist,
+  prettier,
+  'unused-imports': unusedImports,
+};
 
 const NO_UNKNOWN = {
   selector: 'TSUnknownKeyword',
@@ -28,12 +41,7 @@ export default defineConfig([
   {
     files: ['**/*.{ts,tsx}'],
     ignores: ['dist'],
-    plugins: {
-      prettier: prettier as any,
-      perfectionist: perfectionist as any,
-      'no-instanceof': noInstanceof as any,
-      'unused-imports': unusedImports as any,
-    },
+    plugins,
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': [

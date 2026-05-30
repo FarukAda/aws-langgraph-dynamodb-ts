@@ -41,9 +41,9 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_TEST_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_TEST_REGION || 'us-east-1' }}
+          aws-region: ${{ vars.AWS_TEST_REGION || 'eu-central-1' }}
 
       - name: Run real-AWS tests
         run: npm run test:aws
         env:
-          AWS_REGION: ${{ vars.AWS_TEST_REGION || 'us-east-1' }}
+          AWS_REGION: ${{ vars.AWS_TEST_REGION || 'eu-central-1' }}

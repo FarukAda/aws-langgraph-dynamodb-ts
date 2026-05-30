@@ -66,6 +66,22 @@ describe('cleanUpS3Orphans', () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
+  it('stops retrying when the abort signal fires and still never throws', async () => {
+    const transient = Object.assign(new Error('slow'), { name: 'SlowDown' });
+    const offloader = { deleteBatch: jest.fn().mockRejectedValue(transient) };
+    const logger = fakeLogger();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      cleanUpS3Orphans(offloader as never, ['k1'], 'put', logger, {
+        rng: () => 0,
+        signal: controller.signal,
+      }),
+    ).resolves.toBeUndefined();
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
   it('warns and does not throw when transient deletion keeps failing', async () => {
     const transient = Object.assign(new Error('slow'), { name: 'SlowDown' });
     const offloader = { deleteBatch: jest.fn().mockRejectedValue(transient) };

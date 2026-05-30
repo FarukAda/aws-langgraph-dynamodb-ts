@@ -18,4 +18,17 @@ describe('matchesFilter', () => {
   it('matches the empty filter', () => {
     expect(matchesFilter(metadata, {})).toBe(true);
   });
+
+  it('matches a nested object regardless of its key order', () => {
+    expect(matchesFilter({ config: { a: 1, b: 2 } }, { config: { b: 2, a: 1 } })).toBe(true);
+  });
+
+  it('keeps array element order significant', () => {
+    expect(matchesFilter({ tags: ['a', 'b'] }, { tags: ['a', 'b'] })).toBe(true);
+    expect(matchesFilter({ tags: ['a', 'b'] }, { tags: ['b', 'a'] })).toBe(false);
+  });
+
+  it('does not coerce a number to its string form', () => {
+    expect(matchesFilter({ step: 3 }, { step: '3' })).toBe(false);
+  });
 });

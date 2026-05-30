@@ -15,10 +15,7 @@
  *     tables per-file, so parallelism would cause table-name collisions
  */
 export default {
-  testMatch: [
-    '<rootDir>/test/integration/**/*.test.ts',
-    '<rootDir>/test/contract/**/*.test.ts',
-  ],
+  testMatch: ['<rootDir>/test/integration/**/*.test.ts', '<rootDir>/test/contract/**/*.test.ts'],
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',

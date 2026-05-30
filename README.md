@@ -343,7 +343,7 @@ npm run build
 Integration and contract tiers run against DynamoDB Local (Docker) and are kept out of the default `npm test`:
 
 ```bash
-npm run test:integration:up     # docker compose up -d (DynamoDB Local + LocalStack)
+npm run test:integration:up     # docker compose up -d (DynamoDB Local)
 npm run test:integration        # integration flows + LangGraph/LangChain contract conformance
 npm run test:integration:down
 ```

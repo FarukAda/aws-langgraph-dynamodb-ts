@@ -18,7 +18,11 @@ import type { ChatMessageItem } from '../types';
 /** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
 const MAX_MESSAGES_PER_TRANSACTION = 99;
 
-/** Aggregate byte budget per transaction, kept under the 4 MB DynamoDB limit. */
+/**
+ * Aggregate byte budget per transaction. Held ~500 KB below DynamoDB's 4 MB
+ * `TransactWriteItems` ceiling so the conservative per-item estimate (see
+ * `ITEM_OVERHEAD_BYTES`) cannot push a chunk over the real limit at commit time.
+ */
 const MAX_TRANSACTION_BYTES = 3_500_000;
 
 async function buildItems(

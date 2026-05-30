@@ -1,7 +1,13 @@
 import { PayloadLocation, type PayloadDescriptor } from '../../shared/codec/codec';
 import type { ChatMessageItem } from '../types';
 
-/** Per-item allowance for attribute names, keys, and descriptor scaffolding. */
+/**
+ * Per-item allowance added to the measured field bytes to cover what the size
+ * estimate does not count directly: DynamoDB attribute names, the document
+ * marshalling envelope, and descriptor scaffolding. Deliberately generous so the
+ * estimate stays at or above the real marshalled item size and chunks never
+ * overshoot the transaction byte limit.
+ */
 const ITEM_OVERHEAD_BYTES = 256;
 
 function descriptorBytes(descriptor: PayloadDescriptor): number {

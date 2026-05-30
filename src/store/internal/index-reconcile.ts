@@ -23,7 +23,12 @@ function refIdentity(namespace: string[], key: string): string {
   return `${namespace.join(REF_KEY_SEPARATOR)}${REF_KEY_SEPARATOR}${key}`;
 }
 
-/** Enumerate canonical items under `prefix`, recomputing each embedding. */
+/**
+ * Enumerate canonical items under `prefix`, recomputing each embedding. A failed
+ * embedding rejects the whole reconcile by design: silently skipping an item
+ * would drop it from the live set, after which {@link selectOrphans} would prune
+ * its still-valid backend vector. Fail-fast keeps the backend from losing data.
+ */
 export async function collectReconcileTargets(
   context: StoreContext,
   prefix: string[],

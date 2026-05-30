@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "examples/*.mjs",
+    "*.config.ts",
+    "test/**/*.test.ts",
+    "test/package-smoke/*.test.mjs"
+  ],
+  "project": ["src/**/*.ts", "test/**/*.ts"],
+  "ignoreDependencies": ["ts-node"]
+}

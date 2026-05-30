@@ -33,6 +33,21 @@ function isTransientS3Error(error: Error): boolean {
 export interface OrphanCleanupOptions {
   rng?: () => number;
   maxAttempts?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * Wait out one backoff window, cancellable via `options.signal`. Resolves `true`
+ * when the signal aborts the wait (so the caller stops retrying) and `false`
+ * otherwise — never rejects, preserving the best-effort, non-throwing contract.
+ */
+async function backoffSleep(delayMs: number, options: OrphanCleanupOptions): Promise<boolean> {
+  try {
+    await sleep(fullJitter(delayMs, options.rng), options.signal);
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -65,7 +80,7 @@ export async function cleanUpS3Orphans(
     } catch (error) {
       lastError = error as Error;
       if (attempt >= maxAttempts || !isTransientS3Error(lastError)) break;
-      await sleep(fullJitter(delay, options.rng));
+      if (await backoffSleep(delay, options)) break;
       delay = nextBackoffDelay(delay);
     }
   }

@@ -1,6 +1,7 @@
 import { GetCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { ValidationError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
@@ -186,5 +187,19 @@ describe('searchItems', () => {
     });
     const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
     expect(items).toEqual([]);
+  });
+
+  it('throws ValidationError on a negative limit', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      searchItems(context(client), { namespacePrefix: ['users'], limit: -1 }),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it('throws ValidationError on a non-integer offset', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      searchItems(context(client), { namespacePrefix: ['users'], offset: 2.5 }),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 });
