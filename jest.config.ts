@@ -3,6 +3,7 @@ export default {
     '<rootDir>/test/unit/**/*.test.ts',
     '<rootDir>/test/static/**/*.test.ts',
     '<rootDir>/test/types/**/*.test.ts',
+    '<rootDir>/test/property/**/*.test.ts',
   ],
   testPathIgnorePatterns: [
     '/node_modules/',
