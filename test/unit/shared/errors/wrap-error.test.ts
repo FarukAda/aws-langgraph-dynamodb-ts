@@ -14,7 +14,7 @@ describe('wrapError', () => {
 
   it('does not double-wrap an already-coded error', () => {
     const already = new ValidationError('bad');
-    expect(wrapError(already, ErrorCode.NOT_FOUND)).toBe(already);
+    expect(wrapError(already, ErrorCode.CONDITION_CONFLICT)).toBe(already);
   });
 
   it('defaults the context to an empty object when none is given', () => {

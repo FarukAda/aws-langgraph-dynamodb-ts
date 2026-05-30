@@ -21,7 +21,7 @@ describe('DynamoDbLangGraphError', () => {
   });
 
   it('defaults context to an empty object and cause to undefined', () => {
-    const err = new DynamoDbLangGraphError('x', ErrorCode.NOT_FOUND);
+    const err = new DynamoDbLangGraphError('x', ErrorCode.CONDITION_CONFLICT);
     expect(err.context).toEqual({});
     expect(err.cause).toBeUndefined();
   });

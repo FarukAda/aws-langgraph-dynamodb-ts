@@ -29,7 +29,9 @@
       "Bash(git status *)",
       "Bash(ls jest.config.* stryker.config.* eslint.config.* .eslintrc*)",
       "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
-      "Bash(echo \"LINT:$?\")"
+      "Bash(echo \"LINT:$?\")",
+      "WebFetch(domain:aws.amazon.com)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [
       "Bash(stryker *)",

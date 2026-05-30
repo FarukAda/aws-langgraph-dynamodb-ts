@@ -223,7 +223,7 @@ try {
 }
 ```
 
-`ErrorCode` values: `VALIDATION`, `NOT_FOUND`, `CONDITION_CONFLICT`, `RETRY_EXHAUSTED`, `BATCH_WRITE_INCOMPLETE`, `COMPRESSION_LIMIT`, `S3_OFFLOAD_FAILED`, `S3_ORPHAN_CLEANUP_FAILED`, `ABORTED`. Typed subclasses are exported where callers commonly branch: `ValidationError`, `ConflictError`, `RetryExhaustedError`, `BatchWriteIncompleteError`, `AbortError`.
+`ErrorCode` values: `VALIDATION`, `CONDITION_CONFLICT`, `RETRY_EXHAUSTED`, `BATCH_WRITE_INCOMPLETE`, `COMPRESSION_LIMIT`, `S3_OFFLOAD_FAILED`, `ABORTED`. Typed subclasses are exported where callers commonly branch: `ValidationError`, `ConflictError`, `RetryExhaustedError`, `BatchWriteIncompleteError`, `AbortError`.
 
 ## Logging
 
