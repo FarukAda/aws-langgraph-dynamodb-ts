@@ -39,6 +39,7 @@ describe('writeMessageChunk', () => {
     const { client, mock } = createStrictDocumentMock();
     const conflict = Object.assign(new Error('canceled'), {
       name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'TransactionConflict' }],
     });
     mock.on(TransactWriteCommand).rejectsOnce(conflict).resolves({});
     await writeMessageChunk(
@@ -50,10 +51,46 @@ describe('writeMessageChunk', () => {
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(2);
   });
 
+  it('does not retry a cancellation with a permanent reason', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const permanent = Object.assign(new Error('canceled'), {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'ValidationError' }],
+    });
+    mock.on(TransactWriteCommand).rejects(permanent);
+    await expect(
+      writeMessageChunk(
+        { client, tableName: 'history' } as never,
+        [messageItem('MSG#1')],
+        { sessionId: 's1', count: 1, now: 'u' },
+        { rng: () => 0 },
+      ),
+    ).rejects.toThrow();
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(1);
+  });
+
+  it('does not retry a bare cancellation that carries no reasons', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const bare = Object.assign(new Error('canceled'), {
+      name: 'TransactionCanceledException',
+    });
+    mock.on(TransactWriteCommand).rejects(bare);
+    await expect(
+      writeMessageChunk(
+        { client, tableName: 'history' } as never,
+        [messageItem('MSG#1')],
+        { sessionId: 's1', count: 1, now: 'u' },
+        { rng: () => 0 },
+      ),
+    ).rejects.toThrow();
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(1);
+  });
+
   it('reuses one ClientRequestToken across retries so a re-sent commit is idempotent', async () => {
     const { client, mock } = createStrictDocumentMock();
     const conflict = Object.assign(new Error('canceled'), {
       name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'TransactionConflict' }],
     });
     mock.on(TransactWriteCommand).rejectsOnce(conflict).resolves({});
     await writeMessageChunk(

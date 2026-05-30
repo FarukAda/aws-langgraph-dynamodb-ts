@@ -35,6 +35,22 @@ describe('isRetryableError', () => {
     ).toBe(true);
   });
 
+  it('retries a transaction cancellation when every reason is transient', () => {
+    const err = Object.assign(new Error('cancelled'), {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'TransactionConflict' }, { Code: 'None' }],
+    });
+    expect(isRetryableError(err, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
+  });
+
+  it('does not retry a transaction cancellation with a permanent reason', () => {
+    const err = Object.assign(new Error('cancelled'), {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'TransactionConflict' }, { Code: 'ValidationError' }],
+    });
+    expect(isRetryableError(err, DEFAULT_RETRYABLE_ERRORS)).toBe(false);
+  });
+
   it('matches via the errno and syscall signal fields', () => {
     expect(
       isRetryableError(
