@@ -50,6 +50,8 @@ export default defineConfig([
       'no-console': 'error',
       'no-inline-comments': 'error',
       'max-lines': ['error', { max: 150, skipBlankLines: false, skipComments: false }],
+      complexity: ['error', 10],
+      'max-depth': ['error', 3],
       'no-restricted-syntax': ['error', NO_UNKNOWN, NO_EXPORT_ALL, NO_REEXPORT],
       'prettier/prettier': 'error',
       'perfectionist/sort-imports': [
@@ -78,6 +80,8 @@ export default defineConfig([
     rules: {
       'max-lines': ['error', { max: 400, skipBlankLines: false, skipComments: false }],
       '@typescript-eslint/no-explicit-any': 'off',
+      complexity: 'off',
+      'max-depth': 'off',
       'no-restricted-syntax': ['error', NO_EXPORT_ALL, NO_REEXPORT],
     },
   },

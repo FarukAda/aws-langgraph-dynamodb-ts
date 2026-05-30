@@ -2,9 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project status — UNDER REWORK
+## Project status — HARDENED
 
-The current `src/` code shipped with many bugs and **does not work in production**. The project is being reworked. Do not treat the existing architecture, file layout, or patterns as correct or as precedent — they are what is being replaced. The binding standard for all new and reworked code is the **Coding Rules** below. When existing code conflicts with a rule, the rule wins; fix the code.
+The rework is complete. The current `src/` is the reworked code: ~90 single-purpose files (largest 136 lines), 100% test coverage (branches/functions/lines/statements) with real assertions, and a layered test strategy (unit + static guards + property + contract + conformance + integration on DynamoDB Local/LocalStack + real-AWS fault injection). `typecheck`, `lint`, and the full test suite are clean, and the real-AWS suite (`npm run test:aws`) passes against a live account. Treat the existing architecture, file layout, and patterns as correct precedent and follow them.
+
+The **Coding Rules** below remain the binding standard for every change and are machine-enforced by the `test/static/` guards (file length, JSDoc-only comments, no `any`/`unknown`, no barrels, error-code coverage). When code conflicts with a rule, the rule wins; fix the code.
 
 ## What this is (the product goal)
 
@@ -53,7 +55,7 @@ These are the standard for every change. No exceptions without explicit user sig
 
 ### Simplicity
 - No overengineering. Don't build what isn't needed.
-- Keep cyclomatic complexity ≤ 3 unless genuinely impossible otherwise.
+- Keep nesting shallow and functions simple: machine-enforced `max-depth ≤ 3` and cyclomatic `complexity ≤ 10` (ESLint). Prefer extracting a well-named helper over deepening a function; do not over-decompose to chase a lower number.
 
 ### Types
 - No `any` or `unknown`.
