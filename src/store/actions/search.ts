@@ -8,12 +8,12 @@ import type {
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import { type JsonValue, matchesStoreFilter } from '../internal/filter';
-import { readStoreItem } from '../internal/item-mapper';
+import { narrowStoreRecord, readStoreItem } from '../internal/item-mapper';
 import { namespaceMatchesPrefix } from '../internal/keys';
 import { scopedQuery, storeScan } from '../internal/query';
 import { type RankCandidate, rankInMemory } from '../internal/ranker';
 import type { StoreContext } from '../internal/setup';
-import type { StoreItemRecord } from '../types';
+import { validatePaging } from '../internal/validation';
 import type { VectorBackend } from '../vector-backend';
 import { getItem } from './get';
 
@@ -40,8 +40,8 @@ async function collectCandidates(
       : paginateScan({ client: context.client, params: storeScan(context.tableName) });
   const candidates: RankCandidate[] = [];
   for await (const raw of source) {
-    const record = raw as StoreItemRecord;
-    if (!record.namespace) continue;
+    const record = narrowStoreRecord(raw);
+    if (!record) continue;
     if (!namespaceMatchesPrefix(record.namespace, op.namespacePrefix)) continue;
     const item = await readStoreItem(context, record);
     if (!passesFilter(item, op)) continue;
@@ -79,6 +79,7 @@ export async function searchItems(
 ): Promise<SearchItem[]> {
   const offset = op.offset ?? 0;
   const limit = op.limit ?? DEFAULT_LIMIT;
+  validatePaging(offset, limit);
   if (op.query && context.index && context.vectorBackend) {
     const ranked = await searchViaBackend(
       context,

@@ -1,10 +1,20 @@
 import type { Item } from '@langchain/langgraph-checkpoint';
 
 import { type CodecDeps, decodePayload, encodePayload } from '../../shared/codec/codec';
+import type { DocItem } from '../../shared/dynamodb/types';
 import type { StoreItemRecord } from '../types';
 import type { JsonValue } from './filter';
 import { partitionKey, sortKey } from './keys';
 import type { StoreContext } from './setup';
+
+/**
+ * Narrow a raw scanned row to a {@link StoreItemRecord}, or `undefined` for a
+ * foreign row on a shared table (no `namespace`). Replaces an unchecked cast at
+ * the scan boundary, the one place rows are not written by this library.
+ */
+export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
+  return Array.isArray(raw.namespace) ? (raw as StoreItemRecord) : undefined;
+}
 
 /** Map a store context to the codec collaborators. */
 function storeCodecDeps(context: StoreContext): CodecDeps {

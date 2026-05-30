@@ -2,14 +2,12 @@ import type { ListNamespacesOperation } from '@langchain/langgraph-checkpoint';
 
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { paginateScan } from '../../shared/dynamodb/scan';
+import { narrowStoreRecord } from '../internal/item-mapper';
 import { NAMESPACE_SEPARATOR } from '../internal/keys';
 import { matchNamespace, prefixRoot, truncateDepth } from '../internal/namespace-match';
 import { scopedQuery, storeScan } from '../internal/query';
 import type { StoreContext } from '../internal/setup';
-
-interface NamespaceRecord {
-  namespace: string[];
-}
+import { validatePaging } from '../internal/validation';
 
 function namespaceSource(context: StoreContext, op: ListNamespacesOperation) {
   const root = prefixRoot(op.matchConditions);
@@ -28,11 +26,13 @@ export async function listNamespaces(
   context: StoreContext,
   op: ListNamespacesOperation,
 ): Promise<string[][]> {
+  validatePaging(op.offset, op.limit);
   const seen = new Set<string>();
   const namespaces: string[][] = [];
   for await (const raw of namespaceSource(context, op)) {
-    const namespace = (raw as NamespaceRecord).namespace;
-    if (!namespace) continue;
+    const record = narrowStoreRecord(raw);
+    if (!record) continue;
+    const namespace = record.namespace;
     if (
       op.matchConditions &&
       !op.matchConditions.every((condition) => matchNamespace(namespace, condition))

@@ -1,6 +1,10 @@
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { buildStoreItem, readStoreItem } from '../../../../src/store/internal/item-mapper';
+import {
+  buildStoreItem,
+  narrowStoreRecord,
+  readStoreItem,
+} from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 
 function context(): StoreContext {
@@ -30,6 +34,11 @@ describe('store item-mapper', () => {
     expect(item.namespace).toEqual(['users', 'u1']);
     expect(item.createdAt).toEqual(new Date('2024-01-01T00:00:00.000Z'));
     expect(item.updatedAt).toEqual(new Date('2024-01-02T00:00:00.000Z'));
+  });
+
+  it('narrows a store row and rejects a foreign row', () => {
+    expect(narrowStoreRecord({ namespace: ['users'], key: 'k' })).toBeDefined();
+    expect(narrowStoreRecord({ SK: 'META##c' })).toBeUndefined();
   });
 
   it('stores embedding and ttl when provided', async () => {
