@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "CI-ONLY. Mutation testing is forbidden on developer machines (it pegs the CPU) and is blocked by a local hook + deny rules. It runs only in the mutation GitHub Actions workflow. Scope is the correctness-critical internals; the jest runner disables coverage collection so the repo's 100% coverage thresholds do not interfere. Calibrate `thresholds.break` upward as the score is measured.",
+  "packageManager": "npm",
+  "testRunner": "jest",
+  "jest": {
+    "configFile": "jest.config.ts",
+    "enableFindRelatedTests": true
+  },
+  "coverageAnalysis": "perTest",
+  "mutate": [
+    "src/checkpointer/internal/**/*.ts",
+    "src/history/internal/**/*.ts",
+    "src/store/internal/**/*.ts",
+    "src/shared/dynamodb/**/*.ts",
+    "src/shared/codec/**/*.ts",
+    "src/shared/ulid.ts"
+  ],
+  "concurrency": 2,
+  "incremental": true,
+  "thresholds": {
+    "high": 90,
+    "low": 80,
+    "break": 70
+  },
+  "reporters": ["clear-text", "progress"]
+}
