@@ -9,6 +9,10 @@ import {
 import { getItem } from './actions/get';
 import { listNamespaces } from './actions/list-namespaces';
 import { putItem } from './actions/put';
+import {
+  reconcileVectorIndex as reconcileVectorIndexAction,
+  type VectorReconcileResult,
+} from './actions/reconcile-vector-index';
 import { searchItems } from './actions/search';
 import { type StoreContext, setUpStore } from './internal/setup';
 import type { DynamoDBStoreOptions } from './types';
@@ -46,6 +50,14 @@ export class DynamoDBStore extends BaseStore {
       results.push(await this.dispatch(operation));
     }
     return results as OperationResults<Op>;
+  }
+
+  /**
+   * Repair the configured vector backend against the canonical items under
+   * `namespacePrefix`. A maintenance tool; see {@link reconcileVectorIndex}.
+   */
+  reconcileVectorIndex(namespacePrefix: string[]): Promise<VectorReconcileResult> {
+    return reconcileVectorIndexAction(this.context, namespacePrefix);
   }
 
   /** Release owned resources (the underlying client and any S3 client). */

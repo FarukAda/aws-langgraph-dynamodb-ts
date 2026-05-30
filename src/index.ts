@@ -2,6 +2,7 @@ export { DynamoDBSaver } from './checkpointer/saver';
 export type { DynamoDBSaverOptions } from './checkpointer/types';
 export { DynamoDBStore } from './store/store';
 export type { DynamoDBStoreOptions } from './store/types';
+export type { VectorReconcileResult } from './store/actions/reconcile-vector-index';
 export type { VectorBackend, VectorMatch, VectorRef } from './store/vector-backend';
 export { DynamoDBChatMessageHistory } from './history/chat-message-history';
 export { DynamoDBSessionChatMessageHistory } from './history/session-adapter';

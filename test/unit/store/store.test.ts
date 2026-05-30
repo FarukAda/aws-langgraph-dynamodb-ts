@@ -56,6 +56,26 @@ describe('DynamoDBStore', () => {
     expect(results).toEqual([null, []]);
   });
 
+  it('delegates reconcileVectorIndex to the action', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    const backend = {
+      upsert: jest.fn(),
+      delete: jest.fn(),
+      query: jest.fn(),
+      listKeys: jest.fn().mockResolvedValue([]),
+    };
+    const store = new DynamoDBStore({
+      tableName: 'store',
+      client,
+      index: { dims: 1, embeddings: { embedQuery: jest.fn().mockResolvedValue([1]) } as never },
+      vectorBackend: backend,
+    });
+    const result = await store.reconcileVectorIndex(['users', 'u1']);
+    expect(result).toEqual({ upserted: 0, pruned: 0 });
+    expect(backend.listKeys).toHaveBeenCalledWith(['users', 'u1']);
+  });
+
   it('does not destroy an injected client but does destroy an owned one', () => {
     const injected = createStrictDocumentMock();
     expect(() =>
