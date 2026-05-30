@@ -12,6 +12,7 @@ describe('setUpHistory', () => {
     expect(setup.ownsClient).toBe(true);
     expect(setup.context.serde).toBe(JSON_SERDE);
     expect(setup.context.offloader).toBeUndefined();
+    expect(typeof setup.context.ulid()).toBe('string');
   });
 
   it('does not own an injected client and builds an offloader + ttl/compression', () => {

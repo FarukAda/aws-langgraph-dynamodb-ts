@@ -19,14 +19,21 @@ export interface SessionMetadata {
   updatedAt: string;
 }
 
-/** The single DynamoDB item holding a session's full message history. */
+/** A single stored chat message item (one per message, ordered by its ULID). */
+export interface ChatMessageItem {
+  PK: string;
+  SK: string;
+  sessionId: string;
+  message: PayloadDescriptor;
+  ttl?: number;
+}
+
+/** The per-session metadata item, updated atomically as messages are appended. */
 export interface ChatSessionItem {
   PK: string;
   SK: string;
   sessionId: string;
-  messages: PayloadDescriptor;
   messageCount: number;
-  version: number;
   title?: string;
   createdAt: string;
   updatedAt: string;

@@ -1,78 +1,64 @@
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
-import { AIMessage, HumanMessage, mapChatMessagesToStoredMessages } from '@langchain/core/messages';
+import { BatchWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
 import { addMessages } from '../../../../src/history/actions/add-messages';
-import { buildSessionItem } from '../../../../src/history/internal/item-mapper';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
+function sequentialUlid(): () => string {
+  let n = 0;
+  return () => `U${n++}`;
+}
+
 function context(
   client: HistoryContext['client'],
   extra?: Partial<HistoryContext>,
 ): HistoryContext {
-  return { client, tableName: 'history', serde: JSON_SERDE, logger: SILENT_LOGGER, ...extra };
+  return {
+    client,
+    tableName: 'history',
+    serde: JSON_SERDE,
+    logger: SILENT_LOGGER,
+    ulid: sequentialUlid(),
+    ...extra,
+  };
 }
-const conflict = () =>
-  Object.assign(new Error('race'), { name: 'ConditionalCheckFailedException' });
 
 describe('addMessages', () => {
-  it('creates a new session with version 1, a derived title, and attribute_not_exists guard', async () => {
+  it('batch-writes one item per message and atomically updates the session', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
-    await addMessages(context(client), 'sess-1', [new HumanMessage('What is DynamoDB?')]);
-    const input = mock.commandCalls(PutCommand)[0].args[0].input;
-    expect(input.Item.version).toBe(1);
-    expect(input.Item.messageCount).toBe(1);
-    expect(input.Item.title).toBe('What is DynamoDB?');
-    expect(input.ConditionExpression).toBe('attribute_not_exists(PK)');
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(UpdateCommand).resolves({});
+    await addMessages(context(client), 's1', [new HumanMessage('a'), new AIMessage('b')]);
+    const writes = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history;
+    expect(writes).toHaveLength(2);
+    expect(writes[0].PutRequest.Item.SK).toBe('MSG#U0');
+    expect(writes[1].PutRequest.Item.SK).toBe('MSG#U1');
+    const upd = mock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(upd.Key).toEqual({ PK: 's1', SK: 'SESSION' });
+    expect(upd.UpdateExpression).toContain('ADD #count :n');
+    expect(upd.ExpressionAttributeValues[':n']).toBe(2);
+    expect(upd.ExpressionAttributeValues[':title']).toBe('a');
   });
 
-  it('appends to an existing session, bumping the version under a version guard', async () => {
+  it('omits the title clause when there is no human message', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const stored = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
-    const existing = await buildSessionItem(context(client), 'sess-1', stored, {
-      version: 4,
-      createdAt: 'c',
-      updatedAt: 'u',
-      title: 'hi',
-    });
-    mock.on(GetCommand).resolves({ Item: existing });
-    mock.on(PutCommand).resolves({});
-    await addMessages(context(client), 'sess-1', [new AIMessage('hello')]);
-    const input = mock.commandCalls(PutCommand)[0].args[0].input;
-    expect(input.Item.version).toBe(5);
-    expect(input.Item.messageCount).toBe(2);
-    expect(input.ConditionExpression).toBe('#v = :v');
-    expect(input.ExpressionAttributeValues).toEqual({ ':v': 4 });
-  });
-
-  it('retries the read-modify-write when a concurrent writer wins', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).rejectsOnce(conflict()).resolvesOnce({});
-    await addMessages(context(client), 'sess-1', [new HumanMessage('hi')]);
-    expect(mock.commandCalls(PutCommand)).toHaveLength(2);
-  });
-
-  it('throws CONDITION_CONFLICT after retries are exhausted', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).rejects(conflict());
-    await expect(
-      addMessages(context(client), 'sess-1', [new HumanMessage('hi')]),
-    ).rejects.toMatchObject({
-      code: ErrorCode.CONDITION_CONFLICT,
-    });
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(UpdateCommand).resolves({});
+    await addMessages(context(client), 's1', [new AIMessage('only assistant')]);
+    const upd = mock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(upd.UpdateExpression).not.toContain('#title');
+    expect(upd.ExpressionAttributeValues[':title']).toBeUndefined();
   });
 
   it('is a no-op for an empty message list', async () => {
     const { client, mock } = createStrictDocumentMock();
-    await addMessages(context(client), 'sess-1', []);
-    expect(mock.commandCalls(PutCommand)).toHaveLength(0);
+    await addMessages(context(client), 's1', []);
+    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
+    expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
   });
 
   it('rejects an empty session id', async () => {
@@ -82,13 +68,45 @@ describe('addMessages', () => {
     });
   });
 
-  it('stamps a ttl when configured', async () => {
+  it('stamps a uniform ttl on every message item and the session update', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
-    await addMessages(context(client, { ttl: { seconds: 100 } }), 'sess-1', [
-      new HumanMessage('hi'),
-    ]);
-    expect(typeof mock.commandCalls(PutCommand)[0].args[0].input.Item.ttl).toBe('number');
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(UpdateCommand).resolves({});
+    await addMessages(context(client, { ttl: { seconds: 100 } }), 's1', [new HumanMessage('hi')]);
+    const item =
+      mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history[0].PutRequest.Item;
+    expect(typeof item.ttl).toBe('number');
+    const upd = mock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(typeof upd.ExpressionAttributeValues[':ttl']).toBe('number');
+    expect(upd.UpdateExpression).toContain('#ttl');
+  });
+
+  it('rethrows a batch-write failure without cleanup when no offloader is set', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(BatchWriteCommand)
+      .rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
+    await expect(addMessages(context(client), 's1', [new HumanMessage('hi')])).rejects.toThrow(
+      'down',
+    );
+  });
+
+  it('cleans up offloaded objects when the batch write fails', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(BatchWriteCommand)
+      .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: string[]) => parts.join('/'),
+      upload: async (key: string) => key,
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    await expect(
+      addMessages(context(client, { offloader: offloader as never }), 's1', [
+        new HumanMessage('hi'),
+      ]),
+    ).rejects.toThrow('boom');
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['s1/U0']);
   });
 });

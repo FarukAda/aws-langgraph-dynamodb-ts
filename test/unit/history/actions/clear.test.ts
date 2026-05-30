@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { clearSession } from '../../../../src/history/actions/clear';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
@@ -11,42 +11,61 @@ function context(
   client: HistoryContext['client'],
   extra?: Partial<HistoryContext>,
 ): HistoryContext {
-  return { client, tableName: 'history', serde: JSON_SERDE, logger: SILENT_LOGGER, ...extra };
+  return {
+    client,
+    tableName: 'history',
+    serde: JSON_SERDE,
+    logger: SILENT_LOGGER,
+    ulid: () => 'U',
+    ...extra,
+  };
 }
 
+const inlineMessage = {
+  location: PayloadLocation.INLINE,
+  serdeType: 'json',
+  bytes: new Uint8Array(),
+};
+
 describe('clearSession', () => {
-  it('does nothing when the session does not exist', async () => {
+  it('does nothing when the session partition is empty', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
+    mock.on(QueryCommand).resolves({ Items: [] });
     await clearSession(context(client), 'sess-x');
-    expect(mock.commandCalls(DeleteCommand)).toHaveLength(0);
+    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
   });
 
-  it('deletes the session item', async () => {
+  it('batch-deletes every message item and the metadata item', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({
-      Item: {
-        messages: { location: PayloadLocation.INLINE, serdeType: 'json', bytes: new Uint8Array() },
-      },
+    mock.on(QueryCommand).resolves({
+      Items: [
+        { PK: 'sess-1', SK: 'MSG#01A', message: inlineMessage },
+        { PK: 'sess-1', SK: 'SESSION' },
+      ],
     });
-    mock.on(DeleteCommand).resolves({});
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     await clearSession(context(client), 'sess-1');
-    expect(mock.commandCalls(DeleteCommand)[0].args[0].input.Key).toEqual({
-      PK: 'sess-1',
-      SK: 'SESSION',
-    });
+    const deletes = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history;
+    expect(deletes.map((d) => d.DeleteRequest.Key)).toEqual([
+      { PK: 'sess-1', SK: 'MSG#01A' },
+      { PK: 'sess-1', SK: 'SESSION' },
+    ]);
   });
 
-  it('cleans up the offloaded S3 object when the messages were offloaded', async () => {
+  it('cleans up offloaded S3 objects for offloaded messages', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({
-      Item: {
-        messages: { location: PayloadLocation.S3, serdeType: 'json', s3Key: 'sess-1/messages.bin' },
-      },
+    mock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'sess-1',
+          SK: 'MSG#01A',
+          message: { location: PayloadLocation.S3, serdeType: 'json', s3Key: 'sess-1/U.bin' },
+        },
+      ],
     });
-    mock.on(DeleteCommand).resolves({});
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
     await clearSession(context(client, { offloader: offloader as never }), 'sess-1');
-    expect(offloader.deleteBatch).toHaveBeenCalledWith(['sess-1/messages.bin']);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['sess-1/U.bin']);
   });
 });

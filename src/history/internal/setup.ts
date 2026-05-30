@@ -7,6 +7,7 @@ import { JSON_SERDE } from '../../shared/codec/json-serde';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
 import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
+import { createUlidFactory } from '../../shared/ulid';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBChatMessageHistoryOptions } from '../types';
 
@@ -19,6 +20,7 @@ export interface HistoryContext {
   offloader?: S3Offloader;
   ttl?: TtlOption;
   logger: Logger;
+  ulid: () => string;
 }
 
 /** Result of wiring up a chat-history adapter from its options. */
@@ -40,6 +42,7 @@ export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): Histor
       offloader: options.s3 ? new S3Offloader(options.s3) : undefined,
       ttl: options.ttl,
       logger: resolveLogger(options.logger),
+      ulid: createUlidFactory(),
     },
     ddbClient: resolved.ddbClient,
     ownsClient: resolved.ownsClient,

@@ -1,29 +1,40 @@
-import { type BaseMessage, mapChatMessagesToStoredMessages } from '@langchain/core/messages';
+import {
+  type BaseMessage,
+  type StoredMessage,
+  mapChatMessagesToStoredMessages,
+} from '@langchain/core/messages';
 
 import { nowIso } from '../../shared/clock';
+import { collectS3Keys } from '../../shared/codec/descriptor-keys';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
+import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { validateNonEmptyString } from '../../shared/validation/primitives';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
-import { buildSessionItem, decodeMessages, readRawSession } from '../internal/item-mapper';
-import { withOptimisticRetry } from '../internal/optimistic-retry';
+import { buildMessageItem } from '../internal/item-mapper';
+import { buildSessionUpdate } from '../internal/session-update';
 import type { HistoryContext } from '../internal/setup';
 import { deriveTitle } from '../internal/title-generator';
-import type { ChatSessionItem } from '../types';
+import type { ChatMessageItem } from '../types';
 
-function condition(existing: ChatSessionItem | undefined) {
-  if (!existing) return { ConditionExpression: 'attribute_not_exists(PK)' };
-  return {
-    ConditionExpression: '#v = :v',
-    ExpressionAttributeNames: { '#v': 'version' },
-    ExpressionAttributeValues: { ':v': existing.version },
-  };
+async function buildItems(
+  context: HistoryContext,
+  sessionId: string,
+  stored: StoredMessage[],
+  ttlTimestamp?: number,
+): Promise<ChatMessageItem[]> {
+  const items: ChatMessageItem[] = [];
+  for (const message of stored) {
+    items.push(await buildMessageItem(context, sessionId, context.ulid(), message, ttlTimestamp));
+  }
+  return items;
 }
 
 /**
- * Append messages to a session via an optimistic read-modify-write: read the
- * current list + version, append, and conditionally write the next version,
- * retrying if a concurrent writer won the race. The whole session shares one
- * TTL, so a live session never develops mid-history gaps.
+ * Append messages with an O(1) write: one item per message via a single batched
+ * put, then one atomic `ADD` update of the session-metadata item. There is no
+ * read-modify-write, so concurrent appends never clobber each other, and the
+ * uniform whole-conversation TTL keeps a live session free of mid-history gaps.
  */
 export async function addMessages(
   context: HistoryContext,
@@ -32,21 +43,36 @@ export async function addMessages(
 ): Promise<void> {
   validateNonEmptyString(sessionId, 'sessionId');
   if (messages.length === 0) return;
-  const incoming = mapChatMessagesToStoredMessages(messages);
-  await withOptimisticRetry(async () => {
-    const existing = await readRawSession(context, sessionId);
-    const prior = existing ? await decodeMessages(context, existing) : [];
-    const merged = [...prior, ...incoming];
-    const timestamp = nowIso();
-    const item = await buildSessionItem(context, sessionId, merged, {
-      version: (existing?.version ?? 0) + 1,
-      createdAt: existing?.createdAt ?? timestamp,
-      updatedAt: timestamp,
-      title: existing?.title ?? deriveTitle(merged),
-      ttlTimestamp: context.ttl ? calculateTtlTimestamp(context.ttl) : undefined,
-    });
-    await withDynamoDBRetry(() =>
-      context.client.put({ TableName: context.tableName, Item: item, ...condition(existing) }),
+  const stored = mapChatMessagesToStoredMessages(messages);
+  const now = nowIso();
+  const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
+  const items = await buildItems(context, sessionId, stored, ttlTimestamp);
+  try {
+    await batchWriteAll(
+      context.client,
+      context.tableName,
+      items.map((item) => ({ PutRequest: { Item: item } })),
     );
-  });
+  } catch (error) {
+    if (context.offloader) {
+      await cleanUpS3Orphans(
+        context.offloader,
+        collectS3Keys(items.map((item) => item.message)),
+        'history.addMessages',
+        context.logger,
+      );
+    }
+    throw error;
+  }
+  await withDynamoDBRetry(() =>
+    context.client.update(
+      buildSessionUpdate(context.tableName, {
+        sessionId,
+        count: stored.length,
+        now,
+        title: deriveTitle(stored),
+        ttlTimestamp,
+      }),
+    ),
+  );
 }

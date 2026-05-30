@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, QueryCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { HumanMessage } from '@langchain/core/messages';
 
 import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-history';
@@ -13,26 +13,36 @@ function history(client) {
 describe('DynamoDBChatMessageHistory', () => {
   it('addMessage then getMessages round-trips through DynamoDB', async () => {
     const { client, mock } = createStrictDocumentMock();
-    let stored;
-    mock.on(GetCommand).callsFake(() => (stored ? { Item: stored } : {}));
-    mock.on(PutCommand).callsFake((input) => {
-      stored = input.Item;
-      return {};
+    let written: unknown[] = [];
+    mock.on(BatchWriteCommand).callsFake((input) => {
+      written = input.RequestItems.history.map(
+        (w: { PutRequest: { Item: unknown } }) => w.PutRequest.Item,
+      );
+      return { UnprocessedItems: {} };
     });
+    mock.on(UpdateCommand).resolves({});
+    mock.on(QueryCommand).callsFake(() => ({ Items: written }));
     const h = history(client);
     await h.addMessage('sess-1', new HumanMessage('hello'));
     const messages = await h.getMessages('sess-1');
     expect(messages.map((m) => m.content)).toEqual(['hello']);
   });
 
-  it('clear deletes the session', async () => {
+  it('clear deletes every item in the session partition', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({
-      Item: { messages: { location: 'INLINE', serdeType: 'json', bytes: new Uint8Array() } },
+    mock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'sess-1',
+          SK: 'MSG#01A',
+          message: { location: 'INLINE', serdeType: 'json', bytes: new Uint8Array() },
+        },
+        { PK: 'sess-1', SK: 'SESSION' },
+      ],
     });
-    mock.on(DeleteCommand).resolves({});
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     await history(client).clear('sess-1');
-    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
+    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
   });
 
   it('listSessions scans for sessions', async () => {
@@ -48,12 +58,14 @@ describe('DynamoDBChatMessageHistory', () => {
 
   it('forSession returns a single-session adapter bound to the session', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(UpdateCommand).resolves({});
     const adapter = history(client).forSession('sess-9');
     expect(adapter).toBeInstanceOf(DynamoDBSessionChatMessageHistory);
     await adapter.addMessage(new HumanMessage('hi'));
-    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item.PK).toBe('sess-9');
+    const item =
+      mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history[0].PutRequest.Item;
+    expect(item.PK).toBe('sess-9');
   });
 
   it('does not destroy an injected client but destroys an owned one', () => {
