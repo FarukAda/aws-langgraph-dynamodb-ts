@@ -1,6 +1,6 @@
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import { CompressionConfig, compress, decompress } from './compression';
+import { CompressionConfig, CompressionResult, compress, decompress } from './compression';
 import type { S3Offloader } from './s3/offloader';
 
 /** Where an encoded payload lives. */
@@ -13,6 +13,7 @@ export enum PayloadLocation {
 export interface InlinePayloadDescriptor {
   location: PayloadLocation.INLINE;
   serdeType: string;
+  compressed: boolean;
   bytes: Uint8Array;
 }
 
@@ -20,6 +21,7 @@ export interface InlinePayloadDescriptor {
 export interface S3PayloadDescriptor {
   location: PayloadLocation.S3;
   serdeType: string;
+  compressed: boolean;
   s3Key: string;
 }
 
@@ -56,13 +58,15 @@ export async function encodePayload<T>(
   options: EncodeOptions,
 ): Promise<PayloadDescriptor> {
   const [serdeType, raw] = await deps.serde.dumpsTyped(value);
-  const bytes = deps.compression ? await compress(raw, deps.compression) : raw;
+  const { bytes, compressed }: CompressionResult = deps.compression
+    ? await compress(raw, deps.compression)
+    : { bytes: raw, compressed: false };
   if (deps.offloader && deps.offloader.shouldOffload(bytes)) {
     const s3Key = deps.offloader.buildKey(options.keyParts);
     await deps.offloader.upload(s3Key, bytes);
-    return { location: PayloadLocation.S3, serdeType, s3Key };
+    return { location: PayloadLocation.S3, serdeType, compressed, s3Key };
   }
-  return { location: PayloadLocation.INLINE, serdeType, bytes };
+  return { location: PayloadLocation.INLINE, serdeType, compressed, bytes };
 }
 
 /** Decode a {@link PayloadDescriptor} produced by {@link encodePayload}. */
@@ -71,6 +75,10 @@ export async function decodePayload<T>(descriptor: PayloadDescriptor, deps: Code
     descriptor.location === PayloadLocation.S3
       ? await requireOffloader(deps).download(descriptor.s3Key)
       : descriptor.bytes;
-  const bytes = await decompress(raw, deps.compression?.maxDecompressedBytes);
+  const bytes = await decompress(
+    raw,
+    descriptor.compressed,
+    deps.compression?.maxDecompressedBytes,
+  );
   return deps.serde.loadsTyped(descriptor.serdeType, bytes);
 }

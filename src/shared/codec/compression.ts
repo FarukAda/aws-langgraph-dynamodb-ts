@@ -8,7 +8,6 @@ import {
 } from '../constants';
 import { DynamoDbLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
-import { COMPRESSED_MARKER, hasCompressedMarker, isGzipped } from './compression-markers';
 
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
@@ -24,42 +23,44 @@ export interface CompressionConfig {
   maxDecompressedBytes?: number;
 }
 
-/**
- * Gzip `data` when it is at least `minSizeBytes` and compression actually saves
- * space (after the 3-byte marker). Returns the original buffer otherwise. The
- * output carries the LGC marker so {@link decompress} can identify it.
- */
-export async function compress(data: Uint8Array, config: CompressionConfig): Promise<Uint8Array> {
-  const minSize = config.minSizeBytes ?? DEFAULT_COMPRESSION_MIN_BYTES;
-  if (!config.enabled || data.length < minSize) return data;
-  const level = config.level ?? DEFAULT_COMPRESSION_LEVEL;
-  const gzipped = new Uint8Array(await gzipAsync(data, { level }));
-  if (gzipped.length + COMPRESSED_MARKER.length >= data.length * COMPRESSION_GAIN_RATIO)
-    return data;
-  const out = new Uint8Array(COMPRESSED_MARKER.length + gzipped.length);
-  out.set(COMPRESSED_MARKER, 0);
-  out.set(gzipped, COMPRESSED_MARKER.length);
-  return out;
+/** The bytes to store plus whether they were gzip-compressed. */
+export interface CompressionResult {
+  bytes: Uint8Array;
+  compressed: boolean;
 }
 
 /**
- * Decompress `data` if it is library-compressed (LGC marker) or legacy gzip;
- * otherwise return it unchanged. Throws a {@link DynamoDbLangGraphError} with
- * code `COMPRESSION_LIMIT` if the output would exceed `maxBytes` (bomb guard).
+ * Gzip `data` when it is at least `minSizeBytes` and compression actually saves
+ * space. Returns the bytes to store and a `compressed` flag the caller records
+ * in the payload descriptor; compression is never inferred from the bytes.
+ */
+export async function compress(
+  data: Uint8Array,
+  config: CompressionConfig,
+): Promise<CompressionResult> {
+  const minSize = config.minSizeBytes ?? DEFAULT_COMPRESSION_MIN_BYTES;
+  if (!config.enabled || data.length < minSize) return { bytes: data, compressed: false };
+  const level = config.level ?? DEFAULT_COMPRESSION_LEVEL;
+  const gzipped = new Uint8Array(await gzipAsync(data, { level }));
+  if (gzipped.length >= data.length * COMPRESSION_GAIN_RATIO) {
+    return { bytes: data, compressed: false };
+  }
+  return { bytes: gzipped, compressed: true };
+}
+
+/**
+ * Gunzip `data` when `compressed` is true; otherwise return it unchanged. Throws
+ * a {@link DynamoDbLangGraphError} with code `COMPRESSION_LIMIT` if the output
+ * would exceed `maxBytes` (bomb guard).
  */
 export async function decompress(
   data: Uint8Array,
+  compressed: boolean,
   maxBytes: number = DEFAULT_MAX_DECOMPRESSED_BYTES,
 ): Promise<Uint8Array> {
-  const options = { maxOutputLength: maxBytes };
+  if (!compressed) return data;
   try {
-    if (hasCompressedMarker(data)) {
-      return new Uint8Array(await gunzipAsync(data.subarray(COMPRESSED_MARKER.length), options));
-    }
-    if (isGzipped(data)) {
-      return new Uint8Array(await gunzipAsync(data, options));
-    }
-    return data;
+    return new Uint8Array(await gunzipAsync(data, { maxOutputLength: maxBytes }));
   } catch (error) {
     const err = error as { code?: string };
     if (err.code === 'ERR_BUFFER_TOO_LARGE') {

@@ -1,7 +1,4 @@
-import { gzipSync } from 'node:zlib';
-
 import { compress, decompress } from '../../../../src/shared/codec/compression';
-import { COMPRESSED_MARKER } from '../../../../src/shared/codec/compression-markers';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
 const big = new Uint8Array(4096).fill(65);
@@ -15,45 +12,47 @@ function incompressiblePayload(size: number): Uint8Array {
 }
 
 describe('compress / decompress', () => {
-  it('round-trips a compressible payload above the threshold', async () => {
-    const compressed = await compress(big, { enabled: true });
-    expect(compressed.length).toBeLessThan(big.length);
-    expect(Array.from(compressed.subarray(0, COMPRESSED_MARKER.length))).toEqual(
-      Array.from(COMPRESSED_MARKER),
-    );
-    expect(await decompress(compressed)).toEqual(big);
+  it('returns compressed bytes and a true flag when gzip saves space', async () => {
+    const { bytes, compressed } = await compress(big, { enabled: true });
+    expect(compressed).toBe(true);
+    expect(bytes.length).toBeLessThan(big.length);
+    expect(await decompress(bytes, true)).toEqual(big);
   });
 
   it('passes through payloads below the minimum size unchanged', async () => {
     const small = new Uint8Array([1, 2, 3]);
-    expect(await compress(small, { enabled: true })).toBe(small);
+    const { bytes, compressed } = await compress(small, { enabled: true });
+    expect(compressed).toBe(false);
+    expect(bytes).toBe(small);
   });
 
   it('passes through unchanged when compression is disabled', async () => {
-    expect(await compress(big, { enabled: false })).toBe(big);
+    const { bytes, compressed } = await compress(big, { enabled: false });
+    expect(compressed).toBe(false);
+    expect(bytes).toBe(big);
   });
 
   it('returns the original when compression yields no real saving', async () => {
     const random = incompressiblePayload(2048);
-    const result = await compress(random, { enabled: true, minSizeBytes: 1024 });
-    expect(result).toBe(random);
+    const { bytes, compressed } = await compress(random, { enabled: true, minSizeBytes: 1024 });
+    expect(compressed).toBe(false);
+    expect(bytes).toBe(random);
   });
 
-  it('decompress passes through uncompressed data', async () => {
+  it('returns uncompressed bytes unchanged when the flag is false', async () => {
     const raw = new Uint8Array([9, 9, 9]);
-    expect(await decompress(raw)).toEqual(raw);
+    expect(await decompress(raw, false)).toEqual(raw);
   });
 
-  it('decompress handles legacy gzip payloads without the LGC marker', async () => {
-    const legacy = new Uint8Array(gzipSync(Buffer.from(big)));
-    expect(legacy[0]).toBe(0x1f);
-    expect(await decompress(legacy)).toEqual(big);
+  it('round-trips uncompressed bytes that happen to start with 0x4C 0x47 0x43', async () => {
+    const data = new Uint8Array([0x4c, 0x47, 0x43, 9, 9]);
+    expect(await decompress(data, false)).toEqual(data);
   });
 
   it('throws COMPRESSION_LIMIT when output would exceed the cap', async () => {
-    const compressed = await compress(big, { enabled: true });
+    const { bytes } = await compress(big, { enabled: true });
     try {
-      await decompress(compressed, 10);
+      await decompress(bytes, true, 10);
       throw new Error('should have thrown');
     } catch (error) {
       expect((error as { code: ErrorCode }).code).toBe(ErrorCode.COMPRESSION_LIMIT);
@@ -61,9 +60,7 @@ describe('compress / decompress', () => {
   });
 
   it('rethrows non-bomb decompression failures unchanged', async () => {
-    const corrupt = new Uint8Array(COMPRESSED_MARKER.length + 3);
-    corrupt.set(COMPRESSED_MARKER, 0);
-    corrupt.set([0x00, 0x01, 0x02], COMPRESSED_MARKER.length);
-    await expect(decompress(corrupt)).rejects.toMatchObject({ code: 'Z_DATA_ERROR' });
+    const corrupt = new Uint8Array([0x00, 0x01, 0x02]);
+    await expect(decompress(corrupt, true)).rejects.toMatchObject({ code: 'Z_DATA_ERROR' });
   });
 });
