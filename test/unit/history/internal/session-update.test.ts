@@ -38,7 +38,19 @@ describe('buildSessionUpdateItem', () => {
     expect(Update?.UpdateExpression).not.toContain('#title');
   });
 
-  it('never manages ttl (the anchor write owns it)', () => {
+  it('sets the creation-anchored ttl via if_not_exists when a timestamp is given', () => {
+    const { Update } = buildSessionUpdateItem('history', {
+      sessionId: 's1',
+      count: 1,
+      now: 'u',
+      ttlTimestamp: 1750,
+    });
+    expect(Update?.UpdateExpression).toContain('#ttl = if_not_exists(#ttl, :ttl)');
+    expect(Update?.ExpressionAttributeNames?.['#ttl']).toBe('ttl');
+    expect(Update?.ExpressionAttributeValues?.[':ttl']).toBe(1750);
+  });
+
+  it('omits the ttl clause when no timestamp is given', () => {
     const { Update } = buildSessionUpdateItem('history', {
       sessionId: 's1',
       count: 1,

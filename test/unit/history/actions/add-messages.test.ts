@@ -1,4 +1,4 @@
-import { TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
 import { addMessages } from '../../../../src/history/actions/add-messages';
@@ -62,15 +62,18 @@ describe('addMessages', () => {
     });
   });
 
-  it('establishes the ttl anchor and stamps it on every message item', async () => {
+  it('resolves the shared ttl anchor and stamps it on every item and the session update', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(UpdateCommand).resolves({ Attributes: { ttl: 4242 } });
+    mock.on(GetCommand).resolves({ Item: { ttl: 4242 } });
     mock.on(TransactWriteCommand).resolves({});
     await addMessages(context(client, { ttl: { seconds: 100 } }), 's1', [
       new HumanMessage('hi'),
       new AIMessage('yo'),
     ]);
     const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
+    const update = items[0].Update;
+    expect(update?.UpdateExpression).toContain('#ttl = if_not_exists(#ttl, :ttl)');
+    expect(update?.ExpressionAttributeValues?.[':ttl']).toBe(4242);
     const puts = items.slice(1);
     expect(puts.every((p) => p.Put?.Item?.ttl === 4242)).toBe(true);
   });

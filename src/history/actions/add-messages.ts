@@ -14,7 +14,7 @@ import { chunkBySize } from '../internal/message-chunker';
 import { writeMessageChunk } from '../internal/message-transaction';
 import type { HistoryContext } from '../internal/setup';
 import { deriveTitle } from '../internal/title-generator';
-import { establishTtlAnchor } from '../internal/ttl-anchor';
+import { resolveTtlAnchor } from '../internal/ttl-anchor';
 import type { ChatMessageItem } from '../types';
 
 /** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
@@ -57,6 +57,7 @@ async function flushChunk(
       count: chunk.length,
       now: append.now,
       title: append.title,
+      ttlTimestamp: append.ttlTimestamp,
     });
   } catch (error) {
     if (context.offloader) {
@@ -96,7 +97,7 @@ export async function addMessages(
     now: nowIso(),
     title: deriveTitle(stored),
     ttlTimestamp: context.ttl
-      ? await establishTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl))
+      ? await resolveTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl))
       : undefined,
   };
   const items = await buildItems(context, sessionId, stored, append.ttlTimestamp);

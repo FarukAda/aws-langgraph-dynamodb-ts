@@ -11,13 +11,15 @@ export interface SessionUpdateFields {
   count: number;
   now: string;
   title?: string;
+  ttlTimestamp?: number;
 }
 
 /**
  * Build the metadata `Update` transact-item: `ADD` the message count and `SET`
- * `updatedAt` every time, while `createdAt`, `sessionId`, and `title` are written
- * once via `if_not_exists`. The `ttl` anchor is owned by the conditional anchor
- * write, never here, so it is not touched.
+ * `updatedAt` every time, while `createdAt`, `sessionId`, `title`, and the `ttl`
+ * anchor are written once via `if_not_exists`. Folding the `ttl` anchor in here
+ * means the first append fixes one shared expiry atomically with the count, with
+ * no separate pre-write that could orphan a metadata-only row.
  */
 export function buildSessionUpdateItem(
   tableName: string,
@@ -40,6 +42,11 @@ export function buildSessionUpdateItem(
     names['#title'] = 'title';
     values[':title'] = fields.title;
     sets.push('#title = if_not_exists(#title, :title)');
+  }
+  if (fields.ttlTimestamp !== undefined) {
+    names['#ttl'] = 'ttl';
+    values[':ttl'] = fields.ttlTimestamp;
+    sets.push('#ttl = if_not_exists(#ttl, :ttl)');
   }
   return {
     Update: {
