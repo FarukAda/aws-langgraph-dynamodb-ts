@@ -9,6 +9,7 @@ import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
 import { buildWriteItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
+import { validateTaskId } from '../internal/validation';
 
 /**
  * Persist a task's intermediate writes for a checkpoint as one item per write.
@@ -20,6 +21,7 @@ export async function putWrites(
   writes: PendingWrite[],
   taskId: string,
 ): Promise<void> {
+  validateTaskId(taskId);
   const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
   if (checkpointId === undefined) {
     throw new ValidationError('checkpoint_id is required to store writes', 'checkpoint_id');

@@ -1,7 +1,7 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 
-import { validateNonEmptyString } from '../../shared/validation/primitives';
 import type { CheckpointConfigurable } from '../types';
+import { validateCheckpointId, validateCheckpointNs, validateThreadId } from './validation';
 
 /** The thread/namespace/checkpoint identifiers extracted from a config. */
 export interface ResolvedConfigurable {
@@ -16,10 +16,15 @@ export interface ResolvedConfigurable {
  */
 export function readConfigurable(config: RunnableConfig): ResolvedConfigurable {
   const configurable = (config.configurable ?? {}) as CheckpointConfigurable;
-  validateNonEmptyString(configurable.thread_id, 'thread_id');
+  validateThreadId(configurable.thread_id);
+  const checkpointNs = configurable.checkpoint_ns ?? '';
+  validateCheckpointNs(checkpointNs);
+  if (configurable.checkpoint_id !== undefined) {
+    validateCheckpointId(configurable.checkpoint_id);
+  }
   return {
     threadId: configurable.thread_id,
-    checkpointNs: configurable.checkpoint_ns ?? '',
+    checkpointNs,
     checkpointId: configurable.checkpoint_id,
   };
 }

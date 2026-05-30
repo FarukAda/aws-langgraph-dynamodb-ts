@@ -37,6 +37,18 @@ describe('putWrites', () => {
     expect(requests[1].PutRequest?.Item?.SK).toBe('WRITE##c1#task-3#0000000001');
   });
 
+  it('rejects a taskId containing the reserved separator', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      putWrites(
+        context(client),
+        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+        [['ch', 'a']],
+        'task#1',
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
+  });
+
   it('throws VALIDATION when checkpoint_id is missing', async () => {
     const { client } = createStrictDocumentMock();
     try {

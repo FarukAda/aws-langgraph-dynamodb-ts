@@ -30,4 +30,14 @@ describe('readConfigurable', () => {
   it('throws when configurable is absent entirely', () => {
     expect(() => readConfigurable({})).toThrow(/thread_id/);
   });
+
+  it('throws a VALIDATION error when an id contains the reserved separator', () => {
+    expect(() => readConfigurable({ configurable: { thread_id: 'a#b' } })).toThrow();
+    expect(() =>
+      readConfigurable({ configurable: { thread_id: 't', checkpoint_ns: 'n#s' } }),
+    ).toThrow();
+    expect(() =>
+      readConfigurable({ configurable: { thread_id: 't', checkpoint_id: 'c#1' } }),
+    ).toThrow();
+  });
 });
