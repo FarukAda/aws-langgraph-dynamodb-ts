@@ -10,7 +10,7 @@ export enum PayloadLocation {
 }
 
 /** A payload stored inline as bytes in the DynamoDB item. */
-export interface InlinePayloadDescriptor {
+interface InlinePayloadDescriptor {
   location: PayloadLocation.INLINE;
   serdeType: string;
   compressed: boolean;
@@ -18,7 +18,7 @@ export interface InlinePayloadDescriptor {
 }
 
 /** A payload offloaded to S3, referenced by key. */
-export interface S3PayloadDescriptor {
+interface S3PayloadDescriptor {
   location: PayloadLocation.S3;
   serdeType: string;
   compressed: boolean;

@@ -12,7 +12,7 @@ const WRITE_INDEX_PAD_WIDTH = 10;
 const WRITE_INDEX_OFFSET = 8;
 
 /** Sort-key kinds for the checkpoints table (the approved SK separation). */
-export enum CheckpointItemKind {
+enum CheckpointItemKind {
   META = 'META',
   PAYLOAD = 'PAYLOAD',
   WRITE = 'WRITE',

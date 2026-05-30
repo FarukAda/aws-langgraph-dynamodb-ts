@@ -4,7 +4,7 @@ import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 export type DocItem = Record<string, NativeAttributeValue>;
 
 /** A BatchWriteItem PutRequest. */
-export interface PutWriteRequest {
+interface PutWriteRequest {
   PutRequest: { Item: DocItem };
 }
 

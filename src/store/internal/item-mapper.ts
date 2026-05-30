@@ -7,7 +7,7 @@ import { partitionKey, sortKey } from './keys';
 import type { StoreContext } from './setup';
 
 /** Map a store context to the codec collaborators. */
-export function storeCodecDeps(context: StoreContext): CodecDeps {
+function storeCodecDeps(context: StoreContext): CodecDeps {
   return { serde: context.serde, compression: context.compression, offloader: context.offloader };
 }
 

@@ -7,11 +7,7 @@ import { readCheckpoint, readMetadata } from './item-reader';
 import type { CheckpointerContext } from './setup';
 
 /** Build a config that addresses a specific checkpoint. */
-export function configFor(
-  threadId: string,
-  checkpointNs: string,
-  checkpointId: string,
-): RunnableConfig {
+function configFor(threadId: string, checkpointNs: string, checkpointId: string): RunnableConfig {
   return {
     configurable: { thread_id: threadId, checkpoint_ns: checkpointNs, checkpoint_id: checkpointId },
   };
