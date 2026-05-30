@@ -100,4 +100,28 @@ describe('DynamoDBSaver end-to-end against real DynamoDB', () => {
     await saver.deleteThread('thread-A');
     expect(await saver.getTuple({ configurable: { thread_id: 'thread-A' } })).toBeUndefined();
   });
+
+  it('replays 12 pending writes for a task in numeric index order (not lexicographic)', async () => {
+    const thread = { configurable: { thread_id: 'thread-B', checkpoint_ns: '' } };
+    await saver.put(thread, checkpoint('ckpt-100', 'start'), metadata, {});
+
+    const writes = Array.from(
+      { length: 12 },
+      (_unused, index) => [`ch${index}`, `v${index}`] as [string, string],
+    );
+    await saver.putWrites(
+      { configurable: { thread_id: 'thread-B', checkpoint_ns: '', checkpoint_id: 'ckpt-100' } },
+      writes,
+      'task-1',
+    );
+
+    const tuple = await saver.getTuple({
+      configurable: { thread_id: 'thread-B', checkpoint_id: 'ckpt-100' },
+    });
+    expect(tuple?.pendingWrites).toEqual(
+      writes.map(([channel, value]) => ['task-1', channel, value]),
+    );
+
+    await saver.deleteThread('thread-B');
+  });
 });
