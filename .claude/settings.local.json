@@ -16,12 +16,43 @@
       "Bash(npm install *)",
       "Bash(docker --version)",
       "Bash(docker compose *)",
-      "Bash(NODE_OPTIONS='--experimental-vm-modules' ./node_modules/.bin/stryker run --mutate 'src/shared/utils/retry.ts' --reporters progress,clear-text)",
       "Bash(curl -s http://localhost:4566/_localstack/health)",
       "Bash(curl -v http://localhost:4566/_localstack/health)",
       "Bash(curl -sf http://localhost:4566/_localstack/health)",
       "Read(//tmp/**)",
-      "Bash(npx depcheck *)"
+      "Bash(npx depcheck *)",
+      "Bash(export CLAUDE_PIPELINE_ID=\"20260528-test-suite-rewrite\")",
+      "Bash(ls .claude/specs/)",
+      "Bash(ls .claude/plans/)",
+      "Bash(ls .claude/reviews/)",
+      "Bash(ls test/)",
+      "Bash(git status *)",
+      "Bash(ls jest.config.* stryker.config.* eslint.config.* .eslintrc*)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
+      "Bash(echo \"LINT:$?\")",
+      "WebFetch(domain:aws.amazon.com)",
+      "WebFetch(domain:github.com)"
+    ],
+    "deny": [
+      "Bash(stryker *)",
+      "Bash(npx stryker *)",
+      "Bash(npm run test:mutate*)",
+      "Bash(*stryker*)",
+      "Bash(*test:mutate*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // \"\"' | grep -Eiq 'stryker|test:mutate' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Stryker / mutation testing is forbidden on this machine per the user instruction (it overloads the CPU). Do not run it.\"}}' || true",
+            "shell": "bash"
+          }
+        ]
+      }
     ]
   }
 }

@@ -1,0 +1,100 @@
+import { decodePayload, encodePayload, PayloadLocation } from '../../../../src/shared/codec/codec';
+
+const serde = {
+  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
+    'json',
+    new TextEncoder().encode(JSON.stringify(value)),
+  ],
+  loadsTyped: async (_type: string, data: Uint8Array | string): Promise<unknown> =>
+    JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data)),
+};
+
+describe('encodePayload / decodePayload', () => {
+  it('round-trips an inline payload', async () => {
+    const descriptor = await encodePayload({ a: 1 }, { serde }, { keyParts: ['t', 'c', 'f'] });
+    expect(descriptor.location).toBe(PayloadLocation.INLINE);
+    expect(descriptor.serdeType).toBe('json');
+    expect(descriptor.compressed).toBe(false);
+    expect(await decodePayload(descriptor, { serde })).toEqual({ a: 1 });
+  });
+
+  it('round-trips an inline payload whose serialized bytes start with 0x4C 0x47 0x43', async () => {
+    const lgcSerde = {
+      dumpsTyped: async (): Promise<[string, Uint8Array]> => [
+        'raw',
+        new Uint8Array([0x4c, 0x47, 0x43, 1, 2, 3]),
+      ],
+      loadsTyped: async (_type: string, data: Uint8Array | string): Promise<unknown> =>
+        Array.from(typeof data === 'string' ? new TextEncoder().encode(data) : data),
+    };
+    const descriptor = await encodePayload('ignored', { serde: lgcSerde }, { keyParts: ['t'] });
+    expect(descriptor.compressed).toBe(false);
+    expect(await decodePayload(descriptor, { serde: lgcSerde })).toEqual([
+      0x4c, 0x47, 0x43, 1, 2, 3,
+    ]);
+  });
+
+  it('offloads to S3 when the encoded payload exceeds the threshold', async () => {
+    let stored = new Uint8Array();
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[]) => `pfx/${parts.join('/')}.bin`,
+      upload: jest.fn(async (key: string, data: Uint8Array) => {
+        stored = data;
+        return key;
+      }),
+      download: jest.fn(async () => stored),
+    };
+    const descriptor = await encodePayload(
+      { a: 1 },
+      { serde, offloader: offloader as never },
+      { keyParts: ['t', 'c', 'f'] },
+    );
+    expect(descriptor.location).toBe(PayloadLocation.S3);
+    if (descriptor.location === PayloadLocation.S3) {
+      expect(descriptor.s3Key).toBe('pfx/t/c/f.bin');
+    }
+    expect(offloader.upload).toHaveBeenCalled();
+    expect(await decodePayload(descriptor, { serde, offloader: offloader as never })).toEqual({
+      a: 1,
+    });
+  });
+
+  it('stores inline when an offloader is present but the payload is below threshold', async () => {
+    const offloader = {
+      shouldOffload: () => false,
+      buildKey: () => 'unused',
+      upload: jest.fn(),
+      download: jest.fn(),
+    };
+    const descriptor = await encodePayload(
+      { a: 1 },
+      { serde, offloader: offloader as never },
+      { keyParts: ['t'] },
+    );
+    expect(descriptor.location).toBe(PayloadLocation.INLINE);
+    expect(offloader.upload).not.toHaveBeenCalled();
+  });
+
+  it('compresses when compression is enabled and round-trips it', async () => {
+    const big = { text: 'A'.repeat(4096) };
+    const descriptor = await encodePayload(
+      big,
+      { serde, compression: { enabled: true } },
+      { keyParts: ['t'] },
+    );
+    expect(descriptor.location).toBe(PayloadLocation.INLINE);
+    expect(descriptor.compressed).toBe(true);
+    expect(await decodePayload(descriptor, { serde, compression: { enabled: true } })).toEqual(big);
+  });
+
+  it('throws when asked to decode an S3 payload without an offloader', async () => {
+    const descriptor = {
+      location: PayloadLocation.S3 as const,
+      serdeType: 'json',
+      compressed: false,
+      s3Key: 'k',
+    };
+    await expect(decodePayload(descriptor, { serde })).rejects.toThrow(/without an offloader/);
+  });
+});

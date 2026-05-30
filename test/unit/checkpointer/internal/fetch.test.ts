@@ -1,0 +1,82 @@
+import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+
+import {
+  fetchPayload,
+  fetchPendingWrites,
+  fetchTargetMeta,
+} from '../../../../src/checkpointer/internal/fetch';
+import { buildWriteItems } from '../../../../src/checkpointer/internal/item-writer';
+import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+
+const serde = {
+  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
+    'json',
+    new TextEncoder().encode(JSON.stringify(value)),
+  ],
+  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+};
+
+function context(client: CheckpointerContext['client']): CheckpointerContext {
+  return { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
+}
+
+describe('fetchTargetMeta', () => {
+  it('gets a specific checkpoint by id', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({ Item: { checkpointId: 'c1' } });
+    const meta = await fetchTargetMeta(context(client), 't', '', 'c1');
+    expect(meta?.checkpointId).toBe('c1');
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
+      PK: 't',
+      SK: 'META##c1',
+    });
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);
+  });
+
+  it('queries the newest META item when no id is given', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [{ checkpointId: 'newest' }] });
+    const meta = await fetchTargetMeta(context(client), 't', '');
+    expect(meta?.checkpointId).toBe('newest');
+    const input = mock.commandCalls(QueryCommand)[0].args[0].input;
+    expect(input.Limit).toBe(1);
+    expect(input.ScanIndexForward).toBe(false);
+    expect(input.ConsistentRead).toBe(true);
+  });
+
+  it('returns undefined when the newest query is empty', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    expect(await fetchTargetMeta(context(client), 't', '')).toBeUndefined();
+  });
+});
+
+describe('fetchPayload', () => {
+  it('gets the payload item by key', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({ Item: { SK: 'PAYLOAD##c1' } });
+    const payload = await fetchPayload(context(client), 't', '', 'c1');
+    expect(payload?.SK).toBe('PAYLOAD##c1');
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);
+  });
+});
+
+describe('fetchPendingWrites', () => {
+  it('paginates write items and decodes them in order', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const items = await buildWriteItems(context(client), 't', '', 'c1', 'task-1', [
+      ['ch', 'v0'],
+      ['ch', 'v1'],
+    ]);
+    mock.on(QueryCommand).resolves({ Items: items });
+    const pending = await fetchPendingWrites(context(client), 't', '', 'c1');
+    expect(pending).toEqual([
+      ['task-1', 'ch', 'v0'],
+      ['task-1', 'ch', 'v1'],
+    ]);
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead).toBe(true);
+  });
+});

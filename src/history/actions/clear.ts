@@ -1,84 +1,37 @@
-/**
- * Clear all messages and metadata for a session
- * Deletes both the metadata item and all individual message items
- */
-
-import {
-  batchWriteAllWithRetry,
-  MAX_LOOP_ITERATIONS,
-  MAX_TOTAL_ITEMS_IN_MEMORY,
-} from '../../shared';
-import type { ClearActionParams } from '../types';
-import { validateUserId, validateSessionId, withDynamoDBRetry } from '../utils';
+import type { PayloadDescriptor } from '../../shared/codec/codec';
+import { collectS3Keys } from '../../shared/codec/descriptor-keys';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
+import { batchWriteAll } from '../../shared/dynamodb/batch-write';
+import { paginateQuery } from '../../shared/dynamodb/paginate';
+import type { DeleteWriteRequest } from '../../shared/dynamodb/types';
+import { sessionItemsQuery } from '../internal/query';
+import type { HistoryContext } from '../internal/setup';
+import type { ChatMessageItem } from '../types';
 
 /**
- * Clear all messages in a session by deleting all items (metadata + messages)
- * Queries all items with the session prefix, then batch-deletes them
- *
- * @param params - Parameters for the clear operation
- * @throws Error if the operation fails or validation fails
+ * Delete a whole session: every message item plus the metadata item, removed in
+ * one batched write. Any offloaded S3 objects for those messages are then
+ * best-effort cleaned up.
  */
-export const clearAction = async (params: ClearActionParams): Promise<void> => {
-  const { client, tableName, userId, sessionId, signal } = params;
-
-  // Validate inputs
-  validateUserId(userId);
-  validateSessionId(sessionId);
-
-  // Collect all item keys to delete: metadata item + all message items
-  const keysToDelete: Array<{ userId: string; sessionId: string }> = [];
-
-  // Add the metadata item key
-  keysToDelete.push({ userId, sessionId });
-
-  // Query all message items by SK prefix
-  const messagePrefix = `${sessionId}#msg#`;
-  let lastEvaluatedKey: Record<string, any> | undefined;
-  let iterationCount = 0;
-
-  do {
-    // Prevent infinite loops
-    iterationCount++;
-    if (iterationCount > MAX_LOOP_ITERATIONS) {
-      throw new Error('Clear operation exceeded maximum iteration limit');
-    }
-
-    const result = await withDynamoDBRetry(
-      async () => {
-        return await client.query({
-          TableName: tableName,
-          KeyConditionExpression: 'userId = :userId AND begins_with(sessionId, :prefix)',
-          ExpressionAttributeValues: {
-            ':userId': userId,
-            ':prefix': messagePrefix,
-          },
-          ProjectionExpression: 'userId, sessionId',
-          ExclusiveStartKey: lastEvaluatedKey,
-        });
-      },
-      { signal },
+export async function clearSession(context: HistoryContext, sessionId: string): Promise<void> {
+  const deletes: DeleteWriteRequest[] = [];
+  const descriptors: PayloadDescriptor[] = [];
+  for await (const raw of paginateQuery({
+    client: context.client,
+    params: sessionItemsQuery(context.tableName, sessionId),
+  })) {
+    const item = raw as ChatMessageItem;
+    deletes.push({ DeleteRequest: { Key: { PK: item.PK, SK: item.SK } } });
+    if (item.message) descriptors.push(item.message);
+  }
+  if (deletes.length === 0) return;
+  await batchWriteAll(context.client, context.tableName, deletes);
+  if (context.offloader) {
+    await cleanUpS3Orphans(
+      context.offloader,
+      collectS3Keys(descriptors),
+      'history.clear',
+      context.logger,
     );
-
-    if (result.Items && result.Items.length > 0) {
-      // Prevent memory exhaustion
-      if (keysToDelete.length + result.Items.length > MAX_TOTAL_ITEMS_IN_MEMORY) {
-        throw new Error('Clear operation exceeded maximum items in memory limit');
-      }
-      keysToDelete.push(
-        ...result.Items.map((item) => ({
-          userId: item.userId as string,
-          sessionId: item.sessionId as string,
-        })),
-      );
-    }
-
-    lastEvaluatedKey = result.LastEvaluatedKey;
-  } while (lastEvaluatedKey);
-
-  // Batch delete all items (metadata + messages) using shared utility
-  const deleteRequests = keysToDelete.map((key) => ({
-    DeleteRequest: { Key: key },
-  }));
-
-  await batchWriteAllWithRetry(client, tableName, deleteRequests, { signal });
-};
+  }
+}

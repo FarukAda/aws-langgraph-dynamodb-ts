@@ -66,7 +66,7 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
   integration:
-    name: integration (DynamoDB Local + LocalStack)
+    name: integration (DynamoDB Local)
     runs-on: ubuntu-latest
     services:
       dynamodb-local:
@@ -75,22 +75,6 @@ jobs:
           - 8000:8000
         # DDB Local's image has no healthcheck; the job waits below via a curl
         # poll before kicking off tests.
-      localstack:
-        # Pinned: :latest now requires a paid LOCALSTACK_AUTH_TOKEN; the :3 tag
-        # stays on the community release line with S3 in the free tier.
-        image: localstack/localstack:3
-        ports:
-          - 4566:4566
-        env:
-          SERVICES: s3
-          DEBUG: '0'
-          PERSISTENCE: '0'
-          AWS_DEFAULT_REGION: us-east-1
-        options: >-
-          --health-cmd="curl -sf http://localhost:4566/_localstack/health || exit 1"
-          --health-interval=3s
-          --health-timeout=5s
-          --health-retries=20
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -123,25 +107,82 @@ jobs:
           echo "DynamoDB Local never came up." >&2
           exit 1
 
-      - name: Wait for LocalStack S3
-        run: |
-          # Health endpoint reports "s3": "available" | "running" when ready;
-          # plain `grep '"s3"'` would also pass on "s3": "disabled". The
-          # alternation below only accepts the ready states.
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:4566/_localstack/health 2>/dev/null \
-                | grep -qE '"s3":[[:space:]]*"(running|available)"'; then
-              echo "LocalStack S3 is up."
-              exit 0
-            fi
-            echo "Waiting for LocalStack... ($i/60)"
-            sleep 2
-          done
-          echo "LocalStack never came up." >&2
-          exit 1
-
       - name: Run integration tests
         run: npm run test:integration
         env:
           DDB_LOCAL_ENDPOINT: http://localhost:8000
-          LOCALSTACK_ENDPOINT: http://localhost:4566
+
+      - name: Run conformance tests (LangGraph contract on real DynamoDB)
+        run: npm run test:conformance
+        env:
+          DDB_LOCAL_ENDPOINT: http://localhost:8000
+
+  conformance-matrix:
+    name: conformance (langgraph ${{ matrix.langgraph }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Prove the WRITES_IDX_MAP / checkpoint contract holds across the
+        # supported @langchain/langgraph-checkpoint range (Decision D3).
+        langgraph: ['1.0.3', 'latest']
+    services:
+      dynamodb-local:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8000:8000
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pin the checkpoint package under test
+        run: npm install --no-save @langchain/langgraph-checkpoint@${{ matrix.langgraph }}
+
+      - name: Wait for DynamoDB Local
+        run: |
+          for i in $(seq 1 60); do
+            if curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/ \
+                2>/dev/null | grep -qE '^[1-5][0-9][0-9]$'; then
+              echo "DynamoDB Local is up."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "DynamoDB Local never came up." >&2
+          exit 1
+
+      - name: Run conformance tests
+        run: npm run test:conformance
+        env:
+          DDB_LOCAL_ENDPOINT: http://localhost:8000
+
+  package-smoke:
+    name: package smoke (npm pack + install + import)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Pack and smoke-test the tarball
+        run: npm run test:package-smoke

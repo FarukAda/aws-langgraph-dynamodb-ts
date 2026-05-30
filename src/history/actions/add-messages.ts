@@ -1,74 +1,71 @@
-/**
- * Add multiple messages to a session using optimistic concurrency control.
- *
- * Reads the current messageCount, writes N message items and the updated counter
- * in a single TransactWrite (N ≤ 99, leaving room for the metadata item in the
- * 100-item transaction limit). The metadata update has a conditional check on the
- * observed count; on concurrent modification we re-read and retry.
- */
-
-import type { AddMessagesActionParams } from '../types';
 import {
-  validateUserId,
-  validateSessionId,
-  validateMessages,
-  validateMessagesSize,
-  validateTitle,
-  validateTTLDays,
-  withDynamoDBRetry,
-  withOptimisticRetry,
-  generateTitle,
-  buildMessageItems,
-  buildOptimisticMetadataUpdate,
-} from '../utils';
+  type BaseMessage,
+  type StoredMessage,
+  mapChatMessagesToStoredMessages,
+} from '@langchain/core/messages';
 
-export const addMessagesAction = async (params: AddMessagesActionParams): Promise<void> => {
-  const { client, tableName, userId, sessionId, messages, title, ttlDays, signal } = params;
+import { nowIso } from '../../shared/clock';
+import { validateNonEmptyString } from '../../shared/validation/primitives';
+import { calculateTtlTimestamp } from '../../shared/validation/ttl';
+import { appendChunks } from '../internal/append-saga';
+import { buildMessageItem } from '../internal/item-mapper';
+import { chunkBySize } from '../internal/message-chunker';
+import type { HistoryContext } from '../internal/setup';
+import { deriveTitle } from '../internal/title-generator';
+import { resolveTtlAnchor } from '../internal/ttl-anchor';
+import type { ChatMessageItem } from '../types';
 
-  validateUserId(userId);
-  validateSessionId(sessionId);
-  validateMessages(messages);
-  validateMessagesSize(messages);
-  validateTitle(title);
-  validateTTLDays(ttlDays);
+/** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
+const MAX_MESSAGES_PER_TRANSACTION = 99;
 
-  const sessionTitle = title ?? generateTitle(messages[0]);
+/**
+ * Aggregate byte budget per transaction. Held ~500 KB below DynamoDB's 4 MB
+ * `TransactWriteItems` ceiling so the conservative per-item estimate (see
+ * `ITEM_OVERHEAD_BYTES`) cannot push a chunk over the real limit at commit time.
+ */
+const MAX_TRANSACTION_BYTES = 3_500_000;
 
-  await withOptimisticRetry(`addMessages:${sessionId}`, async () => {
-    signal?.throwIfAborted();
-    const existing = await withDynamoDBRetry(
-      async () => {
-        return await client.get({
-          TableName: tableName,
-          Key: { userId, sessionId },
-          ConsistentRead: true,
-          ProjectionExpression: 'messageCount',
-        });
-      },
-      { signal },
-    );
+async function buildItems(
+  context: HistoryContext,
+  sessionId: string,
+  stored: StoredMessage[],
+  ttlTimestamp?: number,
+): Promise<ChatMessageItem[]> {
+  const items: ChatMessageItem[] = [];
+  for (const message of stored) {
+    items.push(await buildMessageItem(context, sessionId, context.ulid(), message, ttlTimestamp));
+  }
+  return items;
+}
 
-    const expectedCount = existing.Item?.messageCount as number | undefined;
-    const currentCount = expectedCount ?? 0;
-    const newCount = currentCount + messages.length;
-
-    const messageItems = buildMessageItems(userId, sessionId, messages, currentCount, ttlDays);
-    const { updateExpression, conditionExpression, expressionAttributeValues } =
-      buildOptimisticMetadataUpdate(sessionTitle, newCount, expectedCount, ttlDays);
-
-    await client.transactWrite({
-      TransactItems: [
-        ...messageItems.map((item) => ({ Put: { TableName: tableName, Item: item } })),
-        {
-          Update: {
-            TableName: tableName,
-            Key: { userId, sessionId },
-            UpdateExpression: updateExpression,
-            ConditionExpression: conditionExpression,
-            ExpressionAttributeValues: expressionAttributeValues,
-          },
-        },
-      ],
-    });
+/**
+ * Append messages as one item per message. Each chunk writes its message Puts
+ * and the session-metadata count `ADD` in a single `TransactWriteItems`, so
+ * `messageCount` can never disagree with the stored messages. A creation-anchored
+ * TTL (resolved by read, set in the transaction via `if_not_exists`) gives every
+ * item one shared expiry. Batches larger than the 100-item / 4 MB transaction
+ * limits are split into chunks and applied with caller-observed atomicity: if a
+ * later chunk fails, the committed chunks are rolled back (see {@link appendChunks}).
+ *
+ * Per item the 400 KB DynamoDB limit still applies; enable S3 offloading so
+ * large payloads become small descriptors and stay well under the limits.
+ */
+export async function addMessages(
+  context: HistoryContext,
+  sessionId: string,
+  messages: BaseMessage[],
+): Promise<void> {
+  validateNonEmptyString(sessionId, 'sessionId');
+  if (messages.length === 0) return;
+  const stored = mapChatMessagesToStoredMessages(messages);
+  const ttlTimestamp = context.ttl
+    ? await resolveTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl))
+    : undefined;
+  const items = await buildItems(context, sessionId, stored, ttlTimestamp);
+  const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
+  await appendChunks(context, sessionId, chunks, {
+    now: nowIso(),
+    title: deriveTitle(stored),
+    ttlTimestamp,
   });
-};
+}

@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-30
+
+A complete, ground-up rewrite. Earlier `0.x` releases were not reliable in
+production; `0.3.0` replaces the implementation entirely and is verified
+end-to-end against real AWS (DynamoDB, S3, Bedrock). The store and chat-history
+layouts are built to scale without per-partition ceilings, with read-your-writes
+consistency tightened across the read paths.
+
+### Added
+
+- **`DynamoDBSaver`** — LangGraph checkpoint + pending-writes persistence
+  (`extends BaseCheckpointSaver`): `getTuple`, `list` (with `before`/`filter`/
+  `limit`), `put`, `putWrites`, `deleteThread`.
+- **`DynamoDBStore`** — long-term memory (`extends BaseStore`) with metadata
+  filters (`$eq`/`$ne`/`$gt`/`$gte`/`$lt`/`$lte`), hierarchical namespaces, and
+  optional **vector semantic search** via any LangChain `Embeddings`. Items are
+  keyed `PK = namespace[0]` (scope root) / `SK = namespace[1..]#key`, so scoped
+  `search` / `listNamespaces` run as native `Query`s (`begins_with` on `SK`);
+  only a rootless prefix falls back to a `Scan`.
+- **Pluggable `VectorBackend`** (`vectorBackend` store option) — delegate
+  similarity search to an external index (OpenSearch, pgvector, …) while
+  DynamoDB keeps the canonical item. The post-write index update is best-effort:
+  backend `upsert`/`delete` failures are logged, not thrown, so they never fail a
+  successful `put`/`delete`. The in-DB ranker is bounded by `maxSearchCandidates`
+  (default 1000) and errors past the cap.
+- **`DynamoDBStore.reconcileVectorIndex(namespacePrefix)`** — a maintenance tool
+  that re-pushes embeddings and prunes orphaned vectors (prune requires the
+  optional `VectorBackend.listKeys`), returning `{ upserted, pruned }` and
+  repairing any backend drift.
+- **Optional `VectorBackend.listKeys(namespacePrefix)`** plus the `VectorRef`
+  type, so a backend can enumerate its stored vectors for reconciliation.
+- **`DynamoDBChatMessageHistory`** — multi-session chat history, plus
+  **`DynamoDBSessionChatMessageHistory`**, a single-session adapter for
+  `RunnableWithMessageHistory`. Stored as one item per message
+  (`SK = MSG#<ULID>`, ordered by a monotonic ULID) plus a `SESSION` metadata
+  item: appends are O(1) and lock-free (batched put + one atomic `ADD`), a
+  uniform whole-conversation TTL is creation-anchored via `if_not_exists`, and
+  TTL-expired messages are filtered out on read.
+- **`DynamoDBFactory`** — convenience constructors and `createAll`, which builds
+  all three adapters on one shared client and returns a combined `destroy()`.
+- **Gzip compression** (with a decompression-bomb guard), **S3 offloading** of
+  payloads over DynamoDB's 400 KB limit (optional `@aws-sdk/client-s3` peer, with
+  best-effort orphan cleanup and TTL-driven lifecycle rules), and **TTL expiry**.
+- **Unified error model** — every error extends `DynamoDbLangGraphError` with a
+  stable `ErrorCode` and a native `cause` chain; typed subclasses
+  (`ValidationError`, `ConflictError`, `RetryExhaustedError`,
+  `BatchWriteIncompleteError`, `AbortError`, and `CompensationFailedError`, which
+  is raised when an append-saga rollback itself fails and carries both the
+  trigger error as `cause` and the `rollbackError`).
+- **Injectable per-instance logger** with secret redaction (`redactLogger`,
+  `redactSecrets`).
+- **Strongly-consistent reads** on the read-your-writes paths: checkpointer
+  `getTuple` and every `store.get` use `ConsistentRead`; bulk reads stay
+  eventually consistent.
+- **Monotonic ULID factory** for ordered, collision-resistant sort keys.
+- 100% unit-test coverage with strict assertions and static rule-guards, plus
+  layered test tiers — compile-time public-API type tests (`expect-type`),
+  end-to-end integration flows, and LangGraph/LangChain contract conformance
+  against DynamoDB Local — and re-runnable real-AWS verification scripts under
+  `examples/`.
+
+### Changed (breaking)
+
+- **Table schema is now `PK`/`SK` strings** with an optional Number `ttl`
+  attribute. A single table can back all three adapters. Replaces the previous
+  per-adapter custom key schemas; existing data is not compatible.
+- **Single `tableName` option** per adapter (was `checkpointsTableName` /
+  `writesTableName` / `memoryTableName`).
+- **One `ttl` option** — `{ days }` or `{ seconds }` — replaces `ttlDays` /
+  `ttlSeconds`.
+- **S3 option renamed** `s3OffloadConfig` → `s3`.
+- **Per-instance `logger` option** replaces the global `setGlobalLogger`
+  singleton; default logging is now silent.
+- **Checkpoint sort keys** are separated into `META#` / `PAYLOAD#` / `WRITE#`
+  items, replacing single-item checkpoint storage.
+
+### Removed
+
+- The global logger singleton (`setGlobalLogger` / `getLogger` / `resetLogger`).
+- Store filter operators `$in` / `$nin` (use the supported comparison operators).
+
 ## [0.2.0] - Unreleased
 
 A production-hardening pass. Every item below is either a security fix or a
@@ -315,7 +396,8 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 
 ---
 
-[0.2.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.1.0...HEAD
+[0.3.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.0.11...v0.1.0
 [0.0.11]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.0.9...v0.0.10

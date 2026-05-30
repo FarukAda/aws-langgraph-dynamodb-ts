@@ -1,221 +1,76 @@
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import type { PayloadDescriptor } from '../../shared/codec/codec';
+import { collectS3Keys } from '../../shared/codec/descriptor-keys';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
+import { BATCH_WRITE_MAX } from '../../shared/constants';
+import { batchWriteAll } from '../../shared/dynamodb/batch-write';
+import { paginateQuery } from '../../shared/dynamodb/paginate';
+import { validateNonEmptyString } from '../../shared/validation/primitives';
+import { partitionKey } from '../internal/keys';
+import { partitionQuery } from '../internal/query';
+import type { CheckpointerContext } from '../internal/setup';
 
-import { withDynamoDBRetry, batchWriteAllWithRetry } from '../../shared';
-import {
-  type CheckpointItem,
-  type DeleteThreadActionParams,
-  type DynamoDBWriteItem,
-  PAYLOAD_SK_PREFIX,
-} from '../types';
-import { validateThreadId, CheckpointerValidationConstants } from '../utils';
-import { Writer } from './writer';
+interface DeletableItem {
+  PK: string;
+  SK: string;
+  metadata?: PayloadDescriptor;
+  checkpoint?: PayloadDescriptor;
+  value?: PayloadDescriptor;
+}
 
-/**
- * Raw DynamoDB item from the checkpoints table.
- * Could be a metadata item or a payload item — distinguished by SK prefix.
- */
-interface RawCheckpointTableItem {
-  thread_id: string;
-  checkpoint_id: string;
-  [key: string]: unknown;
+/** A bounded buffer of keys to delete plus the S3 descriptors they reference. */
+interface DeleteBuffer {
+  keys: { PK: string; SK: string }[];
+  descriptors: PayloadDescriptor[];
+}
+
+/** Append an item's delete key and any offloaded payload descriptors to the buffer. */
+function bufferItem(buffer: DeleteBuffer, item: DeletableItem): void {
+  buffer.keys.push({ PK: item.PK, SK: item.SK });
+  for (const descriptor of [item.metadata, item.checkpoint, item.value]) {
+    if (descriptor) buffer.descriptors.push(descriptor);
+  }
+}
+
+/** Delete the buffered keys and best-effort clean their S3 objects, then clear it. */
+async function flushBuffer(context: CheckpointerContext, buffer: DeleteBuffer): Promise<void> {
+  if (buffer.keys.length === 0) return;
+  await batchWriteAll(
+    context.client,
+    context.tableName,
+    buffer.keys.map((Key) => ({ DeleteRequest: { Key } })),
+  );
+  if (context.offloader) {
+    await cleanUpS3Orphans(
+      context.offloader,
+      collectS3Keys(buffer.descriptors),
+      'deleteThread',
+      context.logger,
+    );
+  }
+  buffer.keys = [];
+  buffer.descriptors = [];
 }
 
 /**
- * Delete a thread and all its checkpoints (metadata + payload items) and writes from DynamoDB
- *
- * @param params - Parameters for the delete thread operation
- * @throws Error if validation fails or too many items exist
+ * Delete every checkpoint, payload, and write for a thread (all share the
+ * thread's partition), best-effort deleting any offloaded S3 objects. Streams
+ * the partition with unbounded pagination and flushes deletes in batches, so a
+ * thread of any size is deleted to completion with bounded memory — never
+ * silently truncated at the in-memory page caps.
  */
-export const deleteThreadAction = async (params: DeleteThreadActionParams): Promise<void> => {
-  // Validate thread ID
-  validateThreadId(params.threadId);
-
-  // Query returns BOTH metadata items and PAYLOAD# items for the thread.
-  // We don't set a per-query Limit — DynamoDB's default 1 MB page is far more
-  // efficient than many small 100-item queries. The real safeguard is the
-  // MAX_DELETE_BATCH_SIZE total-item cap below.
-  const allItems: RawCheckpointTableItem[] = [];
-  let lastEvaluatedKey: Record<string, unknown> | undefined;
-  let iterationCount = 0;
-  // Deliberately higher than `MAX_LOOP_ITERATIONS` used in list()/search: deletes
-  // must walk every page of a thread (there's no early-exit when a user limit is
-  // satisfied), so the bound is set to "effectively unbounded for practical
-  // workloads". The real guard is MAX_DELETE_BATCH_SIZE total items held in memory.
-  const MAX_DELETE_PAGES = 10_000;
-
-  do {
-    iterationCount++;
-    if (iterationCount > MAX_DELETE_PAGES) {
-      throw new Error(
-        `deleteThread scanned more than ${MAX_DELETE_PAGES} DynamoDB pages without completing. ` +
-          `The thread has an extreme number of checkpoints — investigate before retrying.`,
-      );
-    }
-
-    const result = await withDynamoDBRetry(
-      async () => {
-        return await params.client.query({
-          TableName: params.checkpointsTableName,
-          KeyConditionExpression: 'thread_id = :thread_id',
-          ExpressionAttributeValues: {
-            ':thread_id': params.threadId,
-          },
-          ExclusiveStartKey: lastEvaluatedKey,
-        });
-      },
-      { signal: params.signal },
-    );
-
-    if (result.Items && result.Items.length > 0) {
-      allItems.push(...(result.Items as RawCheckpointTableItem[]));
-
-      // Safety check: prevent deleting too many items at once
-      if (allItems.length > CheckpointerValidationConstants.MAX_DELETE_BATCH_SIZE) {
-        throw new Error(
-          `Thread has too many items (>${CheckpointerValidationConstants.MAX_DELETE_BATCH_SIZE}). Delete operation aborted for safety.`,
-        );
-      }
-    }
-
-    lastEvaluatedKey = result.LastEvaluatedKey;
-  } while (lastEvaluatedKey);
-
-  if (allItems.length === 0) {
-    return; // Nothing to delete
-  }
-
-  // Separate metadata items from payload items
-  const metadataItems: CheckpointItem[] = [];
-  for (const item of allItems) {
-    // Skip items without checkpoint_id or those with PAYLOAD# prefix
-    const ckptId = item.checkpoint_id;
-    if (typeof ckptId === 'string' && !ckptId.startsWith(PAYLOAD_SK_PREFIX)) {
-      metadataItems.push(item as unknown as CheckpointItem);
-    }
-  }
-
-  // Collect S3 keys from metadata items only (payload items don't carry S3 refs)
-  const s3KeysToDelete: string[] = [];
-  if (params.s3Offloader) {
-    for (const item of metadataItems) {
-      if (item.s3_checkpoint_key) {
-        s3KeysToDelete.push(item.s3_checkpoint_key);
-      }
-      if (item.s3_metadata_key) {
-        s3KeysToDelete.push(item.s3_metadata_key);
-      }
-    }
-  }
-
-  // Delete ALL items (metadata + payload) using their actual PK+SK
-  const checkpointDeleteRequests = allItems.map((item) => ({
-    DeleteRequest: {
-      Key: {
-        thread_id: item.thread_id,
-        checkpoint_id: item.checkpoint_id,
-      },
-    },
-  }));
-
-  await batchWriteAllWithRetry(
-    params.client,
-    params.checkpointsTableName,
-    checkpointDeleteRequests,
-    { signal: params.signal },
-  );
-
-  // Fetch writes for metadata items only (payload items don't have associated writes)
-  const allWriteDeleteRequests: Array<{
-    DeleteRequest: {
-      Key: {
-        thread_id_checkpoint_id_checkpoint_ns: string;
-        task_id_idx: string;
-      };
-    };
-  }> = [];
-
-  const QUERY_CONCURRENCY = 10;
-  for (let i = 0; i < metadataItems.length; i += QUERY_CONCURRENCY) {
-    const checkpointBatch = metadataItems.slice(i, i + QUERY_CONCURRENCY);
-    const writesResults = await Promise.all(
-      checkpointBatch.map((checkpoint) =>
-        queryAllWritesForCheckpoint(params.client, params.writesTableName, checkpoint),
-      ),
-    );
-
-    for (const writeItems of writesResults) {
-      if (writeItems.length > 0) {
-        const deleteRequests = writeItems.map((item) => ({
-          DeleteRequest: {
-            Key: {
-              thread_id_checkpoint_id_checkpoint_ns: item.thread_id_checkpoint_id_checkpoint_ns,
-              task_id_idx: item.task_id_idx,
-            },
-          },
-        }));
-        allWriteDeleteRequests.push(...deleteRequests);
-
-        // Collect S3 keys from write items
-        if (params.s3Offloader) {
-          for (const item of writeItems) {
-            if (item.s3_value_key) {
-              s3KeysToDelete.push(item.s3_value_key);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Delete all writes using shared batch write utility
-  await batchWriteAllWithRetry(params.client, params.writesTableName, allWriteDeleteRequests, {
-    signal: params.signal,
+export async function deleteThread(context: CheckpointerContext, threadId: string): Promise<void> {
+  validateNonEmptyString(threadId, 'threadId');
+  const params = partitionQuery(context.tableName, partitionKey(threadId));
+  const buffer: DeleteBuffer = { keys: [], descriptors: [] };
+  const pages = paginateQuery({
+    client: context.client,
+    params,
+    maxItems: Number.POSITIVE_INFINITY,
+    maxIterations: Number.POSITIVE_INFINITY,
   });
-
-  // Clean up S3 offloaded data
-  if (params.s3Offloader && s3KeysToDelete.length > 0) {
-    await params.s3Offloader.deleteBatch(s3KeysToDelete);
+  for await (const raw of pages) {
+    bufferItem(buffer, raw as DeletableItem);
+    if (buffer.keys.length >= BATCH_WRITE_MAX) await flushBuffer(context, buffer);
   }
-};
-
-/**
- * Fetch all writes for a single checkpoint, paginating through results.
- * DynamoDB Query returns at most 1 MB per call — this loop ensures all writes are collected.
- *
- * @param client - DynamoDB Document client
- * @param tableName - Writes table name
- * @param checkpoint - Checkpoint metadata item
- * @returns All write items for this checkpoint
- */
-async function queryAllWritesForCheckpoint(
-  client: DynamoDBDocument,
-  tableName: string,
-  checkpoint: CheckpointItem,
-): Promise<DynamoDBWriteItem[]> {
-  const allItems: DynamoDBWriteItem[] = [];
-  let lastKey: Record<string, unknown> | undefined;
-
-  do {
-    const result = await withDynamoDBRetry(async () => {
-      return await client.query({
-        TableName: tableName,
-        KeyConditionExpression: 'thread_id_checkpoint_id_checkpoint_ns = :pk',
-        ExpressionAttributeValues: {
-          ':pk': Writer.getPartitionKey({
-            thread_id: checkpoint.thread_id,
-            checkpoint_id: checkpoint.checkpoint_id,
-            checkpoint_ns: checkpoint.checkpoint_ns,
-          }),
-        },
-        ExclusiveStartKey: lastKey,
-      });
-    });
-
-    if (result.Items) {
-      allItems.push(...(result.Items as DynamoDBWriteItem[]));
-    }
-    lastKey = result.LastEvaluatedKey;
-  } while (lastKey);
-
-  return allItems;
+  await flushBuffer(context, buffer);
 }

@@ -1,137 +1,29 @@
 /**
- * Test setup helpers to reduce duplication across test files
- * Provides centralized setup for mocks and common test patterns
+ * Global determinism harness applied before every test (wired via
+ * jest.config.ts `setupFilesAfterEnv`). Freezes the wall clock and seeds the
+ * RNG so TTL timestamps and full-jitter backoff schedules are exactly
+ * assertable. Real timers are left intact so `sleep()` resolves normally.
  */
+export const FROZEN_NOW_MS = 1_700_000_000_000;
 
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import {
-  DynamoDBDocument,
-  DynamoDBDocumentClient,
-  type DynamoDBDocumentClientResolvedConfig,
-  type ServiceInputTypes,
-  type ServiceOutputTypes,
-} from '@aws-sdk/lib-dynamodb';
-import type { AwsStub } from 'aws-sdk-client-mock';
-import { mockClient } from 'aws-sdk-client-mock';
+const RNG_SEED = 0x9e3779b9;
 
-import { createMockSerde } from '../fixtures/test-data';
-import { createMockEmbedding } from '../mocks/embedding-mock';
-
-/**
- * Setup result for checkpointer tests
- */
-export interface CheckpointerTestSetup {
-  ddbDocMock: AwsStub<ServiceInputTypes, ServiceOutputTypes, DynamoDBDocumentClientResolvedConfig>;
-  client: DynamoDBDocument;
-  serde: any;
-  cleanup: () => void;
-}
-
-/**
- * Setup result for store tests
- */
-export interface StoreTestSetup {
-  ddbDocMock: AwsStub<ServiceInputTypes, ServiceOutputTypes, DynamoDBDocumentClientResolvedConfig>;
-  client: DynamoDBDocument;
-  cleanup: () => void;
-}
-
-/**
- * Setup result for store tests with embedding
- */
-export interface StoreTestSetupWithEmbedding extends StoreTestSetup {
-  embedding: any;
-}
-
-/**
- * Setup result for history tests
- */
-export interface HistoryTestSetup {
-  ddbDocMock: AwsStub<ServiceInputTypes, ServiceOutputTypes, DynamoDBDocumentClientResolvedConfig>;
-  client: DynamoDBDocument;
-  cleanup: () => void;
-}
-
-/**
- * Setup test environment for checkpointer tests
- * Includes DynamoDB mock client and serde mock
- *
- * @returns Test setup with mocks and cleanup function
- */
-export function setupCheckpointerTest(): CheckpointerTestSetup {
-  const ddbDocMock = mockClient(DynamoDBDocumentClient);
-  ddbDocMock.reset();
-  const client = DynamoDBDocument.from(new DynamoDBClient({}));
-  const serde = createMockSerde();
-
-  return {
-    ddbDocMock,
-    client,
-    serde,
-    cleanup: () => {
-      ddbDocMock.reset();
-    },
+function createSeededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-/**
- * Setup test environment for store tests
- * Includes DynamoDB mock client
- *
- * @returns Test setup with mocks and cleanup function
- */
-export function setupStoreTest(): StoreTestSetup {
-  const ddbDocMock = mockClient(DynamoDBDocumentClient);
-  ddbDocMock.reset();
-  const client = DynamoDBDocument.from(new DynamoDBClient({}));
+beforeEach(() => {
+  jest.spyOn(Date, 'now').mockReturnValue(FROZEN_NOW_MS);
+  jest.spyOn(Math, 'random').mockImplementation(createSeededRandom(RNG_SEED));
+});
 
-  return {
-    ddbDocMock,
-    client,
-    cleanup: () => {
-      ddbDocMock.reset();
-    },
-  };
-}
-
-/**
- * Setup test environment for store tests with embedding support
- * Includes DynamoDB mock client and embedding mock
- *
- * @returns Test setup with mocks and cleanup function
- */
-export function setupStoreTestWithEmbedding(): StoreTestSetupWithEmbedding {
-  const ddbDocMock = mockClient(DynamoDBDocumentClient);
-  ddbDocMock.reset();
-  const client = DynamoDBDocument.from(new DynamoDBClient({}));
-  const embedding = createMockEmbedding();
-
-  return {
-    ddbDocMock,
-    client,
-    embedding,
-    cleanup: () => {
-      ddbDocMock.reset();
-    },
-  };
-}
-
-/**
- * Setup test environment for history tests
- * Includes DynamoDB mock client
- *
- * @returns Test setup with mocks and cleanup function
- */
-export function setupHistoryTest(): HistoryTestSetup {
-  const ddbDocMock = mockClient(DynamoDBDocumentClient);
-  ddbDocMock.reset();
-  const client = DynamoDBDocument.from(new DynamoDBClient({}));
-
-  return {
-    ddbDocMock,
-    client,
-    cleanup: () => {
-      ddbDocMock.reset();
-    },
-  };
-}
+afterEach(() => {
+  jest.restoreAllMocks();
+});

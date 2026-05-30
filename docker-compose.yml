@@ -15,30 +15,3 @@ services:
       interval: 2s
       timeout: 5s
       retries: 10
-
-  localstack:
-    # LocalStack is scoped to S3 only — DynamoDB stays on amazon/dynamodb-local
-    # above because it's faster and has tighter API fidelity for DDB
-    # specifically. LocalStack covers S3 (offload upload/download/delete,
-    # lifecycle rules, server-side encryption) so the checkpointer's S3 path
-    # gets real-API coverage instead of SDK mocks.
-    #
-    # Pinned to the `:3` major tag: LocalStack community features (S3 included)
-    # are always free on versioned tags. `:latest` tracks the pro image and
-    # now refuses to start without a paid LOCALSTACK_AUTH_TOKEN.
-    image: localstack/localstack:3
-    container_name: aws-langgraph-localstack
-    ports:
-      - '4566:4566'
-    environment:
-      SERVICES: s3
-      DEBUG: '0'
-      # In-memory storage — tests tear down buckets per-file and don't need
-      # persistence across container restarts.
-      PERSISTENCE: '0'
-      AWS_DEFAULT_REGION: us-east-1
-    healthcheck:
-      test: ['CMD-SHELL', 'curl -sf http://localhost:4566/_localstack/health || exit 1']
-      interval: 3s
-      timeout: 5s
-      retries: 20

@@ -1,6 +1,6 @@
 {
   "name": "@farukada/aws-langgraph-dynamodb-ts",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "license": "MIT",
   "description": "AWS DynamoDB implementation for LangGraph Memory Store and Checkpoint Saver in TypeScript",
   "keywords": [
@@ -37,14 +37,17 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
-    "lint:fix": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --fix",
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"*.config.ts\" --no-error-on-unmatched-pattern",
+    "lint:fix": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"*.config.ts\" --fix --no-error-on-unmatched-pattern",
     "test": "jest",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.integration.config.ts",
     "test:integration:up": "docker compose up -d",
     "test:integration:down": "docker compose down",
-    "test:mutate": "stryker run",
-    "test:mutate:quick": "stryker run --mutate src/shared/utils/retry.ts,src/shared/utils/compressor.ts,src/store/utils/filter.ts",
+    "test:conformance": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.conformance.config.ts",
+    "test:aws": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.aws.config.ts",
+    "test:static": "jest test/static",
+    "test:package-smoke": "node --test test/package-smoke/smoke.test.mjs",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm run build && npm test",
     "docs": "typedoc",
     "docs:watch": "typedoc --watch",
     "unused": "knip",
@@ -54,16 +57,14 @@
     "cpd:test": "jscpd ./test --threshold 2 --min-lines 3 --reporters console --verbose --format typescript,javascript"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1054.0",
-    "@aws-sdk/lib-dynamodb": "^3.1054.0",
-    "@langchain/aws": "^1.3.9",
+    "@aws-sdk/client-dynamodb": "^3.1057.0",
+    "@aws-sdk/lib-dynamodb": "^3.1057.0",
     "@langchain/core": "^1.1.48",
-    "@langchain/langgraph": "^1.3.2",
-    "@langchain/langgraph-checkpoint": "^1.0.2",
-    "jsonpath-plus": "^10.4.0"
+    "@langchain/langgraph-checkpoint": "^1.0.3"
   },
   "peerDependencies": {
-    "@aws-sdk/client-s3": "^3.900.0"
+    "@aws-sdk/client-s3": "^3.900.0",
+    "@langchain/langgraph": "^1.3.2"
   },
   "overrides": {
     "uuid": ">=11.1.1"
@@ -74,23 +75,21 @@
     }
   },
   "devDependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.1054.0",
-    "@aws-sdk/client-s3": "^3.1054.0",
+    "@aws-sdk/client-s3": "^3.1057.0",
     "@eslint/js": "^10.0.1",
-    "@stryker-mutator/core": "9.6.1",
-    "@stryker-mutator/jest-runner": "9.6.1",
-    "@stryker-mutator/typescript-checker": "9.6.1",
+    "@langchain/aws": "^1.3.9",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.9.1",
     "aws-sdk-client-mock": "^4.1.0",
     "depcheck": "^1.4.7",
-    "eslint": "^10.4.0",
+    "eslint": "^10.4.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-no-instanceof": "^1.0.1",
     "eslint-plugin-perfectionist": "^5.9.0",
-    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-prettier": "^5.5.6",
     "eslint-plugin-unused-imports": "^4.4.1",
-    "globals": "^17.6.0",
+    "expect-type": "^1.3.0",
+    "fast-check": "^4.8.0",
     "jest": "^30.4.2",
     "jest-sonar": "^0.2.16",
     "jiti": "^2.7.0",
@@ -98,12 +97,12 @@
     "knip": "^6.14.2",
     "prettier": "^3.8.3",
     "ts-jest": "^29.4.11",
-    "ts-loader": "^9.5.7",
     "ts-node": "^10.9.2",
     "typedoc": "^0.28.19",
     "typedoc-plugin-markdown": "^4.11.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.60.0"
+    "typescript-eslint": "^8.60.0",
+    "zod": "^4.3.6"
   },
   "prettier": {
     "semi": true,
