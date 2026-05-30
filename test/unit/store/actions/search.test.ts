@@ -86,7 +86,7 @@ describe('searchItems', () => {
     expect(items).toHaveLength(1);
   });
 
-  it('scores an indexed item that has no stored embedding as 0', async () => {
+  it('ranks an indexed item with no stored embedding last with an undefined score', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
@@ -107,7 +107,7 @@ describe('searchItems', () => {
     mock.on(QueryCommand).resolves({ Items: [withVec, noVec] });
     const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
     expect(items.map((i) => i.key)).toEqual(['b', 'x']);
-    expect(items[1].score).toBe(0);
+    expect(items[1].score).toBeUndefined();
   });
 
   it('scans (filtered) and skips foreign rows for an empty prefix', async () => {

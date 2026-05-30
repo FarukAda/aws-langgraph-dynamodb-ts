@@ -21,10 +21,11 @@ describe('rankInMemory', () => {
     expect(ranked[0].score).toBeGreaterThan(ranked[1].score);
   });
 
-  it('scores a candidate with no embedding as 0', () => {
-    const ranked = rankInMemory([candidate('a', [1, 0]), candidate('b')], [1, 0], 10);
-    expect(ranked.map((r) => r.key)).toEqual(['a', 'b']);
-    expect(ranked[1].score).toBe(0);
+  it('ranks embedding-less candidates last with an undefined score', () => {
+    const ranked = rankInMemory([candidate('a'), candidate('b', [-1, 0])], [1, 0], 10);
+    expect(ranked.map((r) => r.key)).toEqual(['b', 'a']);
+    expect(ranked[0].score).toBeCloseTo(-1);
+    expect(ranked[1].score).toBeUndefined();
   });
 
   it('throws a ValidationError when the candidate set exceeds the cap', () => {
