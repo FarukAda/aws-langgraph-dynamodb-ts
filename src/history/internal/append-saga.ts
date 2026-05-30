@@ -2,6 +2,8 @@ import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { CompensationFailedError } from '../../shared/errors/errors';
+import { toError } from '../../shared/errors/wrap-error';
 import type { ChatMessageItem } from '../types';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
 import { writeMessageChunk } from './message-transaction';
@@ -69,6 +71,38 @@ async function rollbackCommitted(
 }
 
 /**
+ * Undo a failed batch: warn, best-effort clean S3, then roll back committed
+ * chunks. Always throws. If the rollback itself fails the session may have
+ * drifted, so it raises {@link CompensationFailedError} carrying both the
+ * trigger and the rollback error; otherwise it rethrows the trigger.
+ */
+async function compensate(
+  context: HistoryContext,
+  sessionId: string,
+  chunks: ChatMessageItem[][],
+  committed: CommittedChunk[],
+  trigger: Error,
+): Promise<never> {
+  if (committed.length > 0) {
+    context.logger.warn('history.addMessages compensating committed chunks after a chunk failed', {
+      sessionId,
+      committedChunks: committed.length,
+    });
+  }
+  await cleanBatchS3(context, chunks);
+  try {
+    await rollbackCommitted(context, sessionId, committed);
+  } catch (rollbackError) {
+    context.logger.error('history.addMessages rollback failed; messageCount may have drifted', {
+      sessionId,
+      committedChunks: committed.length,
+    });
+    throw new CompensationFailedError(trigger, toError(rollbackError as Error));
+  }
+  throw trigger;
+}
+
+/**
  * Append message chunks with caller-observed atomicity. Each chunk commits its
  * messages and count in one transaction; if a later chunk fails, every
  * already-committed chunk is deleted and its count reverted, and all batch S3
@@ -96,18 +130,7 @@ export async function appendChunks(
         count: chunk.length,
       });
     } catch (error) {
-      if (committed.length > 0) {
-        context.logger.warn(
-          'history.addMessages compensating committed chunks after a chunk failed',
-          {
-            sessionId,
-            committedChunks: committed.length,
-          },
-        );
-      }
-      await cleanBatchS3(context, chunks);
-      await rollbackCommitted(context, sessionId, committed);
-      throw error;
+      await compensate(context, sessionId, chunks, committed, toError(error as Error));
     }
   }
 }

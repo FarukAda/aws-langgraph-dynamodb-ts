@@ -3,6 +3,7 @@ import { BatchWriteCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk
 import { appendChunks } from '../../../../src/history/internal/append-saga';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { CompensationFailedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -74,6 +75,32 @@ describe('appendChunks', () => {
       sessionId: 's1',
       committedChunks: 1,
     });
+  });
+
+  it('raises CompensationFailedError when the rollback itself fails', async () => {
+    expect(CompensationFailedError).toBeDefined();
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(TransactWriteCommand)
+      .resolvesOnce({})
+      .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    mock
+      .on(BatchWriteCommand)
+      .rejects(Object.assign(new Error('rollback-down'), { name: 'ValidationException' }));
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+
+    await expect(
+      appendChunks(
+        context(client, undefined, logger),
+        's1',
+        [[inlineItem('MSG#1')], [inlineItem('MSG#2')]],
+        { now: 'u' },
+      ),
+    ).rejects.toMatchObject({ name: 'CompensationFailedError', code: 'COMPENSATION_FAILED' });
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('rollback failed'),
+      expect.objectContaining({ sessionId: 's1' }),
+    );
   });
 
   it('cleans offloaded S3 objects for the whole batch when a chunk fails', async () => {
