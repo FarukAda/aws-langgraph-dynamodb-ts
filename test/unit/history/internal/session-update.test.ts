@@ -1,19 +1,19 @@
-import { buildSessionUpdate } from '../../../../src/history/internal/session-update';
+import { buildSessionUpdateItem } from '../../../../src/history/internal/session-update';
 
-describe('buildSessionUpdate', () => {
-  it('adds the count and sets timestamps + sessionId once', () => {
-    const input = buildSessionUpdate('history', { sessionId: 's1', count: 2, now: 'u' });
-    expect(input.Key).toEqual({ PK: 's1', SK: 'SESSION' });
-    expect(input.UpdateExpression).toBe(
+describe('buildSessionUpdateItem', () => {
+  it('builds a transact Update that adds the count and sets timestamps + sessionId once', () => {
+    const { Update } = buildSessionUpdateItem('history', { sessionId: 's1', count: 2, now: 'u' });
+    expect(Update?.Key).toEqual({ PK: 's1', SK: 'SESSION' });
+    expect(Update?.UpdateExpression).toBe(
       'ADD #count :n SET #u = :u, #c = if_not_exists(#c, :c), #sid = if_not_exists(#sid, :sid)',
     );
-    expect(input.ExpressionAttributeValues).toEqual({
+    expect(Update?.ExpressionAttributeValues).toEqual({
       ':n': 2,
       ':u': 'u',
       ':c': 'u',
       ':sid': 's1',
     });
-    expect(input.ExpressionAttributeNames).toEqual({
+    expect(Update?.ExpressionAttributeNames).toEqual({
       '#count': 'messageCount',
       '#u': 'updatedAt',
       '#c': 'createdAt',
@@ -21,32 +21,31 @@ describe('buildSessionUpdate', () => {
     });
   });
 
-  it('appends a creation-anchored title clause when a title is given', () => {
-    const input = buildSessionUpdate('history', {
+  it('appends a title clause when a title is given', () => {
+    const { Update } = buildSessionUpdateItem('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
       title: 'hi',
     });
-    expect(input.UpdateExpression).toContain('#title = if_not_exists(#title, :title)');
-    expect(input.ExpressionAttributeNames?.['#title']).toBe('title');
-    expect(input.ExpressionAttributeValues?.[':title']).toBe('hi');
+    expect(Update?.UpdateExpression).toContain('#title = if_not_exists(#title, :title)');
+    expect(Update?.ExpressionAttributeNames?.['#title']).toBe('title');
+    expect(Update?.ExpressionAttributeValues?.[':title']).toBe('hi');
   });
 
-  it('appends a creation-anchored ttl clause when a ttl is given', () => {
-    const input = buildSessionUpdate('history', {
+  it('omits the title clause when no title is given', () => {
+    const { Update } = buildSessionUpdateItem('history', { sessionId: 's1', count: 1, now: 'u' });
+    expect(Update?.UpdateExpression).not.toContain('#title');
+  });
+
+  it('never manages ttl (the anchor write owns it)', () => {
+    const { Update } = buildSessionUpdateItem('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
-      ttlTimestamp: 1750,
+      title: 'x',
     });
-    expect(input.UpdateExpression).toContain('#ttl = if_not_exists(#ttl, :ttl)');
-    expect(input.ExpressionAttributeValues?.[':ttl']).toBe(1750);
-  });
-
-  it('omits the title and ttl clauses when neither is given', () => {
-    const input = buildSessionUpdate('history', { sessionId: 's1', count: 1, now: 'u' });
-    expect(input.UpdateExpression).not.toContain('#title');
-    expect(input.UpdateExpression).not.toContain('#ttl');
+    expect(Update?.UpdateExpression).not.toContain('#ttl');
+    expect(Update?.ExpressionAttributeNames?.['#ttl']).toBeUndefined();
   });
 });

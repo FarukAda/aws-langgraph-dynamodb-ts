@@ -51,6 +51,8 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     const messages = await history.getMessages('s4');
     expect(messages).toHaveLength(10);
     expect(new Set(messages.map((m) => m.content)).size).toBe(10);
+    const sessions = await history.listSessions();
+    expect(sessions.find((s) => s.sessionId === 's4')?.messageCount).toBe(10);
   });
 
   it('stamps one uniform creation-anchored ttl across concurrent first appends', async () => {

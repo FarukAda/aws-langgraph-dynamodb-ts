@@ -1,4 +1,9 @@
-import { BatchWriteCommand, QueryCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import {
+  BatchWriteCommand,
+  QueryCommand,
+  ScanCommand,
+  TransactWriteCommand,
+} from '@aws-sdk/lib-dynamodb';
 import { HumanMessage } from '@langchain/core/messages';
 
 import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-history';
@@ -14,13 +19,10 @@ describe('DynamoDBChatMessageHistory', () => {
   it('addMessage then getMessages round-trips through DynamoDB', async () => {
     const { client, mock } = createStrictDocumentMock();
     let written: unknown[] = [];
-    mock.on(BatchWriteCommand).callsFake((input) => {
-      written = input.RequestItems.history.map(
-        (w: { PutRequest: { Item: unknown } }) => w.PutRequest.Item,
-      );
-      return { UnprocessedItems: {} };
+    mock.on(TransactWriteCommand).callsFake((input) => {
+      written = input.TransactItems.slice(1).map((t: { Put: { Item: unknown } }) => t.Put.Item);
+      return {};
     });
-    mock.on(UpdateCommand).resolves({});
     mock.on(QueryCommand).callsFake(() => ({ Items: written }));
     const h = history(client);
     await h.addMessage('sess-1', new HumanMessage('hello'));
@@ -58,13 +60,11 @@ describe('DynamoDBChatMessageHistory', () => {
 
   it('forSession returns a single-session adapter bound to the session', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    mock.on(UpdateCommand).resolves({});
+    mock.on(TransactWriteCommand).resolves({});
     const adapter = history(client).forSession('sess-9');
     expect(adapter).toBeInstanceOf(DynamoDBSessionChatMessageHistory);
     await adapter.addMessage(new HumanMessage('hi'));
-    const item =
-      mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history[0].PutRequest.Item;
+    const item = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems[1].Put.Item;
     expect(item.PK).toBe('sess-9');
   });
 

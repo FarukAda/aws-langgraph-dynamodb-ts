@@ -1,4 +1,4 @@
-import { BatchWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
 import { addMessages } from '../../../../src/history/actions/add-messages';
@@ -28,37 +28,31 @@ function context(
 }
 
 describe('addMessages', () => {
-  it('batch-writes one item per message and atomically updates the session', async () => {
+  it('writes one item per message and the count in a single transaction', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    mock.on(UpdateCommand).resolves({});
+    mock.on(TransactWriteCommand).resolves({});
     await addMessages(context(client), 's1', [new HumanMessage('a'), new AIMessage('b')]);
-    const writes = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history;
-    expect(writes).toHaveLength(2);
-    expect(writes[0].PutRequest.Item.SK).toBe('MSG#U0');
-    expect(writes[1].PutRequest.Item.SK).toBe('MSG#U1');
-    const upd = mock.commandCalls(UpdateCommand)[0].args[0].input;
-    expect(upd.Key).toEqual({ PK: 's1', SK: 'SESSION' });
-    expect(upd.UpdateExpression).toContain('ADD #count :n');
-    expect(upd.ExpressionAttributeValues[':n']).toBe(2);
-    expect(upd.ExpressionAttributeValues[':title']).toBe('a');
+    const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
+    expect(items).toHaveLength(3);
+    expect(items[0].Update?.UpdateExpression).toContain('ADD #count :n');
+    expect(items[0].Update?.ExpressionAttributeValues?.[':n']).toBe(2);
+    expect(items[0].Update?.ExpressionAttributeValues?.[':title']).toBe('a');
+    expect(items[1].Put?.Item?.SK).toBe('MSG#U0');
+    expect(items[2].Put?.Item?.SK).toBe('MSG#U1');
   });
 
   it('omits the title clause when there is no human message', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    mock.on(UpdateCommand).resolves({});
+    mock.on(TransactWriteCommand).resolves({});
     await addMessages(context(client), 's1', [new AIMessage('only assistant')]);
-    const upd = mock.commandCalls(UpdateCommand)[0].args[0].input;
-    expect(upd.UpdateExpression).not.toContain('#title');
-    expect(upd.ExpressionAttributeValues[':title']).toBeUndefined();
+    const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
+    expect(items[0].Update?.UpdateExpression).not.toContain('#title');
   });
 
   it('is a no-op for an empty message list', async () => {
     const { client, mock } = createStrictDocumentMock();
     await addMessages(context(client), 's1', []);
-    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
-    expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
   it('rejects an empty session id', async () => {
@@ -68,47 +62,48 @@ describe('addMessages', () => {
     });
   });
 
-  it('stamps the authoritative ttl anchor on every message item via ReturnValues ALL_NEW', async () => {
+  it('establishes the ttl anchor and stamps it on every message item', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(UpdateCommand).resolves({ Attributes: { ttl: 4242 } });
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    await addMessages(context(client, { ttl: { seconds: 100 } }), 's1', [new HumanMessage('hi')]);
-    const upd = mock.commandCalls(UpdateCommand)[0].args[0].input;
-    expect(upd.ReturnValues).toBe('ALL_NEW');
-    expect(upd.UpdateExpression).toContain('#ttl');
-    const item =
-      mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history[0].PutRequest.Item;
-    expect(item.ttl).toBe(4242);
-  });
-
-  it('reuses the existing anchor returned by the conditional update on a later append', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(UpdateCommand).resolves({ Attributes: { ttl: 5000 } });
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(TransactWriteCommand).resolves({});
     await addMessages(context(client, { ttl: { seconds: 100 } }), 's1', [
       new HumanMessage('hi'),
       new AIMessage('yo'),
     ]);
-    const writes = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history;
-    expect(writes.every((w) => w.PutRequest.Item.ttl === 5000)).toBe(true);
+    const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
+    const puts = items.slice(1);
+    expect(puts.every((p) => p.Put?.Item?.ttl === 4242)).toBe(true);
   });
 
-  it('rethrows a batch-write failure without cleanup when no offloader is set', async () => {
+  it('splits past the per-transaction limit into multiple transactions with a correct total count', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(UpdateCommand).resolves({});
+    mock.on(TransactWriteCommand).resolves({});
+    const many = Array.from({ length: 150 }, (_unused, index) => new HumanMessage(`m${index}`));
+    await addMessages(context(client), 's1', many);
+    const calls = mock.commandCalls(TransactWriteCommand);
+    expect(calls).toHaveLength(2);
+    const counts = calls.map(
+      (call) =>
+        (call.args[0].input.TransactItems ?? [])[0].Update?.ExpressionAttributeValues?.[':n'],
+    );
+    expect(counts).toEqual([99, 51]);
+    expect(counts[0] + counts[1]).toBe(150);
+  });
+
+  it('rethrows a transaction failure without cleanup when no offloader is set', async () => {
+    const { client, mock } = createStrictDocumentMock();
     mock
-      .on(BatchWriteCommand)
+      .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
     await expect(addMessages(context(client), 's1', [new HumanMessage('hi')])).rejects.toThrow(
       'down',
     );
   });
 
-  it('cleans up offloaded objects when the batch write fails', async () => {
+  it('cleans up offloaded objects when the transaction fails', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(UpdateCommand).resolves({});
     mock
-      .on(BatchWriteCommand)
+      .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
     const offloader = {
       shouldOffload: () => true,
