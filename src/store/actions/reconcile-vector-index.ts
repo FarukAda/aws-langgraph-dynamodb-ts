@@ -23,9 +23,6 @@ export async function reconcileVectorIndex(
   namespacePrefix: string[],
 ): Promise<VectorReconcileResult> {
   validateNamespace(namespacePrefix);
-  if (namespacePrefix.length === 0) {
-    throw new ValidationError('reconcileVectorIndex requires a non-empty namespacePrefix');
-  }
   if (!context.index || !context.vectorBackend) {
     throw new ValidationError('reconcileVectorIndex requires a configured index and vectorBackend');
   }
