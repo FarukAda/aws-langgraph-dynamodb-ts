@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
@@ -77,5 +79,48 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     expect(result.Items).toHaveLength(8);
     expect(ttls.size).toBe(1);
     expect([...ttls][0]).toBeGreaterThan(0);
+  });
+
+  it('honours ClientRequestToken so a re-sent commit does not double-count', async () => {
+    const doc = DynamoDBDocument.from(admin);
+    const transaction = {
+      TransactItems: [
+        {
+          Update: {
+            TableName: tableName,
+            Key: { PK: 's-idem', SK: 'SESSION' },
+            UpdateExpression: 'ADD #c :one',
+            ExpressionAttributeNames: { '#c': 'messageCount' },
+            ExpressionAttributeValues: { ':one': 1 },
+          },
+        },
+        { Put: { TableName: tableName, Item: { PK: 's-idem', SK: 'MSG#1' } } },
+      ],
+      ClientRequestToken: randomUUID(),
+    };
+    await doc.transactWrite(transaction);
+    await doc.transactWrite(transaction);
+    const meta = await doc.get({
+      TableName: tableName,
+      Key: { PK: 's-idem', SK: 'SESSION' },
+      ConsistentRead: true,
+    });
+    expect(meta.Item?.messageCount).toBe(1);
+  });
+
+  it('splits a >4MB un-offloaded batch into chunks with no loss or reordering', async () => {
+    const big = 'x'.repeat(100_000);
+    const messages = Array.from(
+      { length: 60 },
+      (_unused, index) => new HumanMessage(`${index}:${big}`),
+    );
+    await history.addMessages('s-big', messages);
+    const stored = await history.getMessages('s-big');
+    expect(stored).toHaveLength(60);
+    expect(stored.map((m) => String(m.content).split(':')[0])).toEqual(
+      messages.map((_unused, index) => String(index)),
+    );
+    const sessions = await history.listSessions();
+    expect(sessions.find((s) => s.sessionId === 's-big')?.messageCount).toBe(60);
   });
 });
