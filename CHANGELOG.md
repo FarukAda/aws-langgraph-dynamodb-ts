@@ -396,7 +396,7 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 
 ---
 
-[0.3.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.2.0...HEAD
+[0.3.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.2.2...v0.3.0
 [0.2.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.0.11...v0.1.0
 [0.0.11]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.0.10...v0.0.11

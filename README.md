@@ -308,15 +308,11 @@ When S3 offloading is enabled, on the bucket/objects: `s3:GetObject`, `s3:PutObj
 
 ## Migrating from earlier versions
 
-**0.3.0 → 0.4.0** changes the on-disk layout (the public API is unchanged):
+**0.2.x → 0.3.0** is a complete, ground-up rewrite. The public API is similar, but the table schema, on-disk layout, and several options changed, so existing data is **not compatible** — create a new table.
 
-- **Store keys changed** to `PK = namespace[0]`, `SK = namespace[1..]#key` (was `PK = full namespace`, `SK = key`).
-- **Chat history is now one item per message** (`SK = MSG#<ULID>`) plus a `SESSION` metadata item, replacing the single per-session item.
-- Existing `0.3.0` data is **not readable** by `0.4.0` — recreate the table (the `PK`/`SK` schema itself is unchanged, so CDK/Terraform need no edits).
-
-The original ground-up rewrite also made these breaking changes versus the pre-rewrite `0.x` line:
-
-- **Table schema is now `PK`/`SK` strings** (one table for all adapters) instead of per-adapter custom key names. Existing data is not compatible — create the new table.
+- **Table schema is now `PK`/`SK` strings** (one table for all adapters) instead of per-adapter custom key names. The key attribute names changed, so CDK/Terraform definitions need updating.
+- **Store keys** are `PK = namespace[0]`, `SK = namespace[1..]#key` (was `PK = full namespace`, `SK = key`).
+- **Chat history is one item per message** (`SK = MSG#<ULID>`) plus a `SESSION` metadata item, replacing the single per-session item.
 - **Single `tableName` option** per adapter (was `checkpointsTableName`/`writesTableName`, etc.).
 - **One `ttl` option** — `{ days }` or `{ seconds }` — replaces `ttlDays`/`ttlSeconds`.
 - **S3 config option renamed** `s3OffloadConfig` → `s3`.
