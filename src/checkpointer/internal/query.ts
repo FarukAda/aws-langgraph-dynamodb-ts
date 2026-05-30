@@ -4,6 +4,7 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 export interface BeginsWithQueryOptions {
   limit?: number;
   ascending?: boolean;
+  consistent?: boolean;
 }
 
 /** Build a Query input selecting every item in a partition (all sort keys). */
@@ -35,5 +36,6 @@ export function beginsWithQuery(
     ScanIndexForward: options.ascending ?? false,
   };
   if (options.limit !== undefined) params.Limit = options.limit;
+  if (options.consistent) params.ConsistentRead = true;
   return params;
 }

@@ -33,6 +33,7 @@ describe('fetchTargetMeta', () => {
       PK: 't',
       SK: 'META##c1',
     });
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);
   });
 
   it('queries the newest META item when no id is given', async () => {
@@ -43,6 +44,7 @@ describe('fetchTargetMeta', () => {
     const input = mock.commandCalls(QueryCommand)[0].args[0].input;
     expect(input.Limit).toBe(1);
     expect(input.ScanIndexForward).toBe(false);
+    expect(input.ConsistentRead).toBe(true);
   });
 
   it('returns undefined when the newest query is empty', async () => {
@@ -58,6 +60,7 @@ describe('fetchPayload', () => {
     mock.on(GetCommand).resolves({ Item: { SK: 'PAYLOAD##c1' } });
     const payload = await fetchPayload(context(client), 't', '', 'c1');
     expect(payload?.SK).toBe('PAYLOAD##c1');
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);
   });
 });
 
@@ -74,5 +77,6 @@ describe('fetchPendingWrites', () => {
       ['task-1', 'ch', 'v0'],
       ['task-1', 'ch', 'v1'],
     ]);
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead).toBe(true);
   });
 });

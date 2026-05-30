@@ -26,6 +26,7 @@ export async function fetchTargetMeta(
       context.client.get({
         TableName: context.tableName,
         Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
+        ConsistentRead: true,
       }),
     );
     return result.Item as CheckpointMetaItem | undefined;
@@ -36,6 +37,7 @@ export async function fetchTargetMeta(
     metaSortKeyPrefix(checkpointNs),
     {
       limit: 1,
+      consistent: true,
     },
   );
   const result = await withDynamoDBRetry(() => context.client.query(params));
@@ -53,6 +55,7 @@ export async function fetchPayload(
     context.client.get({
       TableName: context.tableName,
       Key: { PK: partitionKey(threadId), SK: payloadSortKey(checkpointNs, checkpointId) },
+      ConsistentRead: true,
     }),
   );
   return result.Item as CheckpointPayloadItem | undefined;
@@ -69,7 +72,7 @@ export async function fetchPendingWrites(
     context.tableName,
     partitionKey(threadId),
     writeSortKeyPrefix(checkpointNs, checkpointId),
-    { ascending: true },
+    { ascending: true, consistent: true },
   );
   const items: CheckpointWriteItem[] = [];
   for await (const item of paginateQuery({ client: context.client, params })) {

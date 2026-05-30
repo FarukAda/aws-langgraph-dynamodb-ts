@@ -28,4 +28,13 @@ describe('beginsWithQuery', () => {
     expect(params.Limit).toBe(1);
     expect(params.ScanIndexForward).toBe(true);
   });
+
+  it('requests a strongly-consistent read when consistent is set', () => {
+    const params = beginsWithQuery('ckpt', 't', 'META##', { consistent: true });
+    expect(params.ConsistentRead).toBe(true);
+  });
+
+  it('omits ConsistentRead by default', () => {
+    expect(beginsWithQuery('ckpt', 't', 'META##').ConsistentRead).toBeUndefined();
+  });
 });
