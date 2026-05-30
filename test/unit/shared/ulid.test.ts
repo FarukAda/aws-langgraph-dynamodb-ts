@@ -63,14 +63,26 @@ describe('createUlidFactory', () => {
     expect(b > a).toBe(true);
   });
 
-  it('wraps the random component to all-zero on full overflow within a millisecond', () => {
+  it('stays strictly increasing when the clock moves backwards', () => {
+    let t = 100;
     const ulid = createUlidFactory(
-      () => 9,
-      () => 0.999,
+      () => t,
+      () => 0.5,
     );
-    const a = ulid();
-    const b = ulid();
-    expect(a.slice(10)).toBe('Z'.repeat(16));
-    expect(b.slice(10)).toBe('0'.repeat(16));
+    const first = ulid();
+    t = 50;
+    const second = ulid();
+    expect(second > first).toBe(true);
+  });
+
+  it('carries into the timestamp when the same-ms random component overflows', () => {
+    const ulid = createUlidFactory(
+      () => 100,
+      () => 0.999999,
+    );
+    const first = ulid();
+    const second = ulid();
+    expect(second > first).toBe(true);
+    expect(second.slice(0, 10)).not.toBe(first.slice(0, 10));
   });
 });

@@ -16,28 +16,36 @@ function encodeTime(timeMs: number): string {
 function randomDigits(rng: () => number): number[] {
   const digits: number[] = [];
   for (let i = 0; i < RANDOM_CHARS; i++) {
-    digits.push(Math.floor(rng() * ENCODING_LEN) % ENCODING_LEN);
+    digits.push(Math.floor(rng() * ENCODING_LEN));
   }
   return digits;
 }
 
-function incrementDigits(digits: number[]): number[] {
+/** The incremented random digits, or `overflowed: true` when all digits were at max. */
+interface IncrementResult {
+  digits: number[];
+  overflowed: boolean;
+}
+
+function incrementDigits(digits: number[]): IncrementResult {
   const next = [...digits];
   for (let i = RANDOM_CHARS - 1; i >= 0; i--) {
     if (next[i] < ENCODING_LEN - 1) {
       next[i] += 1;
-      return next;
+      return { digits: next, overflowed: false };
     }
     next[i] = 0;
   }
-  return next;
+  return { digits: next, overflowed: true };
 }
 
 /**
  * Build a monotonic ULID generator: lexicographically sortable 26-char ids
- * whose first 10 chars encode the millisecond timestamp. Within one
- * millisecond the random component is incremented so successive ids strictly
- * increase. `now`/`rng` are seams for deterministic tests.
+ * whose first 10 chars encode the millisecond timestamp. Ids strictly increase
+ * even when the clock regresses or the same-millisecond random space overflows:
+ * any non-advancing clock reuses the last timestamp and increments the random
+ * component, carrying into the timestamp on overflow. `now`/`rng` are seams for
+ * deterministic tests.
  */
 export function createUlidFactory(
   now: () => number = Date.now,
@@ -47,12 +55,18 @@ export function createUlidFactory(
   let lastRandom: number[] = [];
   return () => {
     const time = now();
-    if (time === lastTime) {
-      lastRandom = incrementDigits(lastRandom);
-    } else {
+    if (time > lastTime) {
       lastTime = time;
       lastRandom = randomDigits(rng);
+    } else {
+      const result = incrementDigits(lastRandom);
+      if (result.overflowed) {
+        lastTime += 1;
+        lastRandom = randomDigits(rng);
+      } else {
+        lastRandom = result.digits;
+      }
     }
-    return encodeTime(time) + lastRandom.map((digit) => ENCODING[digit]).join('');
+    return encodeTime(lastTime) + lastRandom.map((digit) => ENCODING[digit]).join('');
   };
 }
