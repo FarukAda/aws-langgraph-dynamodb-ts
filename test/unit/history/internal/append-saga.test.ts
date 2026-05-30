@@ -29,8 +29,8 @@ function s3Item(sk: string, s3Key: string): ChatMessageItem {
   };
 }
 
-function context(client: unknown, offloader?: unknown) {
-  return { client, tableName: 'history', logger: SILENT_LOGGER, offloader } as never;
+function context(client: unknown, offloader?: unknown, logger: unknown = SILENT_LOGGER) {
+  return { client, tableName: 'history', logger, offloader } as never;
 }
 
 describe('appendChunks', () => {
@@ -53,10 +53,11 @@ describe('appendChunks', () => {
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     mock.on(UpdateCommand).resolves({});
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 
     await expect(
       appendChunks(
-        context(client),
+        context(client, undefined, logger),
         's1',
         [[inlineItem('MSG#1'), inlineItem('MSG#2')], [inlineItem('MSG#3')]],
         { now: 'u' },
@@ -69,6 +70,10 @@ describe('appendChunks', () => {
     const revert = mock.commandCalls(UpdateCommand)[0].args[0].input;
     expect(revert.UpdateExpression).toBe('ADD #count :neg');
     expect(revert.ExpressionAttributeValues?.[':neg']).toBe(-2);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('compensating'), {
+      sessionId: 's1',
+      committedChunks: 1,
+    });
   });
 
   it('cleans offloaded S3 objects for the whole batch when a chunk fails', async () => {

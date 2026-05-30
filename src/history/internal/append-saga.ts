@@ -96,6 +96,15 @@ export async function appendChunks(
         count: chunk.length,
       });
     } catch (error) {
+      if (committed.length > 0) {
+        context.logger.warn(
+          'history.addMessages compensating committed chunks after a chunk failed',
+          {
+            sessionId,
+            committedChunks: committed.length,
+          },
+        );
+      }
       await cleanBatchS3(context, chunks);
       await rollbackCommitted(context, sessionId, committed);
       throw error;

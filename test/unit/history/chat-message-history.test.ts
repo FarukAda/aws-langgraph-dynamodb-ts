@@ -3,6 +3,7 @@ import {
   QueryCommand,
   ScanCommand,
   TransactWriteCommand,
+  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { HumanMessage } from '@langchain/core/messages';
 
@@ -56,6 +57,13 @@ describe('DynamoDBChatMessageHistory', () => {
     });
     const sessions = await history(client).listSessions();
     expect(sessions.map((s) => s.sessionId)).toEqual(['s']);
+  });
+
+  it('reconcileMessageCount recomputes and writes back the stored count', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Count: 2 });
+    mock.on(UpdateCommand).resolves({});
+    await expect(history(client).reconcileMessageCount('sess-1')).resolves.toBe(2);
   });
 
   it('forSession returns a single-session adapter bound to the session', async () => {

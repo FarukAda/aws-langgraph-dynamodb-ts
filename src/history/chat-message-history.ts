@@ -4,6 +4,7 @@ import { addMessages as addMessagesAction } from './actions/add-messages';
 import { clearSession } from './actions/clear';
 import { getMessages as getMessagesAction } from './actions/get-messages';
 import { listSessions as listSessionsAction } from './actions/list-sessions';
+import { reconcileMessageCount as reconcileMessageCountAction } from './actions/reconcile-count';
 import { type HistoryContext, setUpHistory } from './internal/setup';
 import { DynamoDBSessionChatMessageHistory } from './session-adapter';
 import type { DynamoDBChatMessageHistoryOptions, SessionMetadata } from './types';
@@ -50,6 +51,14 @@ export class DynamoDBChatMessageHistory {
   /** List all sessions as metadata summaries. */
   listSessions(): Promise<SessionMetadata[]> {
     return listSessionsAction(this.context);
+  }
+
+  /**
+   * Recompute and repair a session's `messageCount` from the stored messages.
+   * A maintenance tool for external corruption; run it when the session is idle.
+   */
+  reconcileMessageCount(sessionId: string): Promise<number> {
+    return reconcileMessageCountAction(this.context, sessionId);
   }
 
   /** Get a single-session LangChain adapter for `sessionId`. */
