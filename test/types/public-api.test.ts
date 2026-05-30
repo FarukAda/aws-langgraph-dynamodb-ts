@@ -7,6 +7,7 @@ import type {
   TtlOption,
   VectorBackend,
   VectorMatch,
+  VectorRef,
 } from '../../src/index';
 
 describe('public API types', () => {
@@ -25,6 +26,13 @@ describe('public API types', () => {
       VectorBackend | undefined
     >();
     expectTypeOf<DynamoDBStoreOptions['maxSearchCandidates']>().toEqualTypeOf<number | undefined>();
+  });
+
+  it('exposes an optional listKeys returning VectorRef[]', () => {
+    expectTypeOf<VectorBackend['listKeys']>().toEqualTypeOf<
+      ((namespacePrefix: string[]) => Promise<VectorRef[]>) | undefined
+    >();
+    expectTypeOf<VectorRef>().toEqualTypeOf<{ namespace: string[]; key: string }>();
   });
 
   it('describes the vector backend contract', () => {
