@@ -2,13 +2,7 @@ import type { LogArgument, Logger } from './logger';
 
 /** A value that {@link redactSecrets} can recurse through. */
 export type Redactable =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | Redactable[]
-  | { [key: string]: Redactable };
+  string | number | boolean | null | undefined | Redactable[] | { [key: string]: Redactable };
 
 const DEFAULT_SECRET_KEY_PATTERNS: readonly string[] = [
   'accesskey',

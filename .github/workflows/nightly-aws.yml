@@ -26,7 +26,7 @@ jobs:
     if: ${{ vars.AWS_TEST_ROLE_ARN != '' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -38,7 +38,7 @@ jobs:
         run: npm ci
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_TEST_ROLE_ARN }}
           aws-region: ${{ vars.AWS_TEST_REGION || 'eu-central-1' }}
