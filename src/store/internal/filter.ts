@@ -4,12 +4,7 @@ import { ValidationError } from '../../shared/errors/errors';
 
 /** A JSON value stored in an item or supplied in a filter. */
 export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 const COMPARATORS: Record<string, (actual: JsonValue, expected: JsonValue) => boolean> = {
   $eq: (actual, expected) => isDeepStrictEqual(actual, expected),

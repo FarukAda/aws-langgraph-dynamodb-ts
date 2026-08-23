@@ -2,12 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 
 /** A JSON-comparable value used in metadata filters. */
 export type FilterValue =
-  | string
-  | number
-  | boolean
-  | null
-  | FilterValue[]
-  | { [key: string]: FilterValue };
+  string | number | boolean | null | FilterValue[] | { [key: string]: FilterValue };
 
 /**
  * True when every key in `filter` is present in `metadata` with a deeply equal
