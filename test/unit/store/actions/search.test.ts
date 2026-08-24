@@ -189,6 +189,35 @@ describe('searchItems', () => {
     expect(items).toEqual([]);
   });
 
+  it('skips a vector backend match outside the requested namespace prefix', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const recA = await buildStoreItem(
+      context(client),
+      ['users', 'u1'],
+      'a',
+      { score: 1 },
+      { createdAt: 'c', updatedAt: 'u' },
+    );
+    mock.on(GetCommand).resolves({ Item: recA });
+    const vectorBackend = {
+      upsert: jest.fn(),
+      delete: jest.fn(),
+      query: jest.fn().mockResolvedValue([
+        { namespace: ['users', 'u1'], key: 'a', score: 0.9 },
+        { namespace: ['other'], key: 'b', score: 0.8 },
+      ]),
+    };
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      vectorBackend: vectorBackend as never,
+    });
+    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    expect(items.map((i) => i.key)).toEqual(['a']);
+    /** getItem must only be called for the in-prefix match, not the skipped one. */
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+  });
+
   it('throws ValidationError on a negative limit', async () => {
     const { client } = createStrictDocumentMock();
     await expect(

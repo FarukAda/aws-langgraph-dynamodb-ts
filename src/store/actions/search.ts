@@ -61,6 +61,7 @@ async function searchViaBackend(
   const matches = await backend.query(op.namespacePrefix, queryVector, topK);
   const results: SearchItem[] = [];
   for (const match of matches) {
+    if (!namespaceMatchesPrefix(match.namespace, op.namespacePrefix)) continue;
     const item = await getItem(context, match.namespace, match.key);
     if (item && passesFilter(item, op)) results.push({ ...item, score: match.score });
   }
