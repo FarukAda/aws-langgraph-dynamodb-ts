@@ -18,9 +18,9 @@ export interface FactoryBaseOptions {
 
 /** Per-adapter options for {@link DynamoDBFactory.createAll} (client is shared). */
 export interface CreateAllOptions {
-  saver: Omit<DynamoDBSaverOptions, 'client'>;
-  store: Omit<DynamoDBStoreOptions, 'client'>;
-  history: Omit<DynamoDBChatMessageHistoryOptions, 'client'>;
+  saver: Omit<DynamoDBSaverOptions, 'client' | 'clientConfig' | 'createClient'>;
+  store: Omit<DynamoDBStoreOptions, 'client' | 'clientConfig' | 'createClient'>;
+  history: Omit<DynamoDBChatMessageHistoryOptions, 'client' | 'clientConfig' | 'createClient'>;
 }
 
 /** The three adapters sharing one client, plus a combined `destroy`. */

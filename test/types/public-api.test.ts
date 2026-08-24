@@ -1,6 +1,7 @@
 import { expectTypeOf } from 'expect-type';
 
 import type {
+  CreateAllOptions,
   DynamoDBChatMessageHistoryOptions,
   DynamoDBSaverOptions,
   DynamoDBStoreOptions,
@@ -45,5 +46,12 @@ describe('public API types', () => {
       key: string;
       score: number;
     }>();
+  });
+
+  it('CreateAllOptions.saver excludes clientConfig/createClient, not just client', () => {
+    expectTypeOf<CreateAllOptions['saver']>().not.toHaveProperty('clientConfig');
+    expectTypeOf<CreateAllOptions['saver']>().not.toHaveProperty('createClient');
+    expectTypeOf<CreateAllOptions['store']>().not.toHaveProperty('clientConfig');
+    expectTypeOf<CreateAllOptions['history']>().not.toHaveProperty('clientConfig');
   });
 });
