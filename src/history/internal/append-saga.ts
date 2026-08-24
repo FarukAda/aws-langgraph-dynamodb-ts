@@ -89,7 +89,8 @@ async function compensate(
       committedChunks: committed.length,
     });
   }
-  await cleanBatchS3(context, chunks);
+  /** The failed/never-attempted suffix never had a DynamoDB row, so it's safe to clean now. */
+  await cleanBatchS3(context, chunks.slice(committed.length));
   try {
     await rollbackCommitted(context, sessionId, committed);
   } catch (rollbackError) {
@@ -97,8 +98,11 @@ async function compensate(
       sessionId,
       committedChunks: committed.length,
     });
+    /** Skip S3 cleanup here: rollback may have failed, so committed rows might still reference these objects. */
     throw new CompensationFailedError(trigger, toError(rollbackError as Error));
   }
+  /** Only now that committed rows are confirmed deleted is it safe to delete their S3 objects. */
+  await cleanBatchS3(context, chunks.slice(0, committed.length));
   throw trigger;
 }
 

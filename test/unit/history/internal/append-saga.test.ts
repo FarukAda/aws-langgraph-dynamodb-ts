@@ -121,4 +121,57 @@ describe('appendChunks', () => {
     ).rejects.toThrow('x');
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1', 'k2']);
   });
+
+  it('deletes the committed chunk DynamoDB row before its S3 object during compensation', async () => {
+    const order: string[] = [];
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(TransactWriteCommand)
+      .resolvesOnce({})
+      .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    mock.on(BatchWriteCommand).callsFake(() => {
+      order.push('ddb-delete');
+      return Promise.resolve({ UnprocessedItems: {} });
+    });
+    mock.on(UpdateCommand).resolves({});
+    const offloader = {
+      deleteBatch: jest.fn(async (keys: string[]) => {
+        if (keys.includes('k1')) order.push('s3-delete-k1');
+        return [];
+      }),
+    };
+    await expect(
+      appendChunks(
+        context(client, offloader),
+        's1',
+        [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
+        { now: 'u' },
+      ),
+    ).rejects.toThrow('boom');
+    expect(order).toEqual(['ddb-delete', 's3-delete-k1']);
+  });
+
+  it('does not delete a committed chunk S3 object when rollback itself fails', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(TransactWriteCommand)
+      .resolvesOnce({})
+      .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    mock
+      .on(BatchWriteCommand)
+      .rejects(Object.assign(new Error('rollback-down'), { name: 'ValidationException' }));
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    await expect(
+      appendChunks(
+        context(client, offloader),
+        's1',
+        [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
+        { now: 'u' },
+      ),
+    ).rejects.toMatchObject({ name: 'CompensationFailedError' });
+    // The committed chunk's key (k1) must NOT be among the cleaned keys, since
+    // its DynamoDB row's fate is unknown after a failed rollback. Only the
+    // never-committed chunk's key (k2) is safe to have cleaned.
+    expect(offloader.deleteBatch).not.toHaveBeenCalledWith(expect.arrayContaining(['k1']));
+  });
 });
