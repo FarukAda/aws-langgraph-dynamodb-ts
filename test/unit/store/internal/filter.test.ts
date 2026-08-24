@@ -37,4 +37,13 @@ describe('matchesStoreFilter', () => {
       expect((error as { code: ErrorCode }).code).toBe(ErrorCode.VALIDATION);
     }
   });
+
+  it('does not vacuously match every item when a field condition is an empty operator object', () => {
+    const testValue = { status: 'active' };
+    expect(matchesStoreFilter(testValue, { role: {} })).toBe(false);
+    expect(matchesStoreFilter({ role: 'admin' }, { role: {} })).toBe(false);
+    // A structurally-equal empty object as the field's actual value still
+    // exact-matches, since {} then falls through to the plain-value branch:
+    expect(matchesStoreFilter({ role: {} }, { role: {} })).toBe(true);
+  });
 });

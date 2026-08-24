@@ -20,6 +20,7 @@ function isOperatorObject(condition: JsonValue): condition is { [key: string]: J
     typeof condition === 'object' &&
     condition !== null &&
     !Array.isArray(condition) &&
+    Object.keys(condition).length > 0 &&
     Object.keys(condition).every((key) => key.startsWith('$'))
   );
 }
