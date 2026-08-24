@@ -3,7 +3,16 @@ import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { writeMessageChunk } from '../../../../src/history/internal/message-transaction';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../../../src/shared/constants';
+import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+
+function transactionConflict(): Error {
+  return Object.assign(new Error('canceled'), {
+    name: 'TransactionCanceledException',
+    CancellationReasons: [{ Code: 'TransactionConflict' }],
+  });
+}
 
 function messageItem(sk: string): ChatMessageItem {
   return {
@@ -115,5 +124,36 @@ describe('writeMessageChunk', () => {
     expect(calls[0].args[0].input.ClientRequestToken).not.toBe(
       calls[1].args[0].input.ClientRequestToken,
     );
+  });
+
+  it('retries a sustained transaction conflict past the default 5-attempt budget', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const survivedAttempts = MESSAGE_APPEND_RETRY_MAX_ATTEMPTS - 1;
+    let call = mock.on(TransactWriteCommand);
+    for (let i = 0; i < survivedAttempts; i++) {
+      call = call.rejectsOnce(transactionConflict());
+    }
+    call.resolves({});
+    await writeMessageChunk(
+      { client, tableName: 'history' } as never,
+      [messageItem('MSG#1')],
+      { sessionId: 's1', count: 1, now: 'u' },
+      { rng: () => 0 },
+    );
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(survivedAttempts + 1);
+  });
+
+  it(`gives up after ${MESSAGE_APPEND_RETRY_MAX_ATTEMPTS} attempts under sustained conflict`, async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(transactionConflict());
+    await expect(
+      writeMessageChunk(
+        { client, tableName: 'history' } as never,
+        [messageItem('MSG#1')],
+        { sessionId: 's1', count: 1, now: 'u' },
+        { rng: () => 0 },
+      ),
+    ).rejects.toBeInstanceOf(RetryExhaustedError);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(MESSAGE_APPEND_RETRY_MAX_ATTEMPTS);
   });
 });

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Concurrent `addMessages` calls on the same chat session could exhaust
+  their retry budget under real contention.** Every append transactionally
+  updates the session's shared `messageCount` row alongside its message
+  writes, so a burst of concurrent callers on one session can repeatedly
+  collide on that row (`TransactionConflict`). The append path now retries
+  such conflicts with a larger, dedicated budget instead of the default
+  5-attempt one, so a burst of concurrent appends drains via backoff instead
+  of erroring. Only this call site changed — other retry paths (S3, store,
+  checkpointer) are unaffected.
+
+## [0.3.1] - 2026-05-31
+
 A hardening pass over the whole library. One runtime behaviour change
 (`putWrites`, described first below) and one type-only tightening that can
 surface a new compile error for existing callers (`DynamoDBFactory.createAll`,

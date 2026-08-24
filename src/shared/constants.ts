@@ -49,5 +49,15 @@ export const DEFAULT_MAX_DECOMPRESSED_BYTES = 50 * 1024 * 1024;
 /** Default maximum attempts for transient-error retries. */
 export const DEFAULT_RETRY_MAX_ATTEMPTS = 5;
 
+/**
+ * Max attempts for the message-append transaction. It shares one session's
+ * metadata row across every concurrent `addMessages` caller on that session,
+ * so a burst of concurrent appends can collide repeatedly; combined with the
+ * existing 100ms base / 5000ms cap backoff, this keeps worst-case retrying
+ * within AWS's documented guidance to bound conflict retries to "around one
+ * minute" (see DynamoDB's "Error retries and exponential backoff" guide).
+ */
+export const MESSAGE_APPEND_RETRY_MAX_ATTEMPTS = 18;
+
 /** Default cap on candidates the in-DB semantic ranker will score. */
 export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;

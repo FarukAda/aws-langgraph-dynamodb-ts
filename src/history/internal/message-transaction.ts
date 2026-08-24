@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { ChatMessageItem } from '../types';
 import { buildSessionUpdateItem, type SessionUpdateFields } from './session-update';
@@ -17,6 +18,10 @@ export interface ChunkRetryOptions {
  * call, so `messageCount` can never disagree with the messages that landed. A
  * single `ClientRequestToken` is reused across retries so a re-sent commit (e.g.
  * after a lost response) is idempotent and never double-applies the count `ADD`.
+ * The transaction always touches the session's shared metadata row, so
+ * concurrent appends to the same session contend on it; retries use
+ * {@link MESSAGE_APPEND_RETRY_MAX_ATTEMPTS} rather than the default budget so a
+ * burst of concurrent callers can drain via backoff instead of erroring.
  */
 export async function writeMessageChunk(
   context: HistoryContext,
@@ -32,6 +37,7 @@ export async function writeMessageChunk(
     ClientRequestToken: randomUUID(),
   };
   await withDynamoDBRetry(() => context.client.transactWrite(input), {
+    maxAttempts: MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
     rng: retry.rng,
     signal: retry.signal,
   });
