@@ -8,9 +8,6 @@ import { scopedQuery } from './query';
 import { embedValue } from './semantic-search';
 import type { StoreContext } from './setup';
 
-/** Separator joining namespace elements into a collision-free identity. */
-const REF_KEY_SEPARATOR = ' ';
-
 /** A canonical item's location plus the embedding recomputed for it. */
 export interface ReconcileTarget {
   namespace: string[];
@@ -18,9 +15,9 @@ export interface ReconcileTarget {
   embedding: number[] | undefined;
 }
 
-/** Stable identity for a (namespace, key) pair. */
+/** Stable, collision-free identity for a (namespace, key) pair. */
 function refIdentity(namespace: string[], key: string): string {
-  return `${namespace.join(REF_KEY_SEPARATOR)}${REF_KEY_SEPARATOR}${key}`;
+  return JSON.stringify([...namespace, key]);
 }
 
 /**

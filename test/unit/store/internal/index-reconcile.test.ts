@@ -41,6 +41,12 @@ describe('selectOrphans', () => {
     const backendRefs = [{ namespace: ['b'], key: 'k' }];
     expect(selectOrphans(backendRefs, live)).toEqual([{ namespace: ['b'], key: 'k' }]);
   });
+
+  it('does not collide a multi-element namespace with a single element containing the separator', () => {
+    const live = [{ namespace: ['a', 'b'], key: 'c', embedding: [1] }];
+    const backendRefs = [{ namespace: ['a b'], key: 'c' }];
+    expect(selectOrphans(backendRefs, live)).toEqual([{ namespace: ['a b'], key: 'c' }]);
+  });
 });
 
 describe('pushEmbeddings', () => {
