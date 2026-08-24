@@ -1,6 +1,7 @@
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { nowIso } from '../../shared/clock';
+import type { PayloadDescriptor } from '../../shared/codec/codec';
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
@@ -31,6 +32,23 @@ async function readCreatedAt(
   return existing.Item?.createdAt as string | undefined;
 }
 
+async function readValueDescriptor(
+  context: StoreContext,
+  pk: string,
+  sk: string,
+): Promise<PayloadDescriptor | undefined> {
+  const existing = await withDynamoDBRetry(() =>
+    context.client.get({
+      TableName: context.tableName,
+      Key: { PK: pk, SK: sk },
+      ConsistentRead: true,
+      ProjectionExpression: '#v',
+      ExpressionAttributeNames: { '#v': 'value' },
+    }),
+  );
+  return existing.Item?.value as PayloadDescriptor | undefined;
+}
+
 /** Delete the item and, when a vector backend is configured, drop its vector. */
 async function deleteStoreItem(
   context: StoreContext,
@@ -38,9 +56,18 @@ async function deleteStoreItem(
   pk: string,
   sk: string,
 ): Promise<void> {
+  const descriptor = context.offloader ? await readValueDescriptor(context, pk, sk) : undefined;
   await withDynamoDBRetry(() =>
     context.client.delete({ TableName: context.tableName, Key: { PK: pk, SK: sk } }),
   );
+  if (context.offloader) {
+    await cleanUpS3Orphans(
+      context.offloader,
+      collectS3Keys(descriptor ? [descriptor] : []),
+      'store.delete',
+      context.logger,
+    );
+  }
   if (context.vectorBackend) {
     await syncVectorIndex(context.vectorBackend, op.namespace, op.key, undefined, context.logger);
   }

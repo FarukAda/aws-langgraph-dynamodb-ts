@@ -1,5 +1,6 @@
 import { DeleteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 
+import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -211,5 +212,30 @@ describe('putItem', () => {
       ),
     ).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it('cleans up the offloaded S3 object when a large value is deleted', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({
+      Item: {
+        value: { location: PayloadLocation.S3, serdeType: 'json', s3Key: 'users/u1/profile.bin' },
+      },
+    });
+    mock.on(DeleteCommand).resolves({});
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts) => parts.join('/'),
+      upload: async (key) => key,
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['users/u1/profile.bin']);
+  });
+
+  it('does not attempt S3 cleanup on delete when no offloader is configured', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(DeleteCommand).resolves({});
+    await putItem(context(client), op({ value: null }));
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
 });
