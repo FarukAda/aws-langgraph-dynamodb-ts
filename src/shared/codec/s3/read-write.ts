@@ -1,8 +1,10 @@
 import type { S3Client, ServerSideEncryption } from '@aws-sdk/client-s3';
 
+import { withRetry } from '../../dynamodb/retry';
 import { ErrorCode } from '../../errors/error-code';
 import { wrapError } from '../../errors/wrap-error';
 import { loadS3Sdk } from './client';
+import { RETRYABLE_S3_SIGNALS } from './retry';
 
 /** Parameters for {@link uploadObject}. */
 export interface UploadParams {
@@ -17,15 +19,19 @@ export interface UploadParams {
 export async function uploadObject(client: S3Client, params: UploadParams): Promise<void> {
   const { PutObjectCommand } = await loadS3Sdk();
   try {
-    await client.send(
-      new PutObjectCommand({
-        Bucket: params.bucket,
-        Key: params.key,
-        Body: params.data,
-        ContentType: 'application/octet-stream',
-        ServerSideEncryption: params.serverSideEncryption as ServerSideEncryption | undefined,
-        ...(params.sseKmsKeyId ? { SSEKMSKeyId: params.sseKmsKeyId } : {}),
-      }),
+    await withRetry(
+      () =>
+        client.send(
+          new PutObjectCommand({
+            Bucket: params.bucket,
+            Key: params.key,
+            Body: params.data,
+            ContentType: 'application/octet-stream',
+            ServerSideEncryption: params.serverSideEncryption as ServerSideEncryption | undefined,
+            ...(params.sseKmsKeyId ? { SSEKMSKeyId: params.sseKmsKeyId } : {}),
+          }),
+        ),
+      { maxAttempts: 3, retryableErrors: RETRYABLE_S3_SIGNALS },
     );
   } catch (error) {
     throw wrapError(error as Error, ErrorCode.S3_OFFLOAD_FAILED, {
@@ -43,11 +49,16 @@ export async function downloadObject(
 ): Promise<Uint8Array> {
   const { GetObjectCommand } = await loadS3Sdk();
   try {
-    const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-    if (!response.Body) {
-      throw new Error(`S3 object body is empty for key: ${key}`);
-    }
-    return new Uint8Array(await response.Body.transformToByteArray());
+    return await withRetry(
+      async () => {
+        const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        if (!response.Body) {
+          throw new Error(`S3 object body is empty for key: ${key}`);
+        }
+        return new Uint8Array(await response.Body.transformToByteArray());
+      },
+      { maxAttempts: 3, retryableErrors: RETRYABLE_S3_SIGNALS },
+    );
   } catch (error) {
     throw wrapError(error as Error, ErrorCode.S3_OFFLOAD_FAILED, { operation: 'download', key });
   }

@@ -1,33 +1,10 @@
 import { fullJitter, nextBackoffDelay, sleep } from '../../dynamodb/backoff';
 import type { Logger } from '../../logging/logger';
 import type { S3Offloader } from './offloader';
+import { isTransientS3Error } from './retry';
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 100;
-
-const RETRYABLE_S3_SIGNALS: readonly string[] = [
-  'SlowDown',
-  'InternalError',
-  'ServiceUnavailable',
-  'RequestTimeout',
-  'ThrottlingException',
-  'ECONNRESET',
-  'ETIMEDOUT',
-  'NetworkingError',
-];
-
-function isTransientS3Error(error: Error): boolean {
-  const fields = error as { name?: string; code?: string; $metadata?: { httpStatusCode?: number } };
-  const status = fields.$metadata?.httpStatusCode;
-  if (typeof status === 'number' && (status === 429 || (status >= 500 && status < 600)))
-    return true;
-  const signals = [fields.name, fields.code].filter(
-    (value): value is string => typeof value === 'string',
-  );
-  return signals.some((signal) =>
-    RETRYABLE_S3_SIGNALS.some((retryable) => signal.includes(retryable)),
-  );
-}
 
 /** Options for {@link cleanUpS3Orphans}. */
 export interface OrphanCleanupOptions {

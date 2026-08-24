@@ -53,6 +53,33 @@ describe('uploadObject', () => {
       expect((error as { code: ErrorCode }).code).toBe(ErrorCode.S3_OFFLOAD_FAILED);
     }
   });
+
+  it('retries a transient S3 error on upload', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejectsOnce(Object.assign(new Error('slow down'), { name: 'SlowDown' }))
+      .resolves({});
+    await uploadObject(new S3Client({ region: 'us-east-1' }), {
+      bucket: 'b',
+      key: 'k',
+      data: new Uint8Array([1]),
+    });
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(2);
+  });
+
+  it('does not retry a permanent S3 error on upload', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejects(Object.assign(new Error('denied'), { name: 'AccessDenied' }));
+    await expect(
+      uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k',
+        data: new Uint8Array([1]),
+      }),
+    ).rejects.toThrow();
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(1);
+  });
 });
 
 describe('downloadObject', () => {
