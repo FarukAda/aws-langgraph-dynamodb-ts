@@ -11,6 +11,7 @@ import {
   CreateBucketCommand,
   DeleteBucketCommand,
   DeleteObjectsCommand,
+  GetBucketLifecycleConfigurationCommand,
   ListObjectsV2Command,
   S3Client,
   waitUntilBucketExists,
@@ -19,6 +20,7 @@ import {
 import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBSaver, DynamoDBStore } from '../../src/index';
+import { buildLifecycleRuleId } from '../../src/shared/codec/s3/config';
 
 const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
 const clientConfig = region ? { region } : {};
@@ -141,5 +143,57 @@ describe('S3 offload against real AWS', () => {
     expect(await offloadedObjectCount(s3)).toBeGreaterThan(0);
     const item = await store.get(['mem', 'u1'], 'big');
     expect(item?.value).toEqual({ blob: bigPayload });
+  });
+
+  it('ensureS3LifecycleRule provisions a real, independently verifiable bucket rule', async () => {
+    const ttlSaver = new DynamoDBSaver({
+      tableName,
+      clientConfig,
+      ttl: { days: 30 },
+      s3: { bucketName, clientConfig },
+    });
+
+    await ttlSaver.ensureS3LifecycleRule();
+    ttlSaver.destroy();
+
+    const raw = await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket: bucketName }));
+    const rule = (raw.Rules ?? []).find((r) => r.ID === buildLifecycleRuleId(KEY_PREFIX));
+    expect(rule?.Status).toBe('Enabled');
+    expect(rule?.Expiration?.Days).toBe(30);
+  });
+
+  it('two concurrent putWrites racing the same (thread, checkpoint, task, index) never collide in S3', async () => {
+    // Same taskId + channel means both calls target the identical DynamoDB row
+    // (first-write-wins), but each still uploads to S3 before that race
+    // resolves. The nonce-scoping fix keeps those two uploads at distinct
+    // keys; without it, the loser's upload would silently overwrite the
+    // winner's object out from under the row that still points at it.
+    const threadId = 'concurrent-s3-race';
+    await saver.put(
+      { configurable: { thread_id: threadId, checkpoint_ns: '' } },
+      bigCheckpoint('anchor'),
+      { source: 'input', step: 0, parents: {} },
+      {},
+    );
+
+    const before = await offloadedObjectCount(s3);
+    const valueA = `A:${bigPayload}`;
+    const valueB = `B:${bigPayload}`;
+    const writeConfig = {
+      configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: 'anchor' },
+    };
+    await Promise.all([
+      saver.putWrites(writeConfig, [['ch', valueA]], 'task-race'),
+      saver.putWrites(writeConfig, [['ch', valueB]], 'task-race'),
+    ]);
+    const after = await offloadedObjectCount(s3);
+    expect(after - before).toBe(2);
+
+    const tuple = await saver.getTuple({
+      configurable: { thread_id: threadId, checkpoint_id: 'anchor' },
+    });
+    const values = (tuple?.pendingWrites ?? []).map(([, , value]) => value);
+    expect(values).toHaveLength(1);
+    expect([valueA, valueB]).toContain(values[0]);
   });
 });
