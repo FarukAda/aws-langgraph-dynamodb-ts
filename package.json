@@ -36,7 +36,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "typecheck:all": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"*.config.ts\" --no-error-on-unmatched-pattern",
     "lint:fix": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"*.config.ts\" --fix --no-error-on-unmatched-pattern",
     "test": "jest",
