@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.2.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
 
 ***
 
@@ -6,7 +6,11 @@
 
 # Class: DynamoDBStore
 
-Defined in: [store/index.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/store/index.ts#L32)
+Defined in: [store/store.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/store.ts#L28)
+
+DynamoDB-backed LangGraph store for long-term memory with optional semantic
+search. A thin orchestrator: the base class's get/put/search/delete/
+listNamespaces all funnel into [batch](#batch), which dispatches each operation.
 
 ## Extends
 
@@ -18,17 +22,13 @@ Defined in: [store/index.ts:32](https://github.com/FarukAda/aws-langgraph-dynamo
 
 > **new DynamoDBStore**(`options`): `DynamoDBStore`
 
-Defined in: [store/index.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/store/index.ts#L51)
-
-Create a new DynamoDB store instance
+Defined in: [store/store.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/store.ts#L33)
 
 #### Parameters
 
 ##### options
 
-[`DynamoDBStoreOptions`](../interfaces/DynamoDBStoreOptions.md)
-
-Configuration options for the store
+[`DynamoDBStoreOptions`](../type-aliases/DynamoDBStoreOptions.md)
 
 #### Returns
 
@@ -42,11 +42,12 @@ Configuration options for the store
 
 ### batch()
 
-> **batch**\<`Op`\>(`operations`, `config?`): `Promise`\<`OperationResults`\<`Op`\>\>
+> **batch**\<`Op`\>(`operations`): `Promise`\<`OperationResults`\<`Op`\>\>
 
-Defined in: [store/index.ts:98](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/store/index.ts#L98)
+Defined in: [store/store.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/store.ts#L48)
 
-Execute a batch of operations in parallel
+Execute multiple operations in a single batch.
+This is more efficient than executing operations individually.
 
 #### Type Parameters
 
@@ -62,21 +63,11 @@ Execute a batch of operations in parallel
 
 Array of operations to execute
 
-##### config?
-
-`RunnableConfig`\<`Record`\<`string`, `any`\>\>
-
-Runnable configuration containing user_id
-
 #### Returns
 
 `Promise`\<`OperationResults`\<`Op`\>\>
 
-Array of results corresponding to each operation
-
-#### Throws
-
-Error if user_id is not provided in config or if any operation fails
+Promise resolving to results matching the operations
 
 #### Overrides
 
@@ -88,12 +79,50 @@ Error if user_id is not provided in config or if any operation fails
 
 > **destroy**(): `void`
 
-Defined in: [store/index.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/store/index.ts#L69)
+Defined in: [store/store.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/store.ts#L65)
 
-Release underlying DynamoDB client resources.
-Call this when the store is no longer needed to prevent resource leaks.
-Skips cleanup if a shared client was injected via options.
+Release owned resources (the underlying client and any S3 client).
 
 #### Returns
 
 `void`
+
+***
+
+### ensureS3LifecycleRule()
+
+> **ensureS3LifecycleRule**(): `Promise`\<`void`\>
+
+Defined in: [store/store.ts:78](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/store.ts#L78)
+
+Best-effort provision an S3 lifecycle expiration rule matching the
+configured TTL, so offloaded objects don't outlive their DynamoDB item
+forever. No-ops when S3 offload or TTL isn't configured. Requires the
+`s3:GetLifecycleConfiguration`/`s3:PutLifecycleConfiguration` bucket-level
+permissions (broader than the object-level CRUD the rest of S3 offload
+needs) — call this once during deployment/provisioning, not per-request.
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
+
+### reconcileVectorIndex()
+
+> **reconcileVectorIndex**(`namespacePrefix`): `Promise`\<[`VectorReconcileResult`](../interfaces/VectorReconcileResult.md)\>
+
+Defined in: [store/store.ts:60](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/store.ts#L60)
+
+Repair the configured vector backend against the canonical items under
+`namespacePrefix`. A maintenance tool; see [reconcileVectorIndex](#reconcilevectorindex).
+
+#### Parameters
+
+##### namespacePrefix
+
+`string`[]
+
+#### Returns
+
+`Promise`\<[`VectorReconcileResult`](../interfaces/VectorReconcileResult.md)\>

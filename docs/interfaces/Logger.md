@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.2.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
 
 ***
 
@@ -6,9 +6,9 @@
 
 # Interface: Logger
 
-Defined in: [shared/utils/logger.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/logger.ts#L27)
+Defined in: [shared/logging/logger.ts:5](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/logging/logger.ts#L5)
 
-Logger interface - consumers can provide their own implementation
+Pluggable logging interface — consumers supply their own implementation.
 
 ## Methods
 
@@ -16,7 +16,7 @@ Logger interface - consumers can provide their own implementation
 
 > **debug**(`message`, ...`args`): `void`
 
-Defined in: [shared/utils/logger.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/logger.ts#L31)
+Defined in: [shared/logging/logger.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/logging/logger.ts#L9)
 
 #### Parameters
 
@@ -26,7 +26,7 @@ Defined in: [shared/utils/logger.ts:31](https://github.com/FarukAda/aws-langgrap
 
 ##### args
 
-...`unknown`[]
+...[`LogArgument`](../type-aliases/LogArgument.md)[]
 
 #### Returns
 
@@ -38,7 +38,7 @@ Defined in: [shared/utils/logger.ts:31](https://github.com/FarukAda/aws-langgrap
 
 > **error**(`message`, ...`args`): `void`
 
-Defined in: [shared/utils/logger.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/logger.ts#L30)
+Defined in: [shared/logging/logger.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/logging/logger.ts#L8)
 
 #### Parameters
 
@@ -48,7 +48,7 @@ Defined in: [shared/utils/logger.ts:30](https://github.com/FarukAda/aws-langgrap
 
 ##### args
 
-...`unknown`[]
+...[`LogArgument`](../type-aliases/LogArgument.md)[]
 
 #### Returns
 
@@ -60,7 +60,7 @@ Defined in: [shared/utils/logger.ts:30](https://github.com/FarukAda/aws-langgrap
 
 > **info**(`message`, ...`args`): `void`
 
-Defined in: [shared/utils/logger.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/logger.ts#L28)
+Defined in: [shared/logging/logger.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/logging/logger.ts#L6)
 
 #### Parameters
 
@@ -70,7 +70,7 @@ Defined in: [shared/utils/logger.ts:28](https://github.com/FarukAda/aws-langgrap
 
 ##### args
 
-...`unknown`[]
+...[`LogArgument`](../type-aliases/LogArgument.md)[]
 
 #### Returns
 
@@ -82,7 +82,7 @@ Defined in: [shared/utils/logger.ts:28](https://github.com/FarukAda/aws-langgrap
 
 > **warn**(`message`, ...`args`): `void`
 
-Defined in: [shared/utils/logger.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/logger.ts#L29)
+Defined in: [shared/logging/logger.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/logging/logger.ts#L7)
 
 #### Parameters
 
@@ -92,7 +92,7 @@ Defined in: [shared/utils/logger.ts:29](https://github.com/FarukAda/aws-langgrap
 
 ##### args
 
-...`unknown`[]
+...[`LogArgument`](../type-aliases/LogArgument.md)[]
 
 #### Returns
 

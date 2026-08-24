@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.2.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
 
 ***
 
@@ -6,16 +6,10 @@
 
 # Class: DynamoDBSaver
 
-Defined in: [checkpointer/index.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L51)
+Defined in: [checkpointer/saver.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/checkpointer/saver.ts#L24)
 
-DynamoDB-based checkpoint saver for LangGraph.
-Provides persistent storage for checkpoints and pending writes.
-
-## Remarks
-
-Uses the base class default for `getNextVersion()` (monotonic integers).
-Channel versioning is internal to LangGraph's execution engine and does not
-affect DynamoDB key ordering, which relies on checkpoint IDs.
+DynamoDB-backed LangGraph checkpoint saver. A thin orchestrator: it resolves
+its collaborators once and delegates every operation to a focused action.
 
 ## Extends
 
@@ -27,17 +21,13 @@ affect DynamoDB key ordering, which relies on checkpoint IDs.
 
 > **new DynamoDBSaver**(`options`): `DynamoDBSaver`
 
-Defined in: [checkpointer/index.ts:76](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L76)
-
-Create a new DynamoDB checkpoint saver
+Defined in: [checkpointer/saver.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/checkpointer/saver.ts#L29)
 
 #### Parameters
 
 ##### options
 
-[`DynamoDBSaverOptions`](../interfaces/DynamoDBSaverOptions.md)
-
-Configuration options for the saver
+[`DynamoDBSaverOptions`](../type-aliases/DynamoDBSaverOptions.md)
 
 #### Returns
 
@@ -51,11 +41,11 @@ Configuration options for the saver
 
 ### deleteThread()
 
-> **deleteThread**(`threadId`, `options?`): `Promise`\<`void`\>
+> **deleteThread**(`threadId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/index.ts:127](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L127)
+Defined in: [checkpointer/saver.ts:57](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/checkpointer/saver.ts#L57)
 
-Delete a thread and all its checkpoints and writes
+Delete all checkpoints and writes associated with a specific thread ID.
 
 #### Parameters
 
@@ -63,23 +53,11 @@ Delete a thread and all its checkpoints and writes
 
 `string`
 
-The thread ID to delete
-
-##### options?
-
-###### signal?
-
-`AbortSignal`
-
-Optional AbortSignal for cancelling in-flight retries
+The thread ID whose checkpoints should be deleted.
 
 #### Returns
 
 `Promise`\<`void`\>
-
-#### Throws
-
-Error if validation fails or operation fails
 
 #### Overrides
 
@@ -91,11 +69,9 @@ Error if validation fails or operation fails
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/index.ts:113](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L113)
+Defined in: [checkpointer/saver.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/checkpointer/saver.ts#L62)
 
-Release underlying DynamoDB and S3 client resources.
-Call this when the saver is no longer needed to prevent resource leaks.
-Skips DynamoDB client cleanup if a shared client was injected via options.
+Release owned resources (the underlying client and any S3 client).
 
 #### Returns
 
@@ -103,13 +79,30 @@ Skips DynamoDB client cleanup if a shared client was injected via options.
 
 ***
 
+### ensureS3LifecycleRule()
+
+> **ensureS3LifecycleRule**(): `Promise`\<`void`\>
+
+Defined in: [checkpointer/saver.ts:75](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/checkpointer/saver.ts#L75)
+
+Best-effort provision an S3 lifecycle expiration rule matching the
+configured TTL, so offloaded objects don't outlive their DynamoDB item
+forever. No-ops when S3 offload or TTL isn't configured. Requires the
+`s3:GetLifecycleConfiguration`/`s3:PutLifecycleConfiguration` bucket-level
+permissions (broader than the object-level CRUD the rest of S3 offload
+needs) — call this once during deployment/provisioning, not per-request.
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
+
 ### getTuple()
 
 > **getTuple**(`config`): `Promise`\<`CheckpointTuple` \| `undefined`\>
 
-Defined in: [checkpointer/index.ts:147](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L147)
-
-Get a checkpoint tuple from DynamoDB
+Defined in: [checkpointer/saver.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/checkpointer/saver.ts#L37)
 
 #### Parameters
 
@@ -117,19 +110,9 @@ Get a checkpoint tuple from DynamoDB
 
 `RunnableConfig`
 
-Runnable configuration containing thread_id and optional checkpoint_id.
-  `config.signal` is honored as an AbortSignal: in-flight retries short-circuit
-  and the returned promise rejects with the signal's abort reason.
-
 #### Returns
 
 `Promise`\<`CheckpointTuple` \| `undefined`\>
-
-CheckpointTuple if found, undefined otherwise
-
-#### Throws
-
-Error if validation fails or operation fails
 
 #### Overrides
 
@@ -139,11 +122,9 @@ Error if validation fails or operation fails
 
 ### list()
 
-> **list**(`config`, `options`): `AsyncGenerator`\<`CheckpointTuple`\>
+> **list**(`config`, `options?`): `AsyncGenerator`\<`CheckpointTuple`\>
 
-Defined in: [checkpointer/index.ts:226](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L226)
-
-List checkpoints for a thread
+Defined in: [checkpointer/saver.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/checkpointer/saver.ts#L41)
 
 #### Parameters
 
@@ -151,25 +132,13 @@ List checkpoints for a thread
 
 `RunnableConfig`
 
-Runnable configuration containing thread_id
+##### options?
 
-##### options
-
-`CheckpointListOptions` \| `undefined`
-
-List options including limit, before checkpoint, and metadata filter
+`CheckpointListOptions`
 
 #### Returns
 
 `AsyncGenerator`\<`CheckpointTuple`\>
-
-#### Yields
-
-CheckpointTuple objects in descending order
-
-#### Throws
-
-Error if validation fails or operation fails
 
 #### Overrides
 
@@ -179,11 +148,9 @@ Error if validation fails or operation fails
 
 ### put()
 
-> **put**(`config`, `checkpoint`, `metadata`, `newVersions`): `Promise`\<`RunnableConfig`\<`Record`\<`string`, `any`\>\>\>
+> **put**(`config`, `checkpoint`, `metadata`): `Promise`\<`RunnableConfig`\<`Record`\<`string`, `any`\>\>\>
 
-Defined in: [checkpointer/index.ts:171](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L171)
-
-Save a checkpoint to DynamoDB
+Defined in: [checkpointer/saver.ts:45](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/checkpointer/saver.ts#L45)
 
 #### Parameters
 
@@ -191,36 +158,17 @@ Save a checkpoint to DynamoDB
 
 `RunnableConfig`
 
-Runnable configuration. `config.signal` is honored as an
-  AbortSignal and short-circuits retry backoff.
-
 ##### checkpoint
 
 `Checkpoint`
-
-Checkpoint to save
 
 ##### metadata
 
 `CheckpointMetadata`
 
-Checkpoint metadata
-
-##### newVersions
-
-`ChannelVersions`
-
-Channel versions (not used in DynamoDB implementation)
-
 #### Returns
 
 `Promise`\<`RunnableConfig`\<`Record`\<`string`, `any`\>\>\>
-
-Updated RunnableConfig with checkpoint information
-
-#### Throws
-
-Error if validation fails or operation fails
 
 #### Overrides
 
@@ -232,9 +180,9 @@ Error if validation fails or operation fails
 
 > **putWrites**(`config`, `writes`, `taskId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/index.ts:202](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/checkpointer/index.ts#L202)
+Defined in: [checkpointer/saver.ts:53](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/checkpointer/saver.ts#L53)
 
-Save pending writes to DynamoDB
+Store intermediate writes linked to a checkpoint.
 
 #### Parameters
 
@@ -242,28 +190,17 @@ Save pending writes to DynamoDB
 
 `RunnableConfig`
 
-Runnable configuration. `config.signal` is honored as an
-  AbortSignal and short-circuits retry backoff.
-
 ##### writes
 
 `PendingWrite`[]
-
-Array of pending writes to save
 
 ##### taskId
 
 `string`
 
-Task ID for the writes
-
 #### Returns
 
 `Promise`\<`void`\>
-
-#### Throws
-
-Error if validation fails or operation fails
 
 #### Overrides
 

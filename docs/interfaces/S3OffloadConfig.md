@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.2.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
 
 ***
 
@@ -6,9 +6,9 @@
 
 # Interface: S3OffloadConfig
 
-Defined in: [shared/utils/s3-offloader.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/s3-offloader.ts#L49)
+Defined in: [shared/codec/s3/config.ts:4](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/s3/config.ts#L4)
 
-Configuration for S3 offloading
+Configuration for offloading large payloads to S3.
 
 ## Properties
 
@@ -16,36 +16,33 @@ Configuration for S3 offloading
 
 > **bucketName**: `string`
 
-Defined in: [shared/utils/s3-offloader.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/s3-offloader.ts#L51)
-
-S3 bucket name for storing offloaded payloads (required)
+Defined in: [shared/codec/s3/config.ts:5](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/s3/config.ts#L5)
 
 ***
 
 ### clientConfig?
 
-> `optional` **clientConfig?**: `object`
+> `optional` **clientConfig?**: `S3ClientConfig`
 
-Defined in: [shared/utils/s3-offloader.ts:68](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/s3-offloader.ts#L68)
+Defined in: [shared/codec/s3/config.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/s3/config.ts#L10)
 
-Optional S3 client configuration (region, credentials, endpoint, etc.).
-Accepts any valid S3ClientConfig properties from @aws-sdk/client-s3.
+***
 
-#### Index Signature
+### createS3Client?
 
-\[`key`: `string`\]: `unknown`
+> `optional` **createS3Client?**: (`config`) => `S3Client`
 
-#### credentials?
+Defined in: [shared/codec/s3/config.ts:11](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/s3/config.ts#L11)
 
-> `optional` **credentials?**: `unknown`
+#### Parameters
 
-#### endpoint?
+##### config
 
-> `optional` **endpoint?**: `string`
+`S3ClientConfig`
 
-#### region?
+#### Returns
 
-> `optional` **region?**: `string`
+`S3Client`
 
 ***
 
@@ -53,9 +50,7 @@ Accepts any valid S3ClientConfig properties from @aws-sdk/client-s3.
 
 > `optional` **keyPrefix?**: `string`
 
-Defined in: [shared/utils/s3-offloader.ts:53](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/s3-offloader.ts#L53)
-
-Key prefix for S3 objects (default: 'langgraph-checkpoints/')
+Defined in: [shared/codec/s3/config.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/s3/config.ts#L6)
 
 ***
 
@@ -63,11 +58,7 @@ Key prefix for S3 objects (default: 'langgraph-checkpoints/')
 
 > `optional` **serverSideEncryption?**: `string`
 
-Defined in: [shared/utils/s3-offloader.ts:61](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/s3-offloader.ts#L61)
-
-Server-side encryption algorithm (`'AES256'` or `'aws:kms'`).
-Defaults to `'AES256'` — pass an explicit value to override (e.g. `'aws:kms'`
-together with `sseKmsKeyId`).
+Defined in: [shared/codec/s3/config.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/s3/config.ts#L8)
 
 ***
 
@@ -75,9 +66,7 @@ together with `sseKmsKeyId`).
 
 > `optional` **sseKmsKeyId?**: `string`
 
-Defined in: [shared/utils/s3-offloader.ts:63](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/s3-offloader.ts#L63)
-
-KMS key ID or ARN. Only used when serverSideEncryption is 'aws:kms'.
+Defined in: [shared/codec/s3/config.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/s3/config.ts#L9)
 
 ***
 
@@ -85,6 +74,4 @@ KMS key ID or ARN. Only used when serverSideEncryption is 'aws:kms'.
 
 > `optional` **thresholdBytes?**: `number`
 
-Defined in: [shared/utils/s3-offloader.ts:55](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/s3-offloader.ts#L55)
-
-Payload size threshold in bytes that triggers offloading (default: 358400 = 350KB)
+Defined in: [shared/codec/s3/config.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/s3/config.ts#L7)

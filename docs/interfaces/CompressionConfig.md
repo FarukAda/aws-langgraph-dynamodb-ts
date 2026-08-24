@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.2.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
 
 ***
 
@@ -6,9 +6,9 @@
 
 # Interface: CompressionConfig
 
-Defined in: [shared/utils/compressor.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/compressor.ts#L40)
+Defined in: [shared/codec/compression.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/compression.ts#L19)
 
-Configuration for checkpoint compression
+Configuration for payload compression.
 
 ## Properties
 
@@ -16,9 +16,7 @@ Configuration for checkpoint compression
 
 > **enabled**: `boolean`
 
-Defined in: [shared/utils/compressor.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/compressor.ts#L42)
-
-Whether compression is enabled (default: false)
+Defined in: [shared/codec/compression.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/compression.ts#L20)
 
 ***
 
@@ -26,9 +24,7 @@ Whether compression is enabled (default: false)
 
 > `optional` **level?**: `number`
 
-Defined in: [shared/utils/compressor.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/compressor.ts#L46)
-
-Gzip compression level 1-9 (default: 6 = balanced speed/ratio)
+Defined in: [shared/codec/compression.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/compression.ts#L22)
 
 ***
 
@@ -36,11 +32,7 @@ Gzip compression level 1-9 (default: 6 = balanced speed/ratio)
 
 > `optional` **maxDecompressedBytes?**: `number`
 
-Defined in: [shared/utils/compressor.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/compressor.ts#L52)
-
-Hard cap on decompressed output size in bytes (default: 50 MiB).
-Protects against gzip-bomb payloads. Decompression throws if the output
-would exceed this cap.
+Defined in: [shared/codec/compression.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/compression.ts#L23)
 
 ***
 
@@ -48,6 +40,4 @@ would exceed this cap.
 
 > `optional` **minSizeBytes?**: `number`
 
-Defined in: [shared/utils/compressor.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/309842e8e569d78757523036e9b5315c5dae8193/src/shared/utils/compressor.ts#L44)
-
-Minimum payload size in bytes to trigger compression (default: 1024 = 1KB)
+Defined in: [shared/codec/compression.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/codec/compression.ts#L21)
