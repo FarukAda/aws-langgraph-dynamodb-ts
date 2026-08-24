@@ -68,4 +68,40 @@ describe('clearSession', () => {
     await clearSession(context(client, { offloader: offloader as never }), 'sess-1');
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['sess-1/U.bin']);
   });
+
+  it('flushes deletes incrementally rather than accumulating the whole session first', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    // > BATCH_WRITE_MAX (25), forcing at least 2 flushes
+    const pageSize = 30;
+    mock.on(QueryCommand).resolvesOnce({
+      Items: Array.from({ length: pageSize }, (_, i) => ({
+        PK: 'sess-1',
+        SK: `MSG#${i}`,
+        message: inlineMessage,
+      })),
+    });
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    await clearSession(context(client), 'sess-1');
+    expect(mock.commandCalls(BatchWriteCommand).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('reads past the default in-memory item cap instead of throwing', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const pageSize = 2500;
+    // 12,500 items, > the 10,000 default cap
+    const pageCount = 5;
+    for (let i = 0; i < pageCount; i++) {
+      mock.on(QueryCommand).resolvesOnce({
+        Items: Array.from({ length: pageSize }, (_, j) => ({
+          PK: 'sess-1',
+          SK: `MSG#${i}-${j}`,
+          message: inlineMessage,
+        })),
+        LastEvaluatedKey: i < pageCount - 1 ? { PK: 'sess-1', SK: String(i) } : undefined,
+      });
+    }
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    await clearSession(context(client), 'sess-1');
+    expect(mock.commandCalls(BatchWriteCommand).length).toBeGreaterThan(1);
+  });
 });
