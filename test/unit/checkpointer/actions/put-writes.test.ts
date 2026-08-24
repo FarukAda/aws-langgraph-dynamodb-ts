@@ -165,7 +165,11 @@ describe('putWrites', () => {
     expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/[^/]+$/);
   });
 
-  it('cleans up every item when the special-write batch fails outright', async () => {
+  it('never cleans up a special item when its batch write fails outright', async () => {
+    // Special items share a deterministic key across calls (unlike regular
+    // items, which get a per-call nonce). Deleting on a batch failure could
+    // strand a row a *previous* call to the same channel already committed —
+    // exactly the corruption class this fix closes for regular items too.
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(BatchWriteCommand)
@@ -185,9 +189,7 @@ describe('putWrites', () => {
         'task-1',
       ),
     ).rejects.toThrow('boom');
-    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
-    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
-    expect(keys).toHaveLength(1);
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
   it('does not throw when a regular write loses the idempotency race on a second call', async () => {

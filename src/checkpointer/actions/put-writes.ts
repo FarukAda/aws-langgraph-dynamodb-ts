@@ -16,12 +16,10 @@ import { validateTaskId } from '../internal/validation';
 import type { CheckpointWriteItem } from '../types';
 
 /**
- * True when the first-write-wins guard rejected a write because a row already
- * existed — NOT evidence that a *competitor* wrote that row. This very
- * `PutCommand`, retried after its response was lost (`ETIMEDOUT` /
- * `NetworkingError` / `ECONNRESET`, retried by `withDynamoDBRetry` and the SDK
- * alike), re-hits the row it just committed itself and fails identically. The
- * two are indistinguishable here, so neither may be called never-committed.
+ * True when the first-write-wins guard rejected a write — NOT evidence a
+ * *competitor* wrote that row. A `PutCommand` retried after its response was
+ * lost (`ETIMEDOUT`/`NetworkingError`/`ECONNRESET`) re-hits the row it
+ * committed itself and fails identically; the two cases are indistinguishable.
  */
 function isConditionalCheckFailed(error: { name?: string }): boolean {
   return error.name === 'ConditionalCheckFailedException';
@@ -43,7 +41,10 @@ async function cleanUpItems(
 
 /**
  * Write special (negative-index) items unconditionally — overwrite is correct
- * there, matching every reference checkpointer implementation.
+ * there, matching every reference checkpointer implementation. Their key is
+ * deterministic, so a failed batch never triggers S3 cleanup here either: the
+ * next write to the same channel overwrites the same key (self-healing);
+ * deleting now could strand a row a previous call already committed.
  */
 async function writeSpecialItems(
   context: CheckpointerContext,
@@ -58,10 +59,9 @@ async function writeSpecialItems(
 }
 
 /**
- * Outcome of {@link writeRegularItems}: never rejects. Only `failed` items are
- * known never to have reached DynamoDB, so they alone are safe to clean up.
- * Every other item — committed, or turned away by the guard (see
- * {@link isConditionalCheckFailed}) — is backed by a live row and untouchable.
+ * Outcome of {@link writeRegularItems}: never rejects. Only `failed` items
+ * never reached DynamoDB and are safe to clean up — every other item is
+ * either committed or turned away by the guard, and both back a live row.
  */
 interface RegularWriteOutcome {
   failed: CheckpointWriteItem[];
@@ -69,10 +69,9 @@ interface RegularWriteOutcome {
 }
 
 /**
- * Write regular (non-negative-index) items with a first-write-wins guard — a
- * re-executed task must not clobber an already-recorded write. Every
- * `PutCommand` fully settles (`Promise.allSettled`) before this resolves and
- * never rejects; a genuine failure is reported via `error`, not thrown.
+ * Write regular items with a first-write-wins guard. Every `PutCommand` fully
+ * settles (`Promise.allSettled`) before this resolves and never rejects; a
+ * genuine failure is reported via `error`, not thrown.
  */
 async function writeRegularItems(
   context: CheckpointerContext,
@@ -94,8 +93,10 @@ async function writeRegularItems(
   results.forEach((result, index) => {
     if (result.status === 'fulfilled') return;
     const reason = result.reason as Error;
-    /** A lost guard is neither a failure nor a cleanup candidate — the row may be ours. */
-    if (isConditionalCheckFailed(reason)) return;
+    if (isConditionalCheckFailed(reason)) {
+      context.logger.debug('putWrites: lost the guard', { sortKey: items[index].SK });
+      return;
+    }
     failed.push(items[index]);
     error = error ?? reason;
   });
@@ -105,13 +106,12 @@ async function writeRegularItems(
 /**
  * Persist a task's intermediate writes for a checkpoint as one item per write.
  * Requires `checkpoint_id` in the config — writes always attach to a checkpoint.
- * Regular writes are first-write-wins (idempotent under task re-execution,
- * matching the reference checkpointer contract); special negative-index
- * writes (error/interrupt/scheduled/resume) are always overwritten. Both
- * write attempts run to full completion before any cleanup starts, and a
- * genuine failure's cleanup only ever targets items that never committed (see
- * {@link RegularWriteOutcome}). A lost guard never triggers an S3 delete: the
- * upload leaks — bounded, non-corrupting — rather than strand a live row.
+ * Regular writes are first-write-wins (matching the reference checkpointer
+ * contract); special negative-index writes always overwrite (see
+ * {@link writeSpecialItems}). Failure cleanup only ever targets regular items
+ * known never to have committed (see {@link RegularWriteOutcome}) — never a
+ * special item or a lost guard, so an upload can leak but a live row can
+ * never be stranded pointing at a deleted object.
  */
 export async function putWrites(
   context: CheckpointerContext,
@@ -144,7 +144,6 @@ export async function putWrites(
   ]);
   const firstError = specialError ?? regularOutcome.error;
   if (!firstError) return;
-  const neverCommitted = [...regularOutcome.failed, ...(specialError ? special : [])];
-  await cleanUpItems(context, neverCommitted);
+  await cleanUpItems(context, regularOutcome.failed);
   throw firstError;
 }

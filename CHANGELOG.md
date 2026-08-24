@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-A hardening pass over the whole library. No breaking API changes; the one
-behaviour change is `putWrites`, described first below.
+A hardening pass over the whole library. One runtime behaviour change
+(`putWrites`, described first below) and one type-only tightening that can
+surface a new compile error for existing callers (`DynamoDBFactory.createAll`,
+under Fixed).
 
 ### Fixed
 
@@ -41,6 +43,12 @@ behaviour change is `putWrites`, described first below.
   mistakes a repeated (DAG-shared) object for a cycle; S3 uploads/downloads get
   the same app-level retry budget as the DynamoDB paths, behind a client
   construction that is now race-free.
+- **`DynamoDBFactory.createAll`'s per-adapter options no longer silently
+  accept `clientConfig`/`createClient`.** They were always ignored at runtime
+  (the shared client from the factory's own `base` options is what's actually
+  used); passing either now fails to compile instead of silently doing
+  nothing. If you were relying on it, move that config into the factory's
+  `base` options instead.
 
 ### Added
 
