@@ -3,6 +3,7 @@ import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { listSessions } from '../../../../src/history/actions/list-sessions';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { ResultTruncatedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -58,5 +59,27 @@ describe('listSessions', () => {
     });
     const sessions = await listSessions(context(client));
     expect(sessions.map((s) => s.sessionId)).toEqual(['real']);
+  });
+
+  it('throws ResultTruncatedError by default when scan pages are exhausted by non-session filtering', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    // Every page returns 0 post-filter items but always continues (simulating
+    // a table dominated by non-session rows), for more than MAX_LOOP_ITERATIONS (1000) pages.
+    let scanMock = mock.on(ScanCommand);
+    for (let i = 0; i < 1001; i++) {
+      scanMock = scanMock.resolvesOnce({ Items: [], LastEvaluatedKey: { PK: 'x', SK: String(i) } });
+    }
+    await expect(listSessions(context(client))).rejects.toThrow(ResultTruncatedError);
+  });
+
+  it('succeeds with a raised maxIterations override', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    let scanMock = mock.on(ScanCommand);
+    for (let i = 0; i < 1000; i++) {
+      scanMock = scanMock.resolvesOnce({ Items: [], LastEvaluatedKey: { PK: 'x', SK: String(i) } });
+    }
+    scanMock.resolvesOnce({ Items: [session('s1', '2024-01-01')], LastEvaluatedKey: undefined });
+    const result = await listSessions(context(client), { maxIterations: 2000 });
+    expect(result.map((s) => s.sessionId)).toEqual(['s1']);
   });
 });

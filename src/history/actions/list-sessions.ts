@@ -8,7 +8,10 @@ import type { ChatSessionItem, SessionMetadata } from '../types';
  * filtered to session items so the adapter works on a table shared with the
  * checkpointer/store; foreign rows are also skipped defensively.
  */
-export async function listSessions(context: HistoryContext): Promise<SessionMetadata[]> {
+export async function listSessions(
+  context: HistoryContext,
+  options?: { maxIterations?: number },
+): Promise<SessionMetadata[]> {
   const sessions: SessionMetadata[] = [];
   for await (const raw of paginateScan({
     client: context.client,
@@ -18,6 +21,7 @@ export async function listSessions(context: HistoryContext): Promise<SessionMeta
       ExpressionAttributeNames: { '#sk': 'SK' },
       ExpressionAttributeValues: { ':session': SESSION_SORT_KEY },
     },
+    maxIterations: options?.maxIterations,
   })) {
     const item = raw as ChatSessionItem;
     if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') continue;
