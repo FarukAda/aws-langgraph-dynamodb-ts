@@ -12,7 +12,8 @@ import { downloadObject, uploadObject } from './read-write';
  * S3 client and delegates all real work; every method is a small delegation.
  */
 export class S3Offloader {
-  private client: S3Client | undefined;
+  private clientPromise: Promise<S3Client> | undefined;
+  private resolvedClient: S3Client | undefined;
   private readonly bucketName: string;
   private readonly keyPrefix: string;
   private readonly thresholdBytes: number;
@@ -29,14 +30,17 @@ export class S3Offloader {
     this.sseKmsKeyId = config.sseKmsKeyId;
   }
 
-  private async getClient(): Promise<S3Client> {
-    if (!this.client) {
+  private getClient(): Promise<S3Client> {
+    if (!this.clientPromise) {
       const cfg = this.config.clientConfig ?? {};
-      this.client = this.config.createS3Client
-        ? this.config.createS3Client(cfg)
-        : await createDefaultS3Client(cfg);
+      this.clientPromise = this.config.createS3Client
+        ? Promise.resolve(this.config.createS3Client(cfg))
+        : createDefaultS3Client(cfg);
+      this.clientPromise.then((client) => {
+        this.resolvedClient = client;
+      });
     }
-    return this.client;
+    return this.clientPromise;
   }
 
   /** True when `data` is large enough to warrant S3 offload. */
@@ -83,6 +87,6 @@ export class S3Offloader {
 
   /** Release the underlying S3 client, if one was created. */
   destroy(): void {
-    this.client?.destroy();
+    this.resolvedClient?.destroy();
   }
 }

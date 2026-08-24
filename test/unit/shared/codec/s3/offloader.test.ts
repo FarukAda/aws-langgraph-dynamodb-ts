@@ -90,4 +90,15 @@ describe('S3Offloader', () => {
     const { offloader } = makeOffloader();
     expect(() => offloader.destroy()).not.toThrow();
   });
+
+  it('createS3Client factory is invoked exactly once under concurrent first access', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    const createS3Client = jest.fn(() => new S3Client({ region: 'us-east-1' }));
+    const offloader = new S3Offloader({ bucketName: 'b', createS3Client });
+    await Promise.all([
+      offloader.upload('a.bin', new Uint8Array([1])),
+      offloader.upload('b.bin', new Uint8Array([1])),
+    ]);
+    expect(createS3Client).toHaveBeenCalledTimes(1);
+  });
 });
