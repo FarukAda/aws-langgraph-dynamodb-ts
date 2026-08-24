@@ -71,18 +71,40 @@ describe('clearSession', () => {
 
   it('flushes deletes incrementally rather than accumulating the whole session first', async () => {
     const { client, mock } = createStrictDocumentMock();
-    // > BATCH_WRITE_MAX (25), forcing at least 2 flushes
-    const pageSize = 30;
-    mock.on(QueryCommand).resolvesOnce({
-      Items: Array.from({ length: pageSize }, (_, i) => ({
-        PK: 'sess-1',
-        SK: `MSG#${i}`,
-        message: inlineMessage,
-      })),
+    let queryCallCount = 0;
+    let batchWriteCallsBeforeSecondQuery = -1;
+
+    mock.on(QueryCommand).callsFake(async () => {
+      queryCallCount += 1;
+      if (queryCallCount === 1) {
+        // Page 1: 25 items (BATCH_WRITE_MAX) with LastEvaluatedKey to trigger pagination
+        return {
+          Items: Array.from({ length: 25 }, (_, i) => ({
+            PK: 'sess-1',
+            SK: `MSG#${i}`,
+            message: inlineMessage,
+          })),
+          LastEvaluatedKey: { PK: 'sess-1', SK: 'MSG#25' },
+        };
+      }
+      // Page 2: 5 items; capture BatchWriteCommand call count at this point
+      // (proves batch was flushed mid-stream after page 1, not just at the end)
+      batchWriteCallsBeforeSecondQuery = mock.commandCalls(BatchWriteCommand).length;
+      return {
+        Items: Array.from({ length: 5 }, (_, i) => ({
+          PK: 'sess-1',
+          SK: `MSG#${25 + i}`,
+          message: inlineMessage,
+        })),
+      };
     });
+
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     await clearSession(context(client), 'sess-1');
-    expect(mock.commandCalls(BatchWriteCommand).length).toBeGreaterThanOrEqual(2);
+
+    // Assert that a BatchWriteCommand was already issued before page 2 was queried,
+    // proving the buffer was flushed after collecting 25 items (page 1), not accumulated until the end
+    expect(batchWriteCallsBeforeSecondQuery).toBeGreaterThanOrEqual(1);
   });
 
   it('reads past the default in-memory item cap instead of throwing', async () => {
