@@ -238,4 +238,18 @@ describe('putItem', () => {
     await putItem(context(client), op({ value: null }));
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
+
+  it('does not call deleteBatch when offloader is configured but no descriptor found', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    mock.on(DeleteCommand).resolves({});
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts) => parts.join('/'),
+      upload: async (key) => key,
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
 });
