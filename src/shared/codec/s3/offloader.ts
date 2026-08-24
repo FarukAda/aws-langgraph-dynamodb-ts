@@ -33,12 +33,20 @@ export class S3Offloader {
   private getClient(): Promise<S3Client> {
     if (!this.clientPromise) {
       const cfg = this.config.clientConfig ?? {};
-      this.clientPromise = this.config.createS3Client
-        ? Promise.resolve(this.config.createS3Client(cfg))
-        : createDefaultS3Client(cfg);
-      this.clientPromise.then((client) => {
-        this.resolvedClient = client;
-      });
+      this.clientPromise = (
+        this.config.createS3Client
+          ? Promise.resolve(this.config.createS3Client(cfg))
+          : createDefaultS3Client(cfg)
+      ).then(
+        (client) => {
+          this.resolvedClient = client;
+          return client;
+        },
+        (error: Error) => {
+          this.clientPromise = undefined;
+          throw error;
+        },
+      );
     }
     return this.clientPromise;
   }

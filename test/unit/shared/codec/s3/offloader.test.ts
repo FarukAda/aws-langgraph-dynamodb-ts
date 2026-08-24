@@ -8,7 +8,26 @@ import {
 } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 
+import * as s3ClientModule from '../../../../../src/shared/codec/s3/client';
 import { S3Offloader } from '../../../../../src/shared/codec/s3/offloader';
+
+// Wrap (not stub out) the real `createDefaultS3Client` so tests can observe
+// call counts / inject failures on the genuine async construction path
+// (a real `await import('@aws-sdk/client-s3')` gap) while every other test
+// still gets a real, working client via the fall-through to `actual`.
+jest.mock('../../../../../src/shared/codec/s3/client', () => {
+  const actual = jest.requireActual<typeof import('../../../../../src/shared/codec/s3/client')>(
+    '../../../../../src/shared/codec/s3/client',
+  );
+  return {
+    ...actual,
+    createDefaultS3Client: jest.fn(actual.createDefaultS3Client),
+  };
+});
+
+const createDefaultS3ClientMock = s3ClientModule.createDefaultS3Client as jest.MockedFunction<
+  typeof s3ClientModule.createDefaultS3Client
+>;
 
 const s3Mock = mockClient(S3Client);
 
@@ -91,14 +110,58 @@ describe('S3Offloader', () => {
     expect(() => offloader.destroy()).not.toThrow();
   });
 
-  it('createS3Client factory is invoked exactly once under concurrent first access', async () => {
+  it('createDefaultS3Client is invoked exactly once under concurrent first access on the default async construction path', async () => {
+    // Unlike the synchronous `createS3Client` seam, `createDefaultS3Client` has
+    // a genuine `await` gap (a real dynamic `import('@aws-sdk/client-s3')`),
+    // so this is the path where the historical check-then-act race could
+    // actually manifest. Two concurrent first calls must still only
+    // construct one client.
     s3Mock.on(PutObjectCommand).resolves({});
-    const createS3Client = jest.fn(() => new S3Client({ region: 'us-east-1' }));
-    const offloader = new S3Offloader({ bucketName: 'b', createS3Client });
+    const offloader = new S3Offloader({ bucketName: 'b' });
     await Promise.all([
       offloader.upload('a.bin', new Uint8Array([1])),
       offloader.upload('b.bin', new Uint8Array([1])),
     ]);
-    expect(createS3Client).toHaveBeenCalledTimes(1);
+    expect(createDefaultS3ClientMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries client construction after a failed first attempt instead of staying permanently broken', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    const realClient = new S3Client({ region: 'us-east-1' });
+    createDefaultS3ClientMock
+      .mockRejectedValueOnce(new Error('transient construction failure'))
+      .mockResolvedValueOnce(realClient);
+
+    const offloader = new S3Offloader({ bucketName: 'b' });
+
+    await expect(offloader.upload('a.bin', new Uint8Array([1]))).rejects.toThrow(
+      'transient construction failure',
+    );
+    await expect(offloader.upload('b.bin', new Uint8Array([1]))).resolves.toBe('b.bin');
+
+    expect(createDefaultS3ClientMock).toHaveBeenCalledTimes(2);
+    offloader.destroy();
+  });
+
+  it('does not raise an unhandledRejection when client construction fails', async () => {
+    const unhandledReasons: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown): void => {
+      unhandledReasons.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+    try {
+      createDefaultS3ClientMock.mockRejectedValueOnce(new Error('boom'));
+      const offloader = new S3Offloader({ bucketName: 'b' });
+
+      await expect(offloader.upload('a.bin', new Uint8Array([1]))).rejects.toThrow('boom');
+
+      // Let Node's unhandled-rejection detection run; it fires after the
+      // microtask queue drains, so a macrotask tick is enough to observe it.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(unhandledReasons).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
   });
 });
