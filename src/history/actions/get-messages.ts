@@ -28,6 +28,8 @@ export async function getMessages(
   for await (const raw of paginateQuery({
     client: context.client,
     params: messageQuery(context.tableName, sessionId),
+    maxItems: Number.POSITIVE_INFINITY,
+    maxIterations: Number.POSITIVE_INFINITY,
   })) {
     const item = raw as ChatMessageItem;
     if (isExpired(item, nowSeconds)) continue;

@@ -62,4 +62,26 @@ describe('getMessages', () => {
     const messages = await getMessages(context(client), 's1');
     expect(messages.map((m) => m.content)).toEqual(['hi']);
   });
+
+  it('reads past the default in-memory item cap instead of throwing', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
+    const pageSize = 2500;
+    // 12,500 items total, > the 10,000 default cap
+    const pageCount = 5;
+    let mockChain = mock.on(QueryCommand);
+    for (let i = 0; i < pageCount; i++) {
+      const items = await Promise.all(
+        Array.from({ length: pageSize }, (_, j) =>
+          buildMessageItem(context(client), 's1', `01${i}${j}`, human),
+        ),
+      );
+      mockChain = mockChain.resolvesOnce({
+        Items: items,
+        LastEvaluatedKey: i < pageCount - 1 ? { PK: 's1', SK: String(i) } : undefined,
+      });
+    }
+    const result = await getMessages(context(client), 's1');
+    expect(result).toHaveLength(pageSize * pageCount);
+  });
 });
