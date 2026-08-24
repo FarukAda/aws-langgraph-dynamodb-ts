@@ -51,7 +51,14 @@ export async function buildCheckpointItems(
   return { meta: withTtl(meta, ttlTimestamp), payload: withTtl(payload, ttlTimestamp) };
 }
 
-/** Encode a task's pending writes into one item per write. */
+/**
+ * Encode a task's pending writes into one item per write. `nonce` must be
+ * unique per `putWrites` *call* (not per write) and is appended to every
+ * write's S3 offload keyParts: it keeps repeated/concurrent attempts for the
+ * same (thread, checkpoint, task, index) from ever sharing an S3 location, so
+ * a losing attempt's idempotency-orphan cleanup can only ever delete its own
+ * upload — never a winning attempt's.
+ */
 export async function buildWriteItems(
   context: CheckpointerContext,
   threadId: string,
@@ -59,6 +66,7 @@ export async function buildWriteItems(
   checkpointId: string,
   taskId: string,
   writes: PendingWrite[],
+  nonce: string,
   ttlTimestamp?: number,
 ): Promise<CheckpointWriteItem[]> {
   const deps = codecDeps(context);
@@ -68,7 +76,7 @@ export async function buildWriteItems(
     const [channel, value] = writes[positional];
     const index = WRITES_IDX_MAP[channel] ?? positional;
     const descriptor = await encodePayload(value, deps, {
-      keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`],
+      keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`, nonce],
     });
     const item: CheckpointWriteItem = {
       PK: pk,

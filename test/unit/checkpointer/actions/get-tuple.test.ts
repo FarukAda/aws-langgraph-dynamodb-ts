@@ -53,7 +53,15 @@ describe('getCheckpointTuple', () => {
       metadata,
       'parent-0',
     );
-    const writeItems = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-1', [['messages', 'x']]);
+    const writeItems = await buildWriteItems(
+      ctx,
+      't',
+      '',
+      'ckpt-1',
+      'task-1',
+      [['messages', 'x']],
+      'nonce-1',
+    );
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [meta] } : { Items: writeItems };

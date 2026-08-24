@@ -67,10 +67,18 @@ describe('fetchPayload', () => {
 describe('fetchPendingWrites', () => {
   it('paginates write items and decodes them in order', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const items = await buildWriteItems(context(client), 't', '', 'c1', 'task-1', [
-      ['ch', 'v0'],
-      ['ch', 'v1'],
-    ]);
+    const items = await buildWriteItems(
+      context(client),
+      't',
+      '',
+      'c1',
+      'task-1',
+      [
+        ['ch', 'v0'],
+        ['ch', 'v1'],
+      ],
+      'nonce-1',
+    );
     mock.on(QueryCommand).resolves({ Items: items });
     const pending = await fetchPendingWrites(context(client), 't', '', 'c1');
     expect(pending).toEqual([

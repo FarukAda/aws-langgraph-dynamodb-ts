@@ -47,10 +47,18 @@ describe('item-reader', () => {
   });
 
   it('assembles pending writes as [taskId, channel, value] tuples', async () => {
-    const items = await buildWriteItems(context(), 't', '', 'ckpt-1', 'task-7', [
-      ['messages', 'a'],
-      ['counter', 5],
-    ]);
+    const items = await buildWriteItems(
+      context(),
+      't',
+      '',
+      'ckpt-1',
+      'task-7',
+      [
+        ['messages', 'a'],
+        ['counter', 5],
+      ],
+      'nonce-1',
+    );
     const pending = await toPendingWrites(context(), items);
     expect(pending).toEqual([
       ['task-7', 'messages', 'a'],

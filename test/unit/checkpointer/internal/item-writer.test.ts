@@ -71,10 +71,18 @@ describe('buildCheckpointItems', () => {
 
 describe('buildWriteItems', () => {
   it('builds one item per write with task id, index, and channel', async () => {
-    const items = await buildWriteItems(context(), 't', '', 'ckpt-1', 'task-7', [
-      ['messages', 'a'],
-      ['counter', 5],
-    ]);
+    const items = await buildWriteItems(
+      context(),
+      't',
+      '',
+      'ckpt-1',
+      'task-7',
+      [
+        ['messages', 'a'],
+        ['counter', 5],
+      ],
+      'nonce-1',
+    );
     expect(items).toHaveLength(2);
     expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0000000008');
     expect(items[0].channel).toBe('messages');
@@ -84,10 +92,18 @@ describe('buildWriteItems', () => {
   });
 
   it('indexes special channels at their fixed WRITES_IDX_MAP slot, ordered before regular writes', async () => {
-    const items = await buildWriteItems(context(), 't', '', 'ckpt-1', 'task-7', [
-      ['regular', 'v'],
-      ['__interrupt__', { value: 'paused' }],
-    ]);
+    const items = await buildWriteItems(
+      context(),
+      't',
+      '',
+      'ckpt-1',
+      'task-7',
+      [
+        ['regular', 'v'],
+        ['__interrupt__', { value: 'paused' }],
+      ],
+      'nonce-1',
+    );
     const regular = items.find((item) => item.channel === 'regular')!;
     const interrupt = items.find((item) => item.channel === '__interrupt__')!;
     expect(regular.index).toBe(0);
