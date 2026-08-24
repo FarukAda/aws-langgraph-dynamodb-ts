@@ -15,6 +15,14 @@ import type { CheckpointerContext } from '../internal/setup';
 import { validateTaskId } from '../internal/validation';
 import type { CheckpointWriteItem } from '../types';
 
+/**
+ * True when the first-write-wins guard rejected a write because a row already
+ * existed — NOT evidence that a *competitor* wrote that row. This very
+ * `PutCommand`, retried after its response was lost (`ETIMEDOUT` /
+ * `NetworkingError` / `ECONNRESET`, retried by `withDynamoDBRetry` and the SDK
+ * alike), re-hits the row it just committed itself and fails identically. The
+ * two are indistinguishable here, so neither may be called never-committed.
+ */
 function isConditionalCheckFailed(error: { name?: string }): boolean {
   return error.name === 'ConditionalCheckFailedException';
 }
@@ -34,8 +42,8 @@ async function cleanUpItems(
 }
 
 /**
- * Write special (negative-index) items unconditionally — overwrite is
- * correct there, matching every reference checkpointer implementation.
+ * Write special (negative-index) items unconditionally — overwrite is correct
+ * there, matching every reference checkpointer implementation.
  */
 async function writeSpecialItems(
   context: CheckpointerContext,
@@ -50,12 +58,12 @@ async function writeSpecialItems(
 }
 
 /**
- * Outcome of {@link writeRegularItems}: never rejects. `orphaned`/`failed`
- * items never committed and are safe to clean up; every other item is now
- * permanently live and must never be touched, regardless of a sibling's fate.
+ * Outcome of {@link writeRegularItems}: never rejects. Only `failed` items are
+ * known never to have reached DynamoDB, so they alone are safe to clean up.
+ * Every other item — committed, or turned away by the guard (see
+ * {@link isConditionalCheckFailed}) — is backed by a live row and untouchable.
  */
 interface RegularWriteOutcome {
-  orphaned: CheckpointWriteItem[];
   failed: CheckpointWriteItem[];
   error?: Error;
 }
@@ -70,7 +78,6 @@ async function writeRegularItems(
   context: CheckpointerContext,
   items: CheckpointWriteItem[],
 ): Promise<RegularWriteOutcome> {
-  const orphaned: CheckpointWriteItem[] = [];
   const failed: CheckpointWriteItem[] = [];
   let error: Error | undefined;
   const results = await Promise.allSettled(
@@ -87,14 +94,12 @@ async function writeRegularItems(
   results.forEach((result, index) => {
     if (result.status === 'fulfilled') return;
     const reason = result.reason as Error;
-    if (isConditionalCheckFailed(reason)) {
-      orphaned.push(items[index]);
-    } else {
-      failed.push(items[index]);
-      error = error ?? reason;
-    }
+    /** A lost guard is neither a failure nor a cleanup candidate — the row may be ours. */
+    if (isConditionalCheckFailed(reason)) return;
+    failed.push(items[index]);
+    error = error ?? reason;
   });
-  return { orphaned, failed, error };
+  return { failed, error };
 }
 
 /**
@@ -104,8 +109,9 @@ async function writeRegularItems(
  * matching the reference checkpointer contract); special negative-index
  * writes (error/interrupt/scheduled/resume) are always overwritten. Both
  * write attempts run to full completion before any cleanup starts, and a
- * genuine failure's cleanup only ever targets items that never committed
- * (see {@link RegularWriteOutcome}).
+ * genuine failure's cleanup only ever targets items that never committed (see
+ * {@link RegularWriteOutcome}). A lost guard never triggers an S3 delete: the
+ * upload leaks — bounded, non-corrupting — rather than strand a live row.
  */
 export async function putWrites(
   context: CheckpointerContext,
@@ -137,14 +143,8 @@ export async function putWrites(
     writeRegularItems(context, regular),
   ]);
   const firstError = specialError ?? regularOutcome.error;
-  if (firstError) {
-    const neverCommitted = [
-      ...regularOutcome.orphaned,
-      ...regularOutcome.failed,
-      ...(specialError ? special : []),
-    ];
-    await cleanUpItems(context, neverCommitted);
-    throw firstError;
-  }
-  await cleanUpItems(context, regularOutcome.orphaned);
+  if (!firstError) return;
+  const neverCommitted = [...regularOutcome.failed, ...(specialError ? special : [])];
+  await cleanUpItems(context, neverCommitted);
+  throw firstError;
 }

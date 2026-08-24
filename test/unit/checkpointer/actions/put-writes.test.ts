@@ -270,7 +270,7 @@ describe('putWrites', () => {
     expect(mock.commandCalls(PutCommand)).toHaveLength(1);
   });
 
-  it('cleans up the orphaned S3 upload when a regular write loses the idempotency race', async () => {
+  it('never deletes an S3 object when a regular write loses the conditional-check race', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).rejects(conditionalCheckFailed());
     const offloader = {
@@ -286,12 +286,45 @@ describe('putWrites', () => {
       [['ch', 'a']],
       'task-1',
     );
+    // A ConditionalCheckFailedException does NOT prove a competitor won: the
+    // very same conditional PutCommand, retried after its response was lost
+    // (ETIMEDOUT/NetworkingError — see retry-classifier), hits its OWN
+    // just-committed row and fails the condition too. Deleting "our" upload
+    // there would strand a live row pointing at a deleted object, so a lost
+    // race never triggers an S3 delete. The loser's upload is left behind
+    // instead — bounded and non-corrupting.
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it('leaves a lost-race upload alone while still cleaning a genuinely failed sibling', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(PutCommand)
+      .rejectsOnce(conditionalCheckFailed())
+      .rejectsOnce(Object.assign(new Error('down'), { name: 'ValidationException' }));
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[]) => parts.join('/'),
+      upload: async (key: string) => key,
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    const ctx = { ...context(client), offloader: offloader as never };
+    await expect(
+      putWrites(
+        ctx,
+        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+        [
+          ['ch', 'a'],
+          ['ch', 'b'],
+        ],
+        'task-1',
+      ),
+    ).rejects.toThrow('down');
+    // The failure path must not sweep the conditional-check loser in either:
+    // only write-1, which provably never reached DynamoDB, is cleaned up.
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
     expect(keys).toHaveLength(1);
-    // The S3 key now carries a per-call random nonce (so a losing attempt can
-    // never delete a winning attempt's upload — see item-writer.ts), so this
-    // asserts the key's shape rather than the old exact literal.
-    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-0\/[^/]+$/);
+    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/[^/]+$/);
   });
 });
