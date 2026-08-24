@@ -131,7 +131,7 @@ describe('putWrites', () => {
     expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-0\/[^/]+$/);
   });
 
-  it('cleans up every item when one regular write fails after a sibling already succeeded', async () => {
+  it('cleans up only the item that failed, never a sibling that already succeeded', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(PutCommand)
@@ -155,15 +155,14 @@ describe('putWrites', () => {
         'task-1',
       ),
     ).rejects.toThrow('down');
-    // Genuine (non-conditional) failure cleans up every item's upload, including
-    // the sibling write that succeeded — matching the pre-existing "clean up
-    // everything on a real failure" contract, now only run after every regular
-    // write has fully settled (never mid-flight).
+    // The first item's PutCommand already succeeded, so its row is now
+    // permanently live: only the second (genuinely failed, never-committed)
+    // item's upload may be cleaned up. Deleting the first's would orphan a
+    // committed row — the exact corruption class this fix closes.
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
-    expect(keys).toHaveLength(2);
-    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-0\/[^/]+$/);
-    expect(keys[1]).toMatch(/^t\/\/c1\/task-1\/write-1\/[^/]+$/);
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/[^/]+$/);
   });
 
   it('cleans up every item when the special-write batch fails outright', async () => {
@@ -230,6 +229,28 @@ describe('putWrites', () => {
     expect(mock.commandCalls(PutCommand)[0].args[0].input.ConditionExpression).toBe(
       'attribute_not_exists(PK)',
     );
+  });
+
+  it('gives each putWrites call its own S3 key for the same logical write (nonce uniqueness)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(PutCommand).resolves({});
+    const upload = jest.fn(async (key: string) => key);
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[]) => parts.join('/'),
+      upload,
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    const ctx = { ...context(client), offloader: offloader as never };
+    const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
+    await putWrites(ctx, config, [['ch', 'a']], 'task-1');
+    await putWrites(ctx, config, [['ch', 'a']], 'task-1');
+    expect(upload).toHaveBeenCalledTimes(2);
+    // A hardcoded/constant nonce would also satisfy the key-shape regex used
+    // elsewhere in this file; this proves two attempts actually diverge.
+    const [firstKey] = upload.mock.calls[0] as [string, Uint8Array];
+    const [secondKey] = upload.mock.calls[1] as [string, Uint8Array];
+    expect(firstKey).not.toBe(secondKey);
   });
 
   it('dispatches special and regular writes from the same call through their own DynamoDB paths', async () => {

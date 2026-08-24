@@ -19,10 +19,23 @@ function isConditionalCheckFailed(error: { name?: string }): boolean {
   return error.name === 'ConditionalCheckFailedException';
 }
 
+/** Best-effort delete `items`' offloaded S3 objects, if an offloader is configured. */
+async function cleanUpItems(
+  context: CheckpointerContext,
+  items: CheckpointWriteItem[],
+): Promise<void> {
+  if (!context.offloader) return;
+  await cleanUpS3Orphans(
+    context.offloader,
+    collectS3Keys(items.map((item) => item.value)),
+    'putWrites',
+    context.logger,
+  );
+}
+
 /**
  * Write special (negative-index) items unconditionally — overwrite is
- * correct for error/interrupt/scheduled/resume channels, matching every
- * reference checkpointer implementation.
+ * correct there, matching every reference checkpointer implementation.
  */
 async function writeSpecialItems(
   context: CheckpointerContext,
@@ -36,25 +49,29 @@ async function writeSpecialItems(
   );
 }
 
-/** Outcome of {@link writeRegularItems}: never rejects — genuine failures are reported via `error`. */
+/**
+ * Outcome of {@link writeRegularItems}: never rejects. `orphaned`/`failed`
+ * items never committed and are safe to clean up; every other item is now
+ * permanently live and must never be touched, regardless of a sibling's fate.
+ */
 interface RegularWriteOutcome {
   orphaned: CheckpointWriteItem[];
+  failed: CheckpointWriteItem[];
   error?: Error;
 }
 
 /**
  * Write regular (non-negative-index) items with a first-write-wins guard — a
- * task re-executed after a partial prior commit must not clobber an already-
- * recorded write. Every `PutCommand` is let to fully settle
- * (`Promise.allSettled`) before this resolves, even if one fails outright,
- * and this function itself never rejects: a genuine failure is reported via
- * the returned `error`, not thrown — so cleanup never races an in-flight put.
+ * re-executed task must not clobber an already-recorded write. Every
+ * `PutCommand` fully settles (`Promise.allSettled`) before this resolves and
+ * never rejects; a genuine failure is reported via `error`, not thrown.
  */
 async function writeRegularItems(
   context: CheckpointerContext,
   items: CheckpointWriteItem[],
 ): Promise<RegularWriteOutcome> {
   const orphaned: CheckpointWriteItem[] = [];
+  const failed: CheckpointWriteItem[] = [];
   let error: Error | undefined;
   const results = await Promise.allSettled(
     items.map((item) =>
@@ -73,10 +90,11 @@ async function writeRegularItems(
     if (isConditionalCheckFailed(reason)) {
       orphaned.push(items[index]);
     } else {
+      failed.push(items[index]);
       error = error ?? reason;
     }
   });
-  return { orphaned, error };
+  return { orphaned, failed, error };
 }
 
 /**
@@ -85,9 +103,9 @@ async function writeRegularItems(
  * Regular writes are first-write-wins (idempotent under task re-execution,
  * matching the reference checkpointer contract); special negative-index
  * writes (error/interrupt/scheduled/resume) are always overwritten. Both
- * write attempts run to full completion — failures captured, never thrown —
- * before any S3 cleanup starts, so cleanup never races a still-in-flight
- * `PutCommand` from the other branch.
+ * write attempts run to full completion before any cleanup starts, and a
+ * genuine failure's cleanup only ever targets items that never committed
+ * (see {@link RegularWriteOutcome}).
  */
 export async function putWrites(
   context: CheckpointerContext,
@@ -120,22 +138,13 @@ export async function putWrites(
   ]);
   const firstError = specialError ?? regularOutcome.error;
   if (firstError) {
-    if (context.offloader) {
-      await cleanUpS3Orphans(
-        context.offloader,
-        collectS3Keys(items.map((item) => item.value)),
-        'putWrites',
-        context.logger,
-      );
-    }
+    const neverCommitted = [
+      ...regularOutcome.orphaned,
+      ...regularOutcome.failed,
+      ...(specialError ? special : []),
+    ];
+    await cleanUpItems(context, neverCommitted);
     throw firstError;
   }
-  if (regularOutcome.orphaned.length > 0 && context.offloader) {
-    await cleanUpS3Orphans(
-      context.offloader,
-      collectS3Keys(regularOutcome.orphaned.map((item) => item.value)),
-      'putWrites',
-      context.logger,
-    );
-  }
+  await cleanUpItems(context, regularOutcome.orphaned);
 }
