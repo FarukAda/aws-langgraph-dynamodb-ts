@@ -1,4 +1,9 @@
 import {
+  GetBucketLifecycleConfigurationCommand,
+  PutBucketLifecycleConfigurationCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import {
   BatchWriteCommand,
   QueryCommand,
   ScanCommand,
@@ -6,11 +11,15 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { HumanMessage } from '@langchain/core/messages';
+import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-history';
 import { DynamoDBSessionChatMessageHistory } from '../../../src/history/session-adapter';
 import { JSON_SERDE } from '../../../src/shared/codec/json-serde';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+
+const s3Mock = mockClient(S3Client);
+afterEach(() => s3Mock.reset());
 
 function history(client) {
   return new DynamoDBChatMessageHistory({ tableName: 'history', client, serde: JSON_SERDE });
@@ -89,5 +98,43 @@ describe('DynamoDBChatMessageHistory', () => {
     });
     owned.destroy();
     expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('ensureS3LifecycleRule provisions the rule when both s3 and ttl are configured', async () => {
+    const { client } = createStrictDocumentMock();
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
+    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    const h = new DynamoDBChatMessageHistory({
+      tableName: 'history',
+      client,
+      serde: JSON_SERDE,
+      s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
+      ttl: { days: 30 },
+    });
+    await h.ensureS3LifecycleRule();
+    expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
+  });
+
+  it('ensureS3LifecycleRule no-ops when ttl is not configured', async () => {
+    const { client } = createStrictDocumentMock();
+    const h = new DynamoDBChatMessageHistory({
+      tableName: 'history',
+      client,
+      serde: JSON_SERDE,
+      s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
+    });
+    await expect(h.ensureS3LifecycleRule()).resolves.toBeUndefined();
+    expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
+  });
+
+  it('ensureS3LifecycleRule no-ops when s3 is not configured', async () => {
+    const { client } = createStrictDocumentMock();
+    const h = new DynamoDBChatMessageHistory({
+      tableName: 'history',
+      client,
+      serde: JSON_SERDE,
+      ttl: { days: 30 },
+    });
+    await expect(h.ensureS3LifecycleRule()).resolves.toBeUndefined();
   });
 });

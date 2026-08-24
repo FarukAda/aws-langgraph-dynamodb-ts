@@ -1,13 +1,22 @@
 import {
+  GetBucketLifecycleConfigurationCommand,
+  PutBucketLifecycleConfigurationCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import {
   DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
+import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+
+const s3Mock = mockClient(S3Client);
+afterEach(() => s3Mock.reset());
 
 describe('DynamoDBStore', () => {
   it('put then get round-trips an item (dispatch: put + get)', async () => {
@@ -91,5 +100,36 @@ describe('DynamoDBStore', () => {
     });
     owned.destroy();
     expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('ensureS3LifecycleRule provisions the rule when both s3 and ttl are configured', async () => {
+    const { client } = createStrictDocumentMock();
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
+    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    const store = new DynamoDBStore({
+      tableName: 'store',
+      client,
+      s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
+      ttl: { days: 30 },
+    });
+    await store.ensureS3LifecycleRule();
+    expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
+  });
+
+  it('ensureS3LifecycleRule no-ops when ttl is not configured', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({
+      tableName: 'store',
+      client,
+      s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
+    });
+    await expect(store.ensureS3LifecycleRule()).resolves.toBeUndefined();
+    expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
+  });
+
+  it('ensureS3LifecycleRule no-ops when s3 is not configured', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client, ttl: { days: 30 } });
+    await expect(store.ensureS3LifecycleRule()).resolves.toBeUndefined();
   });
 });

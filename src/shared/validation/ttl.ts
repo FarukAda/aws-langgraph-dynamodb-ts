@@ -25,3 +25,11 @@ export function resolveTtlSeconds(ttl: TtlOption): number {
 export function calculateTtlTimestamp(ttl: TtlOption, now: () => number = Date.now): number {
   return Math.floor(now() / 1000) + resolveTtlSeconds(ttl);
 }
+
+/** Resolve a {@link TtlOption} to whole days, rounded up so the S3 lifecycle
+ * expiration never fires before DynamoDB's own TTL sweep (which can lag up
+ * to ~48h past the TTL timestamp) — expiring the S3 object first would leave
+ * a live DynamoDB item pointing at a deleted payload. */
+export function resolveTtlDaysCeil(ttl: TtlOption): number {
+  return Math.ceil(resolveTtlSeconds(ttl) / SECONDS_PER_DAY);
+}

@@ -1,4 +1,9 @@
 import {
+  GetBucketLifecycleConfigurationCommand,
+  PutBucketLifecycleConfigurationCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import {
   BatchWriteCommand,
   PutCommand,
   QueryCommand,
@@ -9,9 +14,13 @@ import type {
   CheckpointMetadata,
   CheckpointTuple,
 } from '@langchain/langgraph-checkpoint';
+import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+
+const s3Mock = mockClient(S3Client);
+afterEach(() => s3Mock.reset());
 
 const serde = {
   dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
@@ -103,5 +112,38 @@ describe('DynamoDBSaver', () => {
     });
     saver.destroy();
     expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('ensureS3LifecycleRule provisions the rule when both s3 and ttl are configured', async () => {
+    const { client } = createStrictDocumentMock();
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
+    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    const saver = new DynamoDBSaver({
+      tableName: 'ckpt',
+      client,
+      serde,
+      s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
+      ttl: { days: 30 },
+    });
+    await saver.ensureS3LifecycleRule();
+    expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
+  });
+
+  it('ensureS3LifecycleRule no-ops when ttl is not configured', async () => {
+    const { client } = createStrictDocumentMock();
+    const saver = new DynamoDBSaver({
+      tableName: 'ckpt',
+      client,
+      serde,
+      s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
+    });
+    await expect(saver.ensureS3LifecycleRule()).resolves.toBeUndefined();
+    expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
+  });
+
+  it('ensureS3LifecycleRule no-ops when s3 is not configured', async () => {
+    const { client } = createStrictDocumentMock();
+    const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde, ttl: { days: 30 } });
+    await expect(saver.ensureS3LifecycleRule()).resolves.toBeUndefined();
   });
 });

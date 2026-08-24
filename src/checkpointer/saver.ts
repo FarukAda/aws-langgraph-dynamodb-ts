@@ -8,6 +8,7 @@ import {
   type PendingWrite,
 } from '@langchain/langgraph-checkpoint';
 
+import { resolveTtlDaysCeil } from '../shared/validation/ttl';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
 import { getCheckpointTuple } from './actions/get-tuple';
 import { listCheckpoints } from './actions/list';
@@ -61,5 +62,18 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   destroy(): void {
     this.context.offloader?.destroy();
     if (this.ownsClient) this.ddbClient?.destroy();
+  }
+
+  /**
+   * Best-effort provision an S3 lifecycle expiration rule matching the
+   * configured TTL, so offloaded objects don't outlive their DynamoDB item
+   * forever. No-ops when S3 offload or TTL isn't configured. Requires the
+   * `s3:GetLifecycleConfiguration`/`s3:PutLifecycleConfiguration` bucket-level
+   * permissions (broader than the object-level CRUD the rest of S3 offload
+   * needs) — call this once during deployment/provisioning, not per-request.
+   */
+  async ensureS3LifecycleRule(): Promise<void> {
+    if (!this.context.offloader || !this.context.ttl) return;
+    await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
   }
 }
