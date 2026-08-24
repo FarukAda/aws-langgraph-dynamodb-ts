@@ -40,7 +40,11 @@ async function revertSessionCount(
   );
 }
 
-/** Best-effort delete every offloaded S3 object uploaded for the whole batch. */
+/**
+ * Best-effort delete the offloaded S3 objects of the `chunks` slice given.
+ * {@link compensate} calls it once per commit status, never for the whole
+ * batch, so a committed chunk's objects arrive only once its rows are gone.
+ */
 async function cleanBatchS3(context: HistoryContext, chunks: ChatMessageItem[][]): Promise<void> {
   if (!context.offloader) return;
   const descriptors = chunks.flat().map((item) => item.message);
@@ -71,10 +75,13 @@ async function rollbackCommitted(
 }
 
 /**
- * Undo a failed batch: warn, best-effort clean S3, then roll back committed
- * chunks. Always throws. If the rollback itself fails the session may have
- * drifted, so it raises {@link CompensationFailedError} carrying both the
- * trigger and the rollback error; otherwise it rethrows the trigger.
+ * Undo a failed batch. Always throws. S3 cleanup is split by commit status so
+ * no live row is ever left pointing at a deleted object: the never-committed
+ * suffix is cleaned immediately, the committed prefix only after its rows are
+ * confirmed deleted. If the rollback itself fails, the committed chunks' S3
+ * objects are deliberately left in place (their rows may survive) and it
+ * raises {@link CompensationFailedError} carrying both the trigger and the
+ * rollback error; otherwise it rethrows the trigger.
  */
 async function compensate(
   context: HistoryContext,
@@ -109,9 +116,11 @@ async function compensate(
 /**
  * Append message chunks with caller-observed atomicity. Each chunk commits its
  * messages and count in one transaction; if a later chunk fails, every
- * already-committed chunk is deleted and its count reverted, and all batch S3
- * objects are cleaned, restoring the pre-call state before the error is
- * rethrown. So `addMessages` either lands the whole batch or nothing.
+ * already-committed chunk is deleted and its count reverted, and the batch's
+ * S3 objects are cleaned once their rows are gone, restoring the pre-call
+ * state before the error is rethrown. Except on a failed rollback, which
+ * surfaces as {@link CompensationFailedError} and deliberately leaves the
+ * committed chunks' S3 objects behind, since their rows may survive.
  */
 export async function appendChunks(
   context: HistoryContext,

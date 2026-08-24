@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+A hardening pass over the whole library. No breaking API changes; the one
+behaviour change is `putWrites`, described first below.
+
+### Fixed
+
+- **`putWrites` is now first-write-wins for regular writes.** Re-executing a
+  task no longer overwrites an already-recorded write for the same
+  `(thread, checkpoint, task, index)` — the first value committed is the one
+  that survives, matching the reference checkpointer contract. Previously a
+  re-execution silently clobbered committed data. Special negative-index
+  writes (`__interrupt__` / `__resume__` / `__error__` / `__scheduled__`) still
+  overwrite, as they must. A write that loses this race is not an error and
+  never triggers an S3 delete: a lost conditional check cannot be told apart
+  from your own retried write landing twice, so its offloaded upload is left in
+  the bucket rather than risk deleting one a live row still points at.
+- **S3 key collisions between different logical payloads.** Key parts are now
+  base64url-encoded before being joined, so a part containing `/` (a namespace
+  element or store key, both legal) can no longer produce a key some other
+  payload also generates. Internal only — no API change, and objects written by
+  earlier versions still read back, since each item stores its own key; only
+  newly written keys take the new shape.
+- **Offloaded objects were leaked or wrongly deleted in several edge cases:**
+  deleting a store item now removes its S3 object; chat-history append
+  compensation deletes committed rows before their S3 objects (never the other
+  way round); a failing write no longer cleans up a sibling write's committed
+  object.
+- **Correctness fixes across the store, history, and S3 layers:** `getMessages`
+  and `clearSession` no longer cap out at a fixed page count on long
+  conversations; an empty per-field metadata filter no longer matches every
+  item; a pluggable `VectorBackend` returning out-of-prefix hits is filtered;
+  vector reconciliation keys are collision-free; `redactSecrets` no longer
+  mistakes a repeated (DAG-shared) object for a cycle; S3 uploads/downloads get
+  the same app-level retry budget as the DynamoDB paths, behind a client
+  construction that is now race-free.
+
+### Added
+
+- **`ensureS3LifecycleRule()`** on `DynamoDBSaver`, `DynamoDBStore`, and
+  `DynamoDBChatMessageHistory`. When `ttl` and `s3` are both configured, call it
+  once (e.g. at deploy time) to best-effort install a matching S3 lifecycle
+  expiration rule. It is **opt-in**: the rule is no longer provisioned
+  automatically on construction, because it needs the broader bucket-level
+  `s3:PutLifecycleConfiguration` permission. Without it, objects that
+  best-effort cleanup misses are never reclaimed automatically.
+- **`listSessions({ maxIterations })`** — an optional override for the scan's
+  iteration cap, for shared tables where non-session rows dominate the scan.
+
 ## [0.3.0] - 2026-05-30
 
 A complete, ground-up rewrite. Earlier `0.x` releases were not reliable in
