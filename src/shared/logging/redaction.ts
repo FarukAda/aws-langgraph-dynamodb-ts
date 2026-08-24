@@ -43,13 +43,17 @@ export function redactSecrets(
     if (current === null || typeof current !== 'object') return current;
     if (seen.has(current)) return '[Circular]';
     seen.add(current);
-    if (Array.isArray(current)) return current.map(walk);
-    if (isErrorShaped(current)) return current;
-    const out: { [key: string]: Redactable } = {};
-    for (const [key, val] of Object.entries(current)) {
-      out[key] = isSecretKey(key, patterns) ? REDACTED : walk(val);
+    try {
+      if (Array.isArray(current)) return current.map(walk);
+      if (isErrorShaped(current)) return current;
+      const out: { [key: string]: Redactable } = {};
+      for (const [key, val] of Object.entries(current)) {
+        out[key] = isSecretKey(key, patterns) ? REDACTED : walk(val);
+      }
+      return out;
+    } finally {
+      seen.delete(current);
     }
-    return out;
   };
   return walk(value);
 }

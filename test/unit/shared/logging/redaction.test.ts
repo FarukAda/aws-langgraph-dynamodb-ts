@@ -36,6 +36,19 @@ describe('redactSecrets', () => {
     const out = redactSecrets(input) as { failure: Error };
     expect(out.failure).toBe(error);
   });
+
+  it('does not flag a DAG-shared (non-cyclic) object as circular', () => {
+    const shared = { note: 'hello' };
+    const result = redactSecrets({ a: shared, b: shared });
+    expect(result).toEqual({ a: { note: 'hello' }, b: { note: 'hello' } });
+  });
+
+  it('passes through a repeated (non-cyclic) Error reference at both occurrences', () => {
+    const err = new Error('boom');
+    const result = redactSecrets({ a: err, b: err }) as { a: unknown; b: unknown };
+    expect(result.a).toBe(err);
+    expect(result.b).toBe(err);
+  });
 });
 
 describe('redactLogger', () => {
