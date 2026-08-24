@@ -133,4 +133,14 @@ describe('DynamoDBSaver conformance: WRITES_IDX_MAP special-write contract', () 
     );
     await saver.deleteThread(threadId);
   });
+
+  it('is idempotent for a regular write when a task re-emits with a different value', async () => {
+    const threadId = 'conf-idempotent';
+    await saver.put(threadConfig(threadId), checkpoint('cp-1'), metadata, {});
+    await saver.putWrites(threadConfig(threadId, 'cp-1'), [['channel-a', 'first']], 'task-1');
+    await saver.putWrites(threadConfig(threadId, 'cp-1'), [['channel-a', 'second']], 'task-1');
+    const writes = await writesFor(threadId, 'cp-1');
+    expect(writes).toEqual([['channel-a', 'first']]);
+    await saver.deleteThread(threadId);
+  });
 });

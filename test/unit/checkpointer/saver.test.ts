@@ -1,4 +1,9 @@
-import { BatchWriteCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import {
+  BatchWriteCommand,
+  PutCommand,
+  QueryCommand,
+  TransactWriteCommand,
+} from '@aws-sdk/lib-dynamodb';
 import type {
   Checkpoint,
   CheckpointMetadata,
@@ -56,16 +61,16 @@ describe('DynamoDBSaver', () => {
     expect(await drain(saver.list({ configurable: { thread_id: 't' } }))).toEqual([]);
   });
 
-  it('putWrites delegates to a batch write', async () => {
+  it('putWrites delegates to a conditional put for a regular write', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(PutCommand).resolves({});
     const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
     await saver.putWrites(
       { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
       [['ch', 'v']],
       'task-1',
     );
-    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
+    expect(mock.commandCalls(PutCommand)).toHaveLength(1);
   });
 
   it('deleteThread is a no-op when the thread is empty', async () => {
