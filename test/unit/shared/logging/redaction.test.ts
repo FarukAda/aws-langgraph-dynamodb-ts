@@ -33,7 +33,7 @@ describe('redactSecrets', () => {
   it('passes Error objects through unchanged so stack traces survive', () => {
     const error = new Error('boom');
     const input = { failure: error } as never;
-    const out = redactSecrets(input) as { failure: Error };
+    const out = redactSecrets(input) as unknown as { failure: Error };
     expect(out.failure).toBe(error);
   });
 
@@ -45,7 +45,7 @@ describe('redactSecrets', () => {
 
   it('passes through a repeated (non-cyclic) Error reference at both occurrences', () => {
     const err = new Error('boom');
-    const result = redactSecrets({ a: err, b: err }) as { a: unknown; b: unknown };
+    const result = redactSecrets({ a: err, b: err } as never) as { a: unknown; b: unknown };
     expect(result.a).toBe(err);
     expect(result.b).toBe(err);
   });

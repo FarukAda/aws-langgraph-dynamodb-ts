@@ -45,8 +45,8 @@ describe('clearSession', () => {
     });
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     await clearSession(context(client), 'sess-1');
-    const deletes = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems.history;
-    expect(deletes.map((d) => d.DeleteRequest.Key)).toEqual([
+    const deletes = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems!.history;
+    expect(deletes.map((d) => d.DeleteRequest!.Key)).toEqual([
       { PK: 'sess-1', SK: 'MSG#01A' },
       { PK: 'sess-1', SK: 'SESSION' },
     ]);

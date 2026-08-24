@@ -117,7 +117,7 @@ describe('S3 offload against real AWS', () => {
       new CreateBucketCommand({
         Bucket: bucketName,
         ...(region && region !== 'us-east-1'
-          ? { CreateBucketConfiguration: { LocationConstraint: region } }
+          ? { CreateBucketConfiguration: { LocationConstraint: region as never } }
           : {}),
       }),
     );
@@ -151,7 +151,7 @@ describe('S3 offload against real AWS', () => {
 
   it('offloads an over-limit checkpoint to S3 and reads it back byte-exact', async () => {
     const config = { configurable: { thread_id: 'big', checkpoint_ns: '' } };
-    await saver.put(config, bigCheckpoint('cbig'), { source: 'input', step: 0, parents: {} }, {});
+    await saver.put(config, bigCheckpoint('cbig'), { source: 'input', step: 0, parents: {} });
 
     expect(await offloadedObjectCount(s3)).toBeGreaterThan(0);
     const tuple = await saver.getTuple({
@@ -243,7 +243,6 @@ describe('S3 offload against real AWS', () => {
       { configurable: { thread_id: threadId, checkpoint_ns: '' } },
       bigCheckpoint('anchor'),
       { source: 'input', step: 0, parents: {} },
-      {},
     );
 
     const before = await offloadedObjectCount(s3);

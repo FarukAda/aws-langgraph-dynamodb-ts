@@ -1,4 +1,5 @@
 import { DeleteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -9,9 +10,16 @@ import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
-  return { client, tableName: 'store', serde: JSON_SERDE, logger: SILENT_LOGGER, ...extra };
+  return {
+    client,
+    tableName: 'store',
+    serde: JSON_SERDE,
+    logger: SILENT_LOGGER,
+    maxSearchCandidates: 1000,
+    ...extra,
+  };
 }
-const op = (over) => ({
+const op = (over: Partial<PutOperation>): PutOperation => ({
   namespace: ['users', 'u1'],
   key: 'profile',
   value: { name: 'Faruk' },
@@ -24,7 +32,7 @@ describe('putItem', () => {
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
     await putItem(context(client), op({}));
-    const item = mock.commandCalls(PutCommand)[0].args[0].input.Item;
+    const item = mock.commandCalls(PutCommand)[0].args[0].input.Item!;
     expect(item.PK).toBe('users');
     expect(item.SK).toBe('u1#profile');
     expect(item.createdAt).toBe(item.updatedAt);
@@ -36,7 +44,7 @@ describe('putItem', () => {
     mock.on(GetCommand).resolves({ Item: { createdAt: '2000-01-01T00:00:00.000Z' } });
     mock.on(PutCommand).resolves({});
     await putItem(context(client), op({}));
-    const item = mock.commandCalls(PutCommand)[0].args[0].input.Item;
+    const item = mock.commandCalls(PutCommand)[0].args[0].input.Item!;
     expect(item.createdAt).toBe('2000-01-01T00:00:00.000Z');
     expect(item.updatedAt).not.toBe(item.createdAt);
   });
@@ -67,7 +75,7 @@ describe('putItem', () => {
     mock.on(PutCommand).resolves({});
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.1, 0.2]) };
     await putItem(context(client, { index: { dims: 2, embeddings: embeddings as never } }), op({}));
-    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item.embedding).toEqual([0.1, 0.2]);
+    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toEqual([0.1, 0.2]);
   });
 
   it('skips embedding when index is false for the item', async () => {
@@ -80,7 +88,7 @@ describe('putItem', () => {
       op({ index: false }),
     );
     expect(embeddings.embedQuery).not.toHaveBeenCalled();
-    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item.embedding).toBeUndefined();
+    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toBeUndefined();
   });
 
   it('uses a per-item index field override', async () => {
@@ -107,7 +115,7 @@ describe('putItem', () => {
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
     await putItem(context(client, { ttl: { seconds: 100 } }), op({}));
-    expect(typeof mock.commandCalls(PutCommand)[0].args[0].input.Item.ttl).toBe('number');
+    expect(typeof mock.commandCalls(PutCommand)[0].args[0].input.Item!.ttl).toBe('number');
   });
 
   it('cleans up offloaded objects when the write fails', async () => {
@@ -116,8 +124,8 @@ describe('putItem', () => {
     mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts) => parts.join('/'),
-      upload: async (key) => key,
+      buildKey: (parts: string[]) => parts.join('/'),
+      upload: async (key: string) => key,
       deleteBatch: jest.fn().mockResolvedValue([]),
     };
     await expect(
@@ -139,7 +147,7 @@ describe('putItem', () => {
       }),
       op({}),
     );
-    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item.embedding).toBeUndefined();
+    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toBeUndefined();
     expect(vectorBackend.upsert).toHaveBeenCalledWith(['users', 'u1'], 'profile', [0.5, 0.6]);
   });
 
@@ -224,8 +232,8 @@ describe('putItem', () => {
     mock.on(DeleteCommand).resolves({});
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts) => parts.join('/'),
-      upload: async (key) => key,
+      buildKey: (parts: string[]) => parts.join('/'),
+      upload: async (key: string) => key,
       deleteBatch: jest.fn().mockResolvedValue([]),
     };
     await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
@@ -245,8 +253,8 @@ describe('putItem', () => {
     mock.on(DeleteCommand).resolves({});
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts) => parts.join('/'),
-      upload: async (key) => key,
+      buildKey: (parts: string[]) => parts.join('/'),
+      upload: async (key: string) => key,
       deleteBatch: jest.fn().mockResolvedValue([]),
     };
     await putItem(context(client, { offloader: offloader as never }), op({ value: null }));

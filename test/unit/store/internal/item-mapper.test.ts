@@ -8,7 +8,13 @@ import {
 import type { StoreContext } from '../../../../src/store/internal/setup';
 
 function context(): StoreContext {
-  return { client: {} as never, tableName: 's', serde: JSON_SERDE, logger: SILENT_LOGGER };
+  return {
+    client: {} as never,
+    tableName: 's',
+    serde: JSON_SERDE,
+    logger: SILENT_LOGGER,
+    maxSearchCandidates: 1000,
+  };
 }
 
 describe('store item-mapper', () => {

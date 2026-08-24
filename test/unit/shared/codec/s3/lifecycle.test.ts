@@ -17,7 +17,9 @@ function client(): S3Client {
 
 describe('ensureLifecycleRule', () => {
   it('adds the rule when none exists, preserving user rules', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [{ ID: 'user-rule' }] });
+    s3Mock
+      .on(GetBucketLifecycleConfigurationCommand)
+      .resolves({ Rules: [{ ID: 'user-rule', Status: 'Enabled' }] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30);
     const put = s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0];

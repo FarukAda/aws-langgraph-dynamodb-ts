@@ -5,6 +5,7 @@ import {
 } from '@aws-sdk/client-s3';
 import {
   BatchWriteCommand,
+  DynamoDBDocument,
   QueryCommand,
   ScanCommand,
   TransactWriteCommand,
@@ -21,7 +22,7 @@ import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
 
-function history(client) {
+function history(client: DynamoDBDocument) {
   return new DynamoDBChatMessageHistory({ tableName: 'history', client, serde: JSON_SERDE });
 }
 
@@ -81,7 +82,8 @@ describe('DynamoDBChatMessageHistory', () => {
     const adapter = history(client).forSession('sess-9');
     expect(adapter).toBeInstanceOf(DynamoDBSessionChatMessageHistory);
     await adapter.addMessage(new HumanMessage('hi'));
-    const item = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems[1].Put.Item;
+    const item =
+      mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems![1].Put!.Item!;
     expect(item.PK).toBe('sess-9');
   });
 

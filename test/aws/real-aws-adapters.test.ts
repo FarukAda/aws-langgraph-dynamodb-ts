@@ -183,7 +183,7 @@ describe('Adapter surfaces against real AWS', () => {
         parents: {},
         note: bigNote,
       } as unknown as CheckpointMetadata;
-      await saver.put(config, checkpoint(id), metadata, {});
+      await saver.put(config, checkpoint(id), metadata);
     }
 
     const seen: string[] = [];

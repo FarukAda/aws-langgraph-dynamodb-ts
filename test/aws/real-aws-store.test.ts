@@ -8,6 +8,7 @@ import {
   waitUntilTableNotExists,
 } from '@aws-sdk/client-dynamodb';
 import type { EmbeddingsInterface } from '@langchain/core/embeddings';
+import { AsyncCaller } from '@langchain/core/utils/async_caller';
 
 import { DynamoDBStore, type VectorBackend, type VectorRef } from '../../src/index';
 
@@ -19,6 +20,8 @@ const EMBED_DIMS = 8;
 
 /** Deterministic offline embedding, enough to exercise the index code paths. */
 class DeterministicEmbeddings implements EmbeddingsInterface {
+  caller = new AsyncCaller({});
+
   async embedQuery(text: string): Promise<number[]> {
     const vector = new Array(EMBED_DIMS).fill(0);
     for (const char of text.toLowerCase()) {

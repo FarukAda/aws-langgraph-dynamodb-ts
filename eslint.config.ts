@@ -2,7 +2,6 @@ import js from '@eslint/js';
 import type { ESLint } from 'eslint';
 import prettierConfig from 'eslint-config-prettier';
 import noInstanceof from 'eslint-plugin-no-instanceof';
-// @ts-expect-error perfectionist ships without bundled types
 import perfectionist from 'eslint-plugin-perfectionist';
 import prettier from 'eslint-plugin-prettier';
 import unusedImports from 'eslint-plugin-unused-imports';

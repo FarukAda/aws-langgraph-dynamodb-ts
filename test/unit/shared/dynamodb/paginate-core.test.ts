@@ -1,8 +1,8 @@
 import { paginatePages } from '../../../../src/shared/dynamodb/paginate-core';
 import { AbortError, ResultTruncatedError } from '../../../../src/shared/errors/errors';
 
-async function collect(gen) {
-  const out = [];
+async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {
+  const out: T[] = [];
   for await (const item of gen) out.push(item);
   return out;
 }

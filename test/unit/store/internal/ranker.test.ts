@@ -18,7 +18,7 @@ describe('rankInMemory', () => {
   it('ranks candidates by cosine similarity, descending', () => {
     const ranked = rankInMemory([candidate('a', [1, 0]), candidate('b', [0, 1])], [0, 1], 10);
     expect(ranked.map((r) => r.key)).toEqual(['b', 'a']);
-    expect(ranked[0].score).toBeGreaterThan(ranked[1].score);
+    expect(ranked[0].score).toBeGreaterThan(ranked[1].score!);
   });
 
   it('ranks embedding-less candidates last with an undefined score', () => {

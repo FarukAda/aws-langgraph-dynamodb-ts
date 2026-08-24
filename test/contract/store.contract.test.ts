@@ -37,7 +37,7 @@ describe('BaseStore contract conformance', () => {
   it('put with a null value deletes the item', async () => {
     await store.put(['c', 'u2'], 'k', { v: 2 });
     expect(await store.get(['c', 'u2'], 'k')).not.toBeNull();
-    await store.put(['c', 'u2'], 'k', null);
+    await store.put(['c', 'u2'], 'k', null as never);
     expect(await store.get(['c', 'u2'], 'k')).toBeNull();
   });
 });

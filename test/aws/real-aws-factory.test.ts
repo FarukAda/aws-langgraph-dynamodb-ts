@@ -71,12 +71,11 @@ describe('DynamoDBFactory.createAll against real AWS', () => {
       history: { tableName },
     });
 
-    await saver.put(
-      { configurable: { thread_id: 'f1', checkpoint_ns: '' } },
-      checkpoint('fc1'),
-      { source: 'loop', step: 1, parents: {} },
-      {},
-    );
+    await saver.put({ configurable: { thread_id: 'f1', checkpoint_ns: '' } }, checkpoint('fc1'), {
+      source: 'loop',
+      step: 1,
+      parents: {},
+    });
     const tuple = await saver.getTuple({ configurable: { thread_id: 'f1', checkpoint_id: 'fc1' } });
     expect(tuple?.checkpoint.id).toBe('fc1');
 
@@ -93,12 +92,11 @@ describe('DynamoDBFactory.createAll against real AWS', () => {
     const factory = new DynamoDBFactory({ clientConfig });
 
     const saver = factory.createSaver({ tableName });
-    await saver.put(
-      { configurable: { thread_id: 'f2', checkpoint_ns: '' } },
-      checkpoint('fc2'),
-      { source: 'loop', step: 1, parents: {} },
-      {},
-    );
+    await saver.put({ configurable: { thread_id: 'f2', checkpoint_ns: '' } }, checkpoint('fc2'), {
+      source: 'loop',
+      step: 1,
+      parents: {},
+    });
     const tuple = await saver.getTuple({ configurable: { thread_id: 'f2', checkpoint_id: 'fc2' } });
     expect(tuple?.checkpoint.id).toBe('fc2');
     saver.destroy();

@@ -8,7 +8,13 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(client: HistoryContext['client']): HistoryContext {
-  return { client, tableName: 'history', serde: JSON_SERDE, logger: SILENT_LOGGER };
+  return {
+    client,
+    tableName: 'history',
+    serde: JSON_SERDE,
+    logger: SILENT_LOGGER,
+    ulid: () => 'U',
+  };
 }
 
 const session = (sessionId: string, updatedAt: string, extra = {}) => ({

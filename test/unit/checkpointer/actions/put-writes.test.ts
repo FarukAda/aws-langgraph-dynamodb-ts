@@ -236,7 +236,7 @@ describe('putWrites', () => {
   it('gives each putWrites call its own S3 key for the same logical write (nonce uniqueness)', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).resolves({});
-    const upload = jest.fn(async (key: string) => key);
+    const upload = jest.fn(async (key: string, _bytes: Uint8Array) => key);
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[]) => parts.join('/'),

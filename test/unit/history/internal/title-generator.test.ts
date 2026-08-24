@@ -1,7 +1,13 @@
+import type { StoredMessage } from '@langchain/core/messages';
+
 import { deriveTitle } from '../../../../src/history/internal/title-generator';
 
-const human = (content) => ({ type: 'human', data: { content } });
-const ai = (content) => ({ type: 'ai', data: { content } });
+const message = (type: string, content: string): StoredMessage => ({
+  type,
+  data: { content, role: undefined, name: undefined, tool_call_id: undefined },
+});
+const human = (content: string): StoredMessage => message('human', content);
+const ai = (content: string): StoredMessage => message('ai', content);
 
 describe('deriveTitle', () => {
   it('uses the first human message content', () => {

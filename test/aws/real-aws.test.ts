@@ -88,12 +88,11 @@ describe('DynamoDB adapters against real AWS', () => {
   });
 
   it('replays 12 pending writes in numeric index order', async () => {
-    await saver.put(
-      { configurable: { thread_id: 't1', checkpoint_ns: '' } },
-      checkpoint('c1'),
-      { source: 'loop', step: 1, parents: {} },
-      {},
-    );
+    await saver.put({ configurable: { thread_id: 't1', checkpoint_ns: '' } }, checkpoint('c1'), {
+      source: 'loop',
+      step: 1,
+      parents: {},
+    });
     const writes = Array.from(
       { length: 12 },
       (_unused, i) => [`ch${i}`, `v${i}`] as [string, string],
@@ -180,9 +179,9 @@ describe('DynamoDB adapters against real AWS', () => {
   it('lists checkpoints newest-first, honoring limit and before', async () => {
     const threadId = 'list-thread';
     const config = { configurable: { thread_id: threadId, checkpoint_ns: '' } };
-    await saver.put(config, checkpoint('lc1'), { source: 'loop', step: 1, parents: {} }, {});
-    await saver.put(config, checkpoint('lc2'), { source: 'loop', step: 2, parents: {} }, {});
-    await saver.put(config, checkpoint('lc3'), { source: 'loop', step: 3, parents: {} }, {});
+    await saver.put(config, checkpoint('lc1'), { source: 'loop', step: 1, parents: {} });
+    await saver.put(config, checkpoint('lc2'), { source: 'loop', step: 2, parents: {} });
+    await saver.put(config, checkpoint('lc3'), { source: 'loop', step: 3, parents: {} });
 
     const all: string[] = [];
     for await (const tuple of saver.list(config)) all.push(tuple.checkpoint.id);
@@ -204,7 +203,7 @@ describe('DynamoDB adapters against real AWS', () => {
   it('deleteThread removes every checkpoint, payload, and write for the thread', async () => {
     const threadId = 'delete-thread';
     const config = { configurable: { thread_id: threadId, checkpoint_ns: '' } };
-    await saver.put(config, checkpoint('dc1'), { source: 'loop', step: 1, parents: {} }, {});
+    await saver.put(config, checkpoint('dc1'), { source: 'loop', step: 1, parents: {} });
     await saver.putWrites(
       { configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: 'dc1' } },
       [['ch', 'v']],
@@ -227,7 +226,7 @@ describe('DynamoDB adapters against real AWS', () => {
     const ttlSaver = new DynamoDBSaver({ tableName, clientConfig, ttl: { seconds: 3600 } });
     const threadId = 'ttl-checkpoint';
     const config = { configurable: { thread_id: threadId, checkpoint_ns: '' } };
-    await ttlSaver.put(config, checkpoint('ttlc1'), { source: 'loop', step: 1, parents: {} }, {});
+    await ttlSaver.put(config, checkpoint('ttlc1'), { source: 'loop', step: 1, parents: {} });
     await ttlSaver.putWrites(
       { configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: 'ttlc1' } },
       [['ch', 'v']],
@@ -253,7 +252,6 @@ describe('DynamoDB adapters against real AWS', () => {
       { configurable: { thread_id: threadId, checkpoint_ns: '' } },
       checkpoint('fwc1'),
       { source: 'loop', step: 1, parents: {} },
-      {},
     );
     const writeConfig = {
       configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: 'fwc1' },
@@ -273,7 +271,6 @@ describe('DynamoDB adapters against real AWS', () => {
       { configurable: { thread_id: threadId, checkpoint_ns: '' } },
       checkpoint('spc1'),
       { source: 'loop', step: 1, parents: {} },
-      {},
     );
     const writeConfig = {
       configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: 'spc1' },
@@ -303,12 +300,7 @@ describe('DynamoDB adapters against real AWS', () => {
       channel_versions: { text: 1 },
       versions_seen: {},
     };
-    await compressedSaver.put(
-      config,
-      gzipCheckpoint,
-      { source: 'input', step: 0, parents: {} },
-      {},
-    );
+    await compressedSaver.put(config, gzipCheckpoint, { source: 'input', step: 0, parents: {} });
 
     const doc = DynamoDBDocument.from(admin);
     const raw = await doc.get({

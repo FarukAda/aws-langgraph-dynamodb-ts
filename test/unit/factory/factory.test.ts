@@ -7,7 +7,7 @@ import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 function fakeClientFactory() {
   const destroy = jest.fn();
   const client = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
-  return { destroy, create: () => client };
+  return { destroy, create: () => client as never };
 }
 
 describe('DynamoDBFactory', () => {

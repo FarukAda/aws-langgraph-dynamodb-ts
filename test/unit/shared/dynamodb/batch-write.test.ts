@@ -13,8 +13,8 @@ describe('batchWriteAll', () => {
     await batchWriteAll(client, 't', requests);
     const calls = mock.commandCalls(BatchWriteCommand);
     expect(calls).toHaveLength(2);
-    expect(calls[0].args[0].input.RequestItems.t).toHaveLength(25);
-    expect(calls[1].args[0].input.RequestItems.t).toHaveLength(5);
+    expect(calls[0].args[0].input.RequestItems!.t).toHaveLength(25);
+    expect(calls[1].args[0].input.RequestItems!.t).toHaveLength(5);
   });
 
   it('is a no-op for an empty request list', async () => {

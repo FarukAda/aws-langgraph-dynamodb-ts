@@ -52,7 +52,7 @@ describe('DynamoDBSaver', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
     const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
-    const result = await saver.put({ configurable: { thread_id: 't' } }, checkpoint, metadata, {});
+    const result = await saver.put({ configurable: { thread_id: 't' } }, checkpoint, metadata);
     expect(result.configurable?.checkpoint_id).toBe('ckpt-1');
   });
 

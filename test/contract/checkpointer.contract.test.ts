@@ -35,12 +35,11 @@ afterAll(async () => {
 describe('BaseCheckpointSaver contract conformance', () => {
   it('put → getTuple → list yields a well-formed CheckpointTuple and newest-by-default', async () => {
     const thread = { configurable: { thread_id: 'c-thread', checkpoint_ns: '' } };
-    await saver.put(thread, checkpoint('ck-1'), metadata, {});
+    await saver.put(thread, checkpoint('ck-1'), metadata);
     await saver.put(
       { configurable: { thread_id: 'c-thread', checkpoint_ns: '', checkpoint_id: 'ck-1' } },
       checkpoint('ck-2'),
       { source: 'loop', step: 2, parents: {} },
-      {},
     );
 
     const tuple = await saver.getTuple({ configurable: { thread_id: 'c-thread' } });

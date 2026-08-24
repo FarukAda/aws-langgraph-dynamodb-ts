@@ -21,7 +21,7 @@ afterEach(() => s3Mock.reset());
 describe('DynamoDBStore', () => {
   it('put then get round-trips an item (dispatch: put + get)', async () => {
     const { client, mock } = createStrictDocumentMock();
-    let stored;
+    let stored: Record<string, unknown> | undefined;
     mock.on(GetCommand).callsFake((input) => (input.ProjectionExpression ? {} : { Item: stored }));
     mock.on(PutCommand).callsFake((input) => {
       stored = input.Item;

@@ -34,7 +34,14 @@ describe('embedValue', () => {
   const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5, 0.5]) };
 
   function context(index?: StoreContext['index']): StoreContext {
-    return { client: {} as never, tableName: 's', serde: JSON_SERDE, logger: SILENT_LOGGER, index };
+    return {
+      client: {} as never,
+      tableName: 's',
+      serde: JSON_SERDE,
+      logger: SILENT_LOGGER,
+      index,
+      maxSearchCandidates: 1000,
+    };
   }
 
   it('returns undefined when no index is configured', async () => {

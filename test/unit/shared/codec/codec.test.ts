@@ -35,7 +35,7 @@ describe('encodePayload / decodePayload', () => {
   });
 
   it('offloads to S3 when the encoded payload exceeds the threshold', async () => {
-    let stored = new Uint8Array();
+    let stored: Uint8Array = new Uint8Array();
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[]) => `pfx/${parts.join('/')}.bin`,

@@ -61,7 +61,7 @@ describe('DynamoDBSaver end-to-end against real DynamoDB', () => {
   it('saves a checkpoint and resumes it, including pending writes and listing', async () => {
     const thread = { configurable: { thread_id: 'thread-A', checkpoint_ns: '' } };
 
-    const next = await saver.put(thread, checkpoint('ckpt-001', 'hello'), metadata, {});
+    const next = await saver.put(thread, checkpoint('ckpt-001', 'hello'), metadata);
     expect(next.configurable?.checkpoint_id).toBe('ckpt-001');
 
     const resumed = await saver.getTuple({ configurable: { thread_id: 'thread-A' } });
@@ -84,7 +84,6 @@ describe('DynamoDBSaver end-to-end against real DynamoDB', () => {
       { configurable: { thread_id: 'thread-A', checkpoint_ns: '', checkpoint_id: 'ckpt-001' } },
       checkpoint('ckpt-002', 'again'),
       { source: 'loop', step: 2, parents: {} },
-      {},
     );
 
     const listed = [];
@@ -103,7 +102,7 @@ describe('DynamoDBSaver end-to-end against real DynamoDB', () => {
 
   it('replays 12 pending writes for a task in numeric index order (not lexicographic)', async () => {
     const thread = { configurable: { thread_id: 'thread-B', checkpoint_ns: '' } };
-    await saver.put(thread, checkpoint('ckpt-100', 'start'), metadata, {});
+    await saver.put(thread, checkpoint('ckpt-100', 'start'), metadata);
 
     const writes = Array.from(
       { length: 12 },

@@ -40,7 +40,7 @@ afterAll(async () => {
 describe('DynamoDBFactory.createAll on one shared table', () => {
   it('drives all three adapters against the same table without collisions', async () => {
     const thread = { configurable: { thread_id: 'thread-f', checkpoint_ns: '' } };
-    await adapters.saver.put(thread, checkpoint('ckpt-f'), metadata, {});
+    await adapters.saver.put(thread, checkpoint('ckpt-f'), metadata);
     expect((await adapters.saver.getTuple(thread))?.checkpoint.id).toBe('ckpt-f');
 
     await adapters.store.put(['mem', 'u1'], 'k', { value: 42 });

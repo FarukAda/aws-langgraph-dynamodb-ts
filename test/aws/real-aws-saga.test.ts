@@ -132,9 +132,9 @@ describe('append saga unrecoverable rollback against real AWS', () => {
     transactCalls = 0;
     const chunks = [[messageItem('again1')], [messageItem('again2')]];
 
-    const error = await appendChunks(wrappedContext(), sessionId, chunks, { now: 'now' }).catch(
+    const error = (await appendChunks(wrappedContext(), sessionId, chunks, { now: 'now' }).catch(
       (caught: { cause?: Error; rollbackError?: Error }) => caught,
-    );
+    )) as { cause?: Error; rollbackError?: Error };
 
     expect(error.cause?.message).toBe('chunk-2 transaction failed');
     expect(error.rollbackError?.message).toBe('rollback batch failed');

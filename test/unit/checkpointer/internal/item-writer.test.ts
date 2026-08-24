@@ -1,4 +1,4 @@
-import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
+import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
 import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
 import {
@@ -151,7 +151,7 @@ describe('buildWriteItems', () => {
 
   it('keeps a repeated special write on one S3 key across calls, so nothing is orphaned', async () => {
     const ctx = offloadingContext();
-    const writes = [['__interrupt__', { value: 'paused' }]] as const;
+    const writes: PendingWrite[] = [['__interrupt__', { value: 'paused' }]];
     const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'nonce-1');
     const second = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'nonce-2');
     // The special item's DynamoDB row is overwritten in place; a nonce'd key

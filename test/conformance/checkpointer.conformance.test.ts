@@ -71,7 +71,7 @@ afterAll(async () => {
 describe('DynamoDBSaver conformance: WRITES_IDX_MAP special-write contract', () => {
   it('dedupes a special write at its fixed slot when a task re-emits with a different list shape', async () => {
     const threadId = 'conf-resume';
-    await saver.put(threadConfig(threadId), checkpoint('cp-1'), metadata, {});
+    await saver.put(threadConfig(threadId), checkpoint('cp-1'), metadata);
 
     await saver.putWrites(
       threadConfig(threadId, 'cp-1'),
@@ -101,7 +101,7 @@ describe('DynamoDBSaver conformance: WRITES_IDX_MAP special-write contract', () 
 
   it('orders special writes before regular writes for a task', async () => {
     const threadId = 'conf-order';
-    await saver.put(threadConfig(threadId), checkpoint('cp-1'), metadata, {});
+    await saver.put(threadConfig(threadId), checkpoint('cp-1'), metadata);
     await saver.putWrites(
       threadConfig(threadId, 'cp-1'),
       [
@@ -117,7 +117,7 @@ describe('DynamoDBSaver conformance: WRITES_IDX_MAP special-write contract', () 
 
   it('round-trips a checkpoint, its metadata, and regular pending writes in index order', async () => {
     const threadId = 'conf-roundtrip';
-    await saver.put(threadConfig(threadId), checkpoint('cp-1'), metadata, {});
+    await saver.put(threadConfig(threadId), checkpoint('cp-1'), metadata);
     const writes = Array.from(
       { length: 12 },
       (_unused, index) => [`ch${index}`, `v${index}`] as PendingWrite,
@@ -136,7 +136,7 @@ describe('DynamoDBSaver conformance: WRITES_IDX_MAP special-write contract', () 
 
   it('is idempotent for a regular write when a task re-emits with a different value', async () => {
     const threadId = 'conf-idempotent';
-    await saver.put(threadConfig(threadId), checkpoint('cp-1'), metadata, {});
+    await saver.put(threadConfig(threadId), checkpoint('cp-1'), metadata);
     await saver.putWrites(threadConfig(threadId, 'cp-1'), [['channel-a', 'first']], 'task-1');
     await saver.putWrites(threadConfig(threadId, 'cp-1'), [['channel-a', 'second']], 'task-1');
     const writes = await writesFor(threadId, 'cp-1');

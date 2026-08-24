@@ -26,7 +26,7 @@ function s3Item(sk: string, s3Key: string): ChatMessageItem {
     PK: 's1',
     SK: sk,
     sessionId: 's1',
-    message: { location: PayloadLocation.S3, serdeType: 'json', s3Key },
+    message: { location: PayloadLocation.S3, serdeType: 'json', compressed: false, s3Key },
   };
 }
 

@@ -116,7 +116,7 @@ describe('searchItems', () => {
     const ctx = context(client);
     const storeItem = (await records(ctx)).find((r) => r.SK === 'u1#a');
     mock.on(ScanCommand).resolves({
-      Items: [{ PK: 'thread-1', SK: 'META##ckpt-1' }, { PK: 'sess-1', SK: 'SESSION' }, storeItem],
+      Items: [{ PK: 'thread-1', SK: 'META##ckpt-1' }, { PK: 'sess-1', SK: 'SESSION' }, storeItem!],
     });
     const items = await searchItems(ctx, { namespacePrefix: [] });
     expect(items.map((i) => i.key)).toEqual(['a']);

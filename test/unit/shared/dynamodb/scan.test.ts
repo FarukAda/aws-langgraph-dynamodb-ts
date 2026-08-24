@@ -3,8 +3,8 @@ import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { paginateScan } from '../../../../src/shared/dynamodb/scan';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
-async function collect(gen) {
-  const out = [];
+async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {
+  const out: T[] = [];
   for await (const item of gen) out.push(item);
   return out;
 }

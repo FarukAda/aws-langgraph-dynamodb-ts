@@ -9,7 +9,13 @@ import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(client: StoreContext['client']): StoreContext {
-  return { client, tableName: 'store', serde: JSON_SERDE, logger: SILENT_LOGGER };
+  return {
+    client,
+    tableName: 'store',
+    serde: JSON_SERDE,
+    logger: SILENT_LOGGER,
+    maxSearchCandidates: 1000,
+  };
 }
 
 describe('getItem', () => {
