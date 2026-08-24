@@ -19,7 +19,7 @@ import {
 } from '@aws-sdk/client-s3';
 import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
-import { DynamoDBSaver, DynamoDBStore } from '../../src/index';
+import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { buildLifecycleRuleId } from '../../src/shared/codec/s3/config';
 
 const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
@@ -52,6 +52,34 @@ async function offloadedObjectCount(s3: S3Client): Promise<number> {
     new ListObjectsV2Command({ Bucket: bucketName, Prefix: KEY_PREFIX }),
   );
   return listed.KeyCount ?? 0;
+}
+
+/**
+ * S3 bucket-level config (unlike object reads) is eventually consistent: a
+ * `GetBucketLifecycleConfiguration` right after a `Put` can still return the
+ * previous rule set. Poll until it converges rather than asserting on a
+ * single read. `keyPrefix` (and hence the rule id it produces) must be
+ * distinct per caller so "converged" can never be confused with "still
+ * showing a different rule's value" from an earlier write to the same rule.
+ */
+async function waitForLifecycleRuleDays(
+  s3: S3Client,
+  keyPrefix: string,
+  expectedDays: number,
+  attempts = 10,
+  delayMs = 1000,
+): Promise<{ Status?: string; Expiration?: { Days?: number } } | undefined> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const raw = await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket: bucketName }));
+      const rule = (raw.Rules ?? []).find((r) => r.ID === buildLifecycleRuleId(keyPrefix));
+      if (rule?.Expiration?.Days === expectedDays) return rule;
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'NoSuchLifecycleConfiguration') throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  throw new Error(`Lifecycle rule never converged to ${expectedDays} days`);
 }
 
 /**
@@ -145,21 +173,63 @@ describe('S3 offload against real AWS', () => {
     expect(item?.value).toEqual({ blob: bigPayload });
   });
 
+  it('store.delete removes an offloaded item and its S3 object', async () => {
+    await store.put(['mem', 'u1'], 'delete-me', { blob: bigPayload });
+    const before = await offloadedObjectCount(s3);
+    expect(before).toBeGreaterThan(0);
+
+    await store.delete(['mem', 'u1'], 'delete-me');
+
+    expect(await offloadedObjectCount(s3)).toBe(before - 1);
+    expect(await store.get(['mem', 'u1'], 'delete-me')).toBeNull();
+  });
+
   it('ensureS3LifecycleRule provisions a real, independently verifiable bucket rule', async () => {
+    const prefix = 'saver-ttl-test/';
     const ttlSaver = new DynamoDBSaver({
       tableName,
       clientConfig,
       ttl: { days: 30 },
-      s3: { bucketName, clientConfig },
+      s3: { bucketName, clientConfig, keyPrefix: prefix },
     });
 
     await ttlSaver.ensureS3LifecycleRule();
     ttlSaver.destroy();
 
-    const raw = await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket: bucketName }));
-    const rule = (raw.Rules ?? []).find((r) => r.ID === buildLifecycleRuleId(KEY_PREFIX));
+    const rule = await waitForLifecycleRuleDays(s3, prefix, 30);
     expect(rule?.Status).toBe('Enabled');
-    expect(rule?.Expiration?.Days).toBe(30);
+  });
+
+  it('store.ensureS3LifecycleRule provisions its own real, verifiable bucket rule', async () => {
+    const prefix = 'store-ttl-test/';
+    const ttlStore = new DynamoDBStore({
+      tableName,
+      clientConfig,
+      ttl: { days: 45 },
+      s3: { bucketName, clientConfig, keyPrefix: prefix },
+    });
+
+    await ttlStore.ensureS3LifecycleRule();
+    ttlStore.destroy();
+
+    const rule = await waitForLifecycleRuleDays(s3, prefix, 45);
+    expect(rule?.Status).toBe('Enabled');
+  });
+
+  it('history.ensureS3LifecycleRule provisions its own real, verifiable bucket rule', async () => {
+    const prefix = 'history-ttl-test/';
+    const ttlHistory = new DynamoDBChatMessageHistory({
+      tableName,
+      clientConfig,
+      ttl: { days: 60 },
+      s3: { bucketName, clientConfig, keyPrefix: prefix },
+    });
+
+    await ttlHistory.ensureS3LifecycleRule();
+    ttlHistory.destroy();
+
+    const rule = await waitForLifecycleRuleDays(s3, prefix, 60);
+    expect(rule?.Status).toBe('Enabled');
   });
 
   it('two concurrent putWrites racing the same (thread, checkpoint, task, index) never collide in S3', async () => {

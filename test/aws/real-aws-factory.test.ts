@@ -88,4 +88,31 @@ describe('DynamoDBFactory.createAll against real AWS', () => {
 
     destroy();
   });
+
+  it('createSaver/createStore/createChatMessageHistory each build a working, independent adapter', async () => {
+    const factory = new DynamoDBFactory({ clientConfig });
+
+    const saver = factory.createSaver({ tableName });
+    await saver.put(
+      { configurable: { thread_id: 'f2', checkpoint_ns: '' } },
+      checkpoint('fc2'),
+      { source: 'loop', step: 1, parents: {} },
+      {},
+    );
+    const tuple = await saver.getTuple({ configurable: { thread_id: 'f2', checkpoint_id: 'fc2' } });
+    expect(tuple?.checkpoint.id).toBe('fc2');
+    saver.destroy();
+
+    const store = factory.createStore({ tableName });
+    await store.put(['factory-individual'], 'k1', { text: 'hello again' });
+    expect((await store.get(['factory-individual'], 'k1'))?.value).toEqual({ text: 'hello again' });
+    store.destroy();
+
+    const history = factory.createChatMessageHistory({ tableName });
+    await history.addMessages('f-session-individual', [new HumanMessage('solo build')]);
+    expect((await history.getMessages('f-session-individual')).map((m) => m.content)).toEqual([
+      'solo build',
+    ]);
+    history.destroy();
+  });
 });
