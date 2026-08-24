@@ -31,10 +31,11 @@ describe('S3Offloader', () => {
     expect(offloader.shouldOffload(new Uint8Array(99))).toBe(false);
   });
 
-  it('buildKey joins parts under the default prefix and getKeyPrefix returns it', () => {
+  it('buildKey base64url-encodes parts under the default prefix and getKeyPrefix returns it', () => {
     const { offloader } = makeOffloader();
+    const encode = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
     expect(offloader.buildKey(['t', 'c', 'checkpoint'])).toBe(
-      'langgraph-checkpoints/t/c/checkpoint.bin',
+      `langgraph-checkpoints/${encode('t')}/${encode('c')}/${encode('checkpoint')}.bin`,
     );
     expect(offloader.getKeyPrefix()).toBe('langgraph-checkpoints/');
   });

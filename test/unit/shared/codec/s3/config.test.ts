@@ -1,10 +1,23 @@
 import { buildLifecycleRuleId, buildS3Key } from '../../../../../src/shared/codec/s3/config';
 
 describe('buildS3Key', () => {
-  it('joins parts under the prefix with a .bin suffix', () => {
+  it('base64url-encodes each part before joining under the prefix', () => {
+    const encode = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
     expect(buildS3Key('langgraph/', ['thread1', 'ckpt1', 'checkpoint'])).toBe(
-      'langgraph/thread1/ckpt1/checkpoint.bin',
+      `langgraph/${encode('thread1')}/${encode('ckpt1')}/${encode('checkpoint')}.bin`,
     );
+  });
+
+  it('never collides two different part arrays that would join to the same raw string', () => {
+    const keyA = buildS3Key('p/', ['a/b', 'c']);
+    const keyB = buildS3Key('p/', ['a', 'b/c']);
+    expect(keyA).not.toBe(keyB);
+  });
+
+  it('never collides on separator characters other than "/" either', () => {
+    const keyA = buildS3Key('p/', ['a#b', 'c']);
+    const keyB = buildS3Key('p/', ['a', 'b', 'c']);
+    expect(keyA).not.toBe(keyB);
   });
 });
 
