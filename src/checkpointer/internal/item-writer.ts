@@ -53,11 +53,15 @@ export async function buildCheckpointItems(
 
 /**
  * Encode a task's pending writes into one item per write. `nonce` must be
- * unique per `putWrites` *call* (not per write) and is appended to every
- * write's S3 offload keyParts: it keeps repeated/concurrent attempts for the
- * same (thread, checkpoint, task, index) from ever sharing an S3 location, so
- * a losing attempt's idempotency-orphan cleanup can only ever delete its own
- * upload — never a winning attempt's.
+ * unique per `putWrites` *call* (not per write) and is appended to the S3
+ * offload keyParts of **regular (non-negative-index) writes only** — the ones
+ * written conditionally, first-write-wins. There, repeated/concurrent attempts
+ * for the same (thread, checkpoint, task, index) must never share an S3
+ * location, so a failed attempt's cleanup can only ever delete its own upload.
+ * Special (negative-index) writes are overwritten in place, so their key stays
+ * deterministic: nonce'ing it would strand the previous upload — referenced by
+ * nothing, tracked by nothing, cleaned up by nothing — on every rewrite of the
+ * same special channel.
  */
 export async function buildWriteItems(
   context: CheckpointerContext,
@@ -75,8 +79,9 @@ export async function buildWriteItems(
   for (let positional = 0; positional < writes.length; positional++) {
     const [channel, value] = writes[positional];
     const index = WRITES_IDX_MAP[channel] ?? positional;
+    const baseKeyParts = [threadId, checkpointNs, checkpointId, taskId, `write-${index}`];
     const descriptor = await encodePayload(value, deps, {
-      keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`, nonce],
+      keyParts: index < 0 ? baseKeyParts : [...baseKeyParts, nonce],
     });
     const item: CheckpointWriteItem = {
       PK: pk,

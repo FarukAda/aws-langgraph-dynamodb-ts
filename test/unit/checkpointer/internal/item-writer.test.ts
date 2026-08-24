@@ -22,6 +22,22 @@ function context(): CheckpointerContext {
   return { client: {} as never, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
 }
 
+/** A context whose offloader sends every payload to S3, exposing the built key. */
+function offloadingContext(): CheckpointerContext {
+  const offloader = {
+    shouldOffload: () => true,
+    buildKey: (parts: readonly string[]) => parts.join('/'),
+    upload: async (key: string) => key,
+    deleteBatch: async () => [],
+  };
+  return { ...context(), offloader: offloader as never };
+}
+
+function s3Key(item: { value: { location: PayloadLocation; s3Key?: string } }): string {
+  expect(item.value.location).toBe(PayloadLocation.S3);
+  return item.value.s3Key!;
+}
+
 const checkpoint: Checkpoint = {
   v: 4,
   id: 'ckpt-1',
@@ -110,5 +126,51 @@ describe('buildWriteItems', () => {
     expect(interrupt.index).toBe(WRITES_IDX_MAP['__interrupt__']);
     expect(interrupt.SK).toBe('WRITE##ckpt-1#task-7#0000000005');
     expect(interrupt.SK < regular.SK).toBe(true);
+  });
+
+  it('appends the nonce to a regular write S3 key but not to a special one', async () => {
+    const items = await buildWriteItems(
+      offloadingContext(),
+      't',
+      '',
+      'ckpt-1',
+      'task-7',
+      [
+        ['regular', 'v'],
+        ['__interrupt__', { value: 'paused' }],
+      ],
+      'nonce-1',
+    );
+    const regular = items.find((item) => item.channel === 'regular')!;
+    const interrupt = items.find((item) => item.channel === '__interrupt__')!;
+    // Only regular writes take the conditional (first-write-wins) path, so only
+    // they need a per-attempt key. Special writes overwrite their row in place.
+    expect(s3Key(regular)).toBe('t//ckpt-1/task-7/write-0/nonce-1');
+    expect(s3Key(interrupt)).toBe(`t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}`);
+  });
+
+  it('keeps a repeated special write on one S3 key across calls, so nothing is orphaned', async () => {
+    const ctx = offloadingContext();
+    const writes = [['__interrupt__', { value: 'paused' }]] as const;
+    const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'nonce-1');
+    const second = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'nonce-2');
+    // The special item's DynamoDB row is overwritten in place; a nonce'd key
+    // would leave the previous upload referenced by nothing and swept by no one.
+    expect(s3Key(second[0])).toBe(s3Key(first[0]));
+  });
+
+  it('gives a repeated regular write a fresh S3 key per call', async () => {
+    const ctx = offloadingContext();
+    const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [['ch', 'v']], 'nonce-1');
+    const second = await buildWriteItems(
+      ctx,
+      't',
+      '',
+      'ckpt-1',
+      'task-7',
+      [['ch', 'v']],
+      'nonce-2',
+    );
+    expect(s3Key(second[0])).not.toBe(s3Key(first[0]));
   });
 });
