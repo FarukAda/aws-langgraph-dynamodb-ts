@@ -1,5 +1,10 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
+/** Options for {@link partitionQuery}. */
+export interface PartitionQueryOptions {
+  consistent?: boolean;
+}
+
 /** Options for {@link beginsWithQuery}. */
 export interface BeginsWithQueryOptions {
   limit?: number;
@@ -8,13 +13,19 @@ export interface BeginsWithQueryOptions {
 }
 
 /** Build a Query input selecting every item in a partition (all sort keys). */
-export function partitionQuery(tableName: string, partition: string): QueryCommandInput {
-  return {
+export function partitionQuery(
+  tableName: string,
+  partition: string,
+  options: PartitionQueryOptions = {},
+): QueryCommandInput {
+  const params: QueryCommandInput = {
     TableName: tableName,
     KeyConditionExpression: '#pk = :pk',
     ExpressionAttributeNames: { '#pk': 'PK' },
     ExpressionAttributeValues: { ':pk': partition },
   };
+  if (options.consistent) params.ConsistentRead = true;
+  return params;
 }
 
 /**

@@ -60,7 +60,7 @@ async function flushBuffer(context: CheckpointerContext, buffer: DeleteBuffer): 
  */
 export async function deleteThread(context: CheckpointerContext, threadId: string): Promise<void> {
   validateNonEmptyString(threadId, 'threadId');
-  const params = partitionQuery(context.tableName, partitionKey(threadId));
+  const params = partitionQuery(context.tableName, partitionKey(threadId), { consistent: true });
   const buffer: DeleteBuffer = { keys: [], descriptors: [] };
   const pages = paginateQuery({
     client: context.client,

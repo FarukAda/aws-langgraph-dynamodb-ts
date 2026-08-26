@@ -9,6 +9,14 @@ describe('partitionQuery', () => {
       ExpressionAttributeValues: { ':pk': 'thread-1' },
     });
   });
+
+  it('requests a strongly-consistent read when consistent is set', () => {
+    expect(partitionQuery('ckpt', 'thread-1', { consistent: true }).ConsistentRead).toBe(true);
+  });
+
+  it('omits ConsistentRead by default', () => {
+    expect(partitionQuery('ckpt', 'thread-1').ConsistentRead).toBeUndefined();
+  });
 });
 
 describe('beginsWithQuery', () => {

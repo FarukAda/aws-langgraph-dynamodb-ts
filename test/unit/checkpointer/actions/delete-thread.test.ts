@@ -85,6 +85,13 @@ describe('deleteThread', () => {
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k-cp']);
   });
 
+  it('reads the partition strongly-consistently before deleting', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    await deleteThread(context(client), 't');
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead).toBe(true);
+  });
+
   it('rejects an empty thread id', async () => {
     const { client } = createStrictDocumentMock();
     try {
