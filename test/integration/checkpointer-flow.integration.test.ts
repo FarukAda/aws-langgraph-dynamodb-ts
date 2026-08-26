@@ -4,7 +4,7 @@ import {
   DynamoDBClient,
   waitUntilTableExists,
 } from '@aws-sdk/client-dynamodb';
-import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
+import { ERROR, type Checkpoint, type CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBSaver } from '../../src/index';
 
@@ -122,5 +122,49 @@ describe('DynamoDBSaver end-to-end against real DynamoDB', () => {
     );
 
     await saver.deleteThread('thread-B');
+  });
+
+  it('dedupes two writes to the same special channel within one putWrites call instead of failing the batch', async () => {
+    const thread = { configurable: { thread_id: 'thread-dedup', checkpoint_ns: '' } };
+    await saver.put(thread, checkpoint('ckpt-dedup', 'start'), metadata);
+
+    const config = {
+      configurable: { thread_id: 'thread-dedup', checkpoint_ns: '', checkpoint_id: 'ckpt-dedup' },
+    };
+    // Pre-fix, two writes to the same special (negative-index) channel in one
+    // call produced byte-identical DynamoDB keys, and BatchWriteItem rejects a
+    // request containing a duplicate key outright.
+    await saver.putWrites(
+      config,
+      [
+        [ERROR, 'first-error'],
+        [ERROR, 'second-error'],
+      ],
+      'task-dedup',
+    );
+
+    const tuple = await saver.getTuple({
+      configurable: { thread_id: 'thread-dedup', checkpoint_id: 'ckpt-dedup' },
+    });
+    expect(tuple?.pendingWrites).toEqual([['task-dedup', ERROR, 'second-error']]);
+
+    await saver.deleteThread('thread-dedup');
+  });
+
+  it('list() filters to a single checkpoint when config.configurable.checkpoint_id is set', async () => {
+    const threadId = 'thread-checkpoint-filter';
+    const config = { configurable: { thread_id: threadId, checkpoint_ns: '' } };
+    await saver.put(config, checkpoint('cf1', 'a'), metadata);
+    await saver.put(config, checkpoint('cf2', 'b'), { source: 'loop', step: 2, parents: {} });
+
+    const filtered: string[] = [];
+    for await (const tuple of saver.list({
+      configurable: { thread_id: threadId, checkpoint_id: 'cf1' },
+    })) {
+      filtered.push(tuple.checkpoint.id);
+    }
+    expect(filtered).toEqual(['cf1']);
+
+    await saver.deleteThread(threadId);
   });
 });

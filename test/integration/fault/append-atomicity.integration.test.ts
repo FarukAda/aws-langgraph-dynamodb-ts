@@ -65,4 +65,102 @@ describe('addMessages caller-observed atomicity under partial transaction failur
     const sessions = await reader.listSessions();
     expect(sessions.find((session) => session.sessionId === sessionId)?.messageCount).toBe(150);
   });
+
+  it('does not double-decrement the session count when the rollback revert transaction is retried after a lost response', async () => {
+    const base = new DynamoDBClient(DDB_LOCAL_CONFIG);
+    let transactionCalls = 0;
+    let revertAttempts = 0;
+    base.middlewareStack.add(
+      (next, context) => async (args) => {
+        const commandName = (context as { commandName?: string }).commandName ?? '';
+        if (commandName !== 'TransactWriteItemsCommand') return next(args);
+        const input = (
+          args as {
+            input: { TransactItems?: { Update?: { UpdateExpression?: string } }[] };
+          }
+        ).input;
+        const items = input.TransactItems ?? [];
+        const isRevert =
+          items.length === 1 && items[0]?.Update?.UpdateExpression === 'ADD #count :neg';
+        if (isRevert) {
+          revertAttempts += 1;
+          if (revertAttempts === 1) {
+            await next(args);
+            throw Object.assign(new Error('simulated lost response on revert'), {
+              name: 'ServiceUnavailable',
+            });
+          }
+          return next(args);
+        }
+        transactionCalls += 1;
+        if (transactionCalls === 2) {
+          throw Object.assign(new Error('injected chunk-2 failure'), {
+            name: 'ValidationException',
+          });
+        }
+        return next(args);
+      },
+      { step: 'initialize', name: 'revertIdempotencyInjector', priority: 'high' },
+    );
+    const faulted = new DynamoDBChatMessageHistory({
+      tableName,
+      client: DynamoDBDocument.from(base),
+    });
+
+    const sessionId = 's-revert-idem';
+    const messages = Array.from({ length: 150 }, (_unused, index) => new HumanMessage(`m${index}`));
+    await expect(faulted.addMessages(sessionId, messages)).rejects.toThrow('injected chunk-2');
+    base.destroy();
+
+    // The revert's own transaction was attempted twice: the first "commits
+    // server-side but the client sees a lost response", the retry with the
+    // same ClientRequestToken must be deduped by DynamoDB, not re-applied.
+    expect(revertAttempts).toBe(2);
+
+    const stored = await reader.getMessages(sessionId);
+    expect(stored).toHaveLength(0);
+    const sessions = await reader.listSessions();
+    const meta = sessions.find((session) => session.sessionId === sessionId);
+    // Pre-fix (a bare, non-idempotent UpdateItem retried on the same lost-response
+    // path) this could go negative from double-applying the -99 decrement.
+    expect(meta?.messageCount ?? 0).toBe(0);
+  });
+
+  it('attempts every batch-write chunk during rollback even when one chunk fails partway through', async () => {
+    const base = new DynamoDBClient(DDB_LOCAL_CONFIG);
+    installFaults(base, [
+      {
+        match: (name) => name === 'TransactWriteItemsCommand',
+        fail: () => awsError('ValidationException', 'injected chunk-2 failure'),
+        skip: 1,
+        times: 1,
+      },
+      {
+        match: (name) => name === 'BatchWriteItemCommand',
+        fail: () => awsError('ValidationException', 'injected batch-3 failure'),
+        skip: 2,
+        times: 1,
+      },
+    ]);
+    const faulted = new DynamoDBChatMessageHistory({
+      tableName,
+      client: DynamoDBDocument.from(base),
+    });
+
+    const sessionId = 's-multi-chunk-rollback';
+    const messages = Array.from({ length: 150 }, (_unused, index) => new HumanMessage(`m${index}`));
+    await expect(faulted.addMessages(sessionId, messages)).rejects.toMatchObject({
+      name: 'CompensationFailedError',
+    });
+    base.destroy();
+
+    // Chunk 1's 99 rows split into 4 BatchWriteItem deletes (25+25+25+24) during
+    // rollback. The 3rd delete-batch is injected to fail. Pre-fix, batchWriteAll
+    // aborted on the first failing batch, leaving every batch after it
+    // unattempted (49 rows would survive: batch 3's 25 + batch 4's 24). Post-fix
+    // it attempts every batch regardless, so only batch 3's ~25 rows survive.
+    const remaining = await reader.getMessages(sessionId);
+    expect(remaining.length).toBeGreaterThan(0);
+    expect(remaining.length).toBeLessThanOrEqual(25);
+  });
 });

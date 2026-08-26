@@ -11,16 +11,16 @@ import {
   CreateBucketCommand,
   DeleteBucketCommand,
   DeleteObjectsCommand,
-  GetBucketLifecycleConfigurationCommand,
   ListObjectsV2Command,
   S3Client,
   waitUntilBucketExists,
   waitUntilBucketNotExists,
 } from '@aws-sdk/client-s3';
+import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
-import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
-import { buildLifecycleRuleId } from '../../src/shared/codec/s3/config';
+import { DynamoDBSaver, DynamoDBStore } from '../../src/index';
+import { installFaults } from '../integration/helpers/fault-injection';
 
 const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
 const clientConfig = region ? { region } : {};
@@ -55,39 +55,13 @@ async function offloadedObjectCount(s3: S3Client): Promise<number> {
 }
 
 /**
- * S3 bucket-level config (unlike object reads) is eventually consistent: a
- * `GetBucketLifecycleConfiguration` right after a `Put` can still return the
- * previous rule set. Poll until it converges rather than asserting on a
- * single read. `keyPrefix` (and hence the rule id it produces) must be
- * distinct per caller so "converged" can never be confused with "still
- * showing a different rule's value" from an earlier write to the same rule.
- */
-async function waitForLifecycleRuleDays(
-  s3: S3Client,
-  keyPrefix: string,
-  expectedDays: number,
-  attempts = 10,
-  delayMs = 1000,
-): Promise<{ Status?: string; Expiration?: { Days?: number } } | undefined> {
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    try {
-      const raw = await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket: bucketName }));
-      const rule = (raw.Rules ?? []).find((r) => r.ID === buildLifecycleRuleId(keyPrefix));
-      if (rule?.Expiration?.Days === expectedDays) return rule;
-    } catch (error) {
-      if ((error as { name?: string }).name !== 'NoSuchLifecycleConfiguration') throw error;
-    }
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-  }
-  throw new Error(`Lifecycle rule never converged to ${expectedDays} days`);
-}
-
-/**
  * Real-AWS verification of the S3 offload path through the public adapters.
  * Exercises PutObject / GetObject / DeleteObject / ListBucket against a real
  * bucket — round-trip fidelity, object placement, and orphan cleanup that
  * mocked unit tests cannot prove. Creates and tears down a unique table and
- * bucket per run.
+ * bucket per run. Lifecycle-rule provisioning and the S3 error taxonomy live
+ * in real-aws-s3-lifecycle.test.ts, split out to stay under this repo's
+ * per-file line cap.
  */
 describe('S3 offload against real AWS', () => {
   let admin: DynamoDBClient;
@@ -184,54 +158,6 @@ describe('S3 offload against real AWS', () => {
     expect(await store.get(['mem', 'u1'], 'delete-me')).toBeNull();
   });
 
-  it('ensureS3LifecycleRule provisions a real, independently verifiable bucket rule', async () => {
-    const prefix = 'saver-ttl-test/';
-    const ttlSaver = new DynamoDBSaver({
-      tableName,
-      clientConfig,
-      ttl: { days: 30 },
-      s3: { bucketName, clientConfig, keyPrefix: prefix },
-    });
-
-    await ttlSaver.ensureS3LifecycleRule();
-    ttlSaver.destroy();
-
-    const rule = await waitForLifecycleRuleDays(s3, prefix, 30);
-    expect(rule?.Status).toBe('Enabled');
-  });
-
-  it('store.ensureS3LifecycleRule provisions its own real, verifiable bucket rule', async () => {
-    const prefix = 'store-ttl-test/';
-    const ttlStore = new DynamoDBStore({
-      tableName,
-      clientConfig,
-      ttl: { days: 45 },
-      s3: { bucketName, clientConfig, keyPrefix: prefix },
-    });
-
-    await ttlStore.ensureS3LifecycleRule();
-    ttlStore.destroy();
-
-    const rule = await waitForLifecycleRuleDays(s3, prefix, 45);
-    expect(rule?.Status).toBe('Enabled');
-  });
-
-  it('history.ensureS3LifecycleRule provisions its own real, verifiable bucket rule', async () => {
-    const prefix = 'history-ttl-test/';
-    const ttlHistory = new DynamoDBChatMessageHistory({
-      tableName,
-      clientConfig,
-      ttl: { days: 60 },
-      s3: { bucketName, clientConfig, keyPrefix: prefix },
-    });
-
-    await ttlHistory.ensureS3LifecycleRule();
-    ttlHistory.destroy();
-
-    const rule = await waitForLifecycleRuleDays(s3, prefix, 60);
-    expect(rule?.Status).toBe('Enabled');
-  });
-
   it('two concurrent putWrites racing the same (thread, checkpoint, task, index) never collide in S3', async () => {
     // Same taskId + channel means both calls target the identical DynamoDB row
     // (first-write-wins), but each still uploads to S3 before that race
@@ -264,5 +190,57 @@ describe('S3 offload against real AWS', () => {
     const values = (tuple?.pendingWrites ?? []).map(([, , value]) => value);
     expect(values).toHaveLength(1);
     expect([valueA, valueB]).toContain(values[0]);
+  });
+
+  it('never deletes the previous S3 object when a store overwrite put fails partway through (the CRITICAL fix)', async () => {
+    const namespace = ['critical-fix', 'u1'];
+    const key = 'doc';
+    const originalPayload = randomBytes(512 * 1024).toString('base64');
+    const overwritePayload = randomBytes(512 * 1024).toString('base64');
+    await store.put(namespace, key, { blob: originalPayload });
+
+    const before = await s3.send(
+      new ListObjectsV2Command({ Bucket: bucketName, Prefix: KEY_PREFIX }),
+    );
+    const keysBefore = new Set((before.Contents ?? []).map((object) => object.Key));
+    expect(keysBefore.size).toBeGreaterThan(0);
+
+    const base = new DynamoDBClient(clientConfig);
+    installFaults(base, [
+      {
+        match: (name) => name === 'PutItemCommand',
+        fail: () =>
+          Object.assign(new Error('injected overwrite failure'), { name: 'ValidationException' }),
+        times: 1,
+      },
+    ]);
+    const faultedStore = new DynamoDBStore({
+      tableName,
+      client: DynamoDBDocument.from(base),
+      s3: { bucketName, clientConfig },
+    });
+
+    await expect(faultedStore.put(namespace, key, { blob: overwritePayload })).rejects.toThrow(
+      'injected overwrite failure',
+    );
+    faultedStore.destroy();
+    base.destroy();
+
+    // The row must still point at the original, unharmed value — this is the
+    // CRITICAL bug this fix closes: a failed overwrite must never leave the
+    // still-live row pointing at a deleted S3 object.
+    const stillThere = await store.get(namespace, key);
+    expect(stillThere?.value).toEqual({ blob: originalPayload });
+
+    // Every S3 object that existed before the failed overwrite — including the
+    // original value's object — must still exist. The pre-fix deterministic key
+    // would have made the failed overwrite's cleanup delete exactly this object.
+    const after = await s3.send(
+      new ListObjectsV2Command({ Bucket: bucketName, Prefix: KEY_PREFIX }),
+    );
+    const keysAfter = new Set((after.Contents ?? []).map((object) => object.Key));
+    for (const objectKey of keysBefore) {
+      expect(keysAfter.has(objectKey)).toBe(true);
+    }
   });
 });

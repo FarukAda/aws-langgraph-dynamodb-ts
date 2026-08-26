@@ -133,11 +133,15 @@ describe('append saga unrecoverable rollback against real AWS', () => {
     const chunks = [[messageItem('again1')], [messageItem('again2')]];
 
     const error = (await appendChunks(wrappedContext(), sessionId, chunks, { now: 'now' }).catch(
-      (caught: { cause?: Error; rollbackError?: Error }) => caught,
-    )) as { cause?: Error; rollbackError?: Error };
+      (caught: { cause?: Error; rollbackError?: Error & { cause?: Error } }) => caught,
+    )) as { cause?: Error; rollbackError?: Error & { cause?: Error } };
 
     expect(error.cause?.message).toBe('chunk-2 transaction failed');
-    expect(error.rollbackError?.message).toBe('rollback batch failed');
+    // rollbackCommitted's batchWriteAll now attempts every chunk and reports an
+    // aggregate BatchWriteAllIncompleteError on failure instead of surfacing the
+    // raw injected error directly; the original message is preserved as .cause.
+    expect(error.rollbackError?.name).toBe('BatchWriteAllIncompleteError');
+    expect(error.rollbackError?.cause?.message).toBe('rollback batch failed');
   });
 
   it('left the first chunk committed in real DynamoDB (the drift the error warns about)', async () => {

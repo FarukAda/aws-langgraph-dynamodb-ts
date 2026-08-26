@@ -151,4 +151,57 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     const sessions = await history.listSessions();
     expect(sessions.find((s) => s.sessionId === 's-fault')?.messageCount).toBe(1);
   });
+
+  it('heals a stale (already-expired) ttl anchor instead of leaving new messages permanently invisible', async () => {
+    const ttlHistory = new DynamoDBChatMessageHistory({
+      tableName,
+      clientConfig: DDB_LOCAL_CONFIG,
+      ttl: { seconds: 3600 },
+    });
+    const sessionId = 's-heal';
+    await ttlHistory.addMessages(sessionId, [new HumanMessage('first')]);
+
+    // Force the persisted anchor into the past, simulating a session whose ttl
+    // already lapsed but whose SESSION row survived (DynamoDB's TTL sweep can
+    // lag up to 48h).
+    const doc = DynamoDBDocument.from(admin);
+    const pastTtl = Math.floor(Date.now() / 1000) - 100;
+    await doc.update({
+      TableName: tableName,
+      Key: { PK: sessionId, SK: 'SESSION' },
+      UpdateExpression: 'SET #ttl = :past',
+      ExpressionAttributeNames: { '#ttl': 'ttl' },
+      ExpressionAttributeValues: { ':past': pastTtl },
+    });
+
+    await ttlHistory.addMessages(sessionId, [new HumanMessage('second')]);
+    ttlHistory.destroy();
+
+    // Pre-fix, 'second' would have been stamped with the already-expired
+    // anchor and silently filtered out on read.
+    const messages = await history.getMessages(sessionId);
+    expect(messages.map((m) => m.content)).toEqual(['first', 'second']);
+
+    const meta = await doc.get({
+      TableName: tableName,
+      Key: { PK: sessionId, SK: 'SESSION' },
+      ConsistentRead: true,
+    });
+    expect(meta.Item?.ttl).toBeGreaterThan(Math.floor(Date.now() / 1000));
+  });
+
+  it('reconcileMessageCount throws ConflictError instead of creating a junk row for a nonexistent session', async () => {
+    const sessionId = 'ghost-session';
+    await expect(history.reconcileMessageCount(sessionId)).rejects.toMatchObject({
+      name: 'ConflictError',
+    });
+
+    const doc = DynamoDBDocument.from(admin);
+    const raw = await doc.get({
+      TableName: tableName,
+      Key: { PK: sessionId, SK: 'SESSION' },
+      ConsistentRead: true,
+    });
+    expect(raw.Item).toBeUndefined();
+  });
 });

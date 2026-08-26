@@ -1,8 +1,32 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
-import { DynamoDBStore } from '../../src/index';
+import {
+  DynamoDBStore,
+  ResultTruncatedError,
+  type VectorBackend,
+  type VectorMatch,
+} from '../../src/index';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 import { FakeEmbeddings } from './helpers/fake-embeddings';
+
+/** In-memory VectorBackend that returns upserted entries in insertion order, honoring topK. */
+class OrderedMemoryBackend implements VectorBackend {
+  private entries: { namespace: string[]; key: string }[] = [];
+
+  async upsert(namespace: string[], key: string): Promise<void> {
+    this.entries.push({ namespace, key });
+  }
+
+  async query(_namespace: string[], _vector: number[], topK: number): Promise<VectorMatch[]> {
+    return this.entries.slice(0, topK).map((entry) => ({ ...entry, score: 1 }));
+  }
+
+  async delete(namespace: string[], key: string): Promise<void> {
+    this.entries = this.entries.filter(
+      (entry) => !(entry.namespace.join('/') === namespace.join('/') && entry.key === key),
+    );
+  }
+}
 
 const tableName = 'store-itest';
 const admin = new DynamoDBClient(DDB_LOCAL_CONFIG);
@@ -73,5 +97,67 @@ describe('DynamoDBStore end-to-end against real DynamoDB', () => {
       ['team', 't1'],
       ['team', 't2'],
     ]);
+  });
+
+  it('filters with $in and $nin operators', async () => {
+    await store.put(['filter-ops', 'u1'], 'a', { status: 'active' });
+    await store.put(['filter-ops', 'u1'], 'b', { status: 'archived' });
+    await store.put(['filter-ops', 'u1'], 'c', { status: 'pending' });
+
+    const inResults = await store.search(['filter-ops', 'u1'], {
+      filter: { status: { $in: ['active', 'pending'] } },
+    });
+    expect(inResults.map((item) => item.key).sort()).toEqual(['a', 'c']);
+
+    const ninResults = await store.search(['filter-ops', 'u1'], {
+      filter: { status: { $nin: ['archived'] } },
+    });
+    expect(ninResults.map((item) => item.key).sort()).toEqual(['a', 'c']);
+  });
+
+  it('refills from the vector backend when candidates are filtered out, instead of under-returning', async () => {
+    const backend = new OrderedMemoryBackend();
+    const vectorStore = new DynamoDBStore({
+      tableName,
+      clientConfig: DDB_LOCAL_CONFIG,
+      index: { dims: 8, embeddings: new FakeEmbeddings() as never },
+      vectorBackend: backend,
+    });
+    // Inserted in this order so a small initial topK only sees the two
+    // inactive items first; the refill loop must grow topK to reach 'active-1'.
+    await vectorStore.put(['refill', 'u1'], 'inactive-1', { status: 'inactive' });
+    await vectorStore.put(['refill', 'u1'], 'inactive-2', { status: 'inactive' });
+    await vectorStore.put(['refill', 'u1'], 'active-1', { status: 'active' });
+
+    const results = await vectorStore.search(['refill', 'u1'], {
+      query: 'anything',
+      limit: 1,
+      filter: { status: 'active' },
+    });
+    vectorStore.destroy();
+    expect(results.map((item) => item.key)).toEqual(['active-1']);
+  });
+
+  it('throws ResultTruncatedError when a plain search exceeds maxScanItems, and succeeds once raised', async () => {
+    const cappedStore = new DynamoDBStore({
+      tableName,
+      clientConfig: DDB_LOCAL_CONFIG,
+      maxScanItems: 2,
+    });
+    await cappedStore.put(['cap-test', 'u1'], 'a', { v: 1 });
+    await cappedStore.put(['cap-test', 'u1'], 'b', { v: 2 });
+    await cappedStore.put(['cap-test', 'u1'], 'c', { v: 3 });
+
+    await expect(cappedStore.search(['cap-test', 'u1'])).rejects.toThrow(ResultTruncatedError);
+    cappedStore.destroy();
+
+    const uncappedStore = new DynamoDBStore({
+      tableName,
+      clientConfig: DDB_LOCAL_CONFIG,
+      maxScanItems: 10,
+    });
+    const results = await uncappedStore.search(['cap-test', 'u1']);
+    uncappedStore.destroy();
+    expect(results.map((item) => item.key).sort()).toEqual(['a', 'b', 'c']);
   });
 });
