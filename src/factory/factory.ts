@@ -1,10 +1,10 @@
-import { DynamoDBClient, type DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 
 import { DynamoDBSaver } from '../checkpointer/saver';
 import type { DynamoDBSaverOptions } from '../checkpointer/types';
 import { DynamoDBChatMessageHistory } from '../history/chat-message-history';
 import type { DynamoDBChatMessageHistoryOptions } from '../history/types';
+import { resolveDynamoDBClient } from '../shared/dynamodb/client';
 import type { Logger } from '../shared/logging/logger';
 import { DynamoDBStore } from '../store/store';
 import type { DynamoDBStoreOptions } from '../store/types';
@@ -52,9 +52,8 @@ export class DynamoDBFactory {
   }
 
   createAll(options: CreateAllOptions): CreatedAdapters {
-    const build = this.base.createClient ?? ((config) => new DynamoDBClient(config));
-    const ddbClient = build(this.base.clientConfig ?? {});
-    const client = DynamoDBDocument.from(ddbClient);
+    const resolved = resolveDynamoDBClient(this.base);
+    const client = resolved.client;
     const saver = new DynamoDBSaver({ ...this.base, ...options.saver, client });
     const store = new DynamoDBStore({ ...this.base, ...options.store, client });
     const history = new DynamoDBChatMessageHistory({ ...this.base, ...options.history, client });
@@ -66,7 +65,7 @@ export class DynamoDBFactory {
         saver.destroy();
         store.destroy();
         history.destroy();
-        ddbClient.destroy();
+        resolved.ddbClient?.destroy();
       },
     };
   }

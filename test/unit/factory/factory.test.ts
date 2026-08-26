@@ -49,4 +49,16 @@ describe('DynamoDBFactory', () => {
     expect(all.saver).toBeInstanceOf(DynamoDBSaver);
     expect(() => all.destroy()).not.toThrow();
   });
+
+  it('createAll passes maxAttempts: 1 through to the client factory (disables SDK-internal retries)', () => {
+    const fake = fakeClientFactory();
+    const createClient = jest.fn(fake.create);
+    const factory = new DynamoDBFactory({ clientConfig: { region: 'eu-west-1' }, createClient });
+    factory.createAll({
+      saver: { tableName: 'c' },
+      store: { tableName: 's' },
+      history: { tableName: 'h' },
+    });
+    expect(createClient).toHaveBeenCalledWith({ maxAttempts: 1, region: 'eu-west-1' });
+  });
 });

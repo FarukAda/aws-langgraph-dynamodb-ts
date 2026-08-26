@@ -55,4 +55,16 @@ describe('reconcileMessageCount', () => {
       code: ErrorCode.CONDITION_CONFLICT,
     });
   });
+
+  it('rethrows a non-conditional-check error unchanged', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Count: 0 });
+    mock
+      .on(UpdateCommand)
+      .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    await expect(reconcileMessageCount(context(client), 's1')).rejects.toMatchObject({
+      name: 'ValidationException',
+      message: 'boom',
+    });
+  });
 });
