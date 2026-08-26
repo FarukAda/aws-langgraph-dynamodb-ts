@@ -60,7 +60,7 @@ async function searchViaBackend(
 ): Promise<SearchItem[]> {
   const queryVector = await index.embeddings.embedQuery(op.query as string);
   const need = offset + limit;
-  let topK = need;
+  let topK = Math.min(need, context.maxSearchCandidates);
   let results: SearchItem[];
   for (;;) {
     const matches = await backend.query(op.namespacePrefix, queryVector, topK);

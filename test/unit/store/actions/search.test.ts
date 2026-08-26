@@ -271,6 +271,26 @@ describe('searchItems', () => {
     expect(secondTopK).toBeGreaterThan(firstTopK);
   });
 
+  it('clamps the initial candidate request to maxSearchCandidates when offset+limit exceeds it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    mock.on(GetCommand).resolves({});
+    const vectorBackend = {
+      upsert: jest.fn(),
+      delete: jest.fn(),
+      query: jest.fn().mockResolvedValue([]),
+    };
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      vectorBackend: vectorBackend as never,
+      maxSearchCandidates: 5,
+    });
+    await searchItems(ctx, { namespacePrefix: ['users'], query: 'q', limit: 10 });
+    expect(vectorBackend.query).toHaveBeenCalledTimes(1);
+    const [, , topK] = vectorBackend.query.mock.calls[0];
+    expect(topK).toBe(5);
+  });
+
   it('throws ValidationError on a negative limit', async () => {
     const { client } = createStrictDocumentMock();
     await expect(
