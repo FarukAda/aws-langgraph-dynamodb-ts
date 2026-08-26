@@ -63,4 +63,34 @@ describe('store item-mapper', () => {
     expect(record.embedding).toEqual([0.1, 0.2]);
     expect(record.ttl).toBe(1750);
   });
+
+  it('appends a nonce to the S3 keyParts only when one is provided', async () => {
+    const seenParts: string[][] = [];
+    const ctx: StoreContext = {
+      client: {} as never,
+      tableName: 's',
+      serde: JSON_SERDE,
+      logger: SILENT_LOGGER,
+      maxSearchCandidates: 1000,
+      offloader: {
+        shouldOffload: () => true,
+        buildKey: (parts: readonly string[]) => {
+          seenParts.push([...parts]);
+          return parts.join('/');
+        },
+        upload: async (key: string) => key,
+      } as never,
+    };
+    await buildStoreItem(
+      ctx,
+      ['n'],
+      'k',
+      { a: 1 },
+      { createdAt: 'c', updatedAt: 'u', nonce: 'abc' },
+    );
+    expect(seenParts[0]).toEqual(['n', 'k', 'abc']);
+
+    await buildStoreItem(ctx, ['n'], 'k', { a: 1 }, { createdAt: 'c', updatedAt: 'u' });
+    expect(seenParts[1]).toEqual(['n', 'k']);
+  });
 });

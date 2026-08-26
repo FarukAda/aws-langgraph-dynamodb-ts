@@ -21,12 +21,13 @@ function storeCodecDeps(context: StoreContext): CodecDeps {
   return { serde: context.serde, compression: context.compression, offloader: context.offloader };
 }
 
-/** Fields controlling a stored item's timestamps, embedding, and ttl. */
+/** Fields controlling a stored item's timestamps, embedding, ttl, and S3 key nonce. */
 export interface BuildItemOptions {
   createdAt: string;
   updatedAt: string;
   embedding?: number[];
   ttlTimestamp?: number;
+  nonce?: string;
 }
 
 /** Encode a value into the DynamoDB record for a stored item. */
@@ -38,7 +39,8 @@ export async function buildStoreItem(
   options: BuildItemOptions,
 ): Promise<StoreItemRecord> {
   const descriptor = await encodePayload(value, storeCodecDeps(context), {
-    keyParts: [...namespace, key],
+    keyParts:
+      options.nonce === undefined ? [...namespace, key] : [...namespace, key, options.nonce],
   });
   const record: StoreItemRecord = {
     PK: partitionKey(namespace),

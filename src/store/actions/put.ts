@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { nowIso } from '../../shared/clock';
@@ -15,38 +17,30 @@ import type { StoreContext } from '../internal/setup';
 import { validateKey, validateNamespace } from '../internal/validation';
 import type { StoreItemRecord } from '../types';
 
-async function readCreatedAt(
-  context: StoreContext,
-  pk: string,
-  sk: string,
-): Promise<string | undefined> {
-  const existing = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: pk, SK: sk },
-      ConsistentRead: true,
-      ProjectionExpression: '#c',
-      ExpressionAttributeNames: { '#c': 'createdAt' },
-    }),
-  );
-  return existing.Item?.createdAt as string | undefined;
+/** The previous row's createdAt and value descriptor, read once before a put. */
+interface ExistingRecordMeta {
+  createdAt?: string;
+  value?: PayloadDescriptor;
 }
 
-async function readValueDescriptor(
+async function readExisting(
   context: StoreContext,
   pk: string,
   sk: string,
-): Promise<PayloadDescriptor | undefined> {
+): Promise<ExistingRecordMeta> {
   const existing = await withDynamoDBRetry(() =>
     context.client.get({
       TableName: context.tableName,
       Key: { PK: pk, SK: sk },
       ConsistentRead: true,
-      ProjectionExpression: '#v',
-      ExpressionAttributeNames: { '#v': 'value' },
+      ProjectionExpression: '#c, #v',
+      ExpressionAttributeNames: { '#c': 'createdAt', '#v': 'value' },
     }),
   );
-  return existing.Item?.value as PayloadDescriptor | undefined;
+  return {
+    createdAt: existing.Item?.createdAt as string | undefined,
+    value: existing.Item?.value as PayloadDescriptor | undefined,
+  };
 }
 
 /** Delete the item and, when a vector backend is configured, drop its vector. */
@@ -56,14 +50,14 @@ async function deleteStoreItem(
   pk: string,
   sk: string,
 ): Promise<void> {
-  const descriptor = context.offloader ? await readValueDescriptor(context, pk, sk) : undefined;
+  const existing = context.offloader ? await readExisting(context, pk, sk) : undefined;
   await withDynamoDBRetry(() =>
     context.client.delete({ TableName: context.tableName, Key: { PK: pk, SK: sk } }),
   );
   if (context.offloader) {
     await cleanUpS3Orphans(
       context.offloader,
-      collectS3Keys(descriptor ? [descriptor] : []),
+      collectS3Keys(existing?.value ? [existing.value] : []),
       'store.delete',
       context.logger,
     );
@@ -83,8 +77,17 @@ async function resolveEmbedding(
   return embedValue(context, value, Array.isArray(op.index) ? op.index : undefined);
 }
 
-/** Put the record; on failure best-effort clean any S3 objects it referenced. */
-async function persistRecord(context: StoreContext, record: StoreItemRecord): Promise<void> {
+/**
+ * Put the record. On failure, best-effort clean the S3 object *this* record
+ * would have referenced — safe because its key is nonced, never the previous
+ * row's key. On success, best-effort clean the previous row's S3 object (if
+ * any) now that it's safely superseded.
+ */
+async function persistRecord(
+  context: StoreContext,
+  record: StoreItemRecord,
+  previousValue: PayloadDescriptor | undefined,
+): Promise<void> {
   try {
     await withDynamoDBRetry(() =>
       context.client.put({ TableName: context.tableName, Item: record }),
@@ -100,14 +103,24 @@ async function persistRecord(context: StoreContext, record: StoreItemRecord): Pr
     }
     throw error;
   }
+  if (context.offloader && previousValue) {
+    await cleanUpS3Orphans(
+      context.offloader,
+      collectS3Keys([previousValue]),
+      'store.put.overwrite',
+      context.logger,
+    );
+  }
 }
 
 /**
  * Store, update, or delete an item. A null value deletes; otherwise the value
- * is encoded (with optional compression/S3 offload), `createdAt` is preserved
- * across updates, and an embedding is computed when indexing is enabled. When a
- * `vectorBackend` is configured the embedding is sent there (and not stored on
- * the item); DynamoDB always holds the canonical item.
+ * is encoded (with optional compression/S3 offload, under a per-call nonce so
+ * a failed write can never delete the previous version's payload) and
+ * `createdAt` is preserved across updates. An embedding is computed when
+ * indexing is enabled. When a `vectorBackend` is configured the embedding is
+ * sent there (and not stored on the item); DynamoDB always holds the
+ * canonical item.
  */
 export async function putItem(context: StoreContext, op: PutOperation): Promise<void> {
   validateNamespace(op.namespace);
@@ -120,16 +133,17 @@ export async function putItem(context: StoreContext, op: PutOperation): Promise<
   }
   const value = op.value as Record<string, JsonValue>;
   const timestamp = nowIso();
-  const createdAt = (await readCreatedAt(context, pk, sk)) ?? timestamp;
+  const existing = await readExisting(context, pk, sk);
   const embedding = await resolveEmbedding(context, op, value);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
   const record = await buildStoreItem(context, op.namespace, op.key, value, {
-    createdAt,
+    createdAt: existing.createdAt ?? timestamp,
     updatedAt: timestamp,
     embedding: context.vectorBackend ? undefined : embedding,
     ttlTimestamp,
+    nonce: randomUUID(),
   });
-  await persistRecord(context, record);
+  await persistRecord(context, record, existing.value);
   if (context.vectorBackend) {
     await syncVectorIndex(context.vectorBackend, op.namespace, op.key, embedding, context.logger);
   }

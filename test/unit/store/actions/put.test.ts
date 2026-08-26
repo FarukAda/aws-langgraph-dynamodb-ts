@@ -131,7 +131,124 @@ describe('putItem', () => {
     await expect(
       putItem(context(client, { offloader: offloader as never }), op({})),
     ).rejects.toThrow('boom');
-    expect(offloader.deleteBatch).toHaveBeenCalledWith(['users/u1/profile']);
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^users\/u1\/profile\//);
+  });
+
+  it('reads createdAt and the previous value descriptor in a single GetItem call', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({
+      Item: {
+        createdAt: '2000-01-01T00:00:00.000Z',
+        value: {
+          location: PayloadLocation.INLINE,
+          serdeType: 'json',
+          compressed: false,
+          bytes: new Uint8Array(),
+        },
+      },
+    });
+    mock.on(PutCommand).resolves({});
+    await putItem(context(client), op({}));
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.ProjectionExpression).toBe('#c, #v');
+  });
+
+  it('offloads each successful put to a distinct S3 key (nonced, not deterministic)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    mock.on(PutCommand).resolves({});
+    const uploaded: string[] = [];
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: string[]) => parts.join('/'),
+      upload: async (key: string) => {
+        uploaded.push(key);
+        return key;
+      },
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    await putItem(context(client, { offloader: offloader as never }), op({}));
+    await putItem(context(client, { offloader: offloader as never }), op({}));
+    expect(uploaded[0]).not.toBe(uploaded[1]);
+  });
+
+  it('does NOT delete the previous S3 object when an overwrite put fails (regression: this was the data-loss bug)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({
+      Item: {
+        createdAt: '2000-01-01T00:00:00.000Z',
+        value: {
+          location: PayloadLocation.S3,
+          serdeType: 'json',
+          compressed: false,
+          s3Key: 'old-key.bin',
+        },
+      },
+    });
+    mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: string[]) => parts.join('/') + '.bin',
+      upload: async (key: string) => key,
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    await expect(
+      putItem(context(client, { offloader: offloader as never }), op({})),
+    ).rejects.toThrow('boom');
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
+    expect(keys).not.toContain('old-key.bin');
+  });
+
+  it('cleans up the previous S3 object after a successful overwrite', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({
+      Item: {
+        createdAt: '2000-01-01T00:00:00.000Z',
+        value: {
+          location: PayloadLocation.S3,
+          serdeType: 'json',
+          compressed: false,
+          s3Key: 'old-key.bin',
+        },
+      },
+    });
+    mock.on(PutCommand).resolves({});
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: string[]) => parts.join('/') + '.bin',
+      upload: async (key: string) => key,
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    await putItem(context(client, { offloader: offloader as never }), op({}));
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
+  });
+
+  it('cleans up the previous S3 object when a large value is overwritten by a small inline one', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({
+      Item: {
+        createdAt: '2000-01-01T00:00:00.000Z',
+        value: {
+          location: PayloadLocation.S3,
+          serdeType: 'json',
+          compressed: false,
+          s3Key: 'old-key.bin',
+        },
+      },
+    });
+    mock.on(PutCommand).resolves({});
+    const offloader = {
+      shouldOffload: () => false,
+      buildKey: (parts: string[]) => parts.join('/') + '.bin',
+      upload: async (key: string) => key,
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    await putItem(context(client, { offloader: offloader as never }), op({}));
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
   });
 
   it('sends the embedding to a vector backend instead of storing it on the item', async () => {
