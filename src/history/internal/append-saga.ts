@@ -14,6 +14,7 @@ export interface AppendFields {
   now: string;
   title?: string;
   ttlTimestamp?: number;
+  forceTtlRefresh?: boolean;
 }
 
 /** A chunk that committed, retained so it can be rolled back on a later failure. */
@@ -132,11 +133,9 @@ export async function appendChunks(
   for (const chunk of chunks) {
     try {
       await writeMessageChunk(context, chunk, {
+        ...fields,
         sessionId,
         count: chunk.length,
-        now: fields.now,
-        title: fields.title,
-        ttlTimestamp: fields.ttlTimestamp,
       });
       committed.push({
         keys: chunk.map((item) => ({ PK: item.PK, SK: item.SK })),

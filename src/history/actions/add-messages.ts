@@ -58,14 +58,15 @@ export async function addMessages(
   validateNonEmptyString(sessionId, 'sessionId');
   if (messages.length === 0) return;
   const stored = mapChatMessagesToStoredMessages(messages);
-  const ttlTimestamp = context.ttl
+  const anchor = context.ttl
     ? await resolveTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl))
     : undefined;
-  const items = await buildItems(context, sessionId, stored, ttlTimestamp);
+  const items = await buildItems(context, sessionId, stored, anchor?.ttlTimestamp);
   const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
   await appendChunks(context, sessionId, chunks, {
     now: nowIso(),
     title: deriveTitle(stored),
-    ttlTimestamp,
+    ttlTimestamp: anchor?.ttlTimestamp,
+    forceTtlRefresh: anchor?.refresh,
   });
 }

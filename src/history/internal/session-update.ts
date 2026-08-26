@@ -12,6 +12,7 @@ export interface SessionUpdateFields {
   now: string;
   title?: string;
   ttlTimestamp?: number;
+  forceTtlRefresh?: boolean;
 }
 
 /**
@@ -19,7 +20,11 @@ export interface SessionUpdateFields {
  * `updatedAt` every time, while `createdAt`, `sessionId`, `title`, and the `ttl`
  * anchor are written once via `if_not_exists`. Folding the `ttl` anchor in here
  * means the first append fixes one shared expiry atomically with the count, with
- * no separate pre-write that could orphan a metadata-only row.
+ * no separate pre-write that could orphan a metadata-only row. When
+ * `forceTtlRefresh` is set (because {@link resolveTtlAnchor} found the persisted
+ * anchor missing or already expired), the `ttl` clause instead does a plain
+ * `SET`, so the SESSION row's own stale attribute actually heals instead of
+ * being permanently blocked by `if_not_exists`.
  */
 export function buildSessionUpdateItem(
   tableName: string,
@@ -46,7 +51,7 @@ export function buildSessionUpdateItem(
   if (fields.ttlTimestamp !== undefined) {
     names['#ttl'] = 'ttl';
     values[':ttl'] = fields.ttlTimestamp;
-    sets.push('#ttl = if_not_exists(#ttl, :ttl)');
+    sets.push(fields.forceTtlRefresh ? '#ttl = :ttl' : '#ttl = if_not_exists(#ttl, :ttl)');
   }
   return {
     Update: {

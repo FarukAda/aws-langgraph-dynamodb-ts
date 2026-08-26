@@ -64,7 +64,8 @@ describe('addMessages', () => {
 
   it('resolves the shared ttl anchor and stamps it on every item and the session update', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: { ttl: 4242 } });
+    const future = Math.floor(Date.now() / 1000) + 10_000;
+    mock.on(GetCommand).resolves({ Item: { ttl: future } });
     mock.on(TransactWriteCommand).resolves({});
     await addMessages(context(client, { ttl: { seconds: 100 } }), 's1', [
       new HumanMessage('hi'),
@@ -73,9 +74,20 @@ describe('addMessages', () => {
     const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
     const update = items[0].Update;
     expect(update?.UpdateExpression).toContain('#ttl = if_not_exists(#ttl, :ttl)');
-    expect(update?.ExpressionAttributeValues?.[':ttl']).toBe(4242);
+    expect(update?.ExpressionAttributeValues?.[':ttl']).toBe(future);
     const puts = items.slice(1);
-    expect(puts.every((p) => p.Put?.Item?.ttl === 4242)).toBe(true);
+    expect(puts.every((p) => p.Put?.Item?.ttl === future)).toBe(true);
+  });
+
+  it('force-refreshes the session ttl anchor via a plain SET when the stored anchor is missing or expired', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    mock.on(TransactWriteCommand).resolves({});
+    await addMessages(context(client, { ttl: { seconds: 100 } }), 's1', [new HumanMessage('hi')]);
+    const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
+    const update = items[0].Update;
+    expect(update?.UpdateExpression).toContain('#ttl = :ttl');
+    expect(update?.UpdateExpression).not.toContain('if_not_exists(#ttl');
   });
 
   it('splits past the per-transaction limit into multiple transactions with a correct total count', async () => {

@@ -60,4 +60,26 @@ describe('buildSessionUpdateItem', () => {
     expect(Update?.UpdateExpression).not.toContain('#ttl');
     expect(Update?.ExpressionAttributeNames?.['#ttl']).toBeUndefined();
   });
+
+  it('force-overwrites the ttl anchor instead of if_not_exists when forceTtlRefresh is set', () => {
+    const item = buildSessionUpdateItem('history', {
+      sessionId: 's1',
+      count: 1,
+      now: 'u',
+      ttlTimestamp: 5000,
+      forceTtlRefresh: true,
+    });
+    expect(item.Update?.UpdateExpression).toContain('#ttl = :ttl');
+    expect(item.Update?.UpdateExpression).not.toContain('if_not_exists(#ttl');
+  });
+
+  it('still uses if_not_exists for the ttl anchor when forceTtlRefresh is not set', () => {
+    const item = buildSessionUpdateItem('history', {
+      sessionId: 's1',
+      count: 1,
+      now: 'u',
+      ttlTimestamp: 5000,
+    });
+    expect(item.Update?.UpdateExpression).toContain('#ttl = if_not_exists(#ttl, :ttl)');
+  });
 });
