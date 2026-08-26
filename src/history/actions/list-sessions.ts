@@ -10,7 +10,7 @@ import type { ChatSessionItem, SessionMetadata } from '../types';
  */
 export async function listSessions(
   context: HistoryContext,
-  options?: { maxIterations?: number },
+  options?: { maxIterations?: number; maxItems?: number },
 ): Promise<SessionMetadata[]> {
   const sessions: SessionMetadata[] = [];
   for await (const raw of paginateScan({
@@ -22,6 +22,7 @@ export async function listSessions(
       ExpressionAttributeValues: { ':session': SESSION_SORT_KEY },
     },
     maxIterations: options?.maxIterations,
+    maxItems: options?.maxItems,
   })) {
     const item = raw as ChatSessionItem;
     if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') continue;

@@ -50,7 +50,10 @@ export class DynamoDBChatMessageHistory {
   }
 
   /** List all sessions as metadata summaries. */
-  listSessions(options?: { maxIterations?: number }): Promise<SessionMetadata[]> {
+  listSessions(options?: {
+    maxIterations?: number;
+    maxItems?: number;
+  }): Promise<SessionMetadata[]> {
     return listSessionsAction(this.context, options);
   }
 

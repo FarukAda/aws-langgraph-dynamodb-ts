@@ -88,4 +88,15 @@ describe('listSessions', () => {
     const result = await listSessions(context(client), { maxIterations: 2000 });
     expect(result.map((s) => s.sessionId)).toEqual(['s1']);
   });
+
+  it('honors a maxItems override, truncating at a smaller cap than the default', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({
+      Items: [session('a', '2024-01-01'), session('b', '2024-01-02')],
+      LastEvaluatedKey: { PK: 'x', SK: 'y' },
+    });
+    await expect(listSessions(context(client), { maxItems: 1 })).rejects.toThrow(
+      ResultTruncatedError,
+    );
+  });
 });
