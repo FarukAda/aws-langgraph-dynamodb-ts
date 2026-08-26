@@ -61,7 +61,11 @@ export async function pushEmbeddings(
 
 /** Refs present in the backend but absent from `live` — orphans to prune. */
 export function selectOrphans(backendRefs: VectorRef[], live: ReconcileTarget[]): VectorRef[] {
-  const liveKeys = new Set(live.map((target) => refIdentity(target.namespace, target.key)));
+  const liveKeys = new Set(
+    live
+      .filter((target) => target.embedding !== undefined)
+      .map((target) => refIdentity(target.namespace, target.key)),
+  );
   return backendRefs.filter((ref) => !liveKeys.has(refIdentity(ref.namespace, ref.key)));
 }
 

@@ -48,6 +48,12 @@ describe('selectOrphans', () => {
     const backendRefs = [{ namespace: ['a b'], key: 'c' }];
     expect(selectOrphans(backendRefs, live)).toEqual([{ namespace: ['a b'], key: 'c' }]);
   });
+
+  it('treats a live item whose current embedding is undefined as orphan-eligible (empty-text drift)', () => {
+    const live = [{ namespace: ['n'], key: 'emptied', embedding: undefined }];
+    const backendRefs = [{ namespace: ['n'], key: 'emptied' }];
+    expect(selectOrphans(backendRefs, live)).toEqual([{ namespace: ['n'], key: 'emptied' }]);
+  });
 });
 
 describe('pushEmbeddings', () => {
