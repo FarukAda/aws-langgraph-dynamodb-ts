@@ -1,4 +1,3 @@
-import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { matchesStoreFilter } from '../../../../src/store/internal/filter';
 
 describe('matchesStoreFilter', () => {
@@ -29,13 +28,25 @@ describe('matchesStoreFilter', () => {
     expect(matchesStoreFilter(value, {})).toBe(true);
   });
 
-  it('throws VALIDATION on an unknown operator', () => {
-    try {
-      matchesStoreFilter(value, { score: { $bogus: 1 } });
-      throw new Error('should have thrown');
-    } catch (error) {
-      expect((error as { code: ErrorCode }).code).toBe(ErrorCode.VALIDATION);
-    }
+  it('supports $in and $nin', () => {
+    expect(matchesStoreFilter(value, { status: { $in: ['active', 'archived'] } })).toBe(true);
+    expect(matchesStoreFilter(value, { status: { $in: ['archived'] } })).toBe(false);
+    expect(matchesStoreFilter(value, { status: { $nin: ['archived'] } })).toBe(true);
+    expect(matchesStoreFilter(value, { status: { $nin: ['active'] } })).toBe(false);
+  });
+
+  it('treats an unrecognized $-prefixed condition as a literal value to match, not an operator (parity with the official InMemoryStore)', () => {
+    expect(matchesStoreFilter(value, { score: { $bogus: 1 } })).toBe(false);
+  });
+
+  it('does not misdetect a stored value with $-prefixed keys (e.g. a JSON Schema document) as a filter operator', () => {
+    const schemaValue = { schema: { $schema: 'https://json-schema.org/draft/2020-12/schema' } };
+    expect(
+      matchesStoreFilter(schemaValue, {
+        schema: { $schema: 'https://json-schema.org/draft/2020-12/schema' },
+      }),
+    ).toBe(true);
+    expect(matchesStoreFilter(schemaValue, { schema: { $schema: 'other' } })).toBe(false);
   });
 
   it('does not vacuously match every item when a field condition is an empty operator object', () => {
