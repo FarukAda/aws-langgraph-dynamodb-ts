@@ -41,4 +41,18 @@ describe('reconcileMessageCount', () => {
       code: ErrorCode.VALIDATION,
     });
   });
+
+  it('throws ConflictError instead of creating a junk row when the session does not exist', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Count: 0 });
+    mock
+      .on(UpdateCommand)
+      .rejects(
+        Object.assign(new Error('cond failed'), { name: 'ConditionalCheckFailedException' }),
+      );
+    await expect(reconcileMessageCount(context(client), 'ghost')).rejects.toMatchObject({
+      name: 'ConflictError',
+      code: ErrorCode.CONDITION_CONFLICT,
+    });
+  });
 });
