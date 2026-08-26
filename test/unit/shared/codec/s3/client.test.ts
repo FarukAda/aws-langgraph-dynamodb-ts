@@ -17,4 +17,16 @@ describe('createDefaultS3Client', () => {
     expect(client).toBeInstanceOf(S3Client);
     client.destroy();
   });
+
+  it("defaults to a single SDK attempt (own retry layer owns retries) so it doesn't double the retry budget", async () => {
+    const client = await createDefaultS3Client({ region: 'us-east-1' });
+    await expect(client.config.maxAttempts()).resolves.toBe(1);
+    client.destroy();
+  });
+
+  it('honors an explicit maxAttempts override', async () => {
+    const client = await createDefaultS3Client({ region: 'us-east-1', maxAttempts: 5 });
+    await expect(client.config.maxAttempts()).resolves.toBe(5);
+    client.destroy();
+  });
 });
