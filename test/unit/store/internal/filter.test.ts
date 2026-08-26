@@ -45,8 +45,12 @@ describe('matchesStoreFilter', () => {
   });
 
   it('does not misdetect a data value whose keys collide with Object.prototype members as a filter operator', () => {
-    expect(matchesStoreFilter({ totallyDifferent: true }, { constructor: 'Foo' })).toBe(false);
-    expect(matchesStoreFilter({ constructor: 'Foo' }, { constructor: 'Foo' })).toBe(true);
+    expect(
+      matchesStoreFilter({ meta: { totallyDifferent: true } }, { meta: { constructor: 'Foo' } }),
+    ).toBe(false);
+    expect(
+      matchesStoreFilter({ meta: { constructor: 'Foo' } }, { meta: { constructor: 'Foo' } }),
+    ).toBe(true);
   });
 
   it('does not misdetect a stored value with $-prefixed keys (e.g. a JSON Schema document) as a filter operator', () => {
