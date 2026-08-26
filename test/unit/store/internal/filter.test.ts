@@ -35,8 +35,18 @@ describe('matchesStoreFilter', () => {
     expect(matchesStoreFilter(value, { status: { $nin: ['active'] } })).toBe(false);
   });
 
+  it('treats $in/$nin against a non-array expected value as their documented fallback', () => {
+    expect(matchesStoreFilter(value, { status: { $in: 'not-an-array' as never } })).toBe(false);
+    expect(matchesStoreFilter(value, { status: { $nin: 'not-an-array' as never } })).toBe(true);
+  });
+
   it('treats an unrecognized $-prefixed condition as a literal value to match, not an operator (parity with the official InMemoryStore)', () => {
     expect(matchesStoreFilter(value, { score: { $bogus: 1 } })).toBe(false);
+  });
+
+  it('does not misdetect a data value whose keys collide with Object.prototype members as a filter operator', () => {
+    expect(matchesStoreFilter({ totallyDifferent: true }, { constructor: 'Foo' })).toBe(false);
+    expect(matchesStoreFilter({ constructor: 'Foo' }, { constructor: 'Foo' })).toBe(true);
   });
 
   it('does not misdetect a stored value with $-prefixed keys (e.g. a JSON Schema document) as a filter operator', () => {

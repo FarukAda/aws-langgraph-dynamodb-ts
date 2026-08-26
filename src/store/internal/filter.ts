@@ -28,7 +28,7 @@ function isOperatorObject(condition: JsonValue): condition is { [key: string]: J
     condition !== null &&
     !Array.isArray(condition) &&
     Object.keys(condition).length > 0 &&
-    Object.keys(condition).every((key) => key in COMPARATORS)
+    Object.keys(condition).every((key) => Object.prototype.hasOwnProperty.call(COMPARATORS, key))
   );
 }
 
