@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
@@ -30,15 +32,15 @@ async function revertSessionCount(
   delta: number,
 ): Promise<void> {
   if (delta === 0) return;
-  await withDynamoDBRetry(() =>
-    context.client.update({
-      TableName: context.tableName,
-      Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
-      UpdateExpression: 'ADD #count :neg',
-      ExpressionAttributeNames: { '#count': 'messageCount' },
-      ExpressionAttributeValues: { ':neg': -delta },
-    }),
-  );
+  const update = {
+    TableName: context.tableName,
+    Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+    UpdateExpression: 'ADD #count :neg',
+    ExpressionAttributeNames: { '#count': 'messageCount' },
+    ExpressionAttributeValues: { ':neg': -delta },
+  };
+  const input = { TransactItems: [{ Update: update }], ClientRequestToken: randomUUID() };
+  await withDynamoDBRetry(() => context.client.transactWrite(input));
 }
 
 /**

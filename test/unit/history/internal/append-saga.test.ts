@@ -48,12 +48,14 @@ describe('appendChunks', () => {
 
   it('rolls back committed chunks and reverts the count when a later chunk fails', async () => {
     const { client, mock } = createStrictDocumentMock();
+    // TransactWriteCommand call order: chunk 1 append succeeds, chunk 2 append
+    // fails, then revertSessionCount's compensating transactWrite.
     mock
       .on(TransactWriteCommand)
       .resolvesOnce({})
-      .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+      .rejectsOnce(Object.assign(new Error('boom'), { name: 'ValidationException' }))
+      .resolves({});
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    mock.on(UpdateCommand).resolves({});
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 
     await expect(
@@ -68,9 +70,11 @@ describe('appendChunks', () => {
     const deletes =
       mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.history ?? [];
     expect(deletes.map((r) => r.DeleteRequest?.Key?.SK)).toEqual(['MSG#1', 'MSG#2']);
-    const revert = mock.commandCalls(UpdateCommand)[0].args[0].input;
-    expect(revert.UpdateExpression).toBe('ADD #count :neg');
-    expect(revert.ExpressionAttributeValues?.[':neg']).toBe(-2);
+    const revertCall = mock.commandCalls(TransactWriteCommand)[2].args[0].input;
+    const revertUpdate = revertCall.TransactItems?.[0]?.Update;
+    expect(revertUpdate?.UpdateExpression).toBe('ADD #count :neg');
+    expect(revertUpdate?.ExpressionAttributeValues?.[':neg']).toBe(-2);
+    expect(revertCall.ClientRequestToken).toBeDefined();
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('compensating'), {
       sessionId: 's1',
       committedChunks: 1,
@@ -128,12 +132,12 @@ describe('appendChunks', () => {
     mock
       .on(TransactWriteCommand)
       .resolvesOnce({})
-      .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+      .rejectsOnce(Object.assign(new Error('boom'), { name: 'ValidationException' }))
+      .resolves({});
     mock.on(BatchWriteCommand).callsFake(() => {
       order.push('ddb-delete');
       return Promise.resolve({ UnprocessedItems: {} });
     });
-    mock.on(UpdateCommand).resolves({});
     const offloader = {
       deleteBatch: jest.fn(async (keys: string[]) => {
         if (keys.includes('k1')) order.push('s3-delete-k1');
@@ -173,5 +177,22 @@ describe('appendChunks', () => {
     // its DynamoDB row's fate is unknown after a failed rollback. Only the
     // never-committed chunk's key (k2) is safe to have cleaned.
     expect(offloader.deleteBatch).not.toHaveBeenCalledWith(expect.arrayContaining(['k1']));
+  });
+
+  it('reverts the session count via an idempotent TransactWriteItems call, not a bare UpdateItem', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(TransactWriteCommand)
+      .resolvesOnce({})
+      .rejectsOnce(Object.assign(new Error('boom'), { name: 'ValidationException' }))
+      .resolves({});
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    await expect(
+      appendChunks(context(client), 's1', [[inlineItem('MSG#1')], [inlineItem('MSG#2')]], {
+        now: 'u',
+      }),
+    ).rejects.toThrow('boom');
+    expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(3);
   });
 });
