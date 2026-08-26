@@ -32,7 +32,10 @@ export function rankInMemory(
   return candidates
     .map(({ item, embedding }) => ({
       ...item,
-      score: embedding ? cosineSimilarity(queryVector, embedding) : undefined,
+      score:
+        embedding && embedding.length === queryVector.length
+          ? cosineSimilarity(queryVector, embedding)
+          : undefined,
     }))
     .sort((a, b) => rankValue(b) - rankValue(a));
 }

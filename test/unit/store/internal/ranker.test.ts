@@ -28,6 +28,12 @@ describe('rankInMemory', () => {
     expect(ranked[1].score).toBeUndefined();
   });
 
+  it('ranks a dimension-mismatched embedding as unscored rather than silently scoring it 0', () => {
+    const ranked = rankInMemory([candidate('stale', [1, 0, 0]), candidate('nomatch')], [1, 0], 10);
+    expect(ranked.map((r) => r.key).sort()).toEqual(['nomatch', 'stale']);
+    expect(ranked.every((r) => r.score === undefined)).toBe(true);
+  });
+
   it('throws a ValidationError when the candidate set exceeds the cap', () => {
     try {
       rankInMemory([candidate('a'), candidate('b')], [1, 0], 1);
