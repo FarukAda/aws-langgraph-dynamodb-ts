@@ -56,6 +56,9 @@ export const DEFAULT_RETRY_MAX_ATTEMPTS = 5;
  * existing 100ms base / 5000ms cap backoff, this keeps worst-case retrying
  * within AWS's documented guidance to bound conflict retries to "around one
  * minute" (see DynamoDB's "Error retries and exponential backoff" guide).
+ * This bound is exact, not a floor: the DynamoDB client disables the AWS
+ * SDK's own internal retries by default (see `resolveDynamoDBClient`), so
+ * this is the only retry layer in play.
  */
 export const MESSAGE_APPEND_RETRY_MAX_ATTEMPTS = 18;
 

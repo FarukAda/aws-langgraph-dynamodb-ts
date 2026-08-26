@@ -39,17 +39,34 @@ describe('resolveDynamoDBClient', () => {
       clientConfig: { region: 'us-east-1' },
       createClient,
     });
-    expect(createClient).toHaveBeenCalledWith({ region: 'us-east-1' });
+    expect(createClient).toHaveBeenCalledWith({ maxAttempts: 1, region: 'us-east-1' });
     expect(resolved.ownsClient).toBe(true);
     expect(resolved.ddbClient).toBe(fakeClient);
   });
 
-  it('defaults to an empty client config when none is provided', () => {
+  it('defaults to a single SDK attempt (own retry layer owns retries) when no client config is provided', () => {
     const fakeClient = createFakeClient();
     const createClient = jest.fn().mockReturnValue(fakeClient);
     const resolved = resolveDynamoDBClient({ createClient });
-    expect(createClient).toHaveBeenCalledWith({});
+    expect(createClient).toHaveBeenCalledWith({ maxAttempts: 1 });
     expect(resolved.ownsClient).toBe(true);
+  });
+
+  it("disables the SDK's own internal retries by default, so this library's retry layer is the sole source of truth", () => {
+    const fakeClient = createFakeClient();
+    const createClient = jest.fn().mockReturnValue(fakeClient);
+    resolveDynamoDBClient({ clientConfig: { region: 'us-east-1' }, createClient });
+    expect(createClient).toHaveBeenCalledWith({ maxAttempts: 1, region: 'us-east-1' });
+  });
+
+  it('honors an explicit maxAttempts override in clientConfig', () => {
+    const fakeClient = createFakeClient();
+    const createClient = jest.fn().mockReturnValue(fakeClient);
+    resolveDynamoDBClient({
+      clientConfig: { region: 'us-east-1', maxAttempts: 5 },
+      createClient,
+    });
+    expect(createClient).toHaveBeenCalledWith({ region: 'us-east-1', maxAttempts: 5 });
   });
 
   it('builds a real DynamoDBClient through the default factory when no seam is given', () => {

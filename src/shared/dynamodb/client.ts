@@ -25,6 +25,6 @@ export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDy
     return { ddbClient: undefined, client: options.client, ownsClient: false };
   }
   const createClient = options.createClient ?? ((config) => new DynamoDBClient(config));
-  const ddbClient = createClient(options.clientConfig ?? {});
+  const ddbClient = createClient({ maxAttempts: 1, ...options.clientConfig });
   return { ddbClient, client: DynamoDBDocument.from(ddbClient), ownsClient: true };
 }
