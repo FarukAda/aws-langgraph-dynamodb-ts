@@ -218,6 +218,59 @@ describe('searchItems', () => {
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
   });
 
+  it('refills from the vector backend when candidates are filtered out, instead of under-returning', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
+    const recA = await buildStoreItem(
+      ctx,
+      ['users', 'u1'],
+      'a',
+      { status: 'active' },
+      {
+        createdAt: 'c',
+        updatedAt: 'u',
+      },
+    );
+    const recB = await buildStoreItem(
+      ctx,
+      ['users', 'u1'],
+      'b',
+      { status: 'inactive' },
+      {
+        createdAt: 'c',
+        updatedAt: 'u',
+      },
+    );
+    mock.on(GetCommand).callsFake((input) => ({ Item: input.Key.SK === 'u1#a' ? recA : recB }));
+    const vectorBackend = {
+      upsert: jest.fn(),
+      delete: jest.fn(),
+      query: jest
+        .fn()
+        .mockResolvedValueOnce([{ namespace: ['users', 'u1'], key: 'b', score: 0.9 }])
+        .mockResolvedValueOnce([
+          { namespace: ['users', 'u1'], key: 'b', score: 0.9 },
+          { namespace: ['users', 'u1'], key: 'a', score: 0.5 },
+        ]),
+    };
+    const fullCtx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      vectorBackend: vectorBackend as never,
+    });
+    const items = await searchItems(fullCtx, {
+      namespacePrefix: ['users'],
+      query: 'q',
+      limit: 1,
+      filter: { status: 'active' },
+    });
+    expect(items.map((i) => i.key)).toEqual(['a']);
+    expect(vectorBackend.query).toHaveBeenCalledTimes(2);
+    const [, , firstTopK] = vectorBackend.query.mock.calls[0];
+    const [, , secondTopK] = vectorBackend.query.mock.calls[1];
+    expect(secondTopK).toBeGreaterThan(firstTopK);
+  });
+
   it('throws ValidationError on a negative limit', async () => {
     const { client } = createStrictDocumentMock();
     await expect(

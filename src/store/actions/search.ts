@@ -55,15 +55,24 @@ async function searchViaBackend(
   backend: VectorBackend,
   index: IndexConfig,
   op: SearchOperation,
-  topK: number,
+  offset: number,
+  limit: number,
 ): Promise<SearchItem[]> {
   const queryVector = await index.embeddings.embedQuery(op.query as string);
-  const matches = await backend.query(op.namespacePrefix, queryVector, topK);
-  const results: SearchItem[] = [];
-  for (const match of matches) {
-    if (!namespaceMatchesPrefix(match.namespace, op.namespacePrefix)) continue;
-    const item = await getItem(context, match.namespace, match.key);
-    if (item && passesFilter(item, op)) results.push({ ...item, score: match.score });
+  const need = offset + limit;
+  let topK = need;
+  let results: SearchItem[];
+  for (;;) {
+    const matches = await backend.query(op.namespacePrefix, queryVector, topK);
+    results = [];
+    for (const match of matches) {
+      if (!namespaceMatchesPrefix(match.namespace, op.namespacePrefix)) continue;
+      const item = await getItem(context, match.namespace, match.key);
+      if (item && passesFilter(item, op)) results.push({ ...item, score: match.score });
+    }
+    if (results.length >= need || matches.length < topK || topK >= context.maxSearchCandidates)
+      break;
+    topK = Math.min(topK * 2, context.maxSearchCandidates);
   }
   return results;
 }
@@ -87,7 +96,8 @@ export async function searchItems(
       context.vectorBackend,
       context.index,
       op,
-      offset + limit,
+      offset,
+      limit,
     );
     return ranked.slice(offset, offset + limit);
   }
