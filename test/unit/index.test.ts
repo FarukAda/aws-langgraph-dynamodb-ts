@@ -1,5 +1,6 @@
 import {
   AbortError,
+  BatchWriteAllIncompleteError,
   BatchWriteIncompleteError,
   CompensationFailedError,
   ConflictError,
@@ -32,6 +33,9 @@ describe('public entry point', () => {
       expect(new ErrorClass('x')).toBeInstanceOf(DynamoDbLangGraphError);
     }
     expect(new BatchWriteIncompleteError(1, [], 3)).toBeInstanceOf(DynamoDbLangGraphError);
+    expect(new BatchWriteAllIncompleteError(1, 2, [new Error('x')])).toBeInstanceOf(
+      DynamoDbLangGraphError,
+    );
     expect(new ResultTruncatedError('maxItems', 1)).toBeInstanceOf(DynamoDbLangGraphError);
     expect(new CompensationFailedError(new Error('a'), new Error('b'))).toBeInstanceOf(
       DynamoDbLangGraphError,

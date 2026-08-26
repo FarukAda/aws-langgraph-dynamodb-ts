@@ -15,6 +15,7 @@ export type { ErrorContext } from './shared/errors/base-error';
 export { ErrorCode } from './shared/errors/error-code';
 export {
   AbortError,
+  BatchWriteAllIncompleteError,
   BatchWriteIncompleteError,
   CompensationFailedError,
   ConflictError,
