@@ -272,7 +272,7 @@ describe('searchItems', () => {
     expect(secondTopK).toBeGreaterThan(firstTopK);
   });
 
-  it('clamps the initial candidate request to maxSearchCandidates when offset+limit exceeds it', async () => {
+  it('throws ValidationError instead of silently under-returning when the requested page (offset+limit) exceeds maxSearchCandidates', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     mock.on(GetCommand).resolves({});
@@ -286,10 +286,54 @@ describe('searchItems', () => {
       vectorBackend: vectorBackend as never,
       maxSearchCandidates: 5,
     });
-    await searchItems(ctx, { namespacePrefix: ['users'], query: 'q', limit: 10 });
-    expect(vectorBackend.query).toHaveBeenCalledTimes(1);
-    const [, , topK] = vectorBackend.query.mock.calls[0];
-    expect(topK).toBe(5);
+    await expect(
+      searchItems(ctx, { namespacePrefix: ['users'], query: 'q', offset: 4, limit: 3 }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    // The guard must fail loud *before* ever querying the backend with a
+    // clamped (and therefore wrong) topK — this was the under-return bug.
+    expect(vectorBackend.query).not.toHaveBeenCalled();
+  });
+
+  it('returns real items when paginating well within maxSearchCandidates (regression: the guard must not affect ordinary pagination)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const recA = await buildStoreItem(
+      context(client),
+      ['users', 'u1'],
+      'a',
+      { score: 1 },
+      { createdAt: 'c', updatedAt: 'u' },
+    );
+    const recB = await buildStoreItem(
+      context(client),
+      ['users', 'u1'],
+      'b',
+      { score: 9 },
+      { createdAt: 'c', updatedAt: 'u' },
+    );
+    mock.on(GetCommand).callsFake((input) => ({ Item: input.Key.SK === 'u1#b' ? recB : recA }));
+    const vectorBackend = {
+      upsert: jest.fn(),
+      delete: jest.fn(),
+      query: jest.fn().mockResolvedValue([
+        { namespace: ['users', 'u1'], key: 'b', score: 0.9 },
+        { namespace: ['users', 'u1'], key: 'a', score: 0.5 },
+      ]),
+    };
+    // Default maxSearchCandidates from the context() helper is 1000; offset
+    // and limit here are both well under it.
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      vectorBackend: vectorBackend as never,
+    });
+    const items = await searchItems(ctx, {
+      namespacePrefix: ['users'],
+      query: 'q',
+      offset: 1,
+      limit: 1,
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0].key).toBe('a');
   });
 
   it('throws ValidationError on a negative limit', async () => {

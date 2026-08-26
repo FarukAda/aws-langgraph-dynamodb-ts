@@ -7,6 +7,7 @@ import type {
 
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { paginateScan } from '../../shared/dynamodb/scan';
+import { ValidationError } from '../../shared/errors/errors';
 import { type JsonValue, matchesStoreFilter } from '../internal/filter';
 import { narrowStoreRecord, readStoreItem } from '../internal/item-mapper';
 import { namespaceMatchesPrefix } from '../internal/keys';
@@ -65,6 +66,13 @@ async function searchViaBackend(
 ): Promise<SearchItem[]> {
   const queryVector = await index.embeddings.embedQuery(op.query as string);
   const need = offset + limit;
+  if (need > context.maxSearchCandidates) {
+    throw new ValidationError(
+      `Requested page (offset ${offset} + limit ${limit} = ${need}) exceeds maxSearchCandidates ` +
+        `(${context.maxSearchCandidates}); narrow the page or raise maxSearchCandidates`,
+      'maxSearchCandidates',
+    );
+  }
   let topK = Math.min(need, context.maxSearchCandidates);
   let results: SearchItem[];
   for (;;) {
