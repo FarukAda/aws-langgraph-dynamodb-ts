@@ -50,4 +50,22 @@ describe('setUpCheckpointer', () => {
     expect(setup.context.compression).toEqual({ enabled: true });
     expect(setup.context.ttl).toEqual({ days: 5 });
   });
+
+  it('defaults the S3 key prefix to an adapter-scoped segment, but honors an explicit override', () => {
+    const defaulted = setUpCheckpointer(
+      { tableName: 't', client: { send: jest.fn() } as never, s3: { bucketName: 'b' } },
+      serde,
+    );
+    expect(defaulted.context.offloader?.getKeyPrefix()).toBe('langgraph-checkpoints/checkpointer/');
+
+    const overridden = setUpCheckpointer(
+      {
+        tableName: 't',
+        client: { send: jest.fn() } as never,
+        s3: { bucketName: 'b', keyPrefix: 'custom/' },
+      },
+      serde,
+    );
+    expect(overridden.context.offloader?.getKeyPrefix()).toBe('custom/');
+  });
 });

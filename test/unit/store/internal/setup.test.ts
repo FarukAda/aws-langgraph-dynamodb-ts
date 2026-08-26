@@ -45,4 +45,20 @@ describe('setUpStore', () => {
     expect(setup.context.index).toBe(index);
     expect(setup.context.offloader).toBeDefined();
   });
+
+  it('defaults the S3 key prefix to an adapter-scoped segment, but honors an explicit override', () => {
+    const defaulted = setUpStore({
+      tableName: 'store',
+      client: { send: jest.fn() } as never,
+      s3: { bucketName: 'b' },
+    });
+    expect(defaulted.context.offloader?.getKeyPrefix()).toBe('langgraph-checkpoints/store/');
+
+    const overridden = setUpStore({
+      tableName: 'store',
+      client: { send: jest.fn() } as never,
+      s3: { bucketName: 'b', keyPrefix: 'custom/' },
+    });
+    expect(overridden.context.offloader?.getKeyPrefix()).toBe('custom/');
+  });
 });

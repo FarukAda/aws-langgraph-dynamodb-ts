@@ -3,7 +3,9 @@ import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { CompressionConfig } from '../../shared/codec/compression';
+import { defaultAdapterKeyPrefix } from '../../shared/codec/s3/config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
+import { DEFAULT_S3_KEY_PREFIX } from '../../shared/constants';
 import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import type { TtlOption } from '../../shared/validation/ttl';
@@ -37,7 +39,13 @@ export function setUpCheckpointer(
   serde: SerializerProtocol,
 ): CheckpointerSetup {
   const resolved = resolveDynamoDBClient(options);
-  const offloader = options.s3 ? new S3Offloader(options.s3) : undefined;
+  const offloader = options.s3
+    ? new S3Offloader({
+        ...options.s3,
+        keyPrefix:
+          options.s3.keyPrefix ?? defaultAdapterKeyPrefix(DEFAULT_S3_KEY_PREFIX, 'checkpointer'),
+      })
+    : undefined;
   return {
     context: {
       client: resolved.client,

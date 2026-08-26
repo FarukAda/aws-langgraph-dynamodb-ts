@@ -29,4 +29,20 @@ describe('setUpHistory', () => {
     expect(setup.context.compression).toEqual({ enabled: true });
     expect(setup.context.ttl).toEqual({ days: 1 });
   });
+
+  it('defaults the S3 key prefix to an adapter-scoped segment, but honors an explicit override', () => {
+    const defaulted = setUpHistory({
+      tableName: 'history',
+      client: { send: jest.fn() } as never,
+      s3: { bucketName: 'b' },
+    });
+    expect(defaulted.context.offloader?.getKeyPrefix()).toBe('langgraph-checkpoints/history/');
+
+    const overridden = setUpHistory({
+      tableName: 'history',
+      client: { send: jest.fn() } as never,
+      s3: { bucketName: 'b', keyPrefix: 'custom/' },
+    });
+    expect(overridden.context.offloader?.getKeyPrefix()).toBe('custom/');
+  });
 });

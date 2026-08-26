@@ -28,3 +28,8 @@ export function buildLifecycleRuleId(prefix: string): string {
   const slug = prefix.replace(/\/+$/, '').replace(/[^a-zA-Z0-9-]/g, '-') || 'default';
   return `langgraph-ttl-${slug}`;
 }
+
+/** An adapter's default S3 key prefix: the shared base plus its own segment. */
+export function defaultAdapterKeyPrefix(base: string, adapter: string): string {
+  return `${base}${adapter}/`;
+}
