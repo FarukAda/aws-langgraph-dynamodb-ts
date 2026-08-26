@@ -329,4 +329,20 @@ describe('putWrites', () => {
     expect(keys).toHaveLength(1);
     expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/[^/]+$/);
   });
+
+  it('dedupes duplicate writes to the same special channel by sort key before batching', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    await putWrites(
+      context(client),
+      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+      [
+        ['__error__', 'first'],
+        ['__error__', 'second'],
+      ],
+      'task-1',
+    );
+    const requests = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.ckpt ?? [];
+    expect(requests).toHaveLength(1);
+  });
 });

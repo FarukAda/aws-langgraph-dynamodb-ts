@@ -24,7 +24,6 @@ import type { CheckpointWriteItem } from '../types';
 function isConditionalCheckFailed(error: { name?: string }): boolean {
   return error.name === 'ConditionalCheckFailedException';
 }
-
 /** Best-effort delete `items`' offloaded S3 objects, if an offloader is configured. */
 async function cleanUpItems(
   context: CheckpointerContext,
@@ -37,6 +36,11 @@ async function cleanUpItems(
     'putWrites',
     context.logger,
   );
+}
+
+/** Dedup by sort key (last-write-wins), matching LangGraph's special-write semantics. */
+function dedupeBySortKey(items: CheckpointWriteItem[]): CheckpointWriteItem[] {
+  return [...new Map(items.map((item) => [item.SK, item])).values()];
 }
 
 /**
@@ -57,7 +61,6 @@ async function writeSpecialItems(
     items.map((item) => ({ PutRequest: { Item: item } })),
   );
 }
-
 /**
  * Outcome of {@link writeRegularItems}: never rejects. Only `failed` items
  * never reached DynamoDB and are safe to clean up — every other item is
@@ -67,7 +70,6 @@ interface RegularWriteOutcome {
   failed: CheckpointWriteItem[];
   error?: Error;
 }
-
 /**
  * Write regular items with a first-write-wins guard. Every `PutCommand` fully
  * settles (`Promise.allSettled`) before this resolves and never rejects; a
@@ -102,7 +104,6 @@ async function writeRegularItems(
   });
   return { failed, error };
 }
-
 /**
  * Persist a task's intermediate writes for a checkpoint as one item per write.
  * Requires `checkpoint_id` in the config — writes always attach to a checkpoint.
@@ -136,7 +137,7 @@ export async function putWrites(
     randomUUID(),
     ttlTimestamp,
   );
-  const special = items.filter((item) => item.index < 0);
+  const special = dedupeBySortKey(items.filter((item) => item.index < 0));
   const regular = items.filter((item) => item.index >= 0);
   const [specialError, regularOutcome] = await Promise.all([
     writeSpecialItems(context, special).catch((error: Error): Error => error),
