@@ -79,4 +79,24 @@ describe('isRetryableError', () => {
     cyclic.cause = cyclic;
     expect(isRetryableError(cyclic, DEFAULT_RETRYABLE_ERRORS)).toBe(false);
   });
+
+  it('retries TransactionInProgressException (a re-sent idempotent commit whose original is still in flight)', () => {
+    const err = Object.assign(new Error('in progress'), { name: 'TransactionInProgressException' });
+    expect(isRetryableError(err, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
+  });
+
+  it('retries RequestTimeout and RequestTimeoutException', () => {
+    expect(
+      isRetryableError(
+        Object.assign(new Error('timeout'), { name: 'RequestTimeout' }),
+        DEFAULT_RETRYABLE_ERRORS,
+      ),
+    ).toBe(true);
+    expect(
+      isRetryableError(
+        Object.assign(new Error('timeout'), { name: 'RequestTimeoutException' }),
+        DEFAULT_RETRYABLE_ERRORS,
+      ),
+    ).toBe(true);
+  });
 });
