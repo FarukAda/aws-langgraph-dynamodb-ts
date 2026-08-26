@@ -72,6 +72,33 @@ export class BatchWriteIncompleteError extends DynamoDbLangGraphError {
 }
 
 /**
+ * batchWriteAll attempts every chunk rather than stopping at the first
+ * failure — a mid-sequence chunk failing does not abandon the chunks after
+ * it. `failedChunks` holds each failing chunk's own error (commonly a
+ * {@link BatchWriteIncompleteError}); every chunk not represented there
+ * drained successfully and its writes persist — there is no rollback.
+ */
+export class BatchWriteAllIncompleteError extends DynamoDbLangGraphError {
+  readonly succeededChunks: number;
+  readonly totalChunks: number;
+  readonly failedChunks: Error[];
+
+  constructor(succeededChunks: number, totalChunks: number, failedChunks: Error[]) {
+    super(
+      `batchWriteAll did not fully drain: ${succeededChunks}/${totalChunks} chunk(s) succeeded, ` +
+        `${failedChunks.length} failed. Writes in succeeded chunks already persisted.`,
+      ErrorCode.BATCH_WRITE_INCOMPLETE,
+      {},
+      failedChunks[0],
+    );
+    this.name = 'BatchWriteAllIncompleteError';
+    this.succeededChunks = succeededChunks;
+    this.totalChunks = totalChunks;
+    this.failedChunks = failedChunks;
+  }
+}
+
+/**
  * A compensating rollback failed after an append-saga chunk error, so the
  * trigger error could not be cleanly undone. Carries the original trigger as
  * `cause` and the rollback failure as {@link rollbackError}; the session's

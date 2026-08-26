@@ -188,7 +188,10 @@ describe('putWrites', () => {
         [['__error__', 'boom']],
         'task-1',
       ),
-    ).rejects.toThrow('boom');
+    ).rejects.toMatchObject({
+      name: 'BatchWriteAllIncompleteError',
+      cause: expect.objectContaining({ message: expect.stringContaining('boom') }),
+    });
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 

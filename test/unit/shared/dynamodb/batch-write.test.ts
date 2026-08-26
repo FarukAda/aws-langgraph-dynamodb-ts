@@ -22,4 +22,22 @@ describe('batchWriteAll', () => {
     await batchWriteAll(client, 't', []);
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
   });
+
+  it('attempts every chunk even when an earlier one fails, and reports the aggregate', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    let call = 0;
+    mock.on(BatchWriteCommand).callsFake(() => {
+      call += 1;
+      if (call === 1) throw Object.assign(new Error('boom'), { name: 'ValidationException' });
+      return { UnprocessedItems: {} };
+    });
+    // 2 chunks: 25 + 5
+    const requests = Array.from({ length: 30 }, (_, i) => put(String(i)));
+    await expect(batchWriteAll(client, 't', requests)).rejects.toMatchObject({
+      name: 'BatchWriteAllIncompleteError',
+      succeededChunks: 1,
+      totalChunks: 2,
+    });
+    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(2);
+  });
 });
