@@ -80,6 +80,22 @@ describe('uploadObject', () => {
     ).rejects.toThrow();
     expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(1);
   });
+
+  it('wraps retry exhaustion as S3_OFFLOAD_FAILED, not the inner RETRY_EXHAUSTED code', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejects(Object.assign(new Error('slow down'), { name: 'SlowDown' }));
+    await expect(
+      uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k',
+        data: new Uint8Array([1]),
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.S3_OFFLOAD_FAILED,
+      context: { operation: 'upload', key: 'k' },
+    });
+  });
 });
 
 describe('downloadObject', () => {
