@@ -7,18 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+A hardening pass over the whole library, addressing a third-party review of
+`0.3.2`: one critical data-loss bug, five high-severity correctness bugs, and
+a broader set of medium/lower-severity fixes below. This release carries two
+breaking changes (peer dependencies, S3 key-prefix default) plus a smaller
+error-shape change to `batchWriteAll`; treat it as a minor version bump (e.g.
+`0.3.2` → `0.4.0`), not a patch.
+
 ### Changed (breaking)
 
 - **`@langchain/core` and `@langchain/langgraph-checkpoint` are now peer dependencies.** This prevents dual-instance version skew when the host project pins a different version of `@langchain/langgraph-checkpoint`. Both packages must be explicitly installed at compatible versions alongside `@langchain/langgraph`. Consumers relying on automatic transitive installation will need to add these to their own `package.json`.
+- **Each adapter's default S3 key prefix is now adapter-scoped.** `DynamoDBSaver`, `DynamoDBStore`, and `DynamoDBChatMessageHistory` previously all defaulted to the same shared prefix (`langgraph-checkpoints/`); co-locating them in one bucket meant whichever adapter last called `ensureS3LifecycleRule()` silently overwrote the S3 lifecycle expiration rule for the others (their `Filter.Prefix` matched every adapter's objects). The default is now `langgraph-checkpoints/store/`, `.../checkpointer/`, `.../history/` respectively. **Existing data is unaffected** — every offloaded object's S3 key is stored explicitly in its DynamoDB descriptor and is never recomputed from the prefix. **If you already called `ensureS3LifecycleRule()`**, after upgrading you must manually delete the old shared-prefix rule (ID `langgraph-ttl-langgraph-checkpoints`) from your bucket's lifecycle configuration, then call `ensureS3LifecycleRule()` again for each adapter — otherwise the stale rule's prefix filter still matches every adapter's new sub-prefix, and S3 applies whichever matching rule has the shortest `Expiration.Days`, so one adapter's objects can keep expiring on the old shared schedule instead of its own configured TTL. An explicit `keyPrefix` override is unaffected either way.
+- **`batchWriteAll` now attempts every chunk of a multi-chunk write instead of aborting on the first failure**, and reports an aggregate result via the new `BatchWriteAllIncompleteError` (`{ succeededChunks, totalChunks, failedChunks }`) instead of surfacing just the first chunk's raw error. This affects `deleteThread`, `clearSession`, `putWrites`, and the chat-history append-rollback path. If you specifically caught the previous raw error type/message from one of these calls, switch to `err instanceof BatchWriteAllIncompleteError` (now exported) or check `err.code === 'BATCH_WRITE_INCOMPLETE'` instead.
 
 ### Fixed
 
-- **`matchesStoreFilter` now detects operator objects the same way the
-  official `InMemoryStore` does** — by an exact known-operator-name match
-  (`$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`), not a `$`-prefix
-  heuristic. `$in`/`$nin` are now supported. A stored value whose keys happen
-  to start with `$` (e.g. a JSON Schema document with a `$schema` key) is now
-  compared as a literal value instead of throwing `ValidationError`.
+- **A failed overwrite `store.put()` could delete the *previous* version's S3-offloaded payload, losing data permanently** (`get`/`search` on that item would then throw `S3_OFFLOAD_FAILED` forever). This was the most serious bug found in the review. Every S3-offloaded write now carries a per-call nonce in its key, so a failed write can only ever clean up its own (never-committed) object; the previous object is only cleaned up after the new row is safely committed.
+- **Chat-history TTL anchors could get permanently stuck on an already-expired value.** DynamoDB's TTL sweep can lag up to ~48h, and the anchor was written once via `if_not_exists`, so once a stale value landed it could never self-correct. `resolveTtlAnchor` no longer trusts a stored anchor that has already passed; when the persisted anchor is missing or stale, the next append force-refreshes it instead of leaving the session stuck.
+- **S3 lifecycle rules could collide across adapters sharing one bucket** — fixed by the adapter-scoped default key prefix; see the breaking-change note above for migration steps if you already provisioned a lifecycle rule.
+- **Vector-backend `search()` could silently under-return, or return nothing, past a metadata filter.** The backend-search path now refills and re-queries with a larger candidate count when filtered-out results leave too few, up to `maxSearchCandidates`. A page request that itself needs more than `maxSearchCandidates` candidates (`offset + limit`) now throws `ValidationError` up front instead of silently truncating.
+- **Plain (non-semantic) `search()` was hard-capped at 10,000 scanned items, with no override and no documentation.** The cap is now `DynamoDBStoreOptions.maxScanItems` (default unchanged at 10,000) and can be raised per adapter for oversized namespaces.
+- **Checkpointer `putWrites` could fail an entire graph run on a duplicate special-channel write.** Two writes to the same negative-index channel in one call (e.g. from a multi-interrupt human-in-the-loop node) produced identical DynamoDB keys, and `BatchWriteItem` rejects duplicate keys outright. Special writes are now deduped by sort key (last-write-wins, matching LangGraph's own semantics) before batching.
+- **`deleteThread` now reads the thread partition strongly-consistently before deleting it**, closing a window where an eventually-consistent scan could miss recently-written checkpoints/writes and leave them behind.
+- **`list()` now honors `config.configurable.checkpoint_id`**, matching `MemorySaver`'s behavior, instead of silently ignoring it.
+- **Hardened DynamoDB retry classification and idempotency**: `TransactionInProgressException` and `RequestTimeout`(`Exception`) are now classified as retryable; the chat-history session-count revert (the one retried write that wasn't previously idempotent) now uses `TransactWriteItems` with a `ClientRequestToken` so a retried revert can't double-apply.
+- **`listSessions` can now escape the 10,000-item scan cap** via a new `maxItems` override, alongside the existing `maxIterations`.
+- **`matchesStoreFilter` now matches upstream's operator-detection *method*** — the official `InMemoryStore`'s exact known-operator-name matching (`$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`), not a `$`-prefix heuristic — with a few small deliberate improvements over it: an empty operator object (`{}`) is treated as a literal value instead of vacuously matching every item; `$eq`/`$ne` use deep equality instead of `===`; `$gt`/`$gte`/`$lt`/`$lte` compare directly instead of coercing both sides through `Number()`. `$in`/`$nin` are now supported, and a stored value whose keys happen to start with `$` (e.g. a JSON Schema document with a `$schema` key) is compared as a literal instead of throwing `ValidationError`.
+- **Vector-index reconciliation now prunes a backend vector whose item's indexable text became empty**, instead of treating it as still live.
+- **A dimension-mismatched embedding now ranks as unscored** instead of a misleading cosine score of 0.
+- **`reconcileMessageCount` no longer creates a permanent junk row for a nonexistent session.**
+- **S3 retry-exhaustion now surfaces as `S3_OFFLOAD_FAILED`** with operation/key context, instead of masking it behind a bare `RETRY_EXHAUSTED`.
+- **The DynamoDB and S3 clients this library constructs itself now consistently default to a single SDK attempt (`maxAttempts: 1`)**, disabling the AWS SDK's own internal retries so this library's own retry/backoff/classification system is the sole retry layer (an explicit `maxAttempts` override still wins). This was already true for some client-construction paths; it's now consistent across DynamoDB and S3, including clients built via `DynamoDBFactory`.
+
+### Added
+
+- **`BatchWriteAllIncompleteError`** exported from the package root, alongside its sibling `BatchWriteIncompleteError` (see the `batchWriteAll` breaking-change note above).
 
 ## [0.3.2] - 2026-08-24
 

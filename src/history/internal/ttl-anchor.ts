@@ -16,6 +16,14 @@ export interface TtlAnchorResult {
  * `if_not_exists` would otherwise never correct an already-expired anchor).
  * This is a strongly-consistent read, never a write, so it cannot leave a
  * metadata-only orphan row when the following append transaction fails.
+ *
+ * When a stale anchor is healed, only the persisted SESSION row's `ttl` is
+ * force-refreshed — the message rows already written under the expired
+ * anchor keep their own (already-expired) `ttl` and get swept independently
+ * by DynamoDB's TTL sweep. Until that sweep runs (and until
+ * `reconcileMessageCount` repairs the count), `messageCount` can therefore be
+ * temporarily overstated relative to what `getMessages` actually returns.
+ * This is expected, not a bug.
  */
 export async function resolveTtlAnchor(
   context: HistoryContext,
