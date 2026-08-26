@@ -15,6 +15,8 @@ export type DynamoDBStoreOptions = BaseAdapterOptions &
     vectorBackend?: VectorBackend;
     /** Max candidates the in-DB ranker will score before erroring (default 1000). */
     maxSearchCandidates?: number;
+    /** Cap on items scanned into memory during a plain (non-semantic) search before ResultTruncatedError. Defaults to MAX_TOTAL_ITEMS_IN_MEMORY. */
+    maxScanItems?: number;
   };
 
 /** The DynamoDB item backing a single stored value. */

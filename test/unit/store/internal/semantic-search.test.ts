@@ -41,6 +41,7 @@ describe('embedValue', () => {
       logger: SILENT_LOGGER,
       index,
       maxSearchCandidates: 1000,
+      maxScanItems: 10000,
     };
   }
 

@@ -36,8 +36,13 @@ async function collectCandidates(
       ? paginateQuery({
           client: context.client,
           params: scopedQuery(context.tableName, op.namespacePrefix),
+          maxItems: context.maxScanItems,
         })
-      : paginateScan({ client: context.client, params: storeScan(context.tableName) });
+      : paginateScan({
+          client: context.client,
+          params: storeScan(context.tableName),
+          maxItems: context.maxScanItems,
+        });
   const candidates: RankCandidate[] = [];
   for await (const raw of source) {
     const record = narrowStoreRecord(raw);

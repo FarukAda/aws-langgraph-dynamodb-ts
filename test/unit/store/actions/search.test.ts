@@ -15,6 +15,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
+    maxScanItems: 10000,
     ...extra,
   };
 }
@@ -303,5 +304,19 @@ describe('searchItems', () => {
     await expect(
       searchItems(context(client), { namespacePrefix: ['users'], offset: 2.5 }),
     ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it('honors a raised maxScanItems for a plain (non-semantic) search over a large namespace', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    // A real DynamoDB Query scoped to PK='users' only ever returns the 2 matching
+    // rows; filter the fixture the same way so this stays a smoke test of the
+    // maxScanItems pass-through rather than an incidental truncation test.
+    mock.on(QueryCommand).resolves({
+      Items: (await records(context(client))).filter((r) => r.PK === 'users'),
+    });
+    const items = await searchItems(context(client, { maxScanItems: 2 }), {
+      namespacePrefix: ['users'],
+    });
+    expect(items.map((i) => i.key).sort()).toEqual(['a', 'b']);
   });
 });

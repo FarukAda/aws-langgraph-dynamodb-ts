@@ -1,5 +1,8 @@
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { DEFAULT_MAX_SEARCH_CANDIDATES } from '../../../../src/shared/constants';
+import {
+  DEFAULT_MAX_SEARCH_CANDIDATES,
+  MAX_TOTAL_ITEMS_IN_MEMORY,
+} from '../../../../src/shared/constants';
 import { setUpStore } from '../../../../src/store/internal/setup';
 
 describe('setUpStore', () => {
@@ -60,5 +63,17 @@ describe('setUpStore', () => {
       s3: { bucketName: 'b', keyPrefix: 'custom/' },
     });
     expect(overridden.context.offloader?.getKeyPrefix()).toBe('custom/');
+  });
+
+  it('defaults maxScanItems to the shared in-memory cap, but accepts an override', () => {
+    const defaulted = setUpStore({ tableName: 'store', client: { send: jest.fn() } as never });
+    expect(defaulted.context.maxScanItems).toBe(MAX_TOTAL_ITEMS_IN_MEMORY);
+
+    const overridden = setUpStore({
+      tableName: 'store',
+      client: { send: jest.fn() } as never,
+      maxScanItems: 50_000,
+    });
+    expect(overridden.context.maxScanItems).toBe(50_000);
   });
 });

@@ -6,7 +6,11 @@ import type { CompressionConfig } from '../../shared/codec/compression';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
 import { defaultAdapterKeyPrefix } from '../../shared/codec/s3/config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
-import { DEFAULT_MAX_SEARCH_CANDIDATES, DEFAULT_S3_KEY_PREFIX } from '../../shared/constants';
+import {
+  DEFAULT_MAX_SEARCH_CANDIDATES,
+  DEFAULT_S3_KEY_PREFIX,
+  MAX_TOTAL_ITEMS_IN_MEMORY,
+} from '../../shared/constants';
 import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import type { TtlOption } from '../../shared/validation/ttl';
@@ -25,6 +29,7 @@ export interface StoreContext {
   index?: IndexConfig;
   vectorBackend?: VectorBackend;
   maxSearchCandidates: number;
+  maxScanItems: number;
 }
 
 /** Result of wiring up a store from its options. */
@@ -55,6 +60,7 @@ export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
       index: options.index,
       vectorBackend: options.vectorBackend,
       maxSearchCandidates: options.maxSearchCandidates ?? DEFAULT_MAX_SEARCH_CANDIDATES,
+      maxScanItems: options.maxScanItems ?? MAX_TOTAL_ITEMS_IN_MEMORY,
     },
     ddbClient: resolved.ddbClient,
     ownsClient: resolved.ownsClient,
