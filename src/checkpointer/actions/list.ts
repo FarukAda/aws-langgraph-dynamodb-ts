@@ -45,7 +45,7 @@ export async function* listCheckpoints(
   config: RunnableConfig,
   options?: CheckpointListOptions,
 ): AsyncGenerator<CheckpointTuple> {
-  const { threadId, checkpointNs } = readConfigurable(config);
+  const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
   const { before, filter, limit } = readListOptions(options);
   const params = beginsWithQuery(
     context.tableName,
@@ -56,6 +56,7 @@ export async function* listCheckpoints(
   for await (const raw of paginateQuery({ client: context.client, params })) {
     if (limit !== undefined && yielded >= limit) return;
     const meta = raw as CheckpointMetaItem;
+    if (checkpointId !== undefined && meta.checkpointId !== checkpointId) continue;
     if (before !== undefined && meta.checkpointId >= before) continue;
     if (!(await passesMetadataFilter(context, meta, filter))) continue;
     const tuple = await assembleTuple(context, threadId, checkpointNs, meta);

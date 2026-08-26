@@ -128,4 +128,15 @@ describe('listCheckpoints', () => {
     );
     expect(tuples).toEqual([]);
   });
+
+  it('filters to a single checkpoint id when config.configurable.checkpoint_id is set', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    wire(mock, await fixtures(client));
+    const tuples = await collect(
+      listCheckpoints(context(client), {
+        configurable: { thread_id: 't', checkpoint_id: 'c1' },
+      }),
+    );
+    expect(tuples.map((t) => t.config.configurable?.checkpoint_id)).toEqual(['c1']);
+  });
 });
