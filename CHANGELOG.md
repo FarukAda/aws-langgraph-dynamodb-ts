@@ -7,12 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-26
+
 A hardening pass over the whole library, addressing a third-party review of
 `0.3.2`: one critical data-loss bug, five high-severity correctness bugs, and
 a broader set of medium/lower-severity fixes below. This release carries two
 breaking changes (peer dependencies, S3 key-prefix default) plus a smaller
 error-shape change to `batchWriteAll`; treat it as a minor version bump (e.g.
 `0.3.2` → `0.4.0`), not a patch.
+
+Every fix in this release is backed by a dedicated regression test verified
+against real DynamoDB and, where S3 or genuine AWS-account behavior was in
+play, real AWS — several with mutation-testing proof (temporarily reverting
+the fix to confirm the test actually fails without it).
 
 ### Changed (breaking)
 
