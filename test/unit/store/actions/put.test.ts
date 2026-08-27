@@ -138,6 +138,40 @@ describe('putItem', () => {
     expect(keys[0]).toMatch(/^users\/u1\/profile\//);
   });
 
+  // Integration-level: proves persistRecord wires in writeLandedAt (whose own branches are covered directly in write-verify.test.ts).
+  it('does not delete the new S3 object, and succeeds, when an ambiguous retry-exhaustion write actually landed', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    let uploadedKey = '';
+    mock.on(GetCommand).callsFake(async () =>
+      uploadedKey
+        ? {
+            Item: {
+              value: {
+                location: PayloadLocation.S3,
+                serdeType: 'json',
+                compressed: false,
+                s3Key: uploadedKey,
+              },
+            },
+          }
+        : {},
+    );
+    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: string[]) => parts.join('/'),
+      upload: async (key: string) => {
+        uploadedKey = key;
+        return key;
+      },
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    await expect(
+      putItem(context(client, { offloader: offloader as never }), op({})),
+    ).resolves.toBeUndefined();
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
   it('reads createdAt and the previous value descriptor in a single GetItem call', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({
