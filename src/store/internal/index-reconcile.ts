@@ -34,6 +34,7 @@ export async function collectReconcileTargets(
   const source = paginateQuery({
     client: context.client,
     params: scopedQuery(context.tableName, prefix),
+    maxItems: context.maxScanItems,
   });
   for await (const raw of source) {
     const record = raw as StoreItemRecord;

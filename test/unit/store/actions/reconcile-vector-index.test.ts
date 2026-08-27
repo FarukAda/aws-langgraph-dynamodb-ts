@@ -81,4 +81,32 @@ describe('reconcileVectorIndex', () => {
     expect(backend.upsert).toHaveBeenCalledWith(['users', 'u1'], 'b', [0.5]);
     expect(backend.delete).toHaveBeenCalledWith(['users', 'u1'], 'orphan');
   });
+
+  it('passes maxScanItems through to the underlying paginated query', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5]) };
+    const backend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
+    const ctx = context(client, {
+      index: { dims: 1, embeddings: embeddings as never },
+      vectorBackend: backend,
+      maxScanItems: 5,
+    });
+    // 6 items under a 5-item cap must throw ResultTruncatedError, proving the
+    // configured cap (not the old unconfigurable 10,000 default) is in effect.
+    const records = [];
+    for (let i = 0; i < 6; i++) {
+      const record = await buildStoreItem(
+        ctx,
+        ['users', 'u1'],
+        `k${i}`,
+        { text: `value${i}` },
+        { createdAt: 'c', updatedAt: 'u' },
+      );
+      records.push(record);
+    }
+    mock.on(QueryCommand).resolves({ Items: records });
+    await expect(reconcileVectorIndex(ctx, ['users', 'u1'])).rejects.toMatchObject({
+      code: ErrorCode.RESULT_TRUNCATED,
+    });
+  });
 });
