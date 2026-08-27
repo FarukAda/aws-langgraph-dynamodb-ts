@@ -5,6 +5,12 @@ describe('sessionItemsQuery', () => {
     const input = sessionItemsQuery('history', 's1');
     expect(input.KeyConditionExpression).toBe('#pk = :pk');
     expect(input.ExpressionAttributeValues).toEqual({ ':pk': 's1' });
+    expect(input.ConsistentRead).toBeUndefined();
+  });
+
+  it('sets ConsistentRead when requested', () => {
+    const input = sessionItemsQuery('history', 's1', { consistent: true });
+    expect(input.ConsistentRead).toBe(true);
   });
 });
 

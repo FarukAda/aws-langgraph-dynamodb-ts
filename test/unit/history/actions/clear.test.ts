@@ -35,6 +35,13 @@ describe('clearSession', () => {
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
   });
 
+  it('reads the session partition strongly-consistently', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    await clearSession(context(client), 'sess-1');
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead).toBe(true);
+  });
+
   it('batch-deletes every message item and the metadata item', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({

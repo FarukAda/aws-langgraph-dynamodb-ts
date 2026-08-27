@@ -2,14 +2,25 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { messageSortKeyPrefix, sessionPartition } from './keys';
 
+/** Options for {@link sessionItemsQuery}. */
+export interface SessionItemsQueryOptions {
+  consistent?: boolean;
+}
+
 /** Query input selecting every item in a session's partition (messages + metadata). */
-export function sessionItemsQuery(tableName: string, sessionId: string): QueryCommandInput {
-  return {
+export function sessionItemsQuery(
+  tableName: string,
+  sessionId: string,
+  options: SessionItemsQueryOptions = {},
+): QueryCommandInput {
+  const params: QueryCommandInput = {
     TableName: tableName,
     KeyConditionExpression: '#pk = :pk',
     ExpressionAttributeNames: { '#pk': 'PK' },
     ExpressionAttributeValues: { ':pk': sessionPartition(sessionId) },
   };
+  if (options.consistent) params.ConsistentRead = true;
+  return params;
 }
 
 /** Query input selecting a session's message items in chronological order. */

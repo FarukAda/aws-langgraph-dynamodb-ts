@@ -44,7 +44,7 @@ export async function clearSession(context: HistoryContext, sessionId: string): 
   const buffer: DeleteBuffer = { keys: [], descriptors: [] };
   const pages = paginateQuery({
     client: context.client,
-    params: sessionItemsQuery(context.tableName, sessionId),
+    params: sessionItemsQuery(context.tableName, sessionId, { consistent: true }),
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   });
