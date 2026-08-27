@@ -263,4 +263,27 @@ describe('appendChunks', () => {
     ).rejects.toMatchObject({ name: 'ValidationException', message: 'boom' });
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(3);
   });
+
+  it('does not revert a force-refreshed ttl anchor on rollback (documented tradeoff, see README)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(TransactWriteCommand)
+      .resolvesOnce({})
+      .rejectsOnce(Object.assign(new Error('boom'), { name: 'ValidationException' }))
+      .resolves({});
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    await expect(
+      appendChunks(context(client), 's1', [[inlineItem('MSG#1')], [inlineItem('MSG#2')]], {
+        now: 'u',
+        forceTtlRefresh: true,
+        ttlTimestamp: 9999,
+      }),
+    ).rejects.toThrow('boom');
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(3);
+    const revertUpdate =
+      mock.commandCalls(TransactWriteCommand)[2].args[0].input.TransactItems?.[0]?.Update;
+    expect(revertUpdate?.UpdateExpression).toBe('ADD #count :neg');
+    expect(revertUpdate?.UpdateExpression).not.toContain('ttl');
+    expect(revertUpdate?.ExpressionAttributeNames?.['#ttl']).toBeUndefined();
+  });
 });

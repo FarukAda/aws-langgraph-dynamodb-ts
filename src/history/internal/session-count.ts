@@ -17,6 +17,15 @@ function isConditionalCheckFailed(error: Error): boolean {
  * to revert, so that specific condition failure is swallowed rather than
  * surfaced — this runs only from an already-in-progress rollback, where a
  * spurious error for a no-op would misrepresent what happened.
+ *
+ * Deliberately does not revert a `forceTtlRefresh`-driven ttl SET from an
+ * earlier committed chunk: the healed anchor is never shorter than what
+ * was there before, so leaving it in place after a rollback only means the
+ * session's metadata row outlives its content a bit longer than ideal —
+ * self-healing (the next successful append, or DynamoDB's own TTL sweep,
+ * resolves it), unlike reverting, which would need to re-check for a
+ * concurrent legitimate extension to avoid regressing it. See README.md's
+ * "TTL expiry" section.
  */
 export async function revertSessionCount(
   context: HistoryContext,
