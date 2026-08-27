@@ -35,6 +35,18 @@ describe('matchesStoreFilter', () => {
     expect(matchesStoreFilter(value, { status: { $nin: ['active'] } })).toBe(false);
   });
 
+  it('matches $in/$nin against an object/array member by deep equality, like $eq', () => {
+    const objectValue = { tags: { kind: 'x' } };
+    expect(matchesStoreFilter(objectValue, { tags: { $eq: { kind: 'x' } } })).toBe(true);
+    expect(matchesStoreFilter(objectValue, { tags: { $in: [{ kind: 'x' }] } })).toBe(true);
+    expect(matchesStoreFilter(objectValue, { tags: { $in: [{ kind: 'y' }] } })).toBe(false);
+    expect(matchesStoreFilter(objectValue, { tags: { $nin: [{ kind: 'x' }] } })).toBe(false);
+    expect(matchesStoreFilter(objectValue, { tags: { $nin: [{ kind: 'y' }] } })).toBe(true);
+
+    const arrayValue = { list: [1, 2] };
+    expect(matchesStoreFilter(arrayValue, { list: { $in: [[1, 2]] } })).toBe(true);
+  });
+
   it('treats $in/$nin against a non-array expected value as their documented fallback', () => {
     expect(matchesStoreFilter(value, { status: { $in: 'not-an-array' as never } })).toBe(false);
     expect(matchesStoreFilter(value, { status: { $nin: 'not-an-array' as never } })).toBe(true);

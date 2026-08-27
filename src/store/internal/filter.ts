@@ -11,8 +11,10 @@ const COMPARATORS: Record<string, (actual: JsonValue, expected: JsonValue) => bo
   $gte: (actual, expected) => (actual as number) >= (expected as number),
   $lt: (actual, expected) => (actual as number) < (expected as number),
   $lte: (actual, expected) => (actual as number) <= (expected as number),
-  $in: (actual, expected) => (Array.isArray(expected) ? expected.includes(actual) : false),
-  $nin: (actual, expected) => (Array.isArray(expected) ? !expected.includes(actual) : true),
+  $in: (actual, expected) =>
+    Array.isArray(expected) ? expected.some((candidate) => isDeepStrictEqual(actual, candidate)) : false,
+  $nin: (actual, expected) =>
+    Array.isArray(expected) ? !expected.some((candidate) => isDeepStrictEqual(actual, candidate)) : true,
 };
 
 /**
