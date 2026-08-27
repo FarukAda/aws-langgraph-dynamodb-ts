@@ -65,6 +65,25 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
+  typecheck-all:
+    name: typecheck (full program: src + test + configs)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check (full program)
+        run: npm run typecheck:all
+
   integration:
     name: integration (DynamoDB Local)
     runs-on: ubuntu-latest

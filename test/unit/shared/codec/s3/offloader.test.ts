@@ -5,6 +5,7 @@ import {
   PutBucketLifecycleConfigurationCommand,
   PutObjectCommand,
   S3Client,
+  S3ClientConfig,
 } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 
@@ -91,7 +92,7 @@ describe('S3Offloader', () => {
 
   it('passes maxAttempts: 1 to a custom createS3Client factory too, unless overridden', async () => {
     s3Mock.on(PutObjectCommand).resolves({});
-    const createS3Client = jest.fn((cfg: never) => new S3Client(cfg));
+    const createS3Client = jest.fn((cfg: S3ClientConfig) => new S3Client(cfg));
     const offloader = new S3Offloader({
       bucketName: 'b',
       clientConfig: { region: 'us-east-1' },
@@ -103,7 +104,7 @@ describe('S3Offloader', () => {
 
   it('lets an explicit maxAttempts in clientConfig override the default for a custom factory', async () => {
     s3Mock.on(PutObjectCommand).resolves({});
-    const createS3Client = jest.fn((cfg: never) => new S3Client(cfg));
+    const createS3Client = jest.fn((cfg: S3ClientConfig) => new S3Client(cfg));
     const offloader = new S3Offloader({
       bucketName: 'b',
       clientConfig: { region: 'us-east-1', maxAttempts: 3 },

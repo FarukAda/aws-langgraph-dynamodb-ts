@@ -48,7 +48,7 @@
     "test:aws": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.aws.config.ts",
     "test:static": "jest test/static",
     "test:package-smoke": "node --test test/package-smoke/smoke.test.mjs",
-    "prepublishOnly": "npm run typecheck && npm run lint && npm run build && npm test",
+    "prepublishOnly": "npm run typecheck && npm run typecheck:all && npm run lint && npm run build && npm test",
     "docs": "typedoc",
     "docs:watch": "typedoc --watch",
     "unused": "knip",
