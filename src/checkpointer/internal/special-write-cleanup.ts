@@ -95,14 +95,23 @@ async function cleanUpPrevious(
  * each item's previous descriptor first, so a settled outcome can clean up
  * the correct side: the previous descriptor on success, each never-committed
  * item's own new upload on a confirmed non-commit, neither when the outcome
- * is genuinely ambiguous (see {@link splitSpecialOutcome}).
+ * is genuinely ambiguous (see {@link splitSpecialOutcome}). Never rejects —
+ * a failed read is reported the same way a failed write is, via the return
+ * value — because the caller runs this concurrently with writeRegularItems
+ * via `Promise.all`, whose own regular-write cleanup depends on every branch
+ * of that `Promise.all` resolving rather than short-circuiting on a reject.
  */
 export async function writeSpecialItemsWithCleanup(
   context: CheckpointerContext,
   items: CheckpointWriteItem[],
 ): Promise<Error | undefined> {
   if (items.length === 0) return undefined;
-  const previous = await readPreviousDescriptors(context, items);
+  let previous: Map<string, PayloadDescriptor | undefined>;
+  try {
+    previous = await readPreviousDescriptors(context, items);
+  } catch (error) {
+    return error as Error;
+  }
   try {
     await batchWriteAll(
       context.client,

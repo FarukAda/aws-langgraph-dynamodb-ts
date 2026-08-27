@@ -22,6 +22,15 @@ function conditionalCheckFailed(): Error {
   return Object.assign(new Error('conflict'), { name: 'ConditionalCheckFailedException' });
 }
 
+function trackingOffloader(upload: (key: string) => Promise<string> = async (key) => key) {
+  return {
+    shouldOffload: () => true,
+    buildKey: (parts: readonly string[]) => parts.join('/'),
+    upload,
+    deleteBatch: jest.fn().mockResolvedValue([]),
+  };
+}
+
 describe('putWrites', () => {
   it('writes one conditional PutCommand per regular write with the right keys', async () => {
     const { client, mock } = createStrictDocumentMock();
@@ -110,12 +119,7 @@ describe('putWrites', () => {
   it('cleans up offloaded objects when a regular write fails outright', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(
       putWrites(
@@ -137,12 +141,7 @@ describe('putWrites', () => {
       .on(PutCommand)
       .resolvesOnce({})
       .rejectsOnce(Object.assign(new Error('down'), { name: 'ValidationException' }));
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(
       putWrites(
@@ -176,12 +175,7 @@ describe('putWrites', () => {
     mock
       .on(BatchWriteCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(
       putWrites(
@@ -195,6 +189,30 @@ describe('putWrites', () => {
       cause: expect.objectContaining({ message: expect.stringContaining('boom') }),
     });
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it('still cleans up a failed regular write when the special path fails before its own batch write is attempted', async () => {
+    // Regression: a readPreviousDescriptors rejection used to short-circuit
+    // Promise.all before this regular write's own failed-upload cleanup ran.
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).rejects(Object.assign(new Error('get'), { name: 'ValidationException' }));
+    mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    const offloader = trackingOffloader();
+    const ctx = { ...context(client), offloader: offloader as never };
+    await expect(
+      putWrites(
+        ctx,
+        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+        [
+          ['ch', 'a'],
+          ['__error__', 'boom'],
+        ],
+        'task-1',
+      ),
+    ).rejects.toThrow('get');
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
+    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-0\/[^/]+$/);
   });
 
   it('does not throw when a regular write loses the idempotency race on a second call', async () => {
@@ -242,22 +260,16 @@ describe('putWrites', () => {
   it('gives each putWrites call its own S3 key for the same logical write (nonce uniqueness)', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).resolves({});
-    const upload = jest.fn(async (key: string, _bytes: Uint8Array) => key);
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
-      upload,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
-    const ctx = { ...context(client), offloader: offloader as never };
+    const upload = jest.fn(async (key: string) => key);
+    const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
     expect(upload).toHaveBeenCalledTimes(2);
     // A hardcoded/constant nonce would also satisfy the key-shape regex used
     // elsewhere in this file; this proves two attempts actually diverge.
-    const [firstKey] = upload.mock.calls[0] as [string, Uint8Array];
-    const [secondKey] = upload.mock.calls[1] as [string, Uint8Array];
+    const [firstKey] = upload.mock.calls[0] as [string];
+    const [secondKey] = upload.mock.calls[1] as [string];
     expect(firstKey).not.toBe(secondKey);
   });
 
@@ -282,12 +294,7 @@ describe('putWrites', () => {
   it('never deletes an S3 object when a regular write loses the conditional-check race', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).rejects(conditionalCheckFailed());
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await putWrites(
       ctx,
@@ -311,12 +318,7 @@ describe('putWrites', () => {
       .on(PutCommand)
       .rejectsOnce(conditionalCheckFailed())
       .rejectsOnce(Object.assign(new Error('down'), { name: 'ValidationException' }));
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(
       putWrites(
@@ -359,13 +361,7 @@ describe('putWrites', () => {
     mock.on(GetCommand).resolves({});
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     const upload = jest.fn(async (key: string) => key);
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
-      upload,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
-    const ctx = { ...context(client), offloader: offloader as never };
+    const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     await putWrites(
       ctx,
       { configurable: { thread_id: 't', checkpoint_id: 'c1' } },

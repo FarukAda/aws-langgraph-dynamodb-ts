@@ -73,6 +73,23 @@ describe('writeSpecialItemsWithCleanup', () => {
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['new.bin']);
   });
 
+  it('returns (never rejects) when reading the previous descriptor fails, without attempting the batch write', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(GetCommand)
+      .rejects(Object.assign(new Error('get boom'), { name: 'ValidationException' }));
+    const offloader = trackingOffloader();
+    const ctx = { ...context(client), offloader: offloader as never };
+    const result = await writeSpecialItemsWithCleanup(ctx, [specialItem('new.bin')]);
+    // A rejection here (instead of a returned Error) would propagate out of
+    // the Promise.all putWrites composes this with, short-circuiting past
+    // writeRegularItems's own cleanup for a regular write that failed in the
+    // same call — see put-writes.test.ts's composition-level regression test.
+    expect(result).toMatchObject({ message: 'get boom' });
+    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
   it('is a no-op for an empty items list', async () => {
     const { client, mock } = createStrictDocumentMock();
     const offloader = trackingOffloader();
