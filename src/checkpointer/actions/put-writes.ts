@@ -4,20 +4,15 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
-import type { PayloadDescriptor } from '../../shared/codec/codec';
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
-import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import {
-  BatchWriteAllIncompleteError,
-  BatchWriteIncompleteError,
-  ValidationError,
-} from '../../shared/errors/errors';
+import { ValidationError } from '../../shared/errors/errors';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
 import { buildWriteItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
+import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
 import { validateTaskId } from '../internal/validation';
 import type { CheckpointWriteItem } from '../types';
 
@@ -57,111 +52,6 @@ function dedupeWritesByIndex(writes: PendingWrite[]): PendingWrite[] {
   });
   return [...byIndex.values()];
 }
-
-/**
- * Read each special item's stored descriptor before it's overwritten —
- * mirrors store/actions/put.ts's readExisting. Keyed by SK (unique per
- * special channel per call).
- */
-async function readPreviousDescriptors(
-  context: CheckpointerContext,
-  items: CheckpointWriteItem[],
-): Promise<Map<string, PayloadDescriptor | undefined>> {
-  const previous = new Map<string, PayloadDescriptor | undefined>();
-  for (const item of items) {
-    const result = await withDynamoDBRetry(() =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: item.PK, SK: item.SK },
-        ConsistentRead: true,
-        ProjectionExpression: '#v',
-        ExpressionAttributeNames: { '#v': 'value' },
-      }),
-    );
-    previous.set(item.SK, result.Item?.value as PayloadDescriptor | undefined);
-  }
-  return previous;
-}
-
-/**
- * Split `items` by outcome after a failed batch write (always a
- * BatchWriteAllIncompleteError — batchWriteAll's only throw): never-committed
- * items are safe to clean up their own upload, every other item its previous
- * one — unless a failed chunk's shape is unknown, in which case neither side
- * is touched (a leak beats stranding a live row). Uses `.name`, not
- * `instanceof` (banned repo-wide, see base-error.ts).
- */
-function splitSpecialOutcome(
-  items: CheckpointWriteItem[],
-  error: BatchWriteAllIncompleteError,
-): { committed: CheckpointWriteItem[]; neverCommitted: CheckpointWriteItem[] } {
-  const neverCommittedSks = new Set<string>();
-  let everyChunkTracked = true;
-  for (const failedChunk of error.failedChunks) {
-    if (failedChunk.name !== 'BatchWriteIncompleteError') {
-      everyChunkTracked = false;
-      continue;
-    }
-    for (const request of (failedChunk as BatchWriteIncompleteError).unprocessed) {
-      /** Always a PutRequest echoing this submission — special writes never send DeleteRequests. */
-      const { SK } = (request as { PutRequest: { Item: { SK: string } } }).PutRequest.Item;
-      neverCommittedSks.add(SK);
-    }
-  }
-  if (!everyChunkTracked) return { committed: [], neverCommitted: [] };
-  return {
-    committed: items.filter((item) => !neverCommittedSks.has(item.SK)),
-    neverCommitted: items.filter((item) => neverCommittedSks.has(item.SK)),
-  };
-}
-
-/** Best-effort delete the previous descriptors of `items` (now safely superseded). */
-async function cleanUpPrevious(
-  context: CheckpointerContext,
-  items: CheckpointWriteItem[],
-  previous: Map<string, PayloadDescriptor | undefined>,
-): Promise<void> {
-  if (!context.offloader) return;
-  const descriptors = items
-    .map((item) => previous.get(item.SK))
-    .filter((descriptor): descriptor is PayloadDescriptor => descriptor !== undefined);
-  await cleanUpS3Orphans(
-    context.offloader,
-    collectS3Keys(descriptors),
-    'putWrites.special',
-    context.logger,
-  );
-}
-
-/**
- * Write special items unconditionally (overwrite is correct there). On
- * success, cleans up each item's superseded descriptor; on failure, only
- * confirmed never-committed items get their own new upload cleaned up.
- */
-async function writeSpecialItemsWithCleanup(
-  context: CheckpointerContext,
-  items: CheckpointWriteItem[],
-  previous: Map<string, PayloadDescriptor | undefined>,
-): Promise<Error | undefined> {
-  if (items.length === 0) return undefined;
-  try {
-    await batchWriteAll(
-      context.client,
-      context.tableName,
-      items.map((item) => ({ PutRequest: { Item: item } })),
-    );
-  } catch (error) {
-    const { committed, neverCommitted } = splitSpecialOutcome(
-      items,
-      error as BatchWriteAllIncompleteError,
-    );
-    await cleanUpItems(context, neverCommitted);
-    await cleanUpPrevious(context, committed, previous);
-    return error as Error;
-  }
-  await cleanUpPrevious(context, items, previous);
-  return undefined;
-}
 /**
  * Outcome of {@link writeRegularItems}: never rejects. Only `failed` items
  * never reached DynamoDB and are safe to clean up — every other item is
@@ -171,7 +61,11 @@ interface RegularWriteOutcome {
   failed: CheckpointWriteItem[];
   error?: Error;
 }
-/** Write regular items with a first-write-wins guard; settles fully and never rejects. */
+/**
+ * Write regular items with a first-write-wins guard. Every `PutCommand` fully
+ * settles (`Promise.allSettled`) before this resolves and never rejects; a
+ * genuine failure is reported via `error`, not thrown.
+ */
 async function writeRegularItems(
   context: CheckpointerContext,
   items: CheckpointWriteItem[],
@@ -203,12 +97,13 @@ async function writeRegularItems(
 }
 /**
  * Persist a task's intermediate writes for a checkpoint as one item per write.
- * Requires `checkpoint_id` in the config. Regular writes are first-write-wins
- * (the reference checkpointer contract); special negative-index writes always
- * overwrite, cleaning up whichever side a settled outcome confirms safe (see
- * {@link writeSpecialItemsWithCleanup}). Regular-write cleanup only ever
- * targets items known never to have committed (see {@link RegularWriteOutcome}),
- * never a lost guard — an upload can leak but a live row is never stranded.
+ * Requires `checkpoint_id` in the config — writes always attach to a checkpoint.
+ * Regular writes are first-write-wins (matching the reference checkpointer
+ * contract); special negative-index writes always overwrite (see
+ * {@link writeSpecialItemsWithCleanup}). Regular-write failure cleanup only
+ * ever targets items known never to have committed (see
+ * {@link RegularWriteOutcome}) — never a lost guard, so an upload can leak
+ * but a live row can never be stranded pointing at a deleted object.
  */
 export async function putWrites(
   context: CheckpointerContext,
@@ -235,9 +130,8 @@ export async function putWrites(
   );
   const special = items.filter((item) => item.index < 0);
   const regular = items.filter((item) => item.index >= 0);
-  const previousSpecial = await readPreviousDescriptors(context, special);
   const [specialError, regularOutcome] = await Promise.all([
-    writeSpecialItemsWithCleanup(context, special, previousSpecial),
+    writeSpecialItemsWithCleanup(context, special),
     writeRegularItems(context, regular),
   ]);
   const firstError = specialError ?? regularOutcome.error;

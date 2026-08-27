@@ -2,7 +2,6 @@ import { BatchWriteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb
 
 import { putWrites } from '../../../../src/checkpointer/actions/put-writes';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -21,19 +20,6 @@ function context(client: CheckpointerContext['client']): CheckpointerContext {
 
 function conditionalCheckFailed(): Error {
   return Object.assign(new Error('conflict'), { name: 'ConditionalCheckFailedException' });
-}
-
-// Shared by the special-write cleanup tests below.
-const oldS3Descriptor = {
-  value: { location: PayloadLocation.S3, serdeType: 'json', compressed: false, s3Key: 'old.bin' },
-};
-function trackingOffloader() {
-  return {
-    shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => parts.join('/'),
-    upload: async (key: string) => key,
-    deleteBatch: jest.fn().mockResolvedValue([]),
-  };
 }
 
 describe('putWrites', () => {
@@ -209,48 +195,6 @@ describe('putWrites', () => {
       cause: expect.objectContaining({ message: expect.stringContaining('boom') }),
     });
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
-  });
-
-  it('cleans up the previous S3 object after a special write successfully overwrites it', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: oldS3Descriptor });
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    const offloader = trackingOffloader();
-    const ctx = { ...context(client), offloader: offloader as never };
-    await putWrites(
-      ctx,
-      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
-      [['__error__', 'new value']],
-      'task-1',
-    );
-    expect(offloader.deleteBatch).toHaveBeenCalledWith(['old.bin']);
-  });
-
-  it('cleans up only the new upload, not the previous object, when a special write never commits', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: oldS3Descriptor });
-    // Reports __error__'s row (fixed SK) unprocessed every time, exhausting
-    // drainUnprocessedWrites' 10-retry budget (real backoff) before throwing —
-    // intentionally slow, the same disclosed tradeoff as Task 3's
-    // ambiguous-retry test in store/actions/put.test.ts.
-    mock.on(BatchWriteCommand).resolves({
-      UnprocessedItems: {
-        ckpt: [{ PutRequest: { Item: { PK: 't', SK: 'WRITE##c1#task-1#0000000007' } } }],
-      },
-    });
-    const offloader = trackingOffloader();
-    const ctx = { ...context(client), offloader: offloader as never };
-    await expect(
-      putWrites(
-        ctx,
-        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
-        [['__error__', 'new value']],
-        'task-1',
-      ),
-    ).rejects.toMatchObject({ name: 'BatchWriteAllIncompleteError' });
-    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
-    expect(keys).not.toContain('old.bin');
-    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-.*\/[^/]+$/);
   });
 
   it('does not throw when a regular write loses the idempotency race on a second call', async () => {

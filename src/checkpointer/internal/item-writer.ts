@@ -58,11 +58,11 @@ export async function buildCheckpointItems(
  * write (a retried task re-emitting the same channel, or two calls to the
  * same special channel) never shares an S3 location with any earlier
  * attempt. Special (negative-index) writes still overwrite their DynamoDB
- * row in place (see {@link ../actions/put-writes.ts}'s writeSpecialItemsWithCleanup),
- * but that overwrite-safety now comes from put-writes.ts reading the
- * previous descriptor before writing and only cleaning it up after the new
- * row is confirmed committed — the same pattern store/actions/put.ts uses
- * for the identical "overwrite in place, nonce every upload" shape.
+ * row in place (see {@link writeSpecialItemsWithCleanup}), but that
+ * overwrite-safety now comes from reading the previous descriptor before
+ * writing and only cleaning it up after the new row is confirmed committed —
+ * the same pattern store/actions/put.ts uses for the identical "overwrite in
+ * place, nonce every upload" shape.
  */
 export async function buildWriteItems(
   context: CheckpointerContext,
