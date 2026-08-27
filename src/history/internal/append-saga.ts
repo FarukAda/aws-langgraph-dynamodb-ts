@@ -1,14 +1,11 @@
-import { randomUUID } from 'node:crypto';
-
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { CompensationFailedError } from '../../shared/errors/errors';
 import { toError } from '../../shared/errors/wrap-error';
 import type { ChatMessageItem } from '../types';
-import { SESSION_SORT_KEY, sessionPartition } from './keys';
 import { writeMessageChunk } from './message-transaction';
+import { revertSessionCount } from './session-count';
 import type { HistoryContext } from './setup';
 
 /** Shared per-append metadata applied to every chunk's session update. */
@@ -23,24 +20,6 @@ export interface AppendFields {
 interface CommittedChunk {
   keys: { PK: string; SK: string }[];
   count: number;
-}
-
-/** Subtract a previously-added count from the session, leaving it consistent. */
-async function revertSessionCount(
-  context: HistoryContext,
-  sessionId: string,
-  delta: number,
-): Promise<void> {
-  if (delta === 0) return;
-  const update = {
-    TableName: context.tableName,
-    Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
-    UpdateExpression: 'ADD #count :neg',
-    ExpressionAttributeNames: { '#count': 'messageCount' },
-    ExpressionAttributeValues: { ':neg': -delta },
-  };
-  const input = { TransactItems: [{ Update: update }], ClientRequestToken: randomUUID() };
-  await withDynamoDBRetry(() => context.client.transactWrite(input));
 }
 
 /**

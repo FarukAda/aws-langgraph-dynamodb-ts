@@ -195,4 +195,38 @@ describe('appendChunks', () => {
     expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(3);
   });
+
+  it('does not resurrect a concurrently-deleted SESSION row when reverting the count', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const sessionGone = Object.assign(new Error('cancelled'), {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'ConditionalCheckFailed' }],
+    });
+    mock
+      .on(TransactWriteCommand)
+      // chunk 1 append succeeds
+      .resolvesOnce({})
+      // chunk 2 fails
+      .rejectsOnce(Object.assign(new Error('boom'), { name: 'ValidationException' }))
+      // revertSessionCount's compensating transactWrite
+      .rejectsOnce(sessionGone);
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+
+    // The original trigger, not a new error, must still be what surfaces —
+    // the swallowed condition failure must not become CompensationFailedError.
+    // Asserting the precise name+message (not just a `toThrow('boom')`
+    // substring check) matters here: CompensationFailedError's own message
+    // embeds the trigger's message as a substring ("compensation failed
+    // after an append error: boom (rollback: cancelled)"), so a loose
+    // substring match would pass even without the fix.
+    await expect(
+      appendChunks(
+        context(client),
+        's1',
+        [[inlineItem('MSG#1'), inlineItem('MSG#2')], [inlineItem('MSG#3')]],
+        { now: 'u' },
+      ),
+    ).rejects.toMatchObject({ name: 'ValidationException', message: 'boom' });
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(3);
+  });
 });
