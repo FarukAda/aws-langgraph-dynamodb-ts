@@ -1,6 +1,7 @@
 import { QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { ValidationError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { listNamespaces } from '../../../../src/store/actions/list-namespaces';
@@ -110,5 +111,16 @@ describe('listNamespaces', () => {
     expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toBe(
       'attribute_exists(#ns)',
     );
+  });
+
+  it('honors a lowered maxScanItems instead of falling back to the unconfigurable default', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({ Items: items });
+    const ctx = { ...context(client), maxScanItems: 3 };
+    // 4 items under a 3-item cap must throw ResultTruncatedError, proving the
+    // configured cap (not the old unconfigurable 10,000 default) is in effect.
+    await expect(listNamespaces(ctx, { limit: 100, offset: 0 })).rejects.toMatchObject({
+      code: ErrorCode.RESULT_TRUNCATED,
+    });
   });
 });

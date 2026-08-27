@@ -86,31 +86,40 @@ async function cleanUpPrevious(
   const descriptors = items
     .map((item) => previous.get(item.SK))
     .filter((descriptor): descriptor is PayloadDescriptor => descriptor !== undefined);
-  await deleteDescriptors(context, descriptors, 'putWrites.special');
+  await deleteDescriptors(context, descriptors, 'putWrites.special.previous');
 }
 
 /**
  * Write special (negative-index) items unconditionally — overwrite is
- * correct there, matching every reference checkpointer implementation. Reads
- * each item's previous descriptor first, so a settled outcome can clean up
- * the correct side: the previous descriptor on success, each never-committed
- * item's own new upload on a confirmed non-commit, neither when the outcome
- * is genuinely ambiguous (see {@link splitSpecialOutcome}). Never rejects —
- * a failed read is reported the same way a failed write is, via the return
- * value — because the caller runs this concurrently with writeRegularItems
- * via `Promise.all`, whose own regular-write cleanup depends on every branch
- * of that `Promise.all` resolving rather than short-circuiting on a reject.
+ * correct there, matching every reference checkpointer implementation. When
+ * an offloader is configured, reads each item's previous descriptor first,
+ * so a settled outcome can clean up the correct side: the previous
+ * descriptor on success, each new upload on a confirmed non-commit (batch
+ * write failed, or the previous-descriptor read itself failed before the
+ * batch write was even attempted), neither when the outcome is genuinely
+ * ambiguous (see {@link splitSpecialOutcome}). Never rejects — a failed read
+ * is reported the same way a failed write is, via the return value —
+ * because the caller runs this concurrently with writeRegularItems via
+ * `Promise.all`, whose own regular-write cleanup depends on every branch of
+ * that `Promise.all` resolving rather than short-circuiting on a reject.
  */
 export async function writeSpecialItemsWithCleanup(
   context: CheckpointerContext,
   items: CheckpointWriteItem[],
 ): Promise<Error | undefined> {
   if (items.length === 0) return undefined;
-  let previous: Map<string, PayloadDescriptor | undefined>;
-  try {
-    previous = await readPreviousDescriptors(context, items);
-  } catch (error) {
-    return error as Error;
+  let previous: Map<string, PayloadDescriptor | undefined> = new Map();
+  if (context.offloader) {
+    try {
+      previous = await readPreviousDescriptors(context, items);
+    } catch (error) {
+      await deleteDescriptors(
+        context,
+        items.map((item) => item.value),
+        'putWrites.special.newUpload',
+      );
+      return error as Error;
+    }
   }
   try {
     await batchWriteAll(
@@ -126,7 +135,7 @@ export async function writeSpecialItemsWithCleanup(
     await deleteDescriptors(
       context,
       neverCommitted.map((item) => item.value),
-      'putWrites.special',
+      'putWrites.special.newUpload',
     );
     await cleanUpPrevious(context, committed, previous);
     return error as Error;

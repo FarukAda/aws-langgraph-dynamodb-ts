@@ -18,6 +18,15 @@ function isBatchWriteIncomplete(error: Error): error is BatchWriteIncompleteErro
  * throws {@link BatchWriteAllIncompleteError} reporting exactly how many
  * chunks succeeded vs. failed, and exactly how many individual writes
  * persisted, once every chunk has been attempted.
+ *
+ * This is this function's ONLY throw site. Two callers —
+ * checkpointer/internal/special-write-cleanup.ts and
+ * history/internal/append-saga.ts — type-assert a caught error straight to
+ * {@link BatchWriteAllIncompleteError} on that guarantee (not `instanceof`,
+ * banned repo-wide) instead of narrowing it, since this project enforces
+ * 100% branch coverage and a defensive else-branch here would be
+ * unreachable, hence untestable. Adding another throw path to this function
+ * requires updating both call sites.
  */
 export async function batchWriteAll(
   client: DynamoDBDocument,

@@ -8,9 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 A second hardening pass, addressing an independent max-effort review of
-`0.4.0` itself (the previous hardening release): one critical data-loss bug,
-two high-severity correctness bugs, and a set of medium/lower-severity fixes
-below. Every fix carries a dedicated regression test.
+`0.4.0` itself (the previous hardening release): two critical data-integrity
+bugs, a concurrency-correctness bug, two high-severity bugs, and a set of
+medium/lower-severity fixes below, plus CI and documentation hardening.
+Every functional fix carries a dedicated regression test.
 
 ### Fixed
 
@@ -24,6 +25,7 @@ below. Every fix carries a dedicated regression test.
 - **A custom `createS3Client` factory didn't receive the `maxAttempts: 1` retry-parity default** that `resolveDynamoDBClient` already applies to a custom DynamoDB `createClient` factory, leaving the AWS SDK's own internal retries enabled for a persistent S3 failure. Both the default and custom-factory S3 client paths now apply the default consistently.
 - **`reconcileVectorIndex()` stayed hard-capped at the old unconfigurable 10,000-item scan limit** even after raising `maxScanItems` specifically to unblock `search()` on an oversized namespace — this sibling maintenance path never received the override. It now honors the same configured cap `search()` does.
 - **`DynamoDBFactory.createAll()` couldn't accept an injected `client`** the way the individual `createSaver`/`createStore`/`createChatMessageHistory` methods already could — `new DynamoDBFactory({ client })` was a compile error even though the underlying client-resolution already supported reusing one. `FactoryBaseOptions` now accepts it.
+- **`npm run typecheck:all` now runs in CI and on `prepublishOnly`**, catching cross-tsconfig type errors before publish instead of only in local development. The README's error-model section and its TTL rollback-tradeoff note were also corrected and completed.
 
 ## [0.4.0] - 2026-08-26
 

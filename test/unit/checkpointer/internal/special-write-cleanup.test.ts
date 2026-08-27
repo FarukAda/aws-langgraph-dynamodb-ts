@@ -87,7 +87,7 @@ describe('writeSpecialItemsWithCleanup', () => {
     // same call — see put-writes.test.ts's composition-level regression test.
     expect(result).toMatchObject({ message: 'get boom' });
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
-    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['new.bin']);
   });
 
   it('is a no-op for an empty items list', async () => {
@@ -98,5 +98,60 @@ describe('writeSpecialItemsWithCleanup', () => {
     expect(result).toBeUndefined();
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
+  });
+
+  it('skips reading the previous descriptor entirely when no offloader is configured', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    const ctx = context(client);
+    const result = await writeSpecialItemsWithCleanup(ctx, [specialItem('new.bin')]);
+    expect(result).toBeUndefined();
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+
+  it('splits a mixed batch outcome: cleans up the previous object for the committed item and the new upload for the never-committed item', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const committedItem = specialItem('committed-new.bin');
+    const neverCommittedItem: CheckpointWriteItem = {
+      ...specialItem('never-committed-new.bin'),
+      SK: 'WRITE##c1#task-1#0000000008',
+    };
+    mock
+      .on(GetCommand)
+      .resolvesOnce({
+        Item: {
+          value: {
+            location: PayloadLocation.S3,
+            serdeType: 'json',
+            compressed: false,
+            s3Key: 'committed-old.bin',
+          },
+        },
+      })
+      .resolvesOnce({
+        Item: {
+          value: {
+            location: PayloadLocation.S3,
+            serdeType: 'json',
+            compressed: false,
+            s3Key: 'never-committed-old.bin',
+          },
+        },
+      });
+    // Persistently reports only neverCommittedItem's row unprocessed, so
+    // drainUnprocessedWrites exhausts its retry budget (real backoff sleeps)
+    // before batchWriteAll throws — same disclosed tradeoff as the
+    // never-commits test above.
+    mock.on(BatchWriteCommand).resolves({
+      UnprocessedItems: {
+        ckpt: [{ PutRequest: { Item: { PK: 't', SK: neverCommittedItem.SK } } }],
+      },
+    });
+    const offloader = trackingOffloader();
+    const ctx = { ...context(client), offloader: offloader as never };
+    const result = await writeSpecialItemsWithCleanup(ctx, [committedItem, neverCommittedItem]);
+    expect(result).toMatchObject({ name: 'BatchWriteAllIncompleteError' });
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['committed-old.bin']);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['never-committed-new.bin']);
   });
 });

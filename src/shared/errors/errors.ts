@@ -92,7 +92,7 @@ export class BatchWriteAllIncompleteError extends DynamoDbLangGraphError {
     succeededChunks: number,
     totalChunks: number,
     failedChunks: Error[],
-    succeededCount: number,
+    succeededCount = 0,
   ) {
     super(
       `batchWriteAll did not fully drain: ${succeededChunks}/${totalChunks} chunk(s) succeeded, ` +

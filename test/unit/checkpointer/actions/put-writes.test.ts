@@ -194,6 +194,9 @@ describe('putWrites', () => {
   it('still cleans up a failed regular write when the special path fails before its own batch write is attempted', async () => {
     // Regression: a readPreviousDescriptors rejection used to short-circuit
     // Promise.all before this regular write's own failed-upload cleanup ran.
+    // It also now cleans up the special write's own never-committed upload
+    // (Item 1's M7 fix: the read failing means the batch write was never
+    // even attempted, so that upload is unambiguously never-committed).
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).rejects(Object.assign(new Error('get'), { name: 'ValidationException' }));
     mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
@@ -210,9 +213,14 @@ describe('putWrites', () => {
         'task-1',
       ),
     ).rejects.toThrow('get');
-    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
-    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
-    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-0\/[^/]+$/);
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
+    const keysCalled = offloader.deleteBatch.mock.calls.map((call) => (call[0] as string[])[0]);
+    expect(keysCalled).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^t\/\/c1\/task-1\/write-0\/[^/]+$/),
+        expect.stringMatching(/^t\/\/c1\/task-1\/write--1\/[^/]+$/),
+      ]),
+    );
   });
 
   it('does not throw when a regular write loses the idempotency race on a second call', async () => {

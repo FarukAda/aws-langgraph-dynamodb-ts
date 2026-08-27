@@ -12,9 +12,17 @@ import { validatePaging } from '../internal/validation';
 function namespaceSource(context: StoreContext, op: ListNamespacesOperation) {
   const root = prefixRoot(op.matchConditions);
   if (root.length > 0) {
-    return paginateQuery({ client: context.client, params: scopedQuery(context.tableName, root) });
+    return paginateQuery({
+      client: context.client,
+      params: scopedQuery(context.tableName, root),
+      maxItems: context.maxScanItems,
+    });
   }
-  return paginateScan({ client: context.client, params: storeScan(context.tableName) });
+  return paginateScan({
+    client: context.client,
+    params: storeScan(context.tableName),
+    maxItems: context.maxScanItems,
+  });
 }
 
 /**

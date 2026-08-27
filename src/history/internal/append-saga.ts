@@ -38,7 +38,11 @@ async function cleanBatchS3(context: HistoryContext, chunks: ChatMessageItem[][]
   );
 }
 
-/** Delete every committed chunk's items and revert their counted total. */
+/**
+ * Delete every committed chunk's items, then revert the counted total by
+ * however many rows the delete actually persisted before failing (not
+ * necessarily every committed row — see the catch branch below).
+ */
 async function rollbackCommitted(
   context: HistoryContext,
   sessionId: string,

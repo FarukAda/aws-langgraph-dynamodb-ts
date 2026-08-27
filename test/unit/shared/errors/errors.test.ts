@@ -1,6 +1,7 @@
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
   AbortError,
+  BatchWriteAllIncompleteError,
   BatchWriteIncompleteError,
   CompensationFailedError,
   ConflictError,
@@ -42,5 +43,10 @@ describe('error subclasses', () => {
     expect(err.succeededCount).toBe(3);
     expect(err.unprocessed).toEqual(unprocessed);
     expect(err.message).toMatch(/3 item\(s\) persisted, 1 still un-acked/);
+  });
+
+  it('BatchWriteAllIncompleteError defaults succeededCount to 0 when the caller omits it', () => {
+    const err = new BatchWriteAllIncompleteError(0, 1, [new Error('boom')]);
+    expect(err.succeededCount).toBe(0);
   });
 });

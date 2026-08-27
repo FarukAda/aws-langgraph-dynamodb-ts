@@ -56,4 +56,26 @@ describe('batchWriteAll', () => {
       succeededCount: 25,
     });
   });
+
+  it('still attempts a later chunk after an earlier chunk hard-fails with a non-BatchWriteIncompleteError, excluding it from succeededCount', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    // Chunk 1's single call rejects outright (not retryable, so no backoff
+    // sleeps); chunk 2's call then succeeds normally.
+    mock
+      .on(BatchWriteCommand)
+      .rejectsOnce(Object.assign(new Error('boom'), { name: 'ValidationException' }))
+      .resolves({ UnprocessedItems: {} });
+    const requests = Array.from({ length: 30 }, (_, i) => put(String(i)));
+    const error = await batchWriteAll(client, 't', requests).catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      name: 'BatchWriteAllIncompleteError',
+      succeededChunks: 1,
+      totalChunks: 2,
+      // Chunk 1 hard-fails (not a BatchWriteIncompleteError, so its
+      // succeededCount is never read) -> contributes 0. Chunk 2: 5 items,
+      // all drain immediately -> succeededCount 5.
+      succeededCount: 5,
+    });
+    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(2);
+  });
 });
