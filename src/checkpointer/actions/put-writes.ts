@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
+import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
@@ -38,18 +39,17 @@ async function cleanUpItems(
   );
 }
 
-/** Dedup by sort key (last-write-wins), matching LangGraph's special-write semantics. */
-function dedupeBySortKey(items: CheckpointWriteItem[]): CheckpointWriteItem[] {
-  return [...new Map(items.map((item) => [item.SK, item])).values()];
+/** Dedup writes to the same special channel (last-write-wins) before any upload happens, so a discarded duplicate is never uploaded. */
+function dedupeWritesByIndex(writes: PendingWrite[]): PendingWrite[] {
+  const byIndex = new Map<number, PendingWrite>();
+  writes.forEach((write, positional) => {
+    const index = WRITES_IDX_MAP[write[0]] ?? positional;
+    byIndex.set(index, write);
+  });
+  return [...byIndex.values()];
 }
 
-/**
- * Write special (negative-index) items unconditionally — overwrite is correct
- * there, matching every reference checkpointer implementation. Their key is
- * deterministic, so a failed batch never triggers S3 cleanup here either: the
- * next write to the same channel overwrites the same key (self-healing);
- * deleting now could strand a row a previous call already committed.
- */
+/** Write special (negative-index) items unconditionally — overwrite is correct there, matching every reference checkpointer implementation. */
 async function writeSpecialItems(
   context: CheckpointerContext,
   items: CheckpointWriteItem[],
@@ -133,11 +133,11 @@ export async function putWrites(
     checkpointNs,
     checkpointId,
     taskId,
-    writes,
+    dedupeWritesByIndex(writes),
     randomUUID(),
     ttlTimestamp,
   );
-  const special = dedupeBySortKey(items.filter((item) => item.index < 0));
+  const special = items.filter((item) => item.index < 0);
   const regular = items.filter((item) => item.index >= 0);
   const [specialError, regularOutcome] = await Promise.all([
     writeSpecialItems(context, special).catch((error: Error): Error => error),

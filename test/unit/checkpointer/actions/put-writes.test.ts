@@ -348,4 +348,29 @@ describe('putWrites', () => {
     const requests = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.ckpt ?? [];
     expect(requests).toHaveLength(1);
   });
+
+  it('never uploads the discarded duplicate special write (fixes the leak, not just the DynamoDB row)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    const upload = jest.fn(async (key: string) => key);
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[]) => parts.join('/'),
+      upload,
+      deleteBatch: jest.fn().mockResolvedValue([]),
+    };
+    const ctx = { ...context(client), offloader: offloader as never };
+    await putWrites(
+      ctx,
+      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+      [
+        ['__error__', 'first'],
+        ['__error__', 'second'],
+      ],
+      'task-1',
+    );
+    // Only the surviving (last) write should ever be encoded/uploaded — the
+    // discarded first duplicate must never reach the offloader at all.
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
 });

@@ -128,7 +128,7 @@ describe('buildWriteItems', () => {
     expect(interrupt.SK < regular.SK).toBe(true);
   });
 
-  it('appends the nonce to a regular write S3 key but not to a special one', async () => {
+  it('appends the nonce to every write S3 key, regular or special', async () => {
     const items = await buildWriteItems(
       offloadingContext(),
       't',
@@ -143,20 +143,20 @@ describe('buildWriteItems', () => {
     );
     const regular = items.find((item) => item.channel === 'regular')!;
     const interrupt = items.find((item) => item.channel === '__interrupt__')!;
-    // Only regular writes take the conditional (first-write-wins) path, so only
-    // they need a per-attempt key. Special writes overwrite their row in place.
     expect(s3Key(regular)).toBe('t//ckpt-1/task-7/write-0/nonce-1');
-    expect(s3Key(interrupt)).toBe(`t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}`);
+    expect(s3Key(interrupt)).toBe(
+      `t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}/nonce-1`,
+    );
   });
 
-  it('keeps a repeated special write on one S3 key across calls, so nothing is orphaned', async () => {
+  it('gives a repeated special write a fresh S3 key per call, matching a regular write', async () => {
     const ctx = offloadingContext();
     const writes: PendingWrite[] = [['__interrupt__', { value: 'paused' }]];
     const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'nonce-1');
     const second = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'nonce-2');
-    // The special item's DynamoDB row is overwritten in place; a nonce'd key
-    // would leave the previous upload referenced by nothing and swept by no one.
-    expect(s3Key(second[0])).toBe(s3Key(first[0]));
+    // Nonce'd now like every other write; Task 2 is what keeps this safe from
+    // leaking the first call's now-superseded upload.
+    expect(s3Key(second[0])).not.toBe(s3Key(first[0]));
   });
 
   it('gives a repeated regular write a fresh S3 key per call', async () => {

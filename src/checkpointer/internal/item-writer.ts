@@ -53,15 +53,16 @@ export async function buildCheckpointItems(
 
 /**
  * Encode a task's pending writes into one item per write. `nonce` must be
- * unique per `putWrites` *call* (not per write) and is appended to the S3
- * offload keyParts of **regular (non-negative-index) writes only** — the ones
- * written conditionally, first-write-wins. There, repeated/concurrent attempts
- * for the same (thread, checkpoint, task, index) must never share an S3
- * location, so a failed attempt's cleanup can only ever delete its own upload.
- * Special (negative-index) writes are overwritten in place, so their key stays
- * deterministic: nonce'ing it would strand the previous upload — referenced by
- * nothing, tracked by nothing, cleaned up by nothing — on every rewrite of the
- * same special channel.
+ * unique per `putWrites` *call* (not per write) and is appended to every
+ * write's S3 offload keyParts — regular and special alike — so a repeated
+ * write (a retried task re-emitting the same channel, or two calls to the
+ * same special channel) never shares an S3 location with any earlier
+ * attempt. Special (negative-index) writes still overwrite their DynamoDB
+ * row in place (see {@link ../actions/put-writes.ts}'s writeSpecialItems),
+ * but that overwrite-safety now comes from put-writes.ts reading the
+ * previous descriptor before writing and only cleaning it up after the new
+ * row is confirmed committed — the same pattern store/actions/put.ts uses
+ * for the identical "overwrite in place, nonce every upload" shape.
  */
 export async function buildWriteItems(
   context: CheckpointerContext,
@@ -81,7 +82,7 @@ export async function buildWriteItems(
     const index = WRITES_IDX_MAP[channel] ?? positional;
     const baseKeyParts = [threadId, checkpointNs, checkpointId, taskId, `write-${index}`];
     const descriptor = await encodePayload(value, deps, {
-      keyParts: index < 0 ? baseKeyParts : [...baseKeyParts, nonce],
+      keyParts: [...baseKeyParts, nonce],
     });
     const item: CheckpointWriteItem = {
       PK: pk,
