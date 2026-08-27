@@ -6,11 +6,15 @@ services:
     ports:
       - '8000:8000'
     healthcheck:
-      # Listing tables is a cheap, auth-free call — if it works, the service is up.
+      # DynamoDB Local rejects unsigned requests with HTTP 400 — that is still
+      # proof it bound the port (see ci.yml's own polling for the same
+      # caveat). `curl -f` treats any non-2xx as failure, so it never reports
+      # healthy against this image; omit `-f` and only fail on a connection
+      # error (curl's own exit code covers that without needing `-f`).
       test:
         [
           'CMD-SHELL',
-          'curl -sf http://localhost:8000/ -H "X-Amz-Target: DynamoDB_20120810.ListTables" -H "Content-Type: application/x-amz-json-1.0" -d "{}" || exit 1',
+          'curl -s http://localhost:8000/ -H "X-Amz-Target: DynamoDB_20120810.ListTables" -H "Content-Type: application/x-amz-json-1.0" -d "{}" || exit 1',
         ]
       interval: 2s
       timeout: 5s
