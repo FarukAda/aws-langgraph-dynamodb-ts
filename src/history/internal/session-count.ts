@@ -1,12 +1,20 @@
 import { randomUUID } from 'node:crypto';
 
+import { getCancellationReasons } from '../../shared/dynamodb/cancellation';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
 import type { HistoryContext } from './setup';
 
-/** True when a TransactWriteItems cancellation was caused by a ConditionalCheckFailed reason. */
-function isConditionalCheckFailed(error: Error): boolean {
-  const reasons = (error as { CancellationReasons?: { Code?: string }[] }).CancellationReasons;
+/**
+ * True when a TransactWriteItems cancellation was caused by a
+ * ConditionalCheckFailed reason. Named distinctly from
+ * checkpointer/actions/put-writes.ts's isConditionalCheckFailed, which
+ * checks a different thing entirely (a raw PutItem exception name, not a
+ * transaction cancellation reason) — same name there previously, different
+ * meaning, a real trap for whoever read one assuming it was the other.
+ */
+function isCancelledByCondition(error: Error): boolean {
+  const reasons = getCancellationReasons(error);
   return reasons?.[0]?.Code === 'ConditionalCheckFailed';
 }
 
@@ -45,7 +53,7 @@ export async function revertSessionCount(
   try {
     await withDynamoDBRetry(() => context.client.transactWrite(input));
   } catch (error) {
-    if (isConditionalCheckFailed(error as Error)) return;
+    if (isCancelledByCondition(error as Error)) return;
     throw error;
   }
 }

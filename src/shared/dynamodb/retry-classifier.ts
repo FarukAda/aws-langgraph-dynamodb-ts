@@ -1,3 +1,5 @@
+import { getCancellationReasons } from './cancellation';
+
 const MAX_CAUSE_DEPTH = 32;
 
 /**
@@ -36,18 +38,13 @@ const TRANSIENT_CANCELLATION_REASONS: readonly string[] = [
   'ProvisionedThroughputExceeded',
 ];
 
-/** One entry of a `TransactionCanceledException`'s `CancellationReasons`. */
-interface CancellationReason {
-  Code?: string;
-}
-
 /**
  * When `error` is a transaction cancellation carrying reasons, return whether
  * every reason is transient; otherwise undefined so normal signal matching
  * applies. A bare cancellation with no reasons is treated as non-retryable.
  */
 function transactionCancellationRetryable(error: Error): boolean | undefined {
-  const reasons = (error as { CancellationReasons?: CancellationReason[] }).CancellationReasons;
+  const reasons = getCancellationReasons(error);
   if (!reasons) return undefined;
   return reasons.every(
     (reason) => reason.Code === undefined || TRANSIENT_CANCELLATION_REASONS.includes(reason.Code),
