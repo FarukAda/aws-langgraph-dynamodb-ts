@@ -1,7 +1,7 @@
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
-import { CompensationFailedError } from '../../shared/errors/errors';
+import { BatchWriteAllIncompleteError, CompensationFailedError } from '../../shared/errors/errors';
 import { toError } from '../../shared/errors/wrap-error';
 import type { ChatMessageItem } from '../types';
 import { writeMessageChunk } from './message-transaction';
@@ -45,14 +45,28 @@ async function rollbackCommitted(
   committed: CommittedChunk[],
 ): Promise<void> {
   const keys = committed.flatMap((chunk) => chunk.keys);
-  if (keys.length > 0) {
+  const total = committed.reduce((sum, chunk) => sum + chunk.count, 0);
+  if (keys.length === 0) {
+    await revertSessionCount(context, sessionId, total);
+    return;
+  }
+  try {
     await batchWriteAll(
       context.client,
       context.tableName,
       keys.map((Key) => ({ DeleteRequest: { Key } })),
     );
+  } catch (error) {
+    /**
+     * batchWriteAll has exactly one throw site and it is always a
+     * BatchWriteAllIncompleteError (see Task 9) — asserted, not instanceof-
+     * checked, since the false case is unreachable and this project
+     * enforces 100% branch coverage with no exceptions.
+     */
+    const deleted = (error as BatchWriteAllIncompleteError).succeededCount;
+    await revertSessionCount(context, sessionId, deleted);
+    throw error;
   }
-  const total = committed.reduce((sum, chunk) => sum + chunk.count, 0);
   await revertSessionCount(context, sessionId, total);
 }
 

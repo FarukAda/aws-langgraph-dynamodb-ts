@@ -107,6 +107,40 @@ describe('appendChunks', () => {
     );
   });
 
+  it('reverts the count by the number of rows actually deleted when the rollback delete itself partially fails', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const committedMessages = Array.from({ length: 30 }, (_, i) => inlineItem(`MSG#${i}`));
+    // TransactWriteCommand call order: the 30-message chunk commits, the
+    // triggering chunk fails, then revertSessionCount's compensating
+    // transactWrite.
+    mock
+      .on(TransactWriteCommand)
+      .resolvesOnce({})
+      .rejectsOnce(Object.assign(new Error('boom'), { name: 'ValidationException' }))
+      .resolves({});
+    let batchCall = 0;
+    mock.on(BatchWriteCommand).callsFake(() => {
+      batchCall += 1;
+      // The delete-side batchWriteAll splits 30 keys into chunks of 25 + 5.
+      // The first chunk succeeds; the second fails outright (ValidationException
+      // isn't retryable) before any of its 5 keys are confirmed drained.
+      if (batchCall === 1) return { UnprocessedItems: {} };
+      throw Object.assign(new Error('delete-down'), { name: 'ValidationException' });
+    });
+    await expect(
+      appendChunks(context(client), 's1', [committedMessages, [inlineItem('MSG#trigger')]], {
+        now: 'u',
+      }),
+    ).rejects.toMatchObject({ name: 'CompensationFailedError' });
+    const revertCall = mock.commandCalls(TransactWriteCommand)[2].args[0].input;
+    const revertUpdate = revertCall.TransactItems?.[0]?.Update;
+    // 25 of the 30 committed rows were actually deleted; the revert must
+    // subtract exactly 25 — not the full 30 (today's bug: skipped entirely,
+    // leaving messageCount silently overstated by 30 with zero compensating
+    // write) and not 0.
+    expect(revertUpdate?.ExpressionAttributeValues?.[':neg']).toBe(-25);
+  });
+
   it('cleans offloaded S3 objects for the whole batch when a chunk fails', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
