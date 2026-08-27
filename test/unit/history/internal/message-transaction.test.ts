@@ -5,12 +5,21 @@ import type { ChatMessageItem } from '../../../../src/history/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../../../src/shared/constants';
 import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
+import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function transactionConflict(): Error {
   return Object.assign(new Error('canceled'), {
     name: 'TransactionCanceledException',
     CancellationReasons: [{ Code: 'TransactionConflict' }],
+  });
+}
+
+/** A cancellation caused solely by the SESSION update's ttl ConditionExpression (index 0). */
+function ttlConditionFailure(): Error {
+  return Object.assign(new Error('cancelled'), {
+    name: 'TransactionCanceledException',
+    CancellationReasons: [{ Code: 'ConditionalCheckFailed' }, { Code: 'None' }],
   });
 }
 
@@ -26,6 +35,10 @@ function messageItem(sk: string): ChatMessageItem {
       bytes: new Uint8Array(),
     },
   };
+}
+
+function context(client: unknown) {
+  return { client, tableName: 'history', logger: SILENT_LOGGER } as never;
 }
 
 describe('writeMessageChunk', () => {
@@ -155,5 +168,71 @@ describe('writeMessageChunk', () => {
       ),
     ).rejects.toBeInstanceOf(RetryExhaustedError);
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(MESSAGE_APPEND_RETRY_MAX_ATTEMPTS);
+  });
+
+  it('retries once without forcing ttl when only the ttl condition lost the race, and succeeds', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejectsOnce(ttlConditionFailure()).resolves({});
+    await expect(
+      writeMessageChunk(context(client), [messageItem('MSG#1')], {
+        sessionId: 's1',
+        count: 1,
+        now: 'u',
+        ttlTimestamp: 5000,
+        forceTtlRefresh: true,
+      }),
+    ).resolves.toBeUndefined();
+    const calls = mock.commandCalls(TransactWriteCommand);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].args[0].input.TransactItems?.[0]?.Update?.ConditionExpression).toBeDefined();
+    expect(calls[1].args[0].input.TransactItems?.[0]?.Update?.ConditionExpression).toBeUndefined();
+  });
+
+  it('uses a fresh ClientRequestToken on the retried attempt', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejectsOnce(ttlConditionFailure()).resolves({});
+    await writeMessageChunk(context(client), [messageItem('MSG#1')], {
+      sessionId: 's1',
+      count: 1,
+      now: 'u',
+      ttlTimestamp: 5000,
+      forceTtlRefresh: true,
+    });
+    const calls = mock.commandCalls(TransactWriteCommand);
+    expect(calls[0].args[0].input.ClientRequestToken).not.toBe(
+      calls[1].args[0].input.ClientRequestToken,
+    );
+  });
+
+  it('does not retry, and rethrows, when a non-ttl item caused the cancellation', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const messageConflict = Object.assign(new Error('cancelled'), {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'None' }, { Code: 'ConditionalCheckFailed' }],
+    });
+    mock.on(TransactWriteCommand).rejects(messageConflict);
+    await expect(
+      writeMessageChunk(context(client), [messageItem('MSG#1')], {
+        sessionId: 's1',
+        count: 1,
+        now: 'u',
+        ttlTimestamp: 5000,
+        forceTtlRefresh: true,
+      }),
+    ).rejects.toBe(messageConflict);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(1);
+  });
+
+  it('does not retry when forceTtlRefresh was not set', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(ttlConditionFailure());
+    await expect(
+      writeMessageChunk(context(client), [messageItem('MSG#1')], {
+        sessionId: 's1',
+        count: 1,
+        now: 'u',
+      }),
+    ).rejects.toBeDefined();
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(1);
   });
 });

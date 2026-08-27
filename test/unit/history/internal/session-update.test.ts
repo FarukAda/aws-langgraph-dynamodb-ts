@@ -73,6 +73,28 @@ describe('buildSessionUpdateItem', () => {
     expect(item.Update?.UpdateExpression).not.toContain('if_not_exists(#ttl');
   });
 
+  it('adds a monotonic ConditionExpression only when forceTtlRefresh is set', () => {
+    const forced = buildSessionUpdateItem('history', {
+      sessionId: 's1',
+      count: 1,
+      now: 'u',
+      ttlTimestamp: 5000,
+      forceTtlRefresh: true,
+    });
+    expect(forced.Update?.ConditionExpression).toBe('attribute_not_exists(#ttl) OR #ttl < :ttl');
+
+    const notForced = buildSessionUpdateItem('history', {
+      sessionId: 's1',
+      count: 1,
+      now: 'u',
+      ttlTimestamp: 5000,
+    });
+    expect(notForced.Update?.ConditionExpression).toBeUndefined();
+
+    const noTtl = buildSessionUpdateItem('history', { sessionId: 's1', count: 1, now: 'u' });
+    expect(noTtl.Update?.ConditionExpression).toBeUndefined();
+  });
+
   it('still uses if_not_exists for the ttl anchor when forceTtlRefresh is not set', () => {
     const item = buildSessionUpdateItem('history', {
       sessionId: 's1',

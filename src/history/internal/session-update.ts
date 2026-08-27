@@ -24,7 +24,10 @@ export interface SessionUpdateFields {
  * `forceTtlRefresh` is set (because {@link resolveTtlAnchor} found the persisted
  * anchor missing or already expired), the `ttl` clause instead does a plain
  * `SET`, so the SESSION row's own stale attribute actually heals instead of
- * being permanently blocked by `if_not_exists`.
+ * being permanently blocked by `if_not_exists`. When forceTtlRefresh is set,
+ * the SET is additionally guarded by a ConditionExpression so a concurrent
+ * caller's already-healed anchor can never be regressed backward — see
+ * message-transaction.ts for how a lost race is retried without forcing.
  */
 export function buildSessionUpdateItem(
   tableName: string,
@@ -48,16 +51,27 @@ export function buildSessionUpdateItem(
     values[':title'] = fields.title;
     sets.push('#title = if_not_exists(#title, :title)');
   }
+  let conditionExpression: string | undefined;
   if (fields.ttlTimestamp !== undefined) {
     names['#ttl'] = 'ttl';
     values[':ttl'] = fields.ttlTimestamp;
-    sets.push(fields.forceTtlRefresh ? '#ttl = :ttl' : '#ttl = if_not_exists(#ttl, :ttl)');
+    if (fields.forceTtlRefresh) {
+      sets.push('#ttl = :ttl');
+      /**
+       * Guards the force-overwrite so a concurrent caller's already-healed,
+       * equal-or-later anchor can never be regressed backward by this one.
+       */
+      conditionExpression = 'attribute_not_exists(#ttl) OR #ttl < :ttl';
+    } else {
+      sets.push('#ttl = if_not_exists(#ttl, :ttl)');
+    }
   }
   return {
     Update: {
       TableName: tableName,
       Key: { PK: sessionPartition(fields.sessionId), SK: SESSION_SORT_KEY },
       UpdateExpression: `ADD #count :n SET ${sets.join(', ')}`,
+      ...(conditionExpression ? { ConditionExpression: conditionExpression } : {}),
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
     },
