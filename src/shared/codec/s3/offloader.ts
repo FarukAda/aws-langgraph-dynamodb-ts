@@ -35,7 +35,7 @@ export class S3Offloader {
       const cfg = this.config.clientConfig ?? {};
       this.clientPromise = (
         this.config.createS3Client
-          ? Promise.resolve(this.config.createS3Client(cfg))
+          ? Promise.resolve(this.config.createS3Client({ maxAttempts: 1, ...cfg }))
           : createDefaultS3Client(cfg)
       ).then(
         (client) => {

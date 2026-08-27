@@ -89,6 +89,30 @@ describe('S3Offloader', () => {
     expect(createS3Client).toHaveBeenCalledTimes(1);
   });
 
+  it('passes maxAttempts: 1 to a custom createS3Client factory too, unless overridden', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    const createS3Client = jest.fn((cfg: never) => new S3Client(cfg));
+    const offloader = new S3Offloader({
+      bucketName: 'b',
+      clientConfig: { region: 'us-east-1' },
+      createS3Client,
+    });
+    await offloader.upload('a.bin', new Uint8Array([1]));
+    expect(createS3Client).toHaveBeenCalledWith({ maxAttempts: 1, region: 'us-east-1' });
+  });
+
+  it('lets an explicit maxAttempts in clientConfig override the default for a custom factory', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    const createS3Client = jest.fn((cfg: never) => new S3Client(cfg));
+    const offloader = new S3Offloader({
+      bucketName: 'b',
+      clientConfig: { region: 'us-east-1', maxAttempts: 3 },
+      createS3Client,
+    });
+    await offloader.upload('a.bin', new Uint8Array([1]));
+    expect(createS3Client).toHaveBeenCalledWith({ region: 'us-east-1', maxAttempts: 3 });
+  });
+
   it('ensureLifecycleRule delegates to the bucket lifecycle config', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
