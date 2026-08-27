@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+A second hardening pass, addressing an independent max-effort review of
+`0.4.0` itself (the previous hardening release): one critical data-loss bug,
+two high-severity correctness bugs, and a set of medium/lower-severity fixes
+below. Every fix carries a dedicated regression test.
+
+### Fixed
+
+- **A repeated write to the same special (negative-index) checkpoint channel across two `putWrites` calls could silently corrupt the previously-committed payload.** The special-write S3 key was deterministic (not nonce'd) and uploaded before the DynamoDB write was attempted, so a second call's upload could overwrite the bytes a still-live row pointed at; if that second call's DynamoDB write then failed, the row kept describing the first call's content while the S3 bytes underneath were already the second call's. Separately, deduping a duplicate special write happened after it was already uploaded, leaking the discarded upload with no DynamoDB failure required. Special writes now nonce their S3 key like every other write, dedup happens before any upload, and a read-before-write step cleans up the correct side (old descriptor on confirmed commit, new upload on confirmed non-commit, neither when the outcome is genuinely ambiguous) once the batch write settles.
+- **`store.put()` could delete a just-written S3 payload that had actually landed server-side**, when the final `PutItem` retry attempt failed with a network-class error (e.g. `ETIMEDOUT`) after DynamoDB had already applied the write — the ack was lost, not the write. `persistRecord` now verifies by reading the row back before deleting anything on that specific ambiguous case, and treats a confirmed landing as success.
+- **Two concurrent `addMessages` calls on the same stale-or-missing-TTL-anchor chat session could let the shared `ttl` anchor regress backward**, since a stale-anchor heal force-set it unconditionally. The anchor `SET` is now guarded by a monotonic `ConditionExpression`, and a lost race retries the same chunk once without forcing ttl (safe: `if_not_exists` then converges to whichever value already won) instead of losing the message writes to a benign ttl race.
+- **A SESSION row concurrently deleted (e.g. by `history.clear()` racing a failed `addMessages` rollback) could be resurrected as a permanent, ttl-less, invisible junk row** by the rollback's compensating count-revert, which issued an unconditional `ADD`. Guarded with the same `attribute_exists(PK)` condition `reconcileMessageCount` already uses, swallowing that specific condition failure (nothing to revert) instead of surfacing a spurious error.
+- **`clearSession` could finish without deleting a message written moments before**, due to an eventually-consistent scan of the session partition — the identical bug class `deleteThread` was fixed for in `0.4.0`, left open on this sibling path. `clearSession` now reads the session partition strongly-consistently too.
+- **A failed rollback delete during `addMessages` compensation could leave `messageCount` silently overstated with zero compensating write**, since the count-revert only ran after a fully successful delete. It now reverts by the exact number of rows the delete actually persisted before failing (via a new `BatchWriteAllIncompleteError.succeededCount`, aggregated across every chunk instead of only reporting `succeededChunks`/`totalChunks`), rather than skipping the revert entirely.
+- **`$in`/`$nin` store filters never matched an object- or array-valued field that an equivalent `$eq` would match**, since they compared array membership by reference instead of by the same deep equality `$eq`/`$ne` already use. Both now use deep equality too.
+- **A custom `createS3Client` factory didn't receive the `maxAttempts: 1` retry-parity default** that `resolveDynamoDBClient` already applies to a custom DynamoDB `createClient` factory, leaving the AWS SDK's own internal retries enabled for a persistent S3 failure. Both the default and custom-factory S3 client paths now apply the default consistently.
+- **`reconcileVectorIndex()` stayed hard-capped at the old unconfigurable 10,000-item scan limit** even after raising `maxScanItems` specifically to unblock `search()` on an oversized namespace — this sibling maintenance path never received the override. It now honors the same configured cap `search()` does.
+- **`DynamoDBFactory.createAll()` couldn't accept an injected `client`** the way the individual `createSaver`/`createStore`/`createChatMessageHistory` methods already could — `new DynamoDBFactory({ client })` was a compile error even though the underlying client-resolution already supported reusing one. `FactoryBaseOptions` now accepts it.
+
 ## [0.4.0] - 2026-08-26
 
 A hardening pass over the whole library, addressing a third-party review of
