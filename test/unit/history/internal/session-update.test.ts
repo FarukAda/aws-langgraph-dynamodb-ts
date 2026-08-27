@@ -81,7 +81,7 @@ describe('buildSessionUpdateItem', () => {
       ttlTimestamp: 5000,
       forceTtlRefresh: true,
     });
-    expect(forced.Update?.ConditionExpression).toBe('attribute_not_exists(#ttl) OR #ttl < :ttl');
+    expect(forced.Update?.ConditionExpression).toBe('attribute_not_exists(#ttl) OR #ttl <= :ttl');
 
     const notForced = buildSessionUpdateItem('history', {
       sessionId: 's1',

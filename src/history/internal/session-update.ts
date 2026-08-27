@@ -60,8 +60,13 @@ export function buildSessionUpdateItem(
       /**
        * Guards the force-overwrite so a concurrent caller's already-healed,
        * equal-or-later anchor can never be regressed backward by this one.
+       * `<=` (not `<`): two concurrent healers of the same stale anchor
+       * typically compute the identical target timestamp, and `<=` lets
+       * the second one succeed by re-applying the same value instead of
+       * failing the condition and paying a full transaction retry for a
+       * write that was never actually a regression.
        */
-      conditionExpression = 'attribute_not_exists(#ttl) OR #ttl < :ttl';
+      conditionExpression = 'attribute_not_exists(#ttl) OR #ttl <= :ttl';
     } else {
       sets.push('#ttl = if_not_exists(#ttl, :ttl)');
     }
