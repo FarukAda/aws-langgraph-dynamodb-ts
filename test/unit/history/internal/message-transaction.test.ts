@@ -223,6 +223,25 @@ describe('writeMessageChunk', () => {
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(1);
   });
 
+  it('does not retry, and rethrows, when the ttl item and another item both failed', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const dualConflict = Object.assign(new Error('cancelled'), {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'ConditionalCheckFailed' }, { Code: 'ConditionalCheckFailed' }],
+    });
+    mock.on(TransactWriteCommand).rejects(dualConflict);
+    await expect(
+      writeMessageChunk(context(client), [messageItem('MSG#1')], {
+        sessionId: 's1',
+        count: 1,
+        now: 'u',
+        ttlTimestamp: 5000,
+        forceTtlRefresh: true,
+      }),
+    ).rejects.toBe(dualConflict);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(1);
+  });
+
   it('does not retry when forceTtlRefresh was not set', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(ttlConditionFailure());
