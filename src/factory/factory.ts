@@ -1,4 +1,5 @@
 import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
+import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
 import { DynamoDBSaver } from '../checkpointer/saver';
 import type { DynamoDBSaverOptions } from '../checkpointer/types';
@@ -11,6 +12,7 @@ import type { DynamoDBStoreOptions } from '../store/types';
 
 /** Shared client/logger defaults applied to every adapter the factory builds. */
 export interface FactoryBaseOptions {
+  client?: DynamoDBDocument;
   clientConfig?: DynamoDBClientConfig;
   createClient?: (config: DynamoDBClientConfig) => DynamoDBClient;
   logger?: Logger;

@@ -39,6 +39,20 @@ describe('DynamoDBFactory', () => {
     expect(fake.destroy).toHaveBeenCalledTimes(1);
   });
 
+  it('createAll reuses an injected base client instead of building a new one', () => {
+    const { client } = createStrictDocumentMock();
+    const factory = new DynamoDBFactory({ client });
+    const all = factory.createAll({
+      saver: { tableName: 'c' },
+      store: { tableName: 's' },
+      history: { tableName: 'h' },
+    });
+    expect(all.saver).toBeInstanceOf(DynamoDBSaver);
+    // No owned ddbClient was created, so destroy() must not throw even though
+    // there's nothing of its own to tear down.
+    expect(() => all.destroy()).not.toThrow();
+  });
+
   it('createAll builds a default client when no factory base options are given', () => {
     const factory = new DynamoDBFactory();
     const all = factory.createAll({
