@@ -27,6 +27,22 @@ const op = (over: Partial<PutOperation>): PutOperation => ({
   ...over,
 });
 
+function trackingOffloader(
+  overrides: {
+    shouldOffload?: boolean;
+    buildKey?: (parts: string[]) => string;
+    upload?: (key: string) => Promise<string>;
+  } = {},
+) {
+  return {
+    shouldOffload: () => overrides.shouldOffload ?? true,
+    buildKey: overrides.buildKey ?? ((parts: string[]) => parts.join('/')),
+    upload: overrides.upload ?? (async (key: string) => key),
+    deleteBatch: jest.fn().mockResolvedValue([]),
+  };
+}
+const binKey = (parts: string[]): string => parts.join('/') + '.bin';
+
 describe('putItem', () => {
   it('writes a new item, defaulting createdAt to now', async () => {
     const { client, mock } = createStrictDocumentMock();
@@ -123,12 +139,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: string[]) => parts.join('/'),
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader();
     await expect(
       putItem(context(client, { offloader: offloader as never }), op({})),
     ).rejects.toThrow('boom');
@@ -157,15 +168,12 @@ describe('putItem', () => {
         : {},
     );
     mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: string[]) => parts.join('/'),
+    const offloader = trackingOffloader({
       upload: async (key: string) => {
         uploadedKey = key;
         return key;
       },
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    });
     await expect(
       putItem(context(client, { offloader: offloader as never }), op({})),
     ).resolves.toBeUndefined();
@@ -196,15 +204,12 @@ describe('putItem', () => {
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
     const uploaded: string[] = [];
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: string[]) => parts.join('/'),
+    const offloader = trackingOffloader({
       upload: async (key: string) => {
         uploaded.push(key);
         return key;
       },
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    });
     await putItem(context(client, { offloader: offloader as never }), op({}));
     await putItem(context(client, { offloader: offloader as never }), op({}));
     expect(uploaded[0]).not.toBe(uploaded[1]);
@@ -224,12 +229,7 @@ describe('putItem', () => {
       },
     });
     mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: string[]) => parts.join('/') + '.bin',
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader({ buildKey: binKey });
     await expect(
       putItem(context(client, { offloader: offloader as never }), op({})),
     ).rejects.toThrow('boom');
@@ -252,12 +252,7 @@ describe('putItem', () => {
       },
     });
     mock.on(PutCommand).resolves({});
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: string[]) => parts.join('/') + '.bin',
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader({ buildKey: binKey });
     await putItem(context(client, { offloader: offloader as never }), op({}));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
   });
@@ -276,12 +271,7 @@ describe('putItem', () => {
       },
     });
     mock.on(PutCommand).resolves({});
-    const offloader = {
-      shouldOffload: () => false,
-      buildKey: (parts: string[]) => parts.join('/') + '.bin',
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader({ shouldOffload: false, buildKey: binKey });
     await putItem(context(client, { offloader: offloader as never }), op({}));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
   });
@@ -382,12 +372,7 @@ describe('putItem', () => {
       },
     });
     mock.on(DeleteCommand).resolves({});
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: string[]) => parts.join('/'),
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader();
     await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['users/u1/profile.bin']);
   });
@@ -403,12 +388,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(DeleteCommand).resolves({});
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: string[]) => parts.join('/'),
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    const offloader = trackingOffloader();
     await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
