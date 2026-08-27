@@ -149,7 +149,7 @@ describe('putItem', () => {
     expect(keys[0]).toMatch(/^users\/u1\/profile\//);
   });
 
-  // Integration-level: proves persistRecord wires in writeLandedAt (whose own branches are covered directly in write-verify.test.ts).
+  // Integration-level: prove persistRecord wires writeLandedAt's landed/not-landed result correctly into the delete/rethrow decision (its own branches are unit-tested in write-verify.test.ts).
   it('does not delete the new S3 object, and succeeds, when an ambiguous retry-exhaustion write actually landed', async () => {
     const { client, mock } = createStrictDocumentMock();
     let uploadedKey = '';
@@ -174,10 +174,19 @@ describe('putItem', () => {
         return key;
       },
     });
-    await expect(
-      putItem(context(client, { offloader: offloader as never }), op({})),
-    ).resolves.toBeUndefined();
+    const ctx = context(client, { offloader: offloader as never });
+    await expect(putItem(ctx, op({}))).resolves.toBeUndefined();
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it('cleans up the new S3 object and rethrows when an ambiguous retry-exhaustion write genuinely did not land', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    const offloader = trackingOffloader();
+    const ctx = context(client, { offloader: offloader as never });
+    await expect(putItem(ctx, op({}))).rejects.toThrow('timeout');
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
   });
 
   it('reads createdAt and the previous value descriptor in a single GetItem call', async () => {
@@ -329,16 +338,12 @@ describe('putItem', () => {
       delete: jest.fn(),
     };
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
-    await expect(
-      putItem(
-        context(client, {
-          index: { dims: 2, embeddings: embeddings as never },
-          vectorBackend: vectorBackend as never,
-          logger,
-        }),
-        op({}),
-      ),
-    ).resolves.toBeUndefined();
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      vectorBackend: vectorBackend as never,
+      logger,
+    });
+    await expect(putItem(ctx, op({}))).resolves.toBeUndefined();
     expect(mock.commandCalls(PutCommand)).toHaveLength(1);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('vector-index sync failed'),
@@ -355,12 +360,8 @@ describe('putItem', () => {
       delete: jest.fn().mockRejectedValue(new Error('backend down')),
     };
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
-    await expect(
-      putItem(
-        context(client, { vectorBackend: vectorBackend as never, logger }),
-        op({ value: null }),
-      ),
-    ).resolves.toBeUndefined();
+    const ctx = context(client, { vectorBackend: vectorBackend as never, logger });
+    await expect(putItem(ctx, op({ value: null }))).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalled();
   });
 
