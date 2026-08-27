@@ -33,7 +33,7 @@ describe('public entry point', () => {
       expect(new ErrorClass('x')).toBeInstanceOf(DynamoDbLangGraphError);
     }
     expect(new BatchWriteIncompleteError(1, [], 3)).toBeInstanceOf(DynamoDbLangGraphError);
-    expect(new BatchWriteAllIncompleteError(1, 2, [new Error('x')])).toBeInstanceOf(
+    expect(new BatchWriteAllIncompleteError(1, 2, [new Error('x')], 25)).toBeInstanceOf(
       DynamoDbLangGraphError,
     );
     expect(new ResultTruncatedError('maxItems', 1)).toBeInstanceOf(DynamoDbLangGraphError);

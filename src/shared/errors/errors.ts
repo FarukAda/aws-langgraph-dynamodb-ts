@@ -77,16 +77,26 @@ export class BatchWriteIncompleteError extends DynamoDbLangGraphError {
  * it. `failedChunks` holds each failing chunk's own error (commonly a
  * {@link BatchWriteIncompleteError}); every chunk not represented there
  * drained successfully and its writes persist — there is no rollback.
+ * `succeededCount` is the exact number of individual write requests
+ * confirmed persisted across every chunk (full chunks plus any failed
+ * chunk's own partial drain), more precise than `succeededChunks` alone
+ * when a chunk partially drains before exhausting its retries.
  */
 export class BatchWriteAllIncompleteError extends DynamoDbLangGraphError {
   readonly succeededChunks: number;
   readonly totalChunks: number;
   readonly failedChunks: Error[];
+  readonly succeededCount: number;
 
-  constructor(succeededChunks: number, totalChunks: number, failedChunks: Error[]) {
+  constructor(
+    succeededChunks: number,
+    totalChunks: number,
+    failedChunks: Error[],
+    succeededCount: number,
+  ) {
     super(
       `batchWriteAll did not fully drain: ${succeededChunks}/${totalChunks} chunk(s) succeeded, ` +
-        `${failedChunks.length} failed. Writes in succeeded chunks already persisted.`,
+        `${failedChunks.length} chunk(s) failed. ${succeededCount} write(s) persisted before the failure.`,
       ErrorCode.BATCH_WRITE_INCOMPLETE,
       {},
       failedChunks[0],
@@ -95,6 +105,7 @@ export class BatchWriteAllIncompleteError extends DynamoDbLangGraphError {
     this.succeededChunks = succeededChunks;
     this.totalChunks = totalChunks;
     this.failedChunks = failedChunks;
+    this.succeededCount = succeededCount;
   }
 }
 
