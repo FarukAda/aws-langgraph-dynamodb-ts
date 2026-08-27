@@ -230,9 +230,9 @@ try {
 }
 ```
 
-`ErrorCode` values: `VALIDATION`, `CONDITION_CONFLICT`, `RETRY_EXHAUSTED`, `BATCH_WRITE_INCOMPLETE`, `COMPRESSION_LIMIT`, `S3_OFFLOAD_FAILED`, `ABORTED`. Typed subclasses are exported where callers commonly branch: `ValidationError`, `ConflictError`, `RetryExhaustedError`, `BatchWriteIncompleteError`, `BatchWriteAllIncompleteError`, `AbortError`.
+`ErrorCode` values: `VALIDATION`, `CONDITION_CONFLICT`, `RETRY_EXHAUSTED`, `BATCH_WRITE_INCOMPLETE`, `COMPRESSION_LIMIT`, `S3_OFFLOAD_FAILED`, `RESULT_TRUNCATED`, `ABORTED`, `COMPENSATION_FAILED`. Typed subclasses are exported where callers commonly branch: `ValidationError`, `ConflictError`, `RetryExhaustedError`, `BatchWriteIncompleteError`, `BatchWriteAllIncompleteError`, `ResultTruncatedError`, `AbortError`, `CompensationFailedError`.
 
-`BatchWriteAllIncompleteError` is thrown by `deleteThread`, `clearSession`, `putWrites`, and the history append rollback path when a multi-chunk `BatchWriteItem` sequence doesn't fully drain. It carries `succeededChunks` / `totalChunks` / `failedChunks` so a caller can tell how much of the batch actually persisted before the failure, rather than just seeing the first chunk's raw error.
+`BatchWriteAllIncompleteError` is thrown directly by `deleteThread`, `clearSession`, and `putWrites` when a multi-chunk `BatchWriteItem` sequence doesn't fully drain. The chat-history append-rollback path can hit the same underlying failure while deleting a partially-committed batch's rows, but there it's never thrown directly — it surfaces as the `rollbackError` property of a `CompensationFailedError` (the append's original trigger error still needs reporting too), so check `err.rollbackError instanceof BatchWriteAllIncompleteError` there instead of `err instanceof BatchWriteAllIncompleteError`. It carries `succeededChunks` / `totalChunks` / `failedChunks` / `succeededCount` so a caller can tell how much of the batch actually persisted before the failure, rather than just seeing the first chunk's raw error.
 
 ## Logging
 
