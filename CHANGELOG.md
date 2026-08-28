@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-28
+
 A second hardening pass, addressing an independent max-effort review of
 `0.4.0` itself (the previous hardening release): two critical data-integrity
 bugs, a concurrency-correctness bug, two high-severity bugs, and a set of
