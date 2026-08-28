@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-28
+
 Addressing an independent deep review of `0.6.0` itself: three critical
 findings and one high-severity cross-adapter key collision. Every fix
 carries a dedicated regression test, verified against real DynamoDB Local

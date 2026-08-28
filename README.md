@@ -315,16 +315,16 @@ When S3 offloading is enabled, on the bucket/objects: `s3:GetObject`, `s3:PutObj
 
 ## Migrating from earlier versions
 
-**0.6.x → 0.7.0** (exact version TBD at release): chat-history's sort keys now
-carry a `HISTORY#` item-kind tag — `SK = SESSION` → `SK = HISTORY#SESSION`,
-`SK = MSG#<ULID>` → `SK = HISTORY#MSG#<ULID>`. This closes a real key
-collision on a table shared via `createAll()`: an unprefixed `SESSION` sort
-key was reachable by an ordinary store call (`store.put([sessionId],
-'SESSION', …)`), silently corrupting both adapters' items. Existing chat
-history data written before this change will not be found by `getMessages`/
-`listSessions`/`clear` after upgrading — back up and migrate (or recreate)
-any table with real chat-history data before upgrading. Checkpointer and
-store keys are unaffected.
+**0.6.x → 0.7.0**: chat-history's sort keys now carry a `HISTORY#` item-kind
+tag — `SK = SESSION` → `SK = HISTORY#SESSION`, `SK = MSG#<ULID>` →
+`SK = HISTORY#MSG#<ULID>`. This closes a real key collision on a table
+shared via `createAll()`: an unprefixed `SESSION` sort key was reachable by
+an ordinary store call (`store.put([sessionId], 'SESSION', …)`), silently
+corrupting both adapters' items. Existing chat history data written before
+this change will not be found by `getMessages`/`listSessions`/`clear` after
+upgrading — back up and migrate (or recreate) any table with real
+chat-history data before upgrading. Checkpointer and store keys are
+unaffected.
 
 **0.2.x → 0.3.0** is a complete, ground-up rewrite. The public API is similar, but the table schema, on-disk layout, and several options changed, so existing data is **not compatible** — create a new table.
 
