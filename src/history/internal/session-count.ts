@@ -10,8 +10,8 @@ import type { HistoryContext } from './setup';
  * ConditionalCheckFailed reason. Named distinctly from
  * checkpointer/actions/put-writes.ts's isConditionalCheckFailed, which
  * checks a different thing entirely (a raw PutItem exception name, not a
- * transaction cancellation reason) — same name there previously, different
- * meaning, a real trap for whoever read one assuming it was the other.
+ * transaction cancellation reason) — this function had that same name
+ * until now, a real trap for whoever read one assuming it was the other.
  */
 function isCancelledByCondition(error: Error): boolean {
   const reasons = getCancellationReasons(error);
