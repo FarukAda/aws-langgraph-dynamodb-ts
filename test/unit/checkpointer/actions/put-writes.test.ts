@@ -164,12 +164,12 @@ describe('putWrites', () => {
     expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/[^/]+$/);
   });
 
-  it('never cleans up a special item when its batch write fails for an unknown reason', async () => {
+  it("cleans up a special item's never-committed upload when its batch write hard-fails outright", async () => {
     // A bare SDK-level rejection (not an UnprocessedItems-exhaustion
-    // BatchWriteIncompleteError) gives no evidence about which items, if any,
-    // actually landed — cleaning up either side risks stranding a row
-    // pointing at a deleted object (the old key) or deleting a live upload
-    // (the new key), so an ambiguous failure cleans up nothing.
+    // BatchWriteIncompleteError) still carries an accurate, confident
+    // accounting: drainUnprocessedWrites has exactly one item, this is its
+    // first round, so 0 persisted and the item itself is `unprocessed` — see
+    // shared/dynamodb/drain-unprocessed.ts.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock
@@ -186,9 +186,16 @@ describe('putWrites', () => {
       ),
     ).rejects.toMatchObject({
       name: 'BatchWriteAllIncompleteError',
-      cause: expect.objectContaining({ message: expect.stringContaining('boom') }),
+      cause: expect.objectContaining({
+        name: 'BatchWriteIncompleteError',
+        succeededCount: 0,
+        cause: expect.objectContaining({ message: expect.stringContaining('boom') }),
+      }),
     });
-    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write--1\/[^/]+$/);
   });
 
   it('still cleans up a failed regular write when the special path fails before its own batch write is attempted', async () => {

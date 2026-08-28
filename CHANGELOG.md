@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Addressing an independent deep review of `0.6.0` itself: three critical
+findings and one high-severity cross-adapter key collision. Every fix
+carries a dedicated regression test, verified against real DynamoDB Local
+for the two fixes that touch on-wire key construction.
+
+### Changed (breaking)
+
+- **Chat-history's sort keys now carry a `HISTORY#` item-kind tag** (`SESSION` → `HISTORY#SESSION`, `MSG#<ULID>` → `HISTORY#MSG#<ULID>`), closing a real key collision on a table shared via `DynamoDBFactory.createAll()`: an unprefixed `SESSION` sort key was reachable by an entirely ordinary store call (`store.put([sessionId], 'SESSION', …)`, since a single-element namespace's sort key collapses to just the bare key), silently grafting one adapter's attributes onto the other's item. **Existing chat-history data is not compatible** — `getMessages`/`listSessions`/`clear` will not find rows written before this change. Back up and migrate (or recreate) any table with real chat-history data before upgrading. Checkpointer and store keys are unaffected.
+
+### Fixed
+
+- **A checkpoint's own `id` was never validated against the reserved `#` sort-key separator**, unlike every other identifier this module handles (`thread_id`, `checkpoint_ns`, the parent `checkpoint_id`). A caller-supplied id containing `#` (e.g. `"legit-cp#task-1"`) produced a WRITE sort-key prefix that was a literal string-prefix of a different, unrelated checkpoint's own WRITE row, so `getTuple`/`list` silently absorbed the wrong checkpoint's pending writes into the crafted one. `putCheckpoint` now validates `checkpoint.id` the same way the incoming parent id already is.
+- **`redactLogger`/`redactSecrets` provided zero redaction for this library's own error subclasses.** The pass-through exemption meant to preserve a bare `Error`'s stack trace matched *every* `Error` subclass by `Object.prototype.toString`, including this library's own `BatchWriteIncompleteError.unprocessed`, `BatchWriteAllIncompleteError.failedChunks`, and `CompensationFailedError.rollbackError` — each of which can carry raw checkpoint/message/store content. Logging a caught error through the package's own recommended `redactLogger` wrapper (`logger.error('failed', err)`) shipped that content unredacted. An `Error` (or subclass) with no own enumerable data still passes through unchanged by reference (nothing to redact, identity/stack trace preserved); one carrying its own data is now rebuilt with `name`/`message`/`stack` preserved and every other own property redacted or recursed like any other object.
+- **`batchWriteAll`'s `succeededCount` (added in 0.6.0 to fix rollback undercounting) could still undercount when a chunk partially drained before a later retry round failed outright** — e.g. 20 of 25 items persist, then sustained throttling exhausts the retry budget on the remaining 5: the earlier 20 confirmed successes were silently discarded to 0 instead of being reported. `drainUnprocessedWrites` now carries the running persisted-count through every exit path — a hard write-call failure, the backoff wait's own signal aborting, or clean `UnprocessedItems` exhaustion — not just the last of these. This directly improves the accuracy of `append-saga.ts`'s rollback `messageCount` reversion, the exact call site the 0.6.0 fix targeted.
+
 ## [0.6.0] - 2026-08-28
 
 A second hardening pass, addressing an independent max-effort review of

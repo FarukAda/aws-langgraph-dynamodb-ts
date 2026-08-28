@@ -62,7 +62,14 @@ describe('DynamoDBChatMessageHistory', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({
       Items: [
-        { PK: 's', SK: 'SESSION', sessionId: 's', messageCount: 1, createdAt: 'c', updatedAt: 'u' },
+        {
+          PK: 's',
+          SK: 'HISTORY#SESSION',
+          sessionId: 's',
+          messageCount: 1,
+          createdAt: 'c',
+          updatedAt: 'u',
+        },
       ],
     });
     const sessions = await history(client).listSessions();

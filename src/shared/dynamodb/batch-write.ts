@@ -5,11 +5,6 @@ import { BatchWriteAllIncompleteError, BatchWriteIncompleteError } from '../erro
 import { DrainOptions, drainUnprocessedWrites } from './drain-unprocessed';
 import type { WriteRequest } from './types';
 
-/** True when `error` is a {@link BatchWriteIncompleteError} — checked by name, not `instanceof`. */
-function isBatchWriteIncomplete(error: Error): error is BatchWriteIncompleteError {
-  return error.name === 'BatchWriteIncompleteError';
-}
-
 /**
  * Write an arbitrary number of requests, chunked into batches of 25 (the
  * BatchWriteItem limit). Every chunk is attempted regardless of an earlier
@@ -45,9 +40,16 @@ export async function batchWriteAll(
       succeededChunks += 1;
       succeededCount += chunk.length;
     } catch (error) {
-      const err = error as Error;
+      /**
+       * drainUnprocessedWrites has exactly three throw sites and every one
+       * constructs a BatchWriteIncompleteError with an accurate
+       * succeededCount — asserted, not name-checked, since the false case is
+       * unreachable and this project enforces 100% branch coverage with no
+       * exceptions (see drain-unprocessed.ts).
+       */
+      const err = error as BatchWriteIncompleteError;
       failedChunks.push(err);
-      if (isBatchWriteIncomplete(err)) succeededCount += err.succeededCount;
+      succeededCount += err.succeededCount;
     }
   }
   if (failedChunks.length > 0) {

@@ -37,6 +37,25 @@ describe('redactSecrets', () => {
     expect(out.failure).toBe(error);
   });
 
+  it("redacts a custom Error subclass's own secret-looking properties, preserving name/message/stack", () => {
+    class BatchFailure extends Error {
+      readonly unprocessed: { token: string; itemCount: number };
+      constructor(message: string, unprocessed: { token: string; itemCount: number }) {
+        super(message);
+        this.name = 'BatchFailure';
+        this.unprocessed = unprocessed;
+      }
+    }
+    const error = new BatchFailure('write failed', { token: 'SENSITIVE', itemCount: 5 });
+    const out = redactSecrets({ err: error } as never) as unknown as {
+      err: { name: string; message: string; stack: unknown; unprocessed: unknown };
+    };
+    expect(out.err.name).toBe('BatchFailure');
+    expect(out.err.message).toBe('write failed');
+    expect(out.err.stack).toBe(error.stack);
+    expect(out.err.unprocessed).toEqual({ token: '[REDACTED]', itemCount: 5 });
+  });
+
   it('does not flag a DAG-shared (non-cyclic) object as circular', () => {
     const shared = { note: 'hello' };
     const result = redactSecrets({ a: shared, b: shared });

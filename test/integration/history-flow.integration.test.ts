@@ -73,7 +73,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     const result = await doc.query({
       TableName: tableName,
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :msg)',
-      ExpressionAttributeValues: { ':pk': 's5', ':msg': 'MSG#' },
+      ExpressionAttributeValues: { ':pk': 's5', ':msg': 'HISTORY#MSG#' },
     });
     const ttls = new Set((result.Items ?? []).map((item) => item.ttl));
     expect(result.Items).toHaveLength(8);
@@ -88,13 +88,13 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
         {
           Update: {
             TableName: tableName,
-            Key: { PK: 's-idem', SK: 'SESSION' },
+            Key: { PK: 's-idem', SK: 'HISTORY#SESSION' },
             UpdateExpression: 'ADD #c :one',
             ExpressionAttributeNames: { '#c': 'messageCount' },
             ExpressionAttributeValues: { ':one': 1 },
           },
         },
-        { Put: { TableName: tableName, Item: { PK: 's-idem', SK: 'MSG#1' } } },
+        { Put: { TableName: tableName, Item: { PK: 's-idem', SK: 'HISTORY#MSG#1' } } },
       ],
       ClientRequestToken: randomUUID(),
     };
@@ -102,7 +102,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     await doc.transactWrite(transaction);
     const meta = await doc.get({
       TableName: tableName,
-      Key: { PK: 's-idem', SK: 'SESSION' },
+      Key: { PK: 's-idem', SK: 'HISTORY#SESSION' },
       ConsistentRead: true,
     });
     expect(meta.Item?.messageCount).toBe(1);
@@ -168,7 +168,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     const pastTtl = Math.floor(Date.now() / 1000) - 100;
     await doc.update({
       TableName: tableName,
-      Key: { PK: sessionId, SK: 'SESSION' },
+      Key: { PK: sessionId, SK: 'HISTORY#SESSION' },
       UpdateExpression: 'SET #ttl = :past',
       ExpressionAttributeNames: { '#ttl': 'ttl' },
       ExpressionAttributeValues: { ':past': pastTtl },
@@ -184,7 +184,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
 
     const meta = await doc.get({
       TableName: tableName,
-      Key: { PK: sessionId, SK: 'SESSION' },
+      Key: { PK: sessionId, SK: 'HISTORY#SESSION' },
       ConsistentRead: true,
     });
     expect(meta.Item?.ttl).toBeGreaterThan(Math.floor(Date.now() / 1000));
@@ -199,7 +199,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     const doc = DynamoDBDocument.from(admin);
     const raw = await doc.get({
       TableName: tableName,
-      Key: { PK: sessionId, SK: 'SESSION' },
+      Key: { PK: sessionId, SK: 'HISTORY#SESSION' },
       ConsistentRead: true,
     });
     expect(raw.Item).toBeUndefined();

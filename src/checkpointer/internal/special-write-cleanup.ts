@@ -37,30 +37,25 @@ async function readPreviousDescriptors(
 
 /**
  * Split `items` by outcome after a failed batch write (always a
- * BatchWriteAllIncompleteError — batchWriteAll's only throw): never-committed
- * items are safe to clean up their own upload, every other item its previous
- * one — unless a failed chunk's shape is unknown, in which case neither side
- * is touched (a leak beats stranding a live row). Uses `.name`, not
- * `instanceof` (banned repo-wide, see base-error.ts).
+ * BatchWriteAllIncompleteError — batchWriteAll's only throw, and every one of
+ * its own failedChunks is in turn always a BatchWriteIncompleteError with an
+ * accurate `unprocessed`, whichever of drainUnprocessedWrites's exit paths
+ * produced it — see drain-unprocessed.ts): never-committed items are safe to
+ * clean up their own upload, every other item its previous one. Uses `.name`,
+ * not `instanceof` (banned repo-wide, see base-error.ts).
  */
 function splitSpecialOutcome(
   items: CheckpointWriteItem[],
   error: BatchWriteAllIncompleteError,
 ): { committed: CheckpointWriteItem[]; neverCommitted: CheckpointWriteItem[] } {
   const neverCommittedSks = new Set<string>();
-  let everyChunkTracked = true;
-  for (const failedChunk of error.failedChunks) {
-    if (failedChunk.name !== 'BatchWriteIncompleteError') {
-      everyChunkTracked = false;
-      continue;
-    }
-    for (const request of (failedChunk as BatchWriteIncompleteError).unprocessed) {
+  for (const failedChunk of error.failedChunks as BatchWriteIncompleteError[]) {
+    for (const request of failedChunk.unprocessed) {
       /** Always a PutRequest echoing this submission — special writes never send DeleteRequests. */
       const { SK } = (request as { PutRequest: { Item: { SK: string } } }).PutRequest.Item;
       neverCommittedSks.add(SK);
     }
   }
-  if (!everyChunkTracked) return { committed: [], neverCommitted: [] };
   return {
     committed: items.filter((item) => !neverCommittedSks.has(item.SK)),
     neverCommitted: items.filter((item) => neverCommittedSks.has(item.SK)),

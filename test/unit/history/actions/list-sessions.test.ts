@@ -19,7 +19,7 @@ function context(client: HistoryContext['client']): HistoryContext {
 
 const session = (sessionId: string, updatedAt: string, extra = {}) => ({
   PK: sessionId,
-  SK: 'SESSION',
+  SK: 'HISTORY#SESSION',
   sessionId,
   messageCount: 1,
   createdAt: '2024-01-01',
@@ -59,6 +59,10 @@ describe('listSessions', () => {
     mock.on(ScanCommand).resolves({
       Items: [
         { PK: 'thread', SK: 'META##c' },
+        // A bare 'SESSION' SK with no sessionId — exactly what a store item at
+        // store.put([id], 'SESSION', ...) looks like on a shared table (the I9
+        // collision this adapter's HISTORY# prefix now avoids at the PK/SK
+        // level; this asserts the read-side filter also treats it as foreign).
         { PK: 'ns', SK: 'SESSION', namespace: ['ns'] },
         session('real', '2024-03-01'),
       ],

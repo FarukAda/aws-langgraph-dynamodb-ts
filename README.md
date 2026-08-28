@@ -69,7 +69,7 @@ How each adapter lays out keys (informational — you don't manage this):
 
 - **Checkpointer** — `PK = <thread_id>`; `SK` = `META#<ns>#<checkpoint_id>` (metadata), `PAYLOAD#<ns>#<checkpoint_id>` (checkpoint), `WRITE#<ns>#<checkpoint_id>#<task>#<idx>` (pending writes).
 - **Store** — `PK = <namespace[0]>` (the scope root); `SK = <namespace[1..]>#<key>`. This makes a scoped prefix search a native `Query` (`PK = root AND begins_with(SK, …)`); only a rootless "search everything" falls back to a `Scan`.
-- **Chat history** — `PK = <sessionId>`; one item per message at `SK = MSG#<ULID>` (ordered, append-only) plus one `SK = SESSION` metadata item.
+- **Chat history** — `PK = <sessionId>`; one item per message at `SK = HISTORY#MSG#<ULID>` (ordered, append-only) plus one `SK = HISTORY#SESSION` metadata item. The `HISTORY#` tag keeps these keys from colliding with a store item on a table shared via `createAll()` (a bare `SESSION` sort key is an ordinary, easy-to-produce store key — `store.put([sessionId], 'SESSION', …)`).
 
 ## Quick start
 
@@ -314,6 +314,17 @@ dynamodb:TransactWriteItems
 When S3 offloading is enabled, on the bucket/objects: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket`, and — only if TTL-driven lifecycle rules are desired — `s3:GetBucketLifecycleConfiguration` and `s3:PutBucketLifecycleConfiguration`. For semantic search via Bedrock embeddings: `bedrock:InvokeModel`.
 
 ## Migrating from earlier versions
+
+**0.6.x → 0.7.0** (exact version TBD at release): chat-history's sort keys now
+carry a `HISTORY#` item-kind tag — `SK = SESSION` → `SK = HISTORY#SESSION`,
+`SK = MSG#<ULID>` → `SK = HISTORY#MSG#<ULID>`. This closes a real key
+collision on a table shared via `createAll()`: an unprefixed `SESSION` sort
+key was reachable by an ordinary store call (`store.put([sessionId],
+'SESSION', …)`), silently corrupting both adapters' items. Existing chat
+history data written before this change will not be found by `getMessages`/
+`listSessions`/`clear` after upgrading — back up and migrate (or recreate)
+any table with real chat-history data before upgrading. Checkpointer and
+store keys are unaffected.
 
 **0.2.x → 0.3.0** is a complete, ground-up rewrite. The public API is similar, but the table schema, on-disk layout, and several options changed, so existing data is **not compatible** — create a new table.
 

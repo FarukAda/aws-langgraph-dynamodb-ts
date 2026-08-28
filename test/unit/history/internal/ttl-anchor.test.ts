@@ -37,7 +37,7 @@ describe('resolveTtlAnchor', () => {
     const context = contextWith({ Item: { ttl: Math.floor(Date.now() / 1000) + 10_000 } });
     await resolveTtlAnchor(context, 's1', 7);
     const input = (context.client.get as jest.Mock).mock.calls[0][0];
-    expect(input.Key).toEqual({ PK: 's1', SK: 'SESSION' });
+    expect(input.Key).toEqual({ PK: 's1', SK: 'HISTORY#SESSION' });
     expect(input.ConsistentRead).toBe(true);
     expect(input.ProjectionExpression).toBe('#ttl');
     expect(input.ExpressionAttributeNames).toEqual({ '#ttl': 'ttl' });

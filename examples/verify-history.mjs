@@ -129,8 +129,8 @@ async function run() {
 
   console.log('\n[C] per-message items + one SESSION metadata item (uniform TTL, no gaps)');
   const scan = await doc.scan({ TableName: TABLE, FilterExpression: 'PK = :p', ExpressionAttributeValues: { ':p': 'chat-1' } });
-  const msgItems = scan.Items.filter((i) => i.SK.startsWith('MSG#'));
-  const sessionItems = scan.Items.filter((i) => i.SK === 'SESSION');
+  const msgItems = scan.Items.filter((i) => i.SK.startsWith('HISTORY#MSG#'));
+  const sessionItems = scan.Items.filter((i) => i.SK === 'HISTORY#SESSION');
   check('3 message items + 1 SESSION metadata item', msgItems.length === 3 && sessionItems.length === 1);
   check('message items have distinct MSG# sort keys', new Set(msgItems.map((i) => i.SK)).size === 3);
 
@@ -151,7 +151,7 @@ async function run() {
   console.log('\n[F] TTL attribute');
   const tHistory = new DynamoDBChatMessageHistory({ tableName: TABLE, clientConfig, ttl: { seconds: 3600 } });
   await tHistory.addMessages('ttl-chat', [new HumanMessage('hi')]);
-  const ttlItem = await doc.get({ TableName: TABLE, Key: { PK: 'ttl-chat', SK: 'SESSION' } });
+  const ttlItem = await doc.get({ TableName: TABLE, Key: { PK: 'ttl-chat', SK: 'HISTORY#SESSION' } });
   check('ttl ~now+3600', Math.abs(ttlItem.Item.ttl - (Math.floor(Date.now() / 1000) + 3600)) < 120);
   tHistory.destroy();
 
@@ -160,7 +160,7 @@ async function run() {
     doc.query({
       TableName: TABLE,
       KeyConditionExpression: 'PK = :p AND begins_with(SK, :m)',
-      ExpressionAttributeValues: { ':p': pk, ':m': 'MSG#' },
+      ExpressionAttributeValues: { ':p': pk, ':m': 'HISTORY#MSG#' },
     });
 
   const cHistory = new DynamoDBChatMessageHistory({ tableName: TABLE, clientConfig, compression: { enabled: true } });

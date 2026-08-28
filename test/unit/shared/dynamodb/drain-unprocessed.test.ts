@@ -32,4 +32,52 @@ describe('drainUnprocessedWrites', () => {
       drainUnprocessedWrites(client, 't', [put('a')], { rng: () => 0, maxRetries: 1 }),
     ).rejects.toBeInstanceOf(BatchWriteIncompleteError);
   });
+
+  it('reports the confirmed persisted count when a retry hard-fails after an earlier partial drain', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    // Round 1: 5 items in, 3 persist (a,b,c), 2 (d,e) come back unprocessed.
+    // Round 2 (retrying d,e): the call itself throws instead of resolving —
+    // e.g. withDynamoDBRetry exhausting its own budget under sustained
+    // throttling. The 3 from round 1 must not be lost from the accounting.
+    mock
+      .on(BatchWriteCommand)
+      .resolvesOnce({ UnprocessedItems: { t: [put('d'), put('e')] } })
+      .rejectsOnce(Object.assign(new Error('throttled'), { name: 'RetryExhaustedError' }));
+    const error = await drainUnprocessedWrites(
+      client,
+      't',
+      [put('a'), put('b'), put('c'), put('d'), put('e')],
+      { rng: () => 0 },
+    ).catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      name: 'BatchWriteIncompleteError',
+      succeededCount: 3,
+      unprocessed: [put('d'), put('e')],
+    });
+    expect((error as { cause?: Error }).cause?.message).toBe('throttled');
+  });
+
+  it('reports the confirmed persisted count when the signal aborts during backoff after a partial drain', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    // Round 1: 5 in, 3 persist (a,b,c), 2 (d,e) unprocessed — same partial
+    // drain as above, but this time the caller's signal aborts during the
+    // backoff wait before round 2 ever fires, instead of round 2 hard-failing.
+    mock.on(BatchWriteCommand).callsFake(() => {
+      controller.abort();
+      return { UnprocessedItems: { t: [put('d'), put('e')] } };
+    });
+    const error = await drainUnprocessedWrites(
+      client,
+      't',
+      [put('a'), put('b'), put('c'), put('d'), put('e')],
+      { rng: () => 0, signal: controller.signal },
+    ).catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      name: 'BatchWriteIncompleteError',
+      succeededCount: 3,
+      unprocessed: [put('d'), put('e')],
+    });
+    expect((error as { cause?: Error }).cause?.name).toBe('AbortError');
+  });
 });

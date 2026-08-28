@@ -37,8 +37,8 @@ describe('addMessages', () => {
     expect(items[0].Update?.UpdateExpression).toContain('ADD #count :n');
     expect(items[0].Update?.ExpressionAttributeValues?.[':n']).toBe(2);
     expect(items[0].Update?.ExpressionAttributeValues?.[':title']).toBe('a');
-    expect(items[1].Put?.Item?.SK).toBe('MSG#U0');
-    expect(items[2].Put?.Item?.SK).toBe('MSG#U1');
+    expect(items[1].Put?.Item?.SK).toBe('HISTORY#MSG#U0');
+    expect(items[2].Put?.Item?.SK).toBe('HISTORY#MSG#U1');
   });
 
   it('omits the title clause when there is no human message', async () => {

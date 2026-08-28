@@ -3,6 +3,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 
 import { putCheckpoint } from '../../../../src/checkpointer/actions/put';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -48,6 +49,18 @@ describe('putCheckpoint', () => {
     expect(items[0].Put?.Item?.SK).toBe('META##ckpt-1');
     expect(items[0].Put?.Item?.parentCheckpointId).toBe('parent-0');
     expect(items[1].Put?.Item?.SK).toBe('PAYLOAD##ckpt-1');
+  });
+
+  it('rejects a checkpoint.id containing the reserved separator', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      putCheckpoint(
+        contextWith(client),
+        { configurable: { thread_id: 't1' } },
+        { ...checkpoint, id: 'ckpt#1' },
+        metadata,
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
   });
 
   it('propagates a write failure', async () => {

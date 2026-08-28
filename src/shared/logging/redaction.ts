@@ -31,8 +31,15 @@ function isErrorShaped(value: object): boolean {
 
 /**
  * Recursively clone `value`, replacing any value at a secret-looking key with
- * `[REDACTED]`. Cycles become `[Circular]`. Error objects are passed through so
- * stack traces survive. Does not mutate the input.
+ * `[REDACTED]`. Cycles become `[Circular]`. An Error (or subclass) with no own
+ * enumerable properties — a bare `new Error()`, since `message`/`stack` are
+ * non-enumerable by spec — is passed through by reference unchanged, so its
+ * stack trace and identity survive. A subclass carrying its own enumerable
+ * data (this library's own error types all attach `code`/`context`/payload
+ * fields this way) is rebuilt instead: `name`/`message`/`stack` are preserved
+ * verbatim and every other own property is redacted/recursed exactly like a
+ * plain object — otherwise a secret buried in a caught error's own fields
+ * would ride straight through unredacted. Does not mutate the input.
  */
 export function redactSecrets(
   value: Redactable,
@@ -45,10 +52,15 @@ export function redactSecrets(
     seen.add(current);
     try {
       if (Array.isArray(current)) return current.map(walk);
-      if (isErrorShaped(current)) return current;
+      if (isErrorShaped(current) && Object.keys(current).length === 0) return current;
       const out: { [key: string]: Redactable } = {};
       for (const [key, val] of Object.entries(current)) {
         out[key] = isSecretKey(key, patterns) ? REDACTED : walk(val);
+      }
+      if (isErrorShaped(current)) {
+        out.name = current.name;
+        out.message = current.message;
+        out.stack = current.stack;
       }
       return out;
     } finally {

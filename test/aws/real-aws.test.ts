@@ -126,13 +126,13 @@ describe('DynamoDB adapters against real AWS', () => {
         {
           Update: {
             TableName: tableName,
-            Key: { PK: 'idem', SK: 'SESSION' },
+            Key: { PK: 'idem', SK: 'HISTORY#SESSION' },
             UpdateExpression: 'ADD #c :one',
             ExpressionAttributeNames: { '#c': 'messageCount' },
             ExpressionAttributeValues: { ':one': 1 },
           },
         },
-        { Put: { TableName: tableName, Item: { PK: 'idem', SK: 'MSG#1' } } },
+        { Put: { TableName: tableName, Item: { PK: 'idem', SK: 'HISTORY#MSG#1' } } },
       ],
       ClientRequestToken: randomUUID(),
     };
@@ -140,7 +140,7 @@ describe('DynamoDB adapters against real AWS', () => {
     await doc.transactWrite(transaction);
     const meta = await doc.get({
       TableName: tableName,
-      Key: { PK: 'idem', SK: 'SESSION' },
+      Key: { PK: 'idem', SK: 'HISTORY#SESSION' },
       ConsistentRead: true,
     });
     expect(meta.Item?.messageCount).toBe(1);
@@ -169,7 +169,7 @@ describe('DynamoDB adapters against real AWS', () => {
     const result = await doc.query({
       TableName: tableName,
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :m)',
-      ExpressionAttributeValues: { ':pk': 'ttlsess', ':m': 'MSG#' },
+      ExpressionAttributeValues: { ':pk': 'ttlsess', ':m': 'HISTORY#MSG#' },
     });
     const ttls = new Set((result.Items ?? []).map((it) => it.ttl));
     expect(result.Items).toHaveLength(2);
@@ -344,7 +344,7 @@ describe('DynamoDB adapters against real AWS', () => {
     const doc = DynamoDBDocument.from(admin);
     await doc.update({
       TableName: tableName,
-      Key: { PK: 'drift-session', SK: 'SESSION' },
+      Key: { PK: 'drift-session', SK: 'HISTORY#SESSION' },
       UpdateExpression: 'SET #c = :bad',
       ExpressionAttributeNames: { '#c': 'messageCount' },
       ExpressionAttributeValues: { ':bad': 999 },
@@ -355,7 +355,7 @@ describe('DynamoDB adapters against real AWS', () => {
     expect(repaired).toBe(2);
     const raw = await doc.get({
       TableName: tableName,
-      Key: { PK: 'drift-session', SK: 'SESSION' },
+      Key: { PK: 'drift-session', SK: 'HISTORY#SESSION' },
       ConsistentRead: true,
     });
     expect(raw.Item?.messageCount).toBe(2);

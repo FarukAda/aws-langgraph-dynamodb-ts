@@ -16,7 +16,11 @@ export interface DrainOptions {
 /**
  * Submit `requests` via BatchWriteItem and re-submit UnprocessedItems with
  * full-jitter backoff until the batch drains. Throws
- * {@link BatchWriteIncompleteError} if it cannot drain within the retry budget.
+ * {@link BatchWriteIncompleteError} if it cannot drain within the retry budget,
+ * or if a round's write call or backoff wait throws outright (SDK failure, or
+ * the caller's signal aborting) — in every case `succeededCount` reflects
+ * every earlier round's confirmed persists, and the triggering error is
+ * attached as `cause`.
  */
 export async function drainUnprocessedWrites(
   client: DynamoDBDocument,
@@ -31,18 +35,26 @@ export async function drainUnprocessedWrites(
   let delay = INITIAL_BACKOFF_DELAY_MS;
   let retries = 0;
   while (pending.length > 0) {
-    const result = await withDynamoDBRetry(
-      () => client.batchWrite({ RequestItems: { [tableName]: pending } }),
-      { signal: options.signal },
-    );
-    const leftover = (result.UnprocessedItems?.[tableName] as WriteRequest[] | undefined) ?? [];
-    if (leftover.length === 0) return;
-    retries += 1;
-    if (retries > maxRetries) {
-      throw new BatchWriteIncompleteError(initialCount - leftover.length, leftover, maxRetries);
+    try {
+      const result = await withDynamoDBRetry(
+        () => client.batchWrite({ RequestItems: { [tableName]: pending } }),
+        { signal: options.signal },
+      );
+      const leftover = (result.UnprocessedItems?.[tableName] as WriteRequest[] | undefined) ?? [];
+      if (leftover.length === 0) return;
+      pending = leftover;
+      retries += 1;
+      if (retries > maxRetries) break;
+      await sleep(fullJitter(delay, options.rng), options.signal);
+      delay = nextBackoffDelay(delay);
+    } catch (error) {
+      throw new BatchWriteIncompleteError(
+        initialCount - pending.length,
+        pending,
+        retries,
+        error as Error,
+      );
     }
-    await sleep(fullJitter(delay, options.rng), options.signal);
-    delay = nextBackoffDelay(delay);
-    pending = leftover;
   }
+  throw new BatchWriteIncompleteError(initialCount - pending.length, pending, maxRetries);
 }

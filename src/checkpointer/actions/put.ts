@@ -8,6 +8,7 @@ import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
 import { buildCheckpointItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
+import { validateCheckpointId } from '../internal/validation';
 
 /**
  * Persist a checkpoint and its metadata as a transactional pair of META and
@@ -21,6 +22,7 @@ export async function putCheckpoint(
   metadata: CheckpointMetadata,
 ): Promise<RunnableConfig> {
   const { threadId, checkpointNs, checkpointId: parentCheckpointId } = readConfigurable(config);
+  validateCheckpointId(checkpoint.id);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
   const { meta, payload } = await buildCheckpointItems(
     context,

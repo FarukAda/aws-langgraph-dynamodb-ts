@@ -53,17 +53,22 @@ export class AbortError extends DynamoDbLangGraphError {
 /**
  * A BatchWriteItem sequence could not drain its UnprocessedItems. Items NOT
  * listed in {@link unprocessed} were acked by DynamoDB and persist — there is
- * no rollback (drive reconciliation from `unprocessed`).
+ * no rollback (drive reconciliation from `unprocessed`). `cause`, when given,
+ * is the underlying failure that interrupted the drain (e.g. a thrown,
+ * non-UnprocessedItems error from a retry round) rather than a clean exhaustion
+ * of the UnprocessedItems retry budget.
  */
 export class BatchWriteIncompleteError extends DynamoDbLangGraphError {
   readonly succeededCount: number;
   readonly unprocessed: WriteRequest[];
 
-  constructor(succeededCount: number, unprocessed: WriteRequest[], retries: number) {
+  constructor(succeededCount: number, unprocessed: WriteRequest[], retries: number, cause?: Error) {
     super(
       `batchWrite did not drain after ${retries} UnprocessedItems retries: ` +
         `${succeededCount} item(s) persisted, ${unprocessed.length} still un-acked.`,
       ErrorCode.BATCH_WRITE_INCOMPLETE,
+      {},
+      cause,
     );
     this.name = 'BatchWriteIncompleteError';
     this.succeededCount = succeededCount;
