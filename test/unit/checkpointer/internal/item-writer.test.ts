@@ -4,6 +4,7 @@ import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 import {
   buildCheckpointItems,
   buildWriteItems,
+  resolveWriteIndex,
 } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
@@ -172,5 +173,16 @@ describe('buildWriteItems', () => {
       'nonce-2',
     );
     expect(s3Key(second[0])).not.toBe(s3Key(first[0]));
+  });
+});
+
+describe('resolveWriteIndex', () => {
+  it('falls through to positional for a channel that collides with Object.prototype', () => {
+    expect(resolveWriteIndex('constructor', 3)).toBe(3);
+    expect(resolveWriteIndex('toString', 5)).toBe(5);
+  });
+
+  it('resolves a known special channel to its WRITES_IDX_MAP slot', () => {
+    expect(resolveWriteIndex('__error__', 9)).toBe(-1);
   });
 });

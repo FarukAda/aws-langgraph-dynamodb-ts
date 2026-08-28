@@ -1,7 +1,10 @@
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
-import { BatchWriteAllIncompleteError, CompensationFailedError } from '../../shared/errors/errors';
+import {
+  type BatchWriteAllIncompleteError,
+  CompensationFailedError,
+} from '../../shared/errors/errors';
 import { toError } from '../../shared/errors/wrap-error';
 import type { ChatMessageItem } from '../types';
 import { writeMessageChunk } from './message-transaction';

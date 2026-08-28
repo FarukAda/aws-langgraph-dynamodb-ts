@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
-import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
@@ -10,7 +9,7 @@ import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { ValidationError } from '../../shared/errors/errors';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
-import { buildWriteItems } from '../internal/item-writer';
+import { buildWriteItems, resolveWriteIndex } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
 import { validateTaskId } from '../internal/validation';
@@ -47,7 +46,7 @@ async function cleanUpItems(
 function dedupeWritesByIndex(writes: PendingWrite[]): PendingWrite[] {
   const byIndex = new Map<number, PendingWrite>();
   writes.forEach((write, positional) => {
-    const index = WRITES_IDX_MAP[write[0]] ?? positional;
+    const index = resolveWriteIndex(write[0], positional);
     byIndex.set(index, write);
   });
   return [...byIndex.values()];

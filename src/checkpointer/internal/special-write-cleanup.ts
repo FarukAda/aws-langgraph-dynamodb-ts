@@ -3,7 +3,7 @@ import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import {
+import type {
   BatchWriteAllIncompleteError,
   BatchWriteIncompleteError,
 } from '../../shared/errors/errors';

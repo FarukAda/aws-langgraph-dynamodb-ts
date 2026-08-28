@@ -16,6 +16,17 @@ function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T 
   return item;
 }
 
+/**
+ * Resolve a write's DynamoDB sort-key index: WRITES_IDX_MAP's slot for a
+ * known special channel, else its position. `Object.hasOwn` guards against
+ * WRITES_IDX_MAP's own `Object.prototype` chain — a channel literally named
+ * `constructor`/`toString`/etc. must fall through to `positional`, not
+ * resolve to an inherited function reference.
+ */
+export function resolveWriteIndex(channel: string, positional: number): number {
+  return Object.hasOwn(WRITES_IDX_MAP, channel) ? WRITES_IDX_MAP[channel] : positional;
+}
+
 /** Encode a checkpoint + metadata into its META and PAYLOAD items. */
 export async function buildCheckpointItems(
   context: CheckpointerContext,
@@ -84,7 +95,7 @@ export async function buildWriteItems(
      * one — stable across retries of an identical array, which is all
      * first-write-wins requires (see dedupeWritesByIndex).
      */
-    const index = WRITES_IDX_MAP[channel] ?? positional;
+    const index = resolveWriteIndex(channel, positional);
     const baseKeyParts = [threadId, checkpointNs, checkpointId, taskId, `write-${index}`];
     const descriptor = await encodePayload(value, deps, {
       keyParts: [...baseKeyParts, nonce],

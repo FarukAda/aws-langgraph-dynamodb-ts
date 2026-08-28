@@ -41,6 +41,7 @@ describe('DynamoDBFactory', () => {
 
   it('createAll reuses an injected base client instead of building a new one', () => {
     const { client } = createStrictDocumentMock();
+    const destroySpy = jest.spyOn(client, 'destroy');
     const factory = new DynamoDBFactory({ client });
     const all = factory.createAll({
       saver: { tableName: 'c' },
@@ -48,9 +49,10 @@ describe('DynamoDBFactory', () => {
       history: { tableName: 'h' },
     });
     expect(all.saver).toBeInstanceOf(DynamoDBSaver);
-    // No owned ddbClient was created, so destroy() must not throw even though
-    // there's nothing of its own to tear down.
-    expect(() => all.destroy()).not.toThrow();
+    all.destroy();
+    // The factory doesn't own an injected client, so tearing every adapter
+    // down must never destroy the caller's own client out from under them.
+    expect(destroySpy).not.toHaveBeenCalled();
   });
 
   it('createAll builds a default client when no factory base options are given', () => {
