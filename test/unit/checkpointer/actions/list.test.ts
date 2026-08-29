@@ -9,7 +9,10 @@ import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
 import { buildCheckpointItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import type { CheckpointMetaItem, CheckpointPayloadItem } from '../../../../src/checkpointer/types';
-import { MAX_TOTAL_ITEMS_IN_MEMORY } from '../../../../src/shared/constants';
+import {
+  LIST_SCAN_WARN_THRESHOLD,
+  MAX_TOTAL_ITEMS_IN_MEMORY,
+} from '../../../../src/shared/constants';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -179,5 +182,28 @@ describe('listCheckpoints', () => {
       }),
     );
     expect(tuples.map((t) => t.config.configurable?.checkpoint_id)).toEqual(['c1']);
+  });
+});
+
+describe('list scan visibility (F7)', () => {
+  it('warns once when a single list pulls a very large number of raw rows', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const rows = Array.from({ length: LIST_SCAN_WARN_THRESHOLD + 5 }, (_, i) => ({
+      PK: 'CHKPT#t',
+      SK: `META##c${i}`,
+    }));
+    mock.on(QueryCommand).resolves({ Items: rows });
+    const warn = jest.fn();
+    const ctx = { ...context(client), logger: { ...SILENT_LOGGER, warn } };
+
+    for await (const _tuple of listCheckpoints(ctx, { configurable: { thread_id: 't' } })) {
+      // drained
+    }
+
+    const scanWarnings = warn.mock.calls.filter(([message]) =>
+      String(message).includes('large number of rows'),
+    );
+    expect(scanWarnings).toHaveLength(1);
+    expect(scanWarnings[0][1]).toMatchObject({ scanned: LIST_SCAN_WARN_THRESHOLD });
   });
 });

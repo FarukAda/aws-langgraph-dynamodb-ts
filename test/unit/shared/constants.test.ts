@@ -23,4 +23,8 @@ describe('shared constants', () => {
     expect(C.DEFAULT_COMPRESSION_LEVEL).toBe(6);
     expect(C.DEFAULT_MAX_DECOMPRESSED_BYTES).toBe(50 * 1024 * 1024);
   });
+
+  it('pins the list() scan warning threshold to the shared in-memory item cap', () => {
+    expect(C.LIST_SCAN_WARN_THRESHOLD).toBe(10000);
+  });
 });

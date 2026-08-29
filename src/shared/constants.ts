@@ -64,3 +64,13 @@ export const MESSAGE_APPEND_RETRY_MAX_ATTEMPTS = 18;
 
 /** Default cap on candidates the in-DB semantic ranker will score. */
 export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;
+
+/**
+ * Raw rows a single `listCheckpoints` call may pull before it warns. The read
+ * itself is deliberately unbounded — capping it counted raw rows rather than
+ * filter-matched ones, which turned a caller asking for a handful of rare
+ * matches over a large thread into a hard error instead of the true answer.
+ * The warning restores the operational signal without restoring the wrong
+ * error.
+ */
+export const LIST_SCAN_WARN_THRESHOLD = MAX_TOTAL_ITEMS_IN_MEMORY;
