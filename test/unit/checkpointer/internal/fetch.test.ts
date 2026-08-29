@@ -30,7 +30,7 @@ describe('fetchTargetMeta', () => {
     const meta = await fetchTargetMeta(context(client), 't', '', 'c1');
     expect(meta?.checkpointId).toBe('c1');
     expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
-      PK: 't',
+      PK: 'CHKPT#t',
       SK: 'META##c1',
     });
     expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);

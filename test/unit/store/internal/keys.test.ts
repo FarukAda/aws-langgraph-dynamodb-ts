@@ -8,7 +8,7 @@ import {
 
 describe('store keys', () => {
   it('uses namespace[0] as the partition key', () => {
-    expect(partitionKey(['users', 'u1', 'docs'])).toBe('users');
+    expect(partitionKey(['users', 'u1', 'docs'])).toBe('STORE#users');
   });
 
   it('builds the sort key from the rest of the namespace + key', () => {

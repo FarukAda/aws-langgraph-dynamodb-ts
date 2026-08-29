@@ -67,7 +67,7 @@ describe('listNamespaces', () => {
       ['users', 'u2'],
     ]);
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.ExpressionAttributeValues).toEqual({
-      ':pk': 'users',
+      ':pk': 'STORE#users',
     });
   });
 

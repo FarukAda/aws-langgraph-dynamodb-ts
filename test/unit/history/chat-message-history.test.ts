@@ -91,7 +91,7 @@ describe('DynamoDBChatMessageHistory', () => {
     await adapter.addMessage(new HumanMessage('hi'));
     const item =
       mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems![1].Put!.Item!;
-    expect(item.PK).toBe('sess-9');
+    expect(item.PK).toBe('HIST#sess-9');
   });
 
   it('does not destroy an injected client but destroys an owned one', () => {

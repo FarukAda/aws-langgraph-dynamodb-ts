@@ -60,7 +60,7 @@ describe('buildCheckpointItems', () => {
       metadata,
       'parent-0',
     );
-    expect(meta.PK).toBe('thread-1');
+    expect(meta.PK).toBe('CHKPT#thread-1');
     expect(meta.SK).toBe('META##ckpt-1');
     expect(meta.checkpointId).toBe('ckpt-1');
     expect(meta.parentCheckpointId).toBe('parent-0');

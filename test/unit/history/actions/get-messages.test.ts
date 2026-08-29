@@ -45,7 +45,7 @@ describe('getMessages', () => {
     expect(messages[1].getType()).toBe('ai');
     const input = mock.commandCalls(QueryCommand)[0].args[0].input;
     expect(input.ScanIndexForward).toBe(true);
-    expect(input.ExpressionAttributeValues).toEqual({ ':pk': 's1', ':skp': 'HISTORY#MSG#' });
+    expect(input.ExpressionAttributeValues).toEqual({ ':pk': 'HIST#s1', ':skp': 'HISTORY#MSG#' });
   });
 
   it('filters out TTL-expired message items on read', async () => {

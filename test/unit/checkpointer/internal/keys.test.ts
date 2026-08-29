@@ -8,8 +8,8 @@ import {
 } from '../../../../src/checkpointer/internal/keys';
 
 describe('checkpointer keys', () => {
-  it('uses the thread id as the partition key', () => {
-    expect(partitionKey('thread-1')).toBe('thread-1');
+  it('tags the partition key with the checkpointer adapter prefix (C1, C2)', () => {
+    expect(partitionKey('thread-1')).toBe('CHKPT#thread-1');
   });
 
   it('builds namespaced META / PAYLOAD sort keys ordered by checkpoint id', () => {

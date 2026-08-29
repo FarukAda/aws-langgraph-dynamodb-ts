@@ -56,7 +56,7 @@ describe('getItem', () => {
     expect(item?.key).toBe('profile');
     expect(item?.namespace).toEqual(['users', 'u1']);
     expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
-      PK: 'users',
+      PK: 'STORE#users',
       SK: 'u1#profile',
     });
     expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);

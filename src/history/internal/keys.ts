@@ -17,9 +17,16 @@ export const SESSION_SORT_KEY = `${ADAPTER_PREFIX}SESSION`;
 
 const MESSAGE_PREFIX = `${ADAPTER_PREFIX}MSG#`;
 
-/** Partition key for a chat session: the session id itself. */
+/**
+ * Adapter tag prefixed to every chat-history partition key — see the
+ * equivalent in checkpointer/internal/keys.ts for why the three adapters'
+ * partitions must not overlap on a shared table.
+ */
+const ADAPTER_PARTITION_PREFIX = `HIST${SORT_KEY_SEPARATOR}`;
+
+/** Partition key for a chat session: the adapter tag plus the session id. */
 export function sessionPartition(sessionId: string): string {
-  return sessionId;
+  return `${ADAPTER_PARTITION_PREFIX}${sessionId}`;
 }
 
 /** Sort key for a single message item, ordered by its monotonic ULID. */

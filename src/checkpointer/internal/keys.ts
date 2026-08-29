@@ -18,9 +18,20 @@ enum CheckpointItemKind {
   WRITE = 'WRITE',
 }
 
-/** Partition key for a thread: the thread id itself. */
+/**
+ * Adapter tag prefixed to every checkpointer partition key. Without it a
+ * `thread_id` reused as a `sessionId` or a store namespace root — an ordinary
+ * design choice — put all three adapters' rows in one partition on a table
+ * shared via `DynamoDBFactory.createAll()`, where a partition-wide delete
+ * reached another adapter's data and composed sort keys could collide
+ * byte-for-byte. The three tags differ in their first character, so the key
+ * spaces are disjoint by construction.
+ */
+const ADAPTER_PARTITION_PREFIX = `CHKPT${SORT_KEY_SEPARATOR}`;
+
+/** Partition key for a thread: the adapter tag plus the thread id. */
 export function partitionKey(threadId: string): string {
-  return threadId;
+  return `${ADAPTER_PARTITION_PREFIX}${threadId}`;
 }
 
 /** Sort key for a checkpoint's lightweight metadata item. */

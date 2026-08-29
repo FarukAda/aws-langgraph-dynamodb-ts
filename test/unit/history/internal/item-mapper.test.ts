@@ -20,7 +20,7 @@ const stored: StoredMessage = { type: 'human', data: { content: 'hi' } } as Stor
 describe('history item-mapper', () => {
   it('builds a message item with PK/SK and round-trips the message', async () => {
     const item = await buildMessageItem(context(), 's1', '01HZX', stored);
-    expect(item.PK).toBe('s1');
+    expect(item.PK).toBe('HIST#s1');
     expect(item.SK).toBe('HISTORY#MSG#01HZX');
     expect(item.sessionId).toBe('s1');
     expect(item.ttl).toBeUndefined();
