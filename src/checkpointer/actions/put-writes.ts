@@ -3,6 +3,7 @@ import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
+import { isConditionalCheckFailed } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { ValidationError } from '../../shared/errors/errors';
 import { createUlidFactory } from '../../shared/ulid';
@@ -12,7 +13,7 @@ import { buildWriteItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
 import { validateTaskId } from '../internal/validation';
-import { isConditionalCheckFailed, reportGuardRejection } from '../internal/write-guard';
+import { reportGuardRejection } from '../internal/write-guard';
 import type { CheckpointWriteItem } from '../types';
 
 /**
