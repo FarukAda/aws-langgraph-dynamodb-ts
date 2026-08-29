@@ -38,7 +38,10 @@ async function put(
  * put, so that when a re-read finds the row already holding *this call's
  * own* `rev`, the swap returns whatever `attempted` held — never this
  * record's own just-committed value, which would strand the live row
- * pointing at a deleted object.
+ * pointing at a deleted object. That comparison is guarded on `rev` being
+ * set: `rev` is optional on the record type, and an unnonced record against a
+ * pre-0.9.0 revision-less row would otherwise match `undefined === undefined`
+ * and claim a race it never entered.
  *
  * On exhaustion the write proceeds unconditionally and warns. That is
  * deliberate: the fallback is precisely the pre-0.9.0 behaviour — one possible
@@ -60,7 +63,7 @@ export async function putWithRevisionSwap(
     } catch (error) {
       if (!isConditionalCheckFailed(error as { name?: string })) throw error;
       observed = await readExisting(context, record.PK, record.SK);
-      if (observed.revision === record.rev) return attempted;
+      if (record.rev !== undefined && observed.revision === record.rev) return attempted;
       record.createdAt = observed.createdAt ?? record.createdAt;
     }
   }

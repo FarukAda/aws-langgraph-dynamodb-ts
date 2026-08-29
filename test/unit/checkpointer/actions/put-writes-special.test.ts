@@ -157,7 +157,6 @@ describe('putWrites special (negative-index) writes', () => {
 
   it('dedupes duplicate writes to the same special channel by sort key before writing', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
     await putWrites(
       context(client),

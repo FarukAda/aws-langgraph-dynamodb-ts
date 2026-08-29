@@ -169,4 +169,29 @@ describe('putWithRevisionSwap', () => {
       putWithRevisionSwap(context as never, record(), { exists: false }),
     ).rejects.toThrow('boom');
   });
+
+  it('does not mistake a revision-less row for its own write when the record carries no nonce', async () => {
+    // `rev` is optional on StoreItemRecord, so `observed.revision === record.rev`
+    // was a false-positive `undefined === undefined` against a pre-0.9.0 row:
+    // the swap would report having won a race it never entered and delete the
+    // descriptor it had pinned rather than retrying. put.ts always stamps a
+    // nonce today, but the type permits a record that does not.
+    const { context, putCount } = harness({
+      failures: 1,
+      reReads: [
+        { exists: true, revision: undefined, value: descriptor('theirs'), createdAt: 'T0' },
+      ],
+    });
+    const unnonced = { ...record(), rev: undefined };
+
+    const superseded = await putWithRevisionSwap(context as never, unnonced, {
+      exists: true,
+      revision: 'r0',
+      value: descriptor('old'),
+      createdAt: 'T0',
+    });
+
+    expect(putCount()).toBe(2);
+    expect(superseded.value).toEqual(descriptor('theirs'));
+  });
 });
