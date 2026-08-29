@@ -304,3 +304,30 @@ describe('credential-value redaction (F2)', () => {
     expect(redacted.message).toBe('failed {"password":[REDACTED]}');
   });
 });
+
+describe('scalar values end at a real delimiter (F2 follow-up)', () => {
+  it('redacts a free-text value whole, treating a space as no delimiter at all', () => {
+    // A space is not a JSON delimiter. Accepting one let the scalar alternative
+    // claim `5` and leave ` items` behind, which reads as a partial redaction.
+    expect(redactSecrets('api_key: 5 items')).toBe('api_key: [REDACTED]');
+  });
+
+  it('still stops at a delimiter so sibling JSON fields survive', () => {
+    expect(redactSecrets('{"apiKey":123,"region":"us-east-1"}')).toBe(
+      '{"apiKey":[REDACTED],"region":"us-east-1"}',
+    );
+  });
+
+  it('tolerates whitespace before the closing delimiter in pretty-printed JSON', () => {
+    expect(redactSecrets('{"apiKey": true }')).toBe('{"apiKey": [REDACTED] }');
+    expect(redactSecrets('{"apiKey": 1 , "keep": 2}')).toBe('{"apiKey": [REDACTED] , "keep": 2}');
+  });
+
+  it('redacts a scalar that ends the input', () => {
+    expect(redactSecrets('api_key: 5')).toBe('api_key: [REDACTED]');
+  });
+
+  it('does not let a partial scalar leak its tail', () => {
+    expect(redactSecrets('token=123abc')).toBe('token=[REDACTED]');
+  });
+});

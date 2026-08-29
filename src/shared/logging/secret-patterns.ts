@@ -35,11 +35,15 @@ export const DEFAULT_SECRET_KEY_PATTERNS: readonly string[] = [
  *    redacted whole. Ending the span at the escaped quote stopped the
  *    redaction short and printed the rest of the secret verbatim.
  * 2. an unquoted JSON scalar — number, `true`, `false`, `null` — required to
- *    end at a delimiter. Without it, `{"apiKey":123,"region":"us-east-1"}`
- *    fell through to the fallback below, which then destroyed every sibling
- *    field after the secret. The delimiter lookahead is what stops this
- *    alternative truncating a value it does not fully describe, such as
- *    `token=123abc`, and leaking the tail it left behind.
+ *    end at a real delimiter — `,`, `}`, `]` or end of input, optionally
+ *    preceded by whitespace. Without this alternative,
+ *    `{"apiKey":123,"region":"us-east-1"}` fell through to the fallback below,
+ *    which then destroyed every sibling field after the secret. The lookahead
+ *    is what stops the alternative truncating a value it does not fully
+ *    describe, such as `token=123abc`, and leaking the tail it left behind.
+ *    Whitespace alone does not end a scalar: treating a space as a delimiter
+ *    made `api_key: 5 items` redact to `api_key: [REDACTED] items`, which
+ *    reads as a partial redaction of a value the pattern never described.
  * 3. the rest of the line, so a multi-word secret is redacted whole instead of
  *    up to its first space. Trying the two precise shapes first is what keeps
  *    this fallback from over-redacting sibling JSON fields.
@@ -48,7 +52,7 @@ export const DEFAULT_SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
   /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi,
   /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
-  /((?:aws_)?(?:secret_access_key|secretaccesskey|password|passwd|api_?key|token)["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=[\s,}\]]|$)|[^\r\n]+)/gi,
+  /((?:aws_)?(?:secret_access_key|secretaccesskey|password|passwd|api_?key|token)["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=\s*[,}\]]|\s*$)|[^\r\n]+)/gi,
 ];
 
 /** True when `key` matches any secret-key pattern. */
