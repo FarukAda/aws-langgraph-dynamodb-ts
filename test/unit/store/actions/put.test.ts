@@ -206,7 +206,7 @@ describe('putItem', () => {
     mock.on(PutCommand).resolves({});
     await putItem(context(client), op({}));
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
-    expect(mock.commandCalls(GetCommand)[0].args[0].input.ProjectionExpression).toBe('#c, #v');
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.ProjectionExpression).toBe('#c, #v, #r');
   });
 
   it('offloads each successful put to a distinct S3 key (nonced, not deterministic)', async () => {

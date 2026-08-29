@@ -38,4 +38,10 @@ export interface StoreItemRecord {
   updatedAt: string;
   embedding?: number[];
   ttl?: number;
+  /**
+   * Revision token, rewritten on every put. Pins the compare-and-swap that
+   * keeps two concurrent overwrites from both deleting the same superseded S3
+   * object. Optional: rows written before 0.9.0 carry none.
+   */
+  rev?: string;
 }

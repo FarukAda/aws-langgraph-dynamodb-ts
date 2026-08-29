@@ -27,6 +27,7 @@ export interface BuildItemOptions {
   updatedAt: string;
   embedding?: number[];
   ttlTimestamp?: number;
+  /** Per-call nonce: uniquifies the S3 key and becomes the row's revision token. */
   nonce?: string;
 }
 
@@ -53,6 +54,7 @@ export async function buildStoreItem(
   };
   if (options.embedding) record.embedding = options.embedding;
   if (options.ttlTimestamp !== undefined) record.ttl = options.ttlTimestamp;
+  if (options.nonce !== undefined) record.rev = options.nonce;
   return record;
 }
 
