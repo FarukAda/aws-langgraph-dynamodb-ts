@@ -71,6 +71,19 @@ export function selectOrphans(backendRefs: VectorRef[], live: ReconcileTarget[])
   return backendRefs.filter((ref) => !liveKeys.has(refIdentity(ref.namespace, ref.key)));
 }
 
+/**
+ * True when a candidate's canonical item is confirmed absent right now. The
+ * live-set snapshot and this read are not one point in time, so an item
+ * written between them looks orphaned even though it is live — and deleting
+ * its vector would silently drop a just-written item out of semantic search.
+ */
+async function confirmedGone(context: StoreContext, ref: VectorRef): Promise<boolean> {
+  return rowIsAbsent(context, {
+    PK: partitionKey(ref.namespace),
+    SK: sortKey(ref.namespace, ref.key),
+  });
+}
+
 /** Delete backend vectors with no canonical item; returns the prune count. */
 export async function pruneOrphans(
   context: StoreContext,
@@ -83,20 +96,18 @@ export async function pruneOrphans(
     return 0;
   }
   const candidates = selectOrphans(await backend.listKeys(prefix), live);
+  /**
+   * Every item the snapshot actually saw, embedded or not. A candidate in here
+   * is prunable on the evidence already gathered — its item exists but yields
+   * no embedding (its indexable text became empty), so its vector really is
+   * stale. Only a candidate the snapshot never saw at all is ambiguous.
+   */
+  const observed = new Set(live.map((target) => refIdentity(target.namespace, target.key)));
   let pruned = 0;
   for (const ref of candidates) {
-    /**
-     * The live-set snapshot and this prune read are not one point in time, so
-     * an item written between them looks orphaned even though it is live —
-     * and deleting its vector would silently drop a just-written item out of
-     * semantic search. Confirm each candidate is genuinely absent with a
-     * strongly-consistent read before removing anything.
-     */
     if (
-      !(await rowIsAbsent(context, {
-        PK: partitionKey(ref.namespace),
-        SK: sortKey(ref.namespace, ref.key),
-      }))
+      !observed.has(refIdentity(ref.namespace, ref.key)) &&
+      !(await confirmedGone(context, ref))
     ) {
       context.logger.info('reconcileVectorIndex: kept a vector whose item reappeared', {
         namespace: ref.namespace,

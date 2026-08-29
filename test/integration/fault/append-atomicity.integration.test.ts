@@ -76,12 +76,22 @@ describe('addMessages caller-observed atomicity under partial transaction failur
         if (commandName !== 'TransactWriteItemsCommand') return next(args);
         const input = (
           args as {
-            input: { TransactItems?: { Update?: { UpdateExpression?: string } }[] };
+            input: {
+              TransactItems?: { Update?: { UpdateExpression?: string }; Delete?: object }[];
+            };
           }
         ).input;
         const items = input.TransactItems ?? [];
+        /**
+         * The compensating transaction is either the conditional delete of a
+         * session this call created (C4) or the count decrement it falls back
+         * to. Both carry a ClientRequestToken and both must survive a lost
+         * response, so match either shape.
+         */
         const isRevert =
-          items.length === 1 && items[0]?.Update?.UpdateExpression === 'ADD #count :neg';
+          items.length === 1 &&
+          (items[0]?.Update?.UpdateExpression === 'ADD #count :neg' ||
+            items[0]?.Delete !== undefined);
         if (isRevert) {
           revertAttempts += 1;
           if (revertAttempts === 1) {
@@ -121,8 +131,10 @@ describe('addMessages caller-observed atomicity under partial transaction failur
     expect(stored).toHaveLength(0);
     const sessions = await reader.listSessions();
     const meta = sessions.find((session) => session.sessionId === sessionId);
-    // Pre-fix (a bare, non-idempotent UpdateItem retried on the same lost-response
-    // path) this could go negative from double-applying the -99 decrement.
+    // Pre-fix (a bare, non-idempotent UpdateItem retried on the same
+    // lost-response path) this could go negative from double-applying the -99
+    // decrement. Since C4 the row this call created is removed outright, so
+    // "no session, or a session at zero" are both correct outcomes here.
     expect(meta?.messageCount ?? 0).toBe(0);
   });
 
