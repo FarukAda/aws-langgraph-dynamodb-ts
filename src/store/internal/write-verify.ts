@@ -11,7 +11,8 @@ export function isRetryExhausted(error: Error): boolean {
  * True when the row is confirmed absent — used to resolve an ambiguous
  * retry-exhausted *delete*, where the delete may well have landed server-side
  * and only its acknowledgement was lost. A failure reading this is not treated
- * as confirmation (fail safe), matching {@link writeLandedAt}.
+ * as confirmation, which is fail-safe here: the caller only rethrows, and
+ * nothing is deleted on the strength of a `false`.
  */
 export async function rowIsAbsent(
   context: StoreContext,
@@ -33,17 +34,30 @@ export async function rowIsAbsent(
   }
 }
 
+/** What a post-failure verification read could establish about a write. */
+export type WriteVerdict = 'landed' | 'not-landed' | 'unverified';
+
 /**
- * True when `record`'s row already holds the S3 key `expectedS3Key` — i.e. an
- * ambiguous retry-exhaustion write actually landed server-side and only its
- * acknowledgment was lost. A failure reading this (itself possible) is not
- * treated as confirmation — fail safe, matching the pre-fix behavior.
+ * Read `record`'s row back to establish what an ambiguous write actually did.
+ *
+ * - `'landed'`: the row holds `expectedS3Key`, so the write committed
+ *   server-side and only its acknowledgement was lost.
+ * - `'not-landed'`: the row was read and holds something else, or nothing, so
+ *   this call's own nonced upload is dead and safe to delete.
+ * - `'unverified'`: the read itself failed, so nothing is established.
+ *
+ * The third answer used to be folded into the second as a plain `false`, which
+ * made a partition that blocked both the put and this read delete the object a
+ * possibly-live row points at — permanently breaking every later read of that
+ * item. Only a *confirmed* non-commit may delete the new upload: leaking one
+ * object (reclaimed by `ensureS3LifecycleRule`) is recoverable, stranding a
+ * live row is not.
  */
-export async function writeLandedAt(
+export async function verifyWriteLanded(
   context: StoreContext,
   record: { PK: string; SK: string },
   expectedS3Key: string,
-): Promise<boolean> {
+): Promise<WriteVerdict> {
   try {
     const result = await withDynamoDBRetry(() =>
       context.client.get({
@@ -55,8 +69,10 @@ export async function writeLandedAt(
       }),
     );
     const value = result.Item?.value as PayloadDescriptor | undefined;
-    return value?.location === PayloadLocation.S3 && value.s3Key === expectedS3Key;
+    return value?.location === PayloadLocation.S3 && value.s3Key === expectedS3Key
+      ? 'landed'
+      : 'not-landed';
   } catch {
-    return false;
+    return 'unverified';
   }
 }

@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DeleteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
@@ -100,5 +100,59 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
       putItem(context(client, { vectorBackend: vectorBackend as never }), op({ value: null })),
     ).rejects.toThrow('bad');
     expect(vectorBackend.delete).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The put side of the same principle: writeLandedAt reported its own failed
+ * verification read as a definite "did not land", so a partition that blocked
+ * both the put and the read deleted record.value out from under a row that may
+ * well be live. Only a *confirmed* non-commit may delete the new upload.
+ */
+describe('persistRecord ambiguous-failure verification', () => {
+  it('does not delete the new S3 object when the verification read cannot answer', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    // readExisting succeeds (no previous row); the put exhausts its retries,
+    // and the read that would classify it fails too.
+    mock
+      .on(GetCommand)
+      .resolvesOnce({})
+      .rejects(Object.assign(new Error('read down'), { name: 'ValidationException' }));
+    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    const offloader = trackingOffloader();
+    await expect(
+      putItem(context(client, { offloader: offloader as never }), op({})),
+    ).rejects.toThrow(/timeout/);
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it('does not delete the new S3 object when the swap re-read fails after a rejected guard', async () => {
+    // A ConditionalCheckFailedException often means this call's own put landed
+    // and lost its response; readExisting throwing inside putWithRevisionSwap's
+    // catch then arrives here with nothing having refuted that commit.
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(GetCommand)
+      .resolvesOnce({})
+      .rejects(Object.assign(new Error('read down'), { name: 'ValidationException' }));
+    mock
+      .on(PutCommand)
+      .rejects(Object.assign(new Error('rejected'), { name: 'ConditionalCheckFailedException' }));
+    const offloader = trackingOffloader();
+    await expect(
+      putItem(context(client, { offloader: offloader as never }), op({})),
+    ).rejects.toThrow(/read down/);
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it('still deletes the new S3 object when the verification read confirms the write did not land', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    mock.on(PutCommand).rejects(Object.assign(new Error('bad'), { name: 'ValidationException' }));
+    const offloader = trackingOffloader();
+    await expect(
+      putItem(context(client, { offloader: offloader as never }), op({})),
+    ).rejects.toThrow('bad');
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
   });
 });

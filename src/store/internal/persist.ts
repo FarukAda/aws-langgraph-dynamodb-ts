@@ -6,7 +6,7 @@ import type { StoreItemRecord } from '../types';
 import { putWithRevisionSwap } from './overwrite-swap';
 import type { ExistingRecordMeta } from './read-existing';
 import type { StoreContext } from './setup';
-import { isRetryExhausted, writeLandedAt } from './write-verify';
+import { verifyWriteLanded, type WriteVerdict } from './write-verify';
 
 /** Best-effort delete of one descriptor's S3 object. */
 async function cleanUp(
@@ -28,9 +28,17 @@ async function cleanUp(
  * delete exactly the payload it superseded rather than a descriptor a racer may
  * already have replaced.
  *
- * On a definite failure this cleans up *this* record's own nonced object; on an
- * ambiguous retry-exhaustion it verifies via `writeLandedAt` first, and if the
- * write did land it cleans up the previous object like the success path.
+ * Every failure reaching the catch arrives after at least one put was issued —
+ * `putWithRevisionSwap` only re-reads from inside its own catch — so none of
+ * them proves a non-commit on its own: a put can commit server-side and lose
+ * its response, and a `ConditionalCheckFailedException` is as consistent with
+ * hitting the row this call just wrote as with a competitor's win. The row is
+ * therefore read back (`verifyWriteLanded`) before anything is deleted. Only a
+ * confirmed `'not-landed'` deletes this record's own nonced object; a confirmed
+ * `'landed'` cleans up the previous object like the success path and swallows
+ * the error, and an `'unverified'` read deletes nothing and rethrows — leaking
+ * one object at worst rather than stranding a live row pointing at a deleted
+ * one. An inline payload has no object to leak, so it needs no read.
  */
 export async function persistRecord(
   context: StoreContext,
@@ -47,14 +55,12 @@ export async function persistRecord(
       );
     }
   } catch (error) {
-    const landed =
-      isRetryExhausted(error as Error) &&
-      record.value.location === PayloadLocation.S3 &&
-      (await writeLandedAt(context, record, record.value.s3Key));
-    if (!landed) {
-      await cleanUp(context, record.value, 'store.put');
-      throw error;
-    }
+    const verdict: WriteVerdict =
+      record.value.location === PayloadLocation.S3
+        ? await verifyWriteLanded(context, record, record.value.s3Key)
+        : 'not-landed';
+    if (verdict === 'not-landed') await cleanUp(context, record.value, 'store.put');
+    if (verdict !== 'landed') throw error;
   }
   await cleanUp(context, superseded.value, 'store.put.overwrite');
 }
