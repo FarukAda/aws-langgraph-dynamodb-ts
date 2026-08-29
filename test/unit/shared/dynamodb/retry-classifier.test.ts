@@ -51,6 +51,16 @@ describe('isRetryableError', () => {
     expect(isRetryableError(err, DEFAULT_RETRYABLE_ERRORS)).toBe(false);
   });
 
+  it('treats a cancellation carrying an empty reasons array as non-retryable (M3)', () => {
+    // `.every()` on an empty array is vacuously true, which contradicted the
+    // documented "a bare cancellation with no reasons is not retryable".
+    const err = Object.assign(new Error('cancelled'), {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [],
+    });
+    expect(isRetryableError(err, DEFAULT_RETRYABLE_ERRORS)).toBe(false);
+  });
+
   it('matches via the errno and syscall signal fields', () => {
     expect(
       isRetryableError(
