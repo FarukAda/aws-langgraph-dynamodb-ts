@@ -45,7 +45,11 @@ export function redactSecrets(
 export interface RedactLoggerOptions {
   /** Additional key names (matched case-insensitively as substrings) to redact. */
   extraKeys?: readonly string[];
-  /** Additional secret shapes to redact wherever they appear inside a string. */
+  /**
+   * Additional secret shapes to redact wherever they appear inside a string.
+   * A pattern's first capture group, if it has one, is preserved verbatim and
+   * only the remainder of the match is replaced.
+   */
   extraValuePatterns?: readonly RegExp[];
 }
 

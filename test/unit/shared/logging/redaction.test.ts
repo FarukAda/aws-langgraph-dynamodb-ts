@@ -215,3 +215,59 @@ describe('redactLogger', () => {
     expect(inner.info).toHaveBeenCalledWith('x', { note: 'ticket [REDACTED]' });
   });
 });
+
+describe('credential-value redaction (F2)', () => {
+  it('redacts a JSON-quoted pair, which the bare-keyword pattern missed entirely', () => {
+    expect(redactSecrets('{"password":"hunter2"}')).toBe('{"password":[REDACTED]}');
+  });
+
+  it('redacts only the value, leaving sibling JSON fields intact', () => {
+    expect(redactSecrets('{"password":"hunter2","user":"bob"}')).toBe(
+      '{"password":[REDACTED],"user":"bob"}',
+    );
+  });
+
+  it('redacts a JSON body embedded in free error text', () => {
+    expect(redactSecrets('Request failed: {"apiKey":"sk-live-abc"} (status 401)')).toBe(
+      'Request failed: {"apiKey":[REDACTED]} (status 401)',
+    );
+  });
+
+  it('redacts a single-quoted value', () => {
+    expect(redactSecrets("{'password': 'hunter2', 'keep': 1}")).toBe(
+      "{'password': [REDACTED], 'keep': 1}",
+    );
+  });
+
+  it('redacts a multi-word unquoted value whole, not up to its first space', () => {
+    expect(redactSecrets('password: correct horse battery staple')).toBe('password: [REDACTED]');
+  });
+
+  it('stops an unquoted value at end of line so it cannot swallow a stack frame', () => {
+    expect(redactSecrets('at foo\npassword: s3cret\n    at bar')).toBe(
+      'at foo\npassword: [REDACTED]\n    at bar',
+    );
+  });
+
+  it('keeps the field name visible so a log still says what was redacted', () => {
+    expect(redactSecrets('apiKey=sk-live-abc')).toBe('apiKey=[REDACTED]');
+  });
+
+  it('still replaces an ungrouped pattern whole', () => {
+    expect(redactSecrets('AKIAIOSFODNN7EXAMPLE')).toBe('[REDACTED]');
+    expect(redactSecrets('Authorization: Bearer abc.def')).toBe('Authorization: [REDACTED]');
+  });
+
+  it('does not over-redact ordinary operational text', () => {
+    expect(redactSecrets('retry 3 of 5 after ThrottlingException')).toBe(
+      'retry 3 of 5 after ThrottlingException',
+    );
+    expect(redactSecrets('tokenizer: fast')).toBe('tokenizer: fast');
+  });
+
+  it('reaches a secret inside an Error message via the rebuild path', () => {
+    const error = Object.assign(new Error('failed {"password":"hunter2"}'), { code: 'X' });
+    const redacted = redactSecrets(error as never) as { message: string };
+    expect(redacted.message).toBe('failed {"password":[REDACTED]}');
+  });
+});

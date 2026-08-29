@@ -22,12 +22,23 @@ export const DEFAULT_SECRET_KEY_PATTERNS: readonly string[] = [
  * high-confidence — each pattern describes a credential *format* rather than a
  * word that merely sounds sensitive — so ordinary operational text survives
  * redaction unchanged.
+ *
+ * The credential-pair pattern (last) tolerates a **closing quote after the
+ * keyword**, because that is what `JSON.stringify` produces
+ * (`{"password":"…"}`) and requiring the separator to follow the bare keyword
+ * matched nothing at all there — a silent, complete bypass on the single most
+ * common shape a downstream HTTP error arrives in. Its value side prefers a
+ * fully-quoted span and otherwise runs to end of line, so a multi-word secret
+ * is redacted whole instead of up to its first space; preferring the quoted
+ * form is what stops the end-of-line fallback over-redacting sibling JSON
+ * fields. Its group 1 is the keyword and separator, preserved by
+ * {@link redactText}.
  */
 export const DEFAULT_SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
   /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi,
   /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
-  /(?:aws_)?(?:secret_access_key|secretaccesskey|password|passwd|api_?key|token)\s*[=:]\s*\S+/gi,
+  /((?:aws_)?(?:secret_access_key|secretaccesskey|password|passwd|api_?key|token)["']?\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\r\n]+)/gi,
 ];
 
 /** True when `key` matches any secret-key pattern. */
@@ -41,10 +52,21 @@ export function isSecretKey(key: string, patterns: readonly string[]): boolean {
  * leaving the surrounding text intact so a redacted message stays readable.
  * Each pattern is rebuilt per call so a `g` flag's `lastIndex` never leaks
  * between invocations.
+ *
+ * A pattern may capture a leading group it wants **preserved**: only the rest
+ * of the match is replaced, which is what keeps `apiKey=[REDACTED]` saying
+ * which field was redacted instead of collapsing to a bare marker. A pattern
+ * with no group is replaced whole, as before. `String.prototype.replace`
+ * passes the match *offset* — a number — as the second callback argument when
+ * the pattern has no group, hence the `typeof` test rather than an
+ * `undefined` check.
  */
 export function redactText(value: string, patterns: readonly RegExp[]): string {
   return patterns.reduce(
-    (text, pattern) => text.replace(new RegExp(pattern.source, pattern.flags), REDACTED),
+    (text, pattern) =>
+      text.replace(new RegExp(pattern.source, pattern.flags), (_match, prefix: string | number) =>
+        typeof prefix === 'string' ? `${prefix}${REDACTED}` : REDACTED,
+      ),
     value,
   );
 }
