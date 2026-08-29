@@ -72,5 +72,11 @@ export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;
  * matches over a large thread into a hard error instead of the true answer.
  * The warning restores the operational signal without restoring the wrong
  * error.
+ *
+ * Its own literal, deliberately: this is the point at which a scan is worth
+ * telling an operator about, which is independent of
+ * {@link MAX_TOTAL_ITEMS_IN_MEMORY}'s hard collection cap. Aliasing the two
+ * meant retuning the memory cap silently moved the warning as well, and it
+ * left the pair reported as a duplicate export.
  */
-export const LIST_SCAN_WARN_THRESHOLD = MAX_TOTAL_ITEMS_IN_MEMORY;
+export const LIST_SCAN_WARN_THRESHOLD = 10000;

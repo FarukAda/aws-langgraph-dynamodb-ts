@@ -24,7 +24,7 @@ describe('shared constants', () => {
     expect(C.DEFAULT_MAX_DECOMPRESSED_BYTES).toBe(50 * 1024 * 1024);
   });
 
-  it('pins the list() scan warning threshold to the shared in-memory item cap', () => {
+  it('pins the list() scan warning threshold to its own value, independent of the in-memory cap', () => {
     expect(C.LIST_SCAN_WARN_THRESHOLD).toBe(10000);
   });
 });
