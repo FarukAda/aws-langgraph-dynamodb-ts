@@ -5,6 +5,24 @@ export type JsonValue =
   string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 /**
+ * Three-way order for a like-typed pair, or `undefined` when the pair is
+ * *unordered*. `NaN` compares `false` against everything including itself, so a
+ * bare `===`/`>` ternary silently reports it as "less than" — which let a
+ * stored `NaN` satisfy `$lt`/`$lte` against any number, contradicting
+ * {@link compareOrdered}'s own contract.
+ */
+function orderOf<T extends number | string>(actual: T, expected: T): number | undefined {
+  if (actual < expected) return -1;
+  if (actual > expected) return 1;
+  return actual === expected ? 0 : undefined;
+}
+
+/** Apply `test` to a resolved order; an unordered pair never matches. */
+function testOrder(order: number | undefined, test: (order: number) => boolean): boolean {
+  return order !== undefined && test(order);
+}
+
+/**
  * Ordered comparison over like-typed values only: numbers compare numerically,
  * strings lexicographically, and a mismatched or unordered pair never matches.
  *
@@ -20,11 +38,13 @@ function compareOrdered(
   expected: JsonValue,
   test: (order: number) => boolean,
 ): boolean {
-  const comparable =
-    (typeof actual === 'number' && typeof expected === 'number') ||
-    (typeof actual === 'string' && typeof expected === 'string');
-  if (!comparable) return false;
-  return test(actual === expected ? 0 : actual > expected ? 1 : -1);
+  if (typeof actual === 'number' && typeof expected === 'number') {
+    return testOrder(orderOf(actual, expected), test);
+  }
+  if (typeof actual === 'string' && typeof expected === 'string') {
+    return testOrder(orderOf(actual, expected), test);
+  }
+  return false;
 }
 
 /** A stored field's value, or `undefined` when the item has no such own property. */
