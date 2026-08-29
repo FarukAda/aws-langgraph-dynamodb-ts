@@ -6,7 +6,7 @@
 
 # Class: ResultTruncatedError
 
-Defined in: [shared/errors/errors.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/errors/errors.ts#L34)
+Defined in: [shared/errors/errors.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/errors.ts#L34)
 
 A paginated read hit its runaway guard (item or iteration cap) while more
 data remained, so the result would have been silently truncated. Narrow the
@@ -22,7 +22,7 @@ query (filter/prefix) or raise the cap rather than trusting a partial result.
 
 > **new ResultTruncatedError**(`cap`, `limit`): `ResultTruncatedError`
 
-Defined in: [shared/errors/errors.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/errors/errors.ts#L35)
+Defined in: [shared/errors/errors.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/errors.ts#L35)
 
 #### Parameters
 
@@ -48,7 +48,7 @@ Defined in: [shared/errors/errors.ts:35](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/errors/base-error.ts#L20)
+Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/base-error.ts#L20)
 
 #### Inherited from
 
@@ -60,7 +60,7 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/errors/base-error.ts#L21)
+Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/base-error.ts#L21)
 
 #### Inherited from
 

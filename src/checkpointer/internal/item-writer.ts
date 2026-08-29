@@ -1,15 +1,10 @@
-import type {
-  Checkpoint,
-  CheckpointMetadata,
-  PendingWrite,
-  PendingWriteValue,
-} from '@langchain/langgraph-checkpoint';
-import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
+import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
 
 import { type CodecDeps, encodePayload } from '../../shared/codec/codec';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { metaSortKey, partitionKey, payloadSortKey, writeSortKey } from './keys';
 import type { CheckpointerContext } from './setup';
+import { resolveWriteIndices } from './write-index';
 
 /** Map a context to the codec collaborators. */
 export function codecDeps(context: CheckpointerContext): CodecDeps {
@@ -19,50 +14,6 @@ export function codecDeps(context: CheckpointerContext): CodecDeps {
 function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T {
   if (ttlTimestamp !== undefined) item.ttl = ttlTimestamp;
   return item;
-}
-
-/** One write with its sort-key index resolved exactly once. */
-export interface ResolvedWrite {
-  channel: string;
-  value: PendingWriteValue;
-  index: number;
-}
-
-/**
- * Assign every write in one `putWrites` call its sort-key index, in a single
- * pass — the index is never recomputed downstream, which is what used to let
- * the deduped array's positions disagree with the ones the caller's array
- * produced.
- *
- * A special channel takes its fixed `WRITES_IDX_MAP` slot, and a later
- * duplicate replaces an earlier one (last-write-wins, matching the reference
- * checkpointer). A regular channel takes the number of times it has already
- * appeared in *this call*, so a retried task re-emitting the same channel
- * lands on the same row — a true duplicate the first-write-wins guard
- * correctly rejects — while a channel the retry newly emitted gets a row of
- * its own instead of silently displacing an unrelated write. Values written
- * repeatedly to one channel keep their relative order, which is the only
- * ordering LangGraph's `_applyWrites` depends on.
- *
- * `Object.hasOwn` guards WRITES_IDX_MAP's own `Object.prototype` chain — a
- * channel literally named `constructor`/`toString`/etc. must be treated as
- * regular, not resolve to an inherited function reference.
- */
-export function resolveWriteIndices(writes: PendingWrite[]): ResolvedWrite[] {
-  const bySpecialIndex = new Map<number, ResolvedWrite>();
-  const regular: ResolvedWrite[] = [];
-  const occurrences = new Map<string, number>();
-  for (const [channel, value] of writes) {
-    if (Object.hasOwn(WRITES_IDX_MAP, channel)) {
-      const index = WRITES_IDX_MAP[channel];
-      bySpecialIndex.set(index, { channel, value, index });
-      continue;
-    }
-    const occurrence = occurrences.get(channel) ?? 0;
-    occurrences.set(channel, occurrence + 1);
-    regular.push({ channel, value, index: occurrence });
-  }
-  return [...bySpecialIndex.values(), ...regular];
 }
 
 /** Encode a checkpoint + metadata into its META and PAYLOAD items. */
@@ -141,6 +92,14 @@ export async function buildWriteItems(
       taskId,
       index,
       channel,
+      /**
+       * Shared by every row this call writes. Positions shift when a retried
+       * task's write mix changes, so a channel an earlier call already
+       * committed can land at a second index and be replayed twice; the group
+       * is what lets the read side tell that apart from a channel a single
+       * call legitimately wrote more than once.
+       */
+      writeGroup: nonce,
       value: descriptor,
     };
     items.push(withTtl(item, ttlTimestamp));

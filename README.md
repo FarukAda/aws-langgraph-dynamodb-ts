@@ -344,7 +344,8 @@ in a single partition, where `deleteThread()` silently deleted the chat
 history (and vice versa), and identically-composed sort keys let one adapter
 overwrite another's item or hand its payload back on read. The channel segment
 separately stops a retried task whose write mix changed from silently losing a
-write. See the CHANGELOG for the full mechanism.
+write; a per-call write group, also stored on each row, keeps such a retry from
+replaying a channel twice. See the CHANGELOG for the full mechanism.
 
 **Data written by 0.7.x is not found after upgrading**, for all three
 adapters. Back up and recreate the table before upgrading.

@@ -8,7 +8,7 @@
 
 > **DynamoDBStoreOptions** = [`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md) & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
 
-Defined in: [store/types.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/store/types.ts#L8)
+Defined in: [store/types.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/store/types.ts#L8)
 
 Options for [DynamoDBStore](../classes/DynamoDBStore.md).
 

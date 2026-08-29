@@ -11,6 +11,7 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
+import { sessionPartition } from '../../src/history/internal/keys';
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { partitionKey, sortKey } from '../../src/store/internal/keys';
 
@@ -124,7 +125,7 @@ describe('Adapter surfaces against real AWS', () => {
     const raw = await doc.query({
       TableName: tableName,
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :m)',
-      ExpressionAttributeValues: { ':pk': 'gzip-history', ':m': 'HISTORY#MSG#' },
+      ExpressionAttributeValues: { ':pk': sessionPartition('gzip-history'), ':m': 'HISTORY#MSG#' },
       ConsistentRead: true,
     });
     const descriptor = raw.Items?.[0]?.message as {

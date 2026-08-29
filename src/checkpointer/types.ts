@@ -44,6 +44,8 @@ export interface CheckpointWriteItem {
   taskId: string;
   index: number;
   channel: string;
+  /** Identifies the `putWrites` call that produced this row (see item-writer). */
+  writeGroup: string;
   value: PayloadDescriptor;
   ttl?: number;
 }

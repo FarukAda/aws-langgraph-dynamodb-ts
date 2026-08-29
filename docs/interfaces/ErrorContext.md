@@ -6,7 +6,7 @@
 
 # Interface: ErrorContext
 
-Defined in: [shared/errors/base-error.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/errors/base-error.ts#L6)
+Defined in: [shared/errors/base-error.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/base-error.ts#L6)
 
 Structured, log-safe context attached to every library error.
 
@@ -16,7 +16,7 @@ Structured, log-safe context attached to every library error.
 
 > `optional` **attempts?**: `number`
 
-Defined in: [shared/errors/base-error.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/errors/base-error.ts#L10)
+Defined in: [shared/errors/base-error.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/base-error.ts#L10)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [shared/errors/base-error.ts:10](https://github.com/FarukAda/aws-lan
 
 > `optional` **key?**: `string`
 
-Defined in: [shared/errors/base-error.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/errors/base-error.ts#L9)
+Defined in: [shared/errors/base-error.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/base-error.ts#L9)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [shared/errors/base-error.ts:9](https://github.com/FarukAda/aws-lang
 
 > `optional` **operation?**: `string`
 
-Defined in: [shared/errors/base-error.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/errors/base-error.ts#L8)
+Defined in: [shared/errors/base-error.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/base-error.ts#L8)
 
 ***
 
@@ -40,4 +40,4 @@ Defined in: [shared/errors/base-error.ts:8](https://github.com/FarukAda/aws-lang
 
 > `optional` **tableName?**: `string`
 
-Defined in: [shared/errors/base-error.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/errors/base-error.ts#L7)
+Defined in: [shared/errors/base-error.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/base-error.ts#L7)

@@ -61,9 +61,13 @@ describe('putWrites channel-keyed write rows (C3)', () => {
       ],
       'task-1',
     );
+    // chanB gets a row of its own instead of being turned away by chanA's;
+    // chanA lands at a second index, which the read side resolves (see
+    // dropSupersededWrites) so it is never replayed twice.
     expect([...committed].sort()).toEqual([
       'WRITE##c1#task-1#0000000008#chanA',
       'WRITE##c1#task-1#0000000008#chanB',
+      'WRITE##c1#task-1#0000000009#chanA',
     ]);
   });
 

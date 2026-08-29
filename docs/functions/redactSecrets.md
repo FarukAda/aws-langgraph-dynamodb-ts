@@ -8,7 +8,7 @@
 
 > **redactSecrets**(`value`, `patterns?`, `valuePatterns?`): `Redactable`
 
-Defined in: [shared/logging/redaction.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/logging/redaction.ts#L24)
+Defined in: [shared/logging/redaction.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/logging/redaction.ts#L24)
 
 Recursively clone `value`, replacing any value at a secret-looking key with
 `[REDACTED]` and any recognised secret *shape* inside a string — including an

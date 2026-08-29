@@ -4,9 +4,9 @@ import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 import {
   buildCheckpointItems,
   buildWriteItems,
-  resolveWriteIndices,
 } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { resolveWriteIndices } from '../../../../src/checkpointer/internal/write-index';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 
@@ -101,12 +101,13 @@ describe('buildWriteItems', () => {
       'nonce-1',
     );
     expect(items).toHaveLength(2);
-    // Each channel's first occurrence is index 0; the channel segment is what
-    // separates them, so neither can displace the other on a retry (C3).
+    // Positional index, as the reference saver computes it, so writes replay
+    // in the order the task emitted them; the channel segment is what keeps
+    // an unrelated channel from displacing another on a retry (C3).
     expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0000000008#messages');
     expect(items[0].channel).toBe('messages');
-    expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000008#counter');
-    expect(items[1].index).toBe(0);
+    expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000009#counter');
+    expect(items[1].index).toBe(1);
     expect(items[1].value.serdeType).toBe('json');
   });
 
@@ -203,7 +204,9 @@ describe('resolveWriteIndices', () => {
     ).toEqual([{ channel: '__error__', value: 'second', index: -1 }]);
   });
 
-  it('numbers a repeated regular channel by its occurrence within the call (C3)', () => {
+  it('indexes regular writes by their position in the caller array (C3)', () => {
+    // Position, not occurrence: this is what makes stored writes replay in the
+    // order the task emitted them.
     expect(
       resolveWriteIndices([
         ['ch', 'a'],
@@ -212,15 +215,16 @@ describe('resolveWriteIndices', () => {
       ]),
     ).toEqual([
       { channel: 'ch', value: 'a', index: 0 },
-      { channel: 'other', value: 'x', index: 0 },
-      { channel: 'ch', value: 'b', index: 1 },
+      { channel: 'other', value: 'x', index: 1 },
+      { channel: 'ch', value: 'b', index: 2 },
     ]);
   });
 
   it('does not recompute an index from the position of a collapsed array (C3)', () => {
-    // Two ERROR writes collapse to one; the surviving regular write must keep
-    // the index its own channel occurrence gives it, not the collapsed
-    // array's shifted position.
+    // Two ERROR writes collapse to one. The surviving regular write must keep
+    // the index the *caller's* array gave it (2), not the position it happens
+    // to occupy after the collapse (1) — the divergence from the reference
+    // saver that the double computation introduced.
     expect(
       resolveWriteIndices([
         ['__error__', 'e1'],
@@ -229,7 +233,7 @@ describe('resolveWriteIndices', () => {
       ]),
     ).toEqual([
       { channel: '__error__', value: 'e2', index: -1 },
-      { channel: 'chanA', value: 'v', index: 0 },
+      { channel: 'chanA', value: 'v', index: 2 },
     ]);
   });
 

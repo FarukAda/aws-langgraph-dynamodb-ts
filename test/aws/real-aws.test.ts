@@ -12,7 +12,8 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { ERROR, type Checkpoint } from '@langchain/langgraph-checkpoint';
 
-import { payloadSortKey } from '../../src/checkpointer/internal/keys';
+import { partitionKey, payloadSortKey } from '../../src/checkpointer/internal/keys';
+import { sessionPartition } from '../../src/history/internal/keys';
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 
 const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
@@ -169,7 +170,7 @@ describe('DynamoDB adapters against real AWS', () => {
     const result = await doc.query({
       TableName: tableName,
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :m)',
-      ExpressionAttributeValues: { ':pk': 'ttlsess', ':m': 'HISTORY#MSG#' },
+      ExpressionAttributeValues: { ':pk': sessionPartition('ttlsess'), ':m': 'HISTORY#MSG#' },
     });
     const ttls = new Set((result.Items ?? []).map((it) => it.ttl));
     expect(result.Items).toHaveLength(2);
@@ -216,7 +217,7 @@ describe('DynamoDB adapters against real AWS', () => {
     const remaining = await doc.query({
       TableName: tableName,
       KeyConditionExpression: 'PK = :pk',
-      ExpressionAttributeValues: { ':pk': threadId },
+      ExpressionAttributeValues: { ':pk': partitionKey(threadId) },
       ConsistentRead: true,
     });
     expect(remaining.Items ?? []).toHaveLength(0);
@@ -238,7 +239,7 @@ describe('DynamoDB adapters against real AWS', () => {
     const items = await doc.query({
       TableName: tableName,
       KeyConditionExpression: 'PK = :pk',
-      ExpressionAttributeValues: { ':pk': threadId },
+      ExpressionAttributeValues: { ':pk': partitionKey(threadId) },
     });
     const ttls = new Set((items.Items ?? []).map((it) => it.ttl));
     expect(items.Items).toHaveLength(3);
@@ -305,7 +306,7 @@ describe('DynamoDB adapters against real AWS', () => {
     const doc = DynamoDBDocument.from(admin);
     const raw = await doc.get({
       TableName: tableName,
-      Key: { PK: 'gzip-thread', SK: payloadSortKey('', 'gz1') },
+      Key: { PK: partitionKey('gzip-thread'), SK: payloadSortKey('', 'gz1') },
       ConsistentRead: true,
     });
     const descriptor = raw.Item?.checkpoint as {
@@ -333,7 +334,7 @@ describe('DynamoDB adapters against real AWS', () => {
     const remaining = await doc.query({
       TableName: tableName,
       KeyConditionExpression: 'PK = :pk',
-      ExpressionAttributeValues: { ':pk': 'clear-session' },
+      ExpressionAttributeValues: { ':pk': sessionPartition('clear-session') },
       ConsistentRead: true,
     });
     expect(remaining.Items ?? []).toHaveLength(0);
@@ -344,7 +345,7 @@ describe('DynamoDB adapters against real AWS', () => {
     const doc = DynamoDBDocument.from(admin);
     await doc.update({
       TableName: tableName,
-      Key: { PK: 'drift-session', SK: 'HISTORY#SESSION' },
+      Key: { PK: sessionPartition('drift-session'), SK: 'HISTORY#SESSION' },
       UpdateExpression: 'SET #c = :bad',
       ExpressionAttributeNames: { '#c': 'messageCount' },
       ExpressionAttributeValues: { ':bad': 999 },
@@ -355,7 +356,7 @@ describe('DynamoDB adapters against real AWS', () => {
     expect(repaired).toBe(2);
     const raw = await doc.get({
       TableName: tableName,
-      Key: { PK: 'drift-session', SK: 'HISTORY#SESSION' },
+      Key: { PK: sessionPartition('drift-session'), SK: 'HISTORY#SESSION' },
       ConsistentRead: true,
     });
     expect(raw.Item?.messageCount).toBe(2);
