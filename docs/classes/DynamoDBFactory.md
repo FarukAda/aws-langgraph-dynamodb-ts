@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory/factory.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L39)
+Defined in: [factory/factory.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/factory/factory.ts#L41)
 
 Convenience constructors for the adapters. Individual `create*` methods each
 build their own client; [createAll](#createall) builds one shared client used by all
@@ -18,7 +18,7 @@ three and returns a combined `destroy` that tears everything down once.
 
 > **new DynamoDBFactory**(`base?`): `DynamoDBFactory`
 
-Defined in: [factory/factory.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L40)
+Defined in: [factory/factory.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/factory/factory.ts#L42)
 
 #### Parameters
 
@@ -36,7 +36,7 @@ Defined in: [factory/factory.ts:40](https://github.com/FarukAda/aws-langgraph-dy
 
 > **createAll**(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)
 
-Defined in: [factory/factory.ts:54](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L54)
+Defined in: [factory/factory.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/factory/factory.ts#L56)
 
 #### Parameters
 
@@ -54,7 +54,7 @@ Defined in: [factory/factory.ts:54](https://github.com/FarukAda/aws-langgraph-dy
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L50)
+Defined in: [factory/factory.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/factory/factory.ts#L52)
 
 #### Parameters
 
@@ -72,7 +72,7 @@ Defined in: [factory/factory.ts:50](https://github.com/FarukAda/aws-langgraph-dy
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L42)
+Defined in: [factory/factory.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/factory/factory.ts#L44)
 
 #### Parameters
 
@@ -90,7 +90,7 @@ Defined in: [factory/factory.ts:42](https://github.com/FarukAda/aws-langgraph-dy
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L46)
+Defined in: [factory/factory.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/factory/factory.ts#L48)
 
 #### Parameters
 

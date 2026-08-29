@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
 
 ***
 
@@ -6,13 +6,23 @@
 
 # Function: redactSecrets()
 
-> **redactSecrets**(`value`, `patterns?`): `Redactable`
+> **redactSecrets**(`value`, `patterns?`, `valuePatterns?`): `Redactable`
 
-Defined in: [shared/logging/redaction.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/logging/redaction.ts#L37)
+Defined in: [shared/logging/redaction.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/shared/logging/redaction.ts#L24)
 
 Recursively clone `value`, replacing any value at a secret-looking key with
-`[REDACTED]`. Cycles become `[Circular]`. Error objects are passed through so
-stack traces survive. Does not mutate the input.
+`[REDACTED]` and any recognised secret *shape* inside a string — including an
+error's `message`/`stack` text, which key-name matching cannot reach — with
+the same marker. Cycles become `[Circular]`.
+
+An Error with no own enumerable properties whose text holds no secret is
+passed through by reference, so its identity and stack trace survive; one
+carrying own data (this library's error types all attach `code`/`context`
+this way) or a secret in its text is rebuilt instead, with `name`/`message`/
+`stack` redacted and every other own property recursed like a plain object.
+`Date`/`RegExp` keep their identity rather than collapsing to `{}`,
+`Set`/`Map` render as their contents, and binary views become a short label.
+Does not mutate the input.
 
 ## Parameters
 
@@ -23,6 +33,10 @@ stack traces survive. Does not mutate the input.
 ### patterns?
 
 readonly `string`[] = `DEFAULT_SECRET_KEY_PATTERNS`
+
+### valuePatterns?
+
+readonly `RegExp`[] = `DEFAULT_SECRET_VALUE_PATTERNS`
 
 ## Returns
 

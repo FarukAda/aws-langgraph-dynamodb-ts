@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
 
 ***
 
@@ -8,7 +8,7 @@
 
 > **DynamoDBStoreOptions** = [`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md) & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
 
-Defined in: [store/types.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/types.ts#L8)
+Defined in: [store/types.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/store/types.ts#L8)
 
 Options for [DynamoDBStore](../classes/DynamoDBStore.md).
 
@@ -19,6 +19,12 @@ Options for [DynamoDBStore](../classes/DynamoDBStore.md).
 > `optional` **index?**: `IndexConfig`
 
 Optional semantic-search index configuration (embeddings + fields).
+
+### maxScanItems?
+
+> `optional` **maxScanItems?**: `number`
+
+Cap on items scanned into memory during a plain (non-semantic) search before ResultTruncatedError. Defaults to MAX_TOTAL_ITEMS_IN_MEMORY.
 
 ### maxSearchCandidates?
 

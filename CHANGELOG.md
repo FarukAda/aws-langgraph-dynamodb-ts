@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-29
+
+Closing every finding of an independent four-agent review of `0.7.0` that was
+reproduced against real AWS: 4 critical, 7 important and 15 minor findings,
+plus 4 further defects found while designing the fixes. Each fix landed
+test-first, with a regression test that fails against `0.7.0`.
+
+Three of the review's own premises did not survive verification against the
+installed peer dependency and are recorded here so they are not "fixed" again:
+positional write indexing is the upstream `MemorySaver` contract, not a
+library invention; the store's filter-coercion example (`'10'` matching
+`{ $gt: 5 }`) is what upstream `compareValues` does; and the regression tests
+the review cited were never present in this repository.
+
+### Changed (breaking)
+
+- **Every adapter's partition key is now adapter-tagged**: `CHKPT#<thread_id>`, `STORE#<namespace[0]>`, `HIST#<sessionId>`. Previously all three wrote a bare, untagged caller-supplied string, so reusing one identifier across adapters on a table shared via `createAll()` — a "conversation id" used as both a `thread_id` and a `sessionId`, an entirely ordinary design — put unrelated rows in one partition. `deleteThread()` then deleted the chat history along with the thread (and `history.clear()` the reverse), and identically-composed sort keys let `store.put()` silently overwrite a real checkpoint, or `store.get()` return another thread's pending-write payload as the caller's own value. The three tags differ in their first character, so the key spaces are now disjoint by construction. **Data written by 0.7.x is not found** — back up and recreate the table.
+- **Pending-write sort keys carry their channel**: `WRITE#<ns>#<id>#<task>#<idx>#<channel>`. See "a retried task no longer loses writes" below.
+- **A `DynamoDBStore` with a `vectorBackend` but no `index` now throws at construction** rather than silently degrading.
+- **`getMessages` skips an undecodable message** instead of failing the whole read; pass `onCorruptMessage: 'throw'` for the previous behaviour.
+- **Store range filters (`$gt`/`$gte`/`$lt`/`$lte`) no longer coerce across types.** A stored `'10'` no longer satisfies `{ $gt: 5 }`. Two strings now compare lexicographically, where upstream reduces both to `NaN`.
+
+### Fixed
+
+- **`deleteThread()` and `history.clear()` deleted an entire shared partition with no sort-key scoping** (Critical). Both paged a partition `Query` carrying no sort-key condition and deleted every row it returned. Beyond the tagged partition keys above, each now deletes only rows whose sort key belongs to it, leaves anything else in place, and logs both counts.
+- **Reads cast raw rows instead of narrowing them** (Critical). `store.get()` cast `result.Item` straight to a store record: a colliding checkpointer WRITE row carries a `value` descriptor in the identical shape, so it decoded cleanly and returned another thread's pending write as the caller's own value — no exception, no signal. Checkpointer `list()` blind-cast every `META#` match the same way. Both now narrow and skip a foreign row with a `warn`.
+- **A retried task with a changed write mix silently lost writes and duplicated others** (Critical). A regular write's index was its position in the call's array, so a retry that emitted a new channel first put that channel on an index another already held; the first-write-wins guard cannot tell a genuine retry from an unrelated write, so the new channel was permanently dropped while the shared one was written twice — `putWrites()` returning success either way. A write is now keyed by its occurrence *for that channel* within the call, and the sort key carries the channel, so a true retry still collides (and is correctly skipped) while a newly-emitted channel gets its own row. Separately, the index was being computed twice — once during dedup, once from the position in the *deduped* array — which diverged from upstream for a mixed special/regular write array; it is now resolved once.
+- **A failed multi-chunk append left a "ghost session"** (Critical). `title`, `createdAt` and `sessionId` are written via `if_not_exists`, and the rollback never touched them, so a caller told the whole append had failed was left with a session reporting `messageCount: 0` whose title still held up to 80 characters of the supposedly-deleted first message — with no API to clear it. The rollback now deletes the session row outright when this call created it, guarded by `messageCount = :total AND createdAt = :now`, and falls back to the count decrement otherwise.
+- **Redaction never scanned an error's `message`/`stack` text**, only structured fields — so a secret interpolated into a `RetryExhaustedError`'s message rode through `redactLogger` untouched. Recognisable credential shapes are now redacted inside any string value.
+- **Redaction destroyed non-plain values**: `Date`/`Map`/`Set`/`RegExp` collapsed to `{}` and `Buffer`/`Uint8Array` exploded into per-index numeric keys. `Date`/`RegExp` now keep their identity, `Set`/`Map` render as their contents, and binary views become a short label.
+- **`store.delete()` had no ambiguous-failure verification**, unlike `store.put()`: a retry-exhausted delete skipped S3-orphan cleanup and the vector-backend delete even when the row was gone server-side and only the acknowledgement was lost.
+- **S3 objects uploaded mid-batch were permanently orphaned** when a later message in the same `addMessages()` call failed to encode — the uploads happen before the append saga's compensation machinery is ever reached.
+- **One malformed message made an entire session permanently unreadable**, with no API to remove just the bad item.
+- **`VectorBackend.query()`'s score direction was undocumented and unenforced.** A backend surfacing a raw distance still returns nearest-first, so the order looks right while every score means the opposite of what a caller thresholding or displaying it expects. The contract is now explicit, and ascending scores are warned about. Results are never reordered.
+- **The critical paths produced no operational trace at all** — not a configuration gap but an absence of log statements, so enabling logging could not surface them. Delete counts, foreign rows skipped, narrowing failures, guard rejections, backend-contract violations and corrupt items are now all logged, at levels matching their severity.
+- **`S3Offloader.destroy()` was a no-op mid-construction**, leaking the client that arrived moments later.
+- **An empty `CancellationReasons` array was treated as retryable** by vacuous truth on `.every()`, contradicting the function's own doc comment.
+- **`list()` with a metadata filter and a small `limit` could throw `ResultTruncatedError`** instead of returning the matches, because the page cap counts raw rows pulled rather than filter-matched ones.
+- **`deleteThread` validated its thread id more weakly than every other checkpointer action** (no reserved-separator check), and a mid-stream flush failure reported only the failing flush's progress, hiding earlier flushes' persisted deletes.
+- **`assertNoControlChars` was exported but called nowhere**, so no identifier was checked — a `thread_id` carrying a raw ANSI escape was accepted and persisted, a log-injection surface for any consuming app. Every key-bound identifier is now validated.
+- **`WRITE_INDEX_OFFSET` hardcoded an assumption about the peer dependency's `WRITES_IDX_MAP`** with no cross-check; it is now pinned by a static test, and `writeSortKey` asserts the index is encodable.
+- **`listNamespaces` never validated `maxDepth`**, so a negative value silently inverted truncation through `Array.prototype.slice`.
+- **`reconcileVectorIndex`'s prune could delete a live vector**: its live-set snapshot and prune read are not point-in-time consistent, so an item written between them looked orphaned. Each candidate is now re-checked with a strongly-consistent read.
+- **`getMessages`/`clear` never validated `sessionId`**, surfacing a raw AWS SDK exception where `addMessages` threw this library's typed `ValidationError` for the identical input.
+- **`estimateItemBytes` measured identifiers in UTF-16 code units**, understating a non-ASCII session id threefold and breaking the "at or above the real size" guarantee its own doc comment makes.
+- **`deriveTitle` could split a surrogate pair**, and returned 81 characters where it documented 80.
+- **`listSessions` sorted with `localeCompare`** on ISO-8601 timestamps, and returned sessions past their TTL while `getMessages` filtered expired messages — the two read paths now agree.
+- **`searchViaBackend` failed an entire search** when a backend returned a namespace element containing the reserved separator, instead of dropping the one unusable match.
+- **`matchesStoreFilter` read `value[field]` without an own-property check**, so a filter naming an absent field could compare against an inherited member.
+
+### Documentation
+
+- The checkpointer's special-write overwrite path carries the same S3 orphan race the store's concurrent puts already documented; it is now written down beside it, with the same reclamation guidance.
+
 ## [0.7.0] - 2026-08-28
 
 Addressing an independent deep review of `0.6.0` itself: three critical

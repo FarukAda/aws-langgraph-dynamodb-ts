@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Interface: VectorBackend
 
-Defined in: [store/vector-backend.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/vector-backend.ts#L18)
+Defined in: [store/vector-backend.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/store/vector-backend.ts#L30)
 
 Pluggable vector index. When provided to the store, embeddings live here and
 similarity search is delegated to it; DynamoDB still holds the canonical item.
@@ -17,7 +17,7 @@ similarity search is delegated to it; DynamoDB still holds the canonical item.
 
 > **delete**(`namespace`, `key`): `Promise`\<`void`\>
 
-Defined in: [store/vector-backend.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/vector-backend.ts#L21)
+Defined in: [store/vector-backend.ts:38](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/store/vector-backend.ts#L38)
 
 #### Parameters
 
@@ -39,7 +39,7 @@ Defined in: [store/vector-backend.ts:21](https://github.com/FarukAda/aws-langgra
 
 > `optional` **listKeys**(`namespacePrefix`): `Promise`\<[`VectorRef`](VectorRef.md)[]\>
 
-Defined in: [store/vector-backend.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/vector-backend.ts#L27)
+Defined in: [store/vector-backend.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/store/vector-backend.ts#L44)
 
 Optionally enumerate every stored vector under `namespacePrefix`. Enables
 `reconcileVectorIndex` to prune vectors orphaned by a lost delete. Omit it
@@ -61,7 +61,11 @@ when the backend cannot enumerate — reconciliation then re-pushes only.
 
 > **query**(`namespacePrefix`, `queryVector`, `topK`): `Promise`\<[`VectorMatch`](VectorMatch.md)[]\>
 
-Defined in: [store/vector-backend.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/vector-backend.ts#L20)
+Defined in: [store/vector-backend.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/store/vector-backend.ts#L37)
+
+Return up to `topK` matches under `namespacePrefix`, best first. Each
+match's `score` must be a relevance, not a distance — see
+[VectorMatch.score](VectorMatch.md#score).
 
 #### Parameters
 
@@ -87,7 +91,7 @@ Defined in: [store/vector-backend.ts:20](https://github.com/FarukAda/aws-langgra
 
 > **upsert**(`namespace`, `key`, `vector`): `Promise`\<`void`\>
 
-Defined in: [store/vector-backend.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/store/vector-backend.ts#L19)
+Defined in: [store/vector-backend.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/ad2e6576ff7a91fa602629f413eed58996e402dd/src/store/vector-backend.ts#L31)
 
 #### Parameters
 
