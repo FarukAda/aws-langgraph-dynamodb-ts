@@ -11,7 +11,7 @@ import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
 import type { TtlOption } from '../../shared/validation/ttl';
-import type { DynamoDBChatMessageHistoryOptions } from '../types';
+import type { CorruptMessagePolicy, DynamoDBChatMessageHistoryOptions } from '../types';
 
 /** Resolved collaborators shared by every chat-history action. */
 export interface HistoryContext {
@@ -23,6 +23,7 @@ export interface HistoryContext {
   ttl?: TtlOption;
   logger: Logger;
   ulid: () => string;
+  onCorruptMessage: CorruptMessagePolicy;
 }
 
 /** Result of wiring up a chat-history adapter from its options. */
@@ -51,6 +52,7 @@ export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): Histor
       ttl: options.ttl,
       logger: resolveLogger(options.logger),
       ulid: createUlidFactory(),
+      onCorruptMessage: options.onCorruptMessage ?? 'skip',
     },
     ddbClient: resolved.ddbClient,
     ownsClient: resolved.ownsClient,

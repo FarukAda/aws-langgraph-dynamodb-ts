@@ -14,6 +14,7 @@ function context(client: HistoryContext['client']): HistoryContext {
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
     ulid: () => 'U',
+    onCorruptMessage: 'skip',
   };
 }
 
@@ -28,6 +29,54 @@ const session = (sessionId: string, updatedAt: string, extra = {}) => ({
 });
 
 describe('listSessions', () => {
+  it('orders by ordinal comparison on the ISO timestamp, not locale rules (M15)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    // Scanned in a mixed order so the comparator is exercised in both
+    // directions, not just ascending input.
+    mock.on(ScanCommand).resolves({
+      Items: [
+        session('mid', '2026-01-02T00:00:00.000Z'),
+        session('newest', '2026-01-03T00:00:00.000Z'),
+        session('oldest', '2026-01-01T00:00:00.000Z'),
+      ],
+    });
+    expect((await listSessions(context(client))).map((s) => s.sessionId)).toEqual([
+      'newest',
+      'mid',
+      'oldest',
+    ]);
+  });
+
+  it('keeps both sessions when their timestamps tie (M15)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({
+      Items: [session('a', '2026-01-01T00:00:00.000Z'), session('b', '2026-01-01T00:00:00.000Z')],
+    });
+    expect((await listSessions(context(client))).map((s) => s.sessionId).sort()).toEqual([
+      'a',
+      'b',
+    ]);
+  });
+
+  it('omits a session whose ttl has already passed, matching getMessages (A1)', async () => {
+    // getMessages filters expired messages on read because DynamoDB's own TTL
+    // sweep lags up to 48h; listSessions did not, so an expired session kept
+    // appearing in listings after its messages had vanished from reads.
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({
+      Items: [session('live', '2026-01-01'), session('dead', '2026-01-02', { ttl: 1 })],
+    });
+    expect((await listSessions(context(client))).map((s) => s.sessionId)).toEqual(['live']);
+  });
+
+  it('keeps a session whose ttl is still in the future (A1)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({
+      Items: [session('live', '2026-01-01', { ttl: 4102444800 })],
+    });
+    expect((await listSessions(context(client))).map((s) => s.sessionId)).toEqual(['live']);
+  });
+
   it('returns session metadata sorted by most recently updated', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({

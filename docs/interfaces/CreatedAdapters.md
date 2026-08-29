@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Interface: CreatedAdapters
 
-Defined in: [factory/factory.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L27)
+Defined in: [factory/factory.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/factory/factory.ts#L29)
 
 The three adapters sharing one client, plus a combined `destroy`.
 
@@ -16,7 +16,7 @@ The three adapters sharing one client, plus a combined `destroy`.
 
 > **destroy**: () => `void`
 
-Defined in: [factory/factory.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L31)
+Defined in: [factory/factory.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/factory/factory.ts#L33)
 
 #### Returns
 
@@ -28,7 +28,7 @@ Defined in: [factory/factory.ts:31](https://github.com/FarukAda/aws-langgraph-dy
 
 > **history**: [`DynamoDBChatMessageHistory`](../classes/DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L30)
+Defined in: [factory/factory.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/factory/factory.ts#L32)
 
 ***
 
@@ -36,7 +36,7 @@ Defined in: [factory/factory.ts:30](https://github.com/FarukAda/aws-langgraph-dy
 
 > **saver**: [`DynamoDBSaver`](../classes/DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L28)
+Defined in: [factory/factory.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/factory/factory.ts#L30)
 
 ***
 
@@ -44,4 +44,4 @@ Defined in: [factory/factory.ts:28](https://github.com/FarukAda/aws-langgraph-dy
 
 > **store**: [`DynamoDBStore`](../classes/DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/factory/factory.ts#L29)
+Defined in: [factory/factory.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/factory/factory.ts#L31)

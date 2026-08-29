@@ -46,8 +46,18 @@ const TRANSIENT_CANCELLATION_REASONS: readonly string[] = [
 function transactionCancellationRetryable(error: Error): boolean | undefined {
   const reasons = getCancellationReasons(error);
   if (!reasons) return undefined;
-  return reasons.every(
-    (reason) => reason.Code === undefined || TRANSIENT_CANCELLATION_REASONS.includes(reason.Code),
+  /**
+   * `length > 0` is load-bearing: `.every()` is vacuously true on an empty
+   * array, which would make a reason-less cancellation retryable — the exact
+   * opposite of what this function documents. AWS populates one reason per
+   * `TransactItems` entry, so an empty array should not occur; if it ever
+   * does, the conservative answer is not to retry.
+   */
+  return (
+    reasons.length > 0 &&
+    reasons.every(
+      (reason) => reason.Code === undefined || TRANSIENT_CANCELLATION_REASONS.includes(reason.Code),
+    )
   );
 }
 

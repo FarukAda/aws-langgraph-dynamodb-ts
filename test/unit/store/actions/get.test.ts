@@ -26,6 +26,27 @@ describe('getItem', () => {
     expect(await getItem(context(client), ['users', 'u1'], 'profile')).toBeNull();
   });
 
+  it('returns null and warns for a row that is not a store item (C2, I7)', async () => {
+    // A WRITE row from the checkpointer carries a `value` PayloadDescriptor in
+    // the identical shape a store item uses, so an unchecked cast used to
+    // decode it successfully and hand another thread's pending write back as
+    // the caller's own value.
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({
+      Item: {
+        PK: 'STORE#users',
+        SK: 'u1#profile',
+        taskId: 'task-1',
+        channel: 'secret-channel',
+        value: { location: 'INLINE', serdeType: 'json', bytes: new Uint8Array() },
+      },
+    });
+    const warn = jest.fn();
+    const ctx = { ...context(client), logger: { ...SILENT_LOGGER, warn } };
+    await expect(getItem(ctx, ['users', 'u1'], 'profile')).resolves.toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
   it('throws ValidationError on an empty namespace', async () => {
     const { client } = createStrictDocumentMock();
     await expect(getItem(context(client), [], 'k1')).rejects.toBeInstanceOf(ValidationError);
@@ -56,7 +77,7 @@ describe('getItem', () => {
     expect(item?.key).toBe('profile');
     expect(item?.namespace).toEqual(['users', 'u1']);
     expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
-      PK: 'users',
+      PK: 'STORE#users',
       SK: 'u1#profile',
     });
     expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);

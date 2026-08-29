@@ -4,9 +4,9 @@ import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 import {
   buildCheckpointItems,
   buildWriteItems,
-  resolveWriteIndex,
 } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { resolveWriteIndices } from '../../../../src/checkpointer/internal/write-index';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 
@@ -60,7 +60,7 @@ describe('buildCheckpointItems', () => {
       metadata,
       'parent-0',
     );
-    expect(meta.PK).toBe('thread-1');
+    expect(meta.PK).toBe('CHKPT#thread-1');
     expect(meta.SK).toBe('META##ckpt-1');
     expect(meta.checkpointId).toBe('ckpt-1');
     expect(meta.parentCheckpointId).toBe('parent-0');
@@ -101,9 +101,12 @@ describe('buildWriteItems', () => {
       'nonce-1',
     );
     expect(items).toHaveLength(2);
-    expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0000000008');
+    // Positional index, as the reference saver computes it, so writes replay
+    // in the order the task emitted them; the channel segment is what keeps
+    // an unrelated channel from displacing another on a retry (C3).
+    expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0000000008#messages');
     expect(items[0].channel).toBe('messages');
-    expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000009');
+    expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000009#counter');
     expect(items[1].index).toBe(1);
     expect(items[1].value.serdeType).toBe('json');
   });
@@ -125,7 +128,7 @@ describe('buildWriteItems', () => {
     const interrupt = items.find((item) => item.channel === '__interrupt__')!;
     expect(regular.index).toBe(0);
     expect(interrupt.index).toBe(WRITES_IDX_MAP['__interrupt__']);
-    expect(interrupt.SK).toBe('WRITE##ckpt-1#task-7#0000000005');
+    expect(interrupt.SK).toBe('WRITE##ckpt-1#task-7#0000000005#__interrupt__');
     expect(interrupt.SK < regular.SK).toBe(true);
   });
 
@@ -144,9 +147,9 @@ describe('buildWriteItems', () => {
     );
     const regular = items.find((item) => item.channel === 'regular')!;
     const interrupt = items.find((item) => item.channel === '__interrupt__')!;
-    expect(s3Key(regular)).toBe('t//ckpt-1/task-7/write-0/nonce-1');
+    expect(s3Key(regular)).toBe('t//ckpt-1/task-7/write-0/regular/nonce-1');
     expect(s3Key(interrupt)).toBe(
-      `t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}/nonce-1`,
+      `t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}/__interrupt__/nonce-1`,
     );
   });
 
@@ -176,13 +179,69 @@ describe('buildWriteItems', () => {
   });
 });
 
-describe('resolveWriteIndex', () => {
-  it('falls through to positional for a channel that collides with Object.prototype', () => {
-    expect(resolveWriteIndex('constructor', 3)).toBe(3);
-    expect(resolveWriteIndex('toString', 5)).toBe(5);
+describe('resolveWriteIndices', () => {
+  it('treats a channel colliding with Object.prototype as regular, not special', () => {
+    expect(resolveWriteIndices([['constructor', 'v']])).toEqual([
+      { channel: 'constructor', value: 'v', index: 0 },
+    ]);
+    expect(resolveWriteIndices([['toString', 'v']])).toEqual([
+      { channel: 'toString', value: 'v', index: 0 },
+    ]);
   });
 
   it('resolves a known special channel to its WRITES_IDX_MAP slot', () => {
-    expect(resolveWriteIndex('__error__', 9)).toBe(-1);
+    expect(resolveWriteIndices([['__error__', 'boom']])).toEqual([
+      { channel: '__error__', value: 'boom', index: -1 },
+    ]);
+  });
+
+  it('collapses a repeated special channel last-write-wins at its fixed slot', () => {
+    expect(
+      resolveWriteIndices([
+        ['__error__', 'first'],
+        ['__error__', 'second'],
+      ]),
+    ).toEqual([{ channel: '__error__', value: 'second', index: -1 }]);
+  });
+
+  it('indexes regular writes by their position in the caller array (C3)', () => {
+    // Position, not occurrence: this is what makes stored writes replay in the
+    // order the task emitted them.
+    expect(
+      resolveWriteIndices([
+        ['ch', 'a'],
+        ['other', 'x'],
+        ['ch', 'b'],
+      ]),
+    ).toEqual([
+      { channel: 'ch', value: 'a', index: 0 },
+      { channel: 'other', value: 'x', index: 1 },
+      { channel: 'ch', value: 'b', index: 2 },
+    ]);
+  });
+
+  it('does not recompute an index from the position of a collapsed array (C3)', () => {
+    // Two ERROR writes collapse to one. The surviving regular write must keep
+    // the index the *caller's* array gave it (2), not the position it happens
+    // to occupy after the collapse (1) — the divergence from the reference
+    // saver that the double computation introduced.
+    expect(
+      resolveWriteIndices([
+        ['__error__', 'e1'],
+        ['__error__', 'e2'],
+        ['chanA', 'v'],
+      ]),
+    ).toEqual([
+      { channel: '__error__', value: 'e2', index: -1 },
+      { channel: 'chanA', value: 'v', index: 2 },
+    ]);
+  });
+
+  it('orders special writes ahead of regular ones', () => {
+    const resolved = resolveWriteIndices([
+      ['regular', 'v'],
+      ['__error__', 'e'],
+    ]);
+    expect(resolved.map((w) => w.channel)).toEqual(['__error__', 'regular']);
   });
 });

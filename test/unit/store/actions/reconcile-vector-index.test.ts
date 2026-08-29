@@ -1,4 +1,4 @@
-import { QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -73,6 +73,9 @@ describe('reconcileVectorIndex', () => {
       { createdAt: 'c', updatedAt: 'u' },
     );
     mock.on(QueryCommand).resolves({ Items: [recordA, recordB] });
+    // The prune re-check confirms the orphan really has no canonical item
+    // before its vector is deleted (M11).
+    mock.on(GetCommand).resolves({});
 
     const result = await reconcileVectorIndex(ctx, ['users', 'u1']);
 

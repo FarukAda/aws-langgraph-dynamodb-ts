@@ -57,7 +57,7 @@ npm install @langchain/aws        # e.g. Bedrock Titan embeddings
 
 ## Table schema
 
-Every adapter uses the **same simple key schema**: a string partition key `PK`, a string sort key `SK`, and an optional Number `ttl` attribute for expiry. Because the key spaces never collide, **a single table can back all three adapters**, or you can use a separate table per adapter — your choice via the `tableName` option.
+Every adapter uses the **same simple key schema**: a string partition key `PK`, a string sort key `SK`, and an optional Number `ttl` attribute for expiry. **A single table can back all three adapters**, or you can use a separate table per adapter — your choice via the `tableName` option.
 
 | Attribute | Type | Role |
 | --- | --- | --- |
@@ -67,9 +67,13 @@ Every adapter uses the **same simple key schema**: a string partition key `PK`, 
 
 How each adapter lays out keys (informational — you don't manage this):
 
-- **Checkpointer** — `PK = <thread_id>`; `SK` = `META#<ns>#<checkpoint_id>` (metadata), `PAYLOAD#<ns>#<checkpoint_id>` (checkpoint), `WRITE#<ns>#<checkpoint_id>#<task>#<idx>` (pending writes).
-- **Store** — `PK = <namespace[0]>` (the scope root); `SK = <namespace[1..]>#<key>`. This makes a scoped prefix search a native `Query` (`PK = root AND begins_with(SK, …)`); only a rootless "search everything" falls back to a `Scan`.
-- **Chat history** — `PK = <sessionId>`; one item per message at `SK = HISTORY#MSG#<ULID>` (ordered, append-only) plus one `SK = HISTORY#SESSION` metadata item. The `HISTORY#` tag keeps these keys from colliding with a store item on a table shared via `createAll()` (a bare `SESSION` sort key is an ordinary, easy-to-produce store key — `store.put([sessionId], 'SESSION', …)`).
+- **Checkpointer** — `PK = CHKPT#<thread_id>`; `SK` = `META#<ns>#<checkpoint_id>` (metadata), `PAYLOAD#<ns>#<checkpoint_id>` (checkpoint), `WRITE#<ns>#<checkpoint_id>#<task>#<idx>#<channel>` (pending writes).
+- **Store** — `PK = STORE#<namespace[0]>` (the scope root); `SK = <namespace[1..]>#<key>`. This makes a scoped prefix search a native `Query` (`PK = root AND begins_with(SK, …)`); only a rootless "search everything" falls back to a `Scan`.
+- **Chat history** — `PK = HIST#<sessionId>`; one item per message at `SK = HISTORY#MSG#<ULID>` (ordered, append-only) plus one `SK = HISTORY#SESSION` metadata item.
+
+**Why the key spaces cannot collide.** Each adapter tags its partition key with its own prefix, and those three tags differ in their very first character, so no `CHKPT#…` can ever equal a `STORE#…` or `HIST#…` — whatever identifiers you pass. That matters because reusing one id across adapters (a "conversation id" used as both a `thread_id` and a `sessionId`) is an entirely ordinary design: without the tags it put unrelated adapters' rows in one partition, where `deleteThread()`/`history.clear()` would delete each other's data and identically-composed sort keys could silently overwrite one another.
+
+Two further guards back that up, for a table holding hand-written rows or rows written before an upgrade: `deleteThread()`/`clear()` delete only rows whose sort key belongs to the calling adapter and log anything they leave in place, and every read narrows a row's shape before decoding it rather than trusting the key it was found at.
 
 ## Quick start
 
@@ -189,8 +193,9 @@ All adapters share a common base. Provide **either** a prebuilt `client` (which 
 | `compression` | `CompressionConfig` | all | `{ enabled, minSizeBytes?, level?, maxDecompressedBytes? }` |
 | `s3` | `S3OffloadConfig` | all | offload large payloads to S3 (see below) |
 | `serde` | `SerializerProtocol` | all | serializer override (checkpointer defaults to LangGraph's; store/history to JSON) |
+| `onCorruptMessage` | `'skip' \| 'throw'` | history only | what `getMessages` does with an item it cannot decode (default `skip`: drop it, log at `error`, return the rest) |
 | `index` | `IndexConfig` | store only | `{ dims, embeddings, fields? }` for semantic search |
-| `vectorBackend` | `VectorBackend` | store only | delegate similarity search to an external index; DynamoDB keeps the canonical item |
+| `vectorBackend` | `VectorBackend` | store only | delegate similarity search to an external index; DynamoDB keeps the canonical item. **Requires `index`** — constructing a store with one and not the other throws |
 | `maxSearchCandidates` | `number` | store only | cap for the in-DB ranker before it errors (default 1000) |
 | `maxScanItems` | `number` | store only | cap on items scanned into memory during a plain (non-semantic) `search()` before it errors (default 10000, the shared in-memory cap used by every paginated read) |
 
@@ -202,7 +207,7 @@ When `keyPrefix` is omitted, each adapter defaults to its own sub-prefix under t
 
 **Gzip compression** — set `compression: { enabled: true }`. Payloads at or above `minSizeBytes` (default 1 KB) are gzipped transparently; decompression auto-detects on read and is guarded against decompression-bomb expansion (`maxDecompressedBytes`, default 50 MiB).
 
-**S3 offloading** — set `s3: { bucketName }`. Any serialized payload at or above `thresholdBytes` (default 350 KB) is written to S3, with only a reference stored in DynamoDB; reads rehydrate transparently. Requires the optional `@aws-sdk/client-s3` peer. Deleting a checkpoint thread / chat session also best-effort deletes its offloaded objects. When a `ttl` is also configured, call `ensureS3LifecycleRule()` once (e.g. during deployment) to best-effort install a matching S3 lifecycle expiration rule (logged, never fatal) — this is opt-in rather than automatic, since it requires the broader `s3:PutLifecycleConfiguration` bucket-level permission and is not safe to fire on every adapter construction. If you configure `ttl` + `s3` but never call it, nothing reclaims objects that best-effort cleanup misses (a failed delete, or a write that lost the checkpointer's first-write-wins race) — they stay in the bucket until you remove them or add a lifecycle rule yourself. The store has an analogous, smaller-scale race: two concurrent `put`s to the same key that both read the previous descriptor before either commits each upload to their own distinct (nonced) key and each then try to clean up that same previous descriptor — the loser's own upload becomes an orphan (bounded at one per race), the same class of leak, reclaimed the same way.
+**S3 offloading** — set `s3: { bucketName }`. Any serialized payload at or above `thresholdBytes` (default 350 KB) is written to S3, with only a reference stored in DynamoDB; reads rehydrate transparently. Requires the optional `@aws-sdk/client-s3` peer. Deleting a checkpoint thread / chat session also best-effort deletes its offloaded objects. When a `ttl` is also configured, call `ensureS3LifecycleRule()` once (e.g. during deployment) to best-effort install a matching S3 lifecycle expiration rule (logged, never fatal) — this is opt-in rather than automatic, since it requires the broader `s3:PutLifecycleConfiguration` bucket-level permission and is not safe to fire on every adapter construction. If you configure `ttl` + `s3` but never call it, nothing reclaims objects that best-effort cleanup misses (a failed delete, or a write that lost the checkpointer's first-write-wins race) — they stay in the bucket until you remove them or add a lifecycle rule yourself. The store has an analogous, smaller-scale race: two concurrent `put`s to the same key that both read the previous descriptor before either commits each upload to their own distinct (nonced) key and each then try to clean up that same previous descriptor — the loser's own upload becomes an orphan (bounded at one per race), the same class of leak, reclaimed the same way. The checkpointer's *special* writes (`__error__`, `__interrupt__`, `__resume__`, `__scheduled__`) overwrite their row in place and carry the identical race: two genuinely concurrent `putWrites` calls to the same special channel that both read "no existing object" before either commits each orphan the loser's own upload. Same bound (one per race), same reclamation — best-effort cleanup, then `ensureS3LifecycleRule()` or your own lifecycle rule.
 
 **TTL expiry** — set `ttl: { days }` or `ttl: { seconds }`. The `ttl` attribute is written as a Unix-epoch-seconds timestamp; enable DynamoDB TTL on the `ttl` attribute for automatic deletion. Chat history anchors a single **uniform whole-conversation TTL** on the session's metadata row, shared by every message: normally it's set once, at session creation, via `if_not_exists`; but if the previously-stored anchor is ever found missing or already expired (DynamoDB's own TTL sweep can lag up to ~48h), the next append heals it with a plain overwrite instead of staying stuck. Every message written at any point in time shares whatever the current anchor is; expired messages are also filtered out on read. If the append that triggers a stale-anchor heal is itself later rolled back (a later chunk in the same call failed), the healed ttl is not reverted — the session simply keeps the fresher, never-shorter expiry rather than risk regressing a value a concurrent legitimate extension may have since written; this is a deliberate, self-healing tradeoff, not a bug.
 
@@ -251,7 +256,18 @@ const logger: Logger = {
 const store = new DynamoDBStore({ tableName: 'langgraph', logger: redactLogger(logger) });
 ```
 
-`redactLogger` wraps a logger so secret-looking fields (access keys, tokens, passwords, …) are replaced with `[REDACTED]` in structured log arguments. `redactSecrets` exposes the same redaction for arbitrary objects.
+`redactLogger` wraps a logger so secret-looking fields (access keys, tokens, passwords, …) are replaced with `[REDACTED]` in structured log arguments. It also scans **string values, including an error's `message` and `stack`**, for recognisable credential shapes — AWS access key ids, `Bearer` tokens, JWTs, and `password=`/`token=` assignments — replacing just the matched substring so the text stays readable. Pass `extraKeys` to add field names and `extraValuePatterns` to add shapes. `redactSecrets` exposes the same redaction for arbitrary objects.
+
+**What the library logs.** Nothing at all until you inject a logger — that is deliberate, a library should not write to your console uninvited. Once one is attached, the events worth alerting on are:
+
+| Level | Event |
+| --- | --- |
+| `info` | `deleteThread` / `history.clear` completing, with rows deleted and rows skipped |
+| `warn` | a row left in place by a delete because it belongs to another adapter |
+| `warn` | a row skipped on read because its shape is not this adapter's (`store.get`, checkpointer `list`) |
+| `warn` | a pending-write guard rejection whose existing row holds an unexpected channel |
+| `warn` | a `vectorBackend` returning ascending scores, or a match this store cannot address |
+| `error` | a chat message skipped because it could not be decoded, with its sort key |
 
 ## Infrastructure setup
 
@@ -315,6 +331,33 @@ When S3 offloading is enabled, on the bucket/objects: `s3:GetObject`, `s3:PutObj
 
 ## Migrating from earlier versions
 
+**0.7.x → 0.8.0**: **every adapter's partition key is now adapter-tagged** —
+`PK = <thread_id>` → `CHKPT#<thread_id>`, `PK = <namespace[0]>` →
+`STORE#<namespace[0]>`, `PK = <sessionId>` → `HIST#<sessionId>` — and the
+checkpointer's pending-write sort key gains a trailing channel segment
+(`WRITE#<ns>#<id>#<task>#<idx>` → `…#<idx>#<channel>`).
+
+This closes two real defects on a table shared via `createAll()`. Reusing one
+identifier across adapters — a "conversation id" used as both a `thread_id`
+and a `sessionId`, an entirely ordinary choice — put unrelated adapters' rows
+in a single partition, where `deleteThread()` silently deleted the chat
+history (and vice versa), and identically-composed sort keys let one adapter
+overwrite another's item or hand its payload back on read. The channel segment
+separately stops a retried task whose write mix changed from silently losing a
+write; a per-call write group, also stored on each row, keeps such a retry from
+replaying a channel twice. See the CHANGELOG for the full mechanism.
+
+**Data written by 0.7.x is not found after upgrading**, for all three
+adapters. Back up and recreate the table before upgrading.
+
+Three behaviour changes are also worth checking before you upgrade:
+constructing a `DynamoDBStore` with a `vectorBackend` but no `index` now
+throws instead of silently returning unranked results; `getMessages` skips and
+logs an undecodable message instead of failing the whole read (pass
+`onCorruptMessage: 'throw'` to keep the old behaviour); and the store's
+`$gt`/`$gte`/`$lt`/`$lte` filters no longer coerce across types, so a stored
+`'10'` no longer matches `{ $gt: 5 }`.
+
 **0.6.x → 0.7.0**: chat-history's sort keys now carry a `HISTORY#` item-kind
 tag — `SK = SESSION` → `SK = HISTORY#SESSION`, `SK = MSG#<ULID>` →
 `SK = HISTORY#MSG#<ULID>`. This closes a real key collision on a table
@@ -339,9 +382,9 @@ unaffected.
 
 ## Production notes
 
-- **Sharing one table** across all three adapters is supported — their key spaces don't collide, and table-wide reads filter to their own items. Checkpointer, chat-history, and *scoped* store reads are all partition-scoped (`Query`/`GetItem`).
+- **Sharing one table** across all three adapters is supported — adapter-tagged partition keys make the key spaces provably disjoint (see [Table schema](#table-schema)), and table-wide reads filter to their own items. Checkpointer, chat-history, and *scoped* store reads are all partition-scoped (`Query`/`GetItem`).
 - **Scoped reads are `Query`s.** `store.search`/`store.listNamespaces` with a concrete namespace prefix and `history.getMessages` are native `Query`s. Only a rootless `store.search([])` / unprefixed `listNamespaces` and `history.listSessions` fall back to `Scan` (cost scales with table size) — keep those rare or use a dedicated table. `listSessions` accepts an optional `{ maxIterations }` override for tables where non-session rows dominate the scan.
-- **Hot partitions.** The store's partition key is `namespace[0]` and chat history's is `sessionId`. A single partition tops out around ~1000 WCU / 3000 RCU, so avoid funneling very high write throughput through one tenant/session id; spread load across scope roots (e.g. include a tenant id as `namespace[0]`).
+- **Hot partitions.** The store's partition key is `STORE#<namespace[0]>` and chat history's is `HIST#<sessionId>` — the adapter tag is constant, so throughput still concentrates on the identifier you choose. A single partition tops out around ~1000 WCU / 3000 RCU, so avoid funneling very high write throughput through one tenant/session id; spread load across scope roots (e.g. include a tenant id as `namespace[0]`).
 - **Very large vector corpora** outgrow the in-DB ranker (`maxSearchCandidates`). Configure a `vectorBackend` (OpenSearch, pgvector, …) — the library keeps DynamoDB as the source of truth and only delegates similarity ranking.
 - **TTL deletion timing** is governed by DynamoDB (typically within 48 h of expiry) and S3 lifecycle expiry is day-granular — the library writes the correct expiry timestamp (and filters expired chat messages on read) but does not guarantee instant deletion. The matching S3 lifecycle rule is not written automatically: it is installed only when you call `ensureS3LifecycleRule()`.
 

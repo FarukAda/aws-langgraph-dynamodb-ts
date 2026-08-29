@@ -1,4 +1,4 @@
-import { QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -85,6 +85,8 @@ describe('pruneOrphans', () => {
   });
 
   it('deletes backend refs with no live target', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
     const backend = {
       upsert: jest.fn(),
       delete: jest.fn().mockResolvedValue(undefined),
@@ -95,7 +97,7 @@ describe('pruneOrphans', () => {
       ]),
     };
     const count = await pruneOrphans(
-      context(undefined as never),
+      context(client),
       backend,
       ['n'],
       [{ namespace: ['n'], key: 'live', embedding: [1] }],
@@ -103,6 +105,25 @@ describe('pruneOrphans', () => {
     expect(count).toBe(1);
     expect(backend.delete).toHaveBeenCalledWith(['n'], 'dead');
     expect(backend.listKeys).toHaveBeenCalledWith(['n']);
+  });
+
+  it('re-checks a candidate against DynamoDB before pruning it (M11)', async () => {
+    // The live-set snapshot and this prune read are not one point in time, so
+    // a key written between them looks orphaned. Deleting its vector on that
+    // basis silently drops a just-written live item out of semantic search.
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({ Item: { value: { location: 'INLINE' } } });
+    const backend = {
+      upsert: jest.fn(),
+      delete: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn(),
+      listKeys: jest
+        .fn()
+        .mockResolvedValue([{ namespace: ['n'], key: 'written-during-reconcile' }]),
+    };
+    const count = await pruneOrphans(context(client), backend, ['n'], []);
+    expect(count).toBe(0);
+    expect(backend.delete).not.toHaveBeenCalled();
   });
 });
 

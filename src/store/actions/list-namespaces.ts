@@ -7,7 +7,7 @@ import { NAMESPACE_SEPARATOR } from '../internal/keys';
 import { matchNamespace, prefixRoot, truncateDepth } from '../internal/namespace-match';
 import { scopedQuery, storeScan } from '../internal/query';
 import type { StoreContext } from '../internal/setup';
-import { validatePaging } from '../internal/validation';
+import { validateMaxDepth, validatePaging } from '../internal/validation';
 
 function namespaceSource(context: StoreContext, op: ListNamespacesOperation) {
   const root = prefixRoot(op.matchConditions);
@@ -35,6 +35,7 @@ export async function listNamespaces(
   op: ListNamespacesOperation,
 ): Promise<string[][]> {
   validatePaging(op.offset, op.limit);
+  validateMaxDepth(op.maxDepth);
   const seen = new Set<string>();
   const namespaces: string[][] = [];
   for await (const raw of namespaceSource(context, op)) {

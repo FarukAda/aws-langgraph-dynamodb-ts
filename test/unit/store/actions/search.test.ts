@@ -53,7 +53,7 @@ describe('searchItems', () => {
     const items = await searchItems(context(client), { namespacePrefix: ['users'] });
     expect(items.map((i) => i.key).sort()).toEqual(['a', 'b']);
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.ExpressionAttributeValues).toEqual({
-      ':pk': 'users',
+      ':pk': 'STORE#users',
     });
   });
 

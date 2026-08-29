@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
 
 ***
 
@@ -8,7 +8,7 @@
 
 > **redactLogger**(`inner`, `options?`): [`Logger`](../interfaces/Logger.md)
 
-Defined in: [shared/logging/redaction.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/logging/redaction.ts#L65)
+Defined in: [shared/logging/redaction.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/logging/redaction.ts#L56)
 
 Wrap a logger so object args are redacted before delegation. The message
 string is passed through unchanged (never interpolate secrets into it).
@@ -21,9 +21,7 @@ string is passed through unchanged (never interpolate secrets into it).
 
 ### options?
 
-#### extraKeys?
-
-readonly `string`[]
+`RedactLoggerOptions` = `{}`
 
 ## Returns
 

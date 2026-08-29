@@ -1,3 +1,6 @@
+/** Reserved separator joining sort-key segments; forbidden inside a session id. */
+export const SORT_KEY_SEPARATOR = '#';
+
 /**
  * Item-kind tag distinguishing this adapter's sort keys from another
  * adapter's on a table shared via `DynamoDBFactory.createAll()` — matches the
@@ -7,21 +10,37 @@
  * `store.put([sessionId], 'SESSION', ...)`, since `sortKey` collapses a
  * single-element namespace down to just the key).
  */
-const ADAPTER_PREFIX = 'HISTORY#';
+const ADAPTER_PREFIX = `HISTORY${SORT_KEY_SEPARATOR}`;
 
 /** Fixed sort key for the per-session metadata item. */
 export const SESSION_SORT_KEY = `${ADAPTER_PREFIX}SESSION`;
 
 const MESSAGE_PREFIX = `${ADAPTER_PREFIX}MSG#`;
 
-/** Partition key for a chat session: the session id itself. */
+/**
+ * Adapter tag prefixed to every chat-history partition key — see the
+ * equivalent in checkpointer/internal/keys.ts for why the three adapters'
+ * partitions must not overlap on a shared table.
+ */
+const ADAPTER_PARTITION_PREFIX = `HIST${SORT_KEY_SEPARATOR}`;
+
+/** Partition key for a chat session: the adapter tag plus the session id. */
 export function sessionPartition(sessionId: string): string {
-  return sessionId;
+  return `${ADAPTER_PARTITION_PREFIX}${sessionId}`;
 }
 
 /** Sort key for a single message item, ordered by its monotonic ULID. */
 export function messageSortKey(ulid: string): string {
   return `${MESSAGE_PREFIX}${ulid}`;
+}
+
+/**
+ * True when `sortKey` is one this adapter writes. A partition query carries no
+ * sort-key condition, so a partition-wide delete uses this to leave any row it
+ * does not own in place rather than deleting the whole partition blindly.
+ */
+export function isHistorySortKey(sortKey: string): boolean {
+  return sortKey.startsWith(ADAPTER_PREFIX);
 }
 
 /** `begins_with` prefix selecting every message item in a session. */

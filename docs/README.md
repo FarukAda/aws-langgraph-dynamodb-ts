@@ -1,8 +1,8 @@
-**AWS LangGraph DynamoDB TypeScript v0.3.1**
+**AWS LangGraph DynamoDB TypeScript v0.8.0**
 
 ***
 
-# AWS LangGraph DynamoDB TypeScript v0.3.1
+# AWS LangGraph DynamoDB TypeScript v0.8.0
 
 ## Enumerations
 
@@ -11,6 +11,7 @@
 ## Classes
 
 - [AbortError](classes/AbortError.md)
+- [BatchWriteAllIncompleteError](classes/BatchWriteAllIncompleteError.md)
 - [BatchWriteIncompleteError](classes/BatchWriteIncompleteError.md)
 - [CompensationFailedError](classes/CompensationFailedError.md)
 - [ConflictError](classes/ConflictError.md)
@@ -43,6 +44,7 @@
 
 ## Type Aliases
 
+- [CorruptMessagePolicy](type-aliases/CorruptMessagePolicy.md)
 - [DynamoDBChatMessageHistoryOptions](type-aliases/DynamoDBChatMessageHistoryOptions.md)
 - [DynamoDBSaverOptions](type-aliases/DynamoDBSaverOptions.md)
 - [DynamoDBStoreOptions](type-aliases/DynamoDBStoreOptions.md)

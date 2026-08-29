@@ -3,10 +3,11 @@ import type { StoreItemRecord } from '../types';
 import type { VectorBackend, VectorRef } from '../vector-backend';
 import type { JsonValue } from './filter';
 import { readStoreItem } from './item-mapper';
-import { namespaceMatchesPrefix } from './keys';
+import { namespaceMatchesPrefix, partitionKey, sortKey } from './keys';
 import { scopedQuery } from './query';
 import { embedValue } from './semantic-search';
 import type { StoreContext } from './setup';
+import { rowIsAbsent } from './write-verify';
 
 /** A canonical item's location plus the embedding recomputed for it. */
 export interface ReconcileTarget {
@@ -70,6 +71,19 @@ export function selectOrphans(backendRefs: VectorRef[], live: ReconcileTarget[])
   return backendRefs.filter((ref) => !liveKeys.has(refIdentity(ref.namespace, ref.key)));
 }
 
+/**
+ * True when a candidate's canonical item is confirmed absent right now. The
+ * live-set snapshot and this read are not one point in time, so an item
+ * written between them looks orphaned even though it is live — and deleting
+ * its vector would silently drop a just-written item out of semantic search.
+ */
+async function confirmedGone(context: StoreContext, ref: VectorRef): Promise<boolean> {
+  return rowIsAbsent(context, {
+    PK: partitionKey(ref.namespace),
+    SK: sortKey(ref.namespace, ref.key),
+  });
+}
+
 /** Delete backend vectors with no canonical item; returns the prune count. */
 export async function pruneOrphans(
   context: StoreContext,
@@ -81,9 +95,28 @@ export async function pruneOrphans(
     context.logger.info('reconcileVectorIndex prune skipped: backend has no listKeys', { prefix });
     return 0;
   }
-  const orphans = selectOrphans(await backend.listKeys(prefix), live);
-  for (const ref of orphans) {
+  const candidates = selectOrphans(await backend.listKeys(prefix), live);
+  /**
+   * Every item the snapshot actually saw, embedded or not. A candidate in here
+   * is prunable on the evidence already gathered — its item exists but yields
+   * no embedding (its indexable text became empty), so its vector really is
+   * stale. Only a candidate the snapshot never saw at all is ambiguous.
+   */
+  const observed = new Set(live.map((target) => refIdentity(target.namespace, target.key)));
+  let pruned = 0;
+  for (const ref of candidates) {
+    if (
+      !observed.has(refIdentity(ref.namespace, ref.key)) &&
+      !(await confirmedGone(context, ref))
+    ) {
+      context.logger.info('reconcileVectorIndex: kept a vector whose item reappeared', {
+        namespace: ref.namespace,
+        key: ref.key,
+      });
+      continue;
+    }
     await backend.delete(ref.namespace, ref.key);
+    pruned += 1;
   }
-  return orphans.length;
+  return pruned;
 }

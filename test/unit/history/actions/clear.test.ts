@@ -17,6 +17,7 @@ function context(
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
     ulid: () => 'U',
+    onCorruptMessage: 'skip',
     ...extra,
   };
 }
@@ -28,6 +29,30 @@ const inlineMessage = {
 };
 
 describe('clearSession', () => {
+  it('leaves a row that is not a chat-history row in place, and warns (C1, I7)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({
+      Items: [
+        { PK: 'HIST#sess-1', SK: 'HISTORY#MSG#01A', message: inlineMessage },
+        { PK: 'HIST#sess-1', SK: 'META##ckpt-1' },
+      ],
+    });
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    const warn = jest.fn();
+    await clearSession(context(client, { logger: { ...SILENT_LOGGER, warn } }), 'sess-1');
+    const requests =
+      mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.history ?? [];
+    expect(requests.map((r) => r.DeleteRequest?.Key?.SK)).toEqual(['HISTORY#MSG#01A']);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an invalid session id instead of reaching DynamoDB (M12)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    await expect(clearSession(context(client), '')).rejects.toThrow(/sessionId/);
+    await expect(clearSession(context(client), 'a#b')).rejects.toThrow(/reserved "#" separator/);
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
+  });
+
   it('does nothing when the session partition is empty', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });
@@ -46,16 +71,16 @@ describe('clearSession', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({
       Items: [
-        { PK: 'sess-1', SK: 'MSG#01A', message: inlineMessage },
-        { PK: 'sess-1', SK: 'SESSION' },
+        { PK: 'sess-1', SK: 'HISTORY#MSG#01A', message: inlineMessage },
+        { PK: 'sess-1', SK: 'HISTORY#SESSION' },
       ],
     });
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     await clearSession(context(client), 'sess-1');
     const deletes = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems!.history;
     expect(deletes.map((d) => d.DeleteRequest!.Key)).toEqual([
-      { PK: 'sess-1', SK: 'MSG#01A' },
-      { PK: 'sess-1', SK: 'SESSION' },
+      { PK: 'sess-1', SK: 'HISTORY#MSG#01A' },
+      { PK: 'sess-1', SK: 'HISTORY#SESSION' },
     ]);
   });
 
@@ -65,7 +90,7 @@ describe('clearSession', () => {
       Items: [
         {
           PK: 'sess-1',
-          SK: 'MSG#01A',
+          SK: 'HISTORY#MSG#01A',
           message: { location: PayloadLocation.S3, serdeType: 'json', s3Key: 'sess-1/U.bin' },
         },
       ],
@@ -88,10 +113,10 @@ describe('clearSession', () => {
         return {
           Items: Array.from({ length: 25 }, (_, i) => ({
             PK: 'sess-1',
-            SK: `MSG#${i}`,
+            SK: `HISTORY#MSG#${i}`,
             message: inlineMessage,
           })),
-          LastEvaluatedKey: { PK: 'sess-1', SK: 'MSG#25' },
+          LastEvaluatedKey: { PK: 'sess-1', SK: 'HISTORY#MSG#25' },
         };
       }
       // Page 2: 5 items; capture BatchWriteCommand call count at this point
@@ -100,7 +125,7 @@ describe('clearSession', () => {
       return {
         Items: Array.from({ length: 5 }, (_, i) => ({
           PK: 'sess-1',
-          SK: `MSG#${25 + i}`,
+          SK: `HISTORY#MSG#${25 + i}`,
           message: inlineMessage,
         })),
       };
@@ -123,7 +148,7 @@ describe('clearSession', () => {
       mock.on(QueryCommand).resolvesOnce({
         Items: Array.from({ length: pageSize }, (_, j) => ({
           PK: 'sess-1',
-          SK: `MSG#${i}-${j}`,
+          SK: `HISTORY#MSG#${i}-${j}`,
           message: inlineMessage,
         })),
         LastEvaluatedKey: i < pageCount - 1 ? { PK: 'sess-1', SK: String(i) } : undefined,

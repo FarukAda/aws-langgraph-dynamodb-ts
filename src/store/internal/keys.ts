@@ -1,9 +1,16 @@
 /** Separator joining namespace elements (and the trailing key) in the sort key. */
 export const NAMESPACE_SEPARATOR = '#';
 
-/** Partition key for an item: the scope-root namespace element. */
+/**
+ * Adapter tag prefixed to every store partition key — see the equivalent in
+ * checkpointer/internal/keys.ts for why the three adapters' partitions must
+ * not overlap on a shared table.
+ */
+const ADAPTER_PARTITION_PREFIX = `STORE${NAMESPACE_SEPARATOR}`;
+
+/** Partition key for an item: the adapter tag plus the scope-root element. */
 export function partitionKey(namespace: string[]): string {
-  return namespace[0];
+  return `${ADAPTER_PARTITION_PREFIX}${namespace[0]}`;
 }
 
 /** Sort key: the rest of the namespace plus the key, separator-joined. */

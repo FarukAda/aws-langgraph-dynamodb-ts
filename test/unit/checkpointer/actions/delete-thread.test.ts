@@ -101,4 +101,56 @@ describe('deleteThread', () => {
       expect((error as { code: ErrorCode }).code).toBe(ErrorCode.VALIDATION);
     }
   });
+
+  it('rejects a thread id carrying the reserved separator, like every other action (M5)', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(deleteThread(context(client), 'a#b')).rejects.toThrow(/reserved "#" separator/);
+  });
+
+  it('leaves a row that is not a checkpointer row in place, and warns (C1, I7)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({
+      Items: [
+        { PK: 'CHKPT#t', SK: 'META##c1' },
+        { PK: 'CHKPT#t', SK: 'HISTORY#SESSION' },
+        { PK: 'CHKPT#t', SK: 'some-store-key' },
+      ],
+    });
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    const warn = jest.fn();
+    await deleteThread({ ...context(client), logger: { ...SILENT_LOGGER, warn } }, 't');
+    const requests = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.ckpt ?? [];
+    expect(requests.map((r) => r.DeleteRequest?.Key?.SK)).toEqual(['META##c1']);
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports cumulative deletes when a later flush fails (M5)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    // 30 rows: the first flush of 25 succeeds, the flush of the remaining 5 fails.
+    mock.on(QueryCommand).resolves({
+      Items: Array.from({ length: 30 }, (_, i) => ({ PK: 'CHKPT#t', SK: `META##c${i}` })),
+    });
+    let call = 0;
+    mock.on(BatchWriteCommand).callsFake(() => {
+      call += 1;
+      if (call === 1) return { UnprocessedItems: {} };
+      throw Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
+    });
+    await expect(deleteThread(context(client), 't')).rejects.toMatchObject({
+      code: ErrorCode.BATCH_WRITE_INCOMPLETE,
+      succeededCount: 25,
+    });
+  });
+
+  it('logs how many rows it deleted (I7)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [{ PK: 'CHKPT#t', SK: 'META##c1' }] });
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    const info = jest.fn();
+    await deleteThread({ ...context(client), logger: { ...SILENT_LOGGER, info } }, 't');
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('deleted'), {
+      deleted: 1,
+      skipped: 0,
+    });
+  });
 });

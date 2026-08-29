@@ -1,3 +1,5 @@
+import { ValidationError } from '../../shared/errors/errors';
+
 /** Reserved separator joining sort-key segments; forbidden inside any segment. */
 export const SORT_KEY_SEPARATOR = '#';
 
@@ -18,9 +20,20 @@ enum CheckpointItemKind {
   WRITE = 'WRITE',
 }
 
-/** Partition key for a thread: the thread id itself. */
+/**
+ * Adapter tag prefixed to every checkpointer partition key. Without it a
+ * `thread_id` reused as a `sessionId` or a store namespace root — an ordinary
+ * design choice — put all three adapters' rows in one partition on a table
+ * shared via `DynamoDBFactory.createAll()`, where a partition-wide delete
+ * reached another adapter's data and composed sort keys could collide
+ * byte-for-byte. The three tags differ in their first character, so the key
+ * spaces are disjoint by construction.
+ */
+const ADAPTER_PARTITION_PREFIX = `CHKPT${SORT_KEY_SEPARATOR}`;
+
+/** Partition key for a thread: the adapter tag plus the thread id. */
 export function partitionKey(threadId: string): string {
-  return threadId;
+  return `${ADAPTER_PARTITION_PREFIX}${threadId}`;
 }
 
 /** Sort key for a checkpoint's lightweight metadata item. */
@@ -38,16 +51,46 @@ export function payloadSortKey(checkpointNs: string, checkpointId: string): stri
   return `${CheckpointItemKind.PAYLOAD}${SORT_KEY_SEPARATOR}${checkpointNs}${SORT_KEY_SEPARATOR}${checkpointId}`;
 }
 
-/** Sort key for a single pending write. */
+/**
+ * Sort key for a single pending write. The trailing `channel` segment is what
+ * keeps two *different* channels from ever occupying one row: without it, a
+ * retried task whose write mix changed could compute an index another
+ * channel already holds, and the first-write-wins guard — which cannot tell a
+ * genuine retry from an unrelated write — would silently discard it. The
+ * channel is appended verbatim as the final segment, so two sort keys collide
+ * only when their channels are byte-identical; `writeSortKeyPrefix` stops at
+ * the checkpoint id, ahead of this segment, so `begins_with` reads are
+ * unaffected.
+ */
 export function writeSortKey(
   checkpointNs: string,
   checkpointId: string,
   taskId: string,
   index: number,
+  channel: string,
 ): string {
-  const paddedIndex = (index + WRITE_INDEX_OFFSET).toString().padStart(WRITE_INDEX_PAD_WIDTH, '0');
-  return [CheckpointItemKind.WRITE, checkpointNs, checkpointId, taskId, paddedIndex].join(
+  const offsetIndex = index + WRITE_INDEX_OFFSET;
+  if (offsetIndex < 0 || offsetIndex.toString().length > WRITE_INDEX_PAD_WIDTH) {
+    throw new ValidationError(
+      `write index ${index} is outside the range encodable at offset ${WRITE_INDEX_OFFSET} ` +
+        `with ${WRITE_INDEX_PAD_WIDTH} digits`,
+      'index',
+    );
+  }
+  const paddedIndex = offsetIndex.toString().padStart(WRITE_INDEX_PAD_WIDTH, '0');
+  return [CheckpointItemKind.WRITE, checkpointNs, checkpointId, taskId, paddedIndex, channel].join(
     SORT_KEY_SEPARATOR,
+  );
+}
+
+/**
+ * True when `sortKey` is one this adapter writes. A partition query carries no
+ * sort-key condition, so a partition-wide delete uses this to leave any row it
+ * does not own in place rather than deleting the whole partition blindly.
+ */
+export function isCheckpointerSortKey(sortKey: string): boolean {
+  return Object.values(CheckpointItemKind).some((kind) =>
+    sortKey.startsWith(`${kind}${SORT_KEY_SEPARATOR}`),
   );
 }
 

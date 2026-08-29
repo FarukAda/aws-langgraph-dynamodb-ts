@@ -6,8 +6,8 @@ import {
 } from '../../../../src/history/internal/keys';
 
 describe('history keys', () => {
-  it('partitions by session id', () => {
-    expect(sessionPartition('s1')).toBe('s1');
+  it('tags the partition key with the chat-history adapter prefix (C1, C2)', () => {
+    expect(sessionPartition('s1')).toBe('HIST#s1');
   });
 
   it('builds MSG# sort keys from a ULID, tagged with the adapter-kind prefix', () => {

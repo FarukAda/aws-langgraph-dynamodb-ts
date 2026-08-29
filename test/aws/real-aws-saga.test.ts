@@ -79,6 +79,7 @@ describe('append saga unrecoverable rollback against real AWS', () => {
       tableName,
       serde: JSON_SERDE,
       logger,
+      onCorruptMessage: 'skip' as const,
       ulid: () => 'unused',
     };
   }
@@ -137,11 +138,17 @@ describe('append saga unrecoverable rollback against real AWS', () => {
     )) as { cause?: Error; rollbackError?: Error & { cause?: Error } };
 
     expect(error.cause?.message).toBe('chunk-2 transaction failed');
-    // rollbackCommitted's batchWriteAll now attempts every chunk and reports an
-    // aggregate BatchWriteAllIncompleteError on failure instead of surfacing the
-    // raw injected error directly; the original message is preserved as .cause.
+    // rollbackCommitted's batchWriteAll attempts every chunk and reports an
+    // aggregate BatchWriteAllIncompleteError rather than surfacing the raw
+    // injected error. The chain is two levels deep, not one: the aggregate's
+    // cause is the failing *chunk's* BatchWriteIncompleteError, and the raw
+    // error is that chunk error's own cause. This assertion previously looked
+    // one level up and could never have matched.
     expect(error.rollbackError?.name).toBe('BatchWriteAllIncompleteError');
-    expect(error.rollbackError?.cause?.message).toBe('rollback batch failed');
+    expect(error.rollbackError?.cause?.name).toBe('BatchWriteIncompleteError');
+    expect((error.rollbackError?.cause as Error & { cause?: Error })?.cause?.message).toBe(
+      'rollback batch failed',
+    );
   });
 
   it('left the first chunk committed in real DynamoDB (the drift the error warns about)', async () => {

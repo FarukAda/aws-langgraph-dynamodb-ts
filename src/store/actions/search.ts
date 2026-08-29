@@ -1,32 +1,17 @@
-import type {
-  IndexConfig,
-  Item,
-  SearchItem,
-  SearchOperation,
-} from '@langchain/langgraph-checkpoint';
+import type { SearchItem, SearchOperation } from '@langchain/langgraph-checkpoint';
 
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { paginateScan } from '../../shared/dynamodb/scan';
-import { ValidationError } from '../../shared/errors/errors';
-import { type JsonValue, matchesStoreFilter } from '../internal/filter';
+import { searchViaBackend } from '../internal/backend-search';
 import { narrowStoreRecord, readStoreItem } from '../internal/item-mapper';
 import { namespaceMatchesPrefix } from '../internal/keys';
 import { scopedQuery, storeScan } from '../internal/query';
 import { type RankCandidate, rankInMemory } from '../internal/ranker';
+import { passesFilter } from '../internal/search-filter';
 import type { StoreContext } from '../internal/setup';
 import { validatePaging } from '../internal/validation';
-import type { VectorBackend } from '../vector-backend';
-import { getItem } from './get';
 
 const DEFAULT_LIMIT = 10;
-
-function passesFilter(item: Item, op: SearchOperation): boolean {
-  if (!op.filter) return true;
-  return matchesStoreFilter(
-    item.value as Record<string, JsonValue>,
-    op.filter as Record<string, JsonValue>,
-  );
-}
 
 async function collectCandidates(
   context: StoreContext,
@@ -54,40 +39,6 @@ async function collectCandidates(
     candidates.push({ item, embedding: record.embedding });
   }
   return candidates;
-}
-
-async function searchViaBackend(
-  context: StoreContext,
-  backend: VectorBackend,
-  index: IndexConfig,
-  op: SearchOperation,
-  offset: number,
-  limit: number,
-): Promise<SearchItem[]> {
-  const queryVector = await index.embeddings.embedQuery(op.query as string);
-  const need = offset + limit;
-  if (need > context.maxSearchCandidates) {
-    throw new ValidationError(
-      `Requested page (offset ${offset} + limit ${limit} = ${need}) exceeds maxSearchCandidates ` +
-        `(${context.maxSearchCandidates}); narrow the page or raise maxSearchCandidates`,
-      'maxSearchCandidates',
-    );
-  }
-  let topK = Math.min(need, context.maxSearchCandidates);
-  let results: SearchItem[];
-  for (;;) {
-    const matches = await backend.query(op.namespacePrefix, queryVector, topK);
-    results = [];
-    for (const match of matches) {
-      if (!namespaceMatchesPrefix(match.namespace, op.namespacePrefix)) continue;
-      const item = await getItem(context, match.namespace, match.key);
-      if (item && passesFilter(item, op)) results.push({ ...item, score: match.score });
-    }
-    if (results.length >= need || matches.length < topK || topK >= context.maxSearchCandidates)
-      break;
-    topK = Math.min(topK * 2, context.maxSearchCandidates);
-  }
-  return results;
 }
 
 /**

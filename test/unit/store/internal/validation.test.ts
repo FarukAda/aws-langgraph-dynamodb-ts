@@ -21,6 +21,10 @@ describe('validateNamespace', () => {
   it('throws when an element contains the reserved separator', () => {
     expect(() => validateNamespace(['users', 'a#b'])).toThrow(ValidationError);
   });
+
+  it('throws when an element contains a control character (M7)', () => {
+    expect(() => validateNamespace(['users', 'a\u001b[31m'])).toThrow(/control characters/);
+  });
 });
 
 describe('validateKey', () => {
@@ -34,6 +38,10 @@ describe('validateKey', () => {
 
   it('throws when the key contains the reserved separator', () => {
     expect(() => validateKey('b#c')).toThrow(ValidationError);
+  });
+
+  it('throws when the key contains a control character (M7)', () => {
+    expect(() => validateKey('b\u0000c')).toThrow(/control characters/);
   });
 });
 

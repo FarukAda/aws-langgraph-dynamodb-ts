@@ -65,3 +65,22 @@ describe('chunkBySize', () => {
     expect(chunkBySize([], 99, 1000)).toEqual([]);
   });
 });
+
+describe('estimateItemBytes UTF-8 accounting (M13)', () => {
+  it('counts a non-ASCII session id in UTF-8 bytes, not UTF-16 code units', () => {
+    // The doc comment promises an estimate at or above the real marshalled
+    // size. A 100-character Hiragana id is 300 UTF-8 bytes but only 100 UTF-16
+    // code units, so `.length` understated it — in the wrong direction.
+    const sessionId = 'あ'.repeat(100);
+    const item = inlineItem('HISTORY#MSG#U', 0);
+    const estimate = estimateItemBytes({ ...item, sessionId, PK: `HIST#${sessionId}` });
+    const trueFieldBytes = Buffer.byteLength(sessionId, 'utf8') * 2;
+    expect(estimate).toBeGreaterThan(trueFieldBytes);
+  });
+
+  it('counts an offloaded descriptor s3Key in UTF-8 bytes too', () => {
+    const key = 'キー'.repeat(50);
+    const item = s3Item('HISTORY#MSG#U', key);
+    expect(estimateItemBytes(item)).toBeGreaterThan(Buffer.byteLength(key, 'utf8'));
+  });
+});

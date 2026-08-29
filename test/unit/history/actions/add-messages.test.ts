@@ -23,6 +23,7 @@ function context(
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
     ulid: sequentialUlid(),
+    onCorruptMessage: 'skip',
     ...extra,
   };
 }
@@ -39,6 +40,50 @@ describe('addMessages', () => {
     expect(items[0].Update?.ExpressionAttributeValues?.[':title']).toBe('a');
     expect(items[1].Put?.Item?.SK).toBe('HISTORY#MSG#U0');
     expect(items[2].Put?.Item?.SK).toBe('HISTORY#MSG#U1');
+  });
+
+  it('cleans up already-uploaded S3 objects when a later message fails to encode (I5)', async () => {
+    // buildItems uploads sequentially with no try/catch, ahead of the append
+    // saga's compensation machinery — so a failure on message N left messages
+    // 1..N-1's objects with no cleanup path at all, despite the rest of this
+    // subsystem guaranteeing no orphans.
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    let uploads = 0;
+    const deleteBatch = jest.fn().mockResolvedValue([]);
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[]) => parts.join('/'),
+      upload: async (key: string) => {
+        uploads += 1;
+        if (uploads === 2) throw new Error('upload failed');
+        return key;
+      },
+      deleteBatch,
+    };
+    await expect(
+      addMessages(context(client, { offloader: offloader as never }), 's1', [
+        new HumanMessage('first'),
+        new HumanMessage('second'),
+      ]),
+    ).rejects.toThrow('upload failed');
+    expect(deleteBatch).toHaveBeenCalledWith(['s1/U0']);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+  });
+
+  it('rethrows an encode failure untouched when no offloader is configured (I5)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    const serde = {
+      dumpsTyped: async (): Promise<[string, Uint8Array]> => {
+        throw new Error('serde failed');
+      },
+      loadsTyped: async (): Promise<unknown> => ({}),
+    };
+    await expect(
+      addMessages(context(client, { serde }), 's1', [new HumanMessage('a')]),
+    ).rejects.toThrow('serde failed');
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
   it('omits the title clause when there is no human message', async () => {

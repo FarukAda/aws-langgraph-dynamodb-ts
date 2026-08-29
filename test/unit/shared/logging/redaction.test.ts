@@ -1,3 +1,4 @@
+import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
 import { redactLogger, redactSecrets } from '../../../../src/shared/logging/redaction';
 
 describe('redactSecrets', () => {
@@ -56,6 +57,32 @@ describe('redactSecrets', () => {
     expect(out.err.unprocessed).toEqual({ token: '[REDACTED]', itemCount: 5 });
   });
 
+  it('preserves the cause chain when rebuilding an error', () => {
+    // `super(message, { cause })` makes `cause` non-enumerable per spec, so
+    // Object.entries skips it. Every library error attaches its own
+    // enumerable code/context, so the rebuild path always fires for them —
+    // dropping the underlying AWS failure that a redacted RetryExhaustedError
+    // exists to report.
+    const root = Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
+    const wrapper = new RetryExhaustedError('Operation failed after 5 attempts', 5, root);
+    const out = redactSecrets({ err: wrapper } as never) as unknown as {
+      err: { cause?: { name: string; message: string } };
+    };
+    expect(out.err.cause).toBeDefined();
+    expect(out.err.cause?.name).toBe('ThrottlingException');
+    expect(out.err.cause?.message).toBe('throttled');
+  });
+
+  it('redacts secrets inside a preserved cause chain', () => {
+    const root = Object.assign(new Error('rejected AKIAIOSFODNN7EXAMPLE'), { token: 'sk-live-1' });
+    const wrapper = new RetryExhaustedError('wrapped', 2, root);
+    const out = redactSecrets({ err: wrapper } as never) as unknown as {
+      err: { cause?: { message: string; token: string } };
+    };
+    expect(out.err.cause?.message).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    expect(out.err.cause?.token).toBe('[REDACTED]');
+  });
+
   it('does not flag a DAG-shared (non-cyclic) object as circular', () => {
     const shared = { note: 'hello' };
     const result = redactSecrets({ a: shared, b: shared });
@@ -67,6 +94,92 @@ describe('redactSecrets', () => {
     const result = redactSecrets({ a: err, b: err } as never) as { a: unknown; b: unknown };
     expect(result.a).toBe(err);
     expect(result.b).toBe(err);
+  });
+});
+
+describe('redactSecrets value patterns (I1)', () => {
+  it('redacts a secret embedded in an error message, not just in a structured field', () => {
+    const wrapped = new Error('creds AKIAIOSFODNN7EXAMPLE rejected');
+    const error = Object.assign(new Error(`Operation failed: ${wrapped.message}`), {
+      code: 'RETRY_EXHAUSTED',
+    });
+    const out = redactSecrets({ err: error } as never) as unknown as {
+      err: { message: string };
+    };
+    expect(out.err.message).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    expect(out.err.message).toContain('[REDACTED]');
+    expect(out.err.message).toContain('Operation failed:');
+  });
+
+  it('rebuilds a bare Error whose message carries a secret rather than passing it through', () => {
+    const error = new Error('token=abcdef123456 expired');
+    const out = redactSecrets({ err: error } as never) as unknown as { err: { message: string } };
+    expect(out.err).not.toBe(error);
+    expect(out.err.message).not.toContain('abcdef123456');
+  });
+
+  it('handles an error carrying no stack at all', () => {
+    const error = Object.assign(new Error('boom'), { stack: undefined, code: 'X' });
+    const out = redactSecrets({ err: error } as never) as unknown as {
+      err: { message: string; stack: unknown };
+    };
+    expect(out.err.message).toBe('boom');
+    expect(out.err.stack).toBeUndefined();
+  });
+
+  it('redacts bearer tokens and password assignments inside plain strings', () => {
+    const out = redactSecrets({
+      note: 'Bearer abc.def.ghi sent; password=hunter2',
+    }) as unknown as { note: string };
+    expect(out.note).not.toContain('hunter2');
+    expect(out.note).not.toContain('abc.def.ghi');
+  });
+
+  it('leaves ordinary operational text untouched', () => {
+    expect(redactSecrets({ note: 'thread-1 deleted 25 rows' })).toEqual({
+      note: 'thread-1 deleted 25 rows',
+    });
+  });
+});
+
+describe('redactSecrets non-plain values (M1)', () => {
+  it('preserves Date and RegExp instead of collapsing them to an empty object', () => {
+    const date = new Date('2026-08-29T00:00:00.000Z');
+    const out = redactSecrets({ date, re: /ab+c/gi } as never) as unknown as {
+      date: Date;
+      re: RegExp;
+    };
+    expect(out.date).toBe(date);
+    expect(String(out.re)).toBe('/ab+c/gi');
+  });
+
+  it('summarises typed arrays instead of exploding them into numeric keys', () => {
+    const out = redactSecrets({ buf: new Uint8Array([1, 2, 3]) } as never) as unknown as {
+      buf: string;
+    };
+    expect(out.buf).toBe('[Uint8Array(3)]');
+  });
+
+  it('recurses a Set into an array of its members', () => {
+    const out = redactSecrets({ set: new Set([1, 2]) } as never) as unknown as { set: number[] };
+    expect(out.set).toEqual([1, 2]);
+  });
+
+  it('recurses a Map while still redacting secret-looking entry keys', () => {
+    const map = new Map<string, unknown>([
+      ['password', 'hunter2'],
+      ['id', 'thread-1'],
+    ]);
+    const out = redactSecrets({ map } as never) as unknown as {
+      map: Record<string, unknown>;
+    };
+    expect(out.map).toEqual({ password: '[REDACTED]', id: 'thread-1' });
+  });
+
+  it('stringifies a non-string Map key so the entry is still reported', () => {
+    const map = new Map<number, string>([[7, 'seven']]);
+    const out = redactSecrets({ map } as never) as unknown as { map: Record<string, unknown> };
+    expect(out.map).toEqual({ '7': 'seven' });
   });
 });
 
@@ -92,5 +205,13 @@ describe('redactLogger', () => {
     const inner = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     redactLogger(inner, { extraKeys: ['pin'] }).info('x', { pin: '1234', label: 'ok' });
     expect(inner.info).toHaveBeenCalledWith('x', { pin: '[REDACTED]', label: 'ok' });
+  });
+
+  it('honors extra value patterns supplied via options (I1)', () => {
+    const inner = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    redactLogger(inner, { extraValuePatterns: [/CORP-\d{4}/g] }).info('x', {
+      note: 'ticket CORP-1234',
+    });
+    expect(inner.info).toHaveBeenCalledWith('x', { note: 'ticket [REDACTED]' });
   });
 });

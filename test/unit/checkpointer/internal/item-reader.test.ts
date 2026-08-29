@@ -1,6 +1,7 @@
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import {
+  dropSupersededWrites,
   readCheckpoint,
   readMetadata,
   toPendingWrites,
@@ -10,6 +11,8 @@ import {
   buildWriteItems,
 } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
+import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 
 const serde = {
@@ -64,5 +67,73 @@ describe('item-reader', () => {
       ['task-7', 'messages', 'a'],
       ['task-7', 'counter', 5],
     ]);
+  });
+});
+
+describe('dropSupersededWrites (C3)', () => {
+  const row = (
+    index: number,
+    channel: string,
+    writeGroup: string,
+    taskId = 'task-1',
+  ): CheckpointWriteItem => ({
+    PK: 'CHKPT#t',
+    SK: `WRITE##c1#${taskId}#${String(index + 8).padStart(10, '0')}#${channel}`,
+    taskId,
+    index,
+    channel,
+    writeGroup,
+    value: {
+      location: PayloadLocation.INLINE,
+      serdeType: 'json',
+      compressed: false,
+      bytes: new Uint8Array(),
+    },
+  });
+
+  it('keeps every value a single call wrote to one channel', () => {
+    // A task emitting two Sends writes the same channel twice in one call;
+    // both values must survive.
+    const items = [row(0, '__pregel_tasks', 'g1'), row(1, '__pregel_tasks', 'g1')];
+    expect(dropSupersededWrites(items)).toHaveLength(2);
+  });
+
+  it('drops a channel a later call re-emitted after an earlier call committed it', () => {
+    // A retried task whose write mix changed places chanA at a second index.
+    // Replaying it twice would double-count an accumulating channel.
+    const items = [row(0, 'chanA', 'g1'), row(0, 'chanB', 'g2'), row(1, 'chanA', 'g2')];
+    const kept = dropSupersededWrites(items);
+    expect(kept.map((item) => [item.channel, item.writeGroup])).toEqual([
+      ['chanA', 'g1'],
+      ['chanB', 'g2'],
+    ]);
+  });
+
+  it('scopes the rule to one task, never across tasks', () => {
+    const items = [row(0, 'chanA', 'g1', 'task-1'), row(0, 'chanA', 'g2', 'task-2')];
+    expect(dropSupersededWrites(items)).toHaveLength(2);
+  });
+
+  it('keeps the earliest call when a later one placed the channel at a LOWER index', () => {
+    // A retry that emits fewer writes than the original moves an
+    // already-committed channel to a smaller index, so it sorts *ahead* of the
+    // original row. Picking whichever row is encountered first would then hand
+    // back the later call's value — last-write-wins, the opposite of the
+    // contract. Groups are time-ordered, so the earliest one is selectable.
+    const items = [
+      row(0, 'chanA', 'g2-later'),
+      row(0, 'chanX', 'g1-earlier'),
+      row(1, 'chanA', 'g1-earlier'),
+    ];
+    const kept = dropSupersededWrites(items);
+    expect(kept.map((item) => [item.channel, item.writeGroup])).toEqual([
+      ['chanX', 'g1-earlier'],
+      ['chanA', 'g1-earlier'],
+    ]);
+  });
+
+  it('is a no-op for a single call writing distinct channels', () => {
+    const items = [row(0, 'a', 'g1'), row(1, 'b', 'g1'), row(2, 'c', 'g1')];
+    expect(dropSupersededWrites(items)).toHaveLength(3);
   });
 });

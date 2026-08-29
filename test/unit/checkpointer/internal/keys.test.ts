@@ -8,8 +8,8 @@ import {
 } from '../../../../src/checkpointer/internal/keys';
 
 describe('checkpointer keys', () => {
-  it('uses the thread id as the partition key', () => {
-    expect(partitionKey('thread-1')).toBe('thread-1');
+  it('tags the partition key with the checkpointer adapter prefix (C1, C2)', () => {
+    expect(partitionKey('thread-1')).toBe('CHKPT#thread-1');
   });
 
   it('builds namespaced META / PAYLOAD sort keys ordered by checkpoint id', () => {
@@ -23,19 +23,30 @@ describe('checkpointer keys', () => {
     expect(metaSortKeyPrefix('inner')).toBe('META#inner#');
   });
 
-  it('builds WRITE sort keys with a zero-padded index and the per-checkpoint prefix', () => {
-    expect(writeSortKey('', 'ckpt-1', 'task-9', 2)).toBe('WRITE##ckpt-1#task-9#0000000010');
+  it('builds WRITE sort keys with a zero-padded index, the channel, and the prefix', () => {
+    expect(writeSortKey('', 'ckpt-1', 'task-9', 2, 'ch')).toBe(
+      'WRITE##ckpt-1#task-9#0000000010#ch',
+    );
     expect(writeSortKeyPrefix('', 'ckpt-1')).toBe('WRITE##ckpt-1#');
   });
 
+  it('keeps two channels sharing an index in separate rows (C3)', () => {
+    expect(writeSortKey('', 'c', 't', 0, 'chanA')).not.toBe(writeSortKey('', 'c', 't', 0, 'chanB'));
+  });
+
+  it('rejects a write index outside the encodable range (M8)', () => {
+    expect(() => writeSortKey('', 'c', 't', -9, 'ch')).toThrow(/outside the range/);
+    expect(() => writeSortKey('', 'c', 't', 1e10, 'ch')).toThrow(/outside the range/);
+  });
+
   it('orders WRITE sort keys numerically by index (10 after 2)', () => {
-    const second = writeSortKey('', 'ckpt-1', 'task-9', 2);
-    const tenth = writeSortKey('', 'ckpt-1', 'task-9', 10);
+    const second = writeSortKey('', 'ckpt-1', 'task-9', 2, 'ch');
+    const tenth = writeSortKey('', 'ckpt-1', 'task-9', 10, 'ch');
     expect(second < tenth).toBe(true);
   });
 
   it('orders special negative write indices below positional ones', () => {
-    const sk = (index: number): string => writeSortKey('ns', 'cp', 'task', index);
+    const sk = (index: number): string => writeSortKey('ns', 'cp', 'task', index, 'ch');
     const ordered = [-4, -3, -2, -1, 0, 1, 2].map(sk);
     expect([...ordered].sort()).toEqual(ordered);
   });

@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
@@ -7,22 +5,27 @@ import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { ValidationError } from '../../shared/errors/errors';
+import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
-import { buildWriteItems, resolveWriteIndex } from '../internal/item-writer';
+import { buildWriteItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
 import { validateTaskId } from '../internal/validation';
+import { isConditionalCheckFailed, reportGuardRejection } from '../internal/write-guard';
 import type { CheckpointWriteItem } from '../types';
 
 /**
- * True when the guard rejected a write — NOT evidence a competitor won: a
- * `PutCommand` retried after its response was lost can re-hit its own
- * committed row and fail identically; the two cases are indistinguishable.
+ * Stamps each `putWrites` call, serving two purposes at once. It nonces every
+ * S3 upload, so a repeated write never shares an object with an earlier
+ * attempt. And because ULIDs are lexicographically time-ordered — and this
+ * factory is strictly monotonic even within a single millisecond — it lets the
+ * read side identify the *earliest* call that wrote a given channel (see
+ * `dropSupersededWrites`). A random UUID nonces just as well but carries no
+ * ordering, which would leave that choice arbitrary.
  */
-function isConditionalCheckFailed(error: { name?: string }): boolean {
-  return error.name === 'ConditionalCheckFailedException';
-}
+const nextWriteGroup = createUlidFactory();
+
 /** Best-effort delete `items`' offloaded S3 objects, if an offloader is configured. */
 async function cleanUpItems(
   context: CheckpointerContext,
@@ -37,20 +40,6 @@ async function cleanUpItems(
   );
 }
 
-/**
- * Dedup writes to the same special channel (last-write-wins) before upload,
- * so a discarded duplicate is never uploaded. A regular write's index comes
- * from its position here (post-dedup), not the caller's raw array — stable
- * across retries of an identical array, which is what first-write-wins needs.
- */
-function dedupeWritesByIndex(writes: PendingWrite[]): PendingWrite[] {
-  const byIndex = new Map<number, PendingWrite>();
-  writes.forEach((write, positional) => {
-    const index = resolveWriteIndex(write[0], positional);
-    byIndex.set(index, write);
-  });
-  return [...byIndex.values()];
-}
 /**
  * Outcome of {@link writeRegularItems}: never rejects. Only `failed` items
  * never reached DynamoDB and are safe to clean up — every other item is
@@ -78,6 +67,7 @@ async function writeRegularItems(
           TableName: context.tableName,
           Item: item,
           ConditionExpression: 'attribute_not_exists(PK)',
+          ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
         }),
       ),
     ),
@@ -86,7 +76,7 @@ async function writeRegularItems(
     if (result.status === 'fulfilled') return;
     const reason = result.reason as Error;
     if (isConditionalCheckFailed(reason)) {
-      context.logger.debug('putWrites: lost the guard', { sortKey: items[index].SK });
+      reportGuardRejection(context, items[index], reason);
       return;
     }
     failed.push(items[index]);
@@ -123,8 +113,8 @@ export async function putWrites(
     checkpointNs,
     checkpointId,
     taskId,
-    dedupeWritesByIndex(writes),
-    randomUUID(),
+    writes,
+    nextWriteGroup(),
     ttlTimestamp,
   );
   const special = items.filter((item) => item.index < 0);

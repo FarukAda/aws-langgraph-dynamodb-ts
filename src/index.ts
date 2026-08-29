@@ -6,7 +6,11 @@ export type { VectorReconcileResult } from './store/actions/reconcile-vector-ind
 export type { VectorBackend, VectorMatch, VectorRef } from './store/vector-backend';
 export { DynamoDBChatMessageHistory } from './history/chat-message-history';
 export { DynamoDBSessionChatMessageHistory } from './history/session-adapter';
-export type { DynamoDBChatMessageHistoryOptions, SessionMetadata } from './history/types';
+export type {
+  CorruptMessagePolicy,
+  DynamoDBChatMessageHistoryOptions,
+  SessionMetadata,
+} from './history/types';
 export { DynamoDBFactory } from './factory/factory';
 export type { CreateAllOptions, CreatedAdapters, FactoryBaseOptions } from './factory/factory';
 

@@ -26,6 +26,24 @@ const items = [
   { namespace: ['orgs', 'o1'] },
 ];
 
+describe('listNamespaces maxDepth validation (M10)', () => {
+  it('rejects a non-positive maxDepth instead of silently inverting truncation', async () => {
+    // Array.prototype.slice(0, -1) drops the *last* element, so a negative
+    // maxDepth silently returned a truncated-from-the-end namespace instead
+    // of erroring.
+    const { client } = createStrictDocumentMock();
+    await expect(
+      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: -1 } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
+    await expect(
+      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: 0 } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
+    await expect(
+      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: 1.5 } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
+  });
+});
+
 describe('listNamespaces', () => {
   it('returns distinct namespaces, sorted', async () => {
     const { client, mock } = createStrictDocumentMock();
@@ -67,7 +85,7 @@ describe('listNamespaces', () => {
       ['users', 'u2'],
     ]);
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.ExpressionAttributeValues).toEqual({
-      ':pk': 'users',
+      ':pk': 'STORE#users',
     });
   });
 

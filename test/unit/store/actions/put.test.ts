@@ -50,7 +50,7 @@ describe('putItem', () => {
     mock.on(PutCommand).resolves({});
     await putItem(context(client), op({}));
     const item = mock.commandCalls(PutCommand)[0].args[0].input.Item!;
-    expect(item.PK).toBe('users');
+    expect(item.PK).toBe('STORE#users');
     expect(item.SK).toBe('u1#profile');
     expect(item.createdAt).toBe(item.updatedAt);
     expect(item.embedding).toBeUndefined();
@@ -71,7 +71,7 @@ describe('putItem', () => {
     mock.on(DeleteCommand).resolves({});
     await putItem(context(client), op({ value: null }));
     expect(mock.commandCalls(DeleteCommand)[0].args[0].input.Key).toEqual({
-      PK: 'users',
+      PK: 'STORE#users',
       SK: 'u1#profile',
     });
   });

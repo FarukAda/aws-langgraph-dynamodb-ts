@@ -2,10 +2,10 @@ import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { ConflictError } from '../../shared/errors/errors';
-import { validateNonEmptyString } from '../../shared/validation/primitives';
 import { SESSION_SORT_KEY, sessionPartition } from '../internal/keys';
 import { messageQuery } from '../internal/query';
 import type { HistoryContext } from '../internal/setup';
+import { validateSessionId } from '../internal/validation';
 
 async function countMessages(context: HistoryContext, sessionId: string): Promise<number> {
   const base = messageQuery(context.tableName, sessionId);
@@ -35,7 +35,7 @@ export async function reconcileMessageCount(
   context: HistoryContext,
   sessionId: string,
 ): Promise<number> {
-  validateNonEmptyString(sessionId, 'sessionId');
+  validateSessionId(sessionId);
   const count = await countMessages(context, sessionId);
   try {
     await withDynamoDBRetry(() =>

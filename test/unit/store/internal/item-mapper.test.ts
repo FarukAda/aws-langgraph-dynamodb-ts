@@ -30,7 +30,7 @@ describe('store item-mapper', () => {
         updatedAt: '2024-01-02T00:00:00.000Z',
       },
     );
-    expect(record.PK).toBe('users');
+    expect(record.PK).toBe('STORE#users');
     expect(record.SK).toBe('u1#profile');
     expect(record.namespace).toEqual(['users', 'u1']);
     expect(record.embedding).toBeUndefined();

@@ -25,11 +25,28 @@ describe('setUpStore', () => {
     const setup = setUpStore({
       tableName: 'store',
       client: { send: jest.fn() } as never,
+      index: { dims: 3, embeddings: {} as never },
       vectorBackend: vectorBackend as never,
       maxSearchCandidates: 50,
     });
     expect(setup.context.vectorBackend).toBe(vectorBackend);
     expect(setup.context.maxSearchCandidates).toBe(50);
+  });
+
+  it('rejects a vectorBackend configured without an index (I2)', () => {
+    // With `index` unset, every put computed no embedding and instructed the
+    // backend to *delete* the item's vector, and search() silently fell
+    // through to an unranked scan-order listing with no .score field — a
+    // semantic query returning a normal-looking but meaningless response.
+    // reconcileVectorIndex already guarded this exact misconfiguration.
+    const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
+    expect(() =>
+      setUpStore({
+        tableName: 'store',
+        client: { send: jest.fn() } as never,
+        vectorBackend: vectorBackend as never,
+      }),
+    ).toThrow(/vectorBackend requires a configured `index`/);
   });
 
   it('does not own an injected client and carries index/compression/ttl', () => {

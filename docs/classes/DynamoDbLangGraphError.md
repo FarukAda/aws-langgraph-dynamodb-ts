@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.3.1**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDbLangGraphError
 
-Defined in: [shared/errors/base-error.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/errors/base-error.ts#L19)
+Defined in: [shared/errors/base-error.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L19)
 
 Base class for every error this library throws. Carries a branchable
 [ErrorCode](../enumerations/ErrorCode.md), structured [ErrorContext](../interfaces/ErrorContext.md), and a native `cause`
@@ -20,6 +20,7 @@ than `instanceof`, which is banned repo-wide.
 ## Extended by
 
 - [`AbortError`](AbortError.md)
+- [`BatchWriteAllIncompleteError`](BatchWriteAllIncompleteError.md)
 - [`BatchWriteIncompleteError`](BatchWriteIncompleteError.md)
 - [`CompensationFailedError`](CompensationFailedError.md)
 - [`ConflictError`](ConflictError.md)
@@ -33,7 +34,7 @@ than `instanceof`, which is banned repo-wide.
 
 > **new DynamoDbLangGraphError**(`message`, `code`, `context?`, `cause?`): `DynamoDbLangGraphError`
 
-Defined in: [shared/errors/base-error.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/errors/base-error.ts#L23)
+Defined in: [shared/errors/base-error.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L23)
 
 #### Parameters
 
@@ -67,7 +68,7 @@ Defined in: [shared/errors/base-error.ts:23](https://github.com/FarukAda/aws-lan
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/errors/base-error.ts#L20)
+Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L20)
 
 ***
 
@@ -75,4 +76,4 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/da0c0394d9d0bb7780d9d583c3a463c945bbaeb3/src/shared/errors/base-error.ts#L21)
+Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L21)

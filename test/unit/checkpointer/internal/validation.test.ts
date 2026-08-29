@@ -36,4 +36,17 @@ describe('checkpointer validation', () => {
     expectValidationError(() => validateCheckpointId(''));
     expectValidationError(() => validateTaskId(''));
   });
+
+  it('rejects control characters in any identifier (M7)', () => {
+    // An unvalidated ANSI escape in an id is a log/terminal-injection surface
+    // for any consuming app that writes these values to a raw log.
+    expectValidationError(() => validateThreadId('thread\u001b[31m'));
+    expectValidationError(() => validateCheckpointNs('ns\u0000'));
+    expectValidationError(() => validateCheckpointId('ckpt\u0007'));
+    expectValidationError(() => validateTaskId('task\u007f'));
+  });
+
+  it('still accepts an empty checkpoint namespace, the root namespace (M7)', () => {
+    expect(() => validateCheckpointNs('')).not.toThrow();
+  });
 });

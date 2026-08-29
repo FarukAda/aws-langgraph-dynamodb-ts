@@ -1,10 +1,10 @@
 import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
-import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
 import { type CodecDeps, encodePayload } from '../../shared/codec/codec';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { metaSortKey, partitionKey, payloadSortKey, writeSortKey } from './keys';
 import type { CheckpointerContext } from './setup';
+import { resolveWriteIndices } from './write-index';
 
 /** Map a context to the codec collaborators. */
 export function codecDeps(context: CheckpointerContext): CodecDeps {
@@ -14,17 +14,6 @@ export function codecDeps(context: CheckpointerContext): CodecDeps {
 function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T {
   if (ttlTimestamp !== undefined) item.ttl = ttlTimestamp;
   return item;
-}
-
-/**
- * Resolve a write's DynamoDB sort-key index: WRITES_IDX_MAP's slot for a
- * known special channel, else its position. `Object.hasOwn` guards against
- * WRITES_IDX_MAP's own `Object.prototype` chain — a channel literally named
- * `constructor`/`toString`/etc. must fall through to `positional`, not
- * resolve to an inherited function reference.
- */
-export function resolveWriteIndex(channel: string, positional: number): number {
-  return Object.hasOwn(WRITES_IDX_MAP, channel) ? WRITES_IDX_MAP[channel] : positional;
 }
 
 /** Encode a checkpoint + metadata into its META and PAYLOAD items. */
@@ -88,24 +77,29 @@ export async function buildWriteItems(
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];
-  for (let positional = 0; positional < writes.length; positional++) {
-    const [channel, value] = writes[positional];
+  for (const { channel, value, index } of resolveWriteIndices(writes)) {
     /**
-     * `positional` indexes this (post-dedup) array, not the caller's original
-     * one — stable across retries of an identical array, which is all
-     * first-write-wins requires (see dedupeWritesByIndex).
+     * `channel` is part of the key as well as the index: two channels can
+     * share an index (each channel's first occurrence is 0), so without it
+     * their uploads would collide on one S3 object within a single call.
      */
-    const index = resolveWriteIndex(channel, positional);
-    const baseKeyParts = [threadId, checkpointNs, checkpointId, taskId, `write-${index}`];
     const descriptor = await encodePayload(value, deps, {
-      keyParts: [...baseKeyParts, nonce],
+      keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`, channel, nonce],
     });
     const item: CheckpointWriteItem = {
       PK: pk,
-      SK: writeSortKey(checkpointNs, checkpointId, taskId, index),
+      SK: writeSortKey(checkpointNs, checkpointId, taskId, index, channel),
       taskId,
       index,
       channel,
+      /**
+       * Shared by every row this call writes. Positions shift when a retried
+       * task's write mix changes, so a channel an earlier call already
+       * committed can land at a second index and be replayed twice; the group
+       * is what lets the read side tell that apart from a channel a single
+       * call legitimately wrote more than once.
+       */
+      writeGroup: nonce,
       value: descriptor,
     };
     items.push(withTtl(item, ttlTimestamp));

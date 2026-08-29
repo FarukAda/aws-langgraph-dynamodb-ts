@@ -12,6 +12,7 @@ import {
   MAX_TOTAL_ITEMS_IN_MEMORY,
 } from '../../shared/constants';
 import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
+import { ValidationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions } from '../types';
@@ -39,8 +40,26 @@ export interface StoreSetup {
   ownsClient: boolean;
 }
 
-/** Resolve the client, optional S3 offloader, serializer, and index config. */
+/**
+ * Resolve the client, optional S3 offloader, serializer, and index config.
+ *
+ * A `vectorBackend` without an `index` is rejected outright rather than
+ * silently degrading: with no embeddings configured, every `put` would compute
+ * no vector and instruct the backend to *delete* the item's entry instead of
+ * indexing it, and `search()` would fall through to an unranked scan-order
+ * listing with no `.score` field and no error — a semantic query returning a
+ * normal-looking but meaningless response. `reconcileVectorIndex` already
+ * refused this exact misconfiguration.
+ */
 export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
+  if (options.vectorBackend && !options.index) {
+    throw new ValidationError(
+      'vectorBackend requires a configured `index` (dims + embeddings); without one no embedding ' +
+        'is computed, every put would clear the item vector, and search would silently return ' +
+        'unranked, score-less results',
+      'vectorBackend',
+    );
+  }
   const resolved = resolveDynamoDBClient(options);
   return {
     context: {

@@ -1,8 +1,7 @@
 import {
-  assertNoSeparator,
+  validateIdentifier,
   validateInteger,
   validateNonEmptyArray,
-  validateNonEmptyString,
 } from '../../shared/validation/primitives';
 import { NAMESPACE_SEPARATOR } from './keys';
 
@@ -12,17 +11,25 @@ export function validatePaging(offset: number, limit: number): void {
   validateInteger(limit, 'limit', { min: 0 });
 }
 
-/** Validate the namespace is non-empty and each element is separator-free. */
+/** Validate the namespace is non-empty and each element is a valid identifier. */
 export function validateNamespace(namespace: string[]): void {
   validateNonEmptyArray(namespace, 'namespace');
   for (const element of namespace) {
-    validateNonEmptyString(element, 'namespace element');
-    assertNoSeparator(element, NAMESPACE_SEPARATOR, 'namespace element');
+    validateIdentifier(element, NAMESPACE_SEPARATOR, 'namespace element');
   }
 }
 
-/** Validate an item key is a non-empty, separator-free string. */
+/** Validate an item key is a non-empty, separator- and control-char-free string. */
 export function validateKey(key: string): void {
-  validateNonEmptyString(key, 'key');
-  assertNoSeparator(key, NAMESPACE_SEPARATOR, 'key');
+  validateIdentifier(key, NAMESPACE_SEPARATOR, 'key');
+}
+
+/**
+ * Validate an optional namespace depth cap. Left unchecked, a negative value
+ * silently inverted truncation via `Array.prototype.slice(0, -n)`, which drops
+ * the *last* n elements rather than erroring.
+ */
+export function validateMaxDepth(maxDepth?: number): void {
+  if (maxDepth === undefined) return;
+  validateInteger(maxDepth, 'maxDepth', { min: 1 });
 }

@@ -23,6 +23,7 @@ function specialItem(s3Key: string): CheckpointWriteItem {
     SK: 'WRITE##c1#task-1#0000000007',
     taskId: 'task-1',
     index: -1,
+    writeGroup: 'group-1',
     channel: '__error__',
     value: { location: PayloadLocation.S3, serdeType: 'json', compressed: false, s3Key },
   };

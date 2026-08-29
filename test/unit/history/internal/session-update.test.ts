@@ -3,7 +3,7 @@ import { buildSessionUpdateItem } from '../../../../src/history/internal/session
 describe('buildSessionUpdateItem', () => {
   it('builds a transact Update that adds the count and sets timestamps + sessionId once', () => {
     const { Update } = buildSessionUpdateItem('history', { sessionId: 's1', count: 2, now: 'u' });
-    expect(Update?.Key).toEqual({ PK: 's1', SK: 'HISTORY#SESSION' });
+    expect(Update?.Key).toEqual({ PK: 'HIST#s1', SK: 'HISTORY#SESSION' });
     expect(Update?.UpdateExpression).toBe(
       'ADD #count :n SET #u = :u, #c = if_not_exists(#c, :c), #sid = if_not_exists(#sid, :sid)',
     );
