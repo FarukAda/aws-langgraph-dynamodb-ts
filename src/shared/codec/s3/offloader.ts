@@ -14,6 +14,7 @@ import { downloadObject, uploadObject } from './read-write';
 export class S3Offloader {
   private clientPromise: Promise<S3Client> | undefined;
   private resolvedClient: S3Client | undefined;
+  private destroyed = false;
   private readonly bucketName: string;
   private readonly keyPrefix: string;
   private readonly thresholdBytes: number;
@@ -40,6 +41,11 @@ export class S3Offloader {
       ).then(
         (client) => {
           this.resolvedClient = client;
+          /**
+           * `destroy()` may have run during this construction, when there was
+           * no client yet to release. Release it now instead of leaking it.
+           */
+          if (this.destroyed) client.destroy();
           return client;
         },
         (error: Error) => {
@@ -93,8 +99,14 @@ export class S3Offloader {
     return ensureLifecycleRule(await this.getClient(), this.bucketName, this.keyPrefix, ttlDays);
   }
 
-  /** Release the underlying S3 client, if one was created. */
+  /**
+   * Release the underlying S3 client. Safe at any point in the client's
+   * lifecycle: called before construction starts it does nothing, called
+   * mid-construction it marks the offloader destroyed so the client is
+   * released the moment it resolves, and called after it releases it directly.
+   */
   destroy(): void {
+    this.destroyed = true;
     this.resolvedClient?.destroy();
   }
 }

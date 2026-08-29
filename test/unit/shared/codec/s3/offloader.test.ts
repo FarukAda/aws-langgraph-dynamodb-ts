@@ -135,6 +135,30 @@ describe('S3Offloader', () => {
     expect(() => offloader.destroy()).not.toThrow();
   });
 
+  it('destroys a client that finishes constructing after destroy() was called (M2)', async () => {
+    // destroy() during the real `await import(...)` gap used to be a no-op:
+    // resolvedClient was still undefined, so the client that arrived moments
+    // later was never released and leaked for the process's lifetime.
+    s3Mock.on(PutObjectCommand).resolves({});
+    let resolveClient!: (client: S3Client) => void;
+    createDefaultS3ClientMock.mockReturnValueOnce(
+      new Promise<S3Client>((resolve) => {
+        resolveClient = resolve;
+      }),
+    );
+    const offloader = new S3Offloader({ bucketName: 'b' });
+    const pending = offloader.upload('k.bin', new Uint8Array([1]));
+
+    offloader.destroy();
+
+    const client = new S3Client({ region: 'us-east-1' });
+    const destroySpy = jest.spyOn(client, 'destroy').mockImplementation(() => undefined);
+    resolveClient(client);
+    await pending.catch(() => undefined);
+
+    expect(destroySpy).toHaveBeenCalledTimes(1);
+  });
+
   it('createDefaultS3Client is invoked exactly once under concurrent first access on the default async construction path', async () => {
     // Unlike the synchronous `createS3Client` seam, `createDefaultS3Client` has
     // a genuine `await` gap (a real dynamic `import('@aws-sdk/client-s3')`),
