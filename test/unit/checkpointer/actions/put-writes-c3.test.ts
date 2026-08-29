@@ -33,6 +33,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
   function firstWriteWinsMock(): {
     client: CheckpointerContext['client'];
     committed: Set<string>;
+    mock: ReturnType<typeof createStrictDocumentMock>['mock'];
   } {
     const { client, mock } = createStrictDocumentMock();
     const committed = new Set<string>();
@@ -41,7 +42,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
       committed.add(input.Item.SK);
       return {};
     });
-    return { client, committed };
+    return { client, committed, mock };
   }
 
   it('does not lose a new channel that lands on an index an earlier call used (C3)', async () => {
@@ -86,7 +87,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
   });
 
   it('gives a channel repeated within one call successive rows in order (C3)', async () => {
-    const { client, committed } = firstWriteWinsMock();
+    const { client, committed, mock } = firstWriteWinsMock();
     await putWrites(
       context(client),
       { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
@@ -100,6 +101,11 @@ describe('putWrites channel-keyed write rows (C3)', () => {
       'WRITE##c1#task-1#0000000008#ch',
       'WRITE##c1#task-1#0000000009#ch',
     ]);
+    // The write→read wire this task fixes: each row's occurrence ordinal must
+    // actually reach the committed Item, not just resolveWriteIndices' output.
+    expect(
+      mock.commandCalls(PutCommand).map((call) => call.args[0].input.Item?.occurrence),
+    ).toEqual([0, 1]);
   });
 
   it('stamps successive calls with strictly increasing write groups (C3)', async () => {

@@ -67,9 +67,14 @@ export async function readMetadata(
  * duplicate — including one a retry added at an occurrence no earlier call had
  * ever written, which the write-side guard accepted cleanly. That row was then
  * discarded on read, silently returning fewer values than were written, with
- * `putWrites()` having reported success. Keeping the occurrence restores the
- * upstream outcome: `MemorySaver` keys first-write-wins on `(taskId, idx)`, so
- * a grown retry keeps both values there too.
+ * `putWrites()` having reported success. For that specific shape — a retry
+ * that legitimately emits a channel *more* often than the original call —
+ * keeping the occurrence restores the upstream outcome: `MemorySaver` keys
+ * first-write-wins on `(taskId, idx)`, so a grown retry keeps both values
+ * there too. That is not a claim of parity in general: a retry that reorders
+ * or shrinks its writes is still resolved to the earliest call per `(task,
+ * channel, occurrence)` as above, which is what keeps an accumulating channel
+ * from being double-counted — a case `MemorySaver` does not have to handle.
  */
 export function dropSupersededWrites(items: CheckpointWriteItem[]): CheckpointWriteItem[] {
   const identity = (item: CheckpointWriteItem): string =>
