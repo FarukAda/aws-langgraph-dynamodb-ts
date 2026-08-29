@@ -3,7 +3,8 @@ import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
-import { type SpecialWriteOutcome, writeSpecialItem } from './special-write-cas';
+import { writeSpecialItem } from './special-write-cas';
+import type { SpecialWriteOutcome } from './special-write-verify';
 
 /** Best-effort delete the S3 objects backing `descriptors`, if offloading is on. */
 async function deleteDescriptors(
@@ -26,6 +27,11 @@ async function deleteDescriptors(
  * cannot make both callers delete the same superseded object and orphan one
  * upload. A committed item cleans up the payload it actually superseded; an
  * item confirmed never to have committed cleans up its own new upload.
+ *
+ * "Confirmed" is load-bearing, and {@link writeSpecialItem} is what earns it:
+ * an ambiguous failure is verified against the row and reported as committed
+ * unless the read proves otherwise. Deleting on *unknown* would strand a live
+ * row pointing at a deleted object; leaking one object instead is recoverable.
  *
  * Never rejects — a failure is reported via the return value, because the
  * caller runs this concurrently with `writeRegularItems` under `Promise.all`,

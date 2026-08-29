@@ -1,7 +1,5 @@
-import {
-  readSpecialRow,
-  writeSpecialItem,
-} from '../../../../src/checkpointer/internal/special-write-cas';
+import { writeSpecialItem } from '../../../../src/checkpointer/internal/special-write-cas';
+import { readSpecialRow } from '../../../../src/checkpointer/internal/special-write-verify';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../../../src/shared/dynamodb/conditional-put';
@@ -27,6 +25,17 @@ const item = (): CheckpointWriteItem => ({
 
 const conditionalFailure = () =>
   Object.assign(new Error('rejected'), { name: 'ConditionalCheckFailedException' });
+
+const retryExhausted = () =>
+  Object.assign(new Error('Operation failed after 5 attempts: timeout'), {
+    name: 'RetryExhaustedError',
+  });
+
+const queuedReads = (reads: unknown[]) => async () => {
+  const next = reads.shift();
+  if (next === undefined) throw new Error('read failed');
+  return next;
+};
 
 describe('readSpecialRow', () => {
   it('reports an absent row', async () => {
@@ -229,5 +238,104 @@ describe('writeSpecialItem', () => {
     expect(inputs).toHaveLength(1);
     expect(inputs[0].ConditionExpression).toBeUndefined();
     expect(outcome).toEqual({ committed: true });
+  });
+
+  it('confirms the commit by re-reading when a lost response exhausts the retries without a rejection', async () => {
+    // The guarded put commits server-side but its response is lost;
+    // withDynamoDBRetry re-issues, and every re-issue times out at the
+    // transport without reaching DynamoDB, so the budget is spent on a
+    // RetryExhaustedError and never on a ConditionalCheckFailedException.
+    // Reporting that as a confirmed non-commit made putWrites delete the S3
+    // object the now-live row points at, so every later getTuple() on that
+    // checkpoint failed with NoSuchKey, permanently.
+    const context = {
+      tableName: 'c',
+      logger: SILENT_LOGGER,
+      offloader: {},
+      client: {
+        get: queuedReads([
+          { Item: { value: descriptor('old'), writeGroup: 'g1' } },
+          { Item: { value: descriptor('new'), writeGroup: 'g2' } },
+        ]),
+        put: async () => {
+          throw retryExhausted();
+        },
+      },
+    };
+
+    const outcome = await writeSpecialItem(context as never, item());
+
+    expect(outcome).toEqual({ committed: true, superseded: descriptor('old') });
+  });
+
+  it('reports a commit, and no superseded payload, when the verification read itself fails', async () => {
+    // Nothing is confirmed, so the outcome must not license deleting this
+    // item's own upload: leak an object, never strand a live row.
+    const context = {
+      tableName: 'c',
+      logger: SILENT_LOGGER,
+      offloader: {},
+      client: {
+        get: queuedReads([{ Item: { value: descriptor('old'), writeGroup: 'g1' } }]),
+        put: async () => {
+          throw retryExhausted();
+        },
+      },
+    };
+
+    const outcome = await writeSpecialItem(context as never, item());
+
+    expect(outcome.committed).toBe(true);
+    expect(outcome.superseded).toBeUndefined();
+    expect(outcome.error?.name).toBe('RetryExhaustedError');
+  });
+
+  it('reports a commit when a rejection is caught but the classifying re-read fails', async () => {
+    // Second door to the same stranded row: the put landed, the retry produced
+    // a ConditionalCheckFailedException, and readSpecialRow then threw.
+    const context = {
+      tableName: 'c',
+      logger: SILENT_LOGGER,
+      offloader: {},
+      client: {
+        get: queuedReads([{ Item: { value: descriptor('old'), writeGroup: 'g1' } }]),
+        put: async () => {
+          throw conditionalFailure();
+        },
+      },
+    };
+
+    const outcome = await writeSpecialItem(context as never, item());
+
+    expect(outcome.committed).toBe(true);
+    expect(outcome.superseded).toBeUndefined();
+    expect(outcome.error?.name).toBe('ConditionalCheckFailedException');
+  });
+
+  it('confirms the commit when the unconditional fallback overwrite loses its response too', async () => {
+    let puts = 0;
+    const context = {
+      tableName: 'c',
+      logger: { ...SILENT_LOGGER, warn: () => undefined },
+      offloader: {},
+      client: {
+        get: queuedReads([
+          { Item: { value: descriptor('theirs'), writeGroup: 'competitor-0' } },
+          { Item: { value: descriptor('theirs'), writeGroup: 'competitor-1' } },
+          { Item: { value: descriptor('theirs'), writeGroup: 'competitor-2' } },
+          { Item: { value: descriptor('theirs'), writeGroup: 'competitor-3' } },
+          { Item: { value: descriptor('new'), writeGroup: 'g2' } },
+        ]),
+        put: async () => {
+          puts += 1;
+          throw puts <= OVERWRITE_CAS_MAX_ATTEMPTS ? conditionalFailure() : retryExhausted();
+        },
+      },
+    };
+
+    const outcome = await writeSpecialItem(context as never, item());
+
+    expect(puts).toBe(OVERWRITE_CAS_MAX_ATTEMPTS + 1);
+    expect(outcome).toEqual({ committed: true, superseded: descriptor('theirs') });
   });
 });

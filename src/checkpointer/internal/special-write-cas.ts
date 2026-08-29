@@ -1,4 +1,3 @@
-import type { PayloadDescriptor } from '../../shared/codec/codec';
 import {
   isConditionalCheckFailed,
   OVERWRITE_CAS_MAX_ATTEMPTS,
@@ -7,50 +6,15 @@ import {
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
+import {
+  readSpecialRow,
+  SPECIAL_REVISION_ATTRIBUTE,
+  type SpecialRowState,
+  type SpecialWriteOutcome,
+  verifyAfterFailure,
+} from './special-write-verify';
 
-/**
- * A special row already carries a per-call ULID in `writeGroup`, so it needs no
- * extra revision attribute to compare and swap on.
- */
-const SPECIAL_REVISION_ATTRIBUTE = 'writeGroup';
-
-/** What a special item's row held before this call tried to overwrite it. */
-export interface SpecialRowState {
-  exists: boolean;
-  value?: PayloadDescriptor;
-  revision?: string;
-}
-
-/** Outcome of one special item's conditional write. Never thrown, always returned. */
-export interface SpecialWriteOutcome {
-  committed: boolean;
-  superseded?: PayloadDescriptor;
-  error?: Error;
-}
-
-/** Read a special row's current descriptor and the writeGroup guarding it. */
-export async function readSpecialRow(
-  context: CheckpointerContext,
-  item: CheckpointWriteItem,
-): Promise<SpecialRowState> {
-  const result = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: item.PK, SK: item.SK },
-      ConsistentRead: true,
-      ProjectionExpression: '#v, #g',
-      ExpressionAttributeNames: { '#v': 'value', '#g': SPECIAL_REVISION_ATTRIBUTE },
-    }),
-  );
-  if (!result.Item) return { exists: false };
-  return {
-    exists: true,
-    value: result.Item.value as PayloadDescriptor | undefined,
-    revision: result.Item[SPECIAL_REVISION_ATTRIBUTE] as string | undefined,
-  };
-}
-
-/** Outcome of {@link attemptCasWrites}: either a winning put, or every attempt rejected. */
+/** Outcome of {@link attemptCasWrites}: either a settled write, or every attempt rejected. */
 type CasAttemptResult =
   { done: true; outcome: SpecialWriteOutcome } | { done: false; observed: SpecialRowState };
 
@@ -65,10 +29,13 @@ type CasAttemptResult =
  * lost, and the retried put can hit the row it just wrote and fail the same
  * guard — indistinguishable from a competitor's win by the rejection alone.
  * Each attempt's pinned observation is captured in `attempted` before the
- * put, so that when a re-read finds the row already holding *this item's
- * own* `writeGroup`, the outcome reports having superseded whatever
- * `attempted` held — never the item's own just-committed payload, which
- * would strand the live row pointing at a deleted object.
+ * put, so that when {@link verifyAfterFailure} finds the row already holding
+ * *this item's own* `writeGroup`, the outcome reports having superseded
+ * whatever `attempted` held — never the item's own just-committed payload,
+ * which would strand the live row pointing at a deleted object.
+ *
+ * Only a rejection whose re-read proves some *other* writer holds the row is
+ * retried; every other failure is already settled by the verification.
  */
 async function attemptCasWrites(
   context: CheckpointerContext,
@@ -88,14 +55,31 @@ async function attemptCasWrites(
       );
       return { done: true, outcome: { committed: true, superseded: attempted.value } };
     } catch (error) {
-      if (!isConditionalCheckFailed(error as { name?: string })) throw error;
-      observed = await readSpecialRow(context, item);
-      if (observed.revision === item.writeGroup) {
-        return { done: true, outcome: { committed: true, superseded: attempted.value } };
+      const verified = await verifyAfterFailure(context, item, attempted, error as Error);
+      if (!verified.observed || !isConditionalCheckFailed(error as Error)) {
+        return { done: true, outcome: verified.outcome };
       }
+      observed = verified.observed;
     }
   }
   return { done: false, observed };
+}
+
+/**
+ * Overwrite the row unconditionally once the compare-and-swap budget is spent,
+ * verifying rather than assuming if that put fails too.
+ */
+async function overwriteUnconditionally(
+  context: CheckpointerContext,
+  item: CheckpointWriteItem,
+  observed: SpecialRowState,
+): Promise<SpecialWriteOutcome> {
+  try {
+    await withDynamoDBRetry(() => context.client.put({ TableName: context.tableName, Item: item }));
+    return { committed: true, superseded: observed.value };
+  } catch (error) {
+    return (await verifyAfterFailure(context, item, observed, error as Error)).outcome;
+  }
 }
 
 /**
@@ -115,7 +99,9 @@ async function attemptCasWrites(
  * The compare-and-swap runs only when an offloader is configured — matching
  * `store/internal/persist.ts` — because without one there is no S3 object to
  * orphan, so a plain unconditional put stays correct and costs no extra
- * ConsistentRead or write capacity.
+ * ConsistentRead or write capacity. That shortcut is also why the surviving
+ * `catch` may report `committed: false` without verifying: with no offloader
+ * there is no object for the caller to delete on the strength of it.
  *
  * Never rejects: the caller runs this concurrently with the regular writes
  * under `Promise.all`, whose own cleanup depends on every branch resolving
@@ -140,8 +126,7 @@ export async function writeSpecialItem(
         'can orphan one S3 object under a concurrent call (reclaimed by ensureS3LifecycleRule)',
       { sortKey: item.SK, channel: item.channel, attempts: OVERWRITE_CAS_MAX_ATTEMPTS },
     );
-    await withDynamoDBRetry(() => context.client.put({ TableName: context.tableName, Item: item }));
-    return { committed: true, superseded: attempt.observed.value };
+    return await overwriteUnconditionally(context, item, attempt.observed);
   } catch (error) {
     return { committed: false, error: error as Error };
   }

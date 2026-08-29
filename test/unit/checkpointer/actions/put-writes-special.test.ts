@@ -190,4 +190,34 @@ describe('putWrites special (negative-index) writes', () => {
     // discarded first duplicate must never reach the offloader at all.
     expect(upload).toHaveBeenCalledTimes(1);
   });
+
+  it('never deletes the S3 object of a special row whose write is not confirmed to have failed', async () => {
+    // The guarded put commits server-side, its response is lost, and every
+    // re-issue times out at the transport, so the budget is spent without a
+    // ConditionalCheckFailedException. Treating that as a confirmed
+    // non-commit deleted the object the now-live row points at, making every
+    // later getTuple() on the checkpoint fail with S3 NoSuchKey, permanently.
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).callsFake(async () => {
+      const puts = mock.commandCalls(PutCommand);
+      if (puts.length === 0) return {};
+      const written = puts[puts.length - 1].args[0].input.Item as {
+        writeGroup: string;
+        value: unknown;
+      };
+      return { Item: { value: written.value, writeGroup: written.writeGroup } };
+    });
+    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    const offloader = trackingOffloader();
+    const ctx = { ...context(client), offloader: offloader as never };
+    await expect(
+      putWrites(
+        ctx,
+        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+        [['__error__', 'boom']],
+        'task-1',
+      ),
+    ).resolves.toBeUndefined();
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
 });
