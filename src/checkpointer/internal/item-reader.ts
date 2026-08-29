@@ -61,9 +61,19 @@ export async function readMetadata(
  * original row and would hand back the later call's value instead. The
  * superseded row stays in DynamoDB and is removed by `deleteThread` or TTL
  * like any other.
+ *
+ * Identity is `(task, channel, occurrence)`, not `(task, channel)`. Keying on
+ * the channel alone treated *any* second row for a channel as a superseding
+ * duplicate — including one a retry added at an occurrence no earlier call had
+ * ever written, which the write-side guard accepted cleanly. That row was then
+ * discarded on read, silently returning fewer values than were written, with
+ * `putWrites()` having reported success. Keeping the occurrence restores the
+ * upstream outcome: `MemorySaver` keys first-write-wins on `(taskId, idx)`, so
+ * a grown retry keeps both values there too.
  */
 export function dropSupersededWrites(items: CheckpointWriteItem[]): CheckpointWriteItem[] {
-  const identity = (item: CheckpointWriteItem): string => `${item.taskId}\u0000${item.channel}`;
+  const identity = (item: CheckpointWriteItem): string =>
+    JSON.stringify([item.taskId, item.channel, item.occurrence ?? 0]);
   const earliestGroup = new Map<string, string>();
   for (const item of items) {
     const id = identity(item);

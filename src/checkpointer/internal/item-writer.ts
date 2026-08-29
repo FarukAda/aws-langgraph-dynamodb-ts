@@ -77,7 +77,7 @@ export async function buildWriteItems(
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];
-  for (const { channel, value, index } of resolveWriteIndices(writes)) {
+  for (const { channel, value, index, occurrence } of resolveWriteIndices(writes)) {
     /**
      * `channel` is part of the key as well as the index: two channels can
      * share an index (each channel's first occurrence is 0), so without it
@@ -100,6 +100,7 @@ export async function buildWriteItems(
        * call legitimately wrote more than once.
        */
       writeGroup: nonce,
+      occurrence,
       value: descriptor,
     };
     items.push(withTtl(item, ttlTimestamp));

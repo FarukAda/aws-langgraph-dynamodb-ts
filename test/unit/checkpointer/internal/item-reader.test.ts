@@ -76,6 +76,7 @@ describe('dropSupersededWrites (C3)', () => {
     channel: string,
     writeGroup: string,
     taskId = 'task-1',
+    occurrence = 0,
   ): CheckpointWriteItem => ({
     PK: 'CHKPT#t',
     SK: `WRITE##c1#${taskId}#${String(index + 8).padStart(10, '0')}#${channel}`,
@@ -83,6 +84,7 @@ describe('dropSupersededWrites (C3)', () => {
     index,
     channel,
     writeGroup,
+    occurrence,
     value: {
       location: PayloadLocation.INLINE,
       serdeType: 'json',
@@ -94,7 +96,10 @@ describe('dropSupersededWrites (C3)', () => {
   it('keeps every value a single call wrote to one channel', () => {
     // A task emitting two Sends writes the same channel twice in one call;
     // both values must survive.
-    const items = [row(0, '__pregel_tasks', 'g1'), row(1, '__pregel_tasks', 'g1')];
+    const items = [
+      row(0, '__pregel_tasks', 'g1', 'task-1', 0),
+      row(1, '__pregel_tasks', 'g1', 'task-1', 1),
+    ];
     expect(dropSupersededWrites(items)).toHaveLength(2);
   });
 
@@ -135,5 +140,48 @@ describe('dropSupersededWrites (C3)', () => {
   it('is a no-op for a single call writing distinct channels', () => {
     const items = [row(0, 'a', 'g1'), row(1, 'b', 'g1'), row(2, 'c', 'g1')];
     expect(dropSupersededWrites(items)).toHaveLength(3);
+  });
+
+  it('keeps a retry-added occurrence that never collided with an earlier row (F1)', () => {
+    // Call 1 wrote `messages` once (occurrence 0, index 0). Call 2 — a retry
+    // that legitimately emitted `messages` twice — re-hit index 0 (guard
+    // rejected, no row) and committed a brand-new row at index 1, occurrence 1.
+    // That row collided with nothing and must survive; only the read side ever
+    // discarded it.
+    const items = [row(0, 'messages', 'g1', 'task-1', 0), row(1, 'messages', 'g2', 'task-1', 1)];
+    expect(dropSupersededWrites(items).map((item) => item.writeGroup)).toEqual(['g1', 'g2']);
+  });
+
+  it('still drops a later call re-emitting a channel at a shifted index (C3)', () => {
+    // Same channel, same occurrence, two different calls: the later one is a
+    // superseding duplicate and must go.
+    const items = [row(0, 'B', 'g2', 'task-1', 0), row(1, 'B', 'g1', 'task-1', 0)];
+    expect(dropSupersededWrites(items).map((item) => item.index)).toEqual([1]);
+  });
+
+  it('resolves a reordered retry to the earliest call per channel occurrence', () => {
+    // Call 1: [A, B]. Call 2 (retry): [B, A]. All four rows exist.
+    const items = [
+      row(0, 'A', 'g1', 'task-1', 0),
+      row(0, 'B', 'g2', 'task-1', 0),
+      row(1, 'A', 'g2', 'task-1', 0),
+      row(1, 'B', 'g1', 'task-1', 0),
+    ];
+    expect(dropSupersededWrites(items).map((item) => `${item.channel}${item.index}`)).toEqual([
+      'A0',
+      'B1',
+    ]);
+  });
+
+  it('treats a row written before 0.9.0 (no occurrence) as occurrence 0', () => {
+    const legacy = row(0, 'messages', 'g1', 'task-1', 0);
+    delete legacy.occurrence;
+    const items = [legacy, row(1, 'messages', 'g2', 'task-1', 0)];
+    expect(dropSupersededWrites(items).map((item) => item.writeGroup)).toEqual(['g1']);
+  });
+
+  it('separates identities per task', () => {
+    const items = [row(0, 'messages', 'g1', 'task-1', 0), row(0, 'messages', 'g2', 'task-2', 0)];
+    expect(dropSupersededWrites(items)).toHaveLength(2);
   });
 });

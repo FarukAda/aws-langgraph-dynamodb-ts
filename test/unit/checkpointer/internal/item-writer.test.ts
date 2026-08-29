@@ -182,16 +182,16 @@ describe('buildWriteItems', () => {
 describe('resolveWriteIndices', () => {
   it('treats a channel colliding with Object.prototype as regular, not special', () => {
     expect(resolveWriteIndices([['constructor', 'v']])).toEqual([
-      { channel: 'constructor', value: 'v', index: 0 },
+      { channel: 'constructor', value: 'v', index: 0, occurrence: 0 },
     ]);
     expect(resolveWriteIndices([['toString', 'v']])).toEqual([
-      { channel: 'toString', value: 'v', index: 0 },
+      { channel: 'toString', value: 'v', index: 0, occurrence: 0 },
     ]);
   });
 
   it('resolves a known special channel to its WRITES_IDX_MAP slot', () => {
     expect(resolveWriteIndices([['__error__', 'boom']])).toEqual([
-      { channel: '__error__', value: 'boom', index: -1 },
+      { channel: '__error__', value: 'boom', index: -1, occurrence: 0 },
     ]);
   });
 
@@ -201,7 +201,7 @@ describe('resolveWriteIndices', () => {
         ['__error__', 'first'],
         ['__error__', 'second'],
       ]),
-    ).toEqual([{ channel: '__error__', value: 'second', index: -1 }]);
+    ).toEqual([{ channel: '__error__', value: 'second', index: -1, occurrence: 0 }]);
   });
 
   it('indexes regular writes by their position in the caller array (C3)', () => {
@@ -214,9 +214,9 @@ describe('resolveWriteIndices', () => {
         ['ch', 'b'],
       ]),
     ).toEqual([
-      { channel: 'ch', value: 'a', index: 0 },
-      { channel: 'other', value: 'x', index: 1 },
-      { channel: 'ch', value: 'b', index: 2 },
+      { channel: 'ch', value: 'a', index: 0, occurrence: 0 },
+      { channel: 'other', value: 'x', index: 1, occurrence: 0 },
+      { channel: 'ch', value: 'b', index: 2, occurrence: 1 },
     ]);
   });
 
@@ -232,8 +232,8 @@ describe('resolveWriteIndices', () => {
         ['chanA', 'v'],
       ]),
     ).toEqual([
-      { channel: '__error__', value: 'e2', index: -1 },
-      { channel: 'chanA', value: 'v', index: 2 },
+      { channel: '__error__', value: 'e2', index: -1, occurrence: 0 },
+      { channel: 'chanA', value: 'v', index: 2, occurrence: 0 },
     ]);
   });
 
