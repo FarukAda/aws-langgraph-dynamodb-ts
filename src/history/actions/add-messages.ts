@@ -5,6 +5,8 @@ import {
 } from '@langchain/core/messages';
 
 import { nowIso } from '../../shared/clock';
+import { collectS3Keys } from '../../shared/codec/descriptor-keys';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { appendChunks } from '../internal/append-saga';
 import { buildMessageItem } from '../internal/item-mapper';
@@ -25,6 +27,16 @@ const MAX_MESSAGES_PER_TRANSACTION = 99;
  */
 const MAX_TRANSACTION_BYTES = 3_500_000;
 
+/**
+ * Encode every message, cleaning up after itself if one fails partway.
+ *
+ * Offloaded messages upload sequentially here, *before* the append saga's
+ * compensation machinery is ever reached, so a failure on message N used to
+ * strand messages 1..N-1's already-uploaded S3 objects with no cleanup path —
+ * the one gap in this subsystem's otherwise complete no-orphan guarantee.
+ * Nothing will ever reference those objects, so they are safe to delete
+ * unconditionally on the way out.
+ */
 async function buildItems(
   context: HistoryContext,
   sessionId: string,
@@ -32,8 +44,20 @@ async function buildItems(
   ttlTimestamp?: number,
 ): Promise<ChatMessageItem[]> {
   const items: ChatMessageItem[] = [];
-  for (const message of stored) {
-    items.push(await buildMessageItem(context, sessionId, context.ulid(), message, ttlTimestamp));
+  try {
+    for (const message of stored) {
+      items.push(await buildMessageItem(context, sessionId, context.ulid(), message, ttlTimestamp));
+    }
+  } catch (error) {
+    if (context.offloader) {
+      await cleanUpS3Orphans(
+        context.offloader,
+        collectS3Keys(items.map((item) => item.message)),
+        'history.addMessages.encode',
+        context.logger,
+      );
+    }
+    throw error;
   }
   return items;
 }
