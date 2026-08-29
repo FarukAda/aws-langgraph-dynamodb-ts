@@ -36,6 +36,20 @@ async function collect(gen: AsyncGenerator<CheckpointTuple>): Promise<Checkpoint
 }
 
 describe('listCheckpoints', () => {
+  it('skips a META-prefixed row that is not a checkpoint meta item, and warns (C2, I7)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({
+      Items: [{ PK: 'CHKPT#t', SK: 'META##x', value: { location: 'INLINE' } }],
+    });
+    const warn = jest.fn();
+    const ctx = { ...context(client), logger: { ...SILENT_LOGGER, warn } };
+    const tuples = await collect(
+      listCheckpoints(ctx, { configurable: { thread_id: 't', checkpoint_ns: '' } }),
+    );
+    expect(tuples).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
   async function fixtures(client: CheckpointerContext['client']) {
     const ctx = context(client);
     const a = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), {
