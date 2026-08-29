@@ -9,6 +9,7 @@ import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
 import { buildCheckpointItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import type { CheckpointMetaItem, CheckpointPayloadItem } from '../../../../src/checkpointer/types';
+import { MAX_TOTAL_ITEMS_IN_MEMORY } from '../../../../src/shared/constants';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -84,6 +85,32 @@ describe('listCheckpoints', () => {
       return { Item: sk.endsWith('c2') ? data.payloads.c2 : data.payloads.c1 };
     });
   }
+
+  it('does not cap a filtered list on the raw rows it scanned (M4)', async () => {
+    // The page cap counts raw rows pulled, not filter-matched ones, so a
+    // caller asking for a handful of rare matches over a large thread used to
+    // get a hard ResultTruncatedError instead of the true answer.
+    const { client, mock } = createStrictDocumentMock();
+    const { metas } = await fixtures(client);
+    const template = metas.c2;
+    mock.on(QueryCommand).resolves({
+      Items: Array.from({ length: MAX_TOTAL_ITEMS_IN_MEMORY + 1 }, (_, i) => ({
+        ...template,
+        SK: `META##c${i}`,
+        checkpointId: `c${i}`,
+      })),
+    });
+    const tuples = await collect(
+      listCheckpoints(
+        context(client),
+        { configurable: { thread_id: 't', checkpoint_ns: '' } },
+        {
+          filter: { step: 9999 },
+        },
+      ),
+    );
+    expect(tuples).toEqual([]);
+  });
 
   it('yields every checkpoint newest-first', async () => {
     const { client, mock } = createStrictDocumentMock();

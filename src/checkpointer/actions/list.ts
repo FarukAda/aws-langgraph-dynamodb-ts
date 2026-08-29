@@ -67,7 +67,20 @@ export async function* listCheckpoints(
     metaSortKeyPrefix(checkpointNs),
   );
   let yielded = 0;
-  for await (const raw of paginateQuery({ client: context.client, params })) {
+  /**
+   * Unbounded: this is a generator that streams and never accumulates, and
+   * `limit` already returns early, so the caller's own bound is what stops the
+   * read. The shared in-memory cap counts *raw rows pulled*, not
+   * filter-matched ones, so leaving it in place turned a caller asking for a
+   * handful of rare matches over a large thread into a hard
+   * ResultTruncatedError instead of the true (possibly empty) answer.
+   */
+  for await (const raw of paginateQuery({
+    client: context.client,
+    params,
+    maxItems: Number.POSITIVE_INFINITY,
+    maxIterations: Number.POSITIVE_INFINITY,
+  })) {
     if (limit !== undefined && yielded >= limit) return;
     const meta = narrowMetaItem(raw);
     if (!meta) {
