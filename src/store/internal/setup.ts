@@ -18,7 +18,7 @@ import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions } from '../types';
 import type { VectorBackend } from '../vector-backend';
-import type { VectorScoreDirection } from './score-direction';
+import { VECTOR_SCORE_DIRECTIONS, type VectorScoreDirection } from './score-direction';
 
 /** Resolved collaborators shared by every store action. */
 export interface StoreContext {
@@ -66,6 +66,26 @@ function assertUsableIndex(index?: IndexConfig): void {
 }
 
 /**
+ * Reject a `vectorScoreDirection` outside the declared union.
+ *
+ * {@link toRelevanceScores} treats anything it does not recognise as a no-op —
+ * the only safe default, since guessing would invert a ranking — so a mistyped
+ * or config-file-sourced value would otherwise leave a distance backend ranked
+ * backwards with no error and no warning anywhere. Same premise as
+ * {@link assertUsableIndex}: a JavaScript caller can pass a string the type
+ * never admits.
+ */
+function assertScoreDirection(direction?: VectorScoreDirection): void {
+  if (direction === undefined || VECTOR_SCORE_DIRECTIONS.includes(direction)) return;
+  throw new ValidationError(
+    `vectorScoreDirection must be one of ${VECTOR_SCORE_DIRECTIONS.join(' | ')}; received ` +
+      `${JSON.stringify(direction)}, which would be left in the backend's own direction and ` +
+      'could rank a distance backend backwards',
+    'vectorScoreDirection',
+  );
+}
+
+/**
  * Resolve the client, optional S3 offloader, serializer, and index config.
  *
  * A `vectorBackend` without an `index` is rejected outright rather than
@@ -86,6 +106,7 @@ export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
     );
   }
   assertUsableIndex(options.index);
+  assertScoreDirection(options.vectorScoreDirection);
   const resolved = resolveDynamoDBClient(options);
   return {
     context: {

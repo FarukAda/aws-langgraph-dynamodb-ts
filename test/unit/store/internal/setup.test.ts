@@ -129,4 +129,25 @@ describe('index configuration validation (F6)', () => {
       /vectorBackend requires a configured `index`/,
     );
   });
+
+  it('rejects an unrecognised vectorScoreDirection rather than ranking by it', () => {
+    // toRelevanceScores treats anything it does not recognise as a no-op, so a
+    // wrong string would otherwise leave a distance backend ranked backwards
+    // with no error and no warn. Same premise as the index guard above:
+    // JavaScript callers pass shapes the type cannot enforce.
+    expect(() => setUpStore({ ...base, vectorScoreDirection: 'Distance' } as never)).toThrow(
+      /vectorScoreDirection/,
+    );
+    expect(() => setUpStore({ ...base, vectorScoreDirection: 'nearest' } as never)).toThrow(
+      expect.objectContaining({ name: 'ValidationError' }),
+    );
+  });
+
+  it('accepts both declared score directions, and defaults to relevance', () => {
+    expect(setUpStore({ ...base } as never).context.vectorScoreDirection).toBe('relevance');
+    expect(
+      setUpStore({ ...base, vectorScoreDirection: 'distance' } as never).context
+        .vectorScoreDirection,
+    ).toBe('distance');
+  });
 });

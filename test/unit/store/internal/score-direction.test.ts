@@ -47,4 +47,14 @@ describe('toRelevanceScores', () => {
     const direction: VectorScoreDirection = 'distance';
     expect(toRelevanceScores([], direction)).toEqual([]);
   });
+
+  it('leaves an unrecognised direction alone instead of silently inverting the ranking', () => {
+    // 'relevance' used to be the only value treated as a no-op, so 'Distance',
+    // 'DISTANCE', a typo, or any string from a config file fell through to
+    // negate-and-re-sort and reversed the ranking with no error and no warn.
+    const matches = [match('a', 0.9), match('b', 0.1)];
+    expect(toRelevanceScores(matches, 'DISTANCE' as never)).toBe(matches);
+    expect(toRelevanceScores(matches, 'relevence' as never)).toBe(matches);
+    expect(toRelevanceScores(matches, '' as never)).toBe(matches);
+  });
 });
