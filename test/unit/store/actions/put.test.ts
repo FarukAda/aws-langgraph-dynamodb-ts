@@ -150,7 +150,7 @@ describe('putItem', () => {
     expect(keys[0]).toMatch(/^users\/u1\/profile\//);
   });
 
-  // Integration-level: prove persistRecord wires writeLandedAt's landed/not-landed result correctly into the delete/rethrow decision (its own branches are unit-tested in write-verify.test.ts).
+  // Integration-level: prove persistRecord wires verifyWriteLanded's landed/not-landed/unverified verdict correctly into the delete/rethrow decision (its own branches are unit-tested in write-verify.test.ts).
   it('does not delete the new S3 object, and succeeds, when an ambiguous retry-exhaustion write actually landed', async () => {
     const { client, mock } = createStrictDocumentMock();
     let uploadedKey = '';

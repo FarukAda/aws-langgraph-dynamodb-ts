@@ -46,14 +46,14 @@ function trackingOffloader() {
 }
 
 /**
- * I4: put() re-verified an ambiguous retry-exhausted write via writeLandedAt,
+ * I4: put() re-verified an ambiguous retry-exhausted write via verifyWriteLanded,
  * but delete() had no equivalent — it just propagated, skipping S3-orphan
  * cleanup and the vector-backend delete even when the row was gone
  * server-side and only the acknowledgement had been lost.
  */
 describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
   it('completes vector and S3 cleanup when an ambiguous delete actually landed (I4)', async () => {
-    // put() re-verifies an ambiguous retry-exhausted write via writeLandedAt;
+    // put() re-verifies an ambiguous retry-exhausted write via verifyWriteLanded;
     // delete() had no equivalent and just propagated, skipping S3-orphan
     // cleanup and the vector-backend delete even when the row was gone
     // server-side and only the acknowledgement was lost.
@@ -104,7 +104,7 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
 });
 
 /**
- * The put side of the same principle: writeLandedAt reported its own failed
+ * The put side of the same principle: verifyWriteLanded reported its own failed
  * verification read as a definite "did not land", so a partition that blocked
  * both the put and the read deleted record.value out from under a row that may
  * well be live. Only a *confirmed* non-commit may delete the new upload.
