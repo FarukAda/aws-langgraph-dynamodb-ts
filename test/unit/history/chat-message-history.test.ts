@@ -47,10 +47,10 @@ describe('DynamoDBChatMessageHistory', () => {
       Items: [
         {
           PK: 'sess-1',
-          SK: 'MSG#01A',
+          SK: 'HISTORY#MSG#01A',
           message: { location: 'INLINE', serdeType: 'json', bytes: new Uint8Array() },
         },
-        { PK: 'sess-1', SK: 'SESSION' },
+        { PK: 'sess-1', SK: 'HISTORY#SESSION' },
       ],
     });
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });

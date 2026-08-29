@@ -62,6 +62,17 @@ export function writeSortKey(
   );
 }
 
+/**
+ * True when `sortKey` is one this adapter writes. A partition query carries no
+ * sort-key condition, so a partition-wide delete uses this to leave any row it
+ * does not own in place rather than deleting the whole partition blindly.
+ */
+export function isCheckpointerSortKey(sortKey: string): boolean {
+  return Object.values(CheckpointItemKind).some((kind) =>
+    sortKey.startsWith(`${kind}${SORT_KEY_SEPARATOR}`),
+  );
+}
+
 /** `begins_with` prefix selecting every WRITE item for one checkpoint. */
 export function writeSortKeyPrefix(checkpointNs: string, checkpointId: string): string {
   return `${CheckpointItemKind.WRITE}${SORT_KEY_SEPARATOR}${checkpointNs}${SORT_KEY_SEPARATOR}${checkpointId}${SORT_KEY_SEPARATOR}`;

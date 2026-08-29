@@ -34,6 +34,15 @@ export function messageSortKey(ulid: string): string {
   return `${MESSAGE_PREFIX}${ulid}`;
 }
 
+/**
+ * True when `sortKey` is one this adapter writes. A partition query carries no
+ * sort-key condition, so a partition-wide delete uses this to leave any row it
+ * does not own in place rather than deleting the whole partition blindly.
+ */
+export function isHistorySortKey(sortKey: string): boolean {
+  return sortKey.startsWith(ADAPTER_PREFIX);
+}
+
 /** `begins_with` prefix selecting every message item in a session. */
 export function messageSortKeyPrefix(): string {
   return MESSAGE_PREFIX;
