@@ -15,6 +15,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    vectorScoreDirection: 'relevance',
     ...extra,
   };
 }
@@ -119,6 +120,76 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('unusable'),
       expect.objectContaining({ key: 'k' }),
+    );
+  });
+});
+
+describe('vectorScoreDirection (F4)', () => {
+  it('does not warn about ascending scores when the backend is declared distance-scored', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const recA = await buildStoreItem(
+      context(client),
+      ['users', 'u1'],
+      'a',
+      { score: 1 },
+      { createdAt: 'c', updatedAt: 'u' },
+    );
+    mock.on(GetCommand).resolves({ Item: recA });
+    const vectorBackend = {
+      upsert: jest.fn(),
+      delete: jest.fn(),
+      // Ascending scores are exactly the "backwards" signature — but declared.
+      query: jest.fn().mockResolvedValue([
+        { namespace: ['users', 'u1'], key: 'a', score: 0.1 },
+        { namespace: ['users', 'u1'], key: 'b', score: 0.9 },
+      ]),
+    };
+    const warn = jest.fn();
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      vectorBackend: vectorBackend as never,
+      vectorScoreDirection: 'distance',
+      logger: { ...SILENT_LOGGER, warn },
+    });
+    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('ascending scores'),
+      expect.anything(),
+    );
+    expect(items.map((item) => item.score)).toEqual([-0.1, -0.9]);
+  });
+
+  it('still warns for an undeclared backend returning ascending scores', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const recA = await buildStoreItem(
+      context(client),
+      ['users', 'u1'],
+      'a',
+      { score: 1 },
+      { createdAt: 'c', updatedAt: 'u' },
+    );
+    mock.on(GetCommand).resolves({ Item: recA });
+    const vectorBackend = {
+      upsert: jest.fn(),
+      delete: jest.fn(),
+      query: jest.fn().mockResolvedValue([
+        { namespace: ['users', 'u1'], key: 'a', score: 0.1 },
+        { namespace: ['users', 'u1'], key: 'b', score: 0.9 },
+      ]),
+    };
+    const warn = jest.fn();
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      vectorBackend: vectorBackend as never,
+      vectorScoreDirection: 'relevance',
+      logger: { ...SILENT_LOGGER, warn },
+    });
+    await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('ascending scores'),
+      expect.anything(),
     );
   });
 });

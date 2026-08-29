@@ -15,6 +15,7 @@ function context(): StoreContext {
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    vectorScoreDirection: 'relevance',
   };
 }
 
@@ -74,6 +75,7 @@ describe('store item-mapper', () => {
       logger: SILENT_LOGGER,
       maxSearchCandidates: 1000,
       maxScanItems: 10000,
+      vectorScoreDirection: 'relevance',
       offloader: {
         shouldOffload: () => true,
         buildKey: (parts: readonly string[]) => {

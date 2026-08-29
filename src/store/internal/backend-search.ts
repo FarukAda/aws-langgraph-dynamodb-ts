@@ -9,6 +9,7 @@ import { ValidationError } from '../../shared/errors/errors';
 import { getItem } from '../actions/get';
 import type { VectorBackend, VectorMatch } from '../vector-backend';
 import { namespaceMatchesPrefix } from './keys';
+import { toRelevanceScores } from './score-direction';
 import { passesFilter } from './search-filter';
 import type { StoreContext } from './setup';
 
@@ -74,7 +75,10 @@ export async function searchViaBackend(
   let topK = Math.min(need, context.maxSearchCandidates);
   let results: SearchItem[];
   for (;;) {
-    const matches = await backend.query(op.namespacePrefix, queryVector, topK);
+    const matches = toRelevanceScores(
+      await backend.query(op.namespacePrefix, queryVector, topK),
+      context.vectorScoreDirection,
+    );
     warnOnNonDescendingScores(context, matches, op.namespacePrefix);
     results = [];
     for (const match of matches) {

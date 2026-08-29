@@ -16,6 +16,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    vectorScoreDirection: 'relevance',
     ...extra,
   };
 }
@@ -356,9 +357,8 @@ describe('searchItems', () => {
     // A fixture with MORE than 2 items in the queried partition, so a
     // maxScanItems: 2 cap can only be satisfied if it genuinely reaches
     // paginateQuery/paginateScan inside collectCandidates — with the shared
-    // 2-item records() fixture, the cap and the (mock's, realistically
-    // partition-filtered) result size would coincide regardless of whether
-    // the option is actually wired through.
+    // 2-item records() fixture, the cap and result size would coincide
+    // regardless of whether the option is actually wired through.
     const threeUsers = [
       await buildStoreItem(
         ctx,

@@ -18,6 +18,7 @@ import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions } from '../types';
 import type { VectorBackend } from '../vector-backend';
+import type { VectorScoreDirection } from './score-direction';
 
 /** Resolved collaborators shared by every store action. */
 export interface StoreContext {
@@ -30,6 +31,7 @@ export interface StoreContext {
   logger: Logger;
   index?: IndexConfig;
   vectorBackend?: VectorBackend;
+  vectorScoreDirection: VectorScoreDirection;
   maxSearchCandidates: number;
   maxScanItems: number;
 }
@@ -102,6 +104,7 @@ export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
       logger: resolveLogger(options.logger),
       index: options.index,
       vectorBackend: options.vectorBackend,
+      vectorScoreDirection: options.vectorScoreDirection ?? 'relevance',
       maxSearchCandidates: options.maxSearchCandidates ?? DEFAULT_MAX_SEARCH_CANDIDATES,
       maxScanItems: options.maxScanItems ?? MAX_TOTAL_ITEMS_IN_MEMORY,
     },
