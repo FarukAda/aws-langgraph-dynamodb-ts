@@ -23,6 +23,7 @@ function context(
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
     ulid: sequentialUlid(),
+    onCorruptMessage: 'skip',
     ...extra,
   };
 }

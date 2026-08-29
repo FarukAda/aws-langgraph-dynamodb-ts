@@ -10,12 +10,21 @@ import type { ChatMessageItem } from '../types';
  */
 const ITEM_OVERHEAD_BYTES = 256;
 
+/**
+ * Byte length of a string as DynamoDB stores it. `String.length` counts UTF-16
+ * code units, which understates every non-ASCII character — the wrong
+ * direction for an estimate documented to sit at or above the real size.
+ */
+function utf8Bytes(value: string): number {
+  return Buffer.byteLength(value, 'utf8');
+}
+
 function descriptorBytes(descriptor: PayloadDescriptor): number {
   const body =
     descriptor.location === PayloadLocation.INLINE
       ? descriptor.bytes.length
-      : descriptor.s3Key.length;
-  return body + descriptor.serdeType.length;
+      : utf8Bytes(descriptor.s3Key);
+  return body + utf8Bytes(descriptor.serdeType);
 }
 
 /**
@@ -25,9 +34,9 @@ function descriptorBytes(descriptor: PayloadDescriptor): number {
  */
 export function estimateItemBytes(item: ChatMessageItem): number {
   return (
-    item.PK.length +
-    item.SK.length +
-    item.sessionId.length +
+    utf8Bytes(item.PK) +
+    utf8Bytes(item.SK) +
+    utf8Bytes(item.sessionId) +
     descriptorBytes(item.message) +
     ITEM_OVERHEAD_BYTES
   );

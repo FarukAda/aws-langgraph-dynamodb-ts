@@ -4,6 +4,7 @@ import { AIMessage, HumanMessage, mapChatMessagesToStoredMessages } from '@langc
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
+import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -16,6 +17,7 @@ function context(client: HistoryContext['client']): HistoryContext {
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
     ulid: () => 'U',
+    onCorruptMessage: 'skip',
   };
 }
 
@@ -40,7 +42,12 @@ describe('getMessages', () => {
     const good = await buildMessageItem(context(client), 's1', '01A', human);
     const alsoGood = await buildMessageItem(context(client), 's1', '01C', ai);
     const corrupt = await buildMessageItem(context(client), 's1', '01B', human);
-    corrupt.message.bytes = new TextEncoder().encode('{not valid json');
+    corrupt.message = {
+      location: PayloadLocation.INLINE,
+      serdeType: 'json',
+      compressed: false,
+      bytes: new TextEncoder().encode('{not valid json'),
+    };
     mock.on(QueryCommand).resolves({ Items: [good, corrupt, alsoGood] });
     const error = jest.fn();
     const messages = await getMessages(
@@ -58,7 +65,12 @@ describe('getMessages', () => {
     const { client, mock } = createStrictDocumentMock();
     const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
     const corrupt = await buildMessageItem(context(client), 's1', '01B', human);
-    corrupt.message.bytes = new TextEncoder().encode('{not valid json');
+    corrupt.message = {
+      location: PayloadLocation.INLINE,
+      serdeType: 'json',
+      compressed: false,
+      bytes: new TextEncoder().encode('{not valid json'),
+    };
     mock.on(QueryCommand).resolves({ Items: [corrupt] });
     await expect(
       getMessages({ ...context(client), onCorruptMessage: 'throw' }, 's1'),

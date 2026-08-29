@@ -14,11 +14,31 @@ describe('deriveTitle', () => {
     expect(deriveTitle([ai('hi'), human('What is DynamoDB?')])).toBe('What is DynamoDB?');
   });
 
-  it('truncates long content with an ellipsis', () => {
+  it('truncates long content with an ellipsis, within the documented maximum (A2)', () => {
     const long = 'a'.repeat(100);
     const title = deriveTitle([human(long)]);
-    expect(title?.length).toBe(81);
+    // Was 81: the ellipsis was appended *after* slicing to the maximum,
+    // overshooting the length the doc comment promises.
+    expect([...(title as string)]).toHaveLength(80);
     expect(title?.endsWith('…')).toBe(true);
+  });
+
+  it('never splits a surrogate pair when truncating (M14)', () => {
+    // A cut landing mid-emoji left a lone high surrogate: a mangled character
+    // that no longer round-trips through UTF-8.
+    // 79 filler characters put the emoji's two UTF-16 units astride the
+    // 80-unit cut, so a naive slice keeps only its leading high surrogate.
+    const emoji = String.fromCodePoint(0x1f600);
+    const content = `${'a'.repeat(79)}${emoji} and more text after the cut`;
+    const title = deriveTitle([human(content)]) as string;
+    const withoutPairs = title.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '');
+    expect(/[\uD800-\uDFFF]/.test(withoutPairs)).toBe(false);
+    expect(Buffer.from(title, 'utf8').toString('utf8')).toBe(title);
+  });
+
+  it('leaves content at exactly the maximum untouched', () => {
+    const exact = 'b'.repeat(80);
+    expect(deriveTitle([human(exact)])).toBe(exact);
   });
 
   it('returns undefined when there is no human text', () => {

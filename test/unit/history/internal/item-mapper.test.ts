@@ -12,6 +12,7 @@ function context(): HistoryContext {
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
     ulid: () => 'U',
+    onCorruptMessage: 'skip',
   };
 }
 

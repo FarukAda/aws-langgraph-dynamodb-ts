@@ -79,6 +79,7 @@ describe('append saga unrecoverable rollback against real AWS', () => {
       tableName,
       serde: JSON_SERDE,
       logger,
+      onCorruptMessage: 'skip' as const,
       ulid: () => 'unused',
     };
   }
