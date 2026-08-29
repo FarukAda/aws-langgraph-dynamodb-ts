@@ -1,5 +1,5 @@
 import { ValidationError } from '../errors/errors';
-import type { Redactable } from '../logging/redaction';
+import type { Redactable } from '../logging/redaction-walk';
 
 /** Throw {@link ValidationError} unless `value` is a non-empty string. */
 export function validateNonEmptyString(value: string, field: string): void {
