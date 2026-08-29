@@ -13,16 +13,9 @@ import { buildWriteItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
 import { validateTaskId } from '../internal/validation';
+import { isConditionalCheckFailed, reportGuardRejection } from '../internal/write-guard';
 import type { CheckpointWriteItem } from '../types';
 
-/**
- * True when the guard rejected a write — NOT evidence a competitor won: a
- * `PutCommand` retried after its response was lost can re-hit its own
- * committed row and fail identically; the two cases are indistinguishable.
- */
-function isConditionalCheckFailed(error: { name?: string }): boolean {
-  return error.name === 'ConditionalCheckFailedException';
-}
 /** Best-effort delete `items`' offloaded S3 objects, if an offloader is configured. */
 async function cleanUpItems(
   context: CheckpointerContext,
@@ -64,6 +57,7 @@ async function writeRegularItems(
           TableName: context.tableName,
           Item: item,
           ConditionExpression: 'attribute_not_exists(PK)',
+          ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
         }),
       ),
     ),
@@ -72,7 +66,7 @@ async function writeRegularItems(
     if (result.status === 'fulfilled') return;
     const reason = result.reason as Error;
     if (isConditionalCheckFailed(reason)) {
-      context.logger.debug('putWrites: lost the guard', { sortKey: items[index].SK });
+      reportGuardRejection(context, items[index], reason);
       return;
     }
     failed.push(items[index]);

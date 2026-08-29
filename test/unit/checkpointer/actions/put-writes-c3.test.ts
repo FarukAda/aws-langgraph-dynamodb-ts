@@ -97,4 +97,71 @@ describe('putWrites channel-keyed write rows (C3)', () => {
       'WRITE##c1#task-1#0000000009#ch',
     ]);
   });
+
+  it('asks DynamoDB for the rejecting row so a rejection can be diagnosed (C3, I7)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(PutCommand).resolves({});
+    await putWrites(
+      context(client),
+      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+      [['ch', 'a']],
+      'task-1',
+    );
+    expect(mock.commandCalls(PutCommand)[0].args[0].input.ReturnValuesOnConditionCheckFailure).toBe(
+      'ALL_OLD',
+    );
+  });
+
+  it('logs a same-channel rejection at debug, as the duplicate it is (I7)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    // ALL_OLD attaches the existing item in raw AttributeValue form; the
+    // document client does not unmarshall an error payload (verified against
+    // real DynamoDB).
+    mock
+      .on(PutCommand)
+      .rejects(Object.assign(conditionalCheckFailed(), { Item: { channel: { S: 'ch' } } }));
+    const debug = jest.fn();
+    const warn = jest.fn();
+    await putWrites(
+      { ...context(client), logger: { ...SILENT_LOGGER, debug, warn } },
+      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+      [['ch', 'a']],
+      'task-1',
+    );
+    expect(debug).toHaveBeenCalledTimes(1);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('logs a rejection by an unexpected channel at warn (I7)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(PutCommand)
+      .rejects(Object.assign(conditionalCheckFailed(), { Item: { channel: { S: 'other' } } }));
+    const warn = jest.fn();
+    await putWrites(
+      { ...context(client), logger: { ...SILENT_LOGGER, warn } },
+      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+      [['ch', 'a']],
+      'task-1',
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('unexpected channel'),
+      expect.objectContaining({ expected: 'ch', found: 'other' }),
+    );
+  });
+
+  it('falls back to the duplicate reading when no attributes are returned (I7)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(PutCommand).rejects(conditionalCheckFailed());
+    const debug = jest.fn();
+    const warn = jest.fn();
+    await putWrites(
+      { ...context(client), logger: { ...SILENT_LOGGER, debug, warn } },
+      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+      [['ch', 'a']],
+      'task-1',
+    );
+    expect(debug).toHaveBeenCalledTimes(1);
+    expect(warn).not.toHaveBeenCalled();
+  });
 });
