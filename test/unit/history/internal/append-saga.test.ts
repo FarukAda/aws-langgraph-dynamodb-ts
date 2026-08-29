@@ -70,10 +70,14 @@ describe('appendChunks', () => {
     const deletes =
       mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.history ?? [];
     expect(deletes.map((r) => r.DeleteRequest?.Key?.SK)).toEqual(['MSG#1', 'MSG#2']);
+    // This call created the session, so the rollback removes the whole row
+    // rather than only decrementing it — otherwise `title`/`createdAt`, both
+    // written via if_not_exists, would survive as a ghost session (C4).
     const revertCall = mock.commandCalls(TransactWriteCommand)[2].args[0].input;
-    const revertUpdate = revertCall.TransactItems?.[0]?.Update;
-    expect(revertUpdate?.UpdateExpression).toBe('ADD #count :neg');
-    expect(revertUpdate?.ExpressionAttributeValues?.[':neg']).toBe(-2);
+    const revertDelete = revertCall.TransactItems?.[0]?.Delete;
+    expect(revertDelete?.ConditionExpression).toBe('#count = :total AND #c = :now');
+    expect(revertDelete?.ExpressionAttributeValues?.[':total']).toBe(2);
+    expect(revertDelete?.ExpressionAttributeValues?.[':now']).toBe('u');
     expect(revertCall.ClientRequestToken).toBeDefined();
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('compensating'), {
       sessionId: 's1',
@@ -242,8 +246,9 @@ describe('appendChunks', () => {
       .resolvesOnce({})
       // chunk 2 fails
       .rejectsOnce(Object.assign(new Error('boom'), { name: 'ValidationException' }))
-      // revertSessionCount's compensating transactWrite
-      .rejectsOnce(sessionGone);
+      // both the compensating delete and its count-revert fallback find the
+      // row already gone
+      .rejects(sessionGone);
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
 
     // The original trigger, not a new error, must still be what surfaces —
@@ -261,7 +266,9 @@ describe('appendChunks', () => {
         { now: 'u' },
       ),
     ).rejects.toMatchObject({ name: 'ValidationException', message: 'boom' });
-    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(3);
+    // 4 transactions: two chunk appends, the compensating delete, and its
+    // count-revert fallback — both of the latter swallowed, neither retried.
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(4);
   });
 
   it('does not revert a force-refreshed ttl anchor on rollback (documented tradeoff, see README)', async () => {
@@ -270,6 +277,15 @@ describe('appendChunks', () => {
       .on(TransactWriteCommand)
       .resolvesOnce({})
       .rejectsOnce(Object.assign(new Error('boom'), { name: 'ValidationException' }))
+      // The session pre-existed this append — exactly the case the README
+      // documents — so the compensating delete's condition fails and the
+      // count-revert fallback runs instead.
+      .rejectsOnce(
+        Object.assign(new Error('cancelled'), {
+          name: 'TransactionCanceledException',
+          CancellationReasons: [{ Code: 'ConditionalCheckFailed' }],
+        }),
+      )
       .resolves({});
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     await expect(
@@ -279,9 +295,9 @@ describe('appendChunks', () => {
         ttlTimestamp: 9999,
       }),
     ).rejects.toThrow('boom');
-    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(3);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(4);
     const revertUpdate =
-      mock.commandCalls(TransactWriteCommand)[2].args[0].input.TransactItems?.[0]?.Update;
+      mock.commandCalls(TransactWriteCommand)[3].args[0].input.TransactItems?.[0]?.Update;
     expect(revertUpdate?.UpdateExpression).toBe('ADD #count :neg');
     expect(revertUpdate?.UpdateExpression).not.toContain('ttl');
     expect(revertUpdate?.ExpressionAttributeNames?.['#ttl']).toBeUndefined();

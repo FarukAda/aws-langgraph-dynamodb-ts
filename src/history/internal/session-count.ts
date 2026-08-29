@@ -57,3 +57,52 @@ export async function revertSessionCount(
     throw error;
   }
 }
+
+/**
+ * Undo a rolled-back append's effect on the session row.
+ *
+ * When this call is the one that created the row — `createdAt` still equals
+ * this call's timestamp, and the only messages counted on it are the ones
+ * being reverted — the whole row is deleted. Without that, a failed first
+ * append left a "ghost session": `title`, `createdAt` and `sessionId` are all
+ * written via `if_not_exists`, so they were never reverted and never set
+ * again, leaving `listSessions()` reporting a session with `messageCount: 0`
+ * whose title still held up to 80 characters of a message the caller was told
+ * had not persisted, with no API to clear it.
+ *
+ * Both conditions are load-bearing. `createdAt = :now` establishes that this
+ * call created the row; `messageCount = :total` establishes that nothing else
+ * has added to it since. A concurrent append to the same brand-new session
+ * fails the count check and falls through to the plain decrement, which keeps
+ * the other caller's messages intact at the cost of leaving the title — the
+ * safe direction.
+ */
+export async function revertSessionCreation(
+  context: HistoryContext,
+  sessionId: string,
+  total: number,
+  createdAt: string,
+): Promise<void> {
+  if (total === 0) return;
+  const input = {
+    TransactItems: [
+      {
+        Delete: {
+          TableName: context.tableName,
+          Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+          ConditionExpression: '#count = :total AND #c = :now',
+          ExpressionAttributeNames: { '#count': 'messageCount', '#c': 'createdAt' },
+          ExpressionAttributeValues: { ':total': total, ':now': createdAt },
+        },
+      },
+    ],
+    ClientRequestToken: randomUUID(),
+  };
+  try {
+    await withDynamoDBRetry(() => context.client.transactWrite(input));
+    return;
+  } catch (error) {
+    if (!isCancelledByCondition(error as Error)) throw error;
+  }
+  await revertSessionCount(context, sessionId, total);
+}
