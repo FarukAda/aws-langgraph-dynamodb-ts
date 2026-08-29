@@ -5,7 +5,6 @@ import {
 } from '@langchain/core/messages';
 
 import { nowIso } from '../../shared/clock';
-import { validateNonEmptyString } from '../../shared/validation/primitives';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { appendChunks } from '../internal/append-saga';
 import { buildMessageItem } from '../internal/item-mapper';
@@ -13,6 +12,7 @@ import { chunkBySize } from '../internal/message-chunker';
 import type { HistoryContext } from '../internal/setup';
 import { deriveTitle } from '../internal/title-generator';
 import { resolveTtlAnchor } from '../internal/ttl-anchor';
+import { validateSessionId } from '../internal/validation';
 import type { ChatMessageItem } from '../types';
 
 /** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
@@ -55,7 +55,7 @@ export async function addMessages(
   sessionId: string,
   messages: BaseMessage[],
 ): Promise<void> {
-  validateNonEmptyString(sessionId, 'sessionId');
+  validateSessionId(sessionId);
   if (messages.length === 0) return;
   const stored = mapChatMessagesToStoredMessages(messages);
   const anchor = context.ttl

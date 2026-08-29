@@ -60,6 +60,19 @@ export function assertNoSeparator(value: string, separator: string, field: strin
   }
 }
 
+/**
+ * Validate a caller-supplied identifier that reaches a DynamoDB key: non-empty,
+ * free of the reserved `separator`, and free of control characters. The last
+ * rule matters even though DynamoDB itself accepts control characters — an
+ * identifier is echoed into logs, so an unvalidated ANSI escape is a
+ * log/terminal-injection surface for any app that writes these values out.
+ */
+export function validateIdentifier(value: string, separator: string, field: string): void {
+  validateNonEmptyString(value, field);
+  assertNoSeparator(value, separator, field);
+  assertNoControlChars(value, field);
+}
+
 /** Throw {@link ValidationError} if nested-array depth exceeds `maxDepth`. */
 export function validateArrayMaxDepth(value: Redactable[], field: string, maxDepth: number): void {
   const depthOf = (node: Redactable, depth: number): number => {

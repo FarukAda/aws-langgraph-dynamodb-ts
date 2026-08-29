@@ -1,3 +1,6 @@
+/** Reserved separator joining sort-key segments; forbidden inside a session id. */
+export const SORT_KEY_SEPARATOR = '#';
+
 /**
  * Item-kind tag distinguishing this adapter's sort keys from another
  * adapter's on a table shared via `DynamoDBFactory.createAll()` — matches the
@@ -7,7 +10,7 @@
  * `store.put([sessionId], 'SESSION', ...)`, since `sortKey` collapses a
  * single-element namespace down to just the key).
  */
-const ADAPTER_PREFIX = 'HISTORY#';
+const ADAPTER_PREFIX = `HISTORY${SORT_KEY_SEPARATOR}`;
 
 /** Fixed sort key for the per-session metadata item. */
 export const SESSION_SORT_KEY = `${ADAPTER_PREFIX}SESSION`;
