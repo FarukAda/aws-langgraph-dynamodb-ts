@@ -8,7 +8,20 @@ export type DynamoDBChatMessageHistoryOptions = BaseAdapterOptions &
   CodecOptions & {
     /** Optional serializer override (defaults to the JSON serializer). */
     serde?: SerializerProtocol;
+    /**
+     * What `getMessages` does when a stored message cannot be decoded — a
+     * decompression-guard trip, an unsupported `serdeType` after a config
+     * change, or genuinely corrupted bytes. `'skip'` (the default) drops the
+     * item, logs it at `error` with its sort key so an operator can locate
+     * it, and returns the rest; `'throw'` fails the whole read, which is
+     * all-or-nothing but leaves the session unreadable until the bad row is
+     * removed out of band.
+     */
+    onCorruptMessage?: CorruptMessagePolicy;
   };
+
+/** How `getMessages` handles an item it cannot decode. */
+export type CorruptMessagePolicy = 'skip' | 'throw';
 
 /** Summary of a stored chat session. */
 export interface SessionMetadata {
