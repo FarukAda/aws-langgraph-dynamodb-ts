@@ -265,6 +265,39 @@ describe('credential-value redaction (F2)', () => {
     expect(redactSecrets('tokenizer: fast')).toBe('tokenizer: fast');
   });
 
+  it('redacts an unquoted JSON scalar without swallowing its siblings', () => {
+    // The value side had no scalar alternative, so a number fell through to
+    // the end-of-line fallback and destroyed every field after it:
+    // {"apiKey":123,"region":"us-east-1"} collapsed to {"apiKey":[REDACTED].
+    expect(redactSecrets('{"apiKey":123,"region":"us-east-1"}')).toBe(
+      '{"apiKey":[REDACTED],"region":"us-east-1"}',
+    );
+    expect(redactSecrets('{"password":true,"user":"bob"}')).toBe(
+      '{"password":[REDACTED],"user":"bob"}',
+    );
+    expect(redactSecrets('{"token":null,"retries":3}')).toBe('{"token":[REDACTED],"retries":3}');
+    expect(redactSecrets('{"apiKey":-1.5e3,"user":"bob"}')).toBe(
+      '{"apiKey":[REDACTED],"user":"bob"}',
+    );
+  });
+
+  it('still redacts an unquoted value whole when it merely starts with digits', () => {
+    // The scalar alternative must not truncate a value it does not fully
+    // describe, or it would leak the tail it left behind.
+    expect(redactSecrets('token=123abc')).toBe('token=[REDACTED]');
+  });
+
+  it('consumes a quoted value containing an escaped quote, instead of leaking its tail', () => {
+    // "a\"b" ended the quoted span at the escaped quote, so the redaction
+    // stopped short and printed the rest of the secret verbatim.
+    expect(redactSecrets(JSON.stringify({ password: 'a"b', user: 'bob' }))).toBe(
+      '{"password":[REDACTED],"user":"bob"}',
+    );
+    expect(redactSecrets(String.raw`{'password': 'a\'b', 'keep': 1}`)).toBe(
+      "{'password': [REDACTED], 'keep': 1}",
+    );
+  });
+
   it('reaches a secret inside an Error message via the rebuild path', () => {
     const error = Object.assign(new Error('failed {"password":"hunter2"}'), { code: 'X' });
     const redacted = redactSecrets(error as never) as { message: string };

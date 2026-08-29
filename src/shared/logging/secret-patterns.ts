@@ -27,18 +27,28 @@ export const DEFAULT_SECRET_KEY_PATTERNS: readonly string[] = [
  * keyword**, because that is what `JSON.stringify` produces
  * (`{"password":"…"}`) and requiring the separator to follow the bare keyword
  * matched nothing at all there — a silent, complete bypass on the single most
- * common shape a downstream HTTP error arrives in. Its value side prefers a
- * fully-quoted span and otherwise runs to end of line, so a multi-word secret
- * is redacted whole instead of up to its first space; preferring the quoted
- * form is what stops the end-of-line fallback over-redacting sibling JSON
- * fields. Its group 1 is the keyword and separator, preserved by
- * {@link redactText}.
+ * common shape a downstream HTTP error arrives in. Its group 1 is the keyword
+ * and separator, preserved by {@link redactText}.
+ *
+ * Its value side tries three shapes, and their order is load-bearing:
+ * 1. a fully-quoted span that consumes escapes, so `{"password":"a\"b"}` is
+ *    redacted whole. Ending the span at the escaped quote stopped the
+ *    redaction short and printed the rest of the secret verbatim.
+ * 2. an unquoted JSON scalar — number, `true`, `false`, `null` — required to
+ *    end at a delimiter. Without it, `{"apiKey":123,"region":"us-east-1"}`
+ *    fell through to the fallback below, which then destroyed every sibling
+ *    field after the secret. The delimiter lookahead is what stops this
+ *    alternative truncating a value it does not fully describe, such as
+ *    `token=123abc`, and leaking the tail it left behind.
+ * 3. the rest of the line, so a multi-word secret is redacted whole instead of
+ *    up to its first space. Trying the two precise shapes first is what keeps
+ *    this fallback from over-redacting sibling JSON fields.
  */
 export const DEFAULT_SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g,
   /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi,
   /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
-  /((?:aws_)?(?:secret_access_key|secretaccesskey|password|passwd|api_?key|token)["']?\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\r\n]+)/gi,
+  /((?:aws_)?(?:secret_access_key|secretaccesskey|password|passwd|api_?key|token)["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=[\s,}\]]|$)|[^\r\n]+)/gi,
 ];
 
 /** True when `key` matches any secret-key pattern. */
