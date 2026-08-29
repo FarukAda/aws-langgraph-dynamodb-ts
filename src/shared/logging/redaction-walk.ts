@@ -70,6 +70,16 @@ function redactMap(value: Map<Redactable, Redactable>, deps: WalkDeps): Redactab
  * enumerable data whose text holds no secret: it is returned by reference so
  * its identity and stack trace survive, which is what keeps a caught error
  * useful in a log.
+ *
+ * `cause` is copied explicitly because `new Error(msg, { cause })` defines it
+ * as *non-enumerable* per spec, so `Object.entries` never sees it. Without
+ * this the whole chain vanished on every rebuild — and the rebuild always
+ * fires for this library's own error types, since each attaches an enumerable
+ * `code`/`context`. A redacted `RetryExhaustedError` would then no longer say
+ * whether the underlying failure was a throttle, a validation error or a
+ * network fault, which is the entire reason it carries a cause. Recursing it
+ * through `walk` redacts the chain too, and the cycle guard handles a cause
+ * that points back at its own wrapper.
  */
 function redactError(
   current: RedactableObject & Error,
@@ -82,6 +92,7 @@ function redactError(
   out.name = text.name;
   out.message = text.message;
   out.stack = text.stack;
+  if (current.cause !== undefined) out.cause = deps.walk(current.cause as Redactable);
   return out;
 }
 

@@ -1,3 +1,4 @@
+import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
 import { redactLogger, redactSecrets } from '../../../../src/shared/logging/redaction';
 
 describe('redactSecrets', () => {
@@ -54,6 +55,32 @@ describe('redactSecrets', () => {
     expect(out.err.message).toBe('write failed');
     expect(out.err.stack).toBe(error.stack);
     expect(out.err.unprocessed).toEqual({ token: '[REDACTED]', itemCount: 5 });
+  });
+
+  it('preserves the cause chain when rebuilding an error', () => {
+    // `super(message, { cause })` makes `cause` non-enumerable per spec, so
+    // Object.entries skips it. Every library error attaches its own
+    // enumerable code/context, so the rebuild path always fires for them —
+    // dropping the underlying AWS failure that a redacted RetryExhaustedError
+    // exists to report.
+    const root = Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
+    const wrapper = new RetryExhaustedError('Operation failed after 5 attempts', 5, root);
+    const out = redactSecrets({ err: wrapper } as never) as unknown as {
+      err: { cause?: { name: string; message: string } };
+    };
+    expect(out.err.cause).toBeDefined();
+    expect(out.err.cause?.name).toBe('ThrottlingException');
+    expect(out.err.cause?.message).toBe('throttled');
+  });
+
+  it('redacts secrets inside a preserved cause chain', () => {
+    const root = Object.assign(new Error('rejected AKIAIOSFODNN7EXAMPLE'), { token: 'sk-live-1' });
+    const wrapper = new RetryExhaustedError('wrapped', 2, root);
+    const out = redactSecrets({ err: wrapper } as never) as unknown as {
+      err: { cause?: { message: string; token: string } };
+    };
+    expect(out.err.cause?.message).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    expect(out.err.cause?.token).toBe('[REDACTED]');
   });
 
   it('does not flag a DAG-shared (non-cyclic) object as circular', () => {
