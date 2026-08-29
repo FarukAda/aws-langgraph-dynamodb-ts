@@ -164,4 +164,21 @@ describe('collectReconcileTargets', () => {
     const targets = await collectReconcileTargets(ctx, ['users', 'u1']);
     expect(targets.map((t) => t.namespace)).toEqual([['users', 'u1']]);
   });
+
+  it('skips and warns on a foreign row instead of casting it (F8)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const warn = jest.fn();
+    const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });
+    // A row whose `namespace` is truthy but not an array — the exact shape the
+    // shared narrowing helper exists to reject, and which a raw cast waves through.
+    mock.on(QueryCommand).resolves({
+      Items: [{ PK: 'STORE#n', SK: 'foreign', namespace: 'not-an-array', key: 'k' }],
+    });
+
+    await expect(collectReconcileTargets(ctx, ['n'])).resolves.toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('skipped a row'),
+      expect.objectContaining({ sortKey: 'foreign' }),
+    );
+  });
 });

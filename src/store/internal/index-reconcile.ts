@@ -1,8 +1,7 @@
 import { paginateQuery } from '../../shared/dynamodb/paginate';
-import type { StoreItemRecord } from '../types';
 import type { VectorBackend, VectorRef } from '../vector-backend';
 import type { JsonValue } from './filter';
-import { readStoreItem } from './item-mapper';
+import { narrowStoreRecord, readStoreItem } from './item-mapper';
 import { namespaceMatchesPrefix, partitionKey, sortKey } from './keys';
 import { scopedQuery } from './query';
 import { embedValue } from './semantic-search';
@@ -38,8 +37,14 @@ export async function collectReconcileTargets(
     maxItems: context.maxScanItems,
   });
   for await (const raw of source) {
-    const record = raw as StoreItemRecord;
-    if (!record.namespace || !namespaceMatchesPrefix(record.namespace, prefix)) continue;
+    const record = narrowStoreRecord(raw);
+    if (!record) {
+      context.logger.warn('reconcileVectorIndex: skipped a row that is not a store item', {
+        sortKey: raw.SK as string,
+      });
+      continue;
+    }
+    if (!namespaceMatchesPrefix(record.namespace, prefix)) continue;
     const item = await readStoreItem(context, record);
     const embedding = await embedValue(context, item.value as Record<string, JsonValue>);
     targets.push({ namespace: record.namespace, key: record.key, embedding });
