@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Enumeration: ErrorCode
 
-Defined in: [shared/errors/error-code.ts:2](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/error-code.ts#L2)
+Defined in: shared/errors/error-code.ts:2
 
 Stable, branchable classification for every error this library throws.
 
@@ -16,7 +16,7 @@ Stable, branchable classification for every error this library throws.
 
 > **ABORTED**: `"ABORTED"`
 
-Defined in: [shared/errors/error-code.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/error-code.ts#L10)
+Defined in: shared/errors/error-code.ts:10
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [shared/errors/error-code.ts:10](https://github.com/FarukAda/aws-lan
 
 > **BATCH\_WRITE\_INCOMPLETE**: `"BATCH_WRITE_INCOMPLETE"`
 
-Defined in: [shared/errors/error-code.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/error-code.ts#L6)
+Defined in: shared/errors/error-code.ts:6
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [shared/errors/error-code.ts:6](https://github.com/FarukAda/aws-lang
 
 > **COMPENSATION\_FAILED**: `"COMPENSATION_FAILED"`
 
-Defined in: [shared/errors/error-code.ts:11](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/error-code.ts#L11)
+Defined in: shared/errors/error-code.ts:11
 
 ***
 
@@ -40,7 +40,7 @@ Defined in: [shared/errors/error-code.ts:11](https://github.com/FarukAda/aws-lan
 
 > **COMPRESSION\_LIMIT**: `"COMPRESSION_LIMIT"`
 
-Defined in: [shared/errors/error-code.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/error-code.ts#L7)
+Defined in: shared/errors/error-code.ts:7
 
 ***
 
@@ -48,7 +48,7 @@ Defined in: [shared/errors/error-code.ts:7](https://github.com/FarukAda/aws-lang
 
 > **CONDITION\_CONFLICT**: `"CONDITION_CONFLICT"`
 
-Defined in: [shared/errors/error-code.ts:4](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/error-code.ts#L4)
+Defined in: shared/errors/error-code.ts:4
 
 ***
 
@@ -56,7 +56,7 @@ Defined in: [shared/errors/error-code.ts:4](https://github.com/FarukAda/aws-lang
 
 > **RESULT\_TRUNCATED**: `"RESULT_TRUNCATED"`
 
-Defined in: [shared/errors/error-code.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/error-code.ts#L9)
+Defined in: shared/errors/error-code.ts:9
 
 ***
 
@@ -64,7 +64,7 @@ Defined in: [shared/errors/error-code.ts:9](https://github.com/FarukAda/aws-lang
 
 > **RETRY\_EXHAUSTED**: `"RETRY_EXHAUSTED"`
 
-Defined in: [shared/errors/error-code.ts:5](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/error-code.ts#L5)
+Defined in: shared/errors/error-code.ts:5
 
 ***
 
@@ -72,7 +72,7 @@ Defined in: [shared/errors/error-code.ts:5](https://github.com/FarukAda/aws-lang
 
 > **S3\_OFFLOAD\_FAILED**: `"S3_OFFLOAD_FAILED"`
 
-Defined in: [shared/errors/error-code.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/error-code.ts#L8)
+Defined in: shared/errors/error-code.ts:8
 
 ***
 
@@ -80,4 +80,4 @@ Defined in: [shared/errors/error-code.ts:8](https://github.com/FarukAda/aws-lang
 
 > **VALIDATION**: `"VALIDATION"`
 
-Defined in: [shared/errors/error-code.ts:3](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/error-code.ts#L3)
+Defined in: shared/errors/error-code.ts:3

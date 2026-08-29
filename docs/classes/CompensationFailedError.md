@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: CompensationFailedError
 
-Defined in: [shared/errors/errors.ts:123](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/errors.ts#L123)
+Defined in: shared/errors/errors.ts:123
 
 A compensating rollback failed after an append-saga chunk error, so the
 trigger error could not be cleanly undone. Carries the original trigger as
@@ -23,7 +23,7 @@ trigger error could not be cleanly undone. Carries the original trigger as
 
 > **new CompensationFailedError**(`cause`, `rollbackError`): `CompensationFailedError`
 
-Defined in: [shared/errors/errors.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/errors.ts#L126)
+Defined in: shared/errors/errors.ts:126
 
 #### Parameters
 
@@ -49,7 +49,7 @@ Defined in: [shared/errors/errors.ts:126](https://github.com/FarukAda/aws-langgr
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L20)
+Defined in: shared/errors/base-error.ts:20
 
 #### Inherited from
 
@@ -61,7 +61,7 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L21)
+Defined in: shared/errors/base-error.ts:21
 
 #### Inherited from
 
@@ -73,4 +73,4 @@ Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-lan
 
 > `readonly` **rollbackError**: `Error`
 
-Defined in: [shared/errors/errors.ts:124](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/errors.ts#L124)
+Defined in: shared/errors/errors.ts:124

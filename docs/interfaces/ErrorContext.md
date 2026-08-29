@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Interface: ErrorContext
 
-Defined in: [shared/errors/base-error.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L6)
+Defined in: shared/errors/base-error.ts:6
 
 Structured, log-safe context attached to every library error.
 
@@ -16,7 +16,7 @@ Structured, log-safe context attached to every library error.
 
 > `optional` **attempts?**: `number`
 
-Defined in: [shared/errors/base-error.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L10)
+Defined in: shared/errors/base-error.ts:10
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [shared/errors/base-error.ts:10](https://github.com/FarukAda/aws-lan
 
 > `optional` **key?**: `string`
 
-Defined in: [shared/errors/base-error.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L9)
+Defined in: shared/errors/base-error.ts:9
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [shared/errors/base-error.ts:9](https://github.com/FarukAda/aws-lang
 
 > `optional` **operation?**: `string`
 
-Defined in: [shared/errors/base-error.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L8)
+Defined in: shared/errors/base-error.ts:8
 
 ***
 
@@ -40,4 +40,4 @@ Defined in: [shared/errors/base-error.ts:8](https://github.com/FarukAda/aws-lang
 
 > `optional` **tableName?**: `string`
 
-Defined in: [shared/errors/base-error.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L7)
+Defined in: shared/errors/base-error.ts:7

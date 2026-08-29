@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: ValidationError
 
-Defined in: [shared/errors/errors.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/errors.ts#L6)
+Defined in: shared/errors/errors.ts:6
 
 Input failed a validation rule before any AWS call was made.
 
@@ -20,7 +20,7 @@ Input failed a validation rule before any AWS call was made.
 
 > **new ValidationError**(`message`, `field?`): `ValidationError`
 
-Defined in: [shared/errors/errors.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/errors.ts#L7)
+Defined in: shared/errors/errors.ts:7
 
 #### Parameters
 
@@ -46,7 +46,7 @@ Defined in: [shared/errors/errors.ts:7](https://github.com/FarukAda/aws-langgrap
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L20)
+Defined in: shared/errors/base-error.ts:20
 
 #### Inherited from
 
@@ -58,7 +58,7 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L21)
+Defined in: shared/errors/base-error.ts:21
 
 #### Inherited from
 
