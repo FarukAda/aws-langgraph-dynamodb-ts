@@ -1,3 +1,5 @@
+import { ValidationError } from '../../shared/errors/errors';
+
 /** Reserved separator joining sort-key segments; forbidden inside any segment. */
 export const SORT_KEY_SEPARATOR = '#';
 
@@ -49,15 +51,34 @@ export function payloadSortKey(checkpointNs: string, checkpointId: string): stri
   return `${CheckpointItemKind.PAYLOAD}${SORT_KEY_SEPARATOR}${checkpointNs}${SORT_KEY_SEPARATOR}${checkpointId}`;
 }
 
-/** Sort key for a single pending write. */
+/**
+ * Sort key for a single pending write. The trailing `channel` segment is what
+ * keeps two *different* channels from ever occupying one row: without it, a
+ * retried task whose write mix changed could compute an index another
+ * channel already holds, and the first-write-wins guard — which cannot tell a
+ * genuine retry from an unrelated write — would silently discard it. The
+ * channel is appended verbatim as the final segment, so two sort keys collide
+ * only when their channels are byte-identical; `writeSortKeyPrefix` stops at
+ * the checkpoint id, ahead of this segment, so `begins_with` reads are
+ * unaffected.
+ */
 export function writeSortKey(
   checkpointNs: string,
   checkpointId: string,
   taskId: string,
   index: number,
+  channel: string,
 ): string {
-  const paddedIndex = (index + WRITE_INDEX_OFFSET).toString().padStart(WRITE_INDEX_PAD_WIDTH, '0');
-  return [CheckpointItemKind.WRITE, checkpointNs, checkpointId, taskId, paddedIndex].join(
+  const offsetIndex = index + WRITE_INDEX_OFFSET;
+  if (offsetIndex < 0 || offsetIndex.toString().length > WRITE_INDEX_PAD_WIDTH) {
+    throw new ValidationError(
+      `write index ${index} is outside the range encodable at offset ${WRITE_INDEX_OFFSET} ` +
+        `with ${WRITE_INDEX_PAD_WIDTH} digits`,
+      'index',
+    );
+  }
+  const paddedIndex = offsetIndex.toString().padStart(WRITE_INDEX_PAD_WIDTH, '0');
+  return [CheckpointItemKind.WRITE, checkpointNs, checkpointId, taskId, paddedIndex, channel].join(
     SORT_KEY_SEPARATOR,
   );
 }

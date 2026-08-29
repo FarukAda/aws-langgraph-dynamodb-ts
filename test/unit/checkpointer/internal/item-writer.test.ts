@@ -4,7 +4,7 @@ import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 import {
   buildCheckpointItems,
   buildWriteItems,
-  resolveWriteIndex,
+  resolveWriteIndices,
 } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
@@ -101,10 +101,12 @@ describe('buildWriteItems', () => {
       'nonce-1',
     );
     expect(items).toHaveLength(2);
-    expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0000000008');
+    // Each channel's first occurrence is index 0; the channel segment is what
+    // separates them, so neither can displace the other on a retry (C3).
+    expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0000000008#messages');
     expect(items[0].channel).toBe('messages');
-    expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000009');
-    expect(items[1].index).toBe(1);
+    expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000008#counter');
+    expect(items[1].index).toBe(0);
     expect(items[1].value.serdeType).toBe('json');
   });
 
@@ -125,7 +127,7 @@ describe('buildWriteItems', () => {
     const interrupt = items.find((item) => item.channel === '__interrupt__')!;
     expect(regular.index).toBe(0);
     expect(interrupt.index).toBe(WRITES_IDX_MAP['__interrupt__']);
-    expect(interrupt.SK).toBe('WRITE##ckpt-1#task-7#0000000005');
+    expect(interrupt.SK).toBe('WRITE##ckpt-1#task-7#0000000005#__interrupt__');
     expect(interrupt.SK < regular.SK).toBe(true);
   });
 
@@ -144,9 +146,9 @@ describe('buildWriteItems', () => {
     );
     const regular = items.find((item) => item.channel === 'regular')!;
     const interrupt = items.find((item) => item.channel === '__interrupt__')!;
-    expect(s3Key(regular)).toBe('t//ckpt-1/task-7/write-0/nonce-1');
+    expect(s3Key(regular)).toBe('t//ckpt-1/task-7/write-0/regular/nonce-1');
     expect(s3Key(interrupt)).toBe(
-      `t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}/nonce-1`,
+      `t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}/__interrupt__/nonce-1`,
     );
   });
 
@@ -176,13 +178,66 @@ describe('buildWriteItems', () => {
   });
 });
 
-describe('resolveWriteIndex', () => {
-  it('falls through to positional for a channel that collides with Object.prototype', () => {
-    expect(resolveWriteIndex('constructor', 3)).toBe(3);
-    expect(resolveWriteIndex('toString', 5)).toBe(5);
+describe('resolveWriteIndices', () => {
+  it('treats a channel colliding with Object.prototype as regular, not special', () => {
+    expect(resolveWriteIndices([['constructor', 'v']])).toEqual([
+      { channel: 'constructor', value: 'v', index: 0 },
+    ]);
+    expect(resolveWriteIndices([['toString', 'v']])).toEqual([
+      { channel: 'toString', value: 'v', index: 0 },
+    ]);
   });
 
   it('resolves a known special channel to its WRITES_IDX_MAP slot', () => {
-    expect(resolveWriteIndex('__error__', 9)).toBe(-1);
+    expect(resolveWriteIndices([['__error__', 'boom']])).toEqual([
+      { channel: '__error__', value: 'boom', index: -1 },
+    ]);
+  });
+
+  it('collapses a repeated special channel last-write-wins at its fixed slot', () => {
+    expect(
+      resolveWriteIndices([
+        ['__error__', 'first'],
+        ['__error__', 'second'],
+      ]),
+    ).toEqual([{ channel: '__error__', value: 'second', index: -1 }]);
+  });
+
+  it('numbers a repeated regular channel by its occurrence within the call (C3)', () => {
+    expect(
+      resolveWriteIndices([
+        ['ch', 'a'],
+        ['other', 'x'],
+        ['ch', 'b'],
+      ]),
+    ).toEqual([
+      { channel: 'ch', value: 'a', index: 0 },
+      { channel: 'other', value: 'x', index: 0 },
+      { channel: 'ch', value: 'b', index: 1 },
+    ]);
+  });
+
+  it('does not recompute an index from the position of a collapsed array (C3)', () => {
+    // Two ERROR writes collapse to one; the surviving regular write must keep
+    // the index its own channel occurrence gives it, not the collapsed
+    // array's shifted position.
+    expect(
+      resolveWriteIndices([
+        ['__error__', 'e1'],
+        ['__error__', 'e2'],
+        ['chanA', 'v'],
+      ]),
+    ).toEqual([
+      { channel: '__error__', value: 'e2', index: -1 },
+      { channel: 'chanA', value: 'v', index: 0 },
+    ]);
+  });
+
+  it('orders special writes ahead of regular ones', () => {
+    const resolved = resolveWriteIndices([
+      ['regular', 'v'],
+      ['__error__', 'e'],
+    ]);
+    expect(resolved.map((w) => w.channel)).toEqual(['__error__', 'regular']);
   });
 });

@@ -9,7 +9,7 @@ import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { ValidationError } from '../../shared/errors/errors';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
-import { buildWriteItems, resolveWriteIndex } from '../internal/item-writer';
+import { buildWriteItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
 import { validateTaskId } from '../internal/validation';
@@ -37,20 +37,6 @@ async function cleanUpItems(
   );
 }
 
-/**
- * Dedup writes to the same special channel (last-write-wins) before upload,
- * so a discarded duplicate is never uploaded. A regular write's index comes
- * from its position here (post-dedup), not the caller's raw array — stable
- * across retries of an identical array, which is what first-write-wins needs.
- */
-function dedupeWritesByIndex(writes: PendingWrite[]): PendingWrite[] {
-  const byIndex = new Map<number, PendingWrite>();
-  writes.forEach((write, positional) => {
-    const index = resolveWriteIndex(write[0], positional);
-    byIndex.set(index, write);
-  });
-  return [...byIndex.values()];
-}
 /**
  * Outcome of {@link writeRegularItems}: never rejects. Only `failed` items
  * never reached DynamoDB and are safe to clean up — every other item is
@@ -123,7 +109,7 @@ export async function putWrites(
     checkpointNs,
     checkpointId,
     taskId,
-    dedupeWritesByIndex(writes),
+    writes,
     randomUUID(),
     ttlTimestamp,
   );

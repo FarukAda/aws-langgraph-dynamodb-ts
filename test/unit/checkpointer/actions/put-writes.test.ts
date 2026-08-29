@@ -46,8 +46,8 @@ describe('putWrites', () => {
     );
     const calls = mock.commandCalls(PutCommand);
     expect(calls).toHaveLength(2);
-    expect(calls[0].args[0].input.Item?.SK).toBe('WRITE##c1#task-3#0000000008');
-    expect(calls[1].args[0].input.Item?.SK).toBe('WRITE##c1#task-3#0000000009');
+    expect(calls[0].args[0].input.Item?.SK).toBe('WRITE##c1#task-3#0000000008#ch');
+    expect(calls[1].args[0].input.Item?.SK).toBe('WRITE##c1#task-3#0000000009#ch');
   });
 
   it('rejects a taskId containing the reserved separator', async () => {
@@ -132,7 +132,7 @@ describe('putWrites', () => {
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
     expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-0\/[^/]+$/);
+    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-0\/ch\/[^/]+$/);
   });
 
   it('cleans up only the item that failed, never a sibling that already succeeded', async () => {
@@ -161,7 +161,7 @@ describe('putWrites', () => {
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
     expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/[^/]+$/);
+    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/ch\/[^/]+$/);
   });
 
   it("cleans up a special item's never-committed upload when its batch write hard-fails outright", async () => {
@@ -195,7 +195,7 @@ describe('putWrites', () => {
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
     expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write--1\/[^/]+$/);
+    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write--1\/__error__\/[^/]+$/);
   });
 
   it('still cleans up a failed regular write when the special path fails before its own batch write is attempted', async () => {
@@ -224,8 +224,8 @@ describe('putWrites', () => {
     const keysCalled = offloader.deleteBatch.mock.calls.map((call) => (call[0] as string[])[0]);
     expect(keysCalled).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(/^t\/\/c1\/task-1\/write-0\/[^/]+$/),
-        expect.stringMatching(/^t\/\/c1\/task-1\/write--1\/[^/]+$/),
+        expect.stringMatching(/^t\/\/c1\/task-1\/write-0\/ch\/[^/]+$/),
+        expect.stringMatching(/^t\/\/c1\/task-1\/write--1\/__error__\/[^/]+$/),
       ]),
     );
   });
@@ -351,7 +351,7 @@ describe('putWrites', () => {
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
     expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/[^/]+$/);
+    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/ch\/[^/]+$/);
   });
 
   it('dedupes duplicate writes to the same special channel by sort key before batching', async () => {

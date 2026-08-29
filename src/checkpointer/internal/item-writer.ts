@@ -1,4 +1,9 @@
-import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
+import type {
+  Checkpoint,
+  CheckpointMetadata,
+  PendingWrite,
+  PendingWriteValue,
+} from '@langchain/langgraph-checkpoint';
 import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
 import { type CodecDeps, encodePayload } from '../../shared/codec/codec';
@@ -16,15 +21,48 @@ function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T 
   return item;
 }
 
+/** One write with its sort-key index resolved exactly once. */
+export interface ResolvedWrite {
+  channel: string;
+  value: PendingWriteValue;
+  index: number;
+}
+
 /**
- * Resolve a write's DynamoDB sort-key index: WRITES_IDX_MAP's slot for a
- * known special channel, else its position. `Object.hasOwn` guards against
- * WRITES_IDX_MAP's own `Object.prototype` chain — a channel literally named
- * `constructor`/`toString`/etc. must fall through to `positional`, not
- * resolve to an inherited function reference.
+ * Assign every write in one `putWrites` call its sort-key index, in a single
+ * pass — the index is never recomputed downstream, which is what used to let
+ * the deduped array's positions disagree with the ones the caller's array
+ * produced.
+ *
+ * A special channel takes its fixed `WRITES_IDX_MAP` slot, and a later
+ * duplicate replaces an earlier one (last-write-wins, matching the reference
+ * checkpointer). A regular channel takes the number of times it has already
+ * appeared in *this call*, so a retried task re-emitting the same channel
+ * lands on the same row — a true duplicate the first-write-wins guard
+ * correctly rejects — while a channel the retry newly emitted gets a row of
+ * its own instead of silently displacing an unrelated write. Values written
+ * repeatedly to one channel keep their relative order, which is the only
+ * ordering LangGraph's `_applyWrites` depends on.
+ *
+ * `Object.hasOwn` guards WRITES_IDX_MAP's own `Object.prototype` chain — a
+ * channel literally named `constructor`/`toString`/etc. must be treated as
+ * regular, not resolve to an inherited function reference.
  */
-export function resolveWriteIndex(channel: string, positional: number): number {
-  return Object.hasOwn(WRITES_IDX_MAP, channel) ? WRITES_IDX_MAP[channel] : positional;
+export function resolveWriteIndices(writes: PendingWrite[]): ResolvedWrite[] {
+  const bySpecialIndex = new Map<number, ResolvedWrite>();
+  const regular: ResolvedWrite[] = [];
+  const occurrences = new Map<string, number>();
+  for (const [channel, value] of writes) {
+    if (Object.hasOwn(WRITES_IDX_MAP, channel)) {
+      const index = WRITES_IDX_MAP[channel];
+      bySpecialIndex.set(index, { channel, value, index });
+      continue;
+    }
+    const occurrence = occurrences.get(channel) ?? 0;
+    occurrences.set(channel, occurrence + 1);
+    regular.push({ channel, value, index: occurrence });
+  }
+  return [...bySpecialIndex.values(), ...regular];
 }
 
 /** Encode a checkpoint + metadata into its META and PAYLOAD items. */
@@ -88,21 +126,18 @@ export async function buildWriteItems(
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];
-  for (let positional = 0; positional < writes.length; positional++) {
-    const [channel, value] = writes[positional];
+  for (const { channel, value, index } of resolveWriteIndices(writes)) {
     /**
-     * `positional` indexes this (post-dedup) array, not the caller's original
-     * one — stable across retries of an identical array, which is all
-     * first-write-wins requires (see dedupeWritesByIndex).
+     * `channel` is part of the key as well as the index: two channels can
+     * share an index (each channel's first occurrence is 0), so without it
+     * their uploads would collide on one S3 object within a single call.
      */
-    const index = resolveWriteIndex(channel, positional);
-    const baseKeyParts = [threadId, checkpointNs, checkpointId, taskId, `write-${index}`];
     const descriptor = await encodePayload(value, deps, {
-      keyParts: [...baseKeyParts, nonce],
+      keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`, channel, nonce],
     });
     const item: CheckpointWriteItem = {
       PK: pk,
-      SK: writeSortKey(checkpointNs, checkpointId, taskId, index),
+      SK: writeSortKey(checkpointNs, checkpointId, taskId, index, channel),
       taskId,
       index,
       channel,
