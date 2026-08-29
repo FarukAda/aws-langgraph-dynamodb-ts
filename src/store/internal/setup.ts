@@ -1,5 +1,6 @@
 import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import type { Embeddings } from '@langchain/core/embeddings';
 import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { CompressionConfig } from '../../shared/codec/compression';
@@ -41,6 +42,28 @@ export interface StoreSetup {
 }
 
 /**
+ * Reject an `index` that cannot actually embed. `IndexConfig` mandates
+ * `embeddings`, but a JavaScript caller can omit it or pass the wrong shape,
+ * and the failure then surfaced as a raw `TypeError` deep inside the first
+ * `put()`/`search()` rather than this library's typed error at construction.
+ *
+ * Only `embeddings` is checked. `dims` is part of the upstream type but is
+ * never read anywhere in this package, so rejecting a configuration over it
+ * would break working callers for no benefit.
+ */
+function assertUsableIndex(index?: IndexConfig): void {
+  if (!index) return;
+  const embeddings: Partial<Embeddings> | undefined = index.embeddings;
+  if (typeof embeddings?.embedQuery !== 'function') {
+    throw new ValidationError(
+      '`index.embeddings` must be an Embeddings implementation exposing embedQuery(); ' +
+        'without one no embedding can be computed for put() or search()',
+      'index',
+    );
+  }
+}
+
+/**
  * Resolve the client, optional S3 offloader, serializer, and index config.
  *
  * A `vectorBackend` without an `index` is rejected outright rather than
@@ -54,12 +77,13 @@ export interface StoreSetup {
 export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
   if (options.vectorBackend && !options.index) {
     throw new ValidationError(
-      'vectorBackend requires a configured `index` (dims + embeddings); without one no embedding ' +
+      'vectorBackend requires a configured `index` (embeddings); without one no embedding ' +
         'is computed, every put would clear the item vector, and search would silently return ' +
         'unranked, score-less results',
       'vectorBackend',
     );
   }
+  assertUsableIndex(options.index);
   const resolved = resolveDynamoDBClient(options);
   return {
     context: {

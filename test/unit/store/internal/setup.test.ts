@@ -25,7 +25,7 @@ describe('setUpStore', () => {
     const setup = setUpStore({
       tableName: 'store',
       client: { send: jest.fn() } as never,
-      index: { dims: 3, embeddings: {} as never },
+      index: { dims: 3, embeddings: { embedQuery: async () => [0] } as never },
       vectorBackend: vectorBackend as never,
       maxSearchCandidates: 50,
     });
@@ -50,7 +50,7 @@ describe('setUpStore', () => {
   });
 
   it('does not own an injected client and carries index/compression/ttl', () => {
-    const index = { dims: 3, embeddings: {} as never };
+    const index = { dims: 3, embeddings: { embedQuery: async () => [0] } as never };
     const setup = setUpStore({
       tableName: 'store',
       client: { send: jest.fn() } as never,
@@ -92,5 +92,41 @@ describe('setUpStore', () => {
       maxScanItems: 50_000,
     });
     expect(overridden.context.maxScanItems).toBe(50_000);
+  });
+});
+
+describe('index configuration validation (F6)', () => {
+  const base = {
+    tableName: 'store',
+    clientConfig: { region: 'us-east-1' },
+    createClient: () =>
+      ({ destroy: jest.fn(), config: {}, middlewareStack: {}, send: jest.fn() }) as never,
+  };
+
+  it('rejects an index with no embeddings, instead of a TypeError at first use', () => {
+    expect(() => setUpStore({ ...base, index: { dims: 1024 } } as never)).toThrow(
+      /index\.embeddings/,
+    );
+    expect(() => setUpStore({ ...base, index: { dims: 1024 } } as never)).toThrow(
+      expect.objectContaining({ name: 'ValidationError' }),
+    );
+  });
+
+  it('rejects an index whose embeddings cannot embedQuery', () => {
+    expect(() => setUpStore({ ...base, index: { dims: 1, embeddings: {} } } as never)).toThrow(
+      /embedQuery/,
+    );
+  });
+
+  it('accepts an index that can embed, and does not require dims to be read', () => {
+    const embeddings = { embedQuery: async () => [1, 2, 3] };
+    expect(() => setUpStore({ ...base, index: { dims: 3, embeddings } } as never)).not.toThrow();
+  });
+
+  it('still rejects a vectorBackend with no index at all', () => {
+    const backend = { upsert: async () => {}, query: async () => [], delete: async () => {} };
+    expect(() => setUpStore({ ...base, vectorBackend: backend } as never)).toThrow(
+      /vectorBackend requires a configured `index`/,
+    );
   });
 });
