@@ -6,7 +6,7 @@
 
 # Interface: VectorReconcileResult
 
-Defined in: store/actions/reconcile-vector-index.ts:7
+Defined in: [store/actions/reconcile-vector-index.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/store/actions/reconcile-vector-index.ts#L7)
 
 Counts returned by reconcileVectorIndex.
 
@@ -16,7 +16,7 @@ Counts returned by reconcileVectorIndex.
 
 > **pruned**: `number`
 
-Defined in: store/actions/reconcile-vector-index.ts:9
+Defined in: [store/actions/reconcile-vector-index.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/store/actions/reconcile-vector-index.ts#L9)
 
 ***
 
@@ -24,4 +24,4 @@ Defined in: store/actions/reconcile-vector-index.ts:9
 
 > **upserted**: `number`
 
-Defined in: store/actions/reconcile-vector-index.ts:8
+Defined in: [store/actions/reconcile-vector-index.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/store/actions/reconcile-vector-index.ts#L8)

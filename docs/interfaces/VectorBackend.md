@@ -6,7 +6,7 @@
 
 # Interface: VectorBackend
 
-Defined in: store/vector-backend.ts:30
+Defined in: [store/vector-backend.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/store/vector-backend.ts#L30)
 
 Pluggable vector index. When provided to the store, embeddings live here and
 similarity search is delegated to it; DynamoDB still holds the canonical item.
@@ -17,7 +17,7 @@ similarity search is delegated to it; DynamoDB still holds the canonical item.
 
 > **delete**(`namespace`, `key`): `Promise`\<`void`\>
 
-Defined in: store/vector-backend.ts:38
+Defined in: [store/vector-backend.ts:38](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/store/vector-backend.ts#L38)
 
 #### Parameters
 
@@ -39,7 +39,7 @@ Defined in: store/vector-backend.ts:38
 
 > `optional` **listKeys**(`namespacePrefix`): `Promise`\<[`VectorRef`](VectorRef.md)[]\>
 
-Defined in: store/vector-backend.ts:44
+Defined in: [store/vector-backend.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/store/vector-backend.ts#L44)
 
 Optionally enumerate every stored vector under `namespacePrefix`. Enables
 `reconcileVectorIndex` to prune vectors orphaned by a lost delete. Omit it
@@ -61,7 +61,7 @@ when the backend cannot enumerate — reconciliation then re-pushes only.
 
 > **query**(`namespacePrefix`, `queryVector`, `topK`): `Promise`\<[`VectorMatch`](VectorMatch.md)[]\>
 
-Defined in: store/vector-backend.ts:37
+Defined in: [store/vector-backend.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/store/vector-backend.ts#L37)
 
 Return up to `topK` matches under `namespacePrefix`, best first. Each
 match's `score` must be a relevance, not a distance — see
@@ -91,7 +91,7 @@ match's `score` must be a relevance, not a distance — see
 
 > **upsert**(`namespace`, `key`, `vector`): `Promise`\<`void`\>
 
-Defined in: store/vector-backend.ts:31
+Defined in: [store/vector-backend.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/store/vector-backend.ts#L31)
 
 #### Parameters
 

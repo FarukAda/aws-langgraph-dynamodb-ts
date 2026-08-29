@@ -6,7 +6,7 @@
 
 # Interface: CompressionConfig
 
-Defined in: shared/codec/compression.ts:19
+Defined in: [shared/codec/compression.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/compression.ts#L19)
 
 Configuration for payload compression.
 
@@ -16,7 +16,7 @@ Configuration for payload compression.
 
 > **enabled**: `boolean`
 
-Defined in: shared/codec/compression.ts:20
+Defined in: [shared/codec/compression.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/compression.ts#L20)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: shared/codec/compression.ts:20
 
 > `optional` **level?**: `number`
 
-Defined in: shared/codec/compression.ts:22
+Defined in: [shared/codec/compression.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/compression.ts#L22)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: shared/codec/compression.ts:22
 
 > `optional` **maxDecompressedBytes?**: `number`
 
-Defined in: shared/codec/compression.ts:23
+Defined in: [shared/codec/compression.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/compression.ts#L23)
 
 ***
 
@@ -40,4 +40,4 @@ Defined in: shared/codec/compression.ts:23
 
 > `optional` **minSizeBytes?**: `number`
 
-Defined in: shared/codec/compression.ts:21
+Defined in: [shared/codec/compression.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/compression.ts#L21)

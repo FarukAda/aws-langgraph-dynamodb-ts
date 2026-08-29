@@ -6,7 +6,7 @@
 
 # Interface: ErrorContext
 
-Defined in: shared/errors/base-error.ts:6
+Defined in: [shared/errors/base-error.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L6)
 
 Structured, log-safe context attached to every library error.
 
@@ -16,7 +16,7 @@ Structured, log-safe context attached to every library error.
 
 > `optional` **attempts?**: `number`
 
-Defined in: shared/errors/base-error.ts:10
+Defined in: [shared/errors/base-error.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L10)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: shared/errors/base-error.ts:10
 
 > `optional` **key?**: `string`
 
-Defined in: shared/errors/base-error.ts:9
+Defined in: [shared/errors/base-error.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L9)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: shared/errors/base-error.ts:9
 
 > `optional` **operation?**: `string`
 
-Defined in: shared/errors/base-error.ts:8
+Defined in: [shared/errors/base-error.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L8)
 
 ***
 
@@ -40,4 +40,4 @@ Defined in: shared/errors/base-error.ts:8
 
 > `optional` **tableName?**: `string`
 
-Defined in: shared/errors/base-error.ts:7
+Defined in: [shared/errors/base-error.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L7)

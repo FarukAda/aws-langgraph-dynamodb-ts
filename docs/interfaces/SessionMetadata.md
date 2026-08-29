@@ -6,7 +6,7 @@
 
 # Interface: SessionMetadata
 
-Defined in: history/types.ts:27
+Defined in: [history/types.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/types.ts#L27)
 
 Summary of a stored chat session.
 
@@ -16,7 +16,7 @@ Summary of a stored chat session.
 
 > **createdAt**: `string`
 
-Defined in: history/types.ts:31
+Defined in: [history/types.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/types.ts#L31)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: history/types.ts:31
 
 > **messageCount**: `number`
 
-Defined in: history/types.ts:30
+Defined in: [history/types.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/types.ts#L30)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: history/types.ts:30
 
 > **sessionId**: `string`
 
-Defined in: history/types.ts:28
+Defined in: [history/types.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/types.ts#L28)
 
 ***
 
@@ -40,7 +40,7 @@ Defined in: history/types.ts:28
 
 > `optional` **title?**: `string`
 
-Defined in: history/types.ts:29
+Defined in: [history/types.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/types.ts#L29)
 
 ***
 
@@ -48,4 +48,4 @@ Defined in: history/types.ts:29
 
 > **updatedAt**: `string`
 
-Defined in: history/types.ts:32
+Defined in: [history/types.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/types.ts#L32)

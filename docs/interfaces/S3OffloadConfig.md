@@ -6,7 +6,7 @@
 
 # Interface: S3OffloadConfig
 
-Defined in: shared/codec/s3/config.ts:4
+Defined in: [shared/codec/s3/config.ts:4](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/s3/config.ts#L4)
 
 Configuration for offloading large payloads to S3.
 
@@ -16,7 +16,7 @@ Configuration for offloading large payloads to S3.
 
 > **bucketName**: `string`
 
-Defined in: shared/codec/s3/config.ts:5
+Defined in: [shared/codec/s3/config.ts:5](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/s3/config.ts#L5)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: shared/codec/s3/config.ts:5
 
 > `optional` **clientConfig?**: `S3ClientConfig`
 
-Defined in: shared/codec/s3/config.ts:10
+Defined in: [shared/codec/s3/config.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/s3/config.ts#L10)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: shared/codec/s3/config.ts:10
 
 > `optional` **createS3Client?**: (`config`) => `S3Client`
 
-Defined in: shared/codec/s3/config.ts:11
+Defined in: [shared/codec/s3/config.ts:11](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/s3/config.ts#L11)
 
 #### Parameters
 
@@ -50,7 +50,7 @@ Defined in: shared/codec/s3/config.ts:11
 
 > `optional` **keyPrefix?**: `string`
 
-Defined in: shared/codec/s3/config.ts:6
+Defined in: [shared/codec/s3/config.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/s3/config.ts#L6)
 
 ***
 
@@ -58,7 +58,7 @@ Defined in: shared/codec/s3/config.ts:6
 
 > `optional` **serverSideEncryption?**: `string`
 
-Defined in: shared/codec/s3/config.ts:8
+Defined in: [shared/codec/s3/config.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/s3/config.ts#L8)
 
 ***
 
@@ -66,7 +66,7 @@ Defined in: shared/codec/s3/config.ts:8
 
 > `optional` **sseKmsKeyId?**: `string`
 
-Defined in: shared/codec/s3/config.ts:9
+Defined in: [shared/codec/s3/config.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/s3/config.ts#L9)
 
 ***
 
@@ -74,4 +74,4 @@ Defined in: shared/codec/s3/config.ts:9
 
 > `optional` **thresholdBytes?**: `number`
 
-Defined in: shared/codec/s3/config.ts:7
+Defined in: [shared/codec/s3/config.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/codec/s3/config.ts#L7)

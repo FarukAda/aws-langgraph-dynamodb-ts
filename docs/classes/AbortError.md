@@ -6,7 +6,7 @@
 
 # Class: AbortError
 
-Defined in: shared/errors/errors.ts:46
+Defined in: [shared/errors/errors.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/errors.ts#L46)
 
 An operation was cancelled via its AbortSignal.
 
@@ -20,7 +20,7 @@ An operation was cancelled via its AbortSignal.
 
 > **new AbortError**(`message?`): `AbortError`
 
-Defined in: shared/errors/errors.ts:47
+Defined in: [shared/errors/errors.ts:47](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/errors.ts#L47)
 
 #### Parameters
 
@@ -42,7 +42,7 @@ Defined in: shared/errors/errors.ts:47
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: shared/errors/base-error.ts:20
+Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L20)
 
 #### Inherited from
 
@@ -54,7 +54,7 @@ Defined in: shared/errors/base-error.ts:20
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: shared/errors/base-error.ts:21
+Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L21)
 
 #### Inherited from
 

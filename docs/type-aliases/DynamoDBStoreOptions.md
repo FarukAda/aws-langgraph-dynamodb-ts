@@ -8,7 +8,7 @@
 
 > **DynamoDBStoreOptions** = [`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md) & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
 
-Defined in: store/types.ts:9
+Defined in: [store/types.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/store/types.ts#L9)
 
 Options for [DynamoDBStore](../classes/DynamoDBStore.md).
 
@@ -51,4 +51,6 @@ Optional external vector index; when set, similarity search delegates to it.
 Direction of the score a `vectorBackend` returns. `'relevance'` (the
 default) forwards it unchanged; `'distance'` negates and re-sorts, so a
 distance-native backend (S3 Vectors, FAISS L2, pgvector `<->`) satisfies
-the higher-is-better contract without the caller wrapping it.
+the higher-is-better contract without the caller wrapping it. Any other
+value is rejected at construction with a `ValidationError` rather than
+silently ranking one direction as the other.

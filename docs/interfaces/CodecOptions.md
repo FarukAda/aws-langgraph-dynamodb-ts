@@ -6,7 +6,7 @@
 
 # Interface: CodecOptions
 
-Defined in: shared/options.ts:29
+Defined in: [shared/options.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/options.ts#L29)
 
 Options enabling payload compression and/or S3 offloading.
 
@@ -16,7 +16,7 @@ Options enabling payload compression and/or S3 offloading.
 
 > `optional` **compression?**: [`CompressionConfig`](CompressionConfig.md)
 
-Defined in: shared/options.ts:31
+Defined in: [shared/options.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/options.ts#L31)
 
 Gzip compression configuration.
 
@@ -26,6 +26,6 @@ Gzip compression configuration.
 
 > `optional` **s3?**: [`S3OffloadConfig`](S3OffloadConfig.md)
 
-Defined in: shared/options.ts:33
+Defined in: [shared/options.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/options.ts#L33)
 
 S3 offload configuration for payloads over DynamoDB's item limit.

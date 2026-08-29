@@ -6,7 +6,7 @@
 
 # Interface: Logger
 
-Defined in: shared/logging/logger.ts:5
+Defined in: [shared/logging/logger.ts:5](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/logging/logger.ts#L5)
 
 Pluggable logging interface — consumers supply their own implementation.
 
@@ -16,7 +16,7 @@ Pluggable logging interface — consumers supply their own implementation.
 
 > **debug**(`message`, ...`args`): `void`
 
-Defined in: shared/logging/logger.ts:9
+Defined in: [shared/logging/logger.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/logging/logger.ts#L9)
 
 #### Parameters
 
@@ -38,7 +38,7 @@ Defined in: shared/logging/logger.ts:9
 
 > **error**(`message`, ...`args`): `void`
 
-Defined in: shared/logging/logger.ts:8
+Defined in: [shared/logging/logger.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/logging/logger.ts#L8)
 
 #### Parameters
 
@@ -60,7 +60,7 @@ Defined in: shared/logging/logger.ts:8
 
 > **info**(`message`, ...`args`): `void`
 
-Defined in: shared/logging/logger.ts:6
+Defined in: [shared/logging/logger.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/logging/logger.ts#L6)
 
 #### Parameters
 
@@ -82,7 +82,7 @@ Defined in: shared/logging/logger.ts:6
 
 > **warn**(`message`, ...`args`): `void`
 
-Defined in: shared/logging/logger.ts:7
+Defined in: [shared/logging/logger.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/logging/logger.ts#L7)
 
 #### Parameters
 

@@ -8,7 +8,7 @@
 
 > **DynamoDBSaverOptions** = [`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md) & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
 
-Defined in: checkpointer/types.ts:7
+Defined in: [checkpointer/types.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/checkpointer/types.ts#L7)
 
 Options for [DynamoDBSaver](../classes/DynamoDBSaver.md).
 

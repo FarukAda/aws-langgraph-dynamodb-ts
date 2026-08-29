@@ -6,7 +6,7 @@
 
 # Class: DynamoDbLangGraphError
 
-Defined in: shared/errors/base-error.ts:19
+Defined in: [shared/errors/base-error.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L19)
 
 Base class for every error this library throws. Carries a branchable
 [ErrorCode](../enumerations/ErrorCode.md), structured [ErrorContext](../interfaces/ErrorContext.md), and a native `cause`
@@ -34,7 +34,7 @@ than `instanceof`, which is banned repo-wide.
 
 > **new DynamoDbLangGraphError**(`message`, `code`, `context?`, `cause?`): `DynamoDbLangGraphError`
 
-Defined in: shared/errors/base-error.ts:23
+Defined in: [shared/errors/base-error.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L23)
 
 #### Parameters
 
@@ -68,7 +68,7 @@ Defined in: shared/errors/base-error.ts:23
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: shared/errors/base-error.ts:20
+Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L20)
 
 ***
 
@@ -76,4 +76,4 @@ Defined in: shared/errors/base-error.ts:20
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: shared/errors/base-error.ts:21
+Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L21)

@@ -6,7 +6,7 @@
 
 # Interface: CreatedAdapters
 
-Defined in: factory/factory.ts:29
+Defined in: [factory/factory.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/factory/factory.ts#L29)
 
 The three adapters sharing one client, plus a combined `destroy`.
 
@@ -16,7 +16,7 @@ The three adapters sharing one client, plus a combined `destroy`.
 
 > **destroy**: () => `void`
 
-Defined in: factory/factory.ts:33
+Defined in: [factory/factory.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/factory/factory.ts#L33)
 
 #### Returns
 
@@ -28,7 +28,7 @@ Defined in: factory/factory.ts:33
 
 > **history**: [`DynamoDBChatMessageHistory`](../classes/DynamoDBChatMessageHistory.md)
 
-Defined in: factory/factory.ts:32
+Defined in: [factory/factory.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/factory/factory.ts#L32)
 
 ***
 
@@ -36,7 +36,7 @@ Defined in: factory/factory.ts:32
 
 > **saver**: [`DynamoDBSaver`](../classes/DynamoDBSaver.md)
 
-Defined in: factory/factory.ts:30
+Defined in: [factory/factory.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/factory/factory.ts#L30)
 
 ***
 
@@ -44,4 +44,4 @@ Defined in: factory/factory.ts:30
 
 > **store**: [`DynamoDBStore`](../classes/DynamoDBStore.md)
 
-Defined in: factory/factory.ts:31
+Defined in: [factory/factory.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/factory/factory.ts#L31)
