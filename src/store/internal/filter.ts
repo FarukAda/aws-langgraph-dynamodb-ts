@@ -4,13 +4,39 @@ import { isDeepStrictEqual } from 'node:util';
 export type JsonValue =
   string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
-const COMPARATORS: Record<string, (actual: JsonValue, expected: JsonValue) => boolean> = {
+/**
+ * Ordered comparison over like-typed values only: numbers compare numerically,
+ * strings lexicographically, and a mismatched or unordered pair never matches.
+ *
+ * Deliberately stricter than both what this used to do and what upstream does.
+ * Native `>` coerces, so a stored `'10'` satisfied `{ $gt: 5 }` — inclusion
+ * decided by JS coercion rather than by the stored type. Upstream instead
+ * reduces both sides with `Number()`, which makes two ISO-8601 date strings
+ * `NaN` and every comparison between them false. Comparing like types
+ * directly is well-defined in both cases.
+ */
+function compareOrdered(
+  actual: ActualValue,
+  expected: JsonValue,
+  test: (order: number) => boolean,
+): boolean {
+  const comparable =
+    (typeof actual === 'number' && typeof expected === 'number') ||
+    (typeof actual === 'string' && typeof expected === 'string');
+  if (!comparable) return false;
+  return test(actual === expected ? 0 : actual > expected ? 1 : -1);
+}
+
+/** A stored field's value, or `undefined` when the item has no such own property. */
+type ActualValue = JsonValue | undefined;
+
+const COMPARATORS: Record<string, (actual: ActualValue, expected: JsonValue) => boolean> = {
   $eq: (actual, expected) => isDeepStrictEqual(actual, expected),
   $ne: (actual, expected) => !isDeepStrictEqual(actual, expected),
-  $gt: (actual, expected) => (actual as number) > (expected as number),
-  $gte: (actual, expected) => (actual as number) >= (expected as number),
-  $lt: (actual, expected) => (actual as number) < (expected as number),
-  $lte: (actual, expected) => (actual as number) <= (expected as number),
+  $gt: (actual, expected) => compareOrdered(actual, expected, (order) => order > 0),
+  $gte: (actual, expected) => compareOrdered(actual, expected, (order) => order >= 0),
+  $lt: (actual, expected) => compareOrdered(actual, expected, (order) => order < 0),
+  $lte: (actual, expected) => compareOrdered(actual, expected, (order) => order <= 0),
   $in: (actual, expected) =>
     Array.isArray(expected)
       ? expected.some((candidate) => isDeepStrictEqual(actual, candidate))
@@ -38,7 +64,7 @@ function isOperatorObject(condition: JsonValue): condition is { [key: string]: J
   );
 }
 
-function matchesCondition(actual: JsonValue, condition: JsonValue): boolean {
+function matchesCondition(actual: ActualValue, condition: JsonValue): boolean {
   if (!isOperatorObject(condition)) return isDeepStrictEqual(actual, condition);
   return Object.entries(condition).every(([operator, expected]) =>
     COMPARATORS[operator](actual, expected),
@@ -54,6 +80,8 @@ export function matchesStoreFilter(
   filter: Record<string, JsonValue>,
 ): boolean {
   return Object.entries(filter).every(([field, condition]) =>
-    matchesCondition(value[field], condition),
+    /** Own properties only: `value['toString']` would otherwise resolve up the
+     *  prototype chain and be compared as if it were stored data. */
+    matchesCondition(Object.hasOwn(value, field) ? value[field] : undefined, condition),
   );
 }

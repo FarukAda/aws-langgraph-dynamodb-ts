@@ -3,10 +3,11 @@ import type { StoreItemRecord } from '../types';
 import type { VectorBackend, VectorRef } from '../vector-backend';
 import type { JsonValue } from './filter';
 import { readStoreItem } from './item-mapper';
-import { namespaceMatchesPrefix } from './keys';
+import { namespaceMatchesPrefix, partitionKey, sortKey } from './keys';
 import { scopedQuery } from './query';
 import { embedValue } from './semantic-search';
 import type { StoreContext } from './setup';
+import { rowIsAbsent } from './write-verify';
 
 /** A canonical item's location plus the embedding recomputed for it. */
 export interface ReconcileTarget {
@@ -81,9 +82,30 @@ export async function pruneOrphans(
     context.logger.info('reconcileVectorIndex prune skipped: backend has no listKeys', { prefix });
     return 0;
   }
-  const orphans = selectOrphans(await backend.listKeys(prefix), live);
-  for (const ref of orphans) {
+  const candidates = selectOrphans(await backend.listKeys(prefix), live);
+  let pruned = 0;
+  for (const ref of candidates) {
+    /**
+     * The live-set snapshot and this prune read are not one point in time, so
+     * an item written between them looks orphaned even though it is live —
+     * and deleting its vector would silently drop a just-written item out of
+     * semantic search. Confirm each candidate is genuinely absent with a
+     * strongly-consistent read before removing anything.
+     */
+    if (
+      !(await rowIsAbsent(context, {
+        PK: partitionKey(ref.namespace),
+        SK: sortKey(ref.namespace, ref.key),
+      }))
+    ) {
+      context.logger.info('reconcileVectorIndex: kept a vector whose item reappeared', {
+        namespace: ref.namespace,
+        key: ref.key,
+      });
+      continue;
+    }
     await backend.delete(ref.namespace, ref.key);
+    pruned += 1;
   }
-  return orphans.length;
+  return pruned;
 }

@@ -16,6 +16,7 @@ import { persistRecord } from '../internal/persist';
 import { embedValue } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
 import { validateKey, validateNamespace } from '../internal/validation';
+import { isRetryExhausted, rowIsAbsent } from '../internal/write-verify';
 
 /** The previous row's createdAt and value descriptor, read once before a put. */
 interface ExistingRecordMeta {
@@ -43,7 +44,17 @@ async function readExisting(
   };
 }
 
-/** Delete the item and, when a vector backend is configured, drop its vector. */
+/**
+ * Delete the item and, when a vector backend is configured, drop its vector.
+ *
+ * A retry-exhausted failure is *ambiguous*: the delete may have landed
+ * server-side with only its acknowledgement lost. Mirroring `persistRecord`'s
+ * treatment of an ambiguous put, that case is resolved with a
+ * strongly-consistent read — if the row is genuinely gone the delete
+ * succeeded, so the S3-orphan cleanup and the vector-backend delete must still
+ * run rather than being skipped for a write that actually happened. Any other
+ * failure, or a row still present, propagates unchanged.
+ */
 async function deleteStoreItem(
   context: StoreContext,
   op: PutOperation,
@@ -51,9 +62,15 @@ async function deleteStoreItem(
   sk: string,
 ): Promise<void> {
   const existing = context.offloader ? await readExisting(context, pk, sk) : undefined;
-  await withDynamoDBRetry(() =>
-    context.client.delete({ TableName: context.tableName, Key: { PK: pk, SK: sk } }),
-  );
+  try {
+    await withDynamoDBRetry(() =>
+      context.client.delete({ TableName: context.tableName, Key: { PK: pk, SK: sk } }),
+    );
+  } catch (error) {
+    const landed =
+      isRetryExhausted(error as Error) && (await rowIsAbsent(context, { PK: pk, SK: sk }));
+    if (!landed) throw error;
+  }
   if (context.offloader) {
     await cleanUpS3Orphans(
       context.offloader,

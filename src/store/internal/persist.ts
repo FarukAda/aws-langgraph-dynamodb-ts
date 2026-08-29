@@ -4,12 +4,7 @@ import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { StoreItemRecord } from '../types';
 import type { StoreContext } from './setup';
-import { writeLandedAt } from './write-verify';
-
-/** True when `error` is a {@link RetryExhaustedError} — checked by name, not `instanceof` (banned repo-wide). */
-function isRetryExhausted(error: Error): boolean {
-  return error.name === 'RetryExhaustedError';
-}
+import { isRetryExhausted, writeLandedAt } from './write-verify';
 
 /**
  * Put the record: on a definite failure, clean up *this* record's nonced S3

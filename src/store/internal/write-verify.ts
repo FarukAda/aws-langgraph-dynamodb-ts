@@ -2,6 +2,37 @@ import { type PayloadDescriptor, PayloadLocation } from '../../shared/codec/code
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { StoreContext } from './setup';
 
+/** True when `error` is a {@link RetryExhaustedError} — by name, not `instanceof` (banned repo-wide). */
+export function isRetryExhausted(error: Error): boolean {
+  return error.name === 'RetryExhaustedError';
+}
+
+/**
+ * True when the row is confirmed absent — used to resolve an ambiguous
+ * retry-exhausted *delete*, where the delete may well have landed server-side
+ * and only its acknowledgement was lost. A failure reading this is not treated
+ * as confirmation (fail safe), matching {@link writeLandedAt}.
+ */
+export async function rowIsAbsent(
+  context: StoreContext,
+  key: { PK: string; SK: string },
+): Promise<boolean> {
+  try {
+    const result = await withDynamoDBRetry(() =>
+      context.client.get({
+        TableName: context.tableName,
+        Key: key,
+        ConsistentRead: true,
+        ProjectionExpression: '#v',
+        ExpressionAttributeNames: { '#v': 'value' },
+      }),
+    );
+    return result.Item === undefined;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * True when `record`'s row already holds the S3 key `expectedS3Key` — i.e. an
  * ambiguous retry-exhaustion write actually landed server-side and only its

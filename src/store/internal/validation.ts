@@ -23,3 +23,13 @@ export function validateNamespace(namespace: string[]): void {
 export function validateKey(key: string): void {
   validateIdentifier(key, NAMESPACE_SEPARATOR, 'key');
 }
+
+/**
+ * Validate an optional namespace depth cap. Left unchecked, a negative value
+ * silently inverted truncation via `Array.prototype.slice(0, -n)`, which drops
+ * the *last* n elements rather than erroring.
+ */
+export function validateMaxDepth(maxDepth?: number): void {
+  if (maxDepth === undefined) return;
+  validateInteger(maxDepth, 'maxDepth', { min: 1 });
+}

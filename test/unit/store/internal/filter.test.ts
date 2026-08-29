@@ -84,3 +84,41 @@ describe('matchesStoreFilter', () => {
     expect(matchesStoreFilter({ role: {} }, { role: {} })).toBe(true);
   });
 });
+
+describe('range comparators are type-strict (M9, A4)', () => {
+  it('does not coerce a numeric-looking string into a number comparison', () => {
+    // Native `>` coerces, so a stored '10' satisfied { $gt: 5 } — inclusion
+    // that depends on JS coercion rather than on the stored type.
+    expect(matchesStoreFilter({ count: '10' }, { count: { $gt: 5 } })).toBe(false);
+    expect(matchesStoreFilter({ count: '10' }, { count: { $lte: 99 } })).toBe(false);
+  });
+
+  it('compares two strings lexicographically', () => {
+    // Upstream reduces both sides with Number(), making two ISO dates NaN and
+    // every comparison false. Like-typed strings compare properly here.
+    expect(matchesStoreFilter({ at: '2026-01-02' }, { at: { $gt: '2026-01-01' } })).toBe(true);
+    expect(matchesStoreFilter({ at: '2026-01-01' }, { at: { $gte: '2026-01-01' } })).toBe(true);
+    expect(matchesStoreFilter({ at: '2026-01-01' }, { at: { $lt: '2026-01-02' } })).toBe(true);
+    expect(matchesStoreFilter({ at: '2026-01-02' }, { at: { $lte: '2026-01-01' } })).toBe(false);
+  });
+
+  it('compares numbers numerically', () => {
+    expect(matchesStoreFilter({ n: 10 }, { n: { $gt: 5 } })).toBe(true);
+    expect(matchesStoreFilter({ n: 5 }, { n: { $gte: 5 } })).toBe(true);
+    expect(matchesStoreFilter({ n: 5 }, { n: { $lt: 5 } })).toBe(false);
+    expect(matchesStoreFilter({ n: 5 }, { n: { $lte: 5 } })).toBe(true);
+  });
+
+  it('never matches when the compared types differ or are unordered', () => {
+    expect(matchesStoreFilter({ v: true }, { v: { $gt: 0 } })).toBe(false);
+    expect(matchesStoreFilter({ v: null }, { v: { $lt: 1 } })).toBe(false);
+    expect(matchesStoreFilter({}, { missing: { $gt: 1 } })).toBe(false);
+  });
+
+  it('ignores an inherited member when the filter names one (A4)', () => {
+    // value['toString'] resolves up the prototype chain, so a filter naming an
+    // absent field could compare against a function rather than "no value".
+    expect(matchesStoreFilter({}, { toString: 'x' })).toBe(false);
+    expect(matchesStoreFilter({}, { constructor: { $gt: 1 } })).toBe(false);
+  });
+});
