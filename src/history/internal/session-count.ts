@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { getCancellationReasons } from '../../shared/dynamodb/cancellation';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
+import { removeRolledBackTitle } from './session-title';
 import type { HistoryContext } from './setup';
 
 /**
@@ -73,15 +74,17 @@ export async function revertSessionCount(
  * Both conditions are load-bearing. `createdAt = :now` establishes that this
  * call created the row; `messageCount = :total` establishes that nothing else
  * has added to it since. A concurrent append to the same brand-new session
- * fails the count check and falls through to the plain decrement, which keeps
- * the other caller's messages intact at the cost of leaving the title — the
- * safe direction.
+ * fails the count check, because deleting the row would destroy that caller's
+ * committed messages — so it falls through to the plain decrement, and then
+ * strips just the title this call contributed, which is the only part of the
+ * row still carrying rolled-back message content.
  */
 export async function revertSessionCreation(
   context: HistoryContext,
   sessionId: string,
   total: number,
   createdAt: string,
+  title?: string,
 ): Promise<void> {
   if (total === 0) return;
   const input = {
@@ -105,4 +108,5 @@ export async function revertSessionCreation(
     if (!isCancelledByCondition(error as Error)) throw error;
   }
   await revertSessionCount(context, sessionId, total);
+  if (title !== undefined) await removeRolledBackTitle(context, sessionId, createdAt, title);
 }

@@ -1,4 +1,4 @@
-import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
 import {
   revertSessionCount,
@@ -109,5 +109,42 @@ describe('revertSessionCreation', () => {
       .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
     await expect(revertSessionCreation(context(client), 's1', 2, now)).rejects.toThrow('boom');
+  });
+
+  it('strips the title it contributed when the row cannot be deleted (C4)', async () => {
+    // A concurrent append added messages to the brand-new session, so deleting
+    // the row would destroy that caller's data. The count is decremented
+    // instead — and the title, still holding text from the rolled-back
+    // message, is removed on its own.
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(TransactWriteCommand)
+      .rejectsOnce(
+        Object.assign(new Error('cancelled'), {
+          name: 'TransactionCanceledException',
+          CancellationReasons: [{ Code: 'ConditionalCheckFailed' }],
+        }),
+      )
+      .resolves({});
+    mock.on(UpdateCommand).resolves({});
+    await revertSessionCreation(context(client), 's1', 2, now, 'tiny message 0');
+    const update = mock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(update.UpdateExpression).toBe('REMOVE #title');
+    expect(update.ExpressionAttributeValues).toEqual({ ':now': now, ':title': 'tiny message 0' });
+  });
+
+  it('has no title to strip when the append contributed none', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(TransactWriteCommand)
+      .rejectsOnce(
+        Object.assign(new Error('cancelled'), {
+          name: 'TransactionCanceledException',
+          CancellationReasons: [{ Code: 'ConditionalCheckFailed' }],
+        }),
+      )
+      .resolves({});
+    await revertSessionCreation(context(client), 's1', 2, now);
+    expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
   });
 });

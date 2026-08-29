@@ -6,7 +6,7 @@
 
 # Interface: FactoryBaseOptions
 
-Defined in: [factory/factory.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/factory/factory.ts#L14)
+Defined in: [factory/factory.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/factory/factory.ts#L14)
 
 Shared client/logger defaults applied to every adapter the factory builds.
 
@@ -16,7 +16,7 @@ Shared client/logger defaults applied to every adapter the factory builds.
 
 > `optional` **client?**: `DynamoDBDocument`
 
-Defined in: [factory/factory.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/factory/factory.ts#L15)
+Defined in: [factory/factory.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/factory/factory.ts#L15)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [factory/factory.ts:15](https://github.com/FarukAda/aws-langgraph-dy
 
 > `optional` **clientConfig?**: `DynamoDBClientConfig`
 
-Defined in: [factory/factory.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/factory/factory.ts#L16)
+Defined in: [factory/factory.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/factory/factory.ts#L16)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [factory/factory.ts:16](https://github.com/FarukAda/aws-langgraph-dy
 
 > `optional` **createClient?**: (`config`) => `DynamoDBClient`
 
-Defined in: [factory/factory.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/factory/factory.ts#L17)
+Defined in: [factory/factory.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/factory/factory.ts#L17)
 
 #### Parameters
 
@@ -50,4 +50,4 @@ Defined in: [factory/factory.ts:17](https://github.com/FarukAda/aws-langgraph-dy
 
 > `optional` **logger?**: [`Logger`](Logger.md)
 
-Defined in: [factory/factory.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/factory/factory.ts#L18)
+Defined in: [factory/factory.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/factory/factory.ts#L18)

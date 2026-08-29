@@ -6,7 +6,7 @@
 
 # Interface: CreateAllOptions
 
-Defined in: [factory/factory.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/factory/factory.ts#L22)
+Defined in: [factory/factory.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/factory/factory.ts#L22)
 
 Per-adapter options for [DynamoDBFactory.createAll](../classes/DynamoDBFactory.md#createall) (client is shared).
 
@@ -16,7 +16,7 @@ Per-adapter options for [DynamoDBFactory.createAll](../classes/DynamoDBFactory.m
 
 > **history**: `Omit`\<[`DynamoDBChatMessageHistoryOptions`](../type-aliases/DynamoDBChatMessageHistoryOptions.md), `"client"` \| `"clientConfig"` \| `"createClient"`\>
 
-Defined in: [factory/factory.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/factory/factory.ts#L25)
+Defined in: [factory/factory.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/factory/factory.ts#L25)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [factory/factory.ts:25](https://github.com/FarukAda/aws-langgraph-dy
 
 > **saver**: `Omit`\<[`DynamoDBSaverOptions`](../type-aliases/DynamoDBSaverOptions.md), `"client"` \| `"clientConfig"` \| `"createClient"`\>
 
-Defined in: [factory/factory.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/factory/factory.ts#L23)
+Defined in: [factory/factory.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/factory/factory.ts#L23)
 
 ***
 
@@ -32,4 +32,4 @@ Defined in: [factory/factory.ts:23](https://github.com/FarukAda/aws-langgraph-dy
 
 > **store**: `Omit`\<[`DynamoDBStoreOptions`](../type-aliases/DynamoDBStoreOptions.md), `"client"` \| `"clientConfig"` \| `"createClient"`\>
 
-Defined in: [factory/factory.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/factory/factory.ts#L24)
+Defined in: [factory/factory.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/factory/factory.ts#L24)

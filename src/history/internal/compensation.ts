@@ -44,11 +44,12 @@ async function rollbackCommitted(
   sessionId: string,
   committed: CommittedChunk[],
   now: string,
+  title: string | undefined,
 ): Promise<void> {
   const keys = committed.flatMap((chunk) => chunk.keys);
   const total = committed.reduce((sum, chunk) => sum + chunk.count, 0);
   if (keys.length === 0) {
-    await revertSessionCreation(context, sessionId, total, now);
+    await revertSessionCreation(context, sessionId, total, now, title);
     return;
   }
   try {
@@ -68,7 +69,7 @@ async function rollbackCommitted(
     await revertSessionCount(context, sessionId, deleted);
     throw error;
   }
-  await revertSessionCreation(context, sessionId, total, now);
+  await revertSessionCreation(context, sessionId, total, now, title);
 }
 
 /**
@@ -87,6 +88,7 @@ export async function compensate(
   committed: CommittedChunk[],
   trigger: Error,
   now: string,
+  title: string | undefined,
 ): Promise<never> {
   if (committed.length > 0) {
     context.logger.warn('history.addMessages compensating committed chunks after a chunk failed', {
@@ -97,7 +99,7 @@ export async function compensate(
   /** The failed/never-attempted suffix never had a DynamoDB row, so it's safe to clean now. */
   await cleanBatchS3(context, chunks.slice(committed.length));
   try {
-    await rollbackCommitted(context, sessionId, committed, now);
+    await rollbackCommitted(context, sessionId, committed, now, title);
   } catch (rollbackError) {
     context.logger.error('history.addMessages rollback failed; messageCount may have drifted', {
       sessionId,

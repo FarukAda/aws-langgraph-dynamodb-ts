@@ -6,7 +6,7 @@
 
 # Interface: VectorMatch
 
-Defined in: [store/vector-backend.ts:2](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/store/vector-backend.ts#L2)
+Defined in: [store/vector-backend.ts:2](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/store/vector-backend.ts#L2)
 
 A vector-similarity match returned by an external [VectorBackend](VectorBackend.md).
 
@@ -16,7 +16,7 @@ A vector-similarity match returned by an external [VectorBackend](VectorBackend.
 
 > **key**: `string`
 
-Defined in: [store/vector-backend.ts:4](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/store/vector-backend.ts#L4)
+Defined in: [store/vector-backend.ts:4](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/store/vector-backend.ts#L4)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [store/vector-backend.ts:4](https://github.com/FarukAda/aws-langgrap
 
 > **namespace**: `string`[]
 
-Defined in: [store/vector-backend.ts:3](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/store/vector-backend.ts#L3)
+Defined in: [store/vector-backend.ts:3](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/store/vector-backend.ts#L3)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [store/vector-backend.ts:3](https://github.com/FarukAda/aws-langgrap
 
 > **score**: `number`
 
-Defined in: [store/vector-backend.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/store/vector-backend.ts#L17)
+Defined in: [store/vector-backend.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/store/vector-backend.ts#L17)
 
 Relevance, where **higher means a better match** — the same direction as
 upstream `SearchItem.score`, which this value is forwarded to verbatim.

@@ -6,7 +6,7 @@
 
 # Class: ConflictError
 
-Defined in: [shared/errors/errors.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/errors.ts#L14)
+Defined in: [shared/errors/errors.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/shared/errors/errors.ts#L14)
 
 A conditional write failed because the precondition no longer holds.
 
@@ -20,7 +20,7 @@ A conditional write failed because the precondition no longer holds.
 
 > **new ConflictError**(`message`, `cause?`): `ConflictError`
 
-Defined in: [shared/errors/errors.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/errors.ts#L15)
+Defined in: [shared/errors/errors.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/shared/errors/errors.ts#L15)
 
 #### Parameters
 
@@ -46,7 +46,7 @@ Defined in: [shared/errors/errors.ts:15](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/base-error.ts#L20)
+Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/shared/errors/base-error.ts#L20)
 
 #### Inherited from
 
@@ -58,7 +58,7 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/b9d505b52648c7e723f3e953aac58e9fe52a329f/src/shared/errors/base-error.ts#L21)
+Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/764a36f34f1f6210c41e72e5aa36bf1198e2d7c2/src/shared/errors/base-error.ts#L21)
 
 #### Inherited from
 

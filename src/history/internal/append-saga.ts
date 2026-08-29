@@ -40,7 +40,15 @@ export async function appendChunks(
         count: chunk.length,
       });
     } catch (error) {
-      await compensate(context, sessionId, chunks, committed, toError(error as Error), fields.now);
+      await compensate(
+        context,
+        sessionId,
+        chunks,
+        committed,
+        toError(error as Error),
+        fields.now,
+        fields.title,
+      );
     }
   }
 }
