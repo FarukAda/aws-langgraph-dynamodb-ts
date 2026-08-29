@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBSessionChatMessageHistory
 
-Defined in: [history/session-adapter.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/history/session-adapter.ts#L15)
+Defined in: [history/session-adapter.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/session-adapter.ts#L15)
 
 Single-session view over a SessionBackend, implementing LangChain's
 `BaseListChatMessageHistory` so it can drive `RunnableWithMessageHistory`.
@@ -21,7 +21,7 @@ Single-session view over a SessionBackend, implementing LangChain's
 
 > **new DynamoDBSessionChatMessageHistory**(`backend`, `sessionId`): `DynamoDBSessionChatMessageHistory`
 
-Defined in: [history/session-adapter.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/history/session-adapter.ts#L18)
+Defined in: [history/session-adapter.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/session-adapter.ts#L18)
 
 #### Parameters
 
@@ -47,7 +47,7 @@ Defined in: [history/session-adapter.ts:18](https://github.com/FarukAda/aws-lang
 
 > **lc\_namespace**: `string`[]
 
-Defined in: [history/session-adapter.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/history/session-adapter.ts#L16)
+Defined in: [history/session-adapter.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/session-adapter.ts#L16)
 
 A path to the module that contains the class, eg. ["langchain", "llms"]
 Usually should be the same as the entrypoint the class is exported from.
@@ -62,7 +62,7 @@ Usually should be the same as the entrypoint the class is exported from.
 
 > **addMessage**(`message`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/history/session-adapter.ts#L29)
+Defined in: [history/session-adapter.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/session-adapter.ts#L29)
 
 Add a message object to the store.
 
@@ -86,7 +86,7 @@ Add a message object to the store.
 
 > **addMessages**(`messages`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/history/session-adapter.ts#L33)
+Defined in: [history/session-adapter.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/session-adapter.ts#L33)
 
 Add a list of messages.
 
@@ -115,7 +115,7 @@ A list of BaseMessage objects to store.
 
 > **clear**(): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/history/session-adapter.ts#L37)
+Defined in: [history/session-adapter.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/session-adapter.ts#L37)
 
 Remove all messages from the store.
 
@@ -133,7 +133,7 @@ Remove all messages from the store.
 
 > **getMessages**(): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/session-adapter.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/history/session-adapter.ts#L25)
+Defined in: [history/session-adapter.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/history/session-adapter.ts#L25)
 
 Returns a list of messages stored in the store.
 

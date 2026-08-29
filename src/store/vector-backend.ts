@@ -7,12 +7,12 @@ export interface VectorMatch {
    * upstream `SearchItem.score`, which this value is forwarded to verbatim.
    *
    * A backend whose native output is a *distance* (S3 Vectors, FAISS L2,
-   * pgvector's `<->`) must convert before returning: a distance ranks the
-   * other way, so forwarding one unconverted yields results that are ordered
-   * correctly but scored backwards, which silently breaks any caller that
-   * thresholds or displays the number. This package cannot tell the two apart
-   * and never reorders what a backend returns; it only warns when the scores
-   * it sees are not non-increasing.
+   * pgvector's `<->`) has two options: convert before returning, or declare
+   * `vectorScoreDirection: 'distance'` on the store, which negates and
+   * re-sorts for you. Forwarding an unconverted distance without declaring it
+   * yields results ordered correctly but scored backwards, which silently
+   * breaks any caller that thresholds or displays the number; that case is
+   * warned about but never reordered.
    */
   score: number;
 }

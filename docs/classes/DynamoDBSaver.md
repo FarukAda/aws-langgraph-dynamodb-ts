@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBSaver
 
-Defined in: [checkpointer/saver.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/checkpointer/saver.ts#L24)
+Defined in: [checkpointer/saver.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/checkpointer/saver.ts#L24)
 
 DynamoDB-backed LangGraph checkpoint saver. A thin orchestrator: it resolves
 its collaborators once and delegates every operation to a focused action.
@@ -21,7 +21,7 @@ its collaborators once and delegates every operation to a focused action.
 
 > **new DynamoDBSaver**(`options`): `DynamoDBSaver`
 
-Defined in: [checkpointer/saver.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/checkpointer/saver.ts#L29)
+Defined in: [checkpointer/saver.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/checkpointer/saver.ts#L29)
 
 #### Parameters
 
@@ -43,7 +43,7 @@ Defined in: [checkpointer/saver.ts:29](https://github.com/FarukAda/aws-langgraph
 
 > **deleteThread**(`threadId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:57](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/checkpointer/saver.ts#L57)
+Defined in: [checkpointer/saver.ts:57](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/checkpointer/saver.ts#L57)
 
 Delete all checkpoints and writes associated with a specific thread ID.
 
@@ -69,7 +69,7 @@ The thread ID whose checkpoints should be deleted.
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/saver.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/checkpointer/saver.ts#L62)
+Defined in: [checkpointer/saver.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/checkpointer/saver.ts#L62)
 
 Release owned resources (the underlying client and any S3 client).
 
@@ -83,7 +83,7 @@ Release owned resources (the underlying client and any S3 client).
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:75](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/checkpointer/saver.ts#L75)
+Defined in: [checkpointer/saver.ts:75](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/checkpointer/saver.ts#L75)
 
 Best-effort provision an S3 lifecycle expiration rule matching the
 configured TTL, so offloaded objects don't outlive their DynamoDB item
@@ -102,7 +102,7 @@ needs) — call this once during deployment/provisioning, not per-request.
 
 > **getTuple**(`config`): `Promise`\<`CheckpointTuple` \| `undefined`\>
 
-Defined in: [checkpointer/saver.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/checkpointer/saver.ts#L37)
+Defined in: [checkpointer/saver.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/checkpointer/saver.ts#L37)
 
 #### Parameters
 
@@ -124,7 +124,7 @@ Defined in: [checkpointer/saver.ts:37](https://github.com/FarukAda/aws-langgraph
 
 > **list**(`config`, `options?`): `AsyncGenerator`\<`CheckpointTuple`\>
 
-Defined in: [checkpointer/saver.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/checkpointer/saver.ts#L41)
+Defined in: [checkpointer/saver.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/checkpointer/saver.ts#L41)
 
 #### Parameters
 
@@ -150,7 +150,7 @@ Defined in: [checkpointer/saver.ts:41](https://github.com/FarukAda/aws-langgraph
 
 > **put**(`config`, `checkpoint`, `metadata`): `Promise`\<`RunnableConfig`\<`Record`\<`string`, `any`\>\>\>
 
-Defined in: [checkpointer/saver.ts:45](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/checkpointer/saver.ts#L45)
+Defined in: [checkpointer/saver.ts:45](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/checkpointer/saver.ts#L45)
 
 #### Parameters
 
@@ -180,7 +180,7 @@ Defined in: [checkpointer/saver.ts:45](https://github.com/FarukAda/aws-langgraph
 
 > **putWrites**(`config`, `writes`, `taskId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:53](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/checkpointer/saver.ts#L53)
+Defined in: [checkpointer/saver.ts:53](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/checkpointer/saver.ts#L53)
 
 Store intermediate writes linked to a checkpoint.
 

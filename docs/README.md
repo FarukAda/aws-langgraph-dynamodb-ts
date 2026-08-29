@@ -1,8 +1,8 @@
-**AWS LangGraph DynamoDB TypeScript v0.8.0**
+**AWS LangGraph DynamoDB TypeScript v0.9.0**
 
 ***
 
-# AWS LangGraph DynamoDB TypeScript v0.8.0
+# AWS LangGraph DynamoDB TypeScript v0.9.0
 
 ## Enumerations
 

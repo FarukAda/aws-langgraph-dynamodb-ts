@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { nowIso } from '../../shared/clock';
-import type { PayloadDescriptor } from '../../shared/codec/codec';
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
@@ -13,36 +12,11 @@ import { syncVectorIndex } from '../internal/index-sync';
 import { buildStoreItem } from '../internal/item-mapper';
 import { partitionKey, sortKey } from '../internal/keys';
 import { persistRecord } from '../internal/persist';
+import { readExisting } from '../internal/read-existing';
 import { embedValue } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
 import { validateKey, validateNamespace } from '../internal/validation';
 import { isRetryExhausted, rowIsAbsent } from '../internal/write-verify';
-
-/** The previous row's createdAt and value descriptor, read once before a put. */
-interface ExistingRecordMeta {
-  createdAt?: string;
-  value?: PayloadDescriptor;
-}
-
-async function readExisting(
-  context: StoreContext,
-  pk: string,
-  sk: string,
-): Promise<ExistingRecordMeta> {
-  const existing = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: pk, SK: sk },
-      ConsistentRead: true,
-      ProjectionExpression: '#c, #v',
-      ExpressionAttributeNames: { '#c': 'createdAt', '#v': 'value' },
-    }),
-  );
-  return {
-    createdAt: existing.Item?.createdAt as string | undefined,
-    value: existing.Item?.value as PayloadDescriptor | undefined,
-  };
-}
 
 /**
  * Delete the item and, when a vector backend is configured, drop its vector.
@@ -122,7 +96,7 @@ export async function putItem(context: StoreContext, op: PutOperation): Promise<
     ttlTimestamp,
     nonce: randomUUID(),
   });
-  await persistRecord(context, record, existing.value);
+  await persistRecord(context, record, existing);
   if (context.vectorBackend) {
     await syncVectorIndex(context.vectorBackend, op.namespace, op.key, embedding, context.logger);
   }

@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: BatchWriteIncompleteError
 
-Defined in: [shared/errors/errors.ts:61](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/errors.ts#L61)
+Defined in: [shared/errors/errors.ts:61](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/errors.ts#L61)
 
 A BatchWriteItem sequence could not drain its UnprocessedItems. Items NOT
 listed in [unprocessed](#unprocessed) were acked by DynamoDB and persist — there is
@@ -25,7 +25,7 @@ of the UnprocessedItems retry budget.
 
 > **new BatchWriteIncompleteError**(`succeededCount`, `unprocessed`, `retries`, `cause?`): `BatchWriteIncompleteError`
 
-Defined in: [shared/errors/errors.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/errors.ts#L65)
+Defined in: [shared/errors/errors.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/errors.ts#L65)
 
 #### Parameters
 
@@ -59,7 +59,7 @@ Defined in: [shared/errors/errors.ts:65](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L20)
+Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L20)
 
 #### Inherited from
 
@@ -71,7 +71,7 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/base-error.ts#L21)
+Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/base-error.ts#L21)
 
 #### Inherited from
 
@@ -83,7 +83,7 @@ Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-lan
 
 > `readonly` **succeededCount**: `number`
 
-Defined in: [shared/errors/errors.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/errors.ts#L62)
+Defined in: [shared/errors/errors.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/errors.ts#L62)
 
 ***
 
@@ -91,4 +91,4 @@ Defined in: [shared/errors/errors.ts:62](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **unprocessed**: `WriteRequest`[]
 
-Defined in: [shared/errors/errors.ts:63](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/errors/errors.ts#L63)
+Defined in: [shared/errors/errors.ts:63](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/errors/errors.ts#L63)

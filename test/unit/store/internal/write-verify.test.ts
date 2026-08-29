@@ -7,7 +7,7 @@ import type { StoreContext } from '../../../../src/store/internal/setup';
 import {
   isRetryExhausted,
   rowIsAbsent,
-  writeLandedAt,
+  verifyWriteLanded,
 } from '../../../../src/store/internal/write-verify';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -19,11 +19,12 @@ function context(client: StoreContext['client']): StoreContext {
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    vectorScoreDirection: 'relevance',
   };
 }
 
-describe('writeLandedAt', () => {
-  it('returns true when the row already holds the expected S3 key', async () => {
+describe('verifyWriteLanded', () => {
+  it("reports 'landed' when the row already holds the expected S3 key", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({
       Item: {
@@ -35,10 +36,12 @@ describe('writeLandedAt', () => {
         },
       },
     });
-    await expect(writeLandedAt(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(true);
+    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
+      'landed',
+    );
   });
 
-  it('returns false when the row holds a different S3 key', async () => {
+  it("reports 'not-landed' when the row holds a different S3 key", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({
       Item: {
@@ -50,24 +53,27 @@ describe('writeLandedAt', () => {
         },
       },
     });
-    await expect(writeLandedAt(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
-      false,
+    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
+      'not-landed',
     );
   });
 
-  it('returns false when the row does not exist', async () => {
+  it("reports 'not-landed' when the row does not exist", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    await expect(writeLandedAt(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
-      false,
+    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
+      'not-landed',
     );
   });
 
-  it('returns false (fails safe) when the confirmation read itself fails', async () => {
+  it("reports 'unverified', never 'not-landed', when the confirmation read itself fails", async () => {
+    // Reporting a failed read as a confirmed non-commit is what let a
+    // partition that blocked both the put and this read delete the S3 object
+    // a live row points at.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
-    await expect(writeLandedAt(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
-      false,
+    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
+      'unverified',
     );
   });
 });

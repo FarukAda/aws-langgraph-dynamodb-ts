@@ -6,6 +6,14 @@ export interface ResolvedWrite {
   channel: string;
   value: PendingWriteValue;
   index: number;
+  /**
+   * How many earlier writes in this same call already used this channel. A
+   * retry that emits a channel *more* often than the original call produces a
+   * row at an occurrence no earlier call ever wrote — it collides with nothing
+   * and commits cleanly, so the read-side dedup must not mistake it for a
+   * superseding duplicate.
+   */
+  occurrence: number;
 }
 
 /**
@@ -31,13 +39,17 @@ export interface ResolvedWrite {
 export function resolveWriteIndices(writes: PendingWrite[]): ResolvedWrite[] {
   const bySpecialIndex = new Map<number, ResolvedWrite>();
   const regular: ResolvedWrite[] = [];
+  const occurrences = new Map<string, number>();
   writes.forEach(([channel, value], positional) => {
     if (Object.hasOwn(WRITES_IDX_MAP, channel)) {
       const index = WRITES_IDX_MAP[channel];
-      bySpecialIndex.set(index, { channel, value, index });
+      /** Last write wins per special channel, so a call holds exactly one. */
+      bySpecialIndex.set(index, { channel, value, index, occurrence: 0 });
       return;
     }
-    regular.push({ channel, value, index: positional });
+    const occurrence = occurrences.get(channel) ?? 0;
+    occurrences.set(channel, occurrence + 1);
+    regular.push({ channel, value, index: positional, occurrence });
   });
   return [...bySpecialIndex.values(), ...regular];
 }

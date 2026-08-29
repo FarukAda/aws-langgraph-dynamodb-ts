@@ -100,6 +100,7 @@ describe('critical paths leave an operational trace (I7)', () => {
       logger,
       maxSearchCandidates: 1000,
       maxScanItems: 10000,
+      vectorScoreDirection: 'relevance',
     };
     await expect(getItem(context, ['ns'], 'k')).resolves.toBeNull();
     expect(notable(lines)).toHaveLength(1);

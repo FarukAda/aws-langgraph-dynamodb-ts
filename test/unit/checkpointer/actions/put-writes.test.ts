@@ -1,4 +1,4 @@
-import { BatchWriteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 
 import { putWrites } from '../../../../src/checkpointer/actions/put-writes';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
@@ -164,72 +164,6 @@ describe('putWrites', () => {
     expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/ch\/[^/]+$/);
   });
 
-  it("cleans up a special item's never-committed upload when its batch write hard-fails outright", async () => {
-    // A bare SDK-level rejection (not an UnprocessedItems-exhaustion
-    // BatchWriteIncompleteError) still carries an accurate, confident
-    // accounting: drainUnprocessedWrites has exactly one item, this is its
-    // first round, so 0 persisted and the item itself is `unprocessed` — see
-    // shared/dynamodb/drain-unprocessed.ts.
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock
-      .on(BatchWriteCommand)
-      .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    const offloader = trackingOffloader();
-    const ctx = { ...context(client), offloader: offloader as never };
-    await expect(
-      putWrites(
-        ctx,
-        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
-        [['__error__', 'boom']],
-        'task-1',
-      ),
-    ).rejects.toMatchObject({
-      name: 'BatchWriteAllIncompleteError',
-      cause: expect.objectContaining({
-        name: 'BatchWriteIncompleteError',
-        succeededCount: 0,
-        cause: expect.objectContaining({ message: expect.stringContaining('boom') }),
-      }),
-    });
-    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
-    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
-    expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write--1\/__error__\/[^/]+$/);
-  });
-
-  it('still cleans up a failed regular write when the special path fails before its own batch write is attempted', async () => {
-    // Regression: a readPreviousDescriptors rejection used to short-circuit
-    // Promise.all before this regular write's own failed-upload cleanup ran.
-    // It also now cleans up the special write's own never-committed upload
-    // (Item 1's M7 fix: the read failing means the batch write was never
-    // even attempted, so that upload is unambiguously never-committed).
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).rejects(Object.assign(new Error('get'), { name: 'ValidationException' }));
-    mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    const offloader = trackingOffloader();
-    const ctx = { ...context(client), offloader: offloader as never };
-    await expect(
-      putWrites(
-        ctx,
-        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
-        [
-          ['ch', 'a'],
-          ['__error__', 'boom'],
-        ],
-        'task-1',
-      ),
-    ).rejects.toThrow('get');
-    expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
-    const keysCalled = offloader.deleteBatch.mock.calls.map((call) => (call[0] as string[])[0]);
-    expect(keysCalled).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/^t\/\/c1\/task-1\/write-0\/ch\/[^/]+$/),
-        expect.stringMatching(/^t\/\/c1\/task-1\/write--1\/__error__\/[^/]+$/),
-      ]),
-    );
-  });
-
   it('does not throw when a regular write loses the idempotency race on a second call', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).resolvesOnce({}).rejectsOnce(conditionalCheckFailed());
@@ -241,20 +175,6 @@ describe('putWrites', () => {
       putWrites(context(client), config, [['ch', 'second']], 'task-1'),
     ).resolves.toBeUndefined();
     expect(mock.commandCalls(PutCommand)).toHaveLength(2);
-  });
-
-  it('uses unconditional BatchWriteItem for special (negative-index) writes only', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    await putWrites(
-      context(client),
-      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
-      [['__error__', 'boom']],
-      'task-1',
-    );
-    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
-    expect(mock.commandCalls(PutCommand)).toHaveLength(0);
   });
 
   it('uses conditional PutCommand for regular (non-negative-index) writes', async () => {
@@ -286,24 +206,6 @@ describe('putWrites', () => {
     const [firstKey] = upload.mock.calls[0] as [string];
     const [secondKey] = upload.mock.calls[1] as [string];
     expect(firstKey).not.toBe(secondKey);
-  });
-
-  it('dispatches special and regular writes from the same call through their own DynamoDB paths', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    mock.on(PutCommand).resolves({});
-    await putWrites(
-      context(client),
-      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
-      [
-        ['ch', 'a'],
-        ['__error__', 'boom'],
-      ],
-      'task-1',
-    );
-    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
-    expect(mock.commandCalls(PutCommand)).toHaveLength(1);
   });
 
   it('never deletes an S3 object when a regular write loses the conditional-check race', async () => {
@@ -352,42 +254,5 @@ describe('putWrites', () => {
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
     expect(keys).toHaveLength(1);
     expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/ch\/[^/]+$/);
-  });
-
-  it('dedupes duplicate writes to the same special channel by sort key before batching', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    await putWrites(
-      context(client),
-      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
-      [
-        ['__error__', 'first'],
-        ['__error__', 'second'],
-      ],
-      'task-1',
-    );
-    const requests = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.ckpt ?? [];
-    expect(requests).toHaveLength(1);
-  });
-
-  it('never uploads the discarded duplicate special write (fixes the leak, not just the DynamoDB row)', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    const upload = jest.fn(async (key: string) => key);
-    const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
-    await putWrites(
-      ctx,
-      { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
-      [
-        ['__error__', 'first'],
-        ['__error__', 'second'],
-      ],
-      'task-1',
-    );
-    // Only the surviving (last) write should ever be encoded/uploaded — the
-    // discarded first duplicate must never reach the offloader at all.
-    expect(upload).toHaveBeenCalledTimes(1);
   });
 });

@@ -46,6 +46,12 @@ export interface CheckpointWriteItem {
   channel: string;
   /** Identifies the `putWrites` call that produced this row (see item-writer). */
   writeGroup: string;
+  /**
+   * How many earlier writes in the same call already used this channel.
+   * Optional: rows written before 0.9.0 carry none and read back as 0, which
+   * is exactly the identity they were stored under.
+   */
+  occurrence?: number;
   value: PayloadDescriptor;
   ttl?: number;
 }

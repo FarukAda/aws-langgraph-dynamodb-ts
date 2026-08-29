@@ -2,15 +2,6 @@ import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
 
 /**
- * True when the guard rejected a write — NOT evidence a competitor won: a
- * `PutCommand` retried after its response was lost can re-hit its own
- * committed row and fail identically; the two cases are indistinguishable.
- */
-export function isConditionalCheckFailed(error: { name?: string }): boolean {
-  return error.name === 'ConditionalCheckFailedException';
-}
-
-/**
  * The channel recorded on the row that turned a write away, or undefined when
  * the service returned no attributes. `ReturnValuesOnConditionCheckFailure:
  * 'ALL_OLD'` attaches the existing item to the exception at no extra round

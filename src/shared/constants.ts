@@ -64,3 +64,19 @@ export const MESSAGE_APPEND_RETRY_MAX_ATTEMPTS = 18;
 
 /** Default cap on candidates the in-DB semantic ranker will score. */
 export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;
+
+/**
+ * Raw rows a single `listCheckpoints` call may pull before it warns. The read
+ * itself is deliberately unbounded — capping it counted raw rows rather than
+ * filter-matched ones, which turned a caller asking for a handful of rare
+ * matches over a large thread into a hard error instead of the true answer.
+ * The warning restores the operational signal without restoring the wrong
+ * error.
+ *
+ * Its own literal, deliberately: this is the point at which a scan is worth
+ * telling an operator about, which is independent of
+ * {@link MAX_TOTAL_ITEMS_IN_MEMORY}'s hard collection cap. Aliasing the two
+ * meant retuning the memory cap silently moved the warning as well, and it
+ * left the pair reported as a duplicate export.
+ */
+export const LIST_SCAN_WARN_THRESHOLD = 10000;

@@ -42,6 +42,7 @@ describe('embedValue', () => {
       index,
       maxSearchCandidates: 1000,
       maxScanItems: 10000,
+      vectorScoreDirection: 'relevance',
     };
   }
 

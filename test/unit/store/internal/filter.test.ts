@@ -83,6 +83,39 @@ describe('matchesStoreFilter', () => {
     // exact-matches, since {} then falls through to the plain-value branch:
     expect(matchesStoreFilter({ role: {} }, { role: {} })).toBe(true);
   });
+
+  it('never lets a stored NaN satisfy a range operator (F3)', () => {
+    const stored = { score: NaN };
+    expect(matchesStoreFilter(stored, { score: { $lt: 5 } })).toBe(false);
+    expect(matchesStoreFilter(stored, { score: { $lte: 5 } })).toBe(false);
+    expect(matchesStoreFilter(stored, { score: { $gt: 5 } })).toBe(false);
+    expect(matchesStoreFilter(stored, { score: { $gte: 5 } })).toBe(false);
+  });
+
+  it('never lets a NaN on the filter side match either (F3)', () => {
+    expect(matchesStoreFilter({ score: 5 }, { score: { $lt: NaN } })).toBe(false);
+    expect(matchesStoreFilter({ score: 5 }, { score: { $lte: NaN } })).toBe(false);
+    expect(matchesStoreFilter({ score: 5 }, { score: { $gt: NaN } })).toBe(false);
+    expect(matchesStoreFilter({ score: 5 }, { score: { $gte: NaN } })).toBe(false);
+  });
+
+  it('still treats NaN as equal to NaN, where equality is well defined (F3)', () => {
+    // isDeepStrictEqual uses SameValue for primitives, so NaN equals NaN.
+    // Ordering is undefined for NaN; equality is not. The two must not be conflated.
+    expect(matchesStoreFilter({ score: NaN }, { score: { $eq: NaN } })).toBe(true);
+    expect(matchesStoreFilter({ score: NaN }, { score: { $ne: NaN } })).toBe(false);
+  });
+
+  it('keeps ordering ordinary same-typed pairs (F3 regression guard)', () => {
+    expect(matchesStoreFilter({ n: 5 }, { n: { $gt: 4 } })).toBe(true);
+    expect(matchesStoreFilter({ n: 5 }, { n: { $lt: 4 } })).toBe(false);
+    expect(matchesStoreFilter({ n: 5 }, { n: { $gte: 5 } })).toBe(true);
+    expect(matchesStoreFilter({ n: 5 }, { n: { $lte: 5 } })).toBe(true);
+    expect(matchesStoreFilter({ s: 'b' }, { s: { $gt: 'a' } })).toBe(true);
+    expect(matchesStoreFilter({ s: 'b' }, { s: { $lt: 'a' } })).toBe(false);
+    // Mismatched types never compare.
+    expect(matchesStoreFilter({ s: '10' }, { s: { $gt: 5 } })).toBe(false);
+  });
 });
 
 describe('range comparators are type-strict (M9, A4)', () => {

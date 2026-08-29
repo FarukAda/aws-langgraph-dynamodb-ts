@@ -1,6 +1,7 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
+import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { assembleTuple } from '../internal/assemble';
 import { readConfigurable } from '../internal/configurable';
@@ -67,6 +68,7 @@ export async function* listCheckpoints(
     metaSortKeyPrefix(checkpointNs),
   );
   let yielded = 0;
+  let scanned = 0;
   /**
    * Unbounded: this is a generator that streams and never accumulates, and
    * `limit` already returns early, so the caller's own bound is what stops the
@@ -81,6 +83,14 @@ export async function* listCheckpoints(
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
+    scanned += 1;
+    if (scanned === LIST_SCAN_WARN_THRESHOLD) {
+      context.logger.warn(
+        'list: scanned a large number of rows without the caller stopping; this read is ' +
+          'deliberately unbounded, so narrow the filter or pass options.limit',
+        { threadId, checkpointNs, scanned },
+      );
+    }
     if (limit !== undefined && yielded >= limit) return;
     const meta = narrowMetaItem(raw);
     if (!meta) {

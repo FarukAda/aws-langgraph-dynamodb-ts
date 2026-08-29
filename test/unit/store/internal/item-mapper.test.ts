@@ -15,6 +15,7 @@ function context(): StoreContext {
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    vectorScoreDirection: 'relevance',
   };
 }
 
@@ -65,7 +66,7 @@ describe('store item-mapper', () => {
     expect(record.ttl).toBe(1750);
   });
 
-  it('appends a nonce to the S3 keyParts only when one is provided', async () => {
+  it('appends a nonce to the S3 keyParts only when one is provided, and carries it onto rev', async () => {
     const seenParts: string[][] = [];
     const ctx: StoreContext = {
       client: {} as never,
@@ -74,6 +75,7 @@ describe('store item-mapper', () => {
       logger: SILENT_LOGGER,
       maxSearchCandidates: 1000,
       maxScanItems: 10000,
+      vectorScoreDirection: 'relevance',
       offloader: {
         shouldOffload: () => true,
         buildKey: (parts: readonly string[]) => {
@@ -83,7 +85,7 @@ describe('store item-mapper', () => {
         upload: async (key: string) => key,
       } as never,
     };
-    await buildStoreItem(
+    const withNonce = await buildStoreItem(
       ctx,
       ['n'],
       'k',
@@ -91,8 +93,16 @@ describe('store item-mapper', () => {
       { createdAt: 'c', updatedAt: 'u', nonce: 'abc' },
     );
     expect(seenParts[0]).toEqual(['n', 'k', 'abc']);
+    expect(withNonce.rev).toBe('abc');
 
-    await buildStoreItem(ctx, ['n'], 'k', { a: 1 }, { createdAt: 'c', updatedAt: 'u' });
+    const withoutNonce = await buildStoreItem(
+      ctx,
+      ['n'],
+      'k',
+      { a: 1 },
+      { createdAt: 'c', updatedAt: 'u' },
+    );
     expect(seenParts[1]).toEqual(['n', 'k']);
+    expect(withoutNonce.rev).toBeUndefined();
   });
 });

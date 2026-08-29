@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.8.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
 
 ***
 
@@ -8,7 +8,7 @@
 
 > **redactSecrets**(`value`, `patterns?`, `valuePatterns?`): `Redactable`
 
-Defined in: [shared/logging/redaction.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/5a137c4668c089acbdd8dcb66b61b636923c4718/src/shared/logging/redaction.ts#L24)
+Defined in: [shared/logging/redaction.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/490338644b9a380688af6900c108cd966b84d00e/src/shared/logging/redaction.ts#L24)
 
 Recursively clone `value`, replacing any value at a secret-looking key with
 `[REDACTED]` and any recognised secret *shape* inside a string — including an
