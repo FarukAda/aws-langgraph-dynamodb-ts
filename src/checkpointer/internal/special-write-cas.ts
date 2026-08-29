@@ -59,6 +59,16 @@ type CasAttemptResult =
  * re-reading the row each time a racer's write invalidates the pinned
  * `writeGroup`. Extracted from {@link writeSpecialItem} to keep both
  * functions under the repo's block-nesting limit.
+ *
+ * A rejection is not proof a competitor won: `withDynamoDBRetry` retries
+ * transient errors, so an attempt can commit server-side, its response can be
+ * lost, and the retried put can hit the row it just wrote and fail the same
+ * guard — indistinguishable from a competitor's win by the rejection alone.
+ * Each attempt's pinned observation is captured in `attempted` before the
+ * put, so that when a re-read finds the row already holding *this item's
+ * own* `writeGroup`, the outcome reports having superseded whatever
+ * `attempted` held — never the item's own just-committed payload, which
+ * would strand the live row pointing at a deleted object.
  */
 async function attemptCasWrites(
   context: CheckpointerContext,
@@ -67,18 +77,22 @@ async function attemptCasWrites(
 ): Promise<CasAttemptResult> {
   let observed = initial;
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
+    const attempted = observed;
     try {
       await withDynamoDBRetry(() =>
         context.client.put({
           TableName: context.tableName,
           Item: item,
-          ...revisionGuard(SPECIAL_REVISION_ATTRIBUTE, observed),
+          ...revisionGuard(SPECIAL_REVISION_ATTRIBUTE, attempted),
         }),
       );
-      return { done: true, outcome: { committed: true, superseded: observed.value } };
+      return { done: true, outcome: { committed: true, superseded: attempted.value } };
     } catch (error) {
       if (!isConditionalCheckFailed(error as { name?: string })) throw error;
       observed = await readSpecialRow(context, item);
+      if (observed.revision === item.writeGroup) {
+        return { done: true, outcome: { committed: true, superseded: attempted.value } };
+      }
     }
   }
   return { done: false, observed };
@@ -98,6 +112,11 @@ async function attemptCasWrites(
  * individual puts; a call holds at most one row per special channel, so that is
  * four writes at worst.
  *
+ * The compare-and-swap runs only when an offloader is configured — matching
+ * `store/internal/persist.ts` — because without one there is no S3 object to
+ * orphan, so a plain unconditional put stays correct and costs no extra
+ * ConsistentRead or write capacity.
+ *
  * Never rejects: the caller runs this concurrently with the regular writes
  * under `Promise.all`, whose own cleanup depends on every branch resolving
  * rather than short-circuiting.
@@ -107,6 +126,12 @@ export async function writeSpecialItem(
   item: CheckpointWriteItem,
 ): Promise<SpecialWriteOutcome> {
   try {
+    if (!context.offloader) {
+      await withDynamoDBRetry(() =>
+        context.client.put({ TableName: context.tableName, Item: item }),
+      );
+      return { committed: true };
+    }
     const initial = await readSpecialRow(context, item);
     const attempt = await attemptCasWrites(context, item, initial);
     if (attempt.done) return attempt.outcome;

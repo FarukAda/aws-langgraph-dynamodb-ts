@@ -128,6 +128,30 @@ describe('putWithRevisionSwap', () => {
     );
   });
 
+  it('does not delete its own just-committed payload when a lost put response looks like a competitor win', async () => {
+    // Attempt 1's PutCommand actually committed server-side, but the response
+    // was lost (ECONNRESET etc.) and withDynamoDBRetry retried the guarded
+    // put — which now sees its OWN just-written row and fails the condition,
+    // indistinguishable from a competitor's win. The re-read finds the row
+    // already holding this call's own rev ('mine', matching record().rev),
+    // so the swap must report having superseded whatever the FIRST attempt
+    // pinned ('old'), never this record's own value ('new').
+    const { context, putCount } = harness({
+      failures: 1,
+      reReads: [{ exists: true, revision: 'mine', value: descriptor('new'), createdAt: 'T0' }],
+    });
+
+    const superseded = await putWithRevisionSwap(context as never, record(), {
+      exists: true,
+      revision: 'r0',
+      value: descriptor('old'),
+      createdAt: 'T0',
+    });
+
+    expect(putCount()).toBe(1);
+    expect(superseded.value).toEqual(descriptor('old'));
+  });
+
   it('propagates a non-conditional error untouched', async () => {
     const context = {
       tableName: 'store',

@@ -30,6 +30,16 @@ async function put(
  * and both delete it, orphaning the loser's own upload. Retrying against the
  * *re-read* state is what makes each writer supersede exactly one payload.
  *
+ * A rejection is not proof a competitor won: `withDynamoDBRetry` retries
+ * transient errors, so an attempt can commit server-side, its response can be
+ * lost, and the retried put can hit the row it just wrote and fail the same
+ * guard — indistinguishable from a competitor's win by the rejection alone.
+ * Each attempt's pinned observation is captured in `attempted` before the
+ * put, so that when a re-read finds the row already holding *this call's
+ * own* `rev`, the swap returns whatever `attempted` held — never this
+ * record's own just-committed value, which would strand the live row
+ * pointing at a deleted object.
+ *
  * On exhaustion the write proceeds unconditionally and warns. That is
  * deliberate: the fallback is precisely the pre-0.9.0 behaviour — one possible
  * orphan, reclaimed by a lifecycle rule — so pathological contention degrades
@@ -43,12 +53,14 @@ export async function putWithRevisionSwap(
 ): Promise<ExistingRecordMeta> {
   let observed = existing;
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
+    const attempted = observed;
     try {
-      await put(context, record, observed);
-      return observed;
+      await put(context, record, attempted);
+      return attempted;
     } catch (error) {
       if (!isConditionalCheckFailed(error as { name?: string })) throw error;
       observed = await readExisting(context, record.PK, record.SK);
+      if (observed.revision === record.rev) return attempted;
       record.createdAt = observed.createdAt ?? record.createdAt;
     }
   }
