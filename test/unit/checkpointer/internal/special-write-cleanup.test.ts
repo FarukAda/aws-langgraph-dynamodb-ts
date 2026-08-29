@@ -1,37 +1,37 @@
-import { BatchWriteCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
-
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { writeSpecialItemsWithCleanup } from '../../../../src/checkpointer/internal/special-write-cleanup';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
   dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new Uint8Array()],
   loadsTyped: async (): Promise<unknown> => undefined,
 };
 
-function context(client: CheckpointerContext['client']): CheckpointerContext {
-  return { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
-}
+const descriptor = (s3Key: string) => ({
+  location: PayloadLocation.S3 as const,
+  serdeType: 'json',
+  compressed: false,
+  s3Key,
+});
 
-/** A pre-built `__error__` write item; the SK matches a real WRITES_IDX_MAP-derived one. */
-function specialItem(s3Key: string): CheckpointWriteItem {
+/** A pre-built special write item; `sk` distinguishes items within one call. */
+function specialItem(
+  s3Key: string,
+  sk = 'WRITE##c1#task-1#0000000007#__error__',
+): CheckpointWriteItem {
   return {
     PK: 't',
-    SK: 'WRITE##c1#task-1#0000000007',
+    SK: sk,
     taskId: 'task-1',
     index: -1,
-    writeGroup: 'group-1',
     channel: '__error__',
-    value: { location: PayloadLocation.S3, serdeType: 'json', compressed: false, s3Key },
+    writeGroup: 'group-1',
+    occurrence: 0,
+    value: descriptor(s3Key),
   };
 }
-
-const oldS3Descriptor = {
-  value: { location: PayloadLocation.S3, serdeType: 'json', compressed: false, s3Key: 'old.bin' },
-};
 
 function trackingOffloader() {
   return {
@@ -42,117 +42,130 @@ function trackingOffloader() {
   };
 }
 
+/** A document-client stub whose `get`/`put` are driven per test. */
+interface ClientStub {
+  get: (input: Record<string, unknown>) => Promise<{ Item?: Record<string, unknown> }>;
+  put: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
+}
+
+function context(client: ClientStub, offloader?: ReturnType<typeof trackingOffloader>) {
+  return {
+    client: client as never,
+    tableName: 'ckpt',
+    serde,
+    logger: SILENT_LOGGER,
+    offloader: offloader as never,
+  } as unknown as CheckpointerContext;
+}
+
 describe('writeSpecialItemsWithCleanup', () => {
-  it('cleans up the previous S3 object after a special write successfully overwrites it', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: oldS3Descriptor });
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+  it('is a no-op for an empty items list', async () => {
+    const client: ClientStub = {
+      get: async () => ({}),
+      put: async () => ({}),
+    };
     const offloader = trackingOffloader();
-    const ctx = { ...context(client), offloader: offloader as never };
-    const result = await writeSpecialItemsWithCleanup(ctx, [specialItem('new.bin')]);
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), []);
     expect(result).toBeUndefined();
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it('a committed item deletes the descriptor it superseded', async () => {
+    const client: ClientStub = {
+      get: async () => ({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
+      put: async () => ({}),
+    };
+    const offloader = trackingOffloader();
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), [
+      specialItem('new.bin'),
+    ]);
+    expect(result).toBeUndefined();
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old.bin']);
   });
 
-  it('cleans up only the new upload, not the previous object, when a special write never commits', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: oldS3Descriptor });
-    // Always reports this item's own row unprocessed, so drainUnprocessedWrites
-    // exhausts its full 10-retry budget (real backoff sleeps) before
-    // batchWriteAll throws — intentionally slower than its neighbors, the same
-    // disclosed tradeoff as Task 3's ambiguous-retry test in
-    // store/actions/put.test.ts.
-    mock.on(BatchWriteCommand).resolves({
-      UnprocessedItems: {
-        ckpt: [{ PutRequest: { Item: { PK: 't', SK: 'WRITE##c1#task-1#0000000007' } } }],
+  it('an item that definitely never committed deletes its own new upload', async () => {
+    const client: ClientStub = {
+      get: async () => ({}),
+      put: async () => {
+        throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
       },
-    });
-    const offloader = trackingOffloader();
-    const ctx = { ...context(client), offloader: offloader as never };
-    const result = await writeSpecialItemsWithCleanup(ctx, [specialItem('new.bin')]);
-    expect(result).toMatchObject({ name: 'BatchWriteAllIncompleteError' });
-    expect(offloader.deleteBatch).toHaveBeenCalledWith(['new.bin']);
-  });
-
-  it('returns (never rejects) when reading the previous descriptor fails, without attempting the batch write', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock
-      .on(GetCommand)
-      .rejects(Object.assign(new Error('get boom'), { name: 'ValidationException' }));
-    const offloader = trackingOffloader();
-    const ctx = { ...context(client), offloader: offloader as never };
-    const result = await writeSpecialItemsWithCleanup(ctx, [specialItem('new.bin')]);
-    // A rejection here (instead of a returned Error) would propagate out of
-    // the Promise.all putWrites composes this with, short-circuiting past
-    // writeRegularItems's own cleanup for a regular write that failed in the
-    // same call — see put-writes.test.ts's composition-level regression test.
-    expect(result).toMatchObject({ message: 'get boom' });
-    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
-    expect(offloader.deleteBatch).toHaveBeenCalledWith(['new.bin']);
-  });
-
-  it('is a no-op for an empty items list', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    const offloader = trackingOffloader();
-    const ctx = { ...context(client), offloader: offloader as never };
-    const result = await writeSpecialItemsWithCleanup(ctx, []);
-    expect(result).toBeUndefined();
-    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
-    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
-  });
-
-  it('skips reading the previous descriptor entirely when no offloader is configured', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    const ctx = context(client);
-    const result = await writeSpecialItemsWithCleanup(ctx, [specialItem('new.bin')]);
-    expect(result).toBeUndefined();
-    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
-  });
-
-  it('splits a mixed batch outcome: cleans up the previous object for the committed item and the new upload for the never-committed item', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    const committedItem = specialItem('committed-new.bin');
-    const neverCommittedItem: CheckpointWriteItem = {
-      ...specialItem('never-committed-new.bin'),
-      SK: 'WRITE##c1#task-1#0000000008',
     };
-    mock
-      .on(GetCommand)
-      .resolvesOnce({
-        Item: {
-          value: {
-            location: PayloadLocation.S3,
-            serdeType: 'json',
-            compressed: false,
-            s3Key: 'committed-old.bin',
-          },
-        },
-      })
-      .resolvesOnce({
-        Item: {
-          value: {
-            location: PayloadLocation.S3,
-            serdeType: 'json',
-            compressed: false,
-            s3Key: 'never-committed-old.bin',
-          },
-        },
-      });
-    // Persistently reports only neverCommittedItem's row unprocessed, so
-    // drainUnprocessedWrites exhausts its retry budget (real backoff sleeps)
-    // before batchWriteAll throws — same disclosed tradeoff as the
-    // never-commits test above.
-    mock.on(BatchWriteCommand).resolves({
-      UnprocessedItems: {
-        ckpt: [{ PutRequest: { Item: { PK: 't', SK: neverCommittedItem.SK } } }],
-      },
-    });
     const offloader = trackingOffloader();
-    const ctx = { ...context(client), offloader: offloader as never };
-    const result = await writeSpecialItemsWithCleanup(ctx, [committedItem, neverCommittedItem]);
-    expect(result).toMatchObject({ name: 'BatchWriteAllIncompleteError' });
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), [
+      specialItem('new.bin'),
+    ]);
+    expect(result).toMatchObject({ message: 'boom' });
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['new.bin']);
+  });
+
+  it('returns (never throws) the first error when more than one item fails', async () => {
+    const client: ClientStub = {
+      get: async () => ({}),
+      put: async (input) => {
+        const item = input.Item as CheckpointWriteItem;
+        if (item.SK.endsWith('one')) {
+          throw Object.assign(new Error('first'), { name: 'ResourceNotFoundException' });
+        }
+        throw Object.assign(new Error('second'), { name: 'ResourceNotFoundException' });
+      },
+    };
+    const offloader = trackingOffloader();
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), [
+      specialItem('one.bin', 'WRITE##c1#task-1#0000000007#one'),
+      specialItem('two.bin', 'WRITE##c1#task-1#0000000008#two'),
+    ]);
+    expect(result).toMatchObject({ message: 'first' });
+  });
+
+  it('with no offloader configured nothing is deleted', async () => {
+    const client: ClientStub = {
+      get: async () => ({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
+      put: async () => ({}),
+    };
+    await expect(
+      writeSpecialItemsWithCleanup(context(client), [specialItem('new.bin')]),
+    ).resolves.toBeUndefined();
+  });
+
+  it('deletes nothing for a committed item that had no previous row to supersede', async () => {
+    const client: ClientStub = {
+      get: async () => ({}),
+      put: async () => ({}),
+    };
+    const offloader = trackingOffloader();
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), [
+      specialItem('new.bin'),
+    ]);
+    expect(result).toBeUndefined();
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it('cleans up each side of a mixed outcome: the previous object for the committed item, the new upload for the failed one', async () => {
+    const client: ClientStub = {
+      get: async (input) => {
+        const key = input.Key as { SK: string };
+        if (key.SK.endsWith('committed')) {
+          return { Item: { value: descriptor('committed-old.bin'), writeGroup: 'g0' } };
+        }
+        return {};
+      },
+      put: async (input) => {
+        const item = input.Item as CheckpointWriteItem;
+        if (item.SK.endsWith('failed')) {
+          throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
+        }
+        return {};
+      },
+    };
+    const offloader = trackingOffloader();
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), [
+      specialItem('committed-new.bin', 'WRITE##c1#task-1#0000000007#committed'),
+      specialItem('failed-new.bin', 'WRITE##c1#task-1#0000000008#failed'),
+    ]);
+    expect(result).toMatchObject({ message: 'boom' });
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['committed-old.bin']);
-    expect(offloader.deleteBatch).toHaveBeenCalledWith(['never-committed-new.bin']);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['failed-new.bin']);
   });
 });
