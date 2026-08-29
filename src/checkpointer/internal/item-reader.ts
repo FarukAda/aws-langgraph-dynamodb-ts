@@ -52,18 +52,23 @@ export async function readMetadata(
  * wrote more than once (a task emitting two Sends), where both values must
  * survive.
  *
- * Rows arrive in sort-key order, so the first group seen for a `(task,
- * channel)` pair is the earliest committed one — first-write-wins, the same
- * rule the write-side guard applies, extended to the case the guard cannot
- * see. The superseded row stays in DynamoDB and is removed by `deleteThread`
- * or TTL like any other.
+ * Write groups are time-ordered ULIDs, so the smallest one for a `(task,
+ * channel)` pair identifies the earliest committed call — first-write-wins,
+ * the same rule the write-side guard applies, extended to the case the guard
+ * cannot see. Selecting by *order encountered* would not do: rows arrive
+ * sorted by index, and a retry emitting fewer writes moves an
+ * already-committed channel to a smaller index, where it sorts ahead of the
+ * original row and would hand back the later call's value instead. The
+ * superseded row stays in DynamoDB and is removed by `deleteThread` or TTL
+ * like any other.
  */
 export function dropSupersededWrites(items: CheckpointWriteItem[]): CheckpointWriteItem[] {
   const identity = (item: CheckpointWriteItem): string => `${item.taskId}\u0000${item.channel}`;
   const earliestGroup = new Map<string, string>();
   for (const item of items) {
     const id = identity(item);
-    if (!earliestGroup.has(id)) earliestGroup.set(id, item.writeGroup);
+    const seen = earliestGroup.get(id);
+    if (seen === undefined || item.writeGroup < seen) earliestGroup.set(id, item.writeGroup);
   }
   return items.filter((item) => earliestGroup.get(identity(item)) === item.writeGroup);
 }

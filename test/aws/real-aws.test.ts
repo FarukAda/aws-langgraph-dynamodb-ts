@@ -171,6 +171,9 @@ describe('DynamoDB adapters against real AWS', () => {
       TableName: tableName,
       KeyConditionExpression: 'PK = :pk AND begins_with(SK, :m)',
       ExpressionAttributeValues: { ':pk': sessionPartition('ttlsess'), ':m': 'HISTORY#MSG#' },
+      // Consistent: this reads back rows written moments earlier, so an
+      // eventually-consistent replica can legitimately still be empty.
+      ConsistentRead: true,
     });
     const ttls = new Set((result.Items ?? []).map((it) => it.ttl));
     expect(result.Items).toHaveLength(2);
@@ -240,6 +243,8 @@ describe('DynamoDB adapters against real AWS', () => {
       TableName: tableName,
       KeyConditionExpression: 'PK = :pk',
       ExpressionAttributeValues: { ':pk': partitionKey(threadId) },
+      // Consistent: see the note on the chat-history ttl probe above.
+      ConsistentRead: true,
     });
     const ttls = new Set((items.Items ?? []).map((it) => it.ttl));
     expect(items.Items).toHaveLength(3);

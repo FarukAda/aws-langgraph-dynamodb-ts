@@ -102,6 +102,22 @@ describe('putWrites channel-keyed write rows (C3)', () => {
     ]);
   });
 
+  it('stamps successive calls with strictly increasing write groups (C3)', async () => {
+    // dropSupersededWrites picks the *smallest* group for a (task, channel) to
+    // find the earliest committed call, so the stamp must be time-ordered — a
+    // random UUID would nonce correctly but leave that choice arbitrary.
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(PutCommand).resolves({});
+    const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
+    await putWrites(context(client), config, [['ch', 'a']], 'task-1');
+    await putWrites(context(client), config, [['ch', 'b']], 'task-2');
+    const groups = mock
+      .commandCalls(PutCommand)
+      .map((call) => call.args[0].input.Item?.writeGroup as string);
+    expect(groups).toHaveLength(2);
+    expect(groups[0] < groups[1]).toBe(true);
+  });
+
   it('asks DynamoDB for the rejecting row so a rejection can be diagnosed (C3, I7)', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).resolves({});

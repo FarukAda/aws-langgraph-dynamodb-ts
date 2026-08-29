@@ -114,6 +114,24 @@ describe('dropSupersededWrites (C3)', () => {
     expect(dropSupersededWrites(items)).toHaveLength(2);
   });
 
+  it('keeps the earliest call when a later one placed the channel at a LOWER index', () => {
+    // A retry that emits fewer writes than the original moves an
+    // already-committed channel to a smaller index, so it sorts *ahead* of the
+    // original row. Picking whichever row is encountered first would then hand
+    // back the later call's value — last-write-wins, the opposite of the
+    // contract. Groups are time-ordered, so the earliest one is selectable.
+    const items = [
+      row(0, 'chanA', 'g2-later'),
+      row(0, 'chanX', 'g1-earlier'),
+      row(1, 'chanA', 'g1-earlier'),
+    ];
+    const kept = dropSupersededWrites(items);
+    expect(kept.map((item) => [item.channel, item.writeGroup])).toEqual([
+      ['chanX', 'g1-earlier'],
+      ['chanA', 'g1-earlier'],
+    ]);
+  });
+
   it('is a no-op for a single call writing distinct channels', () => {
     const items = [row(0, 'a', 'g1'), row(1, 'b', 'g1'), row(2, 'c', 'g1')];
     expect(dropSupersededWrites(items)).toHaveLength(3);
