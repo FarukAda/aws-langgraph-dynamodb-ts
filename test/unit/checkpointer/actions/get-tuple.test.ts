@@ -51,6 +51,7 @@ describe('getCheckpointTuple', () => {
       '',
       checkpoint,
       metadata,
+      'nonce-1',
       'parent-0',
     );
     const writeItems = await buildWriteItems(
@@ -79,7 +80,14 @@ describe('getCheckpointTuple', () => {
   it('omits parentConfig when the checkpoint has no parent', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta, payload } = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint,
+      metadata,
+      'nonce-1',
+    );
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
@@ -93,7 +101,7 @@ describe('getCheckpointTuple', () => {
   it('returns undefined when the payload item is missing', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata, 'nonce-1');
     mock.on(QueryCommand).resolves({ Items: [meta] });
     mock.on(GetCommand).resolves({});
     expect(await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } })).toBeUndefined();

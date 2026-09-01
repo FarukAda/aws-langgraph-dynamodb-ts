@@ -16,23 +16,33 @@ function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T 
   return item;
 }
 
-/** Encode a checkpoint + metadata into its META and PAYLOAD items. */
+/**
+ * Encode a checkpoint + metadata into its META and PAYLOAD items. `nonce` is
+ * unique per `put()` call and is appended to both S3 key part lists, so a
+ * second put of the same checkpoint id — a retry after a lost response, or a
+ * repair tool re-writing a checkpoint — never shares an object with the first.
+ * That is what makes "the row holds my key" equivalent to "my write is live"
+ * for the post-failure verification in `put.ts`, and what keeps a failed
+ * re-put's cleanup from deleting the object the first, successful put's rows
+ * point at.
+ */
 export async function buildCheckpointItems(
   context: CheckpointerContext,
   threadId: string,
   checkpointNs: string,
   checkpoint: Checkpoint,
   metadata: CheckpointMetadata,
+  nonce: string,
   parentCheckpointId?: string,
   ttlTimestamp?: number,
 ): Promise<{ meta: CheckpointMetaItem; payload: CheckpointPayloadItem }> {
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
   const checkpointDescriptor = await encodePayload(checkpoint, deps, {
-    keyParts: [threadId, checkpointNs, checkpoint.id, 'checkpoint'],
+    keyParts: [threadId, checkpointNs, checkpoint.id, 'checkpoint', nonce],
   });
   const metadataDescriptor = await encodePayload(metadata, deps, {
-    keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata'],
+    keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata', nonce],
   });
   const meta: CheckpointMetaItem = {
     PK: pk,

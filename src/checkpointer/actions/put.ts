@@ -4,11 +4,19 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
 import { buildCheckpointItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
 import { validateCheckpointId } from '../internal/validation';
+
+/**
+ * Nonces every put's S3 uploads (see {@link buildCheckpointItems}). A ULID
+ * rather than a UUID because it sorts by time, which keeps a bucket listing of
+ * one checkpoint's objects readable.
+ */
+const nextPutNonce = createUlidFactory();
 
 /**
  * Persist a checkpoint and its metadata as a transactional pair of META and
@@ -30,6 +38,7 @@ export async function putCheckpoint(
     checkpointNs,
     checkpoint,
     metadata,
+    nextPutNonce(),
     parentCheckpointId,
     ttlTimestamp,
   );

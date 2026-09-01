@@ -94,8 +94,8 @@ describe('putCheckpoint', () => {
       putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
     ).rejects.toThrow('boom');
     expect(offloader.deleteBatch).toHaveBeenCalledWith([
-      't1//ckpt-1/metadata',
-      't1//ckpt-1/checkpoint',
+      expect.stringMatching(/^t1\/\/ckpt-1\/metadata\/[0-9A-HJKMNP-TV-Z]{26}$/),
+      expect.stringMatching(/^t1\/\/ckpt-1\/checkpoint\/[0-9A-HJKMNP-TV-Z]{26}$/),
     ]);
   });
 

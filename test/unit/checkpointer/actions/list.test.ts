@@ -56,16 +56,30 @@ describe('listCheckpoints', () => {
 
   async function fixtures(client: CheckpointerContext['client']) {
     const ctx = context(client);
-    const a = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), {
-      source: 'loop',
-      step: 2,
-      parents: {},
-    } as CheckpointMetadata);
-    const b = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), {
-      source: 'input',
-      step: 1,
-      parents: {},
-    } as CheckpointMetadata);
+    const a = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint('c2'),
+      {
+        source: 'loop',
+        step: 2,
+        parents: {},
+      } as CheckpointMetadata,
+      'nonce-1',
+    );
+    const b = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint('c1'),
+      {
+        source: 'input',
+        step: 1,
+        parents: {},
+      } as CheckpointMetadata,
+      'nonce-1',
+    );
     const metas: Record<string, CheckpointMetaItem> = { c2: a.meta, c1: b.meta };
     const payloads: Record<string, CheckpointPayloadItem> = { c2: a.payload, c1: b.payload };
     return { metas, payloads };

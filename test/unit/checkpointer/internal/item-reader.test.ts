@@ -40,12 +40,26 @@ const metadata: CheckpointMetadata = { source: 'loop', step: 3, parents: {} };
 
 describe('item-reader', () => {
   it('round-trips the checkpoint written by the item-writer', async () => {
-    const { payload } = await buildCheckpointItems(context(), 't', '', checkpoint, metadata);
+    const { payload } = await buildCheckpointItems(
+      context(),
+      't',
+      '',
+      checkpoint,
+      metadata,
+      'nonce-1',
+    );
     expect(await readCheckpoint(context(), payload)).toEqual(checkpoint);
   });
 
   it('round-trips the metadata written by the item-writer', async () => {
-    const { meta } = await buildCheckpointItems(context(), 't', '', checkpoint, metadata);
+    const { meta } = await buildCheckpointItems(
+      context(),
+      't',
+      '',
+      checkpoint,
+      metadata,
+      'nonce-1',
+    );
     expect(await readMetadata(context(), meta)).toEqual(metadata);
   });
 

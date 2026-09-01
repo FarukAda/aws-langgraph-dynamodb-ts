@@ -58,6 +58,7 @@ describe('buildCheckpointItems', () => {
       '',
       checkpoint,
       metadata,
+      'nonce-1',
       'parent-0',
     );
     expect(meta.PK).toBe('CHKPT#thread-1');
@@ -77,12 +78,25 @@ describe('buildCheckpointItems', () => {
       'ns',
       checkpoint,
       metadata,
+      'nonce-1',
       undefined,
       1750,
     );
     expect(meta.ttl).toBe(1750);
     expect(payload.ttl).toBe(1750);
     expect(meta.parentCheckpointId).toBeUndefined();
+  });
+
+  it('appends the per-call nonce to both S3 keys so a re-put never reuses an object', async () => {
+    // Deterministic keys let a failing re-put of the same checkpoint id delete
+    // the objects the first, committed put's rows still reference (CKPT-01).
+    const ctx = offloadingContext();
+    const first = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata, 'NONCE-A');
+    const second = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata, 'NONCE-B');
+    expect(s3Key({ value: first.payload.checkpoint })).toBe('t1//ckpt-1/checkpoint/NONCE-A');
+    expect(s3Key({ value: first.meta.metadata })).toBe('t1//ckpt-1/metadata/NONCE-A');
+    expect(s3Key({ value: second.payload.checkpoint })).toBe('t1//ckpt-1/checkpoint/NONCE-B');
+    expect(s3Key({ value: second.meta.metadata })).toBe('t1//ckpt-1/metadata/NONCE-B');
   });
 });
 
