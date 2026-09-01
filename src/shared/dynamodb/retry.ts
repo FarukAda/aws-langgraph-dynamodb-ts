@@ -5,6 +5,7 @@ import {
 } from '../constants';
 import { AbortError, RetryExhaustedError } from '../errors/errors';
 import { toError } from '../errors/wrap-error';
+import { redactedMessage } from '../logging/secret-patterns';
 import { fullJitter, sleep } from './backoff';
 import { DEFAULT_RETRYABLE_ERRORS, isRetryableError } from './retry-classifier';
 
@@ -64,7 +65,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
     }
   }
   throw new RetryExhaustedError(
-    `Operation failed after ${maxAttempts} attempts: ${lastError.message}`,
+    `Operation failed after ${maxAttempts} attempts: ${redactedMessage(lastError)}`,
     maxAttempts,
     lastError,
   );

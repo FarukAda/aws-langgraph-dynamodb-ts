@@ -1,4 +1,5 @@
 import type { WriteRequest } from '../dynamodb/types';
+import { redactedMessage } from '../logging/secret-patterns';
 import { DynamoDBLangGraphError } from './base-error';
 import { ErrorCode } from './error-code';
 
@@ -126,7 +127,8 @@ export class CompensationFailedError extends DynamoDBLangGraphError {
 
   constructor(cause: Error, rollbackError: Error) {
     super(
-      `compensation failed after an append error: ${cause.message} (rollback: ${rollbackError.message})`,
+      `compensation failed after an append error: ${redactedMessage(cause)} ` +
+        `(rollback: ${redactedMessage(rollbackError)})`,
       ErrorCode.COMPENSATION_FAILED,
       {},
       cause,
