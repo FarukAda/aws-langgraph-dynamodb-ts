@@ -95,6 +95,9 @@ describe('encodePayload / decodePayload', () => {
       compressed: false,
       s3Key: 'k',
     };
-    await expect(decodePayload(descriptor, { serde })).rejects.toThrow(/without an offloader/);
+    await expect(decodePayload(descriptor, { serde })).rejects.toMatchObject({
+      name: 'ValidationError',
+      message: expect.stringContaining('no `s3` configuration'),
+    });
   });
 });

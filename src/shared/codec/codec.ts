@@ -1,5 +1,7 @@
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
+import { ErrorCode } from '../errors/error-code';
+import { ValidationError } from '../errors/errors';
 import { CompressionConfig, CompressionResult, compress, decompress } from './compression';
 import type { S3Offloader } from './s3/offloader';
 
@@ -42,7 +44,11 @@ export interface EncodeOptions {
 
 function requireOffloader(deps: CodecDeps): S3Offloader {
   if (!deps.offloader) {
-    throw new Error('Cannot decode an S3 payload without an offloader');
+    throw new ValidationError(
+      "this row's payload is offloaded to S3 but the adapter has no `s3` configuration; " +
+        'configure the bucket the writer used',
+      's3',
+    );
   }
   return deps.offloader;
 }
@@ -69,16 +75,43 @@ export async function encodePayload<T>(
   return { location: PayloadLocation.INLINE, serdeType, compressed, bytes };
 }
 
-/** Decode a {@link PayloadDescriptor} produced by {@link encodePayload}. */
-export async function decodePayload<T>(descriptor: PayloadDescriptor, deps: CodecDeps): Promise<T> {
+/**
+ * Fetch a descriptor's bytes — an S3 download when offloaded — and undo
+ * compression. Infrastructure only, no deserialization: a caller that needs to
+ * tell a transport or permission failure from bad data does this step and
+ * `loadsTyped` separately (see `history/actions/get-messages.ts`).
+ */
+export async function readPayloadBytes(
+  descriptor: PayloadDescriptor,
+  deps: CodecDeps,
+): Promise<Uint8Array> {
   const raw =
     descriptor.location === PayloadLocation.S3
       ? await requireOffloader(deps).download(descriptor.s3Key)
       : descriptor.bytes;
-  const bytes = await decompress(
-    raw,
-    descriptor.compressed,
-    deps.compression?.maxDecompressedBytes,
-  );
-  return deps.serde.loadsTyped(descriptor.serdeType, bytes);
+  return decompress(raw, descriptor.compressed, deps.compression?.maxDecompressedBytes);
+}
+
+/** Decode a {@link PayloadDescriptor} produced by {@link encodePayload}. */
+export async function decodePayload<T>(descriptor: PayloadDescriptor, deps: CodecDeps): Promise<T> {
+  return deps.serde.loadsTyped(descriptor.serdeType, await readPayloadBytes(descriptor, deps));
+}
+
+/**
+ * True when an offloaded object no longer exists — a lifecycle sweep removed
+ * it, or a competing overwrite deleted it between a row read and the download.
+ */
+export function isMissingObjectError(error: Error): boolean {
+  const coded = error as { code?: string; cause?: { name?: string } };
+  return coded.code === ErrorCode.S3_OFFLOAD_FAILED && coded.cause?.name === 'NoSuchKey';
+}
+
+/**
+ * True when a payload can never be read again — its object is gone or it
+ * trips the decompression guard — as opposed to a failure that may succeed on
+ * retry or after a configuration fix (throttling, network, permissions).
+ */
+export function isPermanentPayloadLoss(error: Error): boolean {
+  const coded = error as { code?: string };
+  return coded.code === ErrorCode.COMPRESSION_LIMIT || isMissingObjectError(error);
 }
