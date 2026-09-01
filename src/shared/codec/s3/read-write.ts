@@ -1,7 +1,7 @@
 import type { S3Client, ServerSideEncryption } from '@aws-sdk/client-s3';
 
 import { withRetry } from '../../dynamodb/retry';
-import { DynamoDbLangGraphError } from '../../errors/base-error';
+import { DynamoDBLangGraphError } from '../../errors/base-error';
 import { ErrorCode } from '../../errors/error-code';
 import { loadS3Sdk } from './client';
 import { RETRYABLE_S3_SIGNALS } from './retry';
@@ -34,7 +34,7 @@ export async function uploadObject(client: S3Client, params: UploadParams): Prom
       { maxAttempts: 3, retryableErrors: RETRYABLE_S3_SIGNALS },
     );
   } catch (error) {
-    throw new DynamoDbLangGraphError(
+    throw new DynamoDBLangGraphError(
       (error as Error).message,
       ErrorCode.S3_OFFLOAD_FAILED,
       { operation: 'upload', key: params.key },
@@ -62,7 +62,7 @@ export async function downloadObject(
       { maxAttempts: 3, retryableErrors: RETRYABLE_S3_SIGNALS },
     );
   } catch (error) {
-    throw new DynamoDbLangGraphError(
+    throw new DynamoDBLangGraphError(
       (error as Error).message,
       ErrorCode.S3_OFFLOAD_FAILED,
       { operation: 'download', key },

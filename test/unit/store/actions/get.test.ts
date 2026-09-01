@@ -1,7 +1,7 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { DynamoDbLangGraphError } from '../../../../src/shared/errors/base-error';
+import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { ValidationError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -94,7 +94,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
   };
 
   function s3Failure(causeName: string): Error {
-    return new DynamoDbLangGraphError(
+    return new DynamoDBLangGraphError(
       's3 failed',
       ErrorCode.S3_OFFLOAD_FAILED,
       {},

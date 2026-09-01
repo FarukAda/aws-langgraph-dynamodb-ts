@@ -1,4 +1,4 @@
-import { DynamoDbLangGraphError, ErrorContext, isDynamoDbLangGraphError } from './base-error';
+import { DynamoDBLangGraphError, ErrorContext, isDynamoDBLangGraphError } from './base-error';
 import { ErrorCode } from './error-code';
 
 /**
@@ -15,7 +15,7 @@ export function toError(value: Error): Error {
 }
 
 /**
- * Wrap a raw error in a coded {@link DynamoDbLangGraphError} with structured
+ * Wrap a raw error in a coded {@link DynamoDBLangGraphError} with structured
  * context, preserving the original as `cause`. Already-coded errors are
  * returned unchanged so codes assigned closer to the failure win.
  */
@@ -23,10 +23,10 @@ export function wrapError(
   cause: Error,
   code: ErrorCode,
   context?: ErrorContext,
-): DynamoDbLangGraphError {
+): DynamoDBLangGraphError {
   const normalized = toError(cause);
-  if (isDynamoDbLangGraphError(normalized)) {
+  if (isDynamoDBLangGraphError(normalized)) {
     return normalized;
   }
-  return new DynamoDbLangGraphError(normalized.message, code, context ?? {}, normalized);
+  return new DynamoDBLangGraphError(normalized.message, code, context ?? {}, normalized);
 }

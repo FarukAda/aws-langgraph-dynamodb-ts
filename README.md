@@ -221,15 +221,15 @@ When `keyPrefix` is omitted, each adapter defaults to its own sub-prefix under t
 
 ## Error handling
 
-All errors thrown by the library extend `DynamoDbLangGraphError` and carry a stable `code` from the `ErrorCode` enum plus a native `cause` chain. Branch on `code`:
+All errors thrown by the library extend `DynamoDBLangGraphError` and carry a stable `code` from the `ErrorCode` enum plus a native `cause` chain. Branch on `code`:
 
 ```typescript
-import { ErrorCode, DynamoDbLangGraphError } from '@farukada/aws-langgraph-dynamodb-ts';
+import { ErrorCode, DynamoDBLangGraphError } from '@farukada/aws-langgraph-dynamodb-ts';
 
 try {
   await store.put([''], 'k', { v: 1 });
 } catch (error) {
-  if (error instanceof DynamoDbLangGraphError && error.code === ErrorCode.VALIDATION) {
+  if (error instanceof DynamoDBLangGraphError && error.code === ErrorCode.VALIDATION) {
     // bad input
   }
 }
@@ -378,7 +378,7 @@ unaffected.
 - **One `ttl` option** — `{ days }` or `{ seconds }` — replaces `ttlDays`/`ttlSeconds`.
 - **S3 config option renamed** `s3OffloadConfig` → `s3`.
 - **Per-instance `logger` option** replaces the global `setGlobalLogger` singleton; default logging is now silent.
-- **Unified error model** — all errors extend `DynamoDbLangGraphError` with an `ErrorCode`.
+- **Unified error model** — all errors extend `DynamoDBLangGraphError` with an `ErrorCode`.
 
 ## Production notes
 

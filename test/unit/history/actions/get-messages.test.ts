@@ -6,7 +6,7 @@ import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { DynamoDbLangGraphError } from '../../../../src/shared/errors/base-error';
+import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -40,7 +40,7 @@ function offloaderStub(download: () => Promise<Uint8Array>) {
 
 /** The error shape `downloadObject` raises: S3_OFFLOAD_FAILED wrapping the SDK error. */
 function s3Failure(causeName: string): Error {
-  return new DynamoDbLangGraphError(
+  return new DynamoDBLangGraphError(
     's3 failed',
     ErrorCode.S3_OFFLOAD_FAILED,
     {},
@@ -158,7 +158,7 @@ describe('getMessages', () => {
       expect(messages.map((m) => m.content)).toEqual(['inline']);
       expect(error).toHaveBeenCalledWith(
         expect.stringContaining('corrupt'),
-        expect.objectContaining({ sortKey: 'HISTORY#MSG#01A', reason: 'DynamoDbLangGraphError' }),
+        expect.objectContaining({ sortKey: 'HISTORY#MSG#01A', reason: 'DynamoDBLangGraphError' }),
       );
     });
 

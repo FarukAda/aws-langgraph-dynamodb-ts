@@ -4,13 +4,14 @@ import {
   BatchWriteIncompleteError,
   CompensationFailedError,
   ConflictError,
-  DynamoDbLangGraphError,
   DynamoDBChatMessageHistory,
   DynamoDBFactory,
+  DynamoDBLangGraphError,
   DynamoDBSaver,
   DynamoDBSessionChatMessageHistory,
   DynamoDBStore,
   ErrorCode,
+  isDynamoDBLangGraphError,
   ResultTruncatedError,
   RetryExhaustedError,
   ValidationError,
@@ -30,16 +31,28 @@ describe('public entry point', () => {
   it('exports the full error model', () => {
     expect(ErrorCode.VALIDATION).toBe('VALIDATION');
     for (const ErrorClass of [ValidationError, ConflictError, RetryExhaustedError, AbortError]) {
-      expect(new ErrorClass('x')).toBeInstanceOf(DynamoDbLangGraphError);
+      expect(new ErrorClass('x')).toBeInstanceOf(DynamoDBLangGraphError);
     }
-    expect(new BatchWriteIncompleteError(1, [], 3)).toBeInstanceOf(DynamoDbLangGraphError);
+    expect(new BatchWriteIncompleteError(1, [], 3)).toBeInstanceOf(DynamoDBLangGraphError);
     expect(new BatchWriteAllIncompleteError(1, 2, [new Error('x')], 25)).toBeInstanceOf(
-      DynamoDbLangGraphError,
+      DynamoDBLangGraphError,
     );
-    expect(new ResultTruncatedError('maxItems', 1)).toBeInstanceOf(DynamoDbLangGraphError);
+    expect(new ResultTruncatedError('maxItems', 1)).toBeInstanceOf(DynamoDBLangGraphError);
     expect(new CompensationFailedError(new Error('a'), new Error('b'))).toBeInstanceOf(
-      DynamoDbLangGraphError,
+      DynamoDBLangGraphError,
     );
+  });
+
+  it('names the base error with the same DynamoDB casing as every other export (CORE-15)', () => {
+    expect(new DynamoDBLangGraphError('m', ErrorCode.VALIDATION).name).toBe(
+      'DynamoDBLangGraphError',
+    );
+    expect(new ValidationError('x').name).toBe('ValidationError');
+  });
+
+  it('exports the brand guard so consumers can detect library errors across package copies', () => {
+    expect(isDynamoDBLangGraphError(new ValidationError('x'))).toBe(true);
+    expect(isDynamoDBLangGraphError(new Error('x'))).toBe(false);
   });
 
   it('exports the logging redaction helpers', () => {

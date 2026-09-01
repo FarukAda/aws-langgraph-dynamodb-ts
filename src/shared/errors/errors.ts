@@ -1,9 +1,9 @@
 import type { WriteRequest } from '../dynamodb/types';
-import { DynamoDbLangGraphError } from './base-error';
+import { DynamoDBLangGraphError } from './base-error';
 import { ErrorCode } from './error-code';
 
 /** Input failed a validation rule before any AWS call was made. */
-export class ValidationError extends DynamoDbLangGraphError {
+export class ValidationError extends DynamoDBLangGraphError {
   constructor(message: string, field?: string) {
     super(message, ErrorCode.VALIDATION, field === undefined ? {} : { operation: field });
     this.name = 'ValidationError';
@@ -11,7 +11,7 @@ export class ValidationError extends DynamoDbLangGraphError {
 }
 
 /** A conditional write failed because the precondition no longer holds. */
-export class ConflictError extends DynamoDbLangGraphError {
+export class ConflictError extends DynamoDBLangGraphError {
   constructor(message: string, cause?: Error) {
     super(message, ErrorCode.CONDITION_CONFLICT, {}, cause);
     this.name = 'ConflictError';
@@ -19,7 +19,7 @@ export class ConflictError extends DynamoDbLangGraphError {
 }
 
 /** A retried operation exhausted its attempt budget. */
-export class RetryExhaustedError extends DynamoDbLangGraphError {
+export class RetryExhaustedError extends DynamoDBLangGraphError {
   constructor(message: string, attempts?: number, cause?: Error) {
     super(message, ErrorCode.RETRY_EXHAUSTED, attempts === undefined ? {} : { attempts }, cause);
     this.name = 'RetryExhaustedError';
@@ -31,7 +31,7 @@ export class RetryExhaustedError extends DynamoDbLangGraphError {
  * data remained, so the result would have been silently truncated. Narrow the
  * query (filter/prefix) or raise the cap rather than trusting a partial result.
  */
-export class ResultTruncatedError extends DynamoDbLangGraphError {
+export class ResultTruncatedError extends DynamoDBLangGraphError {
   constructor(cap: string, limit: number) {
     super(
       `paginated read truncated at the ${cap} cap (${limit}) with more data remaining`,
@@ -43,7 +43,7 @@ export class ResultTruncatedError extends DynamoDbLangGraphError {
 }
 
 /** An operation was cancelled via its AbortSignal. */
-export class AbortError extends DynamoDbLangGraphError {
+export class AbortError extends DynamoDBLangGraphError {
   constructor(message = 'Operation aborted') {
     super(message, ErrorCode.ABORTED);
     this.name = 'AbortError';
@@ -58,7 +58,7 @@ export class AbortError extends DynamoDbLangGraphError {
  * non-UnprocessedItems error from a retry round) rather than a clean exhaustion
  * of the UnprocessedItems retry budget.
  */
-export class BatchWriteIncompleteError extends DynamoDbLangGraphError {
+export class BatchWriteIncompleteError extends DynamoDBLangGraphError {
   readonly succeededCount: number;
   readonly unprocessed: WriteRequest[];
 
@@ -87,7 +87,7 @@ export class BatchWriteIncompleteError extends DynamoDbLangGraphError {
  * chunk's own partial drain), more precise than `succeededChunks` alone
  * when a chunk partially drains before exhausting its retries.
  */
-export class BatchWriteAllIncompleteError extends DynamoDbLangGraphError {
+export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
   readonly succeededChunks: number;
   readonly totalChunks: number;
   readonly failedChunks: Error[];
@@ -120,7 +120,7 @@ export class BatchWriteAllIncompleteError extends DynamoDbLangGraphError {
  * `cause` and the rollback failure as {@link rollbackError}; the session's
  * `messageCount` may have drifted — repair it with `reconcileMessageCount`.
  */
-export class CompensationFailedError extends DynamoDbLangGraphError {
+export class CompensationFailedError extends DynamoDBLangGraphError {
   readonly rollbackError: Error;
 
   constructor(cause: Error, rollbackError: Error) {

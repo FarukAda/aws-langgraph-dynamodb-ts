@@ -13,23 +13,23 @@ export interface ErrorContext {
 /**
  * Base class for every error this library throws. Carries a branchable
  * {@link ErrorCode}, structured {@link ErrorContext}, and a native `cause`
- * chain. Detected via {@link isDynamoDbLangGraphError} (a symbol brand) rather
+ * chain. Detected via {@link isDynamoDBLangGraphError} (a symbol brand) rather
  * than `instanceof`, which is banned repo-wide.
  */
-export class DynamoDbLangGraphError extends Error {
+export class DynamoDBLangGraphError extends Error {
   readonly code: ErrorCode;
   readonly context: ErrorContext;
 
   constructor(message: string, code: ErrorCode, context: ErrorContext = {}, cause?: Error) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = 'DynamoDbLangGraphError';
+    this.name = 'DynamoDBLangGraphError';
     this.code = code;
     this.context = context;
     Object.defineProperty(this, ERROR_BRAND, { value: true, enumerable: false });
   }
 }
 
-/** True when `value` is a {@link DynamoDbLangGraphError}, detected by brand. */
-export function isDynamoDbLangGraphError(value: Error): value is DynamoDbLangGraphError {
+/** True when `value` is a {@link DynamoDBLangGraphError}, detected by brand. */
+export function isDynamoDBLangGraphError(value: Error): value is DynamoDBLangGraphError {
   return ERROR_BRAND in value;
 }

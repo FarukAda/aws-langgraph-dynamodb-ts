@@ -14,7 +14,7 @@ export type {
 export { DynamoDBFactory } from './factory/factory';
 export type { CreateAllOptions, CreatedAdapters, FactoryBaseOptions } from './factory/factory';
 
-export { DynamoDbLangGraphError } from './shared/errors/base-error';
+export { DynamoDBLangGraphError, isDynamoDBLangGraphError } from './shared/errors/base-error';
 export type { ErrorContext } from './shared/errors/base-error';
 export { ErrorCode } from './shared/errors/error-code';
 export {

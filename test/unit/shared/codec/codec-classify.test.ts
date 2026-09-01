@@ -6,7 +6,7 @@ import {
   PayloadLocation,
   readPayloadBytes,
 } from '../../../../src/shared/codec/codec';
-import { DynamoDbLangGraphError } from '../../../../src/shared/errors/base-error';
+import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { RetryExhaustedError, ValidationError } from '../../../../src/shared/errors/errors';
 
@@ -19,8 +19,8 @@ const serde = {
     JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data)),
 };
 
-function s3Failure(causeName: string): DynamoDbLangGraphError {
-  return new DynamoDbLangGraphError(
+function s3Failure(causeName: string): DynamoDBLangGraphError {
+  return new DynamoDBLangGraphError(
     's3 failed',
     ErrorCode.S3_OFFLOAD_FAILED,
     {},
@@ -76,7 +76,7 @@ describe('isMissingObjectError', () => {
 
 describe('isPermanentPayloadLoss', () => {
   it('is true for a decompression-guard trip and a missing object, false otherwise', () => {
-    const bomb = new DynamoDbLangGraphError('bomb', ErrorCode.COMPRESSION_LIMIT);
+    const bomb = new DynamoDBLangGraphError('bomb', ErrorCode.COMPRESSION_LIMIT);
     expect(isPermanentPayloadLoss(bomb)).toBe(true);
     expect(isPermanentPayloadLoss(s3Failure('NoSuchKey'))).toBe(true);
     expect(isPermanentPayloadLoss(s3Failure('ServiceUnavailable'))).toBe(false);
