@@ -8,6 +8,7 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { stubEmbeddings } from '../../../shared/helpers/embeddings-stub';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -91,7 +92,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.1, 0.2]) };
+    const embeddings = stubEmbeddings([0.1, 0.2]);
     await putItem(context(client, { index: { dims: 2, embeddings: embeddings as never } }), op({}));
     expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toEqual([0.1, 0.2]);
   });
@@ -100,12 +101,12 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn() };
+    const embeddings = { embedQuery: jest.fn(), embedDocuments: jest.fn() };
     await putItem(
       context(client, { index: { dims: 2, embeddings: embeddings as never } }),
       op({ index: false }),
     );
-    expect(embeddings.embedQuery).not.toHaveBeenCalled();
+    expect(embeddings.embedDocuments).not.toHaveBeenCalled();
     expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toBeUndefined();
   });
 
@@ -113,12 +114,12 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([1, 2]) };
+    const embeddings = stubEmbeddings([1, 2]);
     await putItem(
       context(client, { index: { dims: 2, embeddings: embeddings as never } }),
       op({ value: { name: 'Faruk', bio: 'builds things' }, index: ['bio'] }),
     );
-    expect(embeddings.embedQuery).toHaveBeenCalledWith('builds things');
+    expect(embeddings.embedDocuments).toHaveBeenCalledWith(['builds things']);
   });
 
   it('rethrows a write failure without cleanup when no offloader is set', async () => {
@@ -290,7 +291,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5, 0.6]) };
+    const embeddings = stubEmbeddings([0.5, 0.6]);
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await putItem(
       context(client, {
@@ -307,7 +308,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { createdAt: '2000-01-01T00:00:00.000Z' } });
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn() };
+    const embeddings = stubEmbeddings([0.5, 0.6]);
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await putItem(
       context(client, {
@@ -332,7 +333,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5, 0.6]) };
+    const embeddings = stubEmbeddings([0.5, 0.6]);
     const vectorBackend = {
       upsert: jest.fn().mockRejectedValue(new Error('backend down')),
       query: jest.fn(),

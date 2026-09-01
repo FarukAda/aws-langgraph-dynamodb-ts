@@ -49,20 +49,24 @@ export interface StoreSetup {
  * and the failure then surfaced as a raw `TypeError` deep inside the first
  * `put()`/`search()` rather than this library's typed error at construction.
  *
- * Only `embeddings` is checked. `dims` is part of the upstream type but is
- * never read anywhere in this package, so rejecting a configuration over it
- * would break working callers for no benefit.
+ * Both methods are required: documents are embedded with `embedDocuments()`
+ * on `put()` and queries with `embedQuery()` on `search()`. `dims` is only
+ * compared against returned vectors when it is a positive integer, so a
+ * configuration that omits it keeps working.
  */
 function assertUsableIndex(index?: IndexConfig): void {
   if (!index) return;
   const embeddings: Partial<Embeddings> | undefined = index.embeddings;
-  if (typeof embeddings?.embedQuery !== 'function') {
-    throw new ValidationError(
-      '`index.embeddings` must be an Embeddings implementation exposing embedQuery(); ' +
-        'without one no embedding can be computed for put() or search()',
-      'index',
-    );
-  }
+  const missing = (['embedQuery', 'embedDocuments'] as const).find(
+    (method) => typeof embeddings?.[method] !== 'function',
+  );
+  if (missing === undefined) return;
+  throw new ValidationError(
+    `\`index.embeddings\` must be an Embeddings implementation exposing ${missing}(); ` +
+      'documents are embedded with embedDocuments() on put() and queries with embedQuery() ' +
+      'on search()',
+    'index',
+  );
 }
 
 /**

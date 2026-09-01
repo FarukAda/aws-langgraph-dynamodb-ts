@@ -45,7 +45,10 @@ describe('reconcileVectorIndex', () => {
 
   it('re-pushes live embeddings and prunes orphaned vectors', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5]) };
+    const embeddings = {
+      embedQuery: jest.fn(),
+      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+    };
     const backend = {
       upsert: jest.fn().mockResolvedValue(undefined),
       delete: jest.fn().mockResolvedValue(undefined),
@@ -88,7 +91,10 @@ describe('reconcileVectorIndex', () => {
 
   it('passes maxScanItems through to the underlying paginated query', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5]) };
+    const embeddings = {
+      embedQuery: jest.fn(),
+      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+    };
     const backend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
     const ctx = context(client, {
       index: { dims: 1, embeddings: embeddings as never },

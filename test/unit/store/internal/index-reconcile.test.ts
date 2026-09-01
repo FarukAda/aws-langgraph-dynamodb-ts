@@ -131,7 +131,10 @@ describe('pruneOrphans', () => {
 describe('collectReconcileTargets', () => {
   it('enumerates canonical items under the prefix and recomputes each embedding', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5]) };
+    const embeddings = {
+      embedQuery: jest.fn(),
+      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+    };
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
     const record = await buildStoreItem(
       ctx,
@@ -145,12 +148,16 @@ describe('collectReconcileTargets', () => {
     const targets = await collectReconcileTargets(ctx, ['users', 'u1']);
 
     expect(targets).toEqual([{ namespace: ['users', 'u1'], key: 'a', embedding: [0.5] }]);
-    expect(embeddings.embedQuery).toHaveBeenCalledTimes(1);
+    expect(embeddings.embedDocuments).toHaveBeenCalledTimes(1);
+    expect(embeddings.embedQuery).not.toHaveBeenCalled();
   });
 
   it('skips records that do not match the prefix element-wise', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5]) };
+    const embeddings = {
+      embedQuery: jest.fn(),
+      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+    };
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
     const match = await buildStoreItem(
       ctx,

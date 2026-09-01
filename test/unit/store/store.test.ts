@@ -77,7 +77,13 @@ describe('DynamoDBStore', () => {
     const store = new DynamoDBStore({
       tableName: 'store',
       client,
-      index: { dims: 1, embeddings: { embedQuery: jest.fn().mockResolvedValue([1]) } as never },
+      index: {
+        dims: 1,
+        embeddings: {
+          embedQuery: jest.fn(),
+          embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [1])),
+        } as never,
+      },
       vectorBackend: backend,
     });
     const result = await store.reconcileVectorIndex(['users', 'u1']);

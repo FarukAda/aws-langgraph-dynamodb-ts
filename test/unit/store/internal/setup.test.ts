@@ -25,7 +25,10 @@ describe('setUpStore', () => {
     const setup = setUpStore({
       tableName: 'store',
       client: { send: jest.fn() } as never,
-      index: { dims: 3, embeddings: { embedQuery: async () => [0] } as never },
+      index: {
+        dims: 3,
+        embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
+      },
       vectorBackend: vectorBackend as never,
       maxSearchCandidates: 50,
     });
@@ -50,7 +53,10 @@ describe('setUpStore', () => {
   });
 
   it('does not own an injected client and carries index/compression/ttl', () => {
-    const index = { dims: 3, embeddings: { embedQuery: async () => [0] } as never };
+    const index = {
+      dims: 3,
+      embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
+    };
     const setup = setUpStore({
       tableName: 'store',
       client: { send: jest.fn() } as never,
@@ -118,8 +124,15 @@ describe('index configuration validation (F6)', () => {
     );
   });
 
+  it('rejects an index whose embeddings cannot embedDocuments', () => {
+    const embeddings = { embedQuery: async () => [0] };
+    expect(() => setUpStore({ ...base, index: { dims: 1, embeddings } } as never)).toThrow(
+      /embedDocuments/,
+    );
+  });
+
   it('accepts an index that can embed, and does not require dims to be read', () => {
-    const embeddings = { embedQuery: async () => [1, 2, 3] };
+    const embeddings = { embedQuery: async () => [1, 2, 3], embedDocuments: async () => [[1]] };
     expect(() => setUpStore({ ...base, index: { dims: 3, embeddings } } as never)).not.toThrow();
   });
 
