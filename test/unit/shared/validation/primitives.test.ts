@@ -2,7 +2,6 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
   assertNoControlChars,
   assertNoSeparator,
-  validateArrayMaxDepth,
   validateInteger,
   validateNonEmptyArray,
   validateNonEmptyString,
@@ -61,17 +60,3 @@ describe('assertNoSeparator', () => {
   });
 });
 
-describe('validateArrayMaxDepth', () => {
-  it('rejects nesting beyond the max depth', () => {
-    expect(() => validateArrayMaxDepth([[[1]]], 'v', 2)).toThrow(/depth/);
-    expect(() => validateArrayMaxDepth([[1]], 'v', 2)).not.toThrow();
-  });
-
-  it('accepts arrays exactly at the max depth', () => {
-    expect(() => validateArrayMaxDepth([[1]], 'v', 2)).not.toThrow();
-  });
-
-  it('short-circuits and rejects arrays nested well beyond the max depth', () => {
-    expect(() => validateArrayMaxDepth([[[[1]]]], 'v', 2)).toThrow(/depth/);
-  });
-});

@@ -1,5 +1,4 @@
 import { ValidationError } from '../errors/errors';
-import type { Redactable } from '../logging/redaction-walk';
 
 /** Throw {@link ValidationError} unless `value` is a non-empty string. */
 export function validateNonEmptyString(value: string, field: string): void {
@@ -71,20 +70,4 @@ export function validateIdentifier(value: string, separator: string, field: stri
   validateNonEmptyString(value, field);
   assertNoSeparator(value, separator, field);
   assertNoControlChars(value, field);
-}
-
-/** Throw {@link ValidationError} if nested-array depth exceeds `maxDepth`. */
-export function validateArrayMaxDepth(value: Redactable[], field: string, maxDepth: number): void {
-  const depthOf = (node: Redactable, depth: number): number => {
-    if (!Array.isArray(node)) {
-      return depth;
-    }
-    if (depth > maxDepth) {
-      return depth;
-    }
-    return node.reduce<number>((max, child) => Math.max(max, depthOf(child, depth + 1)), depth);
-  };
-  if (depthOf(value, 0) > maxDepth) {
-    throw new ValidationError(`${field} exceeds maximum array depth of ${maxDepth}`, field);
-  }
 }
