@@ -16,11 +16,18 @@ export interface RankCandidate {
  * Rank candidates by cosine similarity to `queryVector`, descending. Throws a
  * {@link ValidationError} when the candidate count exceeds `maxCandidates`
  * (steer large corpora to an external VectorBackend).
+ *
+ * A stored embedding whose length differs from the query vector's cannot be
+ * scored — it was written by a different embeddings model — and is ranked
+ * last with an undefined score. `onDimensionMismatch` is invoked once with
+ * how many candidates that affected, so the caller can say so instead of
+ * silently returning a ranking that quietly omits them.
  */
 export function rankInMemory(
   candidates: RankCandidate[],
   queryVector: number[],
   maxCandidates: number,
+  onDimensionMismatch?: (count: number) => void,
 ): SearchItem[] {
   if (candidates.length > maxCandidates) {
     throw new ValidationError(
@@ -29,6 +36,10 @@ export function rankInMemory(
       'maxSearchCandidates',
     );
   }
+  const mismatched = candidates.filter(
+    ({ embedding }) => embedding !== undefined && embedding.length !== queryVector.length,
+  ).length;
+  if (mismatched > 0) onDimensionMismatch?.(mismatched);
   return candidates
     .map(({ item, embedding }) => ({
       ...item,

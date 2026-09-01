@@ -11,6 +11,7 @@ import type { VectorBackend, VectorMatch } from '../vector-backend';
 import { namespaceMatchesPrefix } from './keys';
 import { toRelevanceScores } from './score-direction';
 import { passesFilter } from './search-filter';
+import { assertVectorDims } from './semantic-search';
 import type { StoreContext } from './setup';
 
 /**
@@ -64,6 +65,7 @@ export async function searchViaBackend(
   limit: number,
 ): Promise<SearchItem[]> {
   const queryVector = await index.embeddings.embedQuery(op.query as string);
+  assertVectorDims(index, queryVector, 'query');
   const need = offset + limit;
   if (need > context.maxSearchCandidates) {
     throw new ValidationError(

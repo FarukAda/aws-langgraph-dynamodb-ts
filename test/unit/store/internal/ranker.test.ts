@@ -34,6 +34,24 @@ describe('rankInMemory', () => {
     expect(ranked.every((r) => r.score === undefined)).toBe(true);
   });
 
+  it('reports how many candidates carried a dimension-mismatched embedding', () => {
+    const onMismatch = jest.fn();
+    rankInMemory(
+      [candidate('stale', [1, 0, 0]), candidate('ok', [1, 0]), candidate('none')],
+      [1, 0],
+      10,
+      onMismatch,
+    );
+    expect(onMismatch).toHaveBeenCalledTimes(1);
+    expect(onMismatch).toHaveBeenCalledWith(1);
+  });
+
+  it('does not report when every stored embedding matches the query dimension', () => {
+    const onMismatch = jest.fn();
+    rankInMemory([candidate('ok', [1, 0]), candidate('none')], [1, 0], 10, onMismatch);
+    expect(onMismatch).not.toHaveBeenCalled();
+  });
+
   it('throws a ValidationError when the candidate set exceeds the cap', () => {
     try {
       rankInMemory([candidate('a'), candidate('b')], [1, 0], 1);

@@ -8,6 +8,7 @@ import { namespaceMatchesPrefix } from '../internal/keys';
 import { scopedQuery, storeScan } from '../internal/query';
 import { type RankCandidate, rankInMemory } from '../internal/ranker';
 import { passesFilter } from '../internal/search-filter';
+import { assertVectorDims } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
 import { validatePaging } from '../internal/validation';
 
@@ -70,8 +71,13 @@ export async function searchItems(
     return candidates.map(({ item }) => ({ ...item })).slice(offset, offset + limit);
   }
   const queryVector = await context.index.embeddings.embedQuery(op.query);
-  return rankInMemory(candidates, queryVector, context.maxSearchCandidates).slice(
-    offset,
-    offset + limit,
+  assertVectorDims(context.index, queryVector, 'query');
+  const ranked = rankInMemory(candidates, queryVector, context.maxSearchCandidates, (count) =>
+    context.logger.warn(
+      'search: some candidates carry an embedding of a different dimension than the query and ' +
+        'were ranked unscored; re-embed them with reconcileVectorIndex or a re-put',
+      { namespacePrefix: op.namespacePrefix, count },
+    ),
   );
+  return ranked.slice(offset, offset + limit);
 }
