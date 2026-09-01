@@ -6,6 +6,7 @@ import {
   type SearchItem,
 } from '@langchain/langgraph-checkpoint';
 
+import { guardPublic } from '../shared/errors/boundary';
 import { resolveTtlDaysCeil } from '../shared/validation/ttl';
 import { getItem } from './actions/get';
 import { listNamespaces } from './actions/list-namespaces';
@@ -45,12 +46,19 @@ export class DynamoDBStore extends BaseStore {
     return listNamespaces(this.context, operation);
   }
 
+  /**
+   * Execute operations in order. The library's error boundary for every
+   * `BaseStore` method (`get`/`put`/`delete`/`search`/`listNamespaces` all
+   * funnel through here): a raw AWS SDK error surfaces as an `UpstreamError`.
+   */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
-    const results: SingleResult[] = [];
-    for (const operation of operations) {
-      results.push(await this.dispatch(operation));
-    }
-    return results as OperationResults<Op>;
+    return guardPublic('store.batch', async () => {
+      const results: SingleResult[] = [];
+      for (const operation of operations) {
+        results.push(await this.dispatch(operation));
+      }
+      return results as OperationResults<Op>;
+    });
   }
 
   /**
@@ -58,7 +66,9 @@ export class DynamoDBStore extends BaseStore {
    * `namespacePrefix`. A maintenance tool; see {@link reconcileVectorIndex}.
    */
   reconcileVectorIndex(namespacePrefix: string[]): Promise<VectorReconcileResult> {
-    return reconcileVectorIndexAction(this.context, namespacePrefix);
+    return guardPublic('store.reconcileVectorIndex', () =>
+      reconcileVectorIndexAction(this.context, namespacePrefix),
+    );
   }
 
   /** Release owned resources (the underlying client and any S3 client). */
@@ -68,15 +78,18 @@ export class DynamoDBStore extends BaseStore {
   }
 
   /**
-   * Best-effort provision an S3 lifecycle expiration rule matching the
-   * configured TTL, so offloaded objects don't outlive their DynamoDB item
-   * forever. No-ops when S3 offload or TTL isn't configured. Requires the
-   * `s3:GetLifecycleConfiguration`/`s3:PutLifecycleConfiguration` bucket-level
-   * permissions (broader than the object-level CRUD the rest of S3 offload
-   * needs) — call this once during deployment/provisioning, not per-request.
+   * Provision an S3 lifecycle expiration rule matching the configured TTL, so
+   * offloaded objects don't outlive their DynamoDB item forever. No-ops when
+   * S3 offload or TTL isn't configured; throws when the bucket cannot be read
+   * or written. Requires the `s3:GetLifecycleConfiguration` /
+   * `s3:PutLifecycleConfiguration` bucket-level permissions (broader than the
+   * object-level CRUD the rest of S3 offload needs) — call this once during
+   * deployment/provisioning, not per-request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    if (!this.context.offloader || !this.context.ttl) return;
-    await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
+    return guardPublic('store.ensureS3LifecycleRule', async () => {
+      if (!this.context.offloader || !this.context.ttl) return;
+      await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
+    });
   }
 }

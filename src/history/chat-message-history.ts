@@ -1,5 +1,6 @@
 import type { BaseMessage } from '@langchain/core/messages';
 
+import { guardPublic } from '../shared/errors/boundary';
 import { resolveTtlDaysCeil } from '../shared/validation/ttl';
 import { addMessages as addMessagesAction } from './actions/add-messages';
 import { clearSession } from './actions/clear';
@@ -15,7 +16,8 @@ import type { DynamoDBChatMessageHistoryOptions, SessionMetadata } from './types
  * (ordered by a monotonic ULID, compressed / S3-offloaded as needed) alongside a
  * per-session metadata item; every message in a session shares one uniform TTL.
  * Appends are O(1) and lock-free. Use {@link forSession} to get a single-session
- * LangChain adapter.
+ * LangChain adapter. Every public method is the library's error boundary — a
+ * raw AWS SDK error escaping an action surfaces as an `UpstreamError`.
  */
 export class DynamoDBChatMessageHistory {
   private readonly context: HistoryContext;
@@ -31,22 +33,26 @@ export class DynamoDBChatMessageHistory {
 
   /** Get a session's messages in order. */
   getMessages(sessionId: string): Promise<BaseMessage[]> {
-    return getMessagesAction(this.context, sessionId);
+    return guardPublic('history.getMessages', () => getMessagesAction(this.context, sessionId));
   }
 
   /** Append messages to a session. */
   addMessages(sessionId: string, messages: BaseMessage[]): Promise<void> {
-    return addMessagesAction(this.context, sessionId, messages);
+    return guardPublic('history.addMessages', () =>
+      addMessagesAction(this.context, sessionId, messages),
+    );
   }
 
   /** Append a single message to a session. */
   addMessage(sessionId: string, message: BaseMessage): Promise<void> {
-    return addMessagesAction(this.context, sessionId, [message]);
+    return guardPublic('history.addMessage', () =>
+      addMessagesAction(this.context, sessionId, [message]),
+    );
   }
 
   /** Delete a session and any offloaded payload. */
   clear(sessionId: string): Promise<void> {
-    return clearSession(this.context, sessionId);
+    return guardPublic('history.clear', () => clearSession(this.context, sessionId));
   }
 
   /** List all sessions as metadata summaries. */
@@ -54,7 +60,7 @@ export class DynamoDBChatMessageHistory {
     maxIterations?: number;
     maxItems?: number;
   }): Promise<SessionMetadata[]> {
-    return listSessionsAction(this.context, options);
+    return guardPublic('history.listSessions', () => listSessionsAction(this.context, options));
   }
 
   /**
@@ -62,7 +68,9 @@ export class DynamoDBChatMessageHistory {
    * A maintenance tool for external corruption; run it when the session is idle.
    */
   reconcileMessageCount(sessionId: string): Promise<number> {
-    return reconcileMessageCountAction(this.context, sessionId);
+    return guardPublic('history.reconcileMessageCount', () =>
+      reconcileMessageCountAction(this.context, sessionId),
+    );
   }
 
   /** Get a single-session LangChain adapter for `sessionId`. */
@@ -77,15 +85,18 @@ export class DynamoDBChatMessageHistory {
   }
 
   /**
-   * Best-effort provision an S3 lifecycle expiration rule matching the
-   * configured TTL, so offloaded objects don't outlive their DynamoDB item
-   * forever. No-ops when S3 offload or TTL isn't configured. Requires the
-   * `s3:GetLifecycleConfiguration`/`s3:PutLifecycleConfiguration` bucket-level
-   * permissions (broader than the object-level CRUD the rest of S3 offload
-   * needs) — call this once during deployment/provisioning, not per-request.
+   * Provision an S3 lifecycle expiration rule matching the configured TTL, so
+   * offloaded objects don't outlive their DynamoDB item forever. No-ops when
+   * S3 offload or TTL isn't configured; throws when the bucket cannot be read
+   * or written. Requires the `s3:GetLifecycleConfiguration` /
+   * `s3:PutLifecycleConfiguration` bucket-level permissions (broader than the
+   * object-level CRUD the rest of S3 offload needs) — call this once during
+   * deployment/provisioning, not per-request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    if (!this.context.offloader || !this.context.ttl) return;
-    await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
+    return guardPublic('history.ensureS3LifecycleRule', async () => {
+      if (!this.context.offloader || !this.context.ttl) return;
+      await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
+    });
   }
 }

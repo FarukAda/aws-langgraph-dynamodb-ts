@@ -14,6 +14,7 @@ import {
   isDynamoDBLangGraphError,
   ResultTruncatedError,
   RetryExhaustedError,
+  UpstreamError,
   ValidationError,
   redactLogger,
   redactSecrets,
@@ -41,6 +42,8 @@ describe('public entry point', () => {
     expect(new CompensationFailedError(new Error('a'), new Error('b'))).toBeInstanceOf(
       DynamoDBLangGraphError,
     );
+    expect(new UpstreamError(new Error('sdk'), 'op')).toBeInstanceOf(DynamoDBLangGraphError);
+    expect(ErrorCode.UPSTREAM).toBe('UPSTREAM');
   });
 
   it('names the base error with the same DynamoDB casing as every other export (CORE-15)', () => {

@@ -1,6 +1,3 @@
-import { DynamoDBLangGraphError, ErrorContext, isDynamoDBLangGraphError } from './base-error';
-import { ErrorCode } from './error-code';
-
 /**
  * Normalize a caught value (TypeScript types catch clauses as the implicit
  * unknown) into an `Error`. Error-shaped values pass through; anything else is
@@ -12,21 +9,4 @@ export function toError(value: Error): Error {
     return value;
   }
   return new Error(typeof value === 'string' ? value : JSON.stringify(value));
-}
-
-/**
- * Wrap a raw error in a coded {@link DynamoDBLangGraphError} with structured
- * context, preserving the original as `cause`. Already-coded errors are
- * returned unchanged so codes assigned closer to the failure win.
- */
-export function wrapError(
-  cause: Error,
-  code: ErrorCode,
-  context?: ErrorContext,
-): DynamoDBLangGraphError {
-  const normalized = toError(cause);
-  if (isDynamoDBLangGraphError(normalized)) {
-    return normalized;
-  }
-  return new DynamoDBLangGraphError(normalized.message, code, context ?? {}, normalized);
 }

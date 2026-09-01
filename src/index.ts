@@ -27,6 +27,7 @@ export {
   RetryExhaustedError,
   ValidationError,
 } from './shared/errors/errors';
+export { UpstreamError } from './shared/errors/upstream-error';
 
 export type { Logger, LogArgument } from './shared/logging/logger';
 export { redactLogger, redactSecrets } from './shared/logging/redaction';

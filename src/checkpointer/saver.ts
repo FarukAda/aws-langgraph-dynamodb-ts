@@ -8,6 +8,7 @@ import {
   type PendingWrite,
 } from '@langchain/langgraph-checkpoint';
 
+import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import { resolveTtlDaysCeil } from '../shared/validation/ttl';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
 import { getCheckpointTuple } from './actions/get-tuple';
@@ -20,6 +21,8 @@ import type { DynamoDBSaverOptions } from './types';
 /**
  * DynamoDB-backed LangGraph checkpoint saver. A thin orchestrator: it resolves
  * its collaborators once and delegates every operation to a focused action.
+ * Every public method is the library's error boundary — a raw AWS SDK error
+ * escaping an action surfaces as an `UpstreamError`.
  */
 export class DynamoDBSaver extends BaseCheckpointSaver {
   private readonly context: CheckpointerContext;
@@ -35,11 +38,11 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   }
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-    return getCheckpointTuple(this.context, config);
+    return guardPublic('saver.getTuple', () => getCheckpointTuple(this.context, config));
   }
 
   list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple> {
-    return listCheckpoints(this.context, config, options);
+    return guardPublicIterable('saver.list', listCheckpoints(this.context, config, options));
   }
 
   async put(
@@ -47,15 +50,19 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata,
   ): Promise<RunnableConfig> {
-    return putCheckpoint(this.context, config, checkpoint, metadata);
+    return guardPublic('saver.put', () =>
+      putCheckpoint(this.context, config, checkpoint, metadata),
+    );
   }
 
   async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
-    return putWritesAction(this.context, config, writes, taskId);
+    return guardPublic('saver.putWrites', () =>
+      putWritesAction(this.context, config, writes, taskId),
+    );
   }
 
   async deleteThread(threadId: string): Promise<void> {
-    return deleteThreadAction(this.context, threadId);
+    return guardPublic('saver.deleteThread', () => deleteThreadAction(this.context, threadId));
   }
 
   /** Release owned resources (the underlying client and any S3 client). */
@@ -65,15 +72,18 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   }
 
   /**
-   * Best-effort provision an S3 lifecycle expiration rule matching the
-   * configured TTL, so offloaded objects don't outlive their DynamoDB item
-   * forever. No-ops when S3 offload or TTL isn't configured. Requires the
-   * `s3:GetLifecycleConfiguration`/`s3:PutLifecycleConfiguration` bucket-level
-   * permissions (broader than the object-level CRUD the rest of S3 offload
-   * needs) — call this once during deployment/provisioning, not per-request.
+   * Provision an S3 lifecycle expiration rule matching the configured TTL, so
+   * offloaded objects don't outlive their DynamoDB item forever. No-ops when
+   * S3 offload or TTL isn't configured; throws when the bucket cannot be read
+   * or written. Requires the `s3:GetLifecycleConfiguration` /
+   * `s3:PutLifecycleConfiguration` bucket-level permissions (broader than the
+   * object-level CRUD the rest of S3 offload needs) — call this once during
+   * deployment/provisioning, not per-request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    if (!this.context.offloader || !this.context.ttl) return;
-    await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
+    return guardPublic('saver.ensureS3LifecycleRule', async () => {
+      if (!this.context.offloader || !this.context.ttl) return;
+      await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
+    });
   }
 }
