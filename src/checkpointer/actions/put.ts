@@ -6,6 +6,7 @@ import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
+import { verifyCheckpointLanded } from '../internal/checkpoint-write-verify';
 import { readConfigurable } from '../internal/configurable';
 import { buildCheckpointItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
@@ -22,6 +23,12 @@ const nextPutNonce = createUlidFactory();
  * Persist a checkpoint and its metadata as a transactional pair of META and
  * PAYLOAD items, returning the config that addresses the stored checkpoint. The
  * incoming `checkpoint_id` (if any) becomes the new checkpoint's parent.
+ *
+ * On failure with S3 offload configured, the rows are read back before any
+ * upload is deleted (see {@link verifyCheckpointLanded}): a transaction that
+ * committed and lost its response is reported as success, a confirmed
+ * non-commit cleans up this call's own nonced uploads, and an unverifiable
+ * outcome leaks them rather than risk stranding a live row.
  */
 export async function putCheckpoint(
   context: CheckpointerContext,
@@ -42,6 +49,13 @@ export async function putCheckpoint(
     parentCheckpointId,
     ttlTimestamp,
   );
+  const stored: RunnableConfig = {
+    configurable: {
+      thread_id: threadId,
+      checkpoint_ns: checkpointNs,
+      checkpoint_id: checkpoint.id,
+    },
+  };
   try {
     await withDynamoDBRetry(() =>
       context.client.transactWrite({
@@ -52,7 +66,16 @@ export async function putCheckpoint(
       }),
     );
   } catch (error) {
-    if (context.offloader) {
+    if (!context.offloader) throw error;
+    const verdict = await verifyCheckpointLanded(context, meta, payload);
+    if (verdict === 'landed') {
+      context.logger.debug('put: transaction committed although its response was lost', {
+        threadId,
+        checkpointId: checkpoint.id,
+      });
+      return stored;
+    }
+    if (verdict === 'not-landed') {
       await cleanUpS3Orphans(
         context.offloader,
         collectS3Keys([meta.metadata, payload.checkpoint]),
@@ -62,11 +85,5 @@ export async function putCheckpoint(
     }
     throw error;
   }
-  return {
-    configurable: {
-      thread_id: threadId,
-      checkpoint_ns: checkpointNs,
-      checkpoint_id: checkpoint.id,
-    },
-  };
+  return stored;
 }
