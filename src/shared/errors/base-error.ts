@@ -2,11 +2,20 @@ import { ErrorCode } from './error-code';
 
 const ERROR_BRAND = Symbol.for('@farukada/aws-langgraph-dynamodb-ts/error');
 
-/** Structured, log-safe context attached to every library error. */
+/**
+ * Structured, log-safe context attached to every library error. Identifiers
+ * and counts only — never a payload or a credential.
+ */
 export interface ErrorContext {
+  /** The DynamoDB table the operation targeted, when known. */
   tableName?: string;
+  /** The public operation (`saver.put`, `store.batch`, …) or internal step that failed. */
   operation?: string;
+  /** The option, argument or cap that failed validation or was exceeded. */
+  field?: string;
+  /** The S3 object key involved, for offload failures. */
   key?: string;
+  /** Attempts made before a retry budget was exhausted. */
   attempts?: number;
 }
 

@@ -33,7 +33,13 @@ describe('error subclasses', () => {
   it('ResultTruncatedError names the cap and limit it hit', () => {
     const err = new ResultTruncatedError('maxIterations', 1000);
     expect(err.message).toMatch(/maxIterations cap \(1000\)/);
-    expect(err.context).toEqual({ operation: 'maxIterations' });
+    // The cap is the offending *field*, not the operation that was running (CORE-06).
+    expect(err.context).toEqual({ field: 'maxIterations' });
+  });
+
+  it('ValidationError reports the offending field in context.field, not as an operation', () => {
+    expect(new ValidationError('bad', 'tableName').context).toEqual({ field: 'tableName' });
+    expect(new ValidationError('bad').context).toEqual({});
   });
 
   it('BatchWriteIncompleteError keeps succeededCount and unprocessed', () => {

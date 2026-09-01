@@ -2,10 +2,10 @@ import type { WriteRequest } from '../dynamodb/types';
 import { DynamoDBLangGraphError } from './base-error';
 import { ErrorCode } from './error-code';
 
-/** Input failed a validation rule before any AWS call was made. */
+/** Input failed a validation rule before any AWS call was made; `context.field` names the input. */
 export class ValidationError extends DynamoDBLangGraphError {
   constructor(message: string, field?: string) {
-    super(message, ErrorCode.VALIDATION, field === undefined ? {} : { operation: field });
+    super(message, ErrorCode.VALIDATION, field === undefined ? {} : { field });
     this.name = 'ValidationError';
   }
 }
@@ -30,13 +30,14 @@ export class RetryExhaustedError extends DynamoDBLangGraphError {
  * A paginated read hit its runaway guard (item or iteration cap) while more
  * data remained, so the result would have been silently truncated. Narrow the
  * query (filter/prefix) or raise the cap rather than trusting a partial result.
+ * `context.field` names the cap that was hit.
  */
 export class ResultTruncatedError extends DynamoDBLangGraphError {
   constructor(cap: string, limit: number) {
     super(
       `paginated read truncated at the ${cap} cap (${limit}) with more data remaining`,
       ErrorCode.RESULT_TRUNCATED,
-      { operation: cap },
+      { field: cap },
     );
     this.name = 'ResultTruncatedError';
   }
