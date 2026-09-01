@@ -29,6 +29,12 @@ describe('validateSessionId', () => {
     expectValidationError(() => validateSessionId('a#b'));
   });
 
+  it('bounds the session id at 1024 bytes and rejects a whitespace-only one (SEC-10)', () => {
+    expect(() => validateSessionId('s'.repeat(1024))).not.toThrow();
+    expectValidationError(() => validateSessionId('s'.repeat(1025)));
+    expectValidationError(() => validateSessionId('  '));
+  });
+
   it('rejects control characters (M7)', () => {
     expectValidationError(() => validateSessionId('s[31m'));
   });

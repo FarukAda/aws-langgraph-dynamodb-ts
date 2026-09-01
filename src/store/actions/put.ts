@@ -15,7 +15,7 @@ import { persistRecord } from '../internal/persist';
 import { readExisting } from '../internal/read-existing';
 import { embedValue } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
-import { validateKey, validateNamespace } from '../internal/validation';
+import { validateStoreKey } from '../internal/validation';
 import { isRetryExhausted, rowIsAbsent } from '../internal/write-verify';
 
 /**
@@ -76,8 +76,7 @@ async function resolveEmbedding(
  * stored on the item — DynamoDB always holds the canonical item.
  */
 export async function putItem(context: StoreContext, op: PutOperation): Promise<void> {
-  validateNamespace(op.namespace);
-  validateKey(op.key);
+  validateStoreKey(op.namespace, op.key);
   const pk = partitionKey(op.namespace);
   const sk = sortKey(op.namespace, op.key);
   if (op.value === null) {

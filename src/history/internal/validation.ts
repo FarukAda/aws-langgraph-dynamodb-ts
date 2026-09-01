@@ -1,18 +1,19 @@
 import { type StoredMessage, mapStoredMessagesToChatMessages } from '@langchain/core/messages';
 
+import { MAX_PARTITION_ID_BYTES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
 import { validateIdentifier } from '../../shared/validation/primitives';
 import { SORT_KEY_SEPARATOR } from './keys';
 
 /**
- * Validate a session id is a non-empty, separator- and control-char-free
- * string. Applied on every entry point, not just the write path: a bad value
+ * Validate a session id is a non-blank, separator- and control-char-free string
+ * of at most 1024 bytes. Applied on every entry point, not just the write path: a bad value
  * used to reach DynamoDB and surface as a raw AWS SDK exception on reads,
  * while the identical value threw this library's typed `ValidationError` on a
  * write.
  */
 export function validateSessionId(sessionId: string): void {
-  validateIdentifier(sessionId, SORT_KEY_SEPARATOR, 'sessionId');
+  validateIdentifier(sessionId, SORT_KEY_SEPARATOR, 'sessionId', MAX_PARTITION_ID_BYTES);
 }
 
 /**

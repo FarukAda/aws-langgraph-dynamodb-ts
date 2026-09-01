@@ -88,3 +88,26 @@ export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;
  * left the pair reported as a duplicate export.
  */
 export const LIST_SCAN_WARN_THRESHOLD = 10000;
+
+/**
+ * Byte caps on caller-supplied identifiers, measured as UTF-8. DynamoDB caps a
+ * partition key at 2048 bytes and a sort key at 1024; S3 caps an object key at
+ * 1024. These leave room for the adapter prefixes and separators that compose
+ * the stored keys, so a value that passes validation fails as a typed error
+ * here rather than as a raw AWS ValidationException on the write.
+ *
+ * Partition-key identifiers: `thread_id` and `sessionId`.
+ */
+export const MAX_PARTITION_ID_BYTES = 1024;
+
+/**
+ * Sort-key segments: `checkpoint_ns`, `checkpoint_id`, `taskId`, a pending-write
+ * channel, a store namespace element and a store `key`.
+ */
+export const MAX_KEY_SEGMENT_BYTES = 256;
+
+/** DynamoDB cap on a whole sort key; composed keys are checked against it too. */
+export const MAX_SORT_KEY_BYTES = 1024;
+
+/** S3 cap on an object key, applied to the produced offload key. */
+export const MAX_S3_KEY_BYTES = 1024;

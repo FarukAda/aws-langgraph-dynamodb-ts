@@ -1,3 +1,4 @@
+import { MAX_SORT_KEY_BYTES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
 
 /** Reserved separator joining sort-key segments; forbidden inside any segment. */
@@ -78,9 +79,23 @@ export function writeSortKey(
     );
   }
   const paddedIndex = offsetIndex.toString().padStart(WRITE_INDEX_PAD_WIDTH, '0');
-  return [CheckpointItemKind.WRITE, checkpointNs, checkpointId, taskId, paddedIndex, channel].join(
-    SORT_KEY_SEPARATOR,
-  );
+  const sortKey = [
+    CheckpointItemKind.WRITE,
+    checkpointNs,
+    checkpointId,
+    taskId,
+    paddedIndex,
+    channel,
+  ].join(SORT_KEY_SEPARATOR);
+  const bytes = Buffer.byteLength(sortKey, 'utf8');
+  if (bytes > MAX_SORT_KEY_BYTES) {
+    throw new ValidationError(
+      `checkpoint_ns, checkpoint_id, taskId and channel compose a ${bytes}-byte sort key; ` +
+        `DynamoDB caps sort keys at ${MAX_SORT_KEY_BYTES} bytes`,
+      'sortKey',
+    );
+  }
+  return sortKey;
 }
 
 /**

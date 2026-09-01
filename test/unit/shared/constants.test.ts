@@ -15,6 +15,13 @@ describe('shared constants', () => {
     expect(C.MAX_TTL_SECONDS).toBe(C.MAX_TTL_DAYS * 24 * 60 * 60);
   });
 
+  it('pins the identifier and key byte caps', () => {
+    expect(C.MAX_PARTITION_ID_BYTES).toBe(1024);
+    expect(C.MAX_KEY_SEGMENT_BYTES).toBe(256);
+    expect(C.MAX_SORT_KEY_BYTES).toBe(1024);
+    expect(C.MAX_S3_KEY_BYTES).toBe(1024);
+  });
+
   it('pins codec/s3 defaults', () => {
     expect(C.DEFAULT_S3_THRESHOLD_BYTES).toBe(350 * 1024);
     expect(C.DEFAULT_S3_KEY_PREFIX).toBe('langgraph-checkpoints/');

@@ -3,6 +3,7 @@ import {
   validateKey,
   validateNamespace,
   validatePaging,
+  validateStoreKey,
 } from '../../../../src/store/internal/validation';
 
 describe('validateNamespace', () => {
@@ -42,6 +43,31 @@ describe('validateKey', () => {
 
   it('throws when the key contains a control character (M7)', () => {
     expect(() => validateKey('b\u0000c')).toThrow(/control characters/);
+  });
+});
+
+describe('validateStoreKey (STORE-14)', () => {
+  it('bounds each segment at 256 bytes', () => {
+    expect(() => validateStoreKey(['users', 'u1'], 'k'.repeat(256))).not.toThrow();
+    expect(() => validateStoreKey(['users', 'u1'], 'k'.repeat(257))).toThrow(
+      'key must be at most 256 bytes',
+    );
+    expect(() => validateNamespace(['users', 'e'.repeat(257)])).toThrow(
+      'namespace element must be at most 256 bytes',
+    );
+  });
+
+  it('bounds the composed sort key at the 1024 bytes DynamoDB allows', () => {
+    const rest = ['a'.repeat(256), 'b'.repeat(256), 'c'.repeat(256)];
+    expect(() => validateStoreKey(['root', ...rest], 'k'.repeat(253))).not.toThrow();
+    expect(() => validateStoreKey(['root', ...rest], 'k'.repeat(254))).toThrow(
+      /1025-byte sort key.*1024 bytes/,
+    );
+  });
+
+  it('rejects a whitespace-only element or key', () => {
+    expect(() => validateNamespace(['users', '  '])).toThrow(ValidationError);
+    expect(() => validateKey(' ')).toThrow(ValidationError);
   });
 });
 

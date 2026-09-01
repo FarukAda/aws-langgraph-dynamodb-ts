@@ -1,5 +1,8 @@
 import type { S3Client, S3ClientConfig } from '@aws-sdk/client-s3';
 
+import { MAX_S3_KEY_BYTES } from '../../constants';
+import { ValidationError } from '../../errors/errors';
+
 /** Configuration for offloading large payloads to S3. */
 export interface S3OffloadConfig {
   bucketName: string;
@@ -17,10 +20,23 @@ export interface S3OffloadConfig {
  * `parts` arrays never collide, since a namespace element or key is allowed
  * to contain '/' (only the DynamoDB '#' separator is forbidden at the
  * validation layer) and base64url's output alphabet never contains '/'.
+ *
+ * The produced key is checked against S3's 1024-byte object-key cap: the
+ * encoding grows every part by a third, so identifiers that each pass their
+ * own length rule can still compose a key S3 would reject with a raw error.
  */
 export function buildS3Key(prefix: string, parts: readonly string[]): string {
   const encoded = parts.map((part) => Buffer.from(part, 'utf8').toString('base64url'));
-  return `${prefix}${encoded.join('/')}.bin`;
+  const key = `${prefix}${encoded.join('/')}.bin`;
+  const bytes = Buffer.byteLength(key, 'utf8');
+  if (bytes > MAX_S3_KEY_BYTES) {
+    throw new ValidationError(
+      `the offloaded S3 object key would be ${bytes} bytes; S3 caps keys at ` +
+        `${MAX_S3_KEY_BYTES} — shorten the identifiers or the keyPrefix`,
+      's3Key',
+    );
+  }
+  return key;
 }
 
 /** Build a deterministic, TTL-independent lifecycle rule id from the prefix. */

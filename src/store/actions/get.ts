@@ -5,7 +5,7 @@ import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { narrowStoreRecord, readStoreItem } from '../internal/item-mapper';
 import { partitionKey, sortKey } from '../internal/keys';
 import type { StoreContext } from '../internal/setup';
-import { validateKey, validateNamespace } from '../internal/validation';
+import { validateStoreKey } from '../internal/validation';
 import type { StoreItemRecord } from '../types';
 
 /**
@@ -62,8 +62,7 @@ export async function getItem(
   namespace: string[],
   key: string,
 ): Promise<Item | null> {
-  validateNamespace(namespace);
-  validateKey(key);
+  validateStoreKey(namespace, key);
   const record = await readRow(context, namespace, key);
   if (!record) return null;
   try {

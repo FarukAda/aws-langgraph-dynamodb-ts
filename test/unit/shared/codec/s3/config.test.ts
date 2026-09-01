@@ -1,4 +1,5 @@
 import { buildLifecycleRuleId, buildS3Key } from '../../../../../src/shared/codec/s3/config';
+import { ValidationError } from '../../../../../src/shared/errors/errors';
 
 describe('buildS3Key', () => {
   it('base64url-encodes each part before joining under the prefix', () => {
@@ -18,6 +19,20 @@ describe('buildS3Key', () => {
     const keyA = buildS3Key('p/', ['a#b', 'c']);
     const keyB = buildS3Key('p/', ['a', 'b', 'c']);
     expect(keyA).not.toBe(keyB);
+  });
+});
+
+describe('buildS3Key length cap (CODEC-11)', () => {
+  // 600 raw bytes base64url-encode to 800 characters; one part fits, two overflow.
+  const part = 'x'.repeat(600);
+
+  it('accepts a produced key within the 1024-byte S3 limit', () => {
+    expect(() => buildS3Key('p/', [part])).not.toThrow();
+  });
+
+  it('rejects a produced key over the 1024-byte S3 limit with a typed error', () => {
+    expect(() => buildS3Key('p/', [part, part])).toThrow(ValidationError);
+    expect(() => buildS3Key('p/', [part, part])).toThrow(/1607 bytes.*1024/);
   });
 });
 
