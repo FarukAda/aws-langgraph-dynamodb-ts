@@ -20,7 +20,8 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBSaver, DynamoDBStore } from '../../src/index';
-import { installFaults } from '../integration/helpers/fault-injection';
+import { DEFAULT_RETRY_MAX_ATTEMPTS } from '../../src/shared/constants';
+import { dropResponses, installFaults } from '../integration/helpers/fault-injection';
 
 const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
 const clientConfig = region ? { region } : {};
@@ -181,8 +182,12 @@ describe('S3 offload against real AWS', () => {
       saver.putWrites(writeConfig, [['ch', valueA]], 'task-race'),
       saver.putWrites(writeConfig, [['ch', valueB]], 'task-race'),
     ]);
+    // Exactly one object survives: the winner's. The loser's guard rejection
+    // returns the winner's row (ALL_OLD, a different writeGroup), which proves
+    // the loser's own upload is unreferenced, so it is cleaned up rather than
+    // left as an orphan (CKPT-09). Before that fix both objects remained.
     const after = await offloadedObjectCount(s3);
-    expect(after - before).toBe(2);
+    expect(after - before).toBe(1);
 
     const tuple = await saver.getTuple({
       configurable: { thread_id: threadId, checkpoint_id: 'anchor' },
@@ -242,5 +247,37 @@ describe('S3 offload against real AWS', () => {
     for (const objectKey of keysBefore) {
       expect(keysAfter.has(objectKey)).toBe(true);
     }
+  });
+
+  it('keeps a checkpoint readable when its put transaction commits but every response is lost (CKPT-01)', async () => {
+    // Each TransactWriteItems attempt reaches DynamoDB and commits, but its
+    // response is dropped, so the library exhausts its retry budget while the
+    // rows are live. Before the fix, failure cleanup then deleted the S3 object
+    // those rows point at and the checkpoint became permanently unreadable.
+    const base = new DynamoDBClient({ ...clientConfig, maxAttempts: 1 });
+    dropResponses(base, 'TransactWriteItemsCommand', DEFAULT_RETRY_MAX_ATTEMPTS);
+    const faulted = new DynamoDBSaver({
+      tableName,
+      client: DynamoDBDocument.from(base),
+      s3: { bucketName, clientConfig },
+    });
+    const threadId = 'lost-response';
+    const before = await offloadedObjectCount(s3);
+
+    const stored = await faulted.put(
+      { configurable: { thread_id: threadId, checkpoint_ns: '' } },
+      bigCheckpoint('lost'),
+      { source: 'input', step: 0, parents: {} },
+    );
+    faulted.destroy();
+    base.destroy();
+
+    expect(stored.configurable?.checkpoint_id).toBe('lost');
+    // The offloaded checkpoint object survives: nothing was deleted.
+    expect(await offloadedObjectCount(s3)).toBe(before + 1);
+    const tuple = await saver.getTuple({
+      configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: 'lost' },
+    });
+    expect(tuple?.checkpoint.channel_values).toEqual({ blob: bigPayload });
   });
 });
