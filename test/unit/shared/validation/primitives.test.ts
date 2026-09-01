@@ -59,4 +59,3 @@ describe('assertNoSeparator', () => {
     expect(() => assertNoSeparator('ab', '#', 'namespace')).not.toThrow();
   });
 });
-
