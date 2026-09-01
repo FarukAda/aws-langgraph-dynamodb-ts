@@ -4,7 +4,7 @@ import type { JsonValue } from './filter';
 import { narrowStoreRecord, readStoreItem } from './item-mapper';
 import { namespaceMatchesPrefix, partitionKey, sortKey } from './keys';
 import { scopedQuery } from './query';
-import { embedValue } from './semantic-search';
+import { embedValues } from './semantic-search';
 import type { StoreContext } from './setup';
 import { rowIsAbsent } from './write-verify';
 
@@ -15,22 +15,31 @@ export interface ReconcileTarget {
   embedding: number[] | undefined;
 }
 
+/** A live item read back from DynamoDB, awaiting its embedding. */
+interface LiveItem {
+  namespace: string[];
+  key: string;
+  value: Record<string, JsonValue>;
+}
+
 /** Stable, collision-free identity for a (namespace, key) pair. */
 function refIdentity(namespace: string[], key: string): string {
   return JSON.stringify([...namespace, key]);
 }
 
 /**
- * Enumerate canonical items under `prefix`, recomputing each embedding. A failed
- * embedding rejects the whole reconcile by design: silently skipping an item
- * would drop it from the live set, after which {@link selectOrphans} would prune
- * its still-valid backend vector. Fail-fast keeps the backend from losing data.
+ * Enumerate canonical items under `prefix`, then recompute their embeddings in
+ * batches (one `embedDocuments` call per 100 items rather than one per item).
+ * A failed embedding rejects the whole reconcile by design: silently skipping
+ * an item would drop it from the live set, after which {@link selectOrphans}
+ * would prune its still-valid backend vector. Fail-fast keeps the backend from
+ * losing data.
  */
 export async function collectReconcileTargets(
   context: StoreContext,
   prefix: string[],
 ): Promise<ReconcileTarget[]> {
-  const targets: ReconcileTarget[] = [];
+  const live: LiveItem[] = [];
   const source = paginateQuery({
     client: context.client,
     params: scopedQuery(context.tableName, prefix),
@@ -46,10 +55,21 @@ export async function collectReconcileTargets(
     }
     if (!namespaceMatchesPrefix(record.namespace, prefix)) continue;
     const item = await readStoreItem(context, record);
-    const embedding = await embedValue(context, item.value as Record<string, JsonValue>);
-    targets.push({ namespace: record.namespace, key: record.key, embedding });
+    live.push({
+      namespace: record.namespace,
+      key: record.key,
+      value: item.value as Record<string, JsonValue>,
+    });
   }
-  return targets;
+  const embeddings = await embedValues(
+    context,
+    live.map((entry) => entry.value),
+  );
+  return live.map((entry, i) => ({
+    namespace: entry.namespace,
+    key: entry.key,
+    embedding: embeddings[i],
+  }));
 }
 
 /** Re-push every live embedding to the backend; returns the upsert count. */
