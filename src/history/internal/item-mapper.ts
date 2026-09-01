@@ -1,6 +1,6 @@
 import type { StoredMessage } from '@langchain/core/messages';
 
-import { type CodecDeps, decodePayload, encodePayload } from '../../shared/codec/codec';
+import { type CodecDeps, encodePayload } from '../../shared/codec/codec';
 import type { ChatMessageItem } from '../types';
 import { messageSortKey, sessionPartition } from './keys';
 import type { HistoryContext } from './setup';
@@ -32,12 +32,4 @@ export async function buildMessageItem(
   };
   if (ttlTimestamp !== undefined) item.ttl = ttlTimestamp;
   return item;
-}
-
-/** Decode a single message item back into its stored message. */
-export async function decodeMessageItem(
-  context: HistoryContext,
-  item: ChatMessageItem,
-): Promise<StoredMessage> {
-  return decodePayload<StoredMessage>(item.message, codecDeps(context));
 }
