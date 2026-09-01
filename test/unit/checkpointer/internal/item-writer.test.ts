@@ -259,3 +259,53 @@ describe('resolveWriteIndices', () => {
     expect(resolved.map((w) => w.channel)).toEqual(['__error__', 'regular']);
   });
 });
+
+describe('channel validation (SEC-09)', () => {
+  it('rejects a channel with the reserved separator or a control character before encoding anything', async () => {
+    const upload = jest.fn(async (key: string) => key);
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[]) => parts.join('/'),
+      upload,
+      deleteBatch: async () => [],
+    };
+    const ctx = { ...context(), offloader: offloader as never };
+    await expect(
+      buildWriteItems(
+        ctx,
+        't',
+        '',
+        'ckpt-1',
+        'task-7',
+        [
+          ['ok', 1],
+          ['bad#channel', 2],
+        ],
+        'n',
+      ),
+    ).rejects.toThrow(/channel must not contain the reserved/);
+    await expect(
+      buildWriteItems(
+        ctx,
+        't',
+        '',
+        'ckpt-1',
+        'task-7',
+        [['esc' + String.fromCharCode(27), 1]],
+        'n',
+      ),
+    ).rejects.toThrow(/channel must not contain control/);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('accepts ordinary and special LangGraph channel names', async () => {
+    const writes: PendingWrite[] = [
+      ['branch:to:node', 1],
+      ['__error__', 2],
+      ['messages', 3],
+    ];
+    await expect(
+      buildWriteItems(context(), 't', '', 'ckpt-1', 'task-7', writes, 'n'),
+    ).resolves.toHaveLength(3);
+  });
+});

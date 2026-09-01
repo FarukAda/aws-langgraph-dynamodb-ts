@@ -4,6 +4,7 @@ import { type CodecDeps, encodePayload } from '../../shared/codec/codec';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { metaSortKey, partitionKey, payloadSortKey, writeSortKey } from './keys';
 import type { CheckpointerContext } from './setup';
+import { validateChannel } from './validation';
 import { resolveWriteIndices } from './write-index';
 
 /** Map a context to the codec collaborators. */
@@ -84,6 +85,8 @@ export async function buildWriteItems(
   nonce: string,
   ttlTimestamp?: number,
 ): Promise<CheckpointWriteItem[]> {
+  /** Reject a bad channel before any payload is encoded or uploaded. */
+  for (const [channel] of writes) validateChannel(channel);
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];

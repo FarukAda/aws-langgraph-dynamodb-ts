@@ -32,3 +32,12 @@ export function validateCheckpointId(checkpointId: string): void {
 export function validateTaskId(taskId: string): void {
   validateIdentifier(taskId, SORT_KEY_SEPARATOR, 'taskId', MAX_KEY_SEGMENT_BYTES);
 }
+
+/**
+ * Validate a pending-write channel name. It is the trailing segment of the
+ * WRITE sort key, so it obeys the same rules as every other segment; LangGraph
+ * channel names never contain the reserved separator.
+ */
+export function validateChannel(channel: string): void {
+  validateIdentifier(channel, SORT_KEY_SEPARATOR, 'channel', MAX_KEY_SEGMENT_BYTES);
+}

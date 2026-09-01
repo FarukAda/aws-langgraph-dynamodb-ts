@@ -1,5 +1,6 @@
 import {
   validateCheckpointId,
+  validateChannel,
   validateCheckpointNs,
   validateTaskId,
   validateThreadId,
@@ -65,5 +66,15 @@ describe('checkpointer validation', () => {
 
   it('still accepts an empty checkpoint namespace, the root namespace (M7)', () => {
     expect(() => validateCheckpointNs('')).not.toThrow();
+  });
+});
+
+describe('validateChannel (SEC-09)', () => {
+  it('applies the key-segment rules to a pending-write channel name', () => {
+    expect(() => validateChannel('branch:to:node')).not.toThrow();
+    expect(() => validateChannel('c'.repeat(256))).not.toThrow();
+    expectValidationError(() => validateChannel(''));
+    expectValidationError(() => validateChannel('a#b'));
+    expectValidationError(() => validateChannel('c'.repeat(257)));
   });
 });
