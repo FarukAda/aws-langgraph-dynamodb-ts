@@ -1,4 +1,4 @@
-import { BatchWriteCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 
 import { putWrites } from '../../../../src/checkpointer/actions/put-writes';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
@@ -119,6 +119,7 @@ describe('putWrites', () => {
   it('cleans up offloaded objects when a regular write fails outright', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    mock.on(GetCommand).resolves({});
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(
@@ -141,6 +142,7 @@ describe('putWrites', () => {
       .on(PutCommand)
       .resolvesOnce({})
       .rejectsOnce(Object.assign(new Error('down'), { name: 'ValidationException' }));
+    mock.on(GetCommand).resolves({});
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(
@@ -235,6 +237,7 @@ describe('putWrites', () => {
       .on(PutCommand)
       .rejectsOnce(conditionalCheckFailed())
       .rejectsOnce(Object.assign(new Error('down'), { name: 'ValidationException' }));
+    mock.on(GetCommand).resolves({});
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(
@@ -254,5 +257,56 @@ describe('putWrites', () => {
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
     expect(keys).toHaveLength(1);
     expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write-1\/ch\/[^/]+$/);
+  });
+
+  it("never deletes a regular write's object when its put landed but the response was lost", async () => {
+    // Attempt 1 commits; every re-issue times out at the transport, so the
+    // budget is spent on RetryExhaustedError while the WRITE row is live. The
+    // re-read finds this call's own writeGroup, so the write counts as
+    // committed: no error, no cleanup (CKPT-02).
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).callsFake(async () => {
+      const puts = mock.commandCalls(PutCommand);
+      const written = puts[puts.length - 1].args[0].input.Item as {
+        writeGroup: string;
+        value: unknown;
+      };
+      return { Item: { value: written.value, writeGroup: written.writeGroup } };
+    });
+    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    const offloader = trackingOffloader();
+    const ctx = { ...context(client), offloader: offloader as never };
+    await expect(
+      putWrites(
+        ctx,
+        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+        [['ch', 'boom']],
+        'task-1',
+      ),
+    ).resolves.toBeUndefined();
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it("cleans up a guard-rejected write's own upload when the live row belongs to another call", async () => {
+    // First-write-wins is a success, not an error, but this call's upload is
+    // now unreferenced and must not leak (CKPT-09).
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(PutCommand).rejects(
+      Object.assign(new Error('conflict'), {
+        name: 'ConditionalCheckFailedException',
+        Item: { channel: { S: 'ch' }, writeGroup: { S: 'SOME-OTHER-CALL' } },
+      }),
+    );
+    const offloader = trackingOffloader();
+    const ctx = { ...context(client), offloader: offloader as never };
+    await expect(
+      putWrites(
+        ctx,
+        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+        [['ch', 'a']],
+        'task-1',
+      ),
+    ).resolves.toBeUndefined();
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
   });
 });

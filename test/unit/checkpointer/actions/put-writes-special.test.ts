@@ -61,9 +61,16 @@ describe('putWrites special (negative-index) writes', () => {
     // Promise.all before this regular write's own failed-upload cleanup ran.
     // It also cleans up the special write's own never-committed upload: the
     // read failing means the conditional put was never even attempted, so
-    // that upload is unambiguously never-committed.
+    // that upload is unambiguously never-committed. The regular write's own
+    // post-failure verification read must succeed (row absent) for its upload
+    // to count as confirmed dead, so only the special row's read is failed.
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).rejects(Object.assign(new Error('get'), { name: 'ValidationException' }));
+    mock.on(GetCommand).callsFake(async (input: { Key: { SK: string } }) => {
+      if (input.Key.SK.includes('#0000000007#')) {
+        throw Object.assign(new Error('get'), { name: 'ValidationException' });
+      }
+      return {};
+    });
     mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };

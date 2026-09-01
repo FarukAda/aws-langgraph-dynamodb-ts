@@ -41,3 +41,16 @@ export function reportGuardRejection(
     channel: item.channel,
   });
 }
+
+/**
+ * True when the guard rejection's returned row provably belongs to another
+ * `putWrites` call, so this call's own upload is dead and safe to delete. A
+ * retried put whose response was lost can be rejected by the row it wrote
+ * itself, so an equal group — or no attributes at all — proves nothing and
+ * must not be taken as "my upload is dead". Same raw AttributeValue caveat as
+ * {@link rejectedChannel}.
+ */
+export function rejectionProvesForeignRow(item: CheckpointWriteItem, error: Error): boolean {
+  const group = (error as { Item?: { writeGroup?: { S?: string } } }).Item?.writeGroup?.S;
+  return group !== undefined && group !== item.writeGroup;
+}
