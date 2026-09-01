@@ -15,8 +15,29 @@ function context(client: HistoryContext['client']): HistoryContext {
 describe('revertSessionCount', () => {
   it('is a no-op when delta is 0', async () => {
     const { client, mock } = createStrictDocumentMock();
-    await revertSessionCount(context(client), 's1', 0);
+    await revertSessionCount(context(client), 's1', 0, 'u');
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+  });
+
+  it('only decrements the incarnation this call appended to (HIST-03)', async () => {
+    // A session clear()-ed and re-created by another caller between this
+    // call's commit and its rollback carries a later createdAt; decrementing
+    // it would corrupt the new incarnation's count, and its rows were never
+    // this call's to revert.
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    await revertSessionCount(context(client), 's1', 2, '2026-09-01T12:00:00.000Z');
+    const update =
+      mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems?.[0]?.Update;
+    expect(update?.ConditionExpression).toBe('attribute_exists(PK) AND #c <= :now');
+    expect(update?.ExpressionAttributeNames).toEqual({
+      '#count': 'messageCount',
+      '#c': 'createdAt',
+    });
+    expect(update?.ExpressionAttributeValues).toEqual({
+      ':neg': -2,
+      ':now': '2026-09-01T12:00:00.000Z',
+    });
   });
 
   it('swallows a ConditionalCheckFailed cancellation (row already gone) instead of throwing', async () => {
@@ -27,7 +48,7 @@ describe('revertSessionCount', () => {
         CancellationReasons: [{ Code: 'ConditionalCheckFailed' }],
       }),
     );
-    await expect(revertSessionCount(context(client), 's1', 2)).resolves.toBeUndefined();
+    await expect(revertSessionCount(context(client), 's1', 2, 'u')).resolves.toBeUndefined();
   });
 
   it('rethrows any other failure', async () => {
@@ -35,7 +56,7 @@ describe('revertSessionCount', () => {
     mock
       .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    await expect(revertSessionCount(context(client), 's1', 2)).rejects.toThrow('boom');
+    await expect(revertSessionCount(context(client), 's1', 2, 'u')).rejects.toThrow('boom');
   });
 
   it('rethrows a TransactionCanceledException whose cancellation reason is not ConditionalCheckFailed', async () => {
@@ -50,7 +71,7 @@ describe('revertSessionCount', () => {
         CancellationReasons: [{ Code: 'ItemCollectionSizeLimitExceeded' }],
       }),
     );
-    await expect(revertSessionCount(context(client), 's1', 2)).rejects.toThrow('cancelled');
+    await expect(revertSessionCount(context(client), 's1', 2, 'u')).rejects.toThrow('cancelled');
   });
 });
 

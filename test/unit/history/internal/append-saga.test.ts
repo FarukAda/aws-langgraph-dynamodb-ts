@@ -148,6 +148,9 @@ describe('appendChunks', () => {
     // leaving messageCount silently overstated by 30 with zero compensating
     // write) and not 0.
     expect(revertUpdate?.ExpressionAttributeValues?.[':neg']).toBe(-25);
+    // ...and only against the incarnation this call appended to (HIST-03).
+    expect(revertUpdate?.ConditionExpression).toBe('attribute_exists(PK) AND #c <= :now');
+    expect(revertUpdate?.ExpressionAttributeValues?.[':now']).toBe('u');
   });
 
   it('cleans offloaded S3 objects for the whole batch when a chunk fails', async () => {

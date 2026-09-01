@@ -66,7 +66,7 @@ async function rollbackCommitted(
      * enforces 100% branch coverage with no exceptions.
      */
     const deleted = (error as BatchWriteAllIncompleteError).succeededCount;
-    await revertSessionCount(context, sessionId, deleted);
+    await revertSessionCount(context, sessionId, deleted, now);
     throw error;
   }
   await revertSessionCreation(context, sessionId, total, now, title);
