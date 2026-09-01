@@ -182,7 +182,7 @@ describe('getMessages', () => {
         await buildMessageItem(ctx, 's1', '01A', human),
         await buildMessageItem(ctx, 's1', '01B', {
           type: 'remove',
-          data: { content: '', id: 'x' },
+          data: { content: '', id: 'x', role: undefined, name: undefined, tool_call_id: undefined },
         }),
         await buildMessageItem(ctx, 's1', '01C', ai),
       ];
