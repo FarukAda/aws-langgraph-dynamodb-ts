@@ -1,9 +1,14 @@
-import { BatchWriteCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import {
+  BatchWriteCommand,
+  GetCommand,
+  TransactWriteCommand,
+  UpdateCommand,
+} from '@aws-sdk/lib-dynamodb';
 
 import { appendChunks } from '../../../../src/history/internal/append-saga';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import { CompensationFailedError } from '../../../../src/shared/errors/errors';
+import { CompensationFailedError, RetryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -301,5 +306,91 @@ describe('appendChunks', () => {
     expect(revertUpdate?.UpdateExpression).toBe('ADD #count :neg');
     expect(revertUpdate?.UpdateExpression).not.toContain('ttl');
     expect(revertUpdate?.ExpressionAttributeNames?.['#ttl']).toBeUndefined();
+  });
+});
+
+describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
+  // The transaction is retried up to MESSAGE_APPEND_RETRY_MAX_ATTEMPTS times
+  // with real backoff and appendChunks exposes no rng seam, so the exhausted
+  // outcome is injected directly: withRetry rethrows a RetryExhaustedError
+  // unchanged, which is exactly what the saga sees after a lost-response
+  // transaction whose re-issues all timed out. The cause deliberately carries
+  // no retryable signal (the classifier walks the cause chain), or the mock
+  // itself would be retried through the whole 18-attempt backoff.
+  function exhausted(): Error {
+    return new RetryExhaustedError(
+      'Operation failed after 18 attempts: timeout',
+      18,
+      Object.assign(new Error('timeout'), { name: 'SimulatedTransportFailure' }),
+    );
+  }
+
+  it('treats a chunk whose transaction landed but lost its response as committed', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(exhausted());
+    mock.on(GetCommand).resolves({ Item: { SK: 'MSG#1' } });
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    await expect(
+      appendChunks(context(client, offloader), 's1', [[s3Item('MSG#1', 'k1')]], { now: 'u' }),
+    ).resolves.toBeUndefined();
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    const read = mock.commandCalls(GetCommand)[0].args[0].input;
+    expect(read.Key).toEqual({ PK: 's1', SK: 'MSG#1' });
+    expect(read.ConsistentRead).toBe(true);
+  });
+
+  it('compensates normally when the re-read proves the chunk did not commit', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(exhausted());
+    mock.on(GetCommand).resolves({});
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    await expect(
+      appendChunks(context(client, offloader), 's1', [[s3Item('MSG#1', 'k1')]], { now: 'u' }),
+    ).rejects.toMatchObject({ name: 'RetryExhaustedError' });
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1']);
+  });
+
+  it("leaks the uncertain chunk's objects when the re-read itself fails", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(exhausted());
+    mock
+      .on(GetCommand)
+      .rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    await expect(
+      appendChunks(context(client, offloader), 's1', [[s3Item('MSG#1', 'k1')]], { now: 'u' }),
+    ).rejects.toMatchObject({ name: 'RetryExhaustedError' });
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it('still cleans the never-attempted suffix when an earlier chunk is uncertain', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(exhausted());
+    mock
+      .on(GetCommand)
+      .rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    await expect(
+      appendChunks(
+        context(client, offloader),
+        's1',
+        [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
+        { now: 'u' },
+      ),
+    ).rejects.toMatchObject({ name: 'RetryExhaustedError' });
+    // k1 may be referenced by a live row; k2's chunk was never attempted.
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['k2']);
+  });
+
+  it('does not re-read on a definite failure', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(TransactWriteCommand)
+      .rejects(Object.assign(new Error('bad'), { name: 'ValidationException' }));
+    await expect(
+      appendChunks(context(client), 's1', [[inlineItem('MSG#1')]], { now: 'u' }),
+    ).rejects.toThrow('bad');
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
 });

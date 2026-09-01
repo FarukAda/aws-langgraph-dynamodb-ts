@@ -80,6 +80,11 @@ async function rollbackCommitted(
  * objects are deliberately left in place (their rows may survive) and it
  * raises {@link CompensationFailedError} carrying both the trigger and the
  * rollback error; otherwise it rethrows the trigger.
+ *
+ * `uncertain` marks the failed chunk (`chunks[committed.length]`) as one whose
+ * outcome could not be verified: its rows may be live, so its objects are
+ * leaked rather than deleted, while the never-attempted chunks after it are
+ * still cleaned.
  */
 export async function compensate(
   context: HistoryContext,
@@ -89,6 +94,7 @@ export async function compensate(
   trigger: Error,
   now: string,
   title: string | undefined,
+  uncertain: boolean,
 ): Promise<never> {
   if (committed.length > 0) {
     context.logger.warn('history.addMessages compensating committed chunks after a chunk failed', {
@@ -96,8 +102,12 @@ export async function compensate(
       committedChunks: committed.length,
     });
   }
-  /** The failed/never-attempted suffix never had a DynamoDB row, so it's safe to clean now. */
-  await cleanBatchS3(context, chunks.slice(committed.length));
+  /**
+   * The never-attempted suffix never had a DynamoDB row, so it is safe to
+   * clean now; an uncertain failed chunk is skipped because its rows may live.
+   */
+  const firstDead = committed.length + (uncertain ? 1 : 0);
+  await cleanBatchS3(context, chunks.slice(firstDead));
   try {
     await rollbackCommitted(context, sessionId, committed, now, title);
   } catch (rollbackError) {
