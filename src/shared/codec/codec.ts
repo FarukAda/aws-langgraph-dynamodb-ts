@@ -1,5 +1,6 @@
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
+import { MAX_INLINE_PAYLOAD_BYTES } from '../constants';
 import { ErrorCode } from '../errors/error-code';
 import { ValidationError } from '../errors/errors';
 import { CompressionConfig, CompressionResult, compress, decompress } from './compression';
@@ -54,9 +55,28 @@ function requireOffloader(deps: CodecDeps): S3Offloader {
 }
 
 /**
+ * Reject bytes that cannot be stored inline. Without an offloader the only
+ * alternative is a raw `ValidationException` from DynamoDB after the network
+ * round trip, which names neither the cause nor the remedy.
+ */
+function assertInlinePayloadFits(bytes: Uint8Array, deps: CodecDeps): void {
+  if (bytes.length <= MAX_INLINE_PAYLOAD_BYTES) return;
+  const hint = deps.compression?.enabled
+    ? ''
+    : ', or enable compression if the data compresses well';
+  throw new ValidationError(
+    `payload of ${bytes.length} bytes exceeds the ${MAX_INLINE_PAYLOAD_BYTES}-byte inline limit ` +
+      `(DynamoDB items are capped at 400 KB); configure s3 offloading${hint}`,
+    'payload',
+  );
+}
+
+/**
  * Encode `value`: serialize via serde, compress (if configured), then offload
  * to S3 when the compressed bytes exceed the offloader's threshold. Returns a
- * descriptor recording how to read it back.
+ * descriptor recording how to read it back. Without an offloader, bytes that
+ * cannot fit a DynamoDB item are rejected here (see
+ * {@link assertInlinePayloadFits}).
  */
 export async function encodePayload<T>(
   value: T,
@@ -72,6 +92,7 @@ export async function encodePayload<T>(
     await deps.offloader.upload(s3Key, bytes);
     return { location: PayloadLocation.S3, serdeType, compressed, s3Key };
   }
+  if (!deps.offloader) assertInlinePayloadFits(bytes, deps);
   return { location: PayloadLocation.INLINE, serdeType, compressed, bytes };
 }
 

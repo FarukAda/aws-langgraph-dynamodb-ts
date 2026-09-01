@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+
 import {
   decodePayload,
   encodePayload,
@@ -61,6 +63,54 @@ describe('decodePayload without an offloader', () => {
     await expect(decodePayload(descriptor, { serde })).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       message: expect.stringContaining('s3'),
+    });
+  });
+});
+
+describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', () => {
+  const big = { blob: 'x'.repeat(400 * 1024) };
+  const nearlyBig = { blob: 'x'.repeat(380 * 1024) };
+
+  it('rejects a payload that cannot fit a DynamoDB item when no offloader is configured', async () => {
+    await expect(encodePayload(big, { serde }, { keyParts: ['k'] })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'payload' },
+      message: expect.stringMatching(/s3/),
+    });
+  });
+
+  it('offloads the same payload when an offloader is configured', async () => {
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[]) => parts.join('/'),
+      upload: jest.fn(async (key: string) => key),
+    };
+    const descriptor = await encodePayload(
+      big,
+      { serde, offloader: offloader as never },
+      {
+        keyParts: ['k'],
+      },
+    );
+    expect(descriptor.location).toBe(PayloadLocation.S3);
+  });
+
+  it('keeps a payload just under the cap inline', async () => {
+    const descriptor = await encodePayload(nearlyBig, { serde }, { keyParts: ['k'] });
+    expect(descriptor.location).toBe(PayloadLocation.INLINE);
+  });
+
+  it('suggests enabling compression when it is not on, and only s3 when it is', async () => {
+    await expect(encodePayload(big, { serde }, { keyParts: ['k'] })).rejects.toMatchObject({
+      message: expect.stringMatching(/compression/),
+    });
+    // ~683 KB of base64 over random bytes: gzip cannot bring it under the cap.
+    const incompressible = { blob: randomBytes(512 * 1024).toString('base64') };
+    await expect(
+      encodePayload(incompressible, { serde, compression: { enabled: true } }, { keyParts: ['k'] }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      message: expect.not.stringMatching(/enable compression/),
     });
   });
 });

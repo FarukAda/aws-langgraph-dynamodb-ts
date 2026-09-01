@@ -31,6 +31,14 @@ export const S3_DELETE_BATCH_MAX = 1000;
 /** Default payload size that triggers S3 offload (350 KB; 50 KB under the DDB 400 KB cap). */
 export const DEFAULT_S3_THRESHOLD_BYTES = 350 * 1024;
 
+/**
+ * Largest serialized payload stored inline when no S3 offloader is configured:
+ * DynamoDB's 400 KB item cap less 8 KB of headroom for the item's keys,
+ * attribute names and descriptor fields. Exceeding it fails before the write
+ * with a typed error instead of a raw `ValidationException` after it.
+ */
+export const MAX_INLINE_PAYLOAD_BYTES = 400 * 1024 - 8 * 1024;
+
 /** Default S3 key prefix for offloaded payloads. */
 export const DEFAULT_S3_KEY_PREFIX = 'langgraph-checkpoints/';
 
