@@ -12,7 +12,7 @@ describe('shared constants', () => {
 
   it('pins TTL bounds', () => {
     expect(C.MAX_TTL_DAYS).toBe(365 * 5);
-    expect(C.MAX_TTL_SECONDS).toBe(100 * 365 * 24 * 60 * 60);
+    expect(C.MAX_TTL_SECONDS).toBe(C.MAX_TTL_DAYS * 24 * 60 * 60);
   });
 
   it('pins codec/s3 defaults', () => {

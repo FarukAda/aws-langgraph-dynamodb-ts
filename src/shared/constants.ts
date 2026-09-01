@@ -1,8 +1,8 @@
 /** Maximum TTL expressed in days (5 years). */
 export const MAX_TTL_DAYS = 365 * 5;
 
-/** Maximum TTL expressed in seconds (100 years). */
-export const MAX_TTL_SECONDS = 100 * 365 * 24 * 60 * 60;
+/** Maximum TTL expressed in seconds: the same five years as {@link MAX_TTL_DAYS}. */
+export const MAX_TTL_SECONDS = MAX_TTL_DAYS * 24 * 60 * 60;
 
 /** Hard cap on query-pagination loop iterations (runaway-loop guard). */
 export const MAX_LOOP_ITERATIONS = 1000;

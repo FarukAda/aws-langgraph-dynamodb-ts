@@ -1,4 +1,5 @@
 import { MAX_TTL_DAYS, MAX_TTL_SECONDS } from '../constants';
+import { ValidationError } from '../errors/errors';
 import { validateInteger } from './primitives';
 
 const SECONDS_PER_DAY = 24 * 60 * 60;
@@ -6,13 +7,28 @@ const SECONDS_PER_DAY = 24 * 60 * 60;
 /** Time-to-live expressed in whole days or whole seconds. */
 export type TtlOption = { days: number } | { seconds: number };
 
-/** Validate a {@link TtlOption} and resolve it to a positive number of seconds. */
+/** Positive integer no greater than `max`, with a message that names what the cap means. */
+function validateWithinCap(value: number, field: string, max: number): void {
+  validateInteger(value, field, { min: 1 });
+  if (value > max) {
+    throw new ValidationError(`${field} must be <= ${max} (five years)`, field);
+  }
+}
+
+/**
+ * Validate a {@link TtlOption} and resolve it to a positive number of seconds.
+ * Both forms share the same five-year cap, and an object carrying both keys is
+ * rejected instead of being resolved by whichever key happens to be checked first.
+ */
 export function resolveTtlSeconds(ttl: TtlOption): number {
+  if ('days' in ttl && 'seconds' in ttl) {
+    throw new ValidationError('ttl must specify either ttl.days or ttl.seconds, not both', 'ttl');
+  }
   if ('days' in ttl) {
-    validateInteger(ttl.days, 'ttl.days', { min: 1, max: MAX_TTL_DAYS });
+    validateWithinCap(ttl.days, 'ttl.days', MAX_TTL_DAYS);
     return ttl.days * SECONDS_PER_DAY;
   }
-  validateInteger(ttl.seconds, 'ttl.seconds', { min: 1, max: MAX_TTL_SECONDS });
+  validateWithinCap(ttl.seconds, 'ttl.seconds', MAX_TTL_SECONDS);
   return ttl.seconds;
 }
 

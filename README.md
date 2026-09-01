@@ -188,7 +188,7 @@ All adapters share a common base. Provide **either** a prebuilt `client` (which 
 | `tableName` | `string` | all | **required** |
 | `client` | `DynamoDBDocument` | all | reuse an existing client; not closed by `destroy()` |
 | `clientConfig` | `DynamoDBClientConfig` | all | used to build a client when `client` is omitted |
-| `ttl` | `{ days: number }` \| `{ seconds: number }` | all | expiry written to the `ttl` attribute |
+| `ttl` | `{ days: number }` \| `{ seconds: number }` | all | expiry written to the `ttl` attribute; one form only, capped at five years |
 | `logger` | `Logger` | all | per-instance logger (default: silent) |
 | `compression` | `CompressionConfig` | all | `{ enabled, minSizeBytes?, level?, maxDecompressedBytes? }` |
 | `s3` | `S3OffloadConfig` | all | offload large payloads to S3 (see below) |
