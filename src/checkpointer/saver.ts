@@ -9,7 +9,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
-import { resolveTtlDaysCeil } from '../shared/validation/ttl';
+import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
 import { getCheckpointTuple } from './actions/get-tuple';
 import { listCheckpoints } from './actions/list';
@@ -83,7 +83,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   async ensureS3LifecycleRule(): Promise<void> {
     return guardPublic('saver.ensureS3LifecycleRule', async () => {
       if (!this.context.offloader || !this.context.ttl) return;
-      await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
+      await this.context.offloader.ensureLifecycleRule(lifecycleExpirationDays(this.context.ttl));
     });
   }
 }

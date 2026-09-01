@@ -1,7 +1,7 @@
 import type { BaseMessage } from '@langchain/core/messages';
 
 import { guardPublic } from '../shared/errors/boundary';
-import { resolveTtlDaysCeil } from '../shared/validation/ttl';
+import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { addMessages as addMessagesAction } from './actions/add-messages';
 import { clearSession } from './actions/clear';
 import { getMessages as getMessagesAction } from './actions/get-messages';
@@ -96,7 +96,7 @@ export class DynamoDBChatMessageHistory {
   async ensureS3LifecycleRule(): Promise<void> {
     return guardPublic('history.ensureS3LifecycleRule', async () => {
       if (!this.context.offloader || !this.context.ttl) return;
-      await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
+      await this.context.offloader.ensureLifecycleRule(lifecycleExpirationDays(this.context.ttl));
     });
   }
 }

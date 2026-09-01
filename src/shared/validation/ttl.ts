@@ -1,4 +1,4 @@
-import { MAX_TTL_DAYS, MAX_TTL_SECONDS } from '../constants';
+import { MAX_TTL_DAYS, MAX_TTL_SECONDS, S3_LIFECYCLE_SWEEP_MARGIN_DAYS } from '../constants';
 import { ValidationError } from '../errors/errors';
 import { validateInteger } from './primitives';
 
@@ -42,10 +42,14 @@ export function calculateTtlTimestamp(ttl: TtlOption, now: () => number = Date.n
   return Math.floor(now() / 1000) + resolveTtlSeconds(ttl);
 }
 
-/** Resolve a {@link TtlOption} to whole days, rounded up so the S3 lifecycle
- * expiration never fires before DynamoDB's own TTL sweep (which can lag up
- * to ~48h past the TTL timestamp) — expiring the S3 object first would leave
- * a live DynamoDB item pointing at a deleted payload. */
-export function resolveTtlDaysCeil(ttl: TtlOption): number {
-  return Math.ceil(resolveTtlSeconds(ttl) / SECONDS_PER_DAY);
+/**
+ * Days for the S3 lifecycle rule that backs a TTL: the TTL rounded up to whole
+ * days plus {@link S3_LIFECYCLE_SWEEP_MARGIN_DAYS}. S3 expires an object at the
+ * first midnight UTC at least that many days after creation, while DynamoDB
+ * can keep the row up to ~48 h past its `ttl`; without the margin an
+ * `{ days: N }` TTL expired the object on day N exactly, stranding a live row
+ * that pointed at a deleted payload until the sweep caught up.
+ */
+export function lifecycleExpirationDays(ttl: TtlOption): number {
+  return Math.ceil(resolveTtlSeconds(ttl) / SECONDS_PER_DAY) + S3_LIFECYCLE_SWEEP_MARGIN_DAYS;
 }

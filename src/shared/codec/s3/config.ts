@@ -39,6 +39,22 @@ export function buildS3Key(prefix: string, parts: readonly string[]): string {
   return key;
 }
 
+/**
+ * The key prefix doubles as the S3 lifecycle rule's `Filter.Prefix`. An empty
+ * or root prefix would make that rule expire the whole bucket, and a prefix
+ * without a trailing `/` (`app/langgraph`) would also match every sibling
+ * object that merely starts with the same characters (`app/langgraph-other/`).
+ */
+export function assertScopedKeyPrefix(keyPrefix: string): void {
+  if (keyPrefix === '' || keyPrefix === '/' || !keyPrefix.endsWith('/')) {
+    throw new ValidationError(
+      's3.keyPrefix must be a non-empty path that ends with "/" (for example "langgraph/"): ' +
+        'it scopes both the offloaded objects and the S3 lifecycle rule',
+      's3.keyPrefix',
+    );
+  }
+}
+
 /** Build a deterministic, TTL-independent lifecycle rule id from the prefix. */
 export function buildLifecycleRuleId(prefix: string): string {
   const slug = prefix.replace(/\/+$/, '').replace(/[^a-zA-Z0-9-]/g, '-') || 'default';

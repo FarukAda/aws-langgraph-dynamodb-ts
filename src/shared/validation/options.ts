@@ -1,5 +1,5 @@
 import type { CompressionConfig } from '../codec/compression';
-import type { S3OffloadConfig } from '../codec/s3/config';
+import { assertScopedKeyPrefix, type S3OffloadConfig } from '../codec/s3/config';
 import { MAX_INLINE_PAYLOAD_BYTES } from '../constants';
 import { ValidationError } from '../errors/errors';
 import type { BaseAdapterOptions, CodecOptions } from '../options';
@@ -54,22 +54,6 @@ function validateCompression(config: CompressionConfig): void {
   }
 }
 
-/**
- * The key prefix doubles as the S3 lifecycle rule's `Filter.Prefix`. An empty
- * or root prefix would make that rule expire the whole bucket, and a prefix
- * without a trailing `/` (`app/langgraph`) would also match every sibling
- * object that merely starts with the same characters (`app/langgraph-other/`).
- */
-function validateKeyPrefix(keyPrefix: string): void {
-  if (keyPrefix === '' || keyPrefix === '/' || !keyPrefix.endsWith('/')) {
-    throw new ValidationError(
-      's3.keyPrefix must be a non-empty path that ends with "/" (for example "langgraph/"): ' +
-        'it scopes both the offloaded objects and the S3 lifecycle rule',
-      's3.keyPrefix',
-    );
-  }
-}
-
 function validateS3(config: S3OffloadConfig): void {
   validateNonEmptyString(config.bucketName, 's3.bucketName');
   if (config.thresholdBytes !== undefined) {
@@ -78,7 +62,7 @@ function validateS3(config: S3OffloadConfig): void {
       max: MAX_INLINE_PAYLOAD_BYTES,
     });
   }
-  if (config.keyPrefix !== undefined) validateKeyPrefix(config.keyPrefix);
+  if (config.keyPrefix !== undefined) assertScopedKeyPrefix(config.keyPrefix);
   if (
     config.serverSideEncryption !== undefined &&
     !SSE_ALGORITHMS.includes(config.serverSideEncryption)

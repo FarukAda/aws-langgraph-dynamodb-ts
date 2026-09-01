@@ -111,3 +111,10 @@ export const MAX_SORT_KEY_BYTES = 1024;
 
 /** S3 cap on an object key, applied to the produced offload key. */
 export const MAX_S3_KEY_BYTES = 1024;
+
+/**
+ * Extra days an S3 lifecycle rule adds over the TTL it backs. DynamoDB's TTL
+ * sweep can lag up to ~48 h past the `ttl` timestamp; the offloaded object
+ * must outlive its row, never the other way round.
+ */
+export const S3_LIFECYCLE_SWEEP_MARGIN_DAYS = 2;

@@ -146,7 +146,8 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     await ttlSaver.ensureS3LifecycleRule();
     ttlSaver.destroy();
 
-    const rule = await waitForLifecycleRuleDays(s3, prefix, 30);
+    // Expected days = ttl days + the two-day DynamoDB sweep margin (lifecycleExpirationDays).
+    const rule = await waitForLifecycleRuleDays(s3, prefix, 32);
     expect(rule?.Status).toBe('Enabled');
   });
 
@@ -162,7 +163,7 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     await ttlStore.ensureS3LifecycleRule();
     ttlStore.destroy();
 
-    const rule = await waitForLifecycleRuleDays(s3, prefix, 45);
+    const rule = await waitForLifecycleRuleDays(s3, prefix, 47);
     expect(rule?.Status).toBe('Enabled');
   });
 
@@ -178,7 +179,7 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     await ttlHistory.ensureS3LifecycleRule();
     ttlHistory.destroy();
 
-    const rule = await waitForLifecycleRuleDays(s3, prefix, 60);
+    const rule = await waitForLifecycleRuleDays(s3, prefix, 62);
     expect(rule?.Status).toBe('Enabled');
   });
 
@@ -206,12 +207,12 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     // rule to converge before the next one reads-and-merges — otherwise a stale
     // read could silently drop the first rule, independent of the fix itself.
     await defaultSaver.ensureS3LifecycleRule();
-    const saverRule = await waitForLifecycleRuleDays(s3, `${KEY_PREFIX}checkpointer/`, 7);
+    const saverRule = await waitForLifecycleRuleDays(s3, `${KEY_PREFIX}checkpointer/`, 9);
     expect(saverRule?.Status).toBe('Enabled');
 
     await defaultStore.ensureS3LifecycleRule();
     defaultStore.destroy();
-    const storeRule = await waitForLifecycleRuleDays(s3, `${KEY_PREFIX}store/`, 90);
+    const storeRule = await waitForLifecycleRuleDays(s3, `${KEY_PREFIX}store/`, 92);
     expect(storeRule?.Status).toBe('Enabled');
 
     // The real point of this test: the checkpointer's rule must still be
@@ -230,13 +231,13 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     let saverRuleAfter = await waitForLifecycleRuleDays(
       s3,
       `${KEY_PREFIX}checkpointer/`,
-      7,
+      9,
       3,
       500,
     ).catch(() => undefined);
     if (!saverRuleAfter) {
       await defaultSaver.ensureS3LifecycleRule();
-      saverRuleAfter = await waitForLifecycleRuleDays(s3, `${KEY_PREFIX}checkpointer/`, 7);
+      saverRuleAfter = await waitForLifecycleRuleDays(s3, `${KEY_PREFIX}checkpointer/`, 9);
     }
     defaultSaver.destroy();
     expect(saverRuleAfter?.Status).toBe('Enabled');

@@ -7,7 +7,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 
 import { guardPublic } from '../shared/errors/boundary';
-import { resolveTtlDaysCeil } from '../shared/validation/ttl';
+import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { getItem } from './actions/get';
 import { listNamespaces } from './actions/list-namespaces';
 import { putItem } from './actions/put';
@@ -89,7 +89,7 @@ export class DynamoDBStore extends BaseStore {
   async ensureS3LifecycleRule(): Promise<void> {
     return guardPublic('store.ensureS3LifecycleRule', async () => {
       if (!this.context.offloader || !this.context.ttl) return;
-      await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
+      await this.context.offloader.ensureLifecycleRule(lifecycleExpirationDays(this.context.ttl));
     });
   }
 }

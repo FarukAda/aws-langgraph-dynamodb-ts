@@ -1,5 +1,9 @@
 import { MAX_TTL_DAYS, MAX_TTL_SECONDS } from '../../../../src/shared/constants';
-import { calculateTtlTimestamp, resolveTtlSeconds } from '../../../../src/shared/validation/ttl';
+import {
+  calculateTtlTimestamp,
+  lifecycleExpirationDays,
+  resolveTtlSeconds,
+} from '../../../../src/shared/validation/ttl';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 describe('resolveTtlSeconds', () => {
@@ -37,5 +41,13 @@ describe('resolveTtlSeconds', () => {
 describe('calculateTtlTimestamp', () => {
   it('adds the resolved seconds to the frozen now (epoch seconds)', () => {
     expect(calculateTtlTimestamp({ seconds: 100 })).toBe(Math.floor(FROZEN_NOW_MS / 1000) + 100);
+  });
+});
+
+describe('lifecycleExpirationDays (CODEC-08)', () => {
+  it('adds a two-day margin so S3 never expires an object before DynamoDB sweeps its row', () => {
+    expect(lifecycleExpirationDays({ days: 7 })).toBe(9);
+    expect(lifecycleExpirationDays({ seconds: 1 })).toBe(3);
+    expect(lifecycleExpirationDays({ seconds: 86400 + 1 })).toBe(4);
   });
 });
