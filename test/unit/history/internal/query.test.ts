@@ -20,5 +20,10 @@ describe('messageQuery', () => {
     expect(input.KeyConditionExpression).toBe('#pk = :pk AND begins_with(#sk, :skp)');
     expect(input.ExpressionAttributeValues).toEqual({ ':pk': 'HIST#s1', ':skp': 'HISTORY#MSG#' });
     expect(input.ScanIndexForward).toBe(true);
+    expect(input.ConsistentRead).toBeUndefined();
+  });
+
+  it('sets ConsistentRead when requested', () => {
+    expect(messageQuery('history', 's1', { consistent: true }).ConsistentRead).toBe(true);
   });
 });

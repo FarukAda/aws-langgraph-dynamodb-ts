@@ -246,6 +246,9 @@ describe('getMessages', () => {
     const input = mock.commandCalls(QueryCommand)[0].args[0].input;
     expect(input.ScanIndexForward).toBe(true);
     expect(input.ExpressionAttributeValues).toEqual({ ':pk': 'HIST#s1', ':skp': 'HISTORY#MSG#' });
+    // Read-your-writes for RunnableWithMessageHistory: the turn just appended
+    // must be visible to the very next getMessages (HIST-02).
+    expect(input.ConsistentRead).toBe(true);
   });
 
   it('filters out TTL-expired message items on read', async () => {

@@ -1,3 +1,4 @@
+import { nowSeconds } from '../../shared/clock';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
 import type { HistoryContext } from './setup';
@@ -40,8 +41,7 @@ export async function resolveTtlAnchor(
     }),
   );
   const ttl = (result.Item as { ttl?: number } | undefined)?.ttl;
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  if (typeof ttl === 'number' && ttl > nowSeconds) {
+  if (typeof ttl === 'number' && ttl > nowSeconds()) {
     return { ttlTimestamp: ttl, refresh: false };
   }
   return { ttlTimestamp: candidate, refresh: true };

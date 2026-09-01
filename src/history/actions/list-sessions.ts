@@ -1,3 +1,4 @@
+import { nowSeconds as currentSeconds } from '../../shared/clock';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import { SESSION_SORT_KEY } from '../internal/keys';
 import type { HistoryContext } from '../internal/setup';
@@ -24,7 +25,7 @@ export async function listSessions(
   options?: { maxIterations?: number; maxItems?: number },
 ): Promise<SessionMetadata[]> {
   const sessions: SessionMetadata[] = [];
-  const nowSeconds = Math.floor(Date.now() / 1000);
+  const nowSeconds = currentSeconds();
   for await (const raw of paginateScan({
     client: context.client,
     params: {

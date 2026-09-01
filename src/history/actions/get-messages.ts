@@ -4,6 +4,7 @@ import {
   mapStoredMessagesToChatMessages,
 } from '@langchain/core/messages';
 
+import { nowSeconds } from '../../shared/clock';
 import { type CodecDeps, isPermanentPayloadLoss, readPayloadBytes } from '../../shared/codec/codec';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { toError } from '../../shared/errors/wrap-error';
@@ -65,16 +66,16 @@ export async function getMessages(
   sessionId: string,
 ): Promise<BaseMessage[]> {
   validateSessionId(sessionId);
-  const nowSeconds = Math.floor(Date.now() / 1000);
+  const now = nowSeconds();
   const messages: BaseMessage[] = [];
   for await (const raw of paginateQuery({
     client: context.client,
-    params: messageQuery(context.tableName, sessionId),
+    params: messageQuery(context.tableName, sessionId, { consistent: true }),
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
     const item = raw as ChatMessageItem;
-    if (isExpired(item, nowSeconds)) continue;
+    if (isExpired(item, now)) continue;
     const decoded = await decodeMessage(context, item);
     if (decoded.kind === 'ok') {
       messages.push(decoded.message);

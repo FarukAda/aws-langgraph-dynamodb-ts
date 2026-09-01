@@ -24,8 +24,12 @@ export function sessionItemsQuery(
 }
 
 /** Query input selecting a session's message items in chronological order. */
-export function messageQuery(tableName: string, sessionId: string): QueryCommandInput {
-  return {
+export function messageQuery(
+  tableName: string,
+  sessionId: string,
+  options: SessionItemsQueryOptions = {},
+): QueryCommandInput {
+  const params: QueryCommandInput = {
     TableName: tableName,
     KeyConditionExpression: '#pk = :pk AND begins_with(#sk, :skp)',
     ExpressionAttributeNames: { '#pk': 'PK', '#sk': 'SK' },
@@ -35,4 +39,6 @@ export function messageQuery(tableName: string, sessionId: string): QueryCommand
     },
     ScanIndexForward: true,
   };
+  if (options.consistent) params.ConsistentRead = true;
+  return params;
 }
