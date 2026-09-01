@@ -8,6 +8,7 @@ import { S3Offloader } from '../../shared/codec/s3/offloader';
 import { DEFAULT_S3_KEY_PREFIX } from '../../shared/constants';
 import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
+import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBSaverOptions } from '../types';
 
@@ -38,6 +39,7 @@ export function setUpCheckpointer(
   options: DynamoDBSaverOptions,
   serde: SerializerProtocol,
 ): CheckpointerSetup {
+  validateBaseAdapterOptions(options);
   const resolved = resolveDynamoDBClient(options);
   const offloader = options.s3
     ? new S3Offloader({

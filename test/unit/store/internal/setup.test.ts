@@ -6,6 +6,17 @@ import {
 import { setUpStore } from '../../../../src/store/internal/setup';
 
 describe('setUpStore', () => {
+  it('rejects an invalid tableName and non-positive caps at construction (CORE-05)', () => {
+    const client = { send: jest.fn() } as never;
+    expect(() => setUpStore({ tableName: 'bad name', client })).toThrow(/tableName/);
+    expect(() => setUpStore({ tableName: 'store', client, maxScanItems: 0 })).toThrow(
+      /maxScanItems/,
+    );
+    expect(() => setUpStore({ tableName: 'store', client, maxSearchCandidates: 1.5 })).toThrow(
+      /maxSearchCandidates/,
+    );
+  });
+
   it('defaults to the JSON serializer and owns a built client', () => {
     const fake = { destroy: jest.fn(), config: {}, middlewareStack: {}, send: jest.fn() };
     const setup = setUpStore({

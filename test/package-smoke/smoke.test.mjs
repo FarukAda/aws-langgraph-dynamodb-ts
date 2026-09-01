@@ -33,7 +33,7 @@ for (const c of [DynamoDBSaver, DynamoDBStore, DynamoDBChatMessageHistory, Dynam
 }
 assert.equal(ErrorCode.VALIDATION, 'VALIDATION');
 
-const store = new DynamoDBStore({ tableName: 't', clientConfig: { region: 'eu-west-1' } });
+const store = new DynamoDBStore({ tableName: 'smoke', clientConfig: { region: 'eu-west-1' } });
 await assert.rejects(
   () => store.put(['bad#ns'], 'k', { v: 1 }),
   (e) => e instanceof DynamoDBLangGraphError && e.code === ErrorCode.VALIDATION,

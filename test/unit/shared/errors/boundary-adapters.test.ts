@@ -73,7 +73,11 @@ describe('public error boundary (CORE-01)', () => {
     const { client, mock } = createStrictDocumentMock();
     const cause = sdkError();
     mock.on(QueryCommand).rejects(cause);
-    const history = new DynamoDBChatMessageHistory({ tableName: 'h', client, serde: JSON_SERDE });
+    const history = new DynamoDBChatMessageHistory({
+      tableName: 'hist',
+      client,
+      serde: JSON_SERDE,
+    });
     await expect(history.getMessages('s1')).rejects.toMatchObject(
       wrapped('history.getMessages', cause),
     );

@@ -2,6 +2,14 @@ import { setUpHistory } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 
 describe('setUpHistory', () => {
+  it('rejects an invalid tableName and an unknown corrupt-message policy at construction (CORE-05)', () => {
+    const client = { send: jest.fn() } as never;
+    expect(() => setUpHistory({ tableName: 'bad name', client })).toThrow(/tableName/);
+    expect(() =>
+      setUpHistory({ tableName: 'history', client, onCorruptMessage: 'ignore' as never }),
+    ).toThrow(/onCorruptMessage/);
+  });
+
   it('defaults to the JSON serializer and owns a built client', () => {
     const fake = { destroy: jest.fn(), config: {}, middlewareStack: {}, send: jest.fn() };
     const setup = setUpHistory({

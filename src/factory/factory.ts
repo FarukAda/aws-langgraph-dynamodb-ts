@@ -33,6 +33,14 @@ export interface CreatedAdapters {
   destroy: () => void;
 }
 
+function overridesClient(options: FactoryBaseOptions): boolean {
+  return (
+    options.client !== undefined ||
+    options.clientConfig !== undefined ||
+    options.createClient !== undefined
+  );
+}
+
 /**
  * Convenience constructors for the adapters. Individual `create*` methods each
  * build their own client; {@link createAll} builds one shared client used by all
@@ -41,24 +49,35 @@ export interface CreatedAdapters {
 export class DynamoDBFactory {
   constructor(private readonly base: FactoryBaseOptions = {}) {}
 
+  /**
+   * Per-adapter options replace the factory's client choice as a unit: a
+   * `client` handed to `createSaver` also displaces the base `clientConfig`
+   * and `createClient`, because carrying those along is exactly the ambiguous
+   * combination the adapters' option validation rejects.
+   */
+  private defaultsFor(options: FactoryBaseOptions): FactoryBaseOptions {
+    return overridesClient(options) ? { logger: this.base.logger } : this.base;
+  }
+
   createSaver(options: DynamoDBSaverOptions): DynamoDBSaver {
-    return new DynamoDBSaver({ ...this.base, ...options });
+    return new DynamoDBSaver({ ...this.defaultsFor(options), ...options });
   }
 
   createStore(options: DynamoDBStoreOptions): DynamoDBStore {
-    return new DynamoDBStore({ ...this.base, ...options });
+    return new DynamoDBStore({ ...this.defaultsFor(options), ...options });
   }
 
   createChatMessageHistory(options: DynamoDBChatMessageHistoryOptions): DynamoDBChatMessageHistory {
-    return new DynamoDBChatMessageHistory({ ...this.base, ...options });
+    return new DynamoDBChatMessageHistory({ ...this.defaultsFor(options), ...options });
   }
 
   createAll(options: CreateAllOptions): CreatedAdapters {
     const resolved = resolveDynamoDBClient(this.base);
     const client = resolved.client;
-    const saver = new DynamoDBSaver({ ...this.base, ...options.saver, client });
-    const store = new DynamoDBStore({ ...this.base, ...options.store, client });
-    const history = new DynamoDBChatMessageHistory({ ...this.base, ...options.history, client });
+    const shared = this.defaultsFor({ client });
+    const saver = new DynamoDBSaver({ ...shared, ...options.saver, client });
+    const store = new DynamoDBStore({ ...shared, ...options.store, client });
+    const history = new DynamoDBChatMessageHistory({ ...shared, ...options.history, client });
     return {
       saver,
       store,

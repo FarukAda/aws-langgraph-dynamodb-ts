@@ -6,6 +6,18 @@ const serde = {
 };
 
 describe('setUpCheckpointer', () => {
+  it('rejects an invalid tableName and an ambiguous client configuration at construction (CORE-05)', () => {
+    expect(() =>
+      setUpCheckpointer({ tableName: 'bad name', client: { send: jest.fn() } as never }, serde),
+    ).toThrow(/tableName/);
+    expect(() =>
+      setUpCheckpointer(
+        { tableName: 'ckpt', client: { send: jest.fn() } as never, clientConfig: { region: 'x' } },
+        serde,
+      ),
+    ).toThrow(/client/);
+  });
+
   it('builds and owns a client from clientConfig and exposes the context', () => {
     const fakeClient = { destroy: jest.fn(), config: {}, middlewareStack: {}, send: jest.fn() };
     const setup = setUpCheckpointer(
@@ -24,14 +36,14 @@ describe('setUpCheckpointer', () => {
 
   it('does not own an injected client', () => {
     const injected = { send: jest.fn() };
-    const setup = setUpCheckpointer({ tableName: 't', client: injected as never }, serde);
+    const setup = setUpCheckpointer({ tableName: 'ckpt', client: injected as never }, serde);
     expect(setup.ownsClient).toBe(false);
     expect(setup.context.client).toBe(injected);
   });
 
   it('creates an S3 offloader when s3 options are given', () => {
     const setup = setUpCheckpointer(
-      { tableName: 't', client: { send: jest.fn() } as never, s3: { bucketName: 'b' } },
+      { tableName: 'ckpt', client: { send: jest.fn() } as never, s3: { bucketName: 'b' } },
       serde,
     );
     expect(setup.context.offloader).toBeDefined();
@@ -40,7 +52,7 @@ describe('setUpCheckpointer', () => {
   it('passes compression and ttl through to the context', () => {
     const setup = setUpCheckpointer(
       {
-        tableName: 't',
+        tableName: 'ckpt',
         client: { send: jest.fn() } as never,
         compression: { enabled: true },
         ttl: { days: 5 },
@@ -53,14 +65,14 @@ describe('setUpCheckpointer', () => {
 
   it('defaults the S3 key prefix to an adapter-scoped segment, but honors an explicit override', () => {
     const defaulted = setUpCheckpointer(
-      { tableName: 't', client: { send: jest.fn() } as never, s3: { bucketName: 'b' } },
+      { tableName: 'ckpt', client: { send: jest.fn() } as never, s3: { bucketName: 'b' } },
       serde,
     );
     expect(defaulted.context.offloader?.getKeyPrefix()).toBe('langgraph-checkpoints/checkpointer/');
 
     const overridden = setUpCheckpointer(
       {
-        tableName: 't',
+        tableName: 'ckpt',
         client: { send: jest.fn() } as never,
         s3: { bucketName: 'b', keyPrefix: 'custom/' },
       },

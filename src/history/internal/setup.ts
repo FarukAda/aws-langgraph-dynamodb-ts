@@ -8,10 +8,14 @@ import { defaultAdapterKeyPrefix } from '../../shared/codec/s3/config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
 import { DEFAULT_S3_KEY_PREFIX } from '../../shared/constants';
 import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
+import { ValidationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
+import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { CorruptMessagePolicy, DynamoDBChatMessageHistoryOptions } from '../types';
+
+const CORRUPT_MESSAGE_POLICIES: readonly CorruptMessagePolicy[] = ['skip', 'throw'];
 
 /** Resolved collaborators shared by every chat-history action. */
 export interface HistoryContext {
@@ -35,6 +39,16 @@ export interface HistorySetup {
 
 /** Resolve the client, optional S3 offloader, and serializer into a context. */
 export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): HistorySetup {
+  validateBaseAdapterOptions(options);
+  if (
+    options.onCorruptMessage !== undefined &&
+    !CORRUPT_MESSAGE_POLICIES.includes(options.onCorruptMessage)
+  ) {
+    throw new ValidationError(
+      `onCorruptMessage must be one of ${CORRUPT_MESSAGE_POLICIES.join(' | ')}`,
+      'onCorruptMessage',
+    );
+  }
   const resolved = resolveDynamoDBClient(options);
   return {
     context: {
