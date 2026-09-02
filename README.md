@@ -135,7 +135,7 @@ await store.listNamespaces({ prefix: ['library'], maxDepth: 1 });
 
 ```typescript
 import { DynamoDBChatMessageHistory } from '@farukada/aws-langgraph-dynamodb-ts';
-import { HumanMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
 const history = new DynamoDBChatMessageHistory({
   tableName: 'langgraph',
@@ -143,9 +143,10 @@ const history = new DynamoDBChatMessageHistory({
 });
 
 await history.addMessages('session-1', [new HumanMessage('Hello!')]);
+await history.addMessage('session-1', new AIMessage('Hi!'));
 const messages = await history.getMessages('session-1');
 const recent = await history.getMessages('session-1', { limit: 20 }); // newest 20, chronological
-const sessions = await history.listSessions(); // [{ sessionId, title, messageCount, expiresAt?, ... }]
+const sessions = await history.listSessions({ maxItems: 500 }); // [{ sessionId, title, messageCount, expiresAt?, ... }]
 await history.clear('session-1');
 ```
 
@@ -184,6 +185,8 @@ const { saver, store, history, destroy } = factory.createAll({
 destroy(); // closes the one shared client
 ```
 
+Any section may be omitted (`createAll({ store: { tableName } })` returns `saver` and `history` as `undefined`), the factory's own `ttl`, `compression`, `s3`, `retry` and `logger` apply to every adapter unless a section overrides them, and `createSaver`, `createStore` and `createChatMessageHistory` build one adapter each on its own client with the same defaults.
+
 ## Options
 
 All adapters share a common base. Provide **either** a prebuilt `client` (which the adapter will not own/close) **or** `clientConfig` (the adapter builds and owns the client).
@@ -211,7 +214,7 @@ When `keyPrefix` is omitted, each adapter defaults to its own sub-prefix under t
 
 ## Features
 
-**Gzip compression** — set `compression: { enabled: true }`. Payloads at or above `minSizeBytes` (default 1 KB) are gzipped transparently; decompression auto-detects on read and is guarded against decompression-bomb expansion (`maxDecompressedBytes`, default 50 MiB).
+**Gzip compression** — set `compression: { enabled: true }`. Payloads at or above `minSizeBytes` (default 1 KB) are gzipped transparently; the stored descriptor records whether a payload was compressed, so reads never infer it from the bytes, and decompression is guarded against decompression-bomb expansion (`maxDecompressedBytes`, default 50 MiB).
 
 **S3 offloading** — set `s3: { bucketName }`. Any serialized payload at or above `thresholdBytes` (default 350 KB) is written to S3, with only a reference stored in DynamoDB. Only the payload counts toward the threshold: the store's inline embedding (about 10 bytes per dimension, so ~10 KB at 1024 dims and ~45 KB at 4096) is stored on the same item, so keep `thresholdBytes` plus the embedding's size under DynamoDB's 400 KB item limit or the put fails with a raw `ValidationException`; reads rehydrate transparently. Requires the optional `@aws-sdk/client-s3` peer: constructing an adapter with `s3` starts loading it, and a missing package fails the first S3 operation with a `ValidationError` naming the install command — bundlers must keep it installed or external. Deleting a checkpoint thread / chat session also best-effort deletes its offloaded objects. When a `ttl` is also configured, call `ensureS3LifecycleRule()` once (e.g. during deployment) to best-effort install a matching S3 lifecycle expiration rule (logged, never fatal) — this is opt-in rather than automatic, since it requires the broader `s3:PutLifecycleConfiguration` bucket-level permission and is not safe to fire on every adapter construction. If you configure `ttl` + `s3` but never call it, nothing reclaims objects that best-effort cleanup misses — they stay in the bucket until you remove them or add a lifecycle rule yourself. Both the store's concurrent-`put` overwrite race and the checkpointer's *special*-write overwrite race (`__error__`, `__interrupt__`, `__resume__`, `__scheduled__`) are now **prevented** by a compare-and-swap: each overwrite pins the previous descriptor it observed and re-reads on rejection, so it deletes exactly the payload it actually superseded instead of racing another writer for the same one. A leak from either path is now possible only in these residual cases, still backstopped by `ensureS3LifecycleRule()`: the bounded compare-and-swap (3 attempts) is exhausted under pathological contention, which falls back to an unconditional overwrite and logs a `warn`; a best-effort delete genuinely fails; or one double-fault interleaving — a write that loses the swap and then exhausts its transient-error retries on an attempt that actually landed — leaves cleanup targeting the stale descriptor rather than the one it truly superseded, orphaning one object (it never deletes a live object). Separately, and unchanged by any of the above, the checkpointer's *regular* (non-special) writes still resolve a genuine race first-write-wins with no compare-and-swap, so the loser's own upload there remains an orphan reclaimed only by best-effort cleanup and `ensureS3LifecycleRule()`. Likewise, a store `delete` whose acknowledgement is lost after the row was removed cannot learn which object that row referenced — the row is gone and its `ReturnValues` travelled with the lost response — so that one object is left to the lifecycle rule too.
 
@@ -235,25 +238,45 @@ Every DynamoDB call the library makes runs inside its own retry layer, and that 
 
 ## Error handling
 
-All errors thrown by the library extend `DynamoDBLangGraphError` and carry a stable `code` from the `ErrorCode` enum plus a native `cause` chain. Branch on `code`:
+Every error the library throws extends `DynamoDBLangGraphError` and carries a stable `code` from the `ErrorCode` enum, a structured `context` (`tableName`, `operation`, `field`, `key`, `attempts` — identifiers and counts, never a payload) and a native `cause` chain. Raw AWS SDK errors never escape a public method: each one is wrapped in an `UpstreamError` (`code: 'UPSTREAM'`) that names the operation, keeps the SDK error as `cause`, and copies its `upstreamName`, `requestId` and `httpStatusCode` for logging and support tickets. Branch on `code` and detect library errors with the exported brand check rather than `instanceof`, which breaks when a bundler duplicates the package:
 
 ```typescript
-import { ErrorCode, DynamoDBLangGraphError } from '@farukada/aws-langgraph-dynamodb-ts';
+import { ErrorCode, isDynamoDBLangGraphError } from '@farukada/aws-langgraph-dynamodb-ts';
 
 try {
   await store.put([''], 'k', { v: 1 });
 } catch (error) {
-  if (error instanceof DynamoDBLangGraphError && error.code === ErrorCode.VALIDATION) {
-    // bad input
+  if (isDynamoDBLangGraphError(error as Error)) {
+    if (error.code === ErrorCode.VALIDATION) {  /* bad input: error.context.field names it */ }
+    if (error.code === ErrorCode.UPSTREAM) {  /* an AWS error: error.cause, error.requestId */ }
   }
 }
 ```
 
-`ErrorCode` values: `VALIDATION`, `CONDITION_CONFLICT`, `RETRY_EXHAUSTED`, `BATCH_WRITE_INCOMPLETE`, `COMPRESSION_LIMIT`, `S3_OFFLOAD_FAILED`, `RESULT_TRUNCATED`, `ABORTED`, `COMPENSATION_FAILED`.
+| `ErrorCode` | Class | Thrown by |
+| --- | --- | --- |
+| `VALIDATION` | `ValidationError` | every constructor for a bad option; every method for a bad identifier, key, window or value; S3 offload configured without the `@aws-sdk/client-s3` peer; a descriptor the reader cannot honour |
+| `UPSTREAM` | `UpstreamError` | every public method, wrapping an AWS SDK error that was not retryable or that the library does not classify (`AccessDeniedException`, `ResourceNotFoundException`, `ValidationException`, …) |
+| `RETRY_EXHAUSTED` | `RetryExhaustedError` | every DynamoDB call after `retry.maxAttempts` transient failures (`context.attempts`, the last error as `cause`) |
+| `ABORTED` | `AbortError` | any cancellable method whose `AbortSignal` fired |
+| `CONDITION_CONFLICT` | `ConflictError` | `history.reconcileMessageCount` when the session changed while it counted |
+| `COMPENSATION_FAILED` | `CompensationFailedError` | `history.addMessages` / `addMessage` when a multi-chunk append failed and the rollback of the committed chunks failed too (`rollbackError`; run `reconcileMessageCount`) |
+| `BATCH_WRITE_INCOMPLETE` | `BatchWriteAllIncompleteError` | `saver.deleteThread`, `history.clear` when a multi-chunk delete does not fully drain (`succeededCount`, `failedChunks`); `BatchWriteIncompleteError` is the per-chunk error inside it |
+| `RESULT_TRUNCATED` | `ResultTruncatedError` | the paginated reads that keep rows in memory — `store.search`, `store.listNamespaces`, `store.reconcileVectorIndex`, `history.listSessions` — past `maxScanItems` / `maxItems` / `maxIterations` |
+| `S3_OFFLOAD_FAILED` | `DynamoDBLangGraphError` | an upload, download or delete of an offloaded object that failed after the S3 retries, an object over `maxDownloadBytes`, or an object that no longer exists (`context.key`) |
+| `COMPRESSION_LIMIT` | `DynamoDBLangGraphError` | a payload whose decompressed size would exceed `maxDecompressedBytes` |
 
 **Cancellation** — every long-running method takes an `AbortSignal`: the checkpointer reads `RunnableConfig.signal` (which LangGraph propagates) on `getTuple`, `list`, `put` and `putWrites`, and `deleteThread`, `search`, `reconcileVectorIndex`, `getMessages`, `addMessages`, `addMessage`, `clear`, `listSessions` and `reconcileMessageCount` take a trailing `{ signal }`. A signal that is already aborted, or aborts while the library waits (a retry backoff, the next page of a paginated read), rejects the call with the library's `AbortError` (`code: 'ABORTED'`) whatever the abort reason was — the raw reason (a `DOMException` for a bare `controller.abort()`) is kept as `cause`. Cleanup and verification reads that run after a failure are not cancelled, so an abort never strands a live row pointing at a deleted object. Typed subclasses are exported where callers commonly branch: `ValidationError`, `ConflictError`, `RetryExhaustedError`, `BatchWriteIncompleteError`, `BatchWriteAllIncompleteError`, `ResultTruncatedError`, `AbortError`, `CompensationFailedError`.
 
-`BatchWriteAllIncompleteError` is thrown directly by `deleteThread`, `clearSession`, and `putWrites` when a multi-chunk `BatchWriteItem` sequence doesn't fully drain. The chat-history append-rollback path can hit the same underlying failure while deleting a partially-committed batch's rows, but there it's never thrown directly — it surfaces as the `rollbackError` property of a `CompensationFailedError` (the append's original trigger error still needs reporting too), so check `err.rollbackError instanceof BatchWriteAllIncompleteError` there instead of `err instanceof BatchWriteAllIncompleteError`. Where the error may have crossed a package-copy boundary (e.g. a bundler duplicating this package), prefer `err.rollbackError.code === ErrorCode.BATCH_WRITE_INCOMPLETE` or `err.rollbackError.name === 'BatchWriteAllIncompleteError'` over `instanceof` — this library's own code avoids `instanceof` internally for the same reason. It carries `succeededChunks` / `totalChunks` / `failedChunks` / `succeededCount` so a caller can tell how much of the batch actually persisted before the failure, rather than just seeing the first chunk's raw error.
+`CompensationFailedError` is the one error that carries another: the append's original failure is `cause` and the rollback failure is `rollbackError`, which can itself be a `BatchWriteAllIncompleteError`. Check `rollbackError.code` (or `.name`) rather than `instanceof` for the same package-copy reason as above. The session's stored `messageCount` may be wrong at that point; `reconcileMessageCount` repairs it.
+
+### Maintenance operations
+
+Three methods repair or provision state and are meant for deployment scripts and operators, not request paths:
+
+- **`ensureS3LifecycleRule()`** (all three adapters) — installs the S3 lifecycle expiration rule that matches the configured `ttl` under the adapter's key prefix, idempotently. It **throws** when the bucket cannot be read or written (`AccessDenied`, `NoSuchBucket`, throttling) — nothing is swallowed or merely logged — so call it once at deployment time, from a role that holds the two lifecycle actions, and treat a failure as a deployment failure. It is a no-op when `s3` or `ttl` is not configured.
+- **`store.reconcileVectorIndex(namespacePrefix)`** — re-pushes every live item's embedding to the configured `vectorBackend` and, when the backend implements `listKeys`, prunes vectors whose item is gone; returns `{ upserted, pruned }`. Run it when the namespace is idle; it reads every row under the prefix (bounded by `maxScanItems`).
+- **`history.reconcileMessageCount(sessionId)`** — recounts a session's live messages and rewrites the stored `messageCount`; returns the count. Run it after a `CompensationFailedError` or the `rollback failed` log event, when the session is idle; it throws `ConflictError` if an append lands while it counts.
 
 ## Logging
 
