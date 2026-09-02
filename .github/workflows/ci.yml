@@ -4,7 +4,10 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    # The hardening/** branch runs the whole pipeline (DynamoDB Local tiers,
+    # conformance matrix, package smoke) on every push while 1.0.0 is being
+    # prepared; drop the pattern again at release (Phase 5).
+    branches: [main, 'hardening/**']
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
