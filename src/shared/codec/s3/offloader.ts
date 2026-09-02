@@ -1,7 +1,7 @@
 import type { S3Client } from '@aws-sdk/client-s3';
 
 import { DEFAULT_S3_KEY_PREFIX, DEFAULT_S3_SSE, DEFAULT_S3_THRESHOLD_BYTES } from '../../constants';
-import { createDefaultS3Client } from './client';
+import { createDefaultS3Client, loadS3Sdk } from './client';
 import { buildS3Key, S3OffloadConfig } from './config';
 import { deleteObjects } from './delete';
 import { ensureLifecycleRule } from './lifecycle';
@@ -29,6 +29,13 @@ export class S3Offloader {
     this.thresholdBytes = config.thresholdBytes ?? DEFAULT_S3_THRESHOLD_BYTES;
     this.sse = config.serverSideEncryption ?? DEFAULT_S3_SSE;
     this.sseKmsKeyId = config.sseKmsKeyId;
+    /**
+     * Warm the optional peer's import so a missing `@aws-sdk/client-s3`
+     * surfaces on the very first S3 operation, typed, rather than on the first
+     * oversize payload days later. The rejection is handled here; whichever
+     * operation runs first re-raises it through its own `loadS3Sdk()` call.
+     */
+    void loadS3Sdk().catch(() => undefined);
   }
 
   private getClient(): Promise<S3Client> {

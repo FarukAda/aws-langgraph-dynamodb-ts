@@ -5,8 +5,8 @@ import { ErrorCode } from './error-code';
 
 /** Input failed a validation rule before any AWS call was made; `context.field` names the input. */
 export class ValidationError extends DynamoDBLangGraphError {
-  constructor(message: string, field?: string) {
-    super(message, ErrorCode.VALIDATION, field === undefined ? {} : { field });
+  constructor(message: string, field?: string, cause?: Error) {
+    super(message, ErrorCode.VALIDATION, field === undefined ? {} : { field }, cause);
     this.name = 'ValidationError';
   }
 }

@@ -11,6 +11,8 @@ import { mockClient } from 'aws-sdk-client-mock';
 
 import * as s3ClientModule from '../../../../../src/shared/codec/s3/client';
 import { S3Offloader } from '../../../../../src/shared/codec/s3/offloader';
+import { ErrorCode } from '../../../../../src/shared/errors/error-code';
+import { ValidationError } from '../../../../../src/shared/errors/errors';
 
 // Wrap (not stub out) the real `createDefaultS3Client` so tests can observe
 // call counts / inject failures on the genuine async construction path
@@ -23,11 +25,16 @@ jest.mock('../../../../../src/shared/codec/s3/client', () => {
   return {
     ...actual,
     createDefaultS3Client: jest.fn(actual.createDefaultS3Client),
+    loadS3Sdk: jest.fn(actual.loadS3Sdk),
   };
 });
 
 const createDefaultS3ClientMock = s3ClientModule.createDefaultS3Client as jest.MockedFunction<
   typeof s3ClientModule.createDefaultS3Client
+>;
+
+const loadS3SdkMock = s3ClientModule.loadS3Sdk as jest.MockedFunction<
+  typeof s3ClientModule.loadS3Sdk
 >;
 
 const s3Mock = mockClient(S3Client);
@@ -211,6 +218,40 @@ describe('S3Offloader', () => {
       expect(unhandledReasons).toEqual([]);
     } finally {
       process.off('unhandledRejection', onUnhandledRejection);
+    }
+  });
+});
+
+describe('optional peer preload (CODEC-05)', () => {
+  it('starts loading @aws-sdk/client-s3 at construction so a missing peer surfaces early', () => {
+    loadS3SdkMock.mockClear();
+    new S3Offloader({ bucketName: 'b' }).destroy();
+    expect(loadS3SdkMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a missing peer as the typed error on the first operation, with no unhandledRejection', async () => {
+    const unhandledReasons: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown): void => {
+      unhandledReasons.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+    try {
+      const missing = new ValidationError('S3 offload requires the optional peer', 's3');
+      loadS3SdkMock.mockRejectedValueOnce(missing).mockRejectedValueOnce(missing);
+      const { offloader } = makeOffloader();
+      await new Promise((resolve) => setImmediate(resolve));
+      await expect(offloader.upload('a.bin', new Uint8Array([1]))).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION,
+        context: { field: 's3' },
+      });
+      expect(unhandledReasons).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+      loadS3SdkMock.mockReset();
+      loadS3SdkMock.mockImplementation(
+        jest.requireActual<typeof s3ClientModule>('../../../../../src/shared/codec/s3/client')
+          .loadS3Sdk,
+      );
     }
   });
 });

@@ -1,11 +1,43 @@
 import type { S3Client, S3ClientConfig } from '@aws-sdk/client-s3';
 
-let sdkPromise: Promise<typeof import('@aws-sdk/client-s3')> | undefined;
+import { ValidationError } from '../../errors/errors';
 
-/** Lazily import the optional `@aws-sdk/client-s3` peer, caching the module. */
-export async function loadS3Sdk(): Promise<typeof import('@aws-sdk/client-s3')> {
+type S3Sdk = typeof import('@aws-sdk/client-s3');
+
+/** Codes Node and bundlers use for an import that cannot be resolved. */
+const MISSING_MODULE_CODES: readonly string[] = ['ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND'];
+
+let sdkPromise: Promise<S3Sdk> | undefined;
+
+/**
+ * Convert a failed import of the optional peer into a typed error that names
+ * the remedy. Any other failure (a broken build, a syntax error inside the
+ * package) passes through unchanged.
+ */
+function wrapMissingPeer(error: Error): never {
+  const code = (error as { code?: string }).code;
+  if (code !== undefined && MISSING_MODULE_CODES.includes(code)) {
+    throw new ValidationError(
+      'S3 offload requires the optional peer @aws-sdk/client-s3 (npm install @aws-sdk/client-s3); ' +
+        'bundlers must keep it installed or external',
+      's3',
+      error,
+    );
+  }
+  throw error;
+}
+
+/**
+ * Lazily import the optional `@aws-sdk/client-s3` peer, caching the module. A
+ * failed import is not cached, so an install or a fixed bundle can succeed on
+ * a later call.
+ */
+export async function loadS3Sdk(): Promise<S3Sdk> {
   if (!sdkPromise) {
-    sdkPromise = import('@aws-sdk/client-s3');
+    sdkPromise = import('@aws-sdk/client-s3').catch((error: Error) => {
+      sdkPromise = undefined;
+      return wrapMissingPeer(error);
+    });
   }
   return sdkPromise;
 }
