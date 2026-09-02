@@ -166,6 +166,9 @@ jobs:
       - name: Pin the checkpoint package under test
         run: npm install --no-save @langchain/langgraph-checkpoint@${{ matrix.langgraph }}
 
+      - name: Type-check the adapters against the pinned checkpoint package
+        run: npm run typecheck:all
+
       - name: Wait for DynamoDB Local
         run: |
           for i in $(seq 1 60); do
