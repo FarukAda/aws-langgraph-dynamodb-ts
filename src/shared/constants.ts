@@ -54,6 +54,14 @@ export const DEFAULT_COMPRESSION_LEVEL = 6;
 /** Default gzip-bomb guard: maximum decompressed output (50 MiB). */
 export const DEFAULT_MAX_DECOMPRESSED_BYTES = 50 * 1024 * 1024;
 
+/**
+ * Default cap on an offloaded object buffered from S3 (50 MiB), checked against
+ * `ContentLength` before the body is read and enforced while streaming when
+ * the length is unknown. Together with {@link DEFAULT_MAX_DECOMPRESSED_BYTES}
+ * it bounds the memory any single payload can claim.
+ */
+export const DEFAULT_MAX_S3_DOWNLOAD_BYTES = 50 * 1024 * 1024;
+
 /** Default maximum attempts for transient-error retries. */
 export const DEFAULT_RETRY_MAX_ATTEMPTS = 5;
 

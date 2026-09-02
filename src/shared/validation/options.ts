@@ -63,6 +63,9 @@ function validateS3(config: S3OffloadConfig): void {
     });
   }
   if (config.keyPrefix !== undefined) assertScopedKeyPrefix(config.keyPrefix);
+  if (config.maxDownloadBytes !== undefined) {
+    validateInteger(config.maxDownloadBytes, 's3.maxDownloadBytes', { min: 1 });
+  }
   if (
     config.serverSideEncryption !== undefined &&
     !SSE_ALGORITHMS.includes(config.serverSideEncryption)

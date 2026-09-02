@@ -10,6 +10,8 @@ export interface S3OffloadConfig {
   thresholdBytes?: number;
   serverSideEncryption?: string;
   sseKmsKeyId?: string;
+  /** Largest object this adapter will buffer from S3 (default 50 MiB). */
+  maxDownloadBytes?: number;
   clientConfig?: S3ClientConfig;
   createS3Client?: (config: S3ClientConfig) => S3Client;
 }

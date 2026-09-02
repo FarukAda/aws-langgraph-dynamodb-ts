@@ -30,6 +30,7 @@ describe('shared constants', () => {
     expect(C.DEFAULT_COMPRESSION_MIN_BYTES).toBe(1024);
     expect(C.DEFAULT_COMPRESSION_LEVEL).toBe(6);
     expect(C.DEFAULT_MAX_DECOMPRESSED_BYTES).toBe(50 * 1024 * 1024);
+    expect(C.DEFAULT_MAX_S3_DOWNLOAD_BYTES).toBe(50 * 1024 * 1024);
   });
 
   it('pins the list() scan warning threshold to its own value, independent of the in-memory cap', () => {

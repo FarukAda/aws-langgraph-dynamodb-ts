@@ -1,6 +1,11 @@
 import type { S3Client } from '@aws-sdk/client-s3';
 
-import { DEFAULT_S3_KEY_PREFIX, DEFAULT_S3_SSE, DEFAULT_S3_THRESHOLD_BYTES } from '../../constants';
+import {
+  DEFAULT_MAX_S3_DOWNLOAD_BYTES,
+  DEFAULT_S3_KEY_PREFIX,
+  DEFAULT_S3_SSE,
+  DEFAULT_S3_THRESHOLD_BYTES,
+} from '../../constants';
 import { createDefaultS3Client, loadS3Sdk } from './client';
 import { buildS3Key, S3OffloadConfig } from './config';
 import { deleteObjects } from './delete';
@@ -20,6 +25,7 @@ export class S3Offloader {
   private readonly thresholdBytes: number;
   private readonly sse: string;
   private readonly sseKmsKeyId?: string;
+  private readonly maxDownloadBytes: number;
   private readonly config: S3OffloadConfig;
 
   constructor(config: S3OffloadConfig) {
@@ -29,6 +35,7 @@ export class S3Offloader {
     this.thresholdBytes = config.thresholdBytes ?? DEFAULT_S3_THRESHOLD_BYTES;
     this.sse = config.serverSideEncryption ?? DEFAULT_S3_SSE;
     this.sseKmsKeyId = config.sseKmsKeyId;
+    this.maxDownloadBytes = config.maxDownloadBytes ?? DEFAULT_MAX_S3_DOWNLOAD_BYTES;
     /**
      * Warm the optional peer's import so a missing `@aws-sdk/client-s3`
      * surfaces on the very first S3 operation, typed, rather than on the first
@@ -91,9 +98,9 @@ export class S3Offloader {
     return key;
   }
 
-  /** Download the bytes stored under `key`. */
+  /** Download the bytes stored under `key`, refusing objects over `maxDownloadBytes`. */
   async download(key: string): Promise<Uint8Array> {
-    return downloadObject(await this.getClient(), this.bucketName, key);
+    return downloadObject(await this.getClient(), this.bucketName, key, this.maxDownloadBytes);
   }
 
   /** Delete `keys`, returning the keys S3 reported as failed. */

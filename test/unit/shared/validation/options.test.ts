@@ -129,6 +129,15 @@ describe('validateBaseAdapterOptions', () => {
       }
     });
 
+    it('rejects a non-positive or fractional maxDownloadBytes', () => {
+      for (const maxDownloadBytes of [0, 1.5]) {
+        expectValidationError(
+          () => validateBaseAdapterOptions({ ...base, s3: { bucketName: 'b', maxDownloadBytes } }),
+          's3.maxDownloadBytes',
+        );
+      }
+    });
+
     it('rejects an unknown server-side encryption algorithm', () => {
       expectValidationError(
         () =>

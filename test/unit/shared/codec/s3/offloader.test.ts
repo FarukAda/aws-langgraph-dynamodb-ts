@@ -255,3 +255,22 @@ describe('optional peer preload (CODEC-05)', () => {
     }
   });
 });
+
+describe('download cap (CODEC-17)', () => {
+  it('passes the configured maxDownloadBytes to every download', async () => {
+    const client = new S3Client({ region: 'us-east-1' });
+    const offloader = new S3Offloader({
+      bucketName: 'b',
+      maxDownloadBytes: 4,
+      createS3Client: () => client,
+    });
+    s3Mock.on(GetObjectCommand).resolves({
+      ContentLength: 10,
+      Body: { transformToByteArray: async () => new Uint8Array(10) } as never,
+    });
+    await expect(offloader.download('k.bin')).rejects.toMatchObject({
+      code: ErrorCode.S3_OFFLOAD_FAILED,
+    });
+    offloader.destroy();
+  });
+});
