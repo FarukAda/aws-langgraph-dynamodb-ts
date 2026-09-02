@@ -1,4 +1,13 @@
-import { createUlidFactory } from '../../../src/shared/ulid';
+import { randomBytes } from 'node:crypto';
+
+import { createUlidFactory, secureRng } from '../../../src/shared/ulid';
+
+jest.mock('node:crypto', () => {
+  const actual = jest.requireActual<typeof import('node:crypto')>('node:crypto');
+  return { ...actual, randomBytes: jest.fn(actual.randomBytes) };
+});
+
+const randomBytesMock = randomBytes as jest.MockedFunction<typeof randomBytes>;
 
 describe('createUlidFactory', () => {
   it('works with the default Date.now / Math.random seams', () => {
@@ -84,5 +93,22 @@ describe('createUlidFactory', () => {
     const second = ulid();
     expect(second > first).toBe(true);
     expect(second.slice(0, 10)).not.toBe(first.slice(0, 10));
+  });
+});
+
+describe('secureRng (DDB-12)', () => {
+  it('draws from crypto.randomBytes through a refilled pool and stays within [0, 1)', () => {
+    randomBytesMock.mockClear();
+    const rng = secureRng();
+    const values = Array.from({ length: 257 }, () => rng());
+    expect(values.every((value) => value >= 0 && value < 1)).toBe(true);
+    expect(randomBytesMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('is the default random source of a ULID factory', () => {
+    randomBytesMock.mockClear();
+    const id = createUlidFactory()();
+    expect(id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+    expect(randomBytesMock).toHaveBeenCalled();
   });
 });
