@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The 1.0.0 hardening: every finding of an independent, enterprise-grade review of `0.9.0` (188 findings across the checkpointer, store, chat history, DynamoDB layer, codec and S3, error model, security and IAM, packaging, tests and documentation) was fixed or, where the finding was a documentation gap, documented. Every fix landed test-first, the test tiers now include a compiled LangGraph graph over the saver and LangChain's official checkpointer validation suite against DynamoDB Local, and the README states what each tier proves. Rows written by `0.9.0` remain fully readable; the two new row attributes (`storedChannels` on checkpoint META rows, `schemaVersion` inside payload descriptors) are additive.
+
+### Changed (breaking)
+
+- **`DynamoDbLangGraphError` is now `DynamoDBLangGraphError`**, matching every other export; the `name` property changed with it. There is no alias.
+- **Raw AWS SDK errors no longer escape a public method.** Each is wrapped in a new `UpstreamError` (`code: 'UPSTREAM'`) with the SDK error as `cause` and its `upstreamName`, `requestId` and `httpStatusCode` copied. Code that matched `error.name === 'AccessDeniedException'` must look at `error.cause` (or `error.upstreamName`).
+- **`saver.list()` without a `thread_id` scans every thread** (a table `Scan`, as the reference savers do) instead of throwing `ValidationError`, and `saver.getTuple()` with a config that names no thread returns `undefined` instead of throwing — both required by LangChain's checkpointer validation suite. Grant `dynamodb:Scan` only to roles that may read across tenants.
+- **`saver.put()` honours `newVersions`.** Only the channels `newVersions` names, plus those the parent checkpoint stored, are persisted; a caller that passed values for channels outside `newVersions` and never wrote them before no longer gets them back. LangGraph itself is unaffected. A put without `newVersions` stores every value, as before.
+- **The `createClient` and `createS3Client` hooks are `@internal`** and are stripped from the shipped declarations; they remain as test seams in the source.
+- **Options are validated at construction.** A bad `tableName`, `ttl`, `compression`, `s3`, `retry`, `index`/`vectorBackend` combination or `vectorScoreDirection` throws `ValidationError` from the constructor instead of surfacing later as a raw AWS error.
+- **Identifier and key lengths are bounded**: `thread_id` and `sessionId` at 1024 bytes, every sort-key segment (`checkpoint_ns`, `checkpoint_id`, `taskId`, channel, store namespace element and key) at 256 bytes, composed sort keys at 1024 bytes and offloaded S3 keys at 1024 bytes, all as `ValidationError` before the request. `ttl.seconds` is capped at five years like `ttl.days`, and `{ days, seconds }` together is rejected.
+- **`ensureS3LifecycleRule()` requires a scoped `keyPrefix`** (non-empty, ending in `/`); an empty or root prefix, which would have installed a whole-bucket expiration rule, is rejected. The rule now expires objects `ceil(ttl days) + 2` days after creation (the sweep-lag margin) and expires noncurrent versions after the same period.
+- **The `examples/verify-*.mjs` scripts are gone**; the real-AWS test tier (`npm run test:aws`, nightly in CI) covers what they did.
+- **The conformance matrix tests the declared floor** (`@langchain/langgraph-checkpoint` 1.1.5) rather than 1.0.3, a version outside the peer range.
+
+### Added
+
+- `history.getMessages(sessionId, { limit, before })`: a bounded read window (the newest `limit` messages, or those before an instant), `forSession(sessionId, { limit })` for the LangChain adapter, `SessionMetadata.expiresAt`, and the `MessageWindow`, `GetMessagesOptions` and `ListSessionsOptions` types.
+- Cancellation on every long-running method: the checkpointer reads `RunnableConfig.signal`; `deleteThread`, `search`, `reconcileVectorIndex`, `getMessages`, `addMessages`, `addMessage`, `clear`, `listSessions` and `reconcileMessageCount` take `{ signal }`; any abort surfaces as `AbortError` (`ABORTED`) with the raw reason as `cause`.
+- A `retry` option on every adapter (`maxAttempts`, `baseDelayMs`, `maxDelayMs`), every retry logged at `debug`, and the `RetryPolicy`, `RetryOptions` and `RetryAttemptInfo` types.
+- `DynamoDBFactory` shares `ttl`, `compression`, `s3` and `retry` across the adapters it builds, `createAll` accepts any subset of sections with a result typed by them, and a constructor failure inside `createAll` destroys the client it had built.
+- `DynamoDBStore.stop()` releases owned clients, hooking LangGraph's `BaseStore` lifecycle.
+- Exported types for every public signature: `VectorScoreDirection`, `RedactLoggerOptions`, `Redactable`, `SessionBackend`, `AdapterWindow`, `S3ClientLike`, `S3ClientConfigLike`, `AdapterSection`, and `CancelOptions`.
+- `S3OffloadConfig.maxDownloadBytes` (default 50 MiB) caps the size of an offloaded object the adapters will buffer, checked before and while reading.
+- The S3 client inherits the DynamoDB `clientConfig.region` when its own config names none.
+- Payload descriptors carry `schemaVersion: 1`; a reader refuses a higher version or an unknown `location` with a `ValidationError` instead of guessing.
+- `exports['./package.json']` for tooling that reads the manifest.
+- Documentation: a least-privilege IAM policy and a `dynamodb:LeadingKeys` tenant policy, a multi-tenancy section, the complete log-events table, an Operations section (limits, per-operation request costs, monitoring, Lambda), a Testing section stating what each tier proves, `docs/STABILITY.md`, `SECURITY.md`, `SUPPORT.md`, `CONTRIBUTING.md`, issue and pull-request templates.
+
+### Fixed
+
+- Checkpointer: a failed `put` or `putWrites` no longer deletes an S3 object a live row may point at — the rows are read back first and only a confirmed non-commit cleans up its own nonced upload; checkpoint and metadata objects are nonced per put; a regular write's upload is never deleted on an unverified failure; `list()` covers every namespace when none is given, applies `before` at the key, reads eventually consistently and passes `limit` to the query when unfiltered; `getTuple` reads large fan-outs completely, treats a falsy `checkpoint_id` as "latest", narrows the head row instead of trusting it, and rebuilds a pre-v4 checkpoint's pending sends from its parent; pending-write channel names are validated like every other key segment.
+- Store: ambiguous writes are verified by revision (an inline overwrite whose acknowledgement was lost is reported as success and cleans up the previous object), `delete` uses `ReturnValues: ALL_OLD` instead of a pre-read so a racing put can no longer orphan its object, pre-write reads project only the fields they need, a revision swap whose re-read finds the row gone takes the put timestamp as `createdAt`, an overwrite racing a `get` is re-read once, embedding-dimension mismatches are reported at search time, `embedDocuments` is used for documents and fields are extracted like `InMemoryStore`, and the in-DB ranker refuses a candidate set over `maxSearchCandidates` before decoding anything.
+- Chat history: only a provably unreadable message is skipped under `onCorruptMessage: 'skip'` (a transient S3 or permission failure propagates), messages that could never be read back are rejected at write time, reads are strongly consistent, titles are derived from content blocks, `reconcileMessageCount` counts only unexpired rows, a re-created session is never decremented during rollback, and an ambiguous chunk failure is re-read before compensating.
+- Every read path filters rows past their `ttl` during DynamoDB's sweep lag (store `get`/`search`/`listNamespaces`, checkpointer `getTuple`/`list`, history `getMessages`/`listSessions`).
+- Retries: HTTP 429/5xx, `$retryable` errors and every SDK socket code are classified as transient with exact-token matching; S3 uploads and downloads retry SDK timeouts and status-only 5xx through the one classifier; `ResultTruncatedError` no longer fires when the page after the cap is empty; an injected DynamoDB client that keeps the SDK's own retries is warned about at construction.
+- S3: offloaded keys are bound to the adapter prefix and the row's own identifiers before any download or delete, so a tampered row cannot reach another item's object; a missing `@aws-sdk/client-s3` peer fails with a typed error naming the remedy; the shipped declarations compile without the optional peer installed.
+- Errors and logging: `ErrorContext.field` names the offending option or argument, `DynamoDBLangGraphError` carries structured context, redaction covers error text without over-redacting telemetry, and a payload that cannot fit a DynamoDB item is refused before the write.
+- ULIDs draw their random component from `crypto.randomBytes`.
+- Metadata filters compare own properties only, and the lifecycle-rule slug no longer uses a quadratic regex.
+- The lockfile installs with npm 10 (Node 22) as well as npm 11.
+
+### Performance
+
+- Offloaded payloads are decoded up to eight at a time on every read path instead of one S3 GET after another.
+- A plain `store.search()` stops reading once `offset + limit` matches are in hand; `store.batch()` runs independent operations concurrently (writes to one item stay ordered, then reads); `listNamespaces` projects only the key attributes; a compare-and-swap that loses takes the rejected row from the exception instead of a second read; `reconcileVectorIndex` embeds in batches; `list()` passes its limit to DynamoDB when unfiltered.
+
+### Documentation
+
+- README: corrected IAM actions, error-handling section rewritten around `UpstreamError` and the real throwers, maintenance operations, complete log-events table, accuracy pass over options and semantics (checkpointer last-writer-wins and single-pass deletes, chat-history ordering, serde caveats, chunked appends and worst-case latency, differences from `InMemoryStore`, retroactive TTL, bundling of the lazy S3 import, CommonJS usage), operations and multi-tenancy sections, and the tested envelope.
+- `docs/api` is regenerated from a JSDoc pass over every public method (`@throws`, consistency and cost remarks) and no longer bakes in the package version; CI fails when it is stale.
+- The live demos under `examples/` read `AWS_REGION` and `LANGGRAPH_DEMO_TABLE`; the personal model probe is gone.
+
+### Internal
+
+- Static guards: no `any`/`unknown`/`instanceof` in `src`, no re-exports outside the entry, no import cycles, no dead error codes (AST-based, whole-token references), every log event documented, the IAM policy equal to the actions used, `@internal` on the client seams, the optional S3 peer out of every public module, and the public export set and adapter signatures locked by type tests.
+- Test tiers: property tests for sort-key order, item-size estimation, write resolution, redaction and backoff; write races against DynamoDB Local with an in-memory S3 fake; the DynamoDB semantics the unit mocks assume pinned against the engine; differential runs against `InMemoryStore` and `InMemoryChatMessageHistory`; a compiled LangGraph graph and LangChain's checkpointer validation suite in the conformance tier; failure-safe real-AWS teardown and a clean Bedrock skip; the unit tier times out at 15 s; failing DynamoDB-Local tests are surfaced as check-run annotations.
+
 ## [0.9.0] - 2026-08-29
 
 Closing every open finding from an independent review of `0.8.0` itself: 4
@@ -122,6 +180,8 @@ for the two fixes that touch on-wire key construction.
 - **`batchWriteAll`'s `succeededCount` (added in 0.6.0 to fix rollback undercounting) could still undercount when a chunk partially drained before a later retry round failed outright** — e.g. 20 of 25 items persist, then sustained throttling exhausts the retry budget on the remaining 5: the earlier 20 confirmed successes were silently discarded to 0 instead of being reported. `drainUnprocessedWrites` now carries the running persisted-count through every exit path — a hard write-call failure, the backoff wait's own signal aborting, or clean `UnprocessedItems` exhaustion — not just the last of these. This directly improves the accuracy of `append-saga.ts`'s rollback `messageCount` reversion, the exact call site the 0.6.0 fix targeted.
 
 ## [0.6.0] - 2026-08-28
+
+_There is no 0.5.0: the work between 0.4.0 and 0.6.0 was never published under that number._
 
 A second hardening pass, addressing an independent max-effort review of
 `0.4.0` itself (the previous hardening release): two critical data-integrity
@@ -649,6 +709,14 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 
 ---
 
+[Unreleased]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.4.0...v0.6.0
+[0.4.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.2.2...v0.3.0
 [0.2.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.0.11...v0.1.0
