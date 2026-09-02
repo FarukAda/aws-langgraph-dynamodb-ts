@@ -431,6 +431,18 @@ npm run test:aws                # needs AWS credentials; AWS_REGION selects the 
 
 The `examples/live-*.mjs` scripts are demos that leave a table in place for inspection in the console; they are not a test tier.
 
+### What the suite does and does not prove
+
+| Tier | Runs | Proves |
+| --- | --- | --- |
+| Unit, static guards, type locks, property tests (`npm test`) | every push and PR, three OSes × Node 22 and 24 | every code path (100 % coverage), the repository rules (file size, JSDoc-only comments, no `any`/`unknown`/`instanceof`, no re-exports, no import cycles, no dead error codes), the exact public export set and adapter signatures, the stated invariants (sort-key order, item-size estimate, write resolution, redaction, backoff) |
+| Integration (`npm run test:integration`, DynamoDB Local) | every push and PR | end-to-end adapter flows and fault injection; the write races the compare-and-swap exists for, with an in-memory S3 in the loop; the DynamoDB semantics the unit mocks assume; parity with `InMemoryStore` and `InMemoryChatMessageHistory` under `RunnableWithMessageHistory`; a 30-way single-session append storm |
+| Conformance (`npm run test:conformance`, DynamoDB Local) | every push and PR, against the declared floor and the latest `@langchain/langgraph-checkpoint` | a compiled LangGraph graph over the saver (interrupt/resume, subgraph namespaces, forks, history windows, crash-and-resume, `Send` fan-out) and LangChain's official checkpointer validation suite |
+| Package smoke (`npm run test:package-smoke`) | every push and PR | the packed tarball installs and imports without the optional S3 peer, and its declarations type-check without it |
+| Real AWS (`npm run test:aws`) | nightly through OIDC | S3 offload, lifecycle rules and the S3 error taxonomy against the real services; real 30-way append contention; Bedrock embeddings (skipped with a reason when the model is not enabled) |
+
+Nothing in the suite provokes real throttling or `ProvisionedThroughputExceededException` (only its classification is tested), receives `UnprocessedItems` from a batch write (DynamoDB Local and on-demand tables never return them), observes DynamoDB's TTL sweep (only the stamped attribute is asserted), uses a versioned bucket, exercises a hot partition, or measures the write capacity the compare-and-swap fallback consumes. An injected `client` that keeps the SDK's own retries multiplies the library's attempt budget; the integration tier pins that count once and every adapter warns about it at construction.
+
 ## License
 
 MIT © [Faruk Ada](https://github.com/FarukAda)
