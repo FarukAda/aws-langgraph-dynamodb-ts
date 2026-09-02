@@ -12,6 +12,7 @@ import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 function context(
@@ -348,5 +349,27 @@ describe('S3 key binding (SEC-03)', () => {
       code: ErrorCode.VALIDATION,
       context: { field: 's3Key' },
     });
+  });
+});
+
+describe('offloaded reads run concurrently (CODEC-14)', () => {
+  it('decodes offloaded messages up to 8 at a time, preserving order', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const { offloader, maxInFlight } = overlapOffloader();
+    const ctx = context(client, { offloader: offloader as never });
+    const stored = mapChatMessagesToStoredMessages([
+      new HumanMessage('m0'),
+      new AIMessage('m1'),
+      new HumanMessage('m2'),
+      new AIMessage('m3'),
+    ]);
+    const items = await Promise.all(
+      stored.map((message, index) => buildMessageItem(ctx, 's1', `01${index}`, message)),
+    );
+    mock.on(QueryCommand).resolves({ Items: items });
+    const messages = await getMessages(ctx, 's1');
+    expect(messages.map((message) => message.content)).toEqual(['m0', 'm1', 'm2', 'm3']);
+    expect(maxInFlight()).toBeGreaterThan(1);
+    expect(maxInFlight()).toBeLessThanOrEqual(8);
   });
 });

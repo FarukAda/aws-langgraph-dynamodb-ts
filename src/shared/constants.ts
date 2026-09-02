@@ -78,6 +78,14 @@ export const DEFAULT_RETRY_MAX_ATTEMPTS = 5;
  */
 export const MESSAGE_APPEND_RETRY_MAX_ATTEMPTS = 18;
 
+/**
+ * Offloaded payloads decoded at once by one read (`getTuple` pending writes,
+ * `search` candidates, `getMessages`). Each offloaded row costs one S3 GET, so
+ * a serial loop scaled latency linearly with the row count; eight in flight
+ * keeps the win without bursting a bucket.
+ */
+export const DEFAULT_READ_CONCURRENCY = 8;
+
 /** Default cap on candidates the in-DB semantic ranker will score. */
 export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;
 

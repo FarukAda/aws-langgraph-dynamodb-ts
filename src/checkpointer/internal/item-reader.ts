@@ -5,6 +5,8 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { decodePayload } from '../../shared/codec/codec';
+import { mapWithConcurrency } from '../../shared/concurrency';
+import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import type { DocItem } from '../../shared/dynamodb/types';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { codecDeps } from './item-writer';
@@ -101,10 +103,13 @@ export async function toPendingWrites(
   threadId: string,
 ): Promise<CheckpointPendingWrite[]> {
   const deps = codecDeps(context);
-  const pending: CheckpointPendingWrite[] = [];
-  for (const item of dropSupersededWrites(items)) {
-    const value = await decodePayload(item.value, deps, [threadId]);
-    pending.push([item.taskId, item.channel, value]);
-  }
-  return pending;
+  const live = dropSupersededWrites(items);
+  const values = await mapWithConcurrency(live, DEFAULT_READ_CONCURRENCY, (item) =>
+    decodePayload(item.value, deps, [threadId]),
+  );
+  return live.map((item, index): CheckpointPendingWrite => [
+    item.taskId,
+    item.channel,
+    values[index],
+  ]);
 }

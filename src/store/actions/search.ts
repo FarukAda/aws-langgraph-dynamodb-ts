@@ -1,5 +1,7 @@
 import type { SearchItem, SearchOperation } from '@langchain/langgraph-checkpoint';
 
+import { mapWithConcurrency } from '../../shared/concurrency';
+import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import { searchViaBackend } from '../internal/backend-search';
@@ -11,6 +13,7 @@ import { passesFilter } from '../internal/search-filter';
 import { assertVectorDims } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
 import { validatePaging } from '../internal/validation';
+import type { StoreItemRecord } from '../types';
 
 const DEFAULT_LIMIT = 10;
 
@@ -30,16 +33,19 @@ async function collectCandidates(
           params: storeScan(context.tableName),
           maxItems: context.maxScanItems,
         });
-  const candidates: RankCandidate[] = [];
+  /** Rows first, decodes second: an offloaded row costs one S3 GET, so they run several at a time. */
+  const records: StoreItemRecord[] = [];
   for await (const raw of source) {
     const record = narrowStoreRecord(raw);
-    if (!record) continue;
-    if (!namespaceMatchesPrefix(record.namespace, op.namespacePrefix)) continue;
-    const item = await readStoreItem(context, record);
-    if (!passesFilter(item, op)) continue;
-    candidates.push({ item, embedding: record.embedding });
+    if (record && namespaceMatchesPrefix(record.namespace, op.namespacePrefix))
+      records.push(record);
   }
-  return candidates;
+  const items = await mapWithConcurrency(records, DEFAULT_READ_CONCURRENCY, (record) =>
+    readStoreItem(context, record),
+  );
+  return records.flatMap((record, index): RankCandidate[] =>
+    passesFilter(items[index], op) ? [{ item: items[index], embedding: record.embedding }] : [],
+  );
 }
 
 /**
