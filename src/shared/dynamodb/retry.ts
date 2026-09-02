@@ -9,6 +9,13 @@ import { redactedMessage } from '../logging/secret-patterns';
 import { fullJitter, sleep } from './backoff';
 import { DEFAULT_RETRYABLE_ERRORS, isRetryableError } from './retry-classifier';
 
+/** What {@link RetryOptions.onRetry} learns before each backoff sleep. */
+export interface RetryAttemptInfo {
+  attempt: number;
+  delayMs: number;
+  error: Error;
+}
+
 /** Options controlling {@link withRetry}. */
 export interface RetryOptions {
   maxAttempts?: number;
@@ -21,6 +28,8 @@ export interface RetryOptions {
    * go through `withRetry`.
    */
   isRetryable?: (error: Error) => boolean;
+  /** Called before every backoff sleep, so retries are visible before the budget is exhausted. */
+  onRetry?: (info: RetryAttemptInfo) => void;
   signal?: AbortSignal;
   rng?: () => number;
 }
@@ -69,7 +78,9 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
       lastError = toError(error as Error);
       if (!isRetryable(lastError)) throw lastError;
       if (attempt === maxAttempts) break;
-      await sleep(delayForAttempt(attempt, baseDelayMs, maxDelayMs, rng), options.signal);
+      const delayMs = delayForAttempt(attempt, baseDelayMs, maxDelayMs, rng);
+      options.onRetry?.({ attempt, delayMs, error: lastError });
+      await sleep(delayMs, options.signal);
     }
   }
   throw new RetryExhaustedError(

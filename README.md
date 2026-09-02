@@ -192,6 +192,7 @@ All adapters share a common base. Provide **either** a prebuilt `client` (which 
 | `clientConfig` | `DynamoDBClientConfig` | all | used to build a client when `client` is omitted |
 | `ttl` | `{ days: number }` \| `{ seconds: number }` | all | expiry written to the `ttl` attribute; one form only, capped at five years |
 | `logger` | `Logger` | all | per-instance logger (default: silent) |
+| `retry` | `{ maxAttempts?, baseDelayMs?, maxDelayMs? }` | all | retry budget and backoff for every DynamoDB call (default 5 attempts, 100 ms base, 5 s cap — see [Retries and backoff](#retries-and-backoff)) |
 | `compression` | `CompressionConfig` | all | `{ enabled, minSizeBytes?, level?, maxDecompressedBytes? }` |
 | `s3` | `S3OffloadConfig` | all | offload large payloads to S3 (see below) |
 | `serde` | `SerializerProtocol` | all | serializer override (checkpointer defaults to LangGraph's; store/history to JSON) |
@@ -220,6 +221,14 @@ When `keyPrefix` is omitted, each adapter defaults to its own sub-prefix under t
 **Vector index consistency** — when a `vectorBackend` is configured, **DynamoDB holds the canonical item** and the backend is a rebuildable index. After each canonical write the embedding is synced to the backend best-effort: a failure is logged (not thrown), so a backend hiccup never fails an otherwise-successful `put`/`delete`. To repair drift, call `store.reconcileVectorIndex(namespacePrefix)` — it re-pushes every live embedding and, when the backend implements the optional `listKeys`, prunes vectors with no canonical item; it returns `{ upserted, pruned }`. Run it when the namespace is idle. Caveats: reconciliation re-embeds with the store's **configured** index fields, so per-`put` field overrides are not reproduced; prune happens only when `listKeys` is implemented (otherwise reconcile re-pushes only and logs that prune was skipped); the prefix must be a non-empty namespace.
 
 **Strong consistency** — checkpointer read-your-writes (`getTuple`) and every `store.get` use `ConsistentRead`, so a value written and immediately read back is never served a stale replica. Bulk reads (`list`, `listNamespaces`, `listSessions`) stay eventually consistent for lower cost.
+
+## Retries and backoff
+
+Every DynamoDB call the library makes runs inside its own retry layer, and that layer is the only one: clients the library constructs disable the SDK's retries (`maxAttempts: 1`), so the numbers below are exact. An injected `client` that keeps SDK retries stacks them inside each attempt — construct it with `maxAttempts: 1` (a `warn` is logged at construction otherwise).
+
+- **What is retried** — throttling and capacity errors, transaction conflicts, request timeouts, HTTP 429/5xx responses (including ones the SDK cannot map to a modeled exception), errors carrying the SDK's `$retryable` trait, and Node socket errors. Everything else — `ValidationException`, `ConditionalCheckFailedException`, `ResourceNotFoundException`, `AccessDeniedException`, a `TransactionCanceledException` with a permanent reason — is thrown on the first attempt.
+- **Schedule** — `retry.maxAttempts` (default 5) attempts with full-jitter exponential backoff from `retry.baseDelayMs` (default 100 ms), doubling per attempt and capped at `retry.maxDelayMs` (default 5 s): about 1.5 s worst case and 0.75 s expected before `RetryExhaustedError`. `addMessages` never uses fewer than 18 attempts (about 61 s worst case), because every concurrent append to one session contends on the same metadata row. `BatchWriteItem` `UnprocessedItems` are re-submitted for up to 10 rounds with the same backoff.
+- **Visibility** — every retry is logged at `debug` with the attempt number, the delay about to be slept and the error name; `RetryExhaustedError` carries the last error as `cause` (with the SDK's `$metadata.requestId`) and `context.attempts`.
 
 ## Error handling
 

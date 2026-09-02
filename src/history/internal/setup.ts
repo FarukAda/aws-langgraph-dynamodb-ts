@@ -7,6 +7,8 @@ import { JSON_SERDE } from '../../shared/codec/json-serde';
 import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
+import type { RetryOptions } from '../../shared/dynamodb/retry';
+import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { ValidationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
@@ -27,6 +29,8 @@ export interface HistoryContext {
   logger: Logger;
   ulid: () => string;
   onCorruptMessage: CorruptMessagePolicy;
+  /** Retry budget and backoff for every DynamoDB call, with the retry debug log attached. */
+  retry?: RetryOptions;
 }
 
 /** Result of wiring up a chat-history adapter from its options. */
@@ -62,6 +66,7 @@ export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): Histor
         : undefined,
       ttl: options.ttl,
       logger,
+      retry: resolveRetryPolicy(options.retry, logger),
       ulid: createUlidFactory(),
       onCorruptMessage: options.onCorruptMessage ?? 'skip',
     },

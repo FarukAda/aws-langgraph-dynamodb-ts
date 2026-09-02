@@ -87,3 +87,14 @@ describe('S3 region inheritance (CODEC-15)', () => {
     setup.context.offloader?.destroy();
   });
 });
+
+describe('retry policy (DDB-03)', () => {
+  it('resolves the retry policy onto the context, defaulting to five attempts', () => {
+    const client = { send: jest.fn() } as never;
+    expect(setUpHistory({ tableName: 't123', client }).context.retry?.maxAttempts).toBe(5);
+    expect(
+      setUpHistory({ tableName: 't123', client, retry: { maxAttempts: 2, baseDelayMs: 1 } }).context
+        .retry,
+    ).toMatchObject({ maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 5000 });
+  });
+});

@@ -33,14 +33,16 @@ async function verifyChunkLanded(
   chunk: ChatMessageItem[],
 ): Promise<ChunkVerdict> {
   try {
-    const result = await withDynamoDBRetry(() =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: chunk[0].PK, SK: chunk[0].SK },
-        ConsistentRead: true,
-        ProjectionExpression: '#sk',
-        ExpressionAttributeNames: { '#sk': 'SK' },
-      }),
+    const result = await withDynamoDBRetry(
+      () =>
+        context.client.get({
+          TableName: context.tableName,
+          Key: { PK: chunk[0].PK, SK: chunk[0].SK },
+          ConsistentRead: true,
+          ProjectionExpression: '#sk',
+          ExpressionAttributeNames: { '#sk': 'SK' },
+        }),
+      context.retry,
     );
     return result.Item ? 'committed' : 'not-committed';
   } catch {

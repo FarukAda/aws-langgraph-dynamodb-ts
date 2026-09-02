@@ -155,3 +155,18 @@ describe('SDK retry stacking warning (DDB-01)', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 });
+
+describe('retry policy (DDB-03)', () => {
+  it('resolves the retry policy onto the context, defaulting to five attempts', () => {
+    const client = { send: jest.fn() } as never;
+    expect(setUpCheckpointer({ tableName: 't123', client }, serde).context.retry?.maxAttempts).toBe(
+      5,
+    );
+    expect(
+      setUpCheckpointer(
+        { tableName: 't123', client, retry: { maxAttempts: 2, baseDelayMs: 1 } },
+        serde,
+      ).context.retry,
+    ).toMatchObject({ maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 5000 });
+  });
+});

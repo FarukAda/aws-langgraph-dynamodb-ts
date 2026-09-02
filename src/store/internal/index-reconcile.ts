@@ -41,6 +41,7 @@ export async function collectReconcileTargets(
 ): Promise<ReconcileTarget[]> {
   const live: LiveItem[] = [];
   const source = paginateQuery({
+    retry: context.retry,
     client: context.client,
     params: scopedQuery(context.tableName, prefix),
     maxItems: context.maxScanItems,

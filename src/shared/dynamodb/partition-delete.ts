@@ -9,6 +9,7 @@ import { BatchWriteAllIncompleteError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
 import { batchWriteAll } from './batch-write';
 import { paginateQuery } from './paginate';
+import type { RetryOptions } from './retry';
 import type { DocItem } from './types';
 
 /** Collaborators and per-adapter policy for one partition-wide delete. */
@@ -17,6 +18,8 @@ export interface PartitionDeleteOptions {
   tableName: string;
   params: QueryCommandInput;
   logger: Logger;
+  /** The adapter's retry options for the page reads and batch deletes. */
+  retry?: RetryOptions;
   offloader?: S3Offloader;
   /** Label for log lines and S3-cleanup diagnostics, e.g. `deleteThread`. */
   operation: string;
@@ -63,6 +66,7 @@ async function flushBuffer(
       options.client,
       options.tableName,
       buffer.keys.map((Key) => ({ DeleteRequest: { Key } })),
+      { retry: options.retry },
     );
   } catch (error) {
     /** batchWriteAll's only throw is a BatchWriteAllIncompleteError (see batch-write.ts). */
@@ -105,6 +109,7 @@ export async function deletePartitionRows(options: PartitionDeleteOptions): Prom
   const pages = paginateQuery({
     client: options.client,
     params: options.params,
+    retry: options.retry,
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   });

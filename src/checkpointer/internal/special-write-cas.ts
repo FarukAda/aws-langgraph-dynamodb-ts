@@ -46,12 +46,14 @@ async function attemptCasWrites(
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
     const attempted = observed;
     try {
-      await withDynamoDBRetry(() =>
-        context.client.put({
-          TableName: context.tableName,
-          Item: item,
-          ...revisionGuard(SPECIAL_REVISION_ATTRIBUTE, attempted),
-        }),
+      await withDynamoDBRetry(
+        () =>
+          context.client.put({
+            TableName: context.tableName,
+            Item: item,
+            ...revisionGuard(SPECIAL_REVISION_ATTRIBUTE, attempted),
+          }),
+        context.retry,
       );
       return { done: true, outcome: { committed: true, superseded: attempted.value } };
     } catch (error) {
@@ -75,7 +77,10 @@ async function overwriteUnconditionally(
   observed: SpecialRowState,
 ): Promise<SpecialWriteOutcome> {
   try {
-    await withDynamoDBRetry(() => context.client.put({ TableName: context.tableName, Item: item }));
+    await withDynamoDBRetry(
+      () => context.client.put({ TableName: context.tableName, Item: item }),
+      context.retry,
+    );
     return { committed: true, superseded: observed.value };
   } catch (error) {
     return (await verifyAfterFailure(context, item, observed, error as Error)).outcome;
@@ -113,8 +118,9 @@ export async function writeSpecialItem(
 ): Promise<SpecialWriteOutcome> {
   try {
     if (!context.offloader) {
-      await withDynamoDBRetry(() =>
-        context.client.put({ TableName: context.tableName, Item: item }),
+      await withDynamoDBRetry(
+        () => context.client.put({ TableName: context.tableName, Item: item }),
+        context.retry,
       );
       return { committed: true };
     }

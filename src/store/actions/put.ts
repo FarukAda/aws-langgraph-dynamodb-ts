@@ -37,8 +37,9 @@ async function deleteStoreItem(
 ): Promise<void> {
   const existing = context.offloader ? await readExisting(context, pk, sk) : undefined;
   try {
-    await withDynamoDBRetry(() =>
-      context.client.delete({ TableName: context.tableName, Key: { PK: pk, SK: sk } }),
+    await withDynamoDBRetry(
+      () => context.client.delete({ TableName: context.tableName, Key: { PK: pk, SK: sk } }),
+      context.retry,
     );
   } catch (error) {
     const landed =

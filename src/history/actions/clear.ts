@@ -24,6 +24,7 @@ export async function clearSession(context: HistoryContext, sessionId: string): 
     tableName: context.tableName,
     params: sessionItemsQuery(context.tableName, sessionId, { consistent: true }),
     logger: context.logger,
+    retry: context.retry,
     offloader: context.offloader,
     operation: 'history.clear',
     ownsSortKey: isHistorySortKey,

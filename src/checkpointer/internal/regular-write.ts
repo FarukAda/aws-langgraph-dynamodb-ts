@@ -59,13 +59,15 @@ export async function writeRegularItems(
 ): Promise<RegularWriteOutcome> {
   const results = await Promise.allSettled(
     items.map((item) =>
-      withDynamoDBRetry(() =>
-        context.client.put({
-          TableName: context.tableName,
-          Item: item,
-          ConditionExpression: 'attribute_not_exists(PK)',
-          ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
-        }),
+      withDynamoDBRetry(
+        () =>
+          context.client.put({
+            TableName: context.tableName,
+            Item: item,
+            ConditionExpression: 'attribute_not_exists(PK)',
+            ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
+          }),
+        context.retry,
       ),
     ),
   );

@@ -6,6 +6,8 @@ import type { CompressionConfig } from '../../shared/codec/compression';
 import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
+import type { RetryOptions } from '../../shared/dynamodb/retry';
+import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
@@ -20,6 +22,8 @@ export interface CheckpointerContext {
   offloader?: S3Offloader;
   ttl?: TtlOption;
   logger: Logger;
+  /** Retry budget and backoff for every DynamoDB call, with the retry debug log attached. */
+  retry?: RetryOptions;
 }
 
 /** Result of wiring up a checkpointer from its options. */
@@ -54,6 +58,7 @@ export function setUpCheckpointer(
       offloader,
       ttl: options.ttl,
       logger,
+      retry: resolveRetryPolicy(options.retry, logger),
     },
     ddbClient: resolved.ddbClient,
     ownsClient: resolved.ownsClient,

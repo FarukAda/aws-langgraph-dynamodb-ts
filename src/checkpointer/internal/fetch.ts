@@ -22,12 +22,14 @@ export async function fetchTargetMeta(
   checkpointId?: string,
 ): Promise<CheckpointMetaItem | undefined> {
   if (checkpointId !== undefined) {
-    const result = await withDynamoDBRetry(() =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
-        ConsistentRead: true,
-      }),
+    const result = await withDynamoDBRetry(
+      () =>
+        context.client.get({
+          TableName: context.tableName,
+          Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
+          ConsistentRead: true,
+        }),
+      context.retry,
     );
     return result.Item as CheckpointMetaItem | undefined;
   }
@@ -40,7 +42,7 @@ export async function fetchTargetMeta(
       consistent: true,
     },
   );
-  const result = await withDynamoDBRetry(() => context.client.query(params));
+  const result = await withDynamoDBRetry(() => context.client.query(params), context.retry);
   return result.Items?.[0] as CheckpointMetaItem | undefined;
 }
 
@@ -51,12 +53,14 @@ export async function fetchPayload(
   checkpointNs: string,
   checkpointId: string,
 ): Promise<CheckpointPayloadItem | undefined> {
-  const result = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: partitionKey(threadId), SK: payloadSortKey(checkpointNs, checkpointId) },
-      ConsistentRead: true,
-    }),
+  const result = await withDynamoDBRetry(
+    () =>
+      context.client.get({
+        TableName: context.tableName,
+        Key: { PK: partitionKey(threadId), SK: payloadSortKey(checkpointNs, checkpointId) },
+        ConsistentRead: true,
+      }),
+    context.retry,
   );
   return result.Item as CheckpointPayloadItem | undefined;
 }
@@ -75,7 +79,11 @@ export async function fetchPendingWrites(
     { ascending: true, consistent: true },
   );
   const items: CheckpointWriteItem[] = [];
-  for await (const item of paginateQuery({ client: context.client, params })) {
+  for await (const item of paginateQuery({
+    retry: context.retry,
+    client: context.client,
+    params,
+  })) {
     items.push(item as CheckpointWriteItem);
   }
   return toPendingWrites(context, items, threadId);

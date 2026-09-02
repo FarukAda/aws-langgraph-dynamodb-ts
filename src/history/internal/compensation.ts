@@ -57,6 +57,7 @@ async function rollbackCommitted(
       context.client,
       context.tableName,
       keys.map((Key) => ({ DeleteRequest: { Key } })),
+      { retry: context.retry },
     );
   } catch (error) {
     /**

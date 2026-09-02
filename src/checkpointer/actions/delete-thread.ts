@@ -28,6 +28,7 @@ export async function deleteThread(context: CheckpointerContext, threadId: strin
     tableName: context.tableName,
     params: partitionQuery(context.tableName, partitionKey(threadId), { consistent: true }),
     logger: context.logger,
+    retry: context.retry,
     offloader: context.offloader,
     operation: 'deleteThread',
     ownsSortKey: isCheckpointerSortKey,

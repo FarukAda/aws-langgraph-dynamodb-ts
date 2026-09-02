@@ -65,6 +65,9 @@ export const DEFAULT_MAX_S3_DOWNLOAD_BYTES = 50 * 1024 * 1024;
 /** Default maximum attempts for transient-error retries. */
 export const DEFAULT_RETRY_MAX_ATTEMPTS = 5;
 
+/** Largest `retry.maxAttempts` an adapter accepts; beyond it a retry loop is a hang, not a policy. */
+export const MAX_RETRY_ATTEMPTS = 100;
+
 /**
  * Max attempts for the message-append transaction. It shares one session's
  * metadata row across every concurrent `addMessages` caller on that session,

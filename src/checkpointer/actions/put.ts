@@ -57,13 +57,15 @@ export async function putCheckpoint(
     },
   };
   try {
-    await withDynamoDBRetry(() =>
-      context.client.transactWrite({
-        TransactItems: [
-          { Put: { TableName: context.tableName, Item: meta } },
-          { Put: { TableName: context.tableName, Item: payload } },
-        ],
-      }),
+    await withDynamoDBRetry(
+      () =>
+        context.client.transactWrite({
+          TransactItems: [
+            { Put: { TableName: context.tableName, Item: meta } },
+            { Put: { TableName: context.tableName, Item: payload } },
+          ],
+        }),
+      context.retry,
     );
   } catch (error) {
     if (!context.offloader) throw error;

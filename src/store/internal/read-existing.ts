@@ -24,14 +24,16 @@ export async function readExisting(
   pk: string,
   sk: string,
 ): Promise<ExistingRecordMeta> {
-  const existing = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: pk, SK: sk },
-      ConsistentRead: true,
-      ProjectionExpression: '#c, #v, #r',
-      ExpressionAttributeNames: { '#c': 'createdAt', '#v': 'value', '#r': REVISION_ATTRIBUTE },
-    }),
+  const existing = await withDynamoDBRetry(
+    () =>
+      context.client.get({
+        TableName: context.tableName,
+        Key: { PK: pk, SK: sk },
+        ConsistentRead: true,
+        ProjectionExpression: '#c, #v, #r',
+        ExpressionAttributeNames: { '#c': 'createdAt', '#v': 'value', '#r': REVISION_ATTRIBUTE },
+      }),
+    context.retry,
   );
   return {
     exists: existing.Item !== undefined,

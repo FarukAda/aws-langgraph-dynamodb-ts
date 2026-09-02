@@ -125,3 +125,23 @@ describe('withRetry isRetryable predicate', () => {
     ).rejects.toMatchObject({ name: 'ThrottlingException' });
   });
 });
+
+describe('withRetry onRetry hook (DDB-10)', () => {
+  it('reports each retry with the attempt, the delay about to be slept and the error', async () => {
+    const onRetry = jest.fn();
+    const failing = Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
+    let calls = 0;
+    await withRetry(
+      async () => {
+        calls += 1;
+        if (calls < 3) throw failing;
+        return 'ok';
+      },
+      { rng: () => 1, baseDelayMs: 10, onRetry },
+    );
+    expect(onRetry.mock.calls.map(([info]) => info)).toEqual([
+      { attempt: 1, delayMs: 10, error: failing },
+      { attempt: 2, delayMs: 20, error: failing },
+    ]);
+  });
+});

@@ -1,6 +1,7 @@
 import type { CompressionConfig } from '../codec/compression';
 import { assertScopedKeyPrefix, type S3OffloadConfig } from '../codec/s3/config';
-import { MAX_INLINE_PAYLOAD_BYTES } from '../constants';
+import { MAX_INLINE_PAYLOAD_BYTES, MAX_RETRY_ATTEMPTS } from '../constants';
+import type { RetryPolicy } from '../dynamodb/retry-policy';
 import { ValidationError } from '../errors/errors';
 import type { BaseAdapterOptions, CodecOptions } from '../options';
 import { validateInteger, validateNonEmptyString } from './primitives';
@@ -36,6 +37,18 @@ function validateClientChoice(options: BaseAdapterOptions): void {
         'is used as-is and the configuration would be silently ignored',
       'client',
     );
+  }
+}
+
+function validateRetryPolicy(policy: RetryPolicy): void {
+  if (policy.maxAttempts !== undefined) {
+    validateInteger(policy.maxAttempts, 'retry.maxAttempts', { min: 1, max: MAX_RETRY_ATTEMPTS });
+  }
+  if (policy.baseDelayMs !== undefined) {
+    validateInteger(policy.baseDelayMs, 'retry.baseDelayMs', { min: 1 });
+  }
+  if (policy.maxDelayMs !== undefined) {
+    validateInteger(policy.maxDelayMs, 'retry.maxDelayMs', { min: policy.baseDelayMs ?? 1 });
   }
 }
 
@@ -87,6 +100,7 @@ export function validateBaseAdapterOptions(options: BaseAdapterOptions & CodecOp
   validateTableName(options.tableName);
   validateClientChoice(options);
   if (options.ttl !== undefined) resolveTtlSeconds(options.ttl);
+  if (options.retry !== undefined) validateRetryPolicy(options.retry);
   if (options.compression !== undefined) validateCompression(options.compression);
   if (options.s3 !== undefined) validateS3(options.s3);
 }

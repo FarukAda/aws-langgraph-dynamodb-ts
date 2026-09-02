@@ -48,7 +48,9 @@ async function attempt(
 ): Promise<void> {
   const input = buildInput(context, items, fields);
   await withDynamoDBRetry(() => context.client.transactWrite(input), {
-    maxAttempts: MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
+    ...context.retry,
+    /** The contention floor: a caller policy may raise the budget, never lower it. */
+    maxAttempts: Math.max(MESSAGE_APPEND_RETRY_MAX_ATTEMPTS, context.retry?.maxAttempts ?? 0),
     rng: retry.rng,
     signal: retry.signal,
   });

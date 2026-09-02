@@ -66,14 +66,16 @@ export async function verifyCheckpointLanded(
   const probe = chooseProbe(meta, payload);
   if (!probe) return 'not-landed';
   try {
-    const result = await withDynamoDBRetry(() =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: probe.key,
-        ConsistentRead: true,
-        ProjectionExpression: '#d',
-        ExpressionAttributeNames: { '#d': probe.attribute },
-      }),
+    const result = await withDynamoDBRetry(
+      () =>
+        context.client.get({
+          TableName: context.tableName,
+          Key: probe.key,
+          ConsistentRead: true,
+          ProjectionExpression: '#d',
+          ExpressionAttributeNames: { '#d': probe.attribute },
+        }),
+      context.retry,
     );
     const stored = result.Item?.[probe.attribute] as PayloadDescriptor | undefined;
     return offloadedKey(stored) === probe.expected ? 'landed' : 'not-landed';

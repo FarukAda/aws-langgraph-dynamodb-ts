@@ -21,12 +21,14 @@ async function readRow(
   namespace: string[],
   key: string,
 ): Promise<StoreItemRecord | undefined> {
-  const result = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: partitionKey(namespace), SK: sortKey(namespace, key) },
-      ConsistentRead: true,
-    }),
+  const result = await withDynamoDBRetry(
+    () =>
+      context.client.get({
+        TableName: context.tableName,
+        Key: { PK: partitionKey(namespace), SK: sortKey(namespace, key) },
+        ConsistentRead: true,
+      }),
+    context.retry,
   );
   if (!result.Item) return undefined;
   const record = narrowStoreRecord(result.Item);

@@ -8,6 +8,8 @@ import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
 import { DEFAULT_MAX_SEARCH_CANDIDATES, MAX_TOTAL_ITEMS_IN_MEMORY } from '../../shared/constants';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
+import type { RetryOptions } from '../../shared/dynamodb/retry';
+import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions } from '../types';
@@ -29,6 +31,8 @@ export interface StoreContext {
   vectorScoreDirection: VectorScoreDirection;
   maxSearchCandidates: number;
   maxScanItems: number;
+  /** Retry budget and backoff for every DynamoDB call, with the retry debug log attached. */
+  retry?: RetryOptions;
 }
 
 /** Result of wiring up a store from its options. */
@@ -55,6 +59,7 @@ export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
         : undefined,
       ttl: options.ttl,
       logger,
+      retry: resolveRetryPolicy(options.retry, logger),
       index: options.index,
       vectorBackend: options.vectorBackend,
       vectorScoreDirection: options.vectorScoreDirection ?? 'relevance',

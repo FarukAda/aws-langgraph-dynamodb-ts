@@ -68,6 +68,46 @@ describe('validateBaseAdapterOptions', () => {
     });
   });
 
+  describe('retry', () => {
+    it('rejects each malformed tunable by name', () => {
+      expectValidationError(
+        () => validateBaseAdapterOptions({ ...base, retry: { maxAttempts: 0 } }),
+        'retry.maxAttempts',
+      );
+      expectValidationError(
+        () => validateBaseAdapterOptions({ ...base, retry: { maxAttempts: 101 } }),
+        'retry.maxAttempts',
+      );
+      expectValidationError(
+        () => validateBaseAdapterOptions({ ...base, retry: { baseDelayMs: 0 } }),
+        'retry.baseDelayMs',
+      );
+      expectValidationError(
+        () => validateBaseAdapterOptions({ ...base, retry: { baseDelayMs: 500, maxDelayMs: 100 } }),
+        'retry.maxDelayMs',
+      );
+    });
+
+    it('bounds maxDelayMs on its own when no baseDelayMs is given', () => {
+      expectValidationError(
+        () => validateBaseAdapterOptions({ ...base, retry: { maxDelayMs: 0 } }),
+        'retry.maxDelayMs',
+      );
+      expect(() =>
+        validateBaseAdapterOptions({ ...base, retry: { maxDelayMs: 10 } }),
+      ).not.toThrow();
+    });
+
+    it('accepts a complete valid policy', () => {
+      expect(() =>
+        validateBaseAdapterOptions({
+          ...base,
+          retry: { maxAttempts: 10, baseDelayMs: 50, maxDelayMs: 2000 },
+        }),
+      ).not.toThrow();
+    });
+  });
+
   describe('compression', () => {
     it('rejects each malformed field by name', () => {
       expectValidationError(

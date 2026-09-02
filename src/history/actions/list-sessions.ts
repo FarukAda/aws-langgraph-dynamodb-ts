@@ -27,6 +27,7 @@ export async function listSessions(
   const sessions: SessionMetadata[] = [];
   const nowSeconds = currentSeconds();
   for await (const raw of paginateScan({
+    retry: context.retry,
     client: context.client,
     params: {
       TableName: context.tableName,

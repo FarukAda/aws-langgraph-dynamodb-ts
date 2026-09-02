@@ -60,7 +60,7 @@ export async function revertSessionCount(
   };
   const input = { TransactItems: [{ Update: update }], ClientRequestToken: randomUUID() };
   try {
-    await withDynamoDBRetry(() => context.client.transactWrite(input));
+    await withDynamoDBRetry(() => context.client.transactWrite(input), context.retry);
   } catch (error) {
     if (isCancelledByCondition(error as Error)) return;
     throw error;
@@ -110,7 +110,7 @@ export async function revertSessionCreation(
     ClientRequestToken: randomUUID(),
   };
   try {
-    await withDynamoDBRetry(() => context.client.transactWrite(input));
+    await withDynamoDBRetry(() => context.client.transactWrite(input), context.retry);
     return;
   } catch (error) {
     if (!isCancelledByCondition(error as Error)) throw error;

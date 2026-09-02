@@ -3,6 +3,7 @@ import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
 import type { CompressionConfig } from './codec/compression';
 import type { S3OffloadConfig } from './codec/s3/config';
+import type { RetryPolicy } from './dynamodb/retry-policy';
 import type { Logger } from './logging/logger';
 import type { TtlOption } from './validation/ttl';
 
@@ -23,6 +24,8 @@ export interface BaseAdapterOptions {
   ttl?: TtlOption;
   /** Optional per-instance logger (defaults to a silent logger). */
   logger?: Logger;
+  /** Retry budget and backoff for every DynamoDB call (see the README "Retries and backoff"). */
+  retry?: RetryPolicy;
 }
 
 /** Options enabling payload compression and/or S3 offloading. */

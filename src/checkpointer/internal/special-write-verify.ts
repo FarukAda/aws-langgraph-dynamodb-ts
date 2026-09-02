@@ -35,14 +35,16 @@ export async function readSpecialRow(
   context: CheckpointerContext,
   item: CheckpointWriteItem,
 ): Promise<SpecialRowState> {
-  const result = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: item.PK, SK: item.SK },
-      ConsistentRead: true,
-      ProjectionExpression: '#v, #g',
-      ExpressionAttributeNames: { '#v': 'value', '#g': SPECIAL_REVISION_ATTRIBUTE },
-    }),
+  const result = await withDynamoDBRetry(
+    () =>
+      context.client.get({
+        TableName: context.tableName,
+        Key: { PK: item.PK, SK: item.SK },
+        ConsistentRead: true,
+        ProjectionExpression: '#v, #g',
+        ExpressionAttributeNames: { '#v': 'value', '#g': SPECIAL_REVISION_ATTRIBUTE },
+      }),
+    context.retry,
   );
   if (!result.Item) return { exists: false };
   return {

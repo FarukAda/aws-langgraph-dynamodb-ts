@@ -8,6 +8,8 @@ describe('shared constants', () => {
     expect(C.MAX_UNPROCESSED_RETRIES).toBe(10);
     expect(C.INITIAL_BACKOFF_DELAY_MS).toBe(100);
     expect(C.MAX_BACKOFF_DELAY_MS).toBe(5000);
+    expect(C.DEFAULT_RETRY_MAX_ATTEMPTS).toBe(5);
+    expect(C.MAX_RETRY_ATTEMPTS).toBe(100);
   });
 
   it('pins TTL bounds', () => {

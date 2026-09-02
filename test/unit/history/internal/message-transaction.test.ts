@@ -255,3 +255,23 @@ describe('writeMessageChunk', () => {
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(1);
   });
 });
+
+describe('append retry floor under a caller retry policy (DDB-03)', () => {
+  it('never drops below its own floor when the adapter policy asks for fewer attempts', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(transactionConflict());
+    await expect(
+      writeMessageChunk(
+        {
+          client,
+          tableName: 'history',
+          retry: { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
+        } as never,
+        [messageItem('MSG#1')],
+        { sessionId: 's1', delta: 1, now: 0 } as never,
+        { rng: () => 0 },
+      ),
+    ).rejects.toMatchObject({ name: RetryExhaustedError.name });
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(MESSAGE_APPEND_RETRY_MAX_ATTEMPTS);
+  });
+});

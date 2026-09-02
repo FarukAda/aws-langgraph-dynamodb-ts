@@ -25,8 +25,9 @@ async function countMessages(context: HistoryContext, sessionId: string): Promis
   let total = 0;
   let startKey: Record<string, NativeAttributeValue> | undefined;
   do {
-    const page = await withDynamoDBRetry(() =>
-      context.client.query({ ...base, ExclusiveStartKey: startKey }),
+    const page = await withDynamoDBRetry(
+      () => context.client.query({ ...base, ExclusiveStartKey: startKey }),
+      context.retry,
     );
     total += page.Count ?? 0;
     startKey = page.LastEvaluatedKey;
@@ -51,15 +52,17 @@ export async function reconcileMessageCount(
   validateSessionId(sessionId);
   const count = await countMessages(context, sessionId);
   try {
-    await withDynamoDBRetry(() =>
-      context.client.update({
-        TableName: context.tableName,
-        Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
-        UpdateExpression: 'SET #count = :count',
-        ExpressionAttributeNames: { '#count': 'messageCount' },
-        ExpressionAttributeValues: { ':count': count },
-        ConditionExpression: 'attribute_exists(PK)',
-      }),
+    await withDynamoDBRetry(
+      () =>
+        context.client.update({
+          TableName: context.tableName,
+          Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+          UpdateExpression: 'SET #count = :count',
+          ExpressionAttributeNames: { '#count': 'messageCount' },
+          ExpressionAttributeValues: { ':count': count },
+          ConditionExpression: 'attribute_exists(PK)',
+        }),
+      context.retry,
     );
   } catch (error) {
     if ((error as { name?: string }).name === 'ConditionalCheckFailedException') {

@@ -79,6 +79,7 @@ export async function* listCheckpoints(
    * ResultTruncatedError instead of the true (possibly empty) answer.
    */
   for await (const raw of paginateQuery({
+    retry: context.retry,
     client: context.client,
     params,
     maxItems: Number.POSITIVE_INFINITY,

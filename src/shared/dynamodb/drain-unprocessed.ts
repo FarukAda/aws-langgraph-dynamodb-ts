@@ -3,11 +3,13 @@ import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { INITIAL_BACKOFF_DELAY_MS, MAX_UNPROCESSED_RETRIES } from '../constants';
 import { BatchWriteIncompleteError } from '../errors/errors';
 import { fullJitter, nextBackoffDelay, sleep } from './backoff';
-import { withDynamoDBRetry } from './retry';
+import { type RetryOptions, withDynamoDBRetry } from './retry';
 import type { WriteRequest } from './types';
 
 /** Backoff/abort options shared by the drain helpers. */
 export interface DrainOptions {
+  /** The adapter's retry options, applied to every BatchWriteItem round. */
+  retry?: RetryOptions;
   signal?: AbortSignal;
   rng?: () => number;
   maxRetries?: number;
@@ -38,7 +40,7 @@ export async function drainUnprocessedWrites(
     try {
       const result = await withDynamoDBRetry(
         () => client.batchWrite({ RequestItems: { [tableName]: pending } }),
-        { signal: options.signal },
+        { ...options.retry, signal: options.signal },
       );
       const leftover = (result.UnprocessedItems?.[tableName] as WriteRequest[] | undefined) ?? [];
       if (leftover.length === 0) return;

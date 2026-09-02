@@ -19,7 +19,7 @@ export function paginateScan(options: ScanOptions): AsyncGenerator<DocItem> {
   return paginatePages(async (startKey) => {
     const page = await withDynamoDBRetry(
       () => options.client.scan({ ...options.params, ExclusiveStartKey: startKey }),
-      { signal: options.signal },
+      { ...options.retry, signal: options.signal },
     );
     return {
       items: (page.Items as DocItem[] | undefined) ?? [],

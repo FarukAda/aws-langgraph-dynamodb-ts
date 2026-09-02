@@ -31,14 +31,16 @@ export async function resolveTtlAnchor(
   sessionId: string,
   candidate: number,
 ): Promise<TtlAnchorResult> {
-  const result = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
-      ConsistentRead: true,
-      ProjectionExpression: '#ttl',
-      ExpressionAttributeNames: { '#ttl': 'ttl' },
-    }),
+  const result = await withDynamoDBRetry(
+    () =>
+      context.client.get({
+        TableName: context.tableName,
+        Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+        ConsistentRead: true,
+        ProjectionExpression: '#ttl',
+        ExpressionAttributeNames: { '#ttl': 'ttl' },
+      }),
+    context.retry,
   );
   const ttl = (result.Item as { ttl?: number } | undefined)?.ttl;
   if (typeof ttl === 'number' && ttl > nowSeconds()) {

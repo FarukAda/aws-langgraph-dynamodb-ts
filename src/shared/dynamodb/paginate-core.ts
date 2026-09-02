@@ -1,5 +1,6 @@
 import { MAX_LOOP_ITERATIONS, MAX_TOTAL_ITEMS_IN_MEMORY } from '../constants';
 import { AbortError, ResultTruncatedError } from '../errors/errors';
+import type { RetryOptions } from './retry';
 import type { DocItem } from './types';
 
 /** One page of results plus the key to resume from (undefined when exhausted). */
@@ -10,6 +11,8 @@ export interface PageResult {
 
 /** Options shared by the paginators built on {@link paginatePages}. */
 export interface PaginateCoreOptions {
+  /** The adapter's retry options, applied to every page read. */
+  retry?: RetryOptions;
   signal?: AbortSignal;
   maxItems?: number;
   maxIterations?: number;

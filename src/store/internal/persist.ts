@@ -61,8 +61,9 @@ export async function persistRecord(
     if (context.offloader) {
       superseded = await putWithRevisionSwap(context, record, existing);
     } else {
-      await withDynamoDBRetry(() =>
-        context.client.put({ TableName: context.tableName, Item: record }),
+      await withDynamoDBRetry(
+        () => context.client.put({ TableName: context.tableName, Item: record }),
+        context.retry,
       );
     }
   } catch (error) {

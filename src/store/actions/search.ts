@@ -24,11 +24,13 @@ async function collectCandidates(
   const source =
     op.namespacePrefix.length > 0
       ? paginateQuery({
+          retry: context.retry,
           client: context.client,
           params: scopedQuery(context.tableName, op.namespacePrefix),
           maxItems: context.maxScanItems,
         })
       : paginateScan({
+          retry: context.retry,
           client: context.client,
           params: storeScan(context.tableName),
           maxItems: context.maxScanItems,

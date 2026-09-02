@@ -76,6 +76,7 @@ export async function getMessages(
   const now = nowSeconds();
   const items: ChatMessageItem[] = [];
   for await (const raw of paginateQuery({
+    retry: context.retry,
     client: context.client,
     params: messageQuery(context.tableName, sessionId, { consistent: true }),
     maxItems: Number.POSITIVE_INFINITY,

@@ -19,14 +19,16 @@ export async function rowIsAbsent(
   key: { PK: string; SK: string },
 ): Promise<boolean> {
   try {
-    const result = await withDynamoDBRetry(() =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: key,
-        ConsistentRead: true,
-        ProjectionExpression: '#v',
-        ExpressionAttributeNames: { '#v': 'value' },
-      }),
+    const result = await withDynamoDBRetry(
+      () =>
+        context.client.get({
+          TableName: context.tableName,
+          Key: key,
+          ConsistentRead: true,
+          ProjectionExpression: '#v',
+          ExpressionAttributeNames: { '#v': 'value' },
+        }),
+      context.retry,
     );
     return result.Item === undefined;
   } catch {
@@ -59,14 +61,16 @@ export async function verifyWriteLanded(
   expectedS3Key: string,
 ): Promise<WriteVerdict> {
   try {
-    const result = await withDynamoDBRetry(() =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: record.PK, SK: record.SK },
-        ConsistentRead: true,
-        ProjectionExpression: '#v',
-        ExpressionAttributeNames: { '#v': 'value' },
-      }),
+    const result = await withDynamoDBRetry(
+      () =>
+        context.client.get({
+          TableName: context.tableName,
+          Key: { PK: record.PK, SK: record.SK },
+          ConsistentRead: true,
+          ProjectionExpression: '#v',
+          ExpressionAttributeNames: { '#v': 'value' },
+        }),
+      context.retry,
     );
     const value = result.Item?.value as PayloadDescriptor | undefined;
     return value?.location === PayloadLocation.S3 && value.s3Key === expectedS3Key

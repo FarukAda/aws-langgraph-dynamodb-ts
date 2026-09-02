@@ -16,8 +16,9 @@ async function put(
   observed?: ExistingRecordMeta,
 ): Promise<void> {
   const guard = observed ? revisionGuard(REVISION_ATTRIBUTE, observed) : {};
-  await withDynamoDBRetry(() =>
-    context.client.put({ TableName: context.tableName, Item: record, ...guard }),
+  await withDynamoDBRetry(
+    () => context.client.put({ TableName: context.tableName, Item: record, ...guard }),
+    context.retry,
   );
 }
 
