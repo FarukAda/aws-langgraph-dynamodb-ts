@@ -18,6 +18,7 @@ import {
   type VectorReconcileResult,
 } from './actions/reconcile-vector-index';
 import { searchItems } from './actions/search';
+import { runBatch } from './internal/batch-plan';
 import { type StoreContext, setUpStore } from './internal/setup';
 import type { DynamoDBStoreOptions } from './types';
 
@@ -49,16 +50,18 @@ export class DynamoDBStore extends BaseStore {
   }
 
   /**
-   * Execute operations in order. The library's error boundary for every
-   * `BaseStore` method (`get`/`put`/`delete`/`search`/`listNamespaces` all
-   * funnel through here): a raw AWS SDK error surfaces as an `UpstreamError`.
+   * Execute a batch of operations and return their results in operation
+   * order. Writes to one item stay ordered; writes to different items, and
+   * then all reads, run concurrently — so a get after a put to the same key
+   * in one batch observes the put, and a batch of ten gets costs about one
+   * round trip rather than ten (see `runBatch`). The library's error boundary
+   * for every `BaseStore` method (`get`/`put`/`delete`/`search`/
+   * `listNamespaces` all funnel through here): a raw AWS SDK error surfaces
+   * as an `UpstreamError`, and one failing operation rejects the whole batch.
    */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
     return guardPublic('store.batch', async () => {
-      const results: SingleResult[] = [];
-      for (const operation of operations) {
-        results.push(await this.dispatch(operation));
-      }
+      const results = await runBatch(operations, (operation) => this.dispatch(operation));
       return results as OperationResults<Op>;
     });
   }
