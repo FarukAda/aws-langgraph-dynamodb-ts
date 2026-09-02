@@ -99,7 +99,9 @@ describe('listCheckpoints', () => {
     });
     mock.on(GetCommand).callsFake((input) => {
       const sk = input.Key.SK as string;
-      return { Item: sk.endsWith('c2') ? data.payloads.c2 : data.payloads.c1 };
+      const id = sk.endsWith('c2') ? 'c2' : 'c1';
+      // an addressed checkpoint_id reads its META row directly, everything else reads a payload
+      return { Item: sk.startsWith('META') ? data.metas[id] : data.payloads[id] };
     });
   }
 

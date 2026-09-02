@@ -47,6 +47,11 @@ export function metaSortKeyPrefix(checkpointNs: string): string {
   return `${CheckpointItemKind.META}${SORT_KEY_SEPARATOR}${checkpointNs}${SORT_KEY_SEPARATOR}`;
 }
 
+/** `begins_with` prefix selecting every META item of a thread, whatever its namespace. */
+export function metaAnyNamespacePrefix(): string {
+  return `${CheckpointItemKind.META}${SORT_KEY_SEPARATOR}`;
+}
+
 /** Sort key for a checkpoint's heavy payload item. */
 export function payloadSortKey(checkpointNs: string, checkpointId: string): string {
   return `${CheckpointItemKind.PAYLOAD}${SORT_KEY_SEPARATOR}${checkpointNs}${SORT_KEY_SEPARATOR}${checkpointId}`;

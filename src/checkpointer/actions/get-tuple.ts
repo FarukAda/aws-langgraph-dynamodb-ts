@@ -18,5 +18,8 @@ export async function getCheckpointTuple(
   const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
   const meta = await fetchTargetMeta(context, threadId, checkpointNs, checkpointId, config.signal);
   if (!meta) return undefined;
-  return assembleTuple(context, threadId, checkpointNs, meta, config.signal);
+  return assembleTuple(context, threadId, checkpointNs, meta, {
+    signal: config.signal,
+    consistent: true,
+  });
 }

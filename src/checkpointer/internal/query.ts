@@ -8,6 +8,8 @@ export interface PartitionQueryOptions {
 /** Options for {@link beginsWithQuery}. */
 export interface BeginsWithQueryOptions {
   limit?: number;
+  /** Inclusive upper bound on the sort key; turns the prefix match into a `BETWEEN`. */
+  beforeSortKey?: string;
   ascending?: boolean;
   consistent?: boolean;
 }
@@ -39,11 +41,18 @@ export function beginsWithQuery(
   skPrefix: string,
   options: BeginsWithQueryOptions = {},
 ): QueryCommandInput {
+  const bounded = options.beforeSortKey !== undefined;
   const params: QueryCommandInput = {
     TableName: tableName,
-    KeyConditionExpression: '#pk = :pk AND begins_with(#sk, :skPrefix)',
+    KeyConditionExpression: bounded
+      ? '#pk = :pk AND #sk BETWEEN :skPrefix AND :before'
+      : '#pk = :pk AND begins_with(#sk, :skPrefix)',
     ExpressionAttributeNames: { '#pk': 'PK', '#sk': 'SK' },
-    ExpressionAttributeValues: { ':pk': partition, ':skPrefix': skPrefix },
+    ExpressionAttributeValues: {
+      ':pk': partition,
+      ':skPrefix': skPrefix,
+      ...(bounded ? { ':before': options.beforeSortKey } : {}),
+    },
     ScanIndexForward: options.ascending ?? false,
   };
   if (options.limit !== undefined) params.Limit = options.limit;

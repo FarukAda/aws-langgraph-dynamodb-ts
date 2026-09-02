@@ -17,6 +17,13 @@ import {
 import { beginsWithQuery } from './query';
 import type { CheckpointerContext } from './setup';
 
+/** Per-read options for the payload and writes reads. */
+export interface ReadOptions {
+  signal?: AbortSignal;
+  /** `false` for bulk reads (`list`) that trade read-your-writes for half the read cost. */
+  consistent?: boolean;
+}
+
 /**
  * Fetch the target META item: by id when given, else the newest in the
  * namespace. The newest-first read pages one row at a time past any foreign
@@ -71,16 +78,16 @@ export async function fetchPayload(
   threadId: string,
   checkpointNs: string,
   checkpointId: string,
-  signal?: AbortSignal,
+  read: ReadOptions = {},
 ): Promise<CheckpointPayloadItem | undefined> {
   const result = await withDynamoDBRetry(
     () =>
       context.client.get({
         TableName: context.tableName,
         Key: { PK: partitionKey(threadId), SK: payloadSortKey(checkpointNs, checkpointId) },
-        ConsistentRead: true,
+        ConsistentRead: read.consistent ?? true,
       }),
-    retryFor(context, signal),
+    retryFor(context, read.signal),
   );
   return result.Item as CheckpointPayloadItem | undefined;
 }
@@ -91,13 +98,13 @@ export async function fetchPendingWrites(
   threadId: string,
   checkpointNs: string,
   checkpointId: string,
-  signal?: AbortSignal,
+  read: ReadOptions = {},
 ): Promise<CheckpointPendingWrite[]> {
   const params = beginsWithQuery(
     context.tableName,
     partitionKey(threadId),
     writeSortKeyPrefix(checkpointNs, checkpointId),
-    { ascending: true, consistent: true },
+    { ascending: true, consistent: read.consistent ?? true },
   );
   /**
    * Unbounded: the read must be complete to be correct, and a Send fan-out
@@ -107,8 +114,8 @@ export async function fetchPendingWrites(
    */
   const items: CheckpointWriteItem[] = [];
   for await (const item of paginateQuery({
-    retry: retryFor(context, signal),
-    signal,
+    retry: retryFor(context, read.signal),
+    signal: read.signal,
     client: context.client,
     params,
     maxItems: Number.POSITIVE_INFINITY,

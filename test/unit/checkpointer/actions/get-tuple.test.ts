@@ -189,3 +189,31 @@ describe('getCheckpointTuple with a foreign head row (CKPT-08)', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('getCheckpointTuple reads strongly consistently (CKPT-07)', () => {
+  it('sets ConsistentRead on the payload get and the writes query', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const { meta, payload } = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint,
+      metadata,
+      'nonce-1',
+    );
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } });
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);
+    const writesQuery = mock
+      .commandCalls(QueryCommand)
+      .find((c) =>
+        (c.args[0].input.ExpressionAttributeValues?.[':skPrefix'] as string).startsWith('WRITE'),
+      );
+    expect(writesQuery?.args[0].input.ConsistentRead).toBe(true);
+  });
+});
