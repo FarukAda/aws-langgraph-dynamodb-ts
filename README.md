@@ -297,16 +297,53 @@ const store = new DynamoDBStore({ tableName: 'langgraph', logger: redactLogger(l
 
 `redactLogger` wraps a logger so secret-looking fields (access keys, tokens, passwords, …) are replaced with `[REDACTED]` in structured log arguments. It also scans **string values, including an error's `message` and `stack`**, for recognisable credential shapes — AWS access key ids, `Bearer` tokens, JWTs, and `password=`/`token=` assignments — replacing just the matched substring so the text stays readable. Pass `extraKeys` to add field names and `extraValuePatterns` to add shapes. `redactSecrets` exposes the same redaction for arbitrary objects.
 
-**What the library logs.** Nothing at all until you inject a logger — that is deliberate, a library should not write to your console uninvited. Once one is attached, the events worth alerting on are:
+**What is logged.** Identifiers and counts only: thread, namespace, checkpoint, session and task ids, store namespaces and keys, sort keys, channel names, S3 object keys, attempt and row counts, and the *name* of an underlying error. Never a payload, an embedding, a message body or a credential. `redactLogger` therefore matters most for the application logs around the library; it does not redact identifiers — pass `extraKeys: ['threadId', 'sessionId', 'namespace', 'key', 'sortKey', 's3Key']` when your deployment treats identifiers as personal data.
 
-| Level | Event |
-| --- | --- |
-| `info` | `deleteThread` / `history.clear` completing, with rows deleted and rows skipped |
-| `warn` | a row left in place by a delete because it belongs to another adapter |
-| `warn` | a row skipped on read because its shape is not this adapter's (`store.get`, checkpointer `list`) |
-| `warn` | a pending-write guard rejection whose existing row holds an unexpected channel |
-| `warn` | a `vectorBackend` returning ascending scores, or a match this store cannot address |
-| `error` | a chat message skipped because it could not be decoded, with its sort key |
+**Using pino or winston.** `Logger` methods take a message and then structured arguments — at most one plain object per call. winston and `console` accept that shape directly. pino treats a leading string as a format string and drops trailing objects, so merge the arguments into its first parameter:
+
+```typescript
+import pino from 'pino';
+import type { LogArgument, Logger } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const base = pino();
+const fields = (args: LogArgument[]) =>
+  Object.assign({}, ...args.filter((arg) => typeof arg === 'object' && arg !== null));
+const logger: Logger = {
+  info: (message, ...args) => base.info(fields(args), message),
+  warn: (message, ...args) => base.warn(fields(args), message),
+  error: (message, ...args) => base.error(fields(args), message),
+  debug: (message, ...args) => base.debug(fields(args), message),
+};
+```
+
+**What the library logs.** Nothing until a logger is injected. Every `error` and `warn` below is actionable; the table is generated from the code and a static test fails when a new event is added without a row. `debug` carries retries (`retrying after a transient error`, with the attempt, the delay and the error name), lost-response commits and duplicate pending writes that were skipped.
+
+| Level | Message | Fields | Meaning and what to do |
+| --- | --- | --- | --- |
+| `error` | `history.addMessages rollback failed; messageCount may have drifted` | `sessionId`, `committedChunks`, `message` | a multi-chunk append failed and its rollback failed too (`CompensationFailedError`); run `reconcileMessageCount` for the session once it is idle |
+| `error` | `getMessages: skipped a corrupt message item` | `sessionId`, `sortKey`, `reason` | a message row could not be decoded (or its S3 object is gone) and was dropped under `onCorruptMessage: 'skip'`; inspect or delete the row |
+| `warn` | `store.put: compare-and-swap exhausted; overwriting unconditionally` | `namespace`, `key`, `attempts` | three concurrent overwrites of one item; the put succeeded but one S3 object may be orphaned until the lifecycle rule sweeps it |
+| `warn` | `putWrites: special-write compare-and-swap exhausted; overwriting unconditionally` | `sortKey`, `channel`, `attempts` | same, for an interrupt/resume/error write written concurrently for one task |
+| `warn` | `Some orphaned S3 objects could not be deleted after` | `failedCount` | objects leaked after a failed write or a delete; `ensureS3LifecycleRule()` reclaims them, otherwise clean up by prefix |
+| `warn` | `Failed to clean up orphaned S3 objects after` | `message`, `keys` | the cleanup itself failed after retries; same remedy |
+| `warn` | `: refusing to delete an S3 object outside this row's scope` | `key` | a row referenced an object outside its own key path — a tampered or foreign row; the object was left alone, investigate the writer |
+| `warn` | `store.put vector-index sync failed; reconcileVectorIndex will repair` | `namespace`, `key`, `message` | the `vectorBackend` rejected an upsert or delete; the canonical item is fine, run `reconcileVectorIndex` when convenient |
+| `warn` | `injected DynamoDB client keeps the SDK's own retries` | `maxAttempts` | construct the injected client with `maxAttempts: 1` unless you want the SDK's retries to stack inside the library's budget |
+| `warn` | `putWrites: write row held by an unexpected channel; write not persisted` | `sortKey`, `expected`, `found` | another writer holds this task's row for a different channel; only this library should write the key space |
+| `warn` | `history.addMessages compensating committed chunks after a chunk failed` | `sessionId`, `committedChunks` | a large append is being rolled back; the caller receives the original error |
+| `warn` | `list: scanned a large number of rows without the caller stopping` | `threadId`, `checkpointNs`, `scanned` | a `list()` walked over 10 000 rows; pass `limit` or narrow the filter |
+| `warn` | `getTuple: a checkpoint carries very many pending-write rows; the read is complete but slow` | `threadId`, `checkpointId`, `rows` | over 10 000 pending writes on one checkpoint (a huge fan-out or many retried tasks); the read is correct |
+| `warn` | `search: some candidates carry an embedding of a different dimension than the query` | `namespacePrefix`, `count` | items embedded with another model or `dims`; re-put them or run `reconcileVectorIndex` |
+| `warn` | `search: vectorBackend returned ascending scores; VectorMatch.score must be a relevance` | `namespacePrefix` | the backend reports distances; set `vectorScoreDirection: 'distance'` |
+| `warn` | `search: skipped an unusable vectorBackend match` | `namespace`, `key` | the backend returned a key this store cannot address; run `reconcileVectorIndex` |
+| `warn` | `: left a foreign row in place` | `sortKey` | `deleteThread`/`clear` found a row another adapter owns in the partition and kept it |
+| `warn` | `list: skipped a row that is not a checkpoint meta item` | `sortKey` | a foreign row shares the `META#` prefix on a shared table |
+| `warn` | `getTuple: skipped a row that is not a checkpoint meta item` | `sortKey` | same, on the read-your-writes path |
+| `warn` | `store.get: ignored a row that is not a store item` | `namespace`, `key` | a foreign row at a store key |
+| `warn` | `reconcileVectorIndex: skipped a row that is not a store item` | `sortKey` | same, during reconciliation |
+| `info` | `: deleted rows` | `deleted`, `skipped` | `deleteThread`/`clear` finished |
+| `info` | `reconcileVectorIndex prune skipped: backend has no listKeys` | `prefix` | the backend cannot enumerate vectors, so stale ones were not pruned |
+| `info` | `reconcileVectorIndex: kept a vector whose item reappeared` | `namespace`, `key` | an item was written while pruning; nothing to do |
 
 ## Infrastructure setup
 

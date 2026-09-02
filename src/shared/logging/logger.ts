@@ -1,7 +1,12 @@
 /** A value safe to pass as a structured log argument. */
 export type LogArgument = string | number | boolean | null | object;
 
-/** Pluggable logging interface — consumers supply their own implementation. */
+/**
+ * Pluggable logging interface — consumers supply their own implementation.
+ * `args` are structured fields, at most one plain object per call, so an
+ * adapter for a structured logger (pino, winston) can merge them into one
+ * record; the message is a fixed string and never carries a value.
+ */
 export interface Logger {
   info(message: string, ...args: LogArgument[]): void;
   warn(message: string, ...args: LogArgument[]): void;
