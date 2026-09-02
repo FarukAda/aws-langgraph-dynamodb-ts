@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,9 +6,11 @@
 
 # Interface: FactoryBaseOptions
 
-Defined in: [factory/factory.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L14)
+Defined in: [factory/types.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/types.ts#L21)
 
-Shared client/logger defaults applied to every adapter the factory builds.
+Defaults applied to every adapter the factory builds: the client (or how to
+build one) and the cross-cutting options a team usually wants identical
+across its checkpointer, store and history. A per-adapter option wins.
 
 ## Properties
 
@@ -16,7 +18,11 @@ Shared client/logger defaults applied to every adapter the factory builds.
 
 > `optional` **client?**: `DynamoDBDocument`
 
-Defined in: [factory/factory.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L15)
+Defined in: [factory/types.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/types.ts#L27)
+
+Reused as-is by every adapter. Construct it with `maxAttempts: 1`, or the
+SDK's own retries stack inside the library's retry budget (each adapter
+logs a `warn` at construction when they would).
 
 ***
 
@@ -24,25 +30,15 @@ Defined in: [factory/factory.ts:15](https://github.com/FarukAda/aws-langgraph-dy
 
 > `optional` **clientConfig?**: `DynamoDBClientConfig`
 
-Defined in: [factory/factory.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L16)
+Defined in: [factory/types.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/types.ts#L28)
 
 ***
 
-### createClient?
+### compression?
 
-> `optional` **createClient?**: (`config`) => `DynamoDBClient`
+> `optional` **compression?**: [`CompressionConfig`](CompressionConfig.md)
 
-Defined in: [factory/factory.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L17)
-
-#### Parameters
-
-##### config
-
-`DynamoDBClientConfig`
-
-#### Returns
-
-`DynamoDBClient`
+Defined in: [factory/types.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/types.ts#L37)
 
 ***
 
@@ -50,4 +46,28 @@ Defined in: [factory/factory.ts:17](https://github.com/FarukAda/aws-langgraph-dy
 
 > `optional` **logger?**: [`Logger`](Logger.md)
 
-Defined in: [factory/factory.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L18)
+Defined in: [factory/types.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/types.ts#L35)
+
+***
+
+### retry?
+
+> `optional` **retry?**: [`RetryPolicy`](RetryPolicy.md)
+
+Defined in: [factory/types.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/types.ts#L39)
+
+***
+
+### s3?
+
+> `optional` **s3?**: [`S3OffloadConfig`](S3OffloadConfig.md)
+
+Defined in: [factory/types.ts:38](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/types.ts#L38)
+
+***
+
+### ttl?
+
+> `optional` **ttl?**: [`TtlOption`](../type-aliases/TtlOption.md)
+
+Defined in: [factory/types.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/types.ts#L36)

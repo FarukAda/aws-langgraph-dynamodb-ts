@@ -56,14 +56,17 @@ export class DynamoDBFactory {
     return overridesClient(options) ? this.sharedDefaults() : this.base;
   }
 
+  /** A saver on its own client, with the factory's shared defaults underneath `options`. */
   createSaver(options: DynamoDBSaverOptions): DynamoDBSaver {
     return new DynamoDBSaver({ ...this.defaultsFor(options), ...options });
   }
 
+  /** A store on its own client, with the factory's shared defaults underneath `options`. */
   createStore(options: DynamoDBStoreOptions): DynamoDBStore {
     return new DynamoDBStore({ ...this.defaultsFor(options), ...options });
   }
 
+  /** A chat history on its own client, with the factory's shared defaults underneath `options`. */
   createChatMessageHistory(options: DynamoDBChatMessageHistoryOptions): DynamoDBChatMessageHistory {
     return new DynamoDBChatMessageHistory({ ...this.defaultsFor(options), ...options });
   }

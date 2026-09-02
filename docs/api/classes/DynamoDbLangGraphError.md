@@ -1,16 +1,16 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
-[AWS LangGraph DynamoDB TypeScript](../README.md) / DynamoDbLangGraphError
+[AWS LangGraph DynamoDB TypeScript](../README.md) / DynamoDBLangGraphError
 
-# Class: DynamoDbLangGraphError
+# Class: DynamoDBLangGraphError
 
-Defined in: [shared/errors/base-error.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L19)
+Defined in: [shared/errors/base-error.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L28)
 
 Base class for every error this library throws. Carries a branchable
 [ErrorCode](../enumerations/ErrorCode.md), structured [ErrorContext](../interfaces/ErrorContext.md), and a native `cause`
-chain. Detected via isDynamoDbLangGraphError (a symbol brand) rather
+chain. Detected via [isDynamoDBLangGraphError](../functions/isDynamoDBLangGraphError.md) (a symbol brand) rather
 than `instanceof`, which is banned repo-wide.
 
 ## Extends
@@ -27,14 +27,15 @@ than `instanceof`, which is banned repo-wide.
 - [`ResultTruncatedError`](ResultTruncatedError.md)
 - [`RetryExhaustedError`](RetryExhaustedError.md)
 - [`ValidationError`](ValidationError.md)
+- [`UpstreamError`](UpstreamError.md)
 
 ## Constructors
 
 ### Constructor
 
-> **new DynamoDbLangGraphError**(`message`, `code`, `context?`, `cause?`): `DynamoDbLangGraphError`
+> **new DynamoDBLangGraphError**(`message`, `code`, `context?`, `cause?`): `DynamoDBLangGraphError`
 
-Defined in: [shared/errors/base-error.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L23)
+Defined in: [shared/errors/base-error.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L32)
 
 #### Parameters
 
@@ -56,7 +57,7 @@ Defined in: [shared/errors/base-error.ts:23](https://github.com/FarukAda/aws-lan
 
 #### Returns
 
-`DynamoDbLangGraphError`
+`DynamoDBLangGraphError`
 
 #### Overrides
 
@@ -68,7 +69,7 @@ Defined in: [shared/errors/base-error.ts:23](https://github.com/FarukAda/aws-lan
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L20)
+Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L29)
 
 ***
 
@@ -76,4 +77,4 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L21)
+Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L30)

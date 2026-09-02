@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: CompensationFailedError
 
-Defined in: [shared/errors/errors.ts:123](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L123)
+Defined in: [shared/errors/errors.ts:125](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/errors.ts#L125)
 
 A compensating rollback failed after an append-saga chunk error, so the
 trigger error could not be cleanly undone. Carries the original trigger as
@@ -15,7 +15,7 @@ trigger error could not be cleanly undone. Carries the original trigger as
 
 ## Extends
 
-- [`DynamoDbLangGraphError`](DynamoDbLangGraphError.md)
+- [`DynamoDBLangGraphError`](DynamoDBLangGraphError.md)
 
 ## Constructors
 
@@ -23,7 +23,7 @@ trigger error could not be cleanly undone. Carries the original trigger as
 
 > **new CompensationFailedError**(`cause`, `rollbackError`): `CompensationFailedError`
 
-Defined in: [shared/errors/errors.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L126)
+Defined in: [shared/errors/errors.ts:128](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/errors.ts#L128)
 
 #### Parameters
 
@@ -41,7 +41,7 @@ Defined in: [shared/errors/errors.ts:126](https://github.com/FarukAda/aws-langgr
 
 #### Overrides
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`constructor`](DynamoDbLangGraphError.md#constructor)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`constructor`](DynamoDBLangGraphError.md#constructor)
 
 ## Properties
 
@@ -49,11 +49,11 @@ Defined in: [shared/errors/errors.ts:126](https://github.com/FarukAda/aws-langgr
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L20)
+Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L29)
 
 #### Inherited from
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`code`](DynamoDbLangGraphError.md#code)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`code`](DynamoDBLangGraphError.md#code)
 
 ***
 
@@ -61,11 +61,11 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L21)
+Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L30)
 
 #### Inherited from
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`context`](DynamoDbLangGraphError.md#context)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`context`](DynamoDBLangGraphError.md#context)
 
 ***
 
@@ -73,4 +73,4 @@ Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-lan
 
 > `readonly` **rollbackError**: `Error`
 
-Defined in: [shared/errors/errors.ts:124](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L124)
+Defined in: [shared/errors/errors.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/errors.ts#L126)

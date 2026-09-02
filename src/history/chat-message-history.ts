@@ -42,6 +42,8 @@ export class DynamoDBChatMessageHistory {
    * default, or a window of it — `{ limit }` returns only the newest `limit`
    * messages, `{ before }` only those appended before that instant — so a
    * long-lived session can be read a page at a time instead of whole.
+   * @remarks Strongly consistent; one query page plus one S3 download per offloaded message.
+   * @throws ValidationError for a malformed session id or window; UpstreamError; AbortError; and, under `onCorruptMessage: 'throw'`, the decode error of a corrupt row.
    */
   getMessages(sessionId: string, options?: GetMessagesOptions): Promise<BaseMessage[]> {
     return guardPublic('history.getMessages', () =>
@@ -49,26 +51,41 @@ export class DynamoDBChatMessageHistory {
     );
   }
 
-  /** Append messages to a session. */
+  /**
+   * Append messages to a session in one transaction per chunk of up to 99
+   * messages, keeping the session's `messageCount` exact. Lock-free and safe
+   * under concurrent appends to one session; every message shares the
+   * session's TTL when one is configured.
+   * @throws ValidationError for a message that could never be read back; CompensationFailedError when a later chunk fails and the rollback fails too; RetryExhaustedError after 18 contended attempts; UpstreamError; AbortError.
+   */
   addMessages(sessionId: string, messages: BaseMessage[], options?: CancelOptions): Promise<void> {
     return guardPublic('history.addMessages', () =>
       addMessagesAction(this.context, sessionId, messages, options?.signal),
     );
   }
 
-  /** Append a single message to a session. */
+  /** Append one message; see {@link addMessages}. */
   addMessage(sessionId: string, message: BaseMessage, options?: CancelOptions): Promise<void> {
     return guardPublic('history.addMessage', () =>
       addMessagesAction(this.context, sessionId, [message], options?.signal),
     );
   }
 
-  /** Delete a session and any offloaded payload. */
+  /**
+   * Delete a session's messages, metadata and offloaded objects. Single pass:
+   * call it when the session is quiescent.
+   * @throws BatchWriteAllIncompleteError when a delete batch does not fully drain; UpstreamError; AbortError.
+   */
   clear(sessionId: string, options?: CancelOptions): Promise<void> {
     return guardPublic('history.clear', () => clearSession(this.context, sessionId, options));
   }
 
-  /** List all sessions as metadata summaries. */
+  /**
+   * List every session as a metadata summary, most recently updated first.
+   * A table scan: cross-tenant by construction and bounded by `maxItems` /
+   * `maxIterations`.
+   * @throws ResultTruncatedError past either cap; UpstreamError; AbortError.
+   */
   listSessions(options?: ListSessionsOptions): Promise<SessionMetadata[]> {
     return guardPublic('history.listSessions', () => listSessionsAction(this.context, options));
   }
@@ -76,6 +93,7 @@ export class DynamoDBChatMessageHistory {
   /**
    * Recompute and repair a session's `messageCount` from the stored messages.
    * A maintenance tool for external corruption; run it when the session is idle.
+   * @throws ConflictError when the session does not exist or changed while counting; UpstreamError; AbortError.
    */
   reconcileMessageCount(sessionId: string, options?: CancelOptions): Promise<number> {
     return guardPublic('history.reconcileMessageCount', () =>

@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Interface: S3OffloadConfig
 
-Defined in: [shared/codec/s3/config.ts:4](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/codec/s3/config.ts#L4)
+Defined in: [shared/codec/s3/config.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/codec/s3/config.ts#L7)
 
 Configuration for offloading large payloads to S3.
 
@@ -16,33 +16,18 @@ Configuration for offloading large payloads to S3.
 
 > **bucketName**: `string`
 
-Defined in: [shared/codec/s3/config.ts:5](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/codec/s3/config.ts#L5)
+Defined in: [shared/codec/s3/config.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/codec/s3/config.ts#L8)
 
 ***
 
 ### clientConfig?
 
-> `optional` **clientConfig?**: `S3ClientConfig`
+> `optional` **clientConfig?**: [`S3ClientConfigLike`](../type-aliases/S3ClientConfigLike.md)
 
-Defined in: [shared/codec/s3/config.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/codec/s3/config.ts#L10)
+Defined in: [shared/codec/s3/config.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/codec/s3/config.ts#L27)
 
-***
-
-### createS3Client?
-
-> `optional` **createS3Client?**: (`config`) => `S3Client`
-
-Defined in: [shared/codec/s3/config.ts:11](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/codec/s3/config.ts#L11)
-
-#### Parameters
-
-##### config
-
-`S3ClientConfig`
-
-#### Returns
-
-`S3Client`
+S3 client configuration (an `S3ClientConfig`). `region` defaults to the
+adapter's DynamoDB region.
 
 ***
 
@@ -50,7 +35,17 @@ Defined in: [shared/codec/s3/config.ts:11](https://github.com/FarukAda/aws-langg
 
 > `optional` **keyPrefix?**: `string`
 
-Defined in: [shared/codec/s3/config.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/codec/s3/config.ts#L6)
+Defined in: [shared/codec/s3/config.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/codec/s3/config.ts#L9)
+
+***
+
+### maxDownloadBytes?
+
+> `optional` **maxDownloadBytes?**: `number`
+
+Defined in: [shared/codec/s3/config.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/codec/s3/config.ts#L22)
+
+Largest object this adapter will buffer from S3 (default 50 MiB).
 
 ***
 
@@ -58,7 +53,7 @@ Defined in: [shared/codec/s3/config.ts:6](https://github.com/FarukAda/aws-langgr
 
 > `optional` **serverSideEncryption?**: `string`
 
-Defined in: [shared/codec/s3/config.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/codec/s3/config.ts#L8)
+Defined in: [shared/codec/s3/config.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/codec/s3/config.ts#L19)
 
 ***
 
@@ -66,7 +61,7 @@ Defined in: [shared/codec/s3/config.ts:8](https://github.com/FarukAda/aws-langgr
 
 > `optional` **sseKmsKeyId?**: `string`
 
-Defined in: [shared/codec/s3/config.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/codec/s3/config.ts#L9)
+Defined in: [shared/codec/s3/config.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/codec/s3/config.ts#L20)
 
 ***
 
@@ -74,4 +69,11 @@ Defined in: [shared/codec/s3/config.ts:9](https://github.com/FarukAda/aws-langgr
 
 > `optional` **thresholdBytes?**: `number`
 
-Defined in: [shared/codec/s3/config.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/codec/s3/config.ts#L7)
+Defined in: [shared/codec/s3/config.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/codec/s3/config.ts#L18)
+
+Serialized payloads at or above this size are offloaded (default 350 KB).
+Only the payload counts: the store's inline embedding (about 10 bytes per
+dimension, so ~10 KB at 1024 dims and ~45 KB at 4096) lives on the same
+item and is not part of it, so keep `thresholdBytes` plus the embedding
+under DynamoDB's 400 KB item limit or the put fails with a raw
+`ValidationException`.

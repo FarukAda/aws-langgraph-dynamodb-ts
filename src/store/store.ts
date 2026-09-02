@@ -58,6 +58,7 @@ export class DynamoDBStore extends BaseStore {
    * for every `BaseStore` method (`get`/`put`/`delete`/`search`/
    * `listNamespaces` all funnel through here): a raw AWS SDK error surfaces
    * as an `UpstreamError`, and one failing operation rejects the whole batch.
+   * @throws ValidationError for a malformed namespace, key or value; UpstreamError; RetryExhaustedError; ResultTruncatedError from a listing over its cap.
    */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
     return guardPublic('store.batch', async () => {
@@ -68,7 +69,10 @@ export class DynamoDBStore extends BaseStore {
 
   /**
    * Search with optional cancellation. Overrides the base implementation, which
-   * routes through {@link batch} and therefore cannot carry a signal.
+   * routes through {@link batch} and therefore cannot carry a signal. A plain
+   * search stops reading once `offset + limit` matches are in hand; a `query`
+   * ranks in-process (up to `maxSearchCandidates`) or through the `vectorBackend`.
+   * @throws ValidationError when the candidate set exceeds `maxSearchCandidates`; AbortError; UpstreamError.
    */
   override async search(
     namespacePrefix: string[],
@@ -83,6 +87,7 @@ export class DynamoDBStore extends BaseStore {
   /**
    * Repair the configured vector backend against the canonical items under
    * `namespacePrefix`. A maintenance tool; see {@link reconcileVectorIndex}.
+   * @throws ValidationError without an `index` and `vectorBackend` or for an empty prefix; ResultTruncatedError past `maxScanItems`.
    */
   reconcileVectorIndex(
     namespacePrefix: string[],

@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Interface: BaseAdapterOptions
 
-Defined in: [shared/options.ts:13](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/options.ts#L13)
+Defined in: [shared/options.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/options.ts#L14)
 
 Options common to every adapter (the unified options shape). An adapter
 either reuses an injected `client` or builds one from `clientConfig`.
@@ -17,7 +17,7 @@ either reuses an injected `client` or builds one from `clientConfig`.
 
 > `optional` **client?**: `DynamoDBDocument`
 
-Defined in: [shared/options.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/options.ts#L17)
+Defined in: [shared/options.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/options.ts#L18)
 
 Pre-built DocumentClient to reuse; when set, the adapter does not own it.
 
@@ -27,29 +27,9 @@ Pre-built DocumentClient to reuse; when set, the adapter does not own it.
 
 > `optional` **clientConfig?**: `DynamoDBClientConfig`
 
-Defined in: [shared/options.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/options.ts#L19)
+Defined in: [shared/options.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/options.ts#L20)
 
 Config used to build a client when `client` is not provided.
-
-***
-
-### createClient?
-
-> `optional` **createClient?**: (`config`) => `DynamoDBClient`
-
-Defined in: [shared/options.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/options.ts#L21)
-
-Factory seam for constructing the underlying client (testing).
-
-#### Parameters
-
-##### config
-
-`DynamoDBClientConfig`
-
-#### Returns
-
-`DynamoDBClient`
 
 ***
 
@@ -57,9 +37,19 @@ Factory seam for constructing the underlying client (testing).
 
 > `optional` **logger?**: [`Logger`](Logger.md)
 
-Defined in: [shared/options.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/options.ts#L25)
+Defined in: [shared/options.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/options.ts#L30)
 
 Optional per-instance logger (defaults to a silent logger).
+
+***
+
+### retry?
+
+> `optional` **retry?**: [`RetryPolicy`](RetryPolicy.md)
+
+Defined in: [shared/options.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/options.ts#L32)
+
+Retry budget and backoff for every DynamoDB call (see the README "Retries and backoff").
 
 ***
 
@@ -67,7 +57,7 @@ Optional per-instance logger (defaults to a silent logger).
 
 > **tableName**: `string`
 
-Defined in: [shared/options.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/options.ts#L15)
+Defined in: [shared/options.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/options.ts#L16)
 
 DynamoDB table name.
 
@@ -77,6 +67,6 @@ DynamoDB table name.
 
 > `optional` **ttl?**: [`TtlOption`](../type-aliases/TtlOption.md)
 
-Defined in: [shared/options.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/options.ts#L23)
+Defined in: [shared/options.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/options.ts#L28)
 
 Optional time-to-live applied to written items.

@@ -4,7 +4,7 @@
   "entryPointStrategy": "expand",
   "out": "docs/api",
   "name": "AWS LangGraph DynamoDB TypeScript",
-  "includeVersion": true,
+  "includeVersion": false,
   "readme": "none",
   "exclude": [
     "**/*+(.spec|.test).ts",

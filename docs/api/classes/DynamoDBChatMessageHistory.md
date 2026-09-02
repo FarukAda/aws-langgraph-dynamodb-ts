@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,13 +6,14 @@
 
 # Class: DynamoDBChatMessageHistory
 
-Defined in: [history/chat-message-history.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L20)
+Defined in: [history/chat-message-history.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L28)
 
 DynamoDB-backed multi-session chat history. Each message is its own item
 (ordered by a monotonic ULID, compressed / S3-offloaded as needed) alongside a
 per-session metadata item; every message in a session shares one uniform TTL.
 Appends are O(1) and lock-free. Use [forSession](#forsession) to get a single-session
-LangChain adapter.
+LangChain adapter. Every public method is the library's error boundary — a
+raw AWS SDK error escaping an action surfaces as an `UpstreamError`.
 
 ## Constructors
 
@@ -20,7 +21,7 @@ LangChain adapter.
 
 > **new DynamoDBChatMessageHistory**(`options`): `DynamoDBChatMessageHistory`
 
-Defined in: [history/chat-message-history.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L25)
+Defined in: [history/chat-message-history.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L33)
 
 #### Parameters
 
@@ -36,11 +37,11 @@ Defined in: [history/chat-message-history.ts:25](https://github.com/FarukAda/aws
 
 ### addMessage()
 
-> **addMessage**(`sessionId`, `message`): `Promise`\<`void`\>
+> **addMessage**(`sessionId`, `message`, `options?`): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:43](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L43)
+Defined in: [history/chat-message-history.ts:68](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L68)
 
-Append a single message to a session.
+Append one message; see [addMessages](#addmessages).
 
 #### Parameters
 
@@ -52,6 +53,10 @@ Append a single message to a session.
 
 `BaseMessage`
 
+##### options?
+
+[`CancelOptions`](../interfaces/CancelOptions.md)
+
 #### Returns
 
 `Promise`\<`void`\>
@@ -60,11 +65,14 @@ Append a single message to a session.
 
 ### addMessages()
 
-> **addMessages**(`sessionId`, `messages`): `Promise`\<`void`\>
+> **addMessages**(`sessionId`, `messages`, `options?`): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:38](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L38)
+Defined in: [history/chat-message-history.ts:61](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L61)
 
-Append messages to a session.
+Append messages to a session in one transaction per chunk of up to 99
+messages, keeping the session's `messageCount` exact. Lock-free and safe
+under concurrent appends to one session; every message shares the
+session's TTL when one is configured.
 
 #### Parameters
 
@@ -76,19 +84,28 @@ Append messages to a session.
 
 `BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]
 
+##### options?
+
+[`CancelOptions`](../interfaces/CancelOptions.md)
+
 #### Returns
 
 `Promise`\<`void`\>
+
+#### Throws
+
+ValidationError for a message that could never be read back; CompensationFailedError when a later chunk fails and the rollback fails too; RetryExhaustedError after 18 contended attempts; UpstreamError; AbortError.
 
 ***
 
 ### clear()
 
-> **clear**(`sessionId`): `Promise`\<`void`\>
+> **clear**(`sessionId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L48)
+Defined in: [history/chat-message-history.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L79)
 
-Delete a session and any offloaded payload.
+Delete a session's messages, metadata and offloaded objects. Single pass:
+call it when the session is quiescent.
 
 #### Parameters
 
@@ -96,9 +113,17 @@ Delete a session and any offloaded payload.
 
 `string`
 
+##### options?
+
+[`CancelOptions`](../interfaces/CancelOptions.md)
+
 #### Returns
 
 `Promise`\<`void`\>
+
+#### Throws
+
+BatchWriteAllIncompleteError when a delete batch does not fully drain; UpstreamError; AbortError.
 
 ***
 
@@ -106,7 +131,7 @@ Delete a session and any offloaded payload.
 
 > **destroy**(): `void`
 
-Defined in: [history/chat-message-history.ts:74](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L74)
+Defined in: [history/chat-message-history.ts:113](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L113)
 
 Release owned resources (the underlying client and any S3 client).
 
@@ -120,14 +145,15 @@ Release owned resources (the underlying client and any S3 client).
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:87](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L87)
+Defined in: [history/chat-message-history.ts:127](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L127)
 
-Best-effort provision an S3 lifecycle expiration rule matching the
-configured TTL, so offloaded objects don't outlive their DynamoDB item
-forever. No-ops when S3 offload or TTL isn't configured. Requires the
-`s3:GetLifecycleConfiguration`/`s3:PutLifecycleConfiguration` bucket-level
-permissions (broader than the object-level CRUD the rest of S3 offload
-needs) — call this once during deployment/provisioning, not per-request.
+Provision an S3 lifecycle expiration rule matching the configured TTL, so
+offloaded objects don't outlive their DynamoDB item forever. No-ops when
+S3 offload or TTL isn't configured; throws when the bucket cannot be read
+or written. Requires the `s3:GetLifecycleConfiguration` /
+`s3:PutLifecycleConfiguration` bucket-level permissions (broader than the
+object-level CRUD the rest of S3 offload needs) — call this once during
+deployment/provisioning, not per-request.
 
 #### Returns
 
@@ -137,17 +163,22 @@ needs) — call this once during deployment/provisioning, not per-request.
 
 ### forSession()
 
-> **forSession**(`sessionId`): [`DynamoDBSessionChatMessageHistory`](DynamoDBSessionChatMessageHistory.md)
+> **forSession**(`sessionId`, `window?`): [`DynamoDBSessionChatMessageHistory`](DynamoDBSessionChatMessageHistory.md)
 
-Defined in: [history/chat-message-history.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L69)
+Defined in: [history/chat-message-history.ts:108](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L108)
 
-Get a single-session LangChain adapter for `sessionId`.
+Get a single-session LangChain adapter for `sessionId`. `{ limit }` bounds
+what the adapter feeds the chain to the newest `limit` messages.
 
 #### Parameters
 
 ##### sessionId
 
 `string`
+
+##### window?
+
+[`AdapterWindow`](../type-aliases/AdapterWindow.md)
 
 #### Returns
 
@@ -157,11 +188,14 @@ Get a single-session LangChain adapter for `sessionId`.
 
 ### getMessages()
 
-> **getMessages**(`sessionId`): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
+> **getMessages**(`sessionId`, `options?`): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/chat-message-history.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L33)
+Defined in: [history/chat-message-history.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L48)
 
-Get a session's messages in order.
+Get a session's messages in chronological order: the whole session by
+default, or a window of it — `{ limit }` returns only the newest `limit`
+messages, `{ before }` only those appended before that instant — so a
+long-lived session can be read a page at a time instead of whole.
 
 #### Parameters
 
@@ -169,9 +203,21 @@ Get a session's messages in order.
 
 `string`
 
+##### options?
+
+[`GetMessagesOptions`](../type-aliases/GetMessagesOptions.md)
+
 #### Returns
 
 `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
+
+#### Remarks
+
+Strongly consistent; one query page plus one S3 download per offloaded message.
+
+#### Throws
+
+ValidationError for a malformed session id or window; UpstreamError; AbortError; and, under `onCorruptMessage: 'throw'`, the decode error of a corrupt row.
 
 ***
 
@@ -179,33 +225,33 @@ Get a session's messages in order.
 
 > **listSessions**(`options?`): `Promise`\<[`SessionMetadata`](../interfaces/SessionMetadata.md)[]\>
 
-Defined in: [history/chat-message-history.ts:53](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L53)
+Defined in: [history/chat-message-history.ts:89](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L89)
 
-List all sessions as metadata summaries.
+List every session as a metadata summary, most recently updated first.
+A table scan: cross-tenant by construction and bounded by `maxItems` /
+`maxIterations`.
 
 #### Parameters
 
 ##### options?
 
-###### maxItems?
-
-`number`
-
-###### maxIterations?
-
-`number`
+[`ListSessionsOptions`](../interfaces/ListSessionsOptions.md)
 
 #### Returns
 
 `Promise`\<[`SessionMetadata`](../interfaces/SessionMetadata.md)[]\>
 
+#### Throws
+
+ResultTruncatedError past either cap; UpstreamError; AbortError.
+
 ***
 
 ### reconcileMessageCount()
 
-> **reconcileMessageCount**(`sessionId`): `Promise`\<`number`\>
+> **reconcileMessageCount**(`sessionId`, `options?`): `Promise`\<`number`\>
 
-Defined in: [history/chat-message-history.ts:64](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/chat-message-history.ts#L64)
+Defined in: [history/chat-message-history.ts:98](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/chat-message-history.ts#L98)
 
 Recompute and repair a session's `messageCount` from the stored messages.
 A maintenance tool for external corruption; run it when the session is idle.
@@ -216,6 +262,14 @@ A maintenance tool for external corruption; run it when the session is idle.
 
 `string`
 
+##### options?
+
+[`CancelOptions`](../interfaces/CancelOptions.md)
+
 #### Returns
 
 `Promise`\<`number`\>
+
+#### Throws
+
+ConflictError when the session does not exist or changed while counting; UpstreamError; AbortError.

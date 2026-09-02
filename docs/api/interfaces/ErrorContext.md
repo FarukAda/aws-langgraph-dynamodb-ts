@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,9 +6,10 @@
 
 # Interface: ErrorContext
 
-Defined in: [shared/errors/base-error.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L6)
+Defined in: [shared/errors/base-error.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L9)
 
-Structured, log-safe context attached to every library error.
+Structured, log-safe context attached to every library error. Identifiers
+and counts only — never a payload or a credential.
 
 ## Properties
 
@@ -16,7 +17,19 @@ Structured, log-safe context attached to every library error.
 
 > `optional` **attempts?**: `number`
 
-Defined in: [shared/errors/base-error.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L10)
+Defined in: [shared/errors/base-error.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L19)
+
+Attempts made before a retry budget was exhausted.
+
+***
+
+### field?
+
+> `optional` **field?**: `string`
+
+Defined in: [shared/errors/base-error.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L15)
+
+The option, argument or cap that failed validation or was exceeded.
 
 ***
 
@@ -24,7 +37,9 @@ Defined in: [shared/errors/base-error.ts:10](https://github.com/FarukAda/aws-lan
 
 > `optional` **key?**: `string`
 
-Defined in: [shared/errors/base-error.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L9)
+Defined in: [shared/errors/base-error.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L17)
+
+The S3 object key involved, for offload failures.
 
 ***
 
@@ -32,7 +47,9 @@ Defined in: [shared/errors/base-error.ts:9](https://github.com/FarukAda/aws-lang
 
 > `optional` **operation?**: `string`
 
-Defined in: [shared/errors/base-error.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L8)
+Defined in: [shared/errors/base-error.ts:13](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L13)
+
+The public operation (`saver.put`, `store.batch`, …) or internal step that failed.
 
 ***
 
@@ -40,4 +57,6 @@ Defined in: [shared/errors/base-error.ts:8](https://github.com/FarukAda/aws-lang
 
 > `optional` **tableName?**: `string`
 
-Defined in: [shared/errors/base-error.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L7)
+Defined in: [shared/errors/base-error.ts:11](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L11)
+
+The DynamoDB table the operation targeted, when known.

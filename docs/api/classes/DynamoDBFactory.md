@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory/factory.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L41)
+Defined in: [factory/factory.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L39)
 
 Convenience constructors for the adapters. Individual `create*` methods each
 build their own client; [createAll](#createall) builds one shared client used by all
@@ -18,7 +18,7 @@ three and returns a combined `destroy` that tears everything down once.
 
 > **new DynamoDBFactory**(`base?`): `DynamoDBFactory`
 
-Defined in: [factory/factory.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L42)
+Defined in: [factory/factory.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L40)
 
 #### Parameters
 
@@ -34,19 +34,31 @@ Defined in: [factory/factory.ts:42](https://github.com/FarukAda/aws-langgraph-dy
 
 ### createAll()
 
-> **createAll**(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)
+> **createAll**\<`O`\>(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
-Defined in: [factory/factory.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L56)
+Defined in: [factory/factory.ts:81](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L81)
+
+Build the adapters whose sections are given, all on one shared client and
+with the factory's shared defaults underneath each section. If any
+constructor throws (a store with `vectorBackend` but no `index`, say), the
+adapters already built and the freshly created client are destroyed
+before the error propagates, so a failed call leaks nothing.
+
+#### Type Parameters
+
+##### O
+
+`O` *extends* [`CreateAllOptions`](../interfaces/CreateAllOptions.md)
 
 #### Parameters
 
 ##### options
 
-[`CreateAllOptions`](../interfaces/CreateAllOptions.md)
+`O`
 
 #### Returns
 
-[`CreatedAdapters`](../interfaces/CreatedAdapters.md)
+[`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
 ***
 
@@ -54,7 +66,9 @@ Defined in: [factory/factory.ts:56](https://github.com/FarukAda/aws-langgraph-dy
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L52)
+Defined in: [factory/factory.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L70)
+
+A chat history on its own client, with the factory's shared defaults underneath `options`.
 
 #### Parameters
 
@@ -72,7 +86,9 @@ Defined in: [factory/factory.ts:52](https://github.com/FarukAda/aws-langgraph-dy
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L44)
+Defined in: [factory/factory.ts:60](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L60)
+
+A saver on its own client, with the factory's shared defaults underneath `options`.
 
 #### Parameters
 
@@ -90,7 +106,9 @@ Defined in: [factory/factory.ts:44](https://github.com/FarukAda/aws-langgraph-dy
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L48)
+Defined in: [factory/factory.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L65)
+
+A store on its own client, with the factory's shared defaults underneath `options`.
 
 #### Parameters
 
