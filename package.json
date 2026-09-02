@@ -28,7 +28,8 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "engines": {
     "node": ">=22.0.0",
