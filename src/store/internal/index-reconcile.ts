@@ -1,4 +1,5 @@
 import { paginateQuery } from '../../shared/dynamodb/paginate';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { VectorBackend, VectorRef } from '../vector-backend';
 import type { JsonValue } from './filter';
 import { narrowStoreRecord, readStoreItem } from './item-mapper';
@@ -16,11 +17,7 @@ export interface ReconcileTarget {
 }
 
 /** A live item read back from DynamoDB, awaiting its embedding. */
-interface LiveItem {
-  namespace: string[];
-  key: string;
-  value: Record<string, JsonValue>;
-}
+type LiveItem = Pick<ReconcileTarget, 'namespace' | 'key'> & { value: Record<string, JsonValue> };
 
 /** Stable, collision-free identity for a (namespace, key) pair. */
 function refIdentity(namespace: string[], key: string): string {
@@ -38,10 +35,12 @@ function refIdentity(namespace: string[], key: string): string {
 export async function collectReconcileTargets(
   context: StoreContext,
   prefix: string[],
+  signal?: AbortSignal,
 ): Promise<ReconcileTarget[]> {
   const live: LiveItem[] = [];
   const source = paginateQuery({
-    retry: context.retry,
+    retry: retryFor(context, signal),
+    signal,
     client: context.client,
     params: scopedQuery(context.tableName, prefix),
     maxItems: context.maxScanItems,

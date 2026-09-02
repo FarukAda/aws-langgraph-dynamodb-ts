@@ -1,6 +1,7 @@
 import type { BaseMessage } from '@langchain/core/messages';
 
 import { guardPublic } from '../shared/errors/boundary';
+import type { CancelOptions } from '../shared/options';
 import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { addMessages as addMessagesAction } from './actions/add-messages';
 import { clearSession } from './actions/clear';
@@ -32,34 +33,35 @@ export class DynamoDBChatMessageHistory {
   }
 
   /** Get a session's messages in order. */
-  getMessages(sessionId: string): Promise<BaseMessage[]> {
-    return guardPublic('history.getMessages', () => getMessagesAction(this.context, sessionId));
+  getMessages(sessionId: string, options?: CancelOptions): Promise<BaseMessage[]> {
+    return guardPublic('history.getMessages', () =>
+      getMessagesAction(this.context, sessionId, options?.signal),
+    );
   }
 
   /** Append messages to a session. */
-  addMessages(sessionId: string, messages: BaseMessage[]): Promise<void> {
+  addMessages(sessionId: string, messages: BaseMessage[], options?: CancelOptions): Promise<void> {
     return guardPublic('history.addMessages', () =>
-      addMessagesAction(this.context, sessionId, messages),
+      addMessagesAction(this.context, sessionId, messages, options?.signal),
     );
   }
 
   /** Append a single message to a session. */
-  addMessage(sessionId: string, message: BaseMessage): Promise<void> {
+  addMessage(sessionId: string, message: BaseMessage, options?: CancelOptions): Promise<void> {
     return guardPublic('history.addMessage', () =>
-      addMessagesAction(this.context, sessionId, [message]),
+      addMessagesAction(this.context, sessionId, [message], options?.signal),
     );
   }
 
   /** Delete a session and any offloaded payload. */
-  clear(sessionId: string): Promise<void> {
-    return guardPublic('history.clear', () => clearSession(this.context, sessionId));
+  clear(sessionId: string, options?: CancelOptions): Promise<void> {
+    return guardPublic('history.clear', () => clearSession(this.context, sessionId, options));
   }
 
   /** List all sessions as metadata summaries. */
-  listSessions(options?: {
-    maxIterations?: number;
-    maxItems?: number;
-  }): Promise<SessionMetadata[]> {
+  listSessions(
+    options?: { maxIterations?: number; maxItems?: number } & CancelOptions,
+  ): Promise<SessionMetadata[]> {
     return guardPublic('history.listSessions', () => listSessionsAction(this.context, options));
   }
 
@@ -67,9 +69,9 @@ export class DynamoDBChatMessageHistory {
    * Recompute and repair a session's `messageCount` from the stored messages.
    * A maintenance tool for external corruption; run it when the session is idle.
    */
-  reconcileMessageCount(sessionId: string): Promise<number> {
+  reconcileMessageCount(sessionId: string, options?: CancelOptions): Promise<number> {
     return guardPublic('history.reconcileMessageCount', () =>
-      reconcileMessageCountAction(this.context, sessionId),
+      reconcileMessageCountAction(this.context, sessionId, options?.signal),
     );
   }
 

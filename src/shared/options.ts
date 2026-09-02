@@ -35,3 +35,9 @@ export interface CodecOptions {
   /** S3 offload configuration for payloads over DynamoDB's item limit. */
   s3?: S3OffloadConfig;
 }
+
+/** Per-call cancellation for the long-running adapter methods. */
+export interface CancelOptions {
+  /** Aborting it rejects the call with `AbortError` (`ABORTED`) at the next wait. */
+  signal?: AbortSignal;
+}

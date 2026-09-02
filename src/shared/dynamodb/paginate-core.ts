@@ -1,5 +1,6 @@
 import { MAX_LOOP_ITERATIONS, MAX_TOTAL_ITEMS_IN_MEMORY } from '../constants';
-import { AbortError, ResultTruncatedError } from '../errors/errors';
+import { ResultTruncatedError } from '../errors/errors';
+import { abortErrorFrom } from './abort';
 import type { RetryOptions } from './retry';
 import type { DocItem } from './types';
 
@@ -61,7 +62,7 @@ export async function* paginatePages(
   const state = { yielded: 0 };
   let startKey: DocItem | undefined;
   for (let iteration = 0; iteration < maxIterations; iteration++) {
-    if (options.signal?.aborted) throw new AbortError();
+    if (options.signal?.aborted) throw abortErrorFrom(options.signal);
     const page = await fetchPage(startKey);
     if (yield* yieldPageItems(page, state, maxItems)) return;
     startKey = page.lastKey;

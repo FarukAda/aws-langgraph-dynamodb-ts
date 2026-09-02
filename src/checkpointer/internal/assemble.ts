@@ -23,13 +23,14 @@ export async function assembleTuple(
   threadId: string,
   checkpointNs: string,
   meta: CheckpointMetaItem,
+  signal?: AbortSignal,
 ): Promise<CheckpointTuple | undefined> {
-  const payload = await fetchPayload(context, threadId, checkpointNs, meta.checkpointId);
+  const payload = await fetchPayload(context, threadId, checkpointNs, meta.checkpointId, signal);
   if (!payload) return undefined;
   const [checkpoint, metadata, pendingWrites] = await Promise.all([
     readCheckpoint(context, payload, threadId),
     readMetadata(context, meta, threadId),
-    fetchPendingWrites(context, threadId, checkpointNs, meta.checkpointId),
+    fetchPendingWrites(context, threadId, checkpointNs, meta.checkpointId, signal),
   ]);
   const tuple: CheckpointTuple = {
     config: configFor(threadId, checkpointNs, meta.checkpointId),

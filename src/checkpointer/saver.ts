@@ -9,6 +9,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
+import type { CancelOptions } from '../shared/options';
 import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
 import { getCheckpointTuple } from './actions/get-tuple';
@@ -61,8 +62,11 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     );
   }
 
-  async deleteThread(threadId: string): Promise<void> {
-    return guardPublic('saver.deleteThread', () => deleteThreadAction(this.context, threadId));
+  /** Delete a thread; `options.signal` cancels between pages. Other methods read `config.signal`. */
+  async deleteThread(threadId: string, options?: CancelOptions): Promise<void> {
+    return guardPublic('saver.deleteThread', () =>
+      deleteThreadAction(this.context, threadId, options),
+    );
   }
 
   /** Release owned resources (the underlying client and any S3 client). */

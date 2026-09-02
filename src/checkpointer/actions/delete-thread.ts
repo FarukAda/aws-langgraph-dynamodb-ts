@@ -1,5 +1,6 @@
 import type { PayloadDescriptor } from '../../shared/codec/codec';
 import { deletePartitionRows } from '../../shared/dynamodb/partition-delete';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { isCheckpointerSortKey, partitionKey } from '../internal/keys';
 import { partitionQuery } from '../internal/query';
@@ -21,14 +22,19 @@ function descriptorsOf(row: DocItem): (PayloadDescriptor | undefined)[] {
  * this adapter does not own are left in place and logged, so a shared-table
  * partition holding a foreign row is never collaterally wiped.
  */
-export async function deleteThread(context: CheckpointerContext, threadId: string): Promise<void> {
+export async function deleteThread(
+  context: CheckpointerContext,
+  threadId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
   validateThreadId(threadId);
   await deletePartitionRows({
     client: context.client,
     tableName: context.tableName,
     params: partitionQuery(context.tableName, partitionKey(threadId), { consistent: true }),
     logger: context.logger,
-    retry: context.retry,
+    retry: retryFor(context, options.signal),
+    signal: options.signal,
     offloader: context.offloader,
     operation: 'deleteThread',
     ownsSortKey: isCheckpointerSortKey,

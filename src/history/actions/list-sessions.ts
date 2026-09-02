@@ -1,4 +1,5 @@
 import { nowSeconds as currentSeconds } from '../../shared/clock';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import { SESSION_SORT_KEY } from '../internal/keys';
 import type { HistoryContext } from '../internal/setup';
@@ -22,12 +23,13 @@ function isExpired(item: ChatSessionItem, nowSeconds: number): boolean {
  */
 export async function listSessions(
   context: HistoryContext,
-  options?: { maxIterations?: number; maxItems?: number },
+  options?: { maxIterations?: number; maxItems?: number; signal?: AbortSignal },
 ): Promise<SessionMetadata[]> {
   const sessions: SessionMetadata[] = [];
   const nowSeconds = currentSeconds();
   for await (const raw of paginateScan({
-    retry: context.retry,
+    retry: retryFor(context, options?.signal),
+    signal: options?.signal,
     client: context.client,
     params: {
       TableName: context.tableName,

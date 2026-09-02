@@ -46,8 +46,8 @@ export class ResultTruncatedError extends DynamoDBLangGraphError {
 
 /** An operation was cancelled via its AbortSignal. */
 export class AbortError extends DynamoDBLangGraphError {
-  constructor(message = 'Operation aborted') {
-    super(message, ErrorCode.ABORTED);
+  constructor(message = 'Operation aborted', cause?: Error) {
+    super(message, ErrorCode.ABORTED, {}, cause);
     this.name = 'AbortError';
   }
 }

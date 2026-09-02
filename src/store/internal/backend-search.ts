@@ -43,9 +43,13 @@ function warnOnNonDescendingScores(
  * element containing the reserved separator would otherwise turn the whole
  * search into a ValidationError instead of dropping the one bad match.
  */
-async function fetchMatch(context: StoreContext, match: VectorMatch): Promise<Item | null> {
+async function fetchMatch(
+  context: StoreContext,
+  match: VectorMatch,
+  signal?: AbortSignal,
+): Promise<Item | null> {
   try {
-    return await getItem(context, match.namespace, match.key);
+    return await getItem(context, match.namespace, match.key, signal);
   } catch (error) {
     context.logger.warn('search: skipped an unusable vectorBackend match', {
       namespace: match.namespace,
@@ -63,6 +67,7 @@ export async function searchViaBackend(
   op: SearchOperation,
   offset: number,
   limit: number,
+  signal?: AbortSignal,
 ): Promise<SearchItem[]> {
   const queryVector = await index.embeddings.embedQuery(op.query as string);
   assertVectorDims(index, queryVector, 'query');
@@ -85,7 +90,7 @@ export async function searchViaBackend(
     results = [];
     for (const match of matches) {
       if (!namespaceMatchesPrefix(match.namespace, op.namespacePrefix)) continue;
-      const item = await fetchMatch(context, match);
+      const item = await fetchMatch(context, match, signal);
       if (item && passesFilter(item, op)) results.push({ ...item, score: match.score });
     }
     if (results.length >= need || matches.length < topK || topK >= context.maxSearchCandidates)

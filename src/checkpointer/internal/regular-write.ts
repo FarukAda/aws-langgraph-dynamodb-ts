@@ -1,5 +1,6 @@
 import { isConditionalCheckFailed } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
 import { readSpecialRow } from './special-write-verify';
@@ -56,6 +57,7 @@ async function verifyFailure(
 export async function writeRegularItems(
   context: CheckpointerContext,
   items: CheckpointWriteItem[],
+  signal?: AbortSignal,
 ): Promise<RegularWriteOutcome> {
   const results = await Promise.allSettled(
     items.map((item) =>
@@ -67,7 +69,7 @@ export async function writeRegularItems(
             ConditionExpression: 'attribute_not_exists(PK)',
             ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
           }),
-        context.retry,
+        retryFor(context, signal),
       ),
     ),
   );

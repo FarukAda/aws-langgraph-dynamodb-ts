@@ -10,6 +10,7 @@ import { isPermanentPayloadLoss } from '../../shared/codec/payload-loss';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { toError } from '../../shared/errors/wrap-error';
 import { messageQuery } from '../internal/query';
 import type { HistoryContext } from '../internal/setup';
@@ -71,12 +72,14 @@ async function decodeMessage(
 export async function getMessages(
   context: HistoryContext,
   sessionId: string,
+  signal?: AbortSignal,
 ): Promise<BaseMessage[]> {
   validateSessionId(sessionId);
   const now = nowSeconds();
   const items: ChatMessageItem[] = [];
   for await (const raw of paginateQuery({
-    retry: context.retry,
+    retry: retryFor(context, signal),
+    signal,
     client: context.client,
     params: messageQuery(context.tableName, sessionId, { consistent: true }),
     maxItems: Number.POSITIVE_INFINITY,

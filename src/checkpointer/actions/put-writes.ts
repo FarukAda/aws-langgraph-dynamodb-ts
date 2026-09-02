@@ -58,6 +58,7 @@ export async function putWrites(
 ): Promise<void> {
   validateTaskId(taskId);
   const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
+  const signal = config.signal;
   if (checkpointId === undefined) {
     throw new ValidationError('checkpoint_id is required to store writes', 'checkpoint_id');
   }
@@ -76,8 +77,8 @@ export async function putWrites(
   const special = items.filter((item) => item.index < 0);
   const regular = items.filter((item) => item.index >= 0);
   const [specialError, regularOutcome] = await Promise.all([
-    writeSpecialItemsWithCleanup(context, threadId, special),
-    writeRegularItems(context, regular),
+    writeSpecialItemsWithCleanup(context, threadId, special, signal),
+    writeRegularItems(context, regular, signal),
   ]);
   await cleanUpItems(context, regularOutcome.deadUploads);
   const firstError = specialError ?? regularOutcome.error;

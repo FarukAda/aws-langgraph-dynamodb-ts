@@ -1,4 +1,5 @@
 import { paginatePages } from '../../../../src/shared/dynamodb/paginate-core';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { AbortError, ResultTruncatedError } from '../../../../src/shared/errors/errors';
 
 async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {
@@ -84,5 +85,19 @@ describe('paginatePages', () => {
       }),
     );
     expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+});
+
+describe('paginatePages abort normalisation (DDB-05)', () => {
+  it('throws the library AbortError with the raw reason as cause when already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const pages = paginatePages(async () => ({ items: [], lastKey: undefined }), {
+      signal: controller.signal,
+    });
+    await expect(pages.next()).rejects.toMatchObject({
+      code: ErrorCode.ABORTED,
+      cause: expect.objectContaining({ name: 'AbortError' }),
+    });
   });
 });

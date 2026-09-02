@@ -2,6 +2,7 @@ import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 
 import { nowSeconds } from '../../shared/clock';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { ConflictError } from '../../shared/errors/errors';
 import { SESSION_SORT_KEY, sessionPartition } from '../internal/keys';
 import { messageQuery } from '../internal/query';
@@ -13,7 +14,11 @@ import { validateSessionId } from '../internal/validation';
  * DynamoDB's TTL sweep has not yet removed is invisible to the read path, so
  * counting it would "repair" `messageCount` to a number no reader ever sees.
  */
-async function countMessages(context: HistoryContext, sessionId: string): Promise<number> {
+async function countMessages(
+  context: HistoryContext,
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<number> {
   const query = messageQuery(context.tableName, sessionId);
   const base = {
     ...query,
@@ -27,7 +32,7 @@ async function countMessages(context: HistoryContext, sessionId: string): Promis
   do {
     const page = await withDynamoDBRetry(
       () => context.client.query({ ...base, ExclusiveStartKey: startKey }),
-      context.retry,
+      retryFor(context, signal),
     );
     total += page.Count ?? 0;
     startKey = page.LastEvaluatedKey;
@@ -48,9 +53,10 @@ async function countMessages(context: HistoryContext, sessionId: string): Promis
 export async function reconcileMessageCount(
   context: HistoryContext,
   sessionId: string,
+  signal?: AbortSignal,
 ): Promise<number> {
   validateSessionId(sessionId);
-  const count = await countMessages(context, sessionId);
+  const count = await countMessages(context, sessionId, signal);
   try {
     await withDynamoDBRetry(
       () =>
@@ -62,7 +68,7 @@ export async function reconcileMessageCount(
           ExpressionAttributeValues: { ':count': count },
           ConditionExpression: 'attribute_exists(PK)',
         }),
-      context.retry,
+      retryFor(context, signal),
     );
   } catch (error) {
     if ((error as { name?: string }).name === 'ConditionalCheckFailedException') {

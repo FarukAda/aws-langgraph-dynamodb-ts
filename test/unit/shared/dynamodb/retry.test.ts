@@ -1,4 +1,6 @@
 import { withDynamoDBRetry, withRetry } from '../../../../src/shared/dynamodb/retry';
+import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { AbortError, RetryExhaustedError } from '../../../../src/shared/errors/errors';
 
 const retryable = (): Error =>
@@ -143,5 +145,42 @@ describe('withRetry onRetry hook (DDB-10)', () => {
       { attempt: 1, delayMs: 10, error: failing },
       { attempt: 2, delayMs: 20, error: failing },
     ]);
+  });
+});
+
+describe('withRetry abort normalisation (DDB-05)', () => {
+  const throttled = (): Error =>
+    Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
+
+  it('rejects with the library AbortError when the signal aborts during a backoff sleep', async () => {
+    const controller = new AbortController();
+    const run = withRetry(
+      async () => {
+        setTimeout(() => controller.abort(), 0);
+        throw throttled();
+      },
+      { signal: controller.signal, rng: () => 1, baseDelayMs: 1000 },
+    );
+    const error = (await run.catch((e: Error) => e)) as Error & { code?: string; cause?: Error };
+    expect(isDynamoDBLangGraphError(error)).toBe(true);
+    expect(error).toMatchObject({ code: ErrorCode.ABORTED, name: 'AbortError' });
+    expect(error.cause?.name).toBe('AbortError');
+  });
+
+  it('wraps a pre-aborted signal the same way', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(withRetry(async () => 1, { signal: controller.signal })).rejects.toMatchObject({
+      code: ErrorCode.ABORTED,
+      name: 'AbortError',
+      cause: expect.objectContaining({ name: 'AbortError' }),
+    });
+  });
+
+  it('rethrows a library AbortError given as the abort reason unchanged', async () => {
+    const reason = new AbortError('caller cancelled');
+    const controller = new AbortController();
+    controller.abort(reason);
+    await expect(withRetry(async () => 1, { signal: controller.signal })).rejects.toBe(reason);
   });
 });

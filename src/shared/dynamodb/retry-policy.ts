@@ -35,3 +35,11 @@ export function resolveRetryPolicy(policy: RetryPolicy | undefined, logger: Logg
       logger.debug('retrying after a transient error', { attempt, delayMs, error: error.name }),
   };
 }
+
+/** The context's retry options plus a per-call cancellation signal, when one is given. */
+export function retryFor(
+  context: { retry?: RetryOptions },
+  signal?: AbortSignal,
+): RetryOptions | undefined {
+  return signal === undefined ? context.retry : { ...context.retry, signal };
+}

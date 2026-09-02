@@ -4,6 +4,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { verifyCheckpointLanded } from '../internal/checkpoint-write-verify';
@@ -37,6 +38,7 @@ export async function putCheckpoint(
   metadata: CheckpointMetadata,
 ): Promise<RunnableConfig> {
   const { threadId, checkpointNs, checkpointId: parentCheckpointId } = readConfigurable(config);
+  const signal = config.signal;
   validateCheckpointId(checkpoint.id);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
   const { meta, payload } = await buildCheckpointItems(
@@ -65,7 +67,7 @@ export async function putCheckpoint(
             { Put: { TableName: context.tableName, Item: payload } },
           ],
         }),
-      context.retry,
+      retryFor(context, signal),
     );
   } catch (error) {
     if (!context.offloader) throw error;

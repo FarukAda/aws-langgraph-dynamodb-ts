@@ -1,5 +1,6 @@
 import { nowSeconds } from '../../shared/clock';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
 import type { HistoryContext } from './setup';
 
@@ -30,6 +31,7 @@ export async function resolveTtlAnchor(
   context: HistoryContext,
   sessionId: string,
   candidate: number,
+  signal?: AbortSignal,
 ): Promise<TtlAnchorResult> {
   const result = await withDynamoDBRetry(
     () =>
@@ -40,7 +42,7 @@ export async function resolveTtlAnchor(
         ProjectionExpression: '#ttl',
         ExpressionAttributeNames: { '#ttl': 'ttl' },
       }),
-    context.retry,
+    retryFor(context, signal),
   );
   const ttl = (result.Item as { ttl?: number } | undefined)?.ttl;
   if (typeof ttl === 'number' && ttl > nowSeconds()) {

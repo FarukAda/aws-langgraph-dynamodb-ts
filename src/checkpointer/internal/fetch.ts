@@ -2,6 +2,7 @@ import type { CheckpointPendingWrite } from '@langchain/langgraph-checkpoint';
 
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { toPendingWrites } from './item-reader';
 import {
@@ -20,6 +21,7 @@ export async function fetchTargetMeta(
   threadId: string,
   checkpointNs: string,
   checkpointId?: string,
+  signal?: AbortSignal,
 ): Promise<CheckpointMetaItem | undefined> {
   if (checkpointId !== undefined) {
     const result = await withDynamoDBRetry(
@@ -29,7 +31,7 @@ export async function fetchTargetMeta(
           Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
           ConsistentRead: true,
         }),
-      context.retry,
+      retryFor(context, signal),
     );
     return result.Item as CheckpointMetaItem | undefined;
   }
@@ -42,7 +44,10 @@ export async function fetchTargetMeta(
       consistent: true,
     },
   );
-  const result = await withDynamoDBRetry(() => context.client.query(params), context.retry);
+  const result = await withDynamoDBRetry(
+    () => context.client.query(params),
+    retryFor(context, signal),
+  );
   return result.Items?.[0] as CheckpointMetaItem | undefined;
 }
 
@@ -52,6 +57,7 @@ export async function fetchPayload(
   threadId: string,
   checkpointNs: string,
   checkpointId: string,
+  signal?: AbortSignal,
 ): Promise<CheckpointPayloadItem | undefined> {
   const result = await withDynamoDBRetry(
     () =>
@@ -60,7 +66,7 @@ export async function fetchPayload(
         Key: { PK: partitionKey(threadId), SK: payloadSortKey(checkpointNs, checkpointId) },
         ConsistentRead: true,
       }),
-    context.retry,
+    retryFor(context, signal),
   );
   return result.Item as CheckpointPayloadItem | undefined;
 }
@@ -71,6 +77,7 @@ export async function fetchPendingWrites(
   threadId: string,
   checkpointNs: string,
   checkpointId: string,
+  signal?: AbortSignal,
 ): Promise<CheckpointPendingWrite[]> {
   const params = beginsWithQuery(
     context.tableName,
@@ -80,7 +87,8 @@ export async function fetchPendingWrites(
   );
   const items: CheckpointWriteItem[] = [];
   for await (const item of paginateQuery({
-    retry: context.retry,
+    retry: retryFor(context, signal),
+    signal,
     client: context.client,
     params,
   })) {

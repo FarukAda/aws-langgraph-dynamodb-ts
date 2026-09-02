@@ -1,5 +1,6 @@
 import type { PayloadDescriptor } from '../../shared/codec/codec';
 import { deletePartitionRows } from '../../shared/dynamodb/partition-delete';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { isHistorySortKey } from '../internal/keys';
 import { sessionItemsQuery } from '../internal/query';
@@ -17,14 +18,19 @@ function descriptorsOf(row: DocItem): (PayloadDescriptor | undefined)[] {
  * place and logged, so a shared-table partition holding a foreign row is never
  * collaterally wiped.
  */
-export async function clearSession(context: HistoryContext, sessionId: string): Promise<void> {
+export async function clearSession(
+  context: HistoryContext,
+  sessionId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
   validateSessionId(sessionId);
   await deletePartitionRows({
     client: context.client,
     tableName: context.tableName,
     params: sessionItemsQuery(context.tableName, sessionId, { consistent: true }),
     logger: context.logger,
-    retry: context.retry,
+    retry: retryFor(context, options.signal),
+    signal: options.signal,
     offloader: context.offloader,
     operation: 'history.clear',
     ownsSortKey: isHistorySortKey,

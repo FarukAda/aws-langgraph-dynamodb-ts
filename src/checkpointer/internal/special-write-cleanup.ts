@@ -53,12 +53,13 @@ export async function writeSpecialItemsWithCleanup(
   context: CheckpointerContext,
   threadId: string,
   items: CheckpointWriteItem[],
+  signal?: AbortSignal,
 ): Promise<Error | undefined> {
   if (items.length === 0) return undefined;
   const outcomes = await Promise.all(
     items.map(async (item): Promise<[CheckpointWriteItem, SpecialWriteOutcome]> => [
       item,
-      await writeSpecialItem(context, item),
+      await writeSpecialItem(context, item, signal),
     ]),
   );
   await deleteDescriptors(

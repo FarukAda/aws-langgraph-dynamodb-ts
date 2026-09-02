@@ -4,6 +4,7 @@ import {
   revisionGuard,
 } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
 import {
@@ -41,6 +42,7 @@ async function attemptCasWrites(
   context: CheckpointerContext,
   item: CheckpointWriteItem,
   initial: SpecialRowState,
+  signal?: AbortSignal,
 ): Promise<CasAttemptResult> {
   let observed = initial;
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
@@ -53,7 +55,7 @@ async function attemptCasWrites(
             Item: item,
             ...revisionGuard(SPECIAL_REVISION_ATTRIBUTE, attempted),
           }),
-        context.retry,
+        retryFor(context, signal),
       );
       return { done: true, outcome: { committed: true, superseded: attempted.value } };
     } catch (error) {
@@ -75,11 +77,12 @@ async function overwriteUnconditionally(
   context: CheckpointerContext,
   item: CheckpointWriteItem,
   observed: SpecialRowState,
+  signal?: AbortSignal,
 ): Promise<SpecialWriteOutcome> {
   try {
     await withDynamoDBRetry(
       () => context.client.put({ TableName: context.tableName, Item: item }),
-      context.retry,
+      retryFor(context, signal),
     );
     return { committed: true, superseded: observed.value };
   } catch (error) {
@@ -115,24 +118,25 @@ async function overwriteUnconditionally(
 export async function writeSpecialItem(
   context: CheckpointerContext,
   item: CheckpointWriteItem,
+  signal?: AbortSignal,
 ): Promise<SpecialWriteOutcome> {
   try {
     if (!context.offloader) {
       await withDynamoDBRetry(
         () => context.client.put({ TableName: context.tableName, Item: item }),
-        context.retry,
+        retryFor(context, signal),
       );
       return { committed: true };
     }
     const initial = await readSpecialRow(context, item);
-    const attempt = await attemptCasWrites(context, item, initial);
+    const attempt = await attemptCasWrites(context, item, initial, signal);
     if (attempt.done) return attempt.outcome;
     context.logger.warn(
       'putWrites: special-write compare-and-swap exhausted; overwriting unconditionally, which ' +
         'can orphan one S3 object under a concurrent call (reclaimed by ensureS3LifecycleRule)',
       { sortKey: item.SK, channel: item.channel, attempts: OVERWRITE_CAS_MAX_ATTEMPTS },
     );
-    return await overwriteUnconditionally(context, item, attempt.observed);
+    return await overwriteUnconditionally(context, item, attempt.observed, signal);
   } catch (error) {
     return { committed: false, error: error as Error };
   }

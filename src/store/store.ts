@@ -4,9 +4,11 @@ import {
   type Operation,
   type OperationResults,
   type SearchItem,
+  type SearchOperation,
 } from '@langchain/langgraph-checkpoint';
 
 import { guardPublic } from '../shared/errors/boundary';
+import type { CancelOptions } from '../shared/options';
 import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { getItem } from './actions/get';
 import { listNamespaces } from './actions/list-namespaces';
@@ -62,12 +64,29 @@ export class DynamoDBStore extends BaseStore {
   }
 
   /**
+   * Search with optional cancellation. Overrides the base implementation, which
+   * routes through {@link batch} and therefore cannot carry a signal.
+   */
+  override async search(
+    namespacePrefix: string[],
+    options: Pick<SearchOperation, 'filter' | 'limit' | 'offset' | 'query'> & CancelOptions = {},
+  ): Promise<SearchItem[]> {
+    const { signal, ...rest } = options;
+    return guardPublic('store.search', () =>
+      searchItems(this.context, { namespacePrefix, ...rest }, signal),
+    );
+  }
+
+  /**
    * Repair the configured vector backend against the canonical items under
    * `namespacePrefix`. A maintenance tool; see {@link reconcileVectorIndex}.
    */
-  reconcileVectorIndex(namespacePrefix: string[]): Promise<VectorReconcileResult> {
+  reconcileVectorIndex(
+    namespacePrefix: string[],
+    options?: CancelOptions,
+  ): Promise<VectorReconcileResult> {
     return guardPublic('store.reconcileVectorIndex', () =>
-      reconcileVectorIndexAction(this.context, namespacePrefix),
+      reconcileVectorIndexAction(this.context, namespacePrefix, options),
     );
   }
 

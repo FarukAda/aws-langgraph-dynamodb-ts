@@ -20,6 +20,8 @@ export interface PartitionDeleteOptions {
   logger: Logger;
   /** The adapter's retry options for the page reads and batch deletes. */
   retry?: RetryOptions;
+  /** Aborting it stops the read between pages and rejects with the library's AbortError. */
+  signal?: AbortSignal;
   offloader?: S3Offloader;
   /** Label for log lines and S3-cleanup diagnostics, e.g. `deleteThread`. */
   operation: string;
@@ -66,7 +68,7 @@ async function flushBuffer(
       options.client,
       options.tableName,
       buffer.keys.map((Key) => ({ DeleteRequest: { Key } })),
-      { retry: options.retry },
+      { retry: options.retry, signal: options.signal },
     );
   } catch (error) {
     /** batchWriteAll's only throw is a BatchWriteAllIncompleteError (see batch-write.ts). */
@@ -110,6 +112,7 @@ export async function deletePartitionRows(options: PartitionDeleteOptions): Prom
     client: options.client,
     params: options.params,
     retry: options.retry,
+    signal: options.signal,
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   });

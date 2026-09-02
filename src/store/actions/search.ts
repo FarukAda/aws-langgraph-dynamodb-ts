@@ -3,6 +3,7 @@ import type { SearchItem, SearchOperation } from '@langchain/langgraph-checkpoin
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import { searchViaBackend } from '../internal/backend-search';
 import { narrowStoreRecord, readStoreItem } from '../internal/item-mapper';
@@ -20,17 +21,20 @@ const DEFAULT_LIMIT = 10;
 async function collectCandidates(
   context: StoreContext,
   op: SearchOperation,
+  signal?: AbortSignal,
 ): Promise<RankCandidate[]> {
   const source =
     op.namespacePrefix.length > 0
       ? paginateQuery({
-          retry: context.retry,
+          retry: retryFor(context, signal),
+          signal,
           client: context.client,
           params: scopedQuery(context.tableName, op.namespacePrefix),
           maxItems: context.maxScanItems,
         })
       : paginateScan({
-          retry: context.retry,
+          retry: retryFor(context, signal),
+          signal,
           client: context.client,
           params: storeScan(context.tableName),
           maxItems: context.maxScanItems,
@@ -59,6 +63,7 @@ async function collectCandidates(
 export async function searchItems(
   context: StoreContext,
   op: SearchOperation,
+  signal?: AbortSignal,
 ): Promise<SearchItem[]> {
   const offset = op.offset ?? 0;
   const limit = op.limit ?? DEFAULT_LIMIT;
@@ -71,10 +76,11 @@ export async function searchItems(
       op,
       offset,
       limit,
+      signal,
     );
     return ranked.slice(offset, offset + limit);
   }
-  const candidates = await collectCandidates(context, op);
+  const candidates = await collectCandidates(context, op, signal);
   if (!op.query || !context.index) {
     return candidates.map(({ item }) => ({ ...item })).slice(offset, offset + limit);
   }

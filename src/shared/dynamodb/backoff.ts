@@ -1,14 +1,15 @@
 import { MAX_BACKOFF_DELAY_MS } from '../constants';
-import { AbortError } from '../errors/errors';
+import { abortErrorFrom } from './abort';
 
 /**
- * Sleep for `ms` milliseconds, cancellable via `signal`. If `signal` is already
- * aborted the promise rejects synchronously with the abort reason (or an
- * {@link AbortError}); otherwise the timer resolves and the listener is removed.
+ * Sleep for `ms` milliseconds, cancellable via `signal`. An already-aborted
+ * signal rejects at once and an abort while pending rejects the moment it fires; both
+ * reject with the library's `AbortError` (see `abortErrorFrom`), so a caller
+ * branching on `code === 'ABORTED'` sees it however the signal was aborted.
  */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) {
-    return Promise.reject(signal.reason ?? new AbortError());
+    return Promise.reject(abortErrorFrom(signal));
   }
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -16,7 +17,7 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      reject(signal?.reason ?? new AbortError());
+      reject(abortErrorFrom(signal as AbortSignal));
     };
     const timer = setTimeout(() => {
       if (settled) return;

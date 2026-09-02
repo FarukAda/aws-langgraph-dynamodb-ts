@@ -3,6 +3,7 @@ import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgrap
 
 import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { assembleTuple } from '../internal/assemble';
 import { readConfigurable } from '../internal/configurable';
 import { type FilterValue, matchesFilter } from '../internal/filter-match';
@@ -62,6 +63,7 @@ export async function* listCheckpoints(
   options?: CheckpointListOptions,
 ): AsyncGenerator<CheckpointTuple> {
   const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
+  const signal = config.signal;
   const { before, filter, limit } = readListOptions(options);
   const params = beginsWithQuery(
     context.tableName,
@@ -79,7 +81,8 @@ export async function* listCheckpoints(
    * ResultTruncatedError instead of the true (possibly empty) answer.
    */
   for await (const raw of paginateQuery({
-    retry: context.retry,
+    retry: retryFor(context, signal),
+    signal,
     client: context.client,
     params,
     maxItems: Number.POSITIVE_INFINITY,
@@ -103,7 +106,7 @@ export async function* listCheckpoints(
     }
     if (!passesKeyFilters(meta, checkpointId, before)) continue;
     if (!(await passesMetadataFilter(context, meta, filter, threadId))) continue;
-    const tuple = await assembleTuple(context, threadId, checkpointNs, meta);
+    const tuple = await assembleTuple(context, threadId, checkpointNs, meta, signal);
     if (tuple) {
       yield tuple;
       yielded += 1;

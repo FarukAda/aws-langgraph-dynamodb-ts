@@ -12,6 +12,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
+import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 
@@ -139,5 +140,29 @@ describe('DynamoDBStore', () => {
     const { client } = createStrictDocumentMock();
     const store = new DynamoDBStore({ tableName: 'store', client, ttl: { days: 30 } });
     await expect(store.ensureS3LifecycleRule()).resolves.toBeUndefined();
+  });
+});
+
+describe('cancellation via { signal } (CORE-04)', () => {
+  it('rejects search and reconcileVectorIndex before any DynamoDB call', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    controller.abort();
+    const embeddings = { embedQuery: jest.fn(), embedDocuments: jest.fn() };
+    const backend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
+    const store = new DynamoDBStore({
+      tableName: 'store',
+      client,
+      index: { dims: 1, embeddings: embeddings as never },
+      vectorBackend: backend,
+    });
+    await expect(store.search(['ns'], { signal: controller.signal })).rejects.toMatchObject({
+      code: ErrorCode.ABORTED,
+      name: 'AbortError',
+    });
+    await expect(
+      store.reconcileVectorIndex(['ns'], { signal: controller.signal }),
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED });
+    expect(mock.calls()).toHaveLength(0);
   });
 });

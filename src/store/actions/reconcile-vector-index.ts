@@ -21,13 +21,14 @@ export interface VectorReconcileResult {
 export async function reconcileVectorIndex(
   context: StoreContext,
   namespacePrefix: string[],
+  options: { signal?: AbortSignal } = {},
 ): Promise<VectorReconcileResult> {
   validateNamespace(namespacePrefix);
   if (!context.index || !context.vectorBackend) {
     throw new ValidationError('reconcileVectorIndex requires a configured index and vectorBackend');
   }
   const backend = context.vectorBackend;
-  const targets = await collectReconcileTargets(context, namespacePrefix);
+  const targets = await collectReconcileTargets(context, namespacePrefix, options.signal);
   const upserted = await pushEmbeddings(backend, targets);
   const pruned = await pruneOrphans(context, backend, namespacePrefix, targets);
   return { upserted, pruned };

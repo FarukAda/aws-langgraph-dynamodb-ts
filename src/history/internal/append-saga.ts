@@ -56,9 +56,15 @@ async function commitChunk(
   sessionId: string,
   chunk: ChatMessageItem[],
   fields: AppendFields,
+  signal?: AbortSignal,
 ): Promise<Error | undefined> {
   try {
-    await writeMessageChunk(context, chunk, { ...fields, sessionId, count: chunk.length });
+    await writeMessageChunk(
+      context,
+      chunk,
+      { ...fields, sessionId, count: chunk.length },
+      { signal },
+    );
     return undefined;
   } catch (error) {
     return toError(error as Error);
@@ -89,10 +95,11 @@ export async function appendChunks(
   sessionId: string,
   chunks: ChatMessageItem[][],
   fields: AppendFields,
+  signal?: AbortSignal,
 ): Promise<void> {
   const committed: CommittedChunk[] = [];
   for (const chunk of chunks) {
-    const failure = await commitChunk(context, sessionId, chunk, fields);
+    const failure = await commitChunk(context, sessionId, chunk, fields, signal);
     if (!failure) {
       committed.push(asCommitted(chunk));
       continue;

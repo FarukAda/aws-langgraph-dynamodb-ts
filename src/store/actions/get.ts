@@ -3,6 +3,7 @@ import type { Item } from '@langchain/langgraph-checkpoint';
 import { PayloadLocation } from '../../shared/codec/codec';
 import { isMissingObjectError } from '../../shared/codec/payload-loss';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { narrowStoreRecord, readStoreItem } from '../internal/item-mapper';
 import { partitionKey, sortKey } from '../internal/keys';
 import type { StoreContext } from '../internal/setup';
@@ -20,6 +21,7 @@ async function readRow(
   context: StoreContext,
   namespace: string[],
   key: string,
+  signal?: AbortSignal,
 ): Promise<StoreItemRecord | undefined> {
   const result = await withDynamoDBRetry(
     () =>
@@ -28,7 +30,7 @@ async function readRow(
         Key: { PK: partitionKey(namespace), SK: sortKey(namespace, key) },
         ConsistentRead: true,
       }),
-    context.retry,
+    retryFor(context, signal),
   );
   if (!result.Item) return undefined;
   const record = narrowStoreRecord(result.Item);
@@ -64,15 +66,16 @@ export async function getItem(
   context: StoreContext,
   namespace: string[],
   key: string,
+  signal?: AbortSignal,
 ): Promise<Item | null> {
   validateStoreKey(namespace, key);
-  const record = await readRow(context, namespace, key);
+  const record = await readRow(context, namespace, key, signal);
   if (!record) return null;
   try {
     return await readStoreItem(context, record);
   } catch (error) {
     if (!isMissingObjectError(error as Error)) throw error;
-    const fresh = await readRow(context, namespace, key);
+    const fresh = await readRow(context, namespace, key, signal);
     if (!fresh) return null;
     if (sameObject(record, fresh)) throw error;
     return readStoreItem(context, fresh);

@@ -3,9 +3,10 @@ import {
   INITIAL_BACKOFF_DELAY_MS,
   MAX_BACKOFF_DELAY_MS,
 } from '../constants';
-import { AbortError, RetryExhaustedError } from '../errors/errors';
+import { RetryExhaustedError } from '../errors/errors';
 import { toError } from '../errors/wrap-error';
 import { redactedMessage } from '../logging/secret-patterns';
+import { abortErrorFrom } from './abort';
 import { fullJitter, sleep } from './backoff';
 import { DEFAULT_RETRYABLE_ERRORS, isRetryableError } from './retry-classifier';
 
@@ -68,7 +69,7 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const { maxAttempts, baseDelayMs, maxDelayMs, isRetryable, rng } = resolveRetryOptions(options);
 
-  if (options.signal?.aborted) throw new AbortError();
+  if (options.signal?.aborted) throw abortErrorFrom(options.signal);
 
   let lastError: Error = new Error('Retry failed without error');
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

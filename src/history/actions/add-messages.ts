@@ -78,20 +78,27 @@ export async function addMessages(
   context: HistoryContext,
   sessionId: string,
   messages: BaseMessage[],
+  signal?: AbortSignal,
 ): Promise<void> {
   validateSessionId(sessionId);
   if (messages.length === 0) return;
   const stored = mapChatMessagesToStoredMessages(messages);
   validateStorableMessages(stored);
   const anchor = context.ttl
-    ? await resolveTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl))
+    ? await resolveTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl), signal)
     : undefined;
   const items = await buildItems(context, sessionId, stored, anchor?.ttlTimestamp);
   const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
-  await appendChunks(context, sessionId, chunks, {
-    now: nowIso(),
-    title: deriveTitle(stored),
-    ttlTimestamp: anchor?.ttlTimestamp,
-    forceTtlRefresh: anchor?.refresh,
-  });
+  await appendChunks(
+    context,
+    sessionId,
+    chunks,
+    {
+      now: nowIso(),
+      title: deriveTitle(stored),
+      ttlTimestamp: anchor?.ttlTimestamp,
+      forceTtlRefresh: anchor?.refresh,
+    },
+    signal,
+  );
 }
