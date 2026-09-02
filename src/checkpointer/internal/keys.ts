@@ -14,6 +14,14 @@ const WRITE_INDEX_PAD_WIDTH = 10;
  */
 const WRITE_INDEX_OFFSET = 8;
 
+/**
+ * The most negative write index the sort key can encode, `-WRITE_INDEX_OFFSET`.
+ * A static test pins it against the peer's `WRITES_IDX_MAP`, so a peer bump
+ * that adds a more negative special slot fails loudly instead of producing
+ * unsortable keys.
+ */
+export const MIN_ENCODABLE_WRITE_INDEX = -WRITE_INDEX_OFFSET;
+
 /** Sort-key kinds for the checkpoints table (the approved SK separation). */
 enum CheckpointItemKind {
   META = 'META',

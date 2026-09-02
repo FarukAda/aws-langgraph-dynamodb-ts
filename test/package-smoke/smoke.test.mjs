@@ -14,13 +14,16 @@ import { test } from 'node:test';
 
 import ts from 'typescript';
 
-const RUNTIME_DEPS = [
-  '@aws-sdk/client-dynamodb',
-  '@aws-sdk/lib-dynamodb',
-  '@langchain/core',
-  '@langchain/langgraph',
-  '@langchain/langgraph-checkpoint',
-];
+/**
+ * Every required peer at its declared range, read from package.json so a new
+ * peer is smoke-tested the moment it is declared and a floating `latest` never
+ * breaks the smoke for reasons unrelated to the tarball. The optional S3 peer
+ * is deliberately left out: the surface must import without it.
+ */
+const manifest = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+const RUNTIME_DEPS = Object.entries(manifest.peerDependencies)
+  .filter(([name]) => !manifest.peerDependenciesMeta?.[name]?.optional)
+  .map(([name, range]) => `"${name}@${range}"`);
 
 /** Type-checking the consumer needs a compiler and Node types; still no @aws-sdk/client-s3. */
 const TYPECHECK_DEPS = ['typescript', '@types/node'];

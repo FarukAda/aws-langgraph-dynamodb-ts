@@ -28,7 +28,7 @@ export default {
   verbose: true,
   preset: 'ts-jest',
   testEnvironment: 'node',
-  testTimeout: 90000,
+  testTimeout: 15000,
   clearMocks: true,
   collectCoverage: true,
   collectCoverageFrom: ['<rootDir>/src/**/*.ts', '!<rootDir>/src/**/*.d.ts'],
