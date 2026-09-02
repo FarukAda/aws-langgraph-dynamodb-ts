@@ -9,12 +9,15 @@ import type { CheckpointerContext } from '../internal/setup';
 /**
  * Load a checkpoint tuple: the target checkpoint (by id, or the newest in the
  * namespace), its metadata, its pending writes, and a parent config when the
- * checkpoint has a parent. Returns undefined when no matching checkpoint exists.
+ * checkpoint has a parent. Returns undefined when no matching checkpoint
+ * exists — including for a config that names no thread at all, which the
+ * reference savers answer with "nothing" rather than an error.
  */
 export async function getCheckpointTuple(
   context: CheckpointerContext,
   config: RunnableConfig,
 ): Promise<CheckpointTuple | undefined> {
+  if (config.configurable?.thread_id === undefined) return undefined;
   const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
   const meta = await fetchTargetMeta(context, threadId, checkpointNs, checkpointId, config.signal);
   if (!meta) return undefined;

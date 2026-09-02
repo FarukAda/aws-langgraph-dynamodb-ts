@@ -1,5 +1,9 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
-import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
+import type {
+  ChannelVersions,
+  Checkpoint,
+  CheckpointMetadata,
+} from '@langchain/langgraph-checkpoint';
 
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
@@ -11,6 +15,7 @@ import { verifyCheckpointLanded } from '../internal/checkpoint-write-verify';
 import { readConfigurable } from '../internal/configurable';
 import { buildCheckpointItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
+import { storedChannelsFor } from '../internal/stored-channels';
 import { validateCheckpointId } from '../internal/validation';
 
 /**
@@ -24,6 +29,8 @@ const nextPutNonce = createUlidFactory();
  * Persist a checkpoint and its metadata as a transactional pair of META and
  * PAYLOAD items, returning the config that addresses the stored checkpoint. The
  * incoming `checkpoint_id` (if any) becomes the new checkpoint's parent.
+ * `newVersions` names the channels that changed in this step: only those and
+ * the ones the parent stored are persisted (see `storedChannelsFor`).
  *
  * On failure with S3 offload configured, the rows are read back before any
  * upload is deleted (see {@link verifyCheckpointLanded}): a transaction that
@@ -36,11 +43,21 @@ export async function putCheckpoint(
   config: RunnableConfig,
   checkpoint: Checkpoint,
   metadata: CheckpointMetadata,
+  newVersions?: ChannelVersions,
 ): Promise<RunnableConfig> {
   const { threadId, checkpointNs, checkpointId: parentCheckpointId } = readConfigurable(config);
   const signal = config.signal;
   validateCheckpointId(checkpoint.id);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
+  const storedChannels = await storedChannelsFor(
+    context,
+    threadId,
+    checkpointNs,
+    checkpoint,
+    newVersions,
+    parentCheckpointId,
+    signal,
+  );
   const { meta, payload } = await buildCheckpointItems(
     context,
     threadId,
@@ -50,6 +67,7 @@ export async function putCheckpoint(
     nextPutNonce(),
     parentCheckpointId,
     ttlTimestamp,
+    storedChannels,
   );
   const stored: RunnableConfig = {
     configurable: {

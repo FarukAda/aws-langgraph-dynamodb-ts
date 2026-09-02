@@ -1,7 +1,11 @@
 import type { BaseMessage } from '@langchain/core/messages';
+import type { RunnableConfig } from '@langchain/core/runnables';
 import type {
   BaseCheckpointSaver,
   BaseStore,
+  ChannelVersions,
+  Checkpoint,
+  CheckpointMetadata,
   SearchOperation,
 } from '@langchain/langgraph-checkpoint';
 import { expectTypeOf } from 'expect-type';
@@ -128,6 +132,9 @@ describe('adapter signatures (TEST-10)', () => {
     expectTypeOf<DynamoDBSaver>().toMatchTypeOf<BaseCheckpointSaver>();
     expectTypeOf<DynamoDBSaver['deleteThread']>().parameters.toEqualTypeOf<
       [string, CancelOptions?]
+    >();
+    expectTypeOf<DynamoDBSaver['put']>().parameters.toEqualTypeOf<
+      [RunnableConfig, Checkpoint, CheckpointMetadata, ChannelVersions?]
     >();
     expectTypeOf<DynamoDBSaver['ensureS3LifecycleRule']>().returns.resolves.toBeVoid();
     expectTypeOf<DynamoDBSaver['destroy']>().returns.toBeVoid();

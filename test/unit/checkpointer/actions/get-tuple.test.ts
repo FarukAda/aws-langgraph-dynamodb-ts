@@ -217,3 +217,90 @@ describe('getCheckpointTuple reads strongly consistently (CKPT-07)', () => {
     expect(writesQuery?.args[0].input.ConsistentRead).toBe(true);
   });
 });
+
+describe('getCheckpointTuple validation-suite behaviours', () => {
+  it('returns undefined without touching DynamoDB when the config names no thread', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    await expect(
+      getCheckpointTuple(context(client), { configurable: { checkpoint_ns: '' } }),
+    ).resolves.toBeUndefined();
+    await expect(getCheckpointTuple(context(client), {})).resolves.toBeUndefined();
+    expect(mock.calls()).toHaveLength(0);
+  });
+
+  it("rebuilds a pre-v4 checkpoint's pending sends from its parent's __pregel_tasks writes", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const legacy: Checkpoint = {
+      ...checkpoint,
+      v: 1,
+      id: 'c1',
+      channel_values: {},
+      channel_versions: {},
+    };
+    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', legacy, metadata, 'n', 'c0');
+    const parentWrites = [
+      ...(await buildWriteItems(
+        ctx,
+        't',
+        '',
+        'c0',
+        'task-1',
+        [
+          ['__pregel_tasks', 'send-1'],
+          ['__pregel_tasks', 'send-2'],
+        ],
+        'g1',
+      )),
+      ...(await buildWriteItems(
+        ctx,
+        't',
+        '',
+        'c0',
+        'task-2',
+        [
+          ['__pregel_tasks', 'send-3'],
+          ['other', 'x'],
+        ],
+        'g2',
+      )),
+    ];
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      if (prefix.startsWith('META')) return { Items: [meta] };
+      return { Items: prefix.includes('#c0#') ? parentWrites : [] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    const tuple = await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } });
+    expect(tuple?.checkpoint.channel_values).toEqual({
+      __pregel_tasks: ['send-1', 'send-2', 'send-3'],
+    });
+    expect(tuple?.checkpoint.channel_versions.__pregel_tasks).toBe(1);
+  });
+
+  it('stamps the migrated sends channel with the highest existing version and leaves a v4 or root checkpoint alone', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const legacy: Checkpoint = {
+      ...checkpoint,
+      v: 3,
+      id: 'c1',
+      channel_values: {},
+      channel_versions: { a: 2, b: 5 },
+    };
+    const child = await buildCheckpointItems(ctx, 't', '', legacy, metadata, 'n', 'c0');
+    const root = await buildCheckpointItems(ctx, 't', '', { ...legacy, id: 'c0' }, metadata, 'n');
+    let head = child;
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [head.meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).callsFake(() => ({ Item: head.payload }));
+    const migrated = await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } });
+    expect(migrated?.checkpoint.channel_values).toEqual({ __pregel_tasks: [] });
+    expect(migrated?.checkpoint.channel_versions.__pregel_tasks).toBe(5);
+    head = root;
+    const untouched = await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } });
+    expect(untouched?.checkpoint.channel_values).toEqual({});
+  });
+});

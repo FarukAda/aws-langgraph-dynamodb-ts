@@ -1,6 +1,7 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import {
   BaseCheckpointSaver,
+  type ChannelVersions,
   type Checkpoint,
   type CheckpointListOptions,
   type CheckpointMetadata,
@@ -50,9 +51,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     config: RunnableConfig,
     checkpoint: Checkpoint,
     metadata: CheckpointMetadata,
+    newVersions?: ChannelVersions,
   ): Promise<RunnableConfig> {
     return guardPublic('saver.put', () =>
-      putCheckpoint(this.context, config, checkpoint, metadata),
+      putCheckpoint(this.context, config, checkpoint, metadata, newVersions),
     );
   }
 

@@ -28,6 +28,12 @@ export interface CheckpointMetaItem {
   checkpointId: string;
   parentCheckpointId?: string;
   metadata: PayloadDescriptor;
+  /**
+   * The channels whose values the PAYLOAD row holds: those the put's
+   * `newVersions` named plus those carried over from the parent. Absent on
+   * rows written before this attribute, which hold every value they were given.
+   */
+  storedChannels?: string[];
   ttl?: number;
 }
 

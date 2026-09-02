@@ -40,6 +40,11 @@ enum CheckpointItemKind {
  */
 const ADAPTER_PARTITION_PREFIX = `CHKPT${SORT_KEY_SEPARATOR}`;
 
+/** The tag every checkpointer partition key starts with, for a table-wide `begins_with`. */
+export function checkpointerPartitionPrefix(): string {
+  return ADAPTER_PARTITION_PREFIX;
+}
+
 /** Partition key for a thread: the adapter tag plus the thread id. */
 export function partitionKey(threadId: string): string {
   return `${ADAPTER_PARTITION_PREFIX}${threadId}`;

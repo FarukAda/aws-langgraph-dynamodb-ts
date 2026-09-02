@@ -191,3 +191,66 @@ describe('putCheckpoint', () => {
     expect(items[1].Put?.Item?.ttl).toBe(items[0].Put?.Item?.ttl);
   });
 });
+
+/** The checkpoint the PAYLOAD row of the transaction holds, decoded. */
+function storedCheckpoint(mock: ReturnType<typeof createStrictDocumentMock>['mock']): Checkpoint {
+  const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
+  const bytes = items[1].Put?.Item?.checkpoint.bytes as Uint8Array;
+  return JSON.parse(new TextDecoder().decode(bytes)) as Checkpoint;
+}
+
+const valued: Checkpoint = {
+  ...checkpoint,
+  channel_values: { foo: 'bar', baz: 'qux' },
+  channel_versions: { foo: 1, baz: 1 },
+};
+
+describe('putCheckpoint stores channel values per newVersions (validation suite)', () => {
+  it('stores only the channels newVersions names for a checkpoint without a parent', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    await putCheckpoint(
+      contextWith(client),
+      { configurable: { thread_id: 't1' } },
+      valued,
+      metadata,
+      { foo: 1 },
+    );
+    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar' });
+    const meta =
+      mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems?.[0].Put?.Item;
+    expect(meta?.storedChannels).toEqual(['foo']);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+
+  it('carries the channels the parent stored that this put still holds', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    mock.on(GetCommand).resolves({ Item: { storedChannels: ['baz'] } });
+    await putCheckpoint(
+      contextWith(client),
+      { configurable: { thread_id: 't1', checkpoint_id: 'parent-0' } },
+      valued,
+      metadata,
+      { foo: 1 },
+    );
+    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
+      PK: 'CHKPT#t1',
+      SK: 'META##parent-0',
+    });
+  });
+
+  it('stores every value when newVersions is omitted', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    await putCheckpoint(
+      contextWith(client),
+      { configurable: { thread_id: 't1', checkpoint_id: 'p' } },
+      valued,
+      metadata,
+    );
+    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+});

@@ -6,6 +6,7 @@ import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
 import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { paginateScan } from '../../shared/dynamodb/scan';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { assembleTuple } from '../internal/assemble';
 import { fetchTargetMeta } from '../internal/fetch';
@@ -13,6 +14,7 @@ import { narrowMetaItem } from '../internal/item-reader';
 import {
   type ListScope,
   listQuery,
+  listScan,
   passesKeyFilters,
   passesMetadataFilter,
   readListScope,
@@ -34,7 +36,7 @@ async function tupleFor(
   if (!passesKeyFilters(meta, scope)) return undefined;
   const verdict = await passesMetadataFilter(context, meta, scope);
   if (!verdict.pass) return undefined;
-  return assembleTuple(context, scope.threadId, meta.checkpointNs, meta, {
+  return assembleTuple(context, meta.threadId, meta.checkpointNs, meta, {
     signal: scope.signal,
     consistent: false,
     metadata: verdict.metadata,
@@ -44,7 +46,7 @@ async function tupleFor(
 /** A `checkpoint_id` addresses one row: read it directly instead of scanning the namespace for it. */
 async function* listOne(
   context: CheckpointerContext,
-  scope: ListScope,
+  scope: ListScope & { threadId: string },
 ): AsyncGenerator<CheckpointTuple> {
   const meta = await fetchTargetMeta(
     context,
@@ -69,12 +71,40 @@ function narrowOrWarn(context: CheckpointerContext, raw: DocItem): CheckpointMet
   return meta;
 }
 
+/** The META rows a scope covers: a partition query for a thread, a table scan without one. */
+function metaRows(
+  context: CheckpointerContext,
+  scope: ListScope,
+  now: number,
+): AsyncGenerator<DocItem> {
+  const retry = retryFor(context, scope.signal);
+  const bounds = { maxItems: Number.POSITIVE_INFINITY, maxIterations: Number.POSITIVE_INFINITY };
+  return scope.threadId === undefined
+    ? paginateScan({
+        retry,
+        signal: scope.signal,
+        client: context.client,
+        params: withoutExpired(listScan(context, scope), now),
+        ...bounds,
+      })
+    : paginateQuery({
+        retry,
+        signal: scope.signal,
+        client: context.client,
+        params: withoutExpired(listQuery(context, { ...scope, threadId: scope.threadId }), now),
+        ...bounds,
+      });
+}
+
 /**
  * Yield checkpoint tuples for a thread, newest first: every namespace when the
  * config names none (grouped by namespace, newest first within each), else the
- * one namespace given. Honors `options.before` (only checkpoints older than the
- * given id), `options.filter` (metadata equality), and `options.limit` (max
- * tuples yielded; the read stops right after the yield that reaches it).
+ * one namespace given. Without a `thread_id` every thread in the table is
+ * listed through a table scan, as the reference savers do; that read is
+ * unordered across threads and cross-tenant by construction. Honors
+ * `options.before` (only checkpoints older than the given id),
+ * `options.filter` (metadata equality), and `options.limit` (max tuples
+ * yielded; the read stops right after the yield that reaches it).
  *
  * The scan is deliberately unbounded: this generator streams and never
  * accumulates, `limit` returns early, and a raw-row cap would turn a caller
@@ -88,21 +118,14 @@ export async function* listCheckpoints(
   options?: CheckpointListOptions,
 ): AsyncGenerator<CheckpointTuple> {
   const scope = readListScope(config, options);
-  if (scope.checkpointId !== undefined) {
-    yield* listOne(context, scope);
+  if (scope.threadId !== undefined && scope.checkpointId !== undefined) {
+    yield* listOne(context, { ...scope, threadId: scope.threadId });
     return;
   }
   const now = nowSeconds();
   let yielded = 0;
   let scanned = 0;
-  for await (const raw of paginateQuery({
-    retry: retryFor(context, scope.signal),
-    signal: scope.signal,
-    client: context.client,
-    params: withoutExpired(listQuery(context, scope), now),
-    maxItems: Number.POSITIVE_INFINITY,
-    maxIterations: Number.POSITIVE_INFINITY,
-  })) {
+  for await (const raw of metaRows(context, scope, now)) {
     scanned += 1;
     if (scanned === LIST_SCAN_WARN_THRESHOLD) {
       context.logger.warn(

@@ -5,6 +5,7 @@ import { encodePayload } from '../../shared/codec/encode';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { metaSortKey, partitionKey, payloadSortKey, writeSortKey } from './keys';
 import type { CheckpointerContext } from './setup';
+import { withStoredChannels } from './stored-channels';
 import { validateChannel } from './validation';
 import { resolveWriteIndices } from './write-index';
 
@@ -26,7 +27,8 @@ function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T 
  * That is what makes "the row holds my key" equivalent to "my write is live"
  * for the post-failure verification in `put.ts`, and what keeps a failed
  * re-put's cleanup from deleting the object the first, successful put's rows
- * point at.
+ * point at. `storedChannels` narrows the stored `channel_values` (see
+ * `selectStoredChannels`); by default every value is stored.
  */
 export async function buildCheckpointItems(
   context: CheckpointerContext,
@@ -37,12 +39,17 @@ export async function buildCheckpointItems(
   nonce: string,
   parentCheckpointId?: string,
   ttlTimestamp?: number,
+  storedChannels: readonly string[] = Object.keys(checkpoint.channel_values),
 ): Promise<{ meta: CheckpointMetaItem; payload: CheckpointPayloadItem }> {
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
-  const checkpointDescriptor = await encodePayload(checkpoint, deps, {
-    keyParts: [threadId, checkpointNs, checkpoint.id, 'checkpoint', nonce],
-  });
+  const checkpointDescriptor = await encodePayload(
+    withStoredChannels(checkpoint, storedChannels),
+    deps,
+    {
+      keyParts: [threadId, checkpointNs, checkpoint.id, 'checkpoint', nonce],
+    },
+  );
   const metadataDescriptor = await encodePayload(metadata, deps, {
     keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata', nonce],
   });
@@ -53,6 +60,7 @@ export async function buildCheckpointItems(
     checkpointNs,
     checkpointId: checkpoint.id,
     metadata: metadataDescriptor,
+    storedChannels: [...storedChannels],
   };
   if (parentCheckpointId !== undefined) meta.parentCheckpointId = parentCheckpointId;
   const payload: CheckpointPayloadItem = {

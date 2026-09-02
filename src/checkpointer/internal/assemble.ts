@@ -4,6 +4,7 @@ import type { CheckpointMetadata, CheckpointTuple } from '@langchain/langgraph-c
 import type { CheckpointMetaItem } from '../types';
 import { fetchPayload, fetchPendingWrites } from './fetch';
 import { readCheckpoint, readMetadata } from './item-reader';
+import { migratePendingSends } from './pending-sends';
 import type { CheckpointerContext } from './setup';
 
 /** How a tuple is assembled: cancellation, read consistency, and metadata already decoded by the caller. */
@@ -38,7 +39,9 @@ export async function assembleTuple(
   const payload = await fetchPayload(context, threadId, checkpointNs, meta.checkpointId, read);
   if (!payload) return undefined;
   const [checkpoint, metadata, pendingWrites] = await Promise.all([
-    readCheckpoint(context, payload, threadId),
+    readCheckpoint(context, payload, threadId).then((stored) =>
+      migratePendingSends(context, stored, threadId, checkpointNs, meta.parentCheckpointId, read),
+    ),
     options.metadata ?? readMetadata(context, meta, threadId),
     fetchPendingWrites(context, threadId, checkpointNs, meta.checkpointId, read),
   ]);
