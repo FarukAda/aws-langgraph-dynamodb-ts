@@ -53,7 +53,14 @@ async function expectNoDanglingReference(): Promise<void> {
 describe('compare-and-swap exhaustion falls back to an unconditional write (TEST-02)', () => {
   it('store.put overwrites after OVERWRITE_CAS_MAX_ATTEMPTS rejections, warns, and keeps the row consistent', async () => {
     const logger = recordingLogger();
-    const { client, base } = faultyClient([
+    const { client, base } = faultyClient([]);
+    const store = new DynamoDBStore({ tableName, client, s3: offload, logger });
+    await store.put(['cas'], 'k', { v: 0, pad: 'p'.repeat(600) });
+    expect(logger.warnings.some((message) => message.includes('compare-and-swap exhausted'))).toBe(
+      false,
+    );
+    /** Installed after the seed put, so only the overwrite's guarded puts are rejected. */
+    installFaults(base, [
       {
         match: (name, input) =>
           name === 'PutItemCommand' &&
@@ -63,11 +70,6 @@ describe('compare-and-swap exhaustion falls back to an unconditional write (TEST
         times: OVERWRITE_CAS_MAX_ATTEMPTS,
       },
     ]);
-    const store = new DynamoDBStore({ tableName, client, s3: offload, logger });
-    await store.put(['cas'], 'k', { v: 0, pad: 'p'.repeat(600) });
-    expect(logger.warnings.some((message) => message.includes('compare-and-swap exhausted'))).toBe(
-      false,
-    );
     await store.put(['cas'], 'k', { v: 1, pad: 'p'.repeat(600) });
     expect(logger.warnings.some((message) => message.includes('compare-and-swap exhausted'))).toBe(
       true,

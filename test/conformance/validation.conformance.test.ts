@@ -9,6 +9,13 @@ import { createTable, DDB_LOCAL_CONFIG, deleteTable } from '../integration/helpe
  * list, deleteThread) against DynamoDB Local. Each validation set gets a fresh
  * table so no state leaks between sets.
  */
+/**
+ * The suite also targets Vitest and calls `expect.soft` in one test; Jest has
+ * no soft assertions, so a hard one stands in for it.
+ */
+const jestExpect = expect as typeof expect & { soft?: typeof expect };
+jestExpect.soft ??= expect;
+
 const admin = new DynamoDBClient(DDB_LOCAL_CONFIG);
 const tables = new Map<DynamoDBSaver, string>();
 let created = 0;
