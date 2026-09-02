@@ -2,10 +2,10 @@ import { randomBytes } from 'node:crypto';
 
 import {
   decodePayload,
-  encodePayload,
   PayloadLocation,
   readPayloadBytes,
 } from '../../../../src/shared/codec/codec';
+import { encodePayload } from '../../../../src/shared/codec/encode';
 import {
   isMissingObjectError,
   isPermanentPayloadLoss,
@@ -135,5 +135,13 @@ describe('isPermanentPayloadLoss', () => {
     expect(isPermanentPayloadLoss(s3Failure('ServiceUnavailable'))).toBe(false);
     expect(isPermanentPayloadLoss(new ValidationError('v'))).toBe(false);
     expect(isPermanentPayloadLoss(new Error('plain'))).toBe(false);
+  });
+});
+
+describe('isPermanentPayloadLoss on descriptor rejections (SEC-03, CODEC-16)', () => {
+  it('treats an out-of-scope key and an unreadable descriptor as permanent, other validation as not', () => {
+    expect(isPermanentPayloadLoss(new ValidationError('foreign', 's3Key'))).toBe(true);
+    expect(isPermanentPayloadLoss(new ValidationError('newer', 'descriptor'))).toBe(true);
+    expect(isPermanentPayloadLoss(new ValidationError('bad option', 's3'))).toBe(false);
   });
 });

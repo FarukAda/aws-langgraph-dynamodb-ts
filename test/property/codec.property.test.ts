@@ -1,7 +1,8 @@
 import fc from 'fast-check';
 
-import { type CodecDeps, decodePayload, encodePayload } from '../../src/shared/codec/codec';
+import { type CodecDeps, decodePayload } from '../../src/shared/codec/codec';
 import type { CompressionConfig } from '../../src/shared/codec/compression';
+import { encodePayload } from '../../src/shared/codec/encode';
 import { JSON_SERDE } from '../../src/shared/codec/json-serde';
 
 const KEY_PARTS = ['t', 'ns', 'cp', 'payload'];

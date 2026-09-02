@@ -1,4 +1,5 @@
-import { decodePayload, encodePayload, PayloadLocation } from '../../../../src/shared/codec/codec';
+import { decodePayload, PayloadLocation } from '../../../../src/shared/codec/codec';
+import { encodePayload } from '../../../../src/shared/codec/encode';
 import { buildS3Key } from '../../../../src/shared/codec/s3/config';
 import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -137,5 +138,51 @@ describe('row-sourced key binding (SEC-03)', () => {
     const descriptor = await encodePayload({ a: 1 }, deps, { keyParts: ['my-thread', 'c', 'n'] });
     await expect(decodePayload(descriptor, deps, ['my-thread'])).resolves.toEqual({ a: 1 });
     expect(offloader.download).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('persisted descriptor shape (CODEC-16)', () => {
+  it('stamps every descriptor with schemaVersion 1', async () => {
+    const descriptor = await encodePayload({ a: 1 }, { serde }, { keyParts: ['k'] });
+    expect(descriptor.schemaVersion).toBe(1);
+  });
+
+  it('reads a descriptor written before the version field existed', async () => {
+    const legacy = {
+      location: PayloadLocation.INLINE,
+      serdeType: 'json',
+      compressed: false,
+      bytes: new TextEncoder().encode('{"a":1}'),
+    } as const;
+    await expect(decodePayload(legacy, { serde }, [])).resolves.toEqual({ a: 1 });
+  });
+
+  it('refuses a descriptor written by a newer schema version', async () => {
+    const future = {
+      schemaVersion: 2,
+      location: PayloadLocation.INLINE,
+      serdeType: 'json',
+      compressed: false,
+      bytes: new Uint8Array(),
+    } as const;
+    await expect(decodePayload(future, { serde }, [])).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'descriptor' },
+      message: expect.stringContaining('newer'),
+    });
+  });
+
+  it('refuses a descriptor with an unknown location without touching S3', async () => {
+    const offloader = { download: jest.fn(), assertOwnedKey: jest.fn() };
+    const odd = {
+      location: 'TAPE',
+      serdeType: 'json',
+      compressed: false,
+      s3Key: 'somewhere',
+    } as never;
+    await expect(
+      decodePayload(odd, { serde, offloader: offloader as never }, []),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'descriptor' } });
+    expect(offloader.download).not.toHaveBeenCalled();
   });
 });

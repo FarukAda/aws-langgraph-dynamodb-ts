@@ -175,3 +175,36 @@ describe('index configuration validation (F6)', () => {
     ).toBe('distance');
   });
 });
+
+describe('S3 region inheritance (CODEC-15)', () => {
+  it('builds the S3 client in the DynamoDB region when s3.clientConfig names none', async () => {
+    let seen: { region?: unknown } | undefined;
+    const ddb = {
+      destroy: jest.fn(),
+      config: {},
+      middlewareStack: { clone: () => ({}) },
+      send: jest.fn(),
+    };
+    const s3Client = {
+      destroy: jest.fn(),
+      send: jest.fn(async () => ({})),
+      config: {},
+      middlewareStack: { clone: () => ({}) },
+    };
+    const setup = setUpStore({
+      tableName: 'store',
+      clientConfig: { region: 'eu-central-1' },
+      createClient: () => ddb as never,
+      s3: {
+        bucketName: 'b',
+        createS3Client: (config) => {
+          seen = config;
+          return s3Client as never;
+        },
+      },
+    });
+    await setup.context.offloader?.deleteBatch([]);
+    expect(seen).toMatchObject({ region: 'eu-central-1' });
+    setup.context.offloader?.destroy();
+  });
+});

@@ -9,13 +9,21 @@ export function isMissingObjectError(error: Error): boolean {
   return coded.code === ErrorCode.S3_OFFLOAD_FAILED && coded.cause?.name === 'NoSuchKey';
 }
 
+/** Validation fields that condemn the row itself rather than the caller's input. */
+const ROW_REJECTION_FIELDS: readonly string[] = ['s3Key', 'descriptor'];
+
 /**
- * True when a row's descriptor points outside the S3 path its own identifiers
- * allow (see `assertKeyInScope`): this adapter will never read that row.
+ * True when a row's descriptor can never be read by this adapter: its key lies
+ * outside the S3 path its own identifiers allow (see `assertKeyInScope`), or
+ * its shape is one this version does not understand.
  */
-function isForeignKeyRejection(error: Error): boolean {
+function isRowRejection(error: Error): boolean {
   const coded = error as { code?: string; context?: { field?: string } };
-  return coded.code === ErrorCode.VALIDATION && coded.context?.field === 's3Key';
+  return (
+    coded.code === ErrorCode.VALIDATION &&
+    coded.context?.field !== undefined &&
+    ROW_REJECTION_FIELDS.includes(coded.context.field)
+  );
 }
 
 /**
@@ -29,6 +37,6 @@ export function isPermanentPayloadLoss(error: Error): boolean {
   return (
     coded.code === ErrorCode.COMPRESSION_LIMIT ||
     isMissingObjectError(error) ||
-    isForeignKeyRejection(error)
+    isRowRejection(error)
   );
 }

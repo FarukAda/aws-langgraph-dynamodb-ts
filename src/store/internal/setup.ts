@@ -4,13 +4,9 @@ import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-check
 
 import type { CompressionConfig } from '../../shared/codec/compression';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
-import { defaultAdapterKeyPrefix } from '../../shared/codec/s3/config';
+import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
-import {
-  DEFAULT_MAX_SEARCH_CANDIDATES,
-  DEFAULT_S3_KEY_PREFIX,
-  MAX_TOTAL_ITEMS_IN_MEMORY,
-} from '../../shared/constants';
+import { DEFAULT_MAX_SEARCH_CANDIDATES, MAX_TOTAL_ITEMS_IN_MEMORY } from '../../shared/constants';
 import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import type { TtlOption } from '../../shared/validation/ttl';
@@ -53,11 +49,7 @@ export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
       serde: options.serde ?? JSON_SERDE,
       compression: options.compression,
       offloader: options.s3
-        ? new S3Offloader({
-            ...options.s3,
-            keyPrefix:
-              options.s3.keyPrefix ?? defaultAdapterKeyPrefix(DEFAULT_S3_KEY_PREFIX, 'store'),
-          })
+        ? new S3Offloader(offloaderConfigFor(options.s3, 'store', options.clientConfig))
         : undefined,
       ttl: options.ttl,
       logger: resolveLogger(options.logger),

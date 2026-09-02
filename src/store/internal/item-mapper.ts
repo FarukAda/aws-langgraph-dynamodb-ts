@@ -1,6 +1,7 @@
 import type { Item } from '@langchain/langgraph-checkpoint';
 
-import { type CodecDeps, decodePayload, encodePayload } from '../../shared/codec/codec';
+import { type CodecDeps, decodePayload } from '../../shared/codec/codec';
+import { encodePayload } from '../../shared/codec/encode';
 import type { DocItem } from '../../shared/dynamodb/types';
 import type { StoreItemRecord } from '../types';
 import type { JsonValue } from './filter';

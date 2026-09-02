@@ -4,9 +4,8 @@ import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { CompressionConfig } from '../../shared/codec/compression';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
-import { defaultAdapterKeyPrefix } from '../../shared/codec/s3/config';
+import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
-import { DEFAULT_S3_KEY_PREFIX } from '../../shared/constants';
 import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
 import { ValidationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
@@ -57,11 +56,7 @@ export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): Histor
       serde: options.serde ?? JSON_SERDE,
       compression: options.compression,
       offloader: options.s3
-        ? new S3Offloader({
-            ...options.s3,
-            keyPrefix:
-              options.s3.keyPrefix ?? defaultAdapterKeyPrefix(DEFAULT_S3_KEY_PREFIX, 'history'),
-          })
+        ? new S3Offloader(offloaderConfigFor(options.s3, 'history', options.clientConfig))
         : undefined,
       ttl: options.ttl,
       logger: resolveLogger(options.logger),

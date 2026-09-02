@@ -1,6 +1,7 @@
 import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
 
-import { type CodecDeps, encodePayload } from '../../shared/codec/codec';
+import { type CodecDeps } from '../../shared/codec/codec';
+import { encodePayload } from '../../shared/codec/encode';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { metaSortKey, partitionKey, payloadSortKey, writeSortKey } from './keys';
 import type { CheckpointerContext } from './setup';

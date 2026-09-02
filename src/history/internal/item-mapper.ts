@@ -1,6 +1,7 @@
 import type { StoredMessage } from '@langchain/core/messages';
 
-import { type CodecDeps, encodePayload } from '../../shared/codec/codec';
+import { type CodecDeps } from '../../shared/codec/codec';
+import { encodePayload } from '../../shared/codec/encode';
 import type { ChatMessageItem } from '../types';
 import { messageSortKey, sessionPartition } from './keys';
 import type { HistoryContext } from './setup';
