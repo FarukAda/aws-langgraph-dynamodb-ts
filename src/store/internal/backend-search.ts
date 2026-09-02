@@ -93,8 +93,15 @@ export async function searchViaBackend(
       const item = await fetchMatch(context, match, signal);
       if (item && passesFilter(item, op)) results.push({ ...item, score: match.score });
     }
-    if (results.length >= need || matches.length < topK || topK >= context.maxSearchCandidates)
-      break;
+    if (results.length >= need || matches.length < topK) break;
+    if (topK >= context.maxSearchCandidates) {
+      /** The backend still holds matches, but the filter left the page short at the cap: the same answer the in-DB ranker gives, not a silently short page. */
+      throw new ValidationError(
+        `Semantic search collected ${results.length} of ${need} matches within maxSearchCandidates ` +
+          `(${context.maxSearchCandidates}); narrow the filter or raise maxSearchCandidates`,
+        'maxSearchCandidates',
+      );
+    }
     topK = Math.min(topK * 2, context.maxSearchCandidates);
   }
   return results;

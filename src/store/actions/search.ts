@@ -1,61 +1,13 @@
 import type { SearchItem, SearchOperation } from '@langchain/langgraph-checkpoint';
 
-import { nowSeconds } from '../../shared/clock';
-import { mapWithConcurrency } from '../../shared/concurrency';
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
-import { paginateQuery } from '../../shared/dynamodb/paginate';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { paginateScan } from '../../shared/dynamodb/scan';
 import { searchViaBackend } from '../internal/backend-search';
-import { narrowStoreRecord, readStoreItem } from '../internal/item-mapper';
-import { namespaceMatchesPrefix } from '../internal/keys';
-import { scopedQuery, storeScan } from '../internal/query';
-import { type RankCandidate, rankInMemory } from '../internal/ranker';
-import { passesFilter } from '../internal/search-filter';
+import { collectCandidates } from '../internal/candidates';
+import { rankInMemory } from '../internal/ranker';
 import { assertVectorDims } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
 import { validatePaging } from '../internal/validation';
-import type { StoreItemRecord } from '../types';
 
 const DEFAULT_LIMIT = 10;
-
-async function collectCandidates(
-  context: StoreContext,
-  op: SearchOperation,
-  signal?: AbortSignal,
-): Promise<RankCandidate[]> {
-  const now = nowSeconds();
-  const source =
-    op.namespacePrefix.length > 0
-      ? paginateQuery({
-          retry: retryFor(context, signal),
-          signal,
-          client: context.client,
-          params: withoutExpired(scopedQuery(context.tableName, op.namespacePrefix), now),
-          maxItems: context.maxScanItems,
-        })
-      : paginateScan({
-          retry: retryFor(context, signal),
-          signal,
-          client: context.client,
-          params: withoutExpired(storeScan(context.tableName), now),
-          maxItems: context.maxScanItems,
-        });
-  /** Rows first, decodes second: an offloaded row costs one S3 GET, so they run several at a time. */
-  const records: StoreItemRecord[] = [];
-  for await (const raw of source) {
-    const record = narrowStoreRecord(raw);
-    if (!record || isExpiredRow(record, now)) continue;
-    if (namespaceMatchesPrefix(record.namespace, op.namespacePrefix)) records.push(record);
-  }
-  const items = await mapWithConcurrency(records, DEFAULT_READ_CONCURRENCY, (record) =>
-    readStoreItem(context, record),
-  );
-  return records.flatMap((record, index): RankCandidate[] =>
-    passesFilter(items[index], op) ? [{ item: items[index], embedding: record.embedding }] : [],
-  );
-}
 
 /**
  * Search items under a namespace prefix: metadata filtering plus optional
@@ -83,10 +35,21 @@ export async function searchItems(
     );
     return ranked.slice(offset, offset + limit);
   }
-  const candidates = await collectCandidates(context, op, signal);
   if (!op.query || !context.index) {
-    return candidates.map(({ item }) => ({ ...item })).slice(offset, offset + limit);
+    const page = await collectCandidates(
+      context,
+      op,
+      { kind: 'page', need: offset + limit },
+      signal,
+    );
+    return page.map(({ item }) => ({ ...item })).slice(offset, offset + limit);
   }
+  const candidates = await collectCandidates(
+    context,
+    op,
+    { kind: 'semantic', cap: context.maxSearchCandidates },
+    signal,
+  );
   const queryVector = await context.index.embeddings.embedQuery(op.query);
   assertVectorDims(context.index, queryVector, 'query');
   const ranked = rankInMemory(candidates, queryVector, context.maxSearchCandidates, (count) =>

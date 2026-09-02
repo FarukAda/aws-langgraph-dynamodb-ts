@@ -7,7 +7,7 @@ import { paginateScan } from '../../shared/dynamodb/scan';
 import { narrowStoreRecord } from '../internal/item-mapper';
 import { NAMESPACE_SEPARATOR } from '../internal/keys';
 import { matchNamespace, prefixRoot, truncateDepth } from '../internal/namespace-match';
-import { scopedQuery, storeScan } from '../internal/query';
+import { projectKeys, scopedQuery, storeScan } from '../internal/query';
 import type { StoreContext } from '../internal/setup';
 import { validateMaxDepth, validatePaging } from '../internal/validation';
 
@@ -17,14 +17,14 @@ function namespaceSource(context: StoreContext, op: ListNamespacesOperation, now
     return paginateQuery({
       retry: context.retry,
       client: context.client,
-      params: withoutExpired(scopedQuery(context.tableName, root), now),
+      params: withoutExpired(projectKeys(scopedQuery(context.tableName, root)), now),
       maxItems: context.maxScanItems,
     });
   }
   return paginateScan({
     retry: context.retry,
     client: context.client,
-    params: withoutExpired(storeScan(context.tableName), now),
+    params: withoutExpired(projectKeys(storeScan(context.tableName)), now),
     maxItems: context.maxScanItems,
   });
 }
