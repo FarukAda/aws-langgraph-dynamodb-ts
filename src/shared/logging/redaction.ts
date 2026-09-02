@@ -23,10 +23,11 @@ const UNREDACTABLE = '[UNREDACTABLE]';
  * `stack` redacted and every other own property recursed like a plain object.
  * `Date`/`RegExp` keep their identity rather than collapsing to `{}`,
  * `Set`/`Map` render as their contents, and binary views become a short label.
- * Does not mutate the input.
+ * Does not mutate the input. Accepts any log argument — a typed `Error`, a
+ * class instance, a `Record` — so callers never cast.
  */
 export function redactSecrets(
-  value: Redactable,
+  value: LogArgument | undefined,
   patterns: readonly string[] = DEFAULT_SECRET_KEY_PATTERNS,
   valuePatterns: readonly RegExp[] = DEFAULT_SECRET_VALUE_PATTERNS,
 ): Redactable {
@@ -42,7 +43,7 @@ export function redactSecrets(
       seen.delete(current);
     }
   };
-  return walk(value);
+  return walk(value as Redactable);
 }
 
 /** Options controlling {@link redactLogger}. */
@@ -72,7 +73,7 @@ function safeRedact(
   valuePatterns: readonly RegExp[],
 ): LogArgument {
   try {
-    return redactSecrets(arg as Redactable, patterns, valuePatterns) as LogArgument;
+    return redactSecrets(arg, patterns, valuePatterns) as LogArgument;
   } catch {
     return UNREDACTABLE;
   }

@@ -1,14 +1,23 @@
 import { expectTypeOf } from 'expect-type';
 
 import type {
+  AdapterWindow,
+  CancelOptions,
   CreateAllOptions,
   DynamoDBChatMessageHistoryOptions,
   DynamoDBSaverOptions,
   DynamoDBStoreOptions,
+  GetMessagesOptions,
+  ListSessionsOptions,
+  MessageWindow,
+  Redactable,
+  RedactLoggerOptions,
+  SessionBackend,
   TtlOption,
   VectorBackend,
   VectorMatch,
   VectorRef,
+  VectorScoreDirection,
 } from '../../src/index';
 
 describe('public API types', () => {
@@ -53,5 +62,27 @@ describe('public API types', () => {
     expectTypeOf<CreateAllOptions['saver']>().not.toHaveProperty('createClient');
     expectTypeOf<CreateAllOptions['store']>().not.toHaveProperty('clientConfig');
     expectTypeOf<CreateAllOptions['history']>().not.toHaveProperty('clientConfig');
+  });
+});
+
+describe('types behind public signatures are exported (CORE-11)', () => {
+  it('names the history option bags and the adapter backend', () => {
+    expectTypeOf<GetMessagesOptions>().toEqualTypeOf<MessageWindow & CancelOptions>();
+    expectTypeOf<ListSessionsOptions['maxItems']>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<ListSessionsOptions['maxIterations']>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<ListSessionsOptions['signal']>().toEqualTypeOf<AbortSignal | undefined>();
+    expectTypeOf<SessionBackend['getMessages']>().parameters.toEqualTypeOf<
+      [string, AdapterWindow?]
+    >();
+  });
+
+  it('names the store score direction and the redaction inputs', () => {
+    expectTypeOf<VectorScoreDirection>().toEqualTypeOf<'relevance' | 'distance'>();
+    expectTypeOf<DynamoDBStoreOptions['vectorScoreDirection']>().toEqualTypeOf<
+      VectorScoreDirection | undefined
+    >();
+    expectTypeOf<RedactLoggerOptions>().toHaveProperty('extraKeys');
+    expectTypeOf<RedactLoggerOptions>().toHaveProperty('extraValuePatterns');
+    expectTypeOf<Redactable>().not.toBeNever();
   });
 });

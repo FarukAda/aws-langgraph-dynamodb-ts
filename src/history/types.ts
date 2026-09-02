@@ -1,7 +1,7 @@
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { PayloadDescriptor } from '../shared/codec/codec';
-import type { BaseAdapterOptions, CodecOptions } from '../shared/options';
+import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';
 
 /** Options for {@link DynamoDBChatMessageHistory}. */
 export type DynamoDBChatMessageHistoryOptions = BaseAdapterOptions &
@@ -33,6 +33,17 @@ export interface MessageWindow {
   limit?: number;
   /** Return only messages appended before this instant (millisecond precision). */
   before?: Date;
+}
+
+/** Options for `getMessages`: the read window plus cancellation. */
+export type GetMessagesOptions = MessageWindow & CancelOptions;
+
+/** Options for `listSessions`: the scan caps plus cancellation. */
+export interface ListSessionsOptions extends CancelOptions {
+  /** Cap on scan pages before `ResultTruncatedError` (default 1000). */
+  maxIterations?: number;
+  /** Cap on rows read into memory before `ResultTruncatedError` (default 10 000). */
+  maxItems?: number;
 }
 
 /** Summary of a stored chat session. */

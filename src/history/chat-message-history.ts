@@ -10,7 +10,12 @@ import { listSessions as listSessionsAction } from './actions/list-sessions';
 import { reconcileMessageCount as reconcileMessageCountAction } from './actions/reconcile-count';
 import { type HistoryContext, setUpHistory } from './internal/setup';
 import { type AdapterWindow, DynamoDBSessionChatMessageHistory } from './session-adapter';
-import type { DynamoDBChatMessageHistoryOptions, MessageWindow, SessionMetadata } from './types';
+import type {
+  DynamoDBChatMessageHistoryOptions,
+  GetMessagesOptions,
+  ListSessionsOptions,
+  SessionMetadata,
+} from './types';
 
 /**
  * DynamoDB-backed multi-session chat history. Each message is its own item
@@ -38,7 +43,7 @@ export class DynamoDBChatMessageHistory {
    * messages, `{ before }` only those appended before that instant — so a
    * long-lived session can be read a page at a time instead of whole.
    */
-  getMessages(sessionId: string, options?: MessageWindow & CancelOptions): Promise<BaseMessage[]> {
+  getMessages(sessionId: string, options?: GetMessagesOptions): Promise<BaseMessage[]> {
     return guardPublic('history.getMessages', () =>
       getMessagesAction(this.context, sessionId, options),
     );
@@ -64,9 +69,7 @@ export class DynamoDBChatMessageHistory {
   }
 
   /** List all sessions as metadata summaries. */
-  listSessions(
-    options?: { maxIterations?: number; maxItems?: number } & CancelOptions,
-  ): Promise<SessionMetadata[]> {
+  listSessions(options?: ListSessionsOptions): Promise<SessionMetadata[]> {
     return guardPublic('history.listSessions', () => listSessionsAction(this.context, options));
   }
 
