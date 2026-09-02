@@ -330,20 +330,86 @@ resource "aws_dynamodb_table" "langgraph" {
 
 ## IAM permissions
 
-Minimum DynamoDB actions on the table:
+Transactional writes are authorised by the item-level actions they carry — there is no `TransactWriteItems` action to grant — and the library never calls `BatchGetItem`. A least-privilege policy for one table:
 
-```
-dynamodb:GetItem
-dynamodb:PutItem
-dynamodb:DeleteItem
-dynamodb:Query
-dynamodb:Scan
-dynamodb:BatchGetItem
-dynamodb:BatchWriteItem
-dynamodb:TransactWriteItems
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "LangGraphItems",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:BatchWriteItem"
+      ],
+      "Resource": "arn:aws:dynamodb:<region>:<account>:table/langgraph"
+    },
+    {
+      "Sid": "LangGraphTableScans",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Scan"],
+      "Resource": "arn:aws:dynamodb:<region>:<account>:table/langgraph"
+    }
+  ]
+}
 ```
 
-When S3 offloading is enabled, on the bucket/objects: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket`, and — only if TTL-driven lifecycle rules are desired — `s3:GetBucketLifecycleConfiguration` and `s3:PutBucketLifecycleConfiguration`. For semantic search via Bedrock embeddings: `bedrock:InvokeModel`.
+`LangGraphTableScans` is needed only by the four table-wide reads — a rootless `store.search([])`, `store.listNamespaces()` without a concrete prefix root, `history.listSessions()`, and `saver.list()` without a `thread_id`. Every other operation is a `GetItem`, a partition `Query` or a write. Leave the statement out of any role that must not read across tenants (see below).
+
+When S3 offloading is enabled, the role also needs the object actions under the configured key prefix (`langgraph-checkpoints/` by default; adjust when `keyPrefix` is set) and, only for the deployment-time `ensureS3LifecycleRule()` call, the two lifecycle actions on the bucket itself:
+
+```json
+{
+  "Sid": "LangGraphS3Objects",
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+  "Resource": "arn:aws:s3:::<bucket>/langgraph-checkpoints/*"
+},
+{
+  "Sid": "LangGraphS3Lifecycle",
+  "Effect": "Allow",
+  "Action": ["s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration"],
+  "Resource": "arn:aws:s3:::<bucket>"
+}
+```
+
+With `serverSideEncryption: 'aws:kms'` the role additionally needs `kms:GenerateDataKey` (uploads) and `kms:Decrypt` (downloads) on the key. Semantic search through Bedrock embeddings needs `bedrock:InvokeModel` on the model. A static test (`test/static/iam-actions.test.ts`) keeps the DynamoDB and S3 actions above equal to the calls the code makes.
+
+### Multi-tenant deployments
+
+Isolation is anchored on the identifiers you choose. The library composes keys safely and never lets one adapter's rows collide with another's, but it does nothing to scope a read to a tenant: put the tenant first in every `thread_id`, `sessionId` and store namespace (`namespace[0]`), with a delimiter other than the reserved `#` (`acme/thread-7`, `acme:session-1`, `['acme', 'users', 'u1']`). Every checkpointer and chat-history operation, and every store operation with a concrete namespace prefix, then touches only that tenant's partitions.
+
+Four operations are table scans and return **every tenant's** rows by construction: `store.search([])`, `store.listNamespaces()` without a prefix root, `history.listSessions()` and `saver.list()` without a `thread_id`. Treat them as administrative. `listSessions()` also returns each session's `title`, which is derived from the first human message — user content.
+
+Tenancy can be enforced at the IAM layer with `dynamodb:LeadingKeys`, because every partition key starts with the adapter tag and then the identifier. A role for tenant `acme` grants the item actions with a key condition and omits `dynamodb:Scan` entirely (`LeadingKeys` does not apply to scans, so a role that may scan can read every tenant):
+
+```json
+{
+  "Sid": "LangGraphTenantAcme",
+  "Effect": "Allow",
+  "Action": [
+    "dynamodb:GetItem",
+    "dynamodb:PutItem",
+    "dynamodb:UpdateItem",
+    "dynamodb:DeleteItem",
+    "dynamodb:Query",
+    "dynamodb:BatchWriteItem"
+  ],
+  "Resource": "arn:aws:dynamodb:<region>:<account>:table/langgraph",
+  "Condition": {
+    "ForAllValues:StringLike": {
+      "dynamodb:LeadingKeys": ["CHKPT#acme/*", "STORE#acme", "HIST#acme/*"]
+    }
+  }
+}
+```
+
+For the store the tenant must be the whole first namespace element (`STORE#acme`), since the partition key is exactly `STORE#<namespace[0]>`; the checkpointer and history patterns match any identifier under the tenant prefix. Offloaded S3 objects can be scoped the same way with an object-key condition on `arn:aws:s3:::<bucket>/langgraph-checkpoints/<adapter>/<base64url tenant prefix>*`, or by giving each tenant its own `keyPrefix`.
 
 ## Migrating from earlier versions
 
