@@ -32,6 +32,7 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 - [Infrastructure setup](#infrastructure-setup)
 - [IAM permissions](#iam-permissions)
 - [Migrating from earlier versions](#migrating-from-earlier-versions)
+- [Operations](#operations)
 - [Testing](#testing)
 - [License](#license)
 
@@ -547,6 +548,60 @@ unaffected.
 - **Identifier rules.** Every caller-supplied identifier (thread_id, checkpoint_ns, checkpoint_id, taskId, sessionId, store namespace elements and keys, pending-write channels) is validated before it reaches DynamoDB: it must be a non-blank string with no control characters and no reserved `#`, at most 1024 bytes of UTF-8 for the partition identifiers (`thread_id`, `sessionId`) and 256 bytes for every sort-key segment (an empty `checkpoint_ns` is legal, it is the root namespace). Composed keys are checked too: a store namespace + key, or a checkpointer pending-write key, may not exceed DynamoDB's 1024-byte sort-key cap, and an offloaded S3 object key may not exceed S3's 1024 bytes. A violation is a `ValidationError` whose `context.field` names the offending value, thrown before any request is sent.
 - **Very large vector corpora** outgrow the in-DB ranker (`maxSearchCandidates`). Configure a `vectorBackend` (OpenSearch, pgvector, …) — the library keeps DynamoDB as the source of truth and only delegates similarity ranking.
 - **TTL deletion timing** is governed by DynamoDB (typically within 48 h of expiry) and S3 lifecycle expiry is day-granular — the library writes the correct expiry timestamp (and filters expired chat messages on read) but does not guarantee instant deletion. The matching S3 lifecycle rule is not written automatically: it is installed only when you call `ensureS3LifecycleRule()`. That rule expires objects `ceil(ttl in days) + 2` days after creation — the two-day margin covers DynamoDB's sweep lag so an object never disappears before its row — and also expires noncurrent versions after the same number of days, so a versioned bucket does not retain every superseded payload forever (on such buckets the library's best-effort deletes only add delete markers). `ensureS3LifecycleRule()` is a read-modify-write of the bucket's whole lifecycle configuration: call it sequentially across adapters and deployers, never concurrently.
+
+## Operations
+
+### Limits
+
+| Limit | Value | Where it bites |
+| --- | --- | --- |
+| DynamoDB item size | 400 KB | a payload over `thresholdBytes` (default 350 KB) must offload to S3; without `s3` a serialized payload over 392 KB is refused with a `ValidationError` before the write |
+| Partition identifiers (`thread_id`, `sessionId`) | 1024 bytes UTF-8 | `ValidationError` |
+| Sort-key segments (`checkpoint_ns`, `checkpoint_id`, `taskId`, channel, store namespace element, store `key`) | 256 bytes each, 1024 bytes composed | `ValidationError` |
+| S3 object key | 1024 bytes | identifiers are base64url-encoded into it, so long ids reach it first |
+| `ttl` | 5 years | `ValidationError` at construction |
+| Chat-history append transaction | 99 messages or 3.5 MB per chunk | larger batches are split into chunks with caller-observed atomicity |
+| Delete batches | 25 rows per `BatchWriteItem`, `UnprocessedItems` re-driven up to 10 times | `BatchWriteAllIncompleteError` |
+| Rows held in memory by a listing (`maxScanItems`, `listSessions({ maxItems })`) | 10 000 | `ResultTruncatedError` |
+| Pages walked by a listing (`listSessions({ maxIterations })`) | 1000 | `ResultTruncatedError` |
+| In-DB semantic candidates (`maxSearchCandidates`) | 1000 | `ValidationError` |
+| Decompressed payload (`maxDecompressedBytes`) and buffered S3 object (`maxDownloadBytes`) | 50 MiB each | `COMPRESSION_LIMIT` / `S3_OFFLOAD_FAILED` |
+| Retries per DynamoDB call (`retry.maxAttempts`) | 5 (about 1.5 s worst case); message appends 18 (about 61 s) | `RetryExhaustedError` |
+| Offloaded payloads decoded concurrently by one read | 8 | latency, not an error |
+
+### What each operation costs
+
+Requests per call, before retries. "Consistent" reads are `ConsistentRead: true` (twice the read units of an eventually consistent read); S3 requests apply only to offloaded payloads.
+
+| Operation | DynamoDB | S3 |
+| --- | --- | --- |
+| `saver.getTuple` | 1 consistent `GetItem` (by id) or `Query` (newest) for the META row, 1 consistent `GetItem` for the payload, 1 consistent `Query` for the pending writes; a pre-v4 checkpoint adds a `Query` of its parent's writes | 1 `GET` per offloaded payload, 8 at a time |
+| `saver.put` | 1 `TransactWriteItems` (META + PAYLOAD); 1 consistent `GetItem` of the parent META when `newVersions` leaves channels to carry over; verification reads only after a failure | 1 `PUT` per offloaded payload |
+| `saver.putWrites` | 1 guarded `PutItem` per write, all in parallel; with `s3` each special write adds 1 consistent `GetItem` and up to 3 compare-and-swap attempts | 1 `PUT` per offloaded write, `DELETE` of a superseded special write |
+| `saver.list` | 1 eventually consistent `Query` per page (or `Scan` without a `thread_id`); per yielded tuple 1 `GetItem` and 1 `Query` for its writes | `GET` per offloaded payload and metadata |
+| `saver.deleteThread`, `history.clear` | 1 consistent `Query` per page, 1 `BatchWriteItem` per 25 rows | 1 `DeleteObjects` per 1000 keys |
+| `store.get` | 1 consistent `GetItem` | 1 `GET` |
+| `store.put` | 1 consistent `GetItem` (previous descriptor and revision), 1 guarded `PutItem` (up to 3 attempts under contention, each re-reading from the rejection), plus the `vectorBackend` upsert | 1 `PUT`, then `DELETE` of the superseded object |
+| `store.delete` | 1 `DeleteItem` returning the old row, plus the `vectorBackend` delete | `DELETE` of the removed object |
+| `store.search` | 1 eventually consistent `Query` per page (`Scan` for `[]`), reading rows in batches of 8 until the page is full; a `query` adds one embedding call | 1 `GET` per offloaded candidate |
+| `store.listNamespaces` | key-only `Query` (`Scan` without a prefix root) per page | none |
+| `history.addMessages` | 1 consistent `GetItem` of the session row when `ttl` is set, then 1 `TransactWriteItems` per chunk (up to 99 messages plus the session update); a rollback costs 1 `BatchWriteItem` per 25 rows plus a session update | 1 `PUT` per offloaded message |
+| `history.getMessages` | 1 consistent `Query` per page (newest-first with a page cap under `limit`) | 1 `GET` per offloaded message, 8 at a time |
+| `history.listSessions` | 1 `Scan` per page | none |
+| `history.reconcileMessageCount` | `Query` (`Select: COUNT`) per page, 1 guarded `UpdateItem` | none |
+| `store.reconcileVectorIndex` | 1 `Query` per page, embedding calls in batches, backend upserts and deletes | `GET` per offloaded item |
+
+### Monitoring
+
+Alert on the two `error` events (a corrupt message row, a failed append rollback) and on the four `warn` events that name an orphan or an exhausted compare-and-swap (see [Logging](#logging)); count `RetryExhaustedError` and `UpstreamError` by `context.operation` and `httpStatusCode`. `RetryExhaustedError.context.attempts` and every `debug` retry line carry the SDK `requestId` of the last failure for AWS Support. Watch the table's `ThrottledRequests` and `ConsumedWriteCapacityUnits` per partition key prefix — the [hot-partition](#production-notes) note explains which identifier concentrates load.
+
+### Lambda and other short-lived runtimes
+
+Construct the adapters once at module scope (or one `DynamoDBFactory.createAll()`), reuse them across invocations, and pass a `client` you own if the function also uses DynamoDB elsewhere; `destroy()` is only needed when a process wants to release sockets before exit. Size the function timeout against the worst-case retry budgets above: a heavily contended chat append can take about a minute, and `retry.maxAttempts` / `retry.maxDelayMs` trade that ceiling against resilience to throttling. Every long-running method takes an `AbortSignal`, so a timeout can cancel cleanly (see [Error handling](#error-handling)).
+
+### Multi-tenancy
+
+See [Multi-tenant deployments](#multi-tenant-deployments) under IAM permissions for the identifier convention, the table-scan operations that are cross-tenant by construction, and the `dynamodb:LeadingKeys` policy.
 
 ## Testing
 
