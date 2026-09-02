@@ -627,7 +627,7 @@ The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. 
 npm run test:aws                # needs AWS credentials; AWS_REGION selects the region
 ```
 
-The `examples/live-*.mjs` scripts are demos that leave a table in place for inspection in the console; they are not a test tier.
+The `examples/live-*.mjs` scripts are demos against real AWS, not a test tier: `live-checkpointer.mjs` runs a LangGraph agent across two saver instances and deletes its table afterwards; `live-agent.mjs`, `live-persist.mjs` and `live-store.mjs` leave their table in place so you can inspect the rows in the console. They read `AWS_REGION` (default `eu-west-1`) and `LANGGRAPH_DEMO_TABLE` (default `langgraph-saver-demo` / `langgraph-store-demo`), and `live-agent.mjs` needs a Bedrock model enabled in that region.
 
 ### What the suite does and does not prove
 

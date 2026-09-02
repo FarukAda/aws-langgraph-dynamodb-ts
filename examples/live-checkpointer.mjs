@@ -16,8 +16,8 @@ import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 
 import { DynamoDBSaver } from '../dist/index.js';
 
-const REGION = 'eu-west-1';
-const TABLE = 'langgraph-saver-demo';
+const REGION = process.env.AWS_REGION ?? 'eu-west-1';
+const TABLE = process.env.LANGGRAPH_DEMO_TABLE ?? 'langgraph-saver-demo';
 const clientConfig = { region: REGION };
 const admin = new DynamoDBClient(clientConfig);
 

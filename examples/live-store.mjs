@@ -15,8 +15,8 @@ import { BedrockEmbeddings } from '@langchain/aws';
 
 import { DynamoDBStore } from '../dist/index.js';
 
-const REGION = 'eu-west-1';
-const TABLE = 'langgraph-store-demo';
+const REGION = process.env.AWS_REGION ?? 'eu-west-1';
+const TABLE = process.env.LANGGRAPH_DEMO_TABLE ?? 'langgraph-store-demo';
 const clientConfig = { region: REGION };
 const admin = new DynamoDBClient(clientConfig);
 
