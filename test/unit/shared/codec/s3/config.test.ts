@@ -47,3 +47,16 @@ describe('buildLifecycleRuleId', () => {
     expect(buildLifecycleRuleId('/')).toBe('langgraph-ttl-default');
   });
 });
+
+describe('buildLifecycleRuleId trailing slashes (SEC-17)', () => {
+  it('strips every trailing slash without a quadratic regex, however many there are', () => {
+    expect(buildLifecycleRuleId('langgraph/checkpointer///')).toBe(
+      'langgraph-ttl-langgraph-checkpointer',
+    );
+    const started = Date.now();
+    expect(buildLifecycleRuleId(`${'/'.repeat(50_000)}a`)).toBe(
+      'langgraph-ttl-' + '-'.repeat(50_000) + 'a',
+    );
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+});

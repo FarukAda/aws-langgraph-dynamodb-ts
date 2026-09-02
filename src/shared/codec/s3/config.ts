@@ -74,9 +74,15 @@ export function assertScopedKeyPrefix(keyPrefix: string): void {
   }
 }
 
-/** Build a deterministic, TTL-independent lifecycle rule id from the prefix. */
+/**
+ * Build a deterministic, TTL-independent lifecycle rule id from the prefix.
+ * Trailing slashes are trimmed with a loop rather than `/\/+$/`, whose
+ * backtracking is quadratic in the number of slashes.
+ */
 export function buildLifecycleRuleId(prefix: string): string {
-  const slug = prefix.replace(/\/+$/, '').replace(/[^a-zA-Z0-9-]/g, '-') || 'default';
+  let trimmed = prefix;
+  while (trimmed.endsWith('/')) trimmed = trimmed.slice(0, -1);
+  const slug = trimmed.replace(/[^a-zA-Z0-9-]/g, '-') || 'default';
   return `langgraph-ttl-${slug}`;
 }
 
