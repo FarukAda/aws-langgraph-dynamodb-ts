@@ -41,3 +41,28 @@ describe('readConfigurable', () => {
     ).toThrow();
   });
 });
+
+describe('readConfigurable falsy checkpoint_id (CKPT-06)', () => {
+  it('treats null and the empty string as "latest" like the reference savers', () => {
+    expect(
+      readConfigurable({ configurable: { thread_id: 't', checkpoint_id: null as never } })
+        .checkpointId,
+    ).toBeUndefined();
+    expect(
+      readConfigurable({ configurable: { thread_id: 't', checkpoint_id: '' } }).checkpointId,
+    ).toBeUndefined();
+  });
+
+  it('honours the legacy thread_ts alias when checkpoint_id is absent, and checkpoint_id when both are given', () => {
+    expect(
+      readConfigurable({ configurable: { thread_id: 't', thread_ts: 'c7' } }).checkpointId,
+    ).toBe('c7');
+    expect(
+      readConfigurable({ configurable: { thread_id: 't', thread_ts: 'c7', checkpoint_id: 'c9' } })
+        .checkpointId,
+    ).toBe('c9');
+    expect(() =>
+      readConfigurable({ configurable: { thread_id: 't', thread_ts: 'a#b' } }),
+    ).toThrow();
+  });
+});

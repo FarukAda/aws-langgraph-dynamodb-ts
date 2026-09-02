@@ -19,12 +19,13 @@ export function readConfigurable(config: RunnableConfig): ResolvedConfigurable {
   validateThreadId(configurable.thread_id);
   const checkpointNs = configurable.checkpoint_ns ?? '';
   validateCheckpointNs(checkpointNs);
-  if (configurable.checkpoint_id !== undefined) {
-    validateCheckpointId(configurable.checkpoint_id);
-  }
-  return {
-    threadId: configurable.thread_id,
-    checkpointNs,
-    checkpointId: configurable.checkpoint_id,
-  };
+  /**
+   * `null`, `''` and the legacy `thread_ts` alias resolve the way the reference's
+   * `getCheckpointId` does: a falsy id addresses the latest checkpoint rather
+   * than failing a config that was built from JSON or ported from another saver.
+   */
+  const rawId = configurable.checkpoint_id ?? configurable.thread_ts;
+  const checkpointId = rawId ? rawId : undefined;
+  if (checkpointId !== undefined) validateCheckpointId(checkpointId);
+  return { threadId: configurable.thread_id, checkpointNs, checkpointId };
 }

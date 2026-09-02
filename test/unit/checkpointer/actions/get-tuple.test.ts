@@ -157,3 +157,35 @@ describe('getCheckpointTuple S3 key binding (SEC-03)', () => {
     expect(offloader.download).not.toHaveBeenCalled();
   });
 });
+
+describe('getCheckpointTuple with a foreign head row (CKPT-08)', () => {
+  it('falls back to the newest real checkpoint instead of reporting an empty thread', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const warn = jest.fn();
+    const ctx = { ...context(client), logger: { ...SILENT_LOGGER, warn } };
+    const { meta, payload } = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint,
+      metadata,
+      'nonce-1',
+    );
+    let metaPages = 0;
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      if (!prefix.startsWith('META')) return { Items: [] };
+      metaPages += 1;
+      return metaPages === 1
+        ? {
+            Items: [{ PK: 'CHKPT#t', SK: 'META##zzz', value: {} }],
+            LastEvaluatedKey: { PK: 'CHKPT#t', SK: 'META##zzz' },
+          }
+        : { Items: [meta] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    const tuple = await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } });
+    expect(tuple?.checkpoint.id).toBe('ckpt-1');
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+});

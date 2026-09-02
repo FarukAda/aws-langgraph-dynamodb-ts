@@ -15,6 +15,8 @@ export interface CheckpointConfigurable {
   thread_id: string;
   checkpoint_ns?: string;
   checkpoint_id?: string;
+  /** Legacy alias of `checkpoint_id` that older callers and API-shaped configs still emit. */
+  thread_ts?: string;
 }
 
 /** The lightweight `META#` item: structural fields + serialized metadata. */

@@ -26,6 +26,27 @@ export function narrowMetaItem(raw: DocItem): CheckpointMetaItem | undefined {
 }
 
 /**
+ * Narrow a candidate head row, warning when a row that merely shares the
+ * `META#` prefix is not a checkpoint meta item. Returning such a row used to
+ * make `assembleTuple` miss its payload and report the thread as empty, so
+ * LangGraph started a new run on top of the real history; a foreign row is
+ * skipped and logged instead, exactly as `list()` treats it.
+ */
+export function narrowHead(
+  context: CheckpointerContext,
+  raw: DocItem | undefined,
+): CheckpointMetaItem | undefined {
+  if (raw === undefined) return undefined;
+  const meta = narrowMetaItem(raw);
+  if (!meta) {
+    context.logger.warn('getTuple: skipped a row that is not a checkpoint meta item', {
+      sortKey: raw.SK as string,
+    });
+  }
+  return meta;
+}
+
+/**
  * Decode the checkpoint stored in a PAYLOAD item. `threadId` is the caller's
  * (from the config), never the row's: it scopes which S3 object the row may
  * point at, so it must come from the partition the caller asked for.
