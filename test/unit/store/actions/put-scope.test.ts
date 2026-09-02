@@ -65,8 +65,7 @@ describe('store put/delete bind row-sourced S3 keys to the item (SEC-03)', () =>
 
   it("cleans up the deleted item's object under the namespace/key scope", async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: { createdAt: 'c', value: previous } });
-    mock.on(DeleteCommand).resolves({});
+    mock.on(DeleteCommand).resolves({ Attributes: { value: previous } });
     await putItem(context(client), { namespace: ['users', 'u1'], key: 'profile', value: null });
     expect(cleanUpMock).toHaveBeenCalledWith(
       expect.anything(),

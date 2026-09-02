@@ -62,11 +62,8 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
     mock
       .on(DeleteCommand)
       .rejects(Object.assign(new Error('throttled'), { name: 'ThrottlingException' }));
-    // readExisting sees the old row; the post-failure verification sees it gone.
-    mock
-      .on(GetCommand)
-      .resolvesOnce({ Item: { createdAt: 'c', value: inlineDescriptor } })
-      .resolves({});
+    // the post-failure verification sees the row gone
+    mock.on(GetCommand).resolves({});
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     const offloader = trackingOffloader();
     await expect(
@@ -155,5 +152,34 @@ describe('persistRecord ambiguous-failure verification', () => {
       putItem(context(client, { offloader: offloader as never }), op({})),
     ).rejects.toThrow('bad');
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('persistRecord verifies an ambiguous inline overwrite by rev (STORE-13)', () => {
+  it('reports success and cleans up the previous offloaded object when the inline put actually landed', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    let rev: string | undefined;
+    mock.on(GetCommand).callsFake((input) =>
+      (input.ProjectionExpression as string).includes('#c')
+        ? {
+            Item: {
+              createdAt: 'c',
+              rev: 'r0',
+              value: { location: PayloadLocation.S3, s3Key: 'old-key.bin' },
+            },
+          }
+        : { Item: { rev } },
+    );
+    mock.on(PutCommand).callsFake((input) => {
+      rev = input.Item.rev as string;
+      throw Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
+    });
+    const offloader = { ...trackingOffloader(), shouldOffload: () => false };
+    const ctx = context(client, {
+      offloader: offloader as never,
+      retry: { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
+    });
+    await expect(putItem(ctx, op({}))).resolves.toBeUndefined();
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
   });
 });

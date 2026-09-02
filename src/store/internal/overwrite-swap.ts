@@ -70,7 +70,10 @@ export async function putWithRevisionSwap(
         ? existingFrom(rejected)
         : await readExisting(context, record.PK, record.SK);
       if (record.rev !== undefined && observed.revision === record.rev) return attempted;
-      record.createdAt = observed.createdAt ?? record.createdAt;
+      /** A row that vanished between attempts (a concurrent delete) makes this a fresh creation. */
+      record.createdAt = observed.exists
+        ? (observed.createdAt ?? record.createdAt)
+        : record.updatedAt;
     }
   }
   context.logger.warn(

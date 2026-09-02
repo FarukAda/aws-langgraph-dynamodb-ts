@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { nowIso } from '../../shared/clock';
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
+import { collectS3Keys, type DescriptorRef } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
@@ -21,13 +21,19 @@ import { isRetryExhausted, rowIsAbsent } from '../internal/write-verify';
 /**
  * Delete the item and, when a vector backend is configured, drop its vector.
  *
+ * The delete asks DynamoDB for the row it removed (`ReturnValues: 'ALL_OLD'`),
+ * so S3 cleanup targets the descriptor that was actually removed rather than
+ * one read a moment earlier — a concurrent put between a pre-read and the
+ * delete used to leave its just-written object orphaned — and the delete costs
+ * one request instead of two.
+ *
  * A retry-exhausted failure is *ambiguous*: the delete may have landed
- * server-side with only its acknowledgement lost. Mirroring `persistRecord`'s
- * treatment of an ambiguous put, that case is resolved with a
- * strongly-consistent read — if the row is genuinely gone the delete
- * succeeded, so the S3-orphan cleanup and the vector-backend delete must still
- * run rather than being skipped for a write that actually happened. Any other
- * failure, or a row still present, propagates unchanged.
+ * server-side with only its acknowledgement lost. Mirroring `persistRecord`,
+ * that case is resolved with a strongly-consistent read — if the row is gone
+ * the delete succeeded and the vector-backend delete must still run. The
+ * removed descriptor travelled with the lost response, so that one object, if
+ * any, is left to the lifecycle rule. Any other failure, or a row still
+ * present, propagates unchanged.
  */
 async function deleteStoreItem(
   context: StoreContext,
@@ -35,24 +41,32 @@ async function deleteStoreItem(
   pk: string,
   sk: string,
 ): Promise<void> {
-  const existing = context.offloader ? await readExisting(context, pk, sk) : undefined;
+  let removed: DescriptorRef | undefined;
   try {
-    await withDynamoDBRetry(
-      () => context.client.delete({ TableName: context.tableName, Key: { PK: pk, SK: sk } }),
+    const result = await withDynamoDBRetry(
+      () =>
+        context.client.delete({
+          TableName: context.tableName,
+          Key: { PK: pk, SK: sk },
+          ReturnValues: 'ALL_OLD',
+        }),
       context.retry,
     );
+    removed = (result.Attributes as { value?: DescriptorRef } | undefined)?.value;
   } catch (error) {
     const landed =
       isRetryExhausted(error as Error) && (await rowIsAbsent(context, { PK: pk, SK: sk }));
     if (!landed) throw error;
   }
-  if (context.offloader) {
+  if (context.offloader && removed) {
     await cleanUpS3Orphans(
       context.offloader,
-      collectS3Keys(existing?.value ? [existing.value] : []),
+      collectS3Keys([removed]),
       'store.delete',
       context.logger,
-      { scope: [...op.namespace, op.key] },
+      {
+        scope: [...op.namespace, op.key],
+      },
     );
   }
   if (context.vectorBackend) {

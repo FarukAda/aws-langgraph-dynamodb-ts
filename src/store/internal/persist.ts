@@ -1,5 +1,4 @@
-import { type PayloadDescriptor, PayloadLocation } from '../../shared/codec/codec';
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
+import { collectS3Keys, type DescriptorRef } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { StoreItemRecord } from '../types';
@@ -15,7 +14,7 @@ import { verifyWriteLanded, type WriteVerdict } from './write-verify';
  */
 async function cleanUp(
   context: StoreContext,
-  descriptor: PayloadDescriptor | undefined,
+  descriptor: DescriptorRef | undefined,
   label: string,
   scope?: readonly string[],
 ): Promise<void> {
@@ -49,7 +48,9 @@ async function cleanUp(
  * `'landed'` cleans up the previous object like the success path and swallows
  * the error, and an `'unverified'` read deletes nothing and rethrows — leaking
  * one object at worst rather than stranding a live row pointing at a deleted
- * one. An inline payload has no object to leak, so it needs no read.
+ * one. The verification compares the per-call `rev`, so an inline record is
+ * verified too: a lost acknowledgement of an inline overwrite used to be
+ * reported as a failure while the previous offloaded object was never cleaned.
  */
 export async function persistRecord(
   context: StoreContext,
@@ -67,10 +68,7 @@ export async function persistRecord(
       );
     }
   } catch (error) {
-    const verdict: WriteVerdict =
-      record.value.location === PayloadLocation.S3
-        ? await verifyWriteLanded(context, record, record.value.s3Key)
-        : 'not-landed';
+    const verdict: WriteVerdict = await verifyWriteLanded(context, record);
     if (verdict === 'not-landed') await cleanUp(context, record.value, 'store.put');
     if (verdict !== 'landed') throw error;
   }

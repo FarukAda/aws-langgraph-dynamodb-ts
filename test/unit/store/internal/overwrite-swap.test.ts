@@ -247,3 +247,11 @@ describe('putWithRevisionSwap with the rejected row on the exception (DDB-07)', 
     expect(inputs[1].ExpressionAttributeValues).toEqual({ ':rev': 'theirs-rev' });
   });
 });
+
+describe('createdAt after a delete/put race (STORE-13)', () => {
+  it("takes the put timestamp when the re-read finds the row gone, not the deleted row's createdAt", async () => {
+    const { context, inputs } = harness({ failures: 1, reReads: [{ exists: false }] });
+    await putWithRevisionSwap(context as never, record(), { exists: true, revision: 'stale' });
+    expect((inputs[1].Item as { createdAt: string }).createdAt).toBe('T1');
+  });
+});
