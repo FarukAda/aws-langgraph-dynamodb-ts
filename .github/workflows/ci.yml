@@ -130,14 +130,22 @@ jobs:
           exit 1
 
       - name: Run integration tests
-        run: npm run test:integration
+        run: npm run test:integration -- --json --outputFile=jest-integration.json
         env:
           DDB_LOCAL_ENDPOINT: http://localhost:8000
 
+      - name: Annotate failing integration tests
+        if: failure()
+        run: node .github/scripts/annotate-jest.mjs jest-integration.json integration
+
       - name: Run conformance tests (LangGraph contract on real DynamoDB)
-        run: npm run test:conformance
+        run: npm run test:conformance -- --json --outputFile=jest-conformance.json
         env:
           DDB_LOCAL_ENDPOINT: http://localhost:8000
+
+      - name: Annotate failing conformance tests
+        if: failure()
+        run: node .github/scripts/annotate-jest.mjs jest-conformance.json conformance
 
   conformance-matrix:
     name: conformance (langgraph ${{ matrix.langgraph }})
@@ -187,9 +195,13 @@ jobs:
           exit 1
 
       - name: Run conformance tests
-        run: npm run test:conformance
+        run: npm run test:conformance -- --json --outputFile=jest-conformance-matrix.json
         env:
           DDB_LOCAL_ENDPOINT: http://localhost:8000
+
+      - name: Annotate failing conformance tests
+        if: failure()
+        run: node .github/scripts/annotate-jest.mjs jest-conformance-matrix.json conformance
 
   package-smoke:
     name: package smoke (npm pack + install + import)
