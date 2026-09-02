@@ -41,7 +41,8 @@ function faultyClient(rules: Parameters<typeof installFaults>[1]): {
   base: DynamoDBClient;
 } {
   const base = new DynamoDBClient({ ...DDB_LOCAL_CONFIG, maxAttempts: 1 });
-  installFaults(base, rules);
+  /** The middleware may be installed only once per client; a test that seeds first installs its rules itself. */
+  if (rules.length > 0) installFaults(base, rules);
   return { client: DynamoDBDocument.from(base), base };
 }
 
