@@ -1,12 +1,13 @@
 import {
   isConditionalCheckFailed,
   OVERWRITE_CAS_MAX_ATTEMPTS,
+  rejectedItem,
   REVISION_ATTRIBUTE,
   revisionGuard,
 } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { StoreItemRecord } from '../types';
-import { type ExistingRecordMeta, readExisting } from './read-existing';
+import { type ExistingRecordMeta, existingFrom, readExisting } from './read-existing';
 import type { StoreContext } from './setup';
 
 /** Put the record, optionally pinned to the revision the caller observed. */
@@ -63,7 +64,11 @@ export async function putWithRevisionSwap(
       return attempted;
     } catch (error) {
       if (!isConditionalCheckFailed(error as { name?: string })) throw error;
-      observed = await readExisting(context, record.PK, record.SK);
+      /** The rejection carries the row that turned it away; the read is spent only when it does not. */
+      const rejected = rejectedItem(error as Error);
+      observed = rejected
+        ? existingFrom(rejected)
+        : await readExisting(context, record.PK, record.SK);
       if (record.rev !== undefined && observed.revision === record.rev) return attempted;
       record.createdAt = observed.createdAt ?? record.createdAt;
     }

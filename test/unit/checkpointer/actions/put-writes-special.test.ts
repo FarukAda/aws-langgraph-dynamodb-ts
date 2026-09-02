@@ -159,7 +159,8 @@ describe('putWrites special (negative-index) writes', () => {
     const regular = calls.find((call) => (call.args[0].input.Item as { index: number }).index >= 0);
     const special = calls.find((call) => (call.args[0].input.Item as { index: number }).index < 0);
     expect(regular?.args[0].input.ReturnValuesOnConditionCheckFailure).toBe('ALL_OLD');
-    expect(special?.args[0].input.ReturnValuesOnConditionCheckFailure).toBeUndefined();
+    // Special writes ask for it too, so a lost compare-and-swap re-pins from the exception.
+    expect(special?.args[0].input.ReturnValuesOnConditionCheckFailure).toBe('ALL_OLD');
   });
 
   it('dedupes duplicate writes to the same special channel by sort key before writing', async () => {

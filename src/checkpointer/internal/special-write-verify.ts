@@ -1,4 +1,5 @@
 import type { PayloadDescriptor } from '../../shared/codec/codec';
+import { isConditionalCheckFailed, rejectedItem } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
@@ -55,6 +56,25 @@ export async function readSpecialRow(
 }
 
 /**
+ * The row as it stood when the put failed: a guard rejection carries it (see
+ * `rejectedItem`), so the strongly-consistent read is spent only for a failure
+ * that does not — a lost response, or a rejection whose row vanished since.
+ */
+async function observeRow(
+  context: CheckpointerContext,
+  item: CheckpointWriteItem,
+  error: Error,
+): Promise<SpecialRowState> {
+  const rejected = isConditionalCheckFailed(error) ? rejectedItem(error) : undefined;
+  if (!rejected) return readSpecialRow(context, item);
+  return {
+    exists: true,
+    value: rejected.value as PayloadDescriptor | undefined,
+    revision: rejected[SPECIAL_REVISION_ATTRIBUTE] as string | undefined,
+  };
+}
+
+/**
  * Read the row back after a put failed, and report what that failure actually
  * did — never assuming it did nothing.
  *
@@ -85,7 +105,7 @@ export async function verifyAfterFailure(
   error: Error,
 ): Promise<VerifiedFailure> {
   try {
-    const observed = await readSpecialRow(context, item);
+    const observed = await observeRow(context, item, error);
     if (observed.revision === item.writeGroup) {
       return { outcome: { committed: true, superseded: attempted.value } };
     }

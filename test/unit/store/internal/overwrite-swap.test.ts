@@ -195,3 +195,55 @@ describe('putWithRevisionSwap', () => {
     expect(superseded.value).toEqual(descriptor('theirs'));
   });
 });
+
+describe('putWithRevisionSwap with the rejected row on the exception (DDB-07)', () => {
+  it('re-pins from the exception without a second read', async () => {
+    let puts = 0;
+    let reads = 0;
+    const inputs: Record<string, unknown>[] = [];
+    const rejected = Object.assign(new Error('rejected'), {
+      name: 'ConditionalCheckFailedException',
+      Item: {
+        rev: { S: 'theirs-rev' },
+        createdAt: { S: 'T-1' },
+        value: {
+          M: {
+            location: { S: 'S3' },
+            serdeType: { S: 'json' },
+            compressed: { BOOL: false },
+            s3Key: { S: 'theirs' },
+          },
+        },
+      },
+    });
+    const context = {
+      tableName: 'store',
+      offloader: {},
+      logger: SILENT_LOGGER,
+      client: {
+        put: async (input: Record<string, unknown>) => {
+          inputs.push(input);
+          puts += 1;
+          if (puts === 1) throw rejected;
+          return {};
+        },
+        get: async () => {
+          reads += 1;
+          return {};
+        },
+      },
+    };
+    const superseded = await putWithRevisionSwap(context as never, record(), {
+      exists: true,
+      revision: 'stale',
+    });
+    expect(reads).toBe(0);
+    expect(superseded).toEqual({
+      exists: true,
+      createdAt: 'T-1',
+      value: descriptor('theirs'),
+      revision: 'theirs-rev',
+    });
+    expect(inputs[1].ExpressionAttributeValues).toEqual({ ':rev': 'theirs-rev' });
+  });
+});
