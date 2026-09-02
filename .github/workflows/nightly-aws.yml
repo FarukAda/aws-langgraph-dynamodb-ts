@@ -2,8 +2,9 @@ name: Nightly real-AWS
 
 # Runs the on-demand real-AWS suite against a live DynamoDB account nightly, so
 # SDK/service behaviour drift surfaces before users hit it. Uses short-lived
-# OIDC credentials (no static keys). Configure the role ARN as a repo variable
-# AWS_TEST_ROLE_ARN and a region in AWS_TEST_REGION.
+# OIDC credentials (no static keys). Configure the role ARN as a repository
+# variable or secret named AWS_TEST_ROLE_ARN and, optionally, a region in
+# AWS_TEST_REGION (default eu-central-1).
 
 on:
   schedule:
@@ -24,9 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     # Forks skip cleanly; the canonical repository must have the role configured.
     if: ${{ vars.AWS_TEST_ROLE_ARN != '' || github.repository == 'FarukAda/aws-langgraph-dynamodb-ts' }}
+    env:
+      # Secrets cannot appear in an if condition, so the check goes through env.
+      ROLE_CONFIGURED: ${{ vars.AWS_TEST_ROLE_ARN != '' || secrets.AWS_TEST_ROLE_ARN != '' }}
+      AWS_TEST_REGION: ${{ vars.AWS_TEST_REGION || secrets.AWS_TEST_REGION || 'eu-central-1' }}
     steps:
       - name: Fail when the canonical repository has no role configured
-        if: ${{ vars.AWS_TEST_ROLE_ARN == '' }}
+        if: ${{ env.ROLE_CONFIGURED != 'true' }}
         run: |
           echo "AWS_TEST_ROLE_ARN is not set; the nightly real-AWS suite cannot run" >&2
           exit 1
@@ -46,10 +51,10 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_TEST_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_TEST_REGION || 'eu-central-1' }}
+          role-to-assume: ${{ vars.AWS_TEST_ROLE_ARN || secrets.AWS_TEST_ROLE_ARN }}
+          aws-region: ${{ env.AWS_TEST_REGION }}
 
       - name: Run real-AWS tests
         run: npm run test:aws
         env:
-          AWS_REGION: ${{ vars.AWS_TEST_REGION || 'eu-central-1' }}
+          AWS_REGION: ${{ env.AWS_TEST_REGION }}
