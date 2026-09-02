@@ -44,7 +44,8 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 ```bash
 npm install @farukada/aws-langgraph-dynamodb-ts \
   @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb \
-  @langchain/core @langchain/langgraph @langchain/langgraph-checkpoint
+  @langchain/core @langchain/langgraph-checkpoint
+# plus @langchain/langgraph itself, which your application already depends on
 ```
 
 Optional peer dependencies, installed only if you use the matching feature:

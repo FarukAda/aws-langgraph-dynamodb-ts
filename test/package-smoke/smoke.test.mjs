@@ -99,6 +99,20 @@ assert.deepEqual(redactSecrets({ token: 's', keep: 'ok' }), { token: '[REDACTED]
 console.log('SMOKE_OK');
 `;
 
+/** The same surface through CommonJS `require`, which the exports map must serve too. */
+const SMOKE_CJS = `
+const assert = require('node:assert/strict');
+const { DynamoDBStore, ErrorCode, DynamoDBLangGraphError } = require('@farukada/aws-langgraph-dynamodb-ts');
+const { version } = require('@farukada/aws-langgraph-dynamodb-ts/package.json');
+assert.equal(typeof DynamoDBStore, 'function');
+assert.equal(typeof version, 'string');
+const store = new DynamoDBStore({ tableName: 'smoke', clientConfig: { region: 'eu-west-1' } });
+store.put(['bad#ns'], 'k', { v: 1 }).then(
+  () => { throw new Error('expected a validation error'); },
+  (e) => { assert.ok(e instanceof DynamoDBLangGraphError && e.code === ErrorCode.VALIDATION); console.log('SMOKE_CJS_OK'); },
+);
+`;
+
 test('packs, installs the tarball, and imports the published surface', { timeout: 600000 }, () => {
   const root = process.cwd();
   execSync('npm run build', { cwd: root, stdio: 'ignore' });
@@ -114,6 +128,8 @@ test('packs, installs the tarball, and imports the published surface', { timeout
     writeFileSync(join(dir, 'run.mjs'), SMOKE);
     const output = execSync('node run.mjs', { cwd: dir }).toString();
     assert.match(output, /SMOKE_OK/);
+    writeFileSync(join(dir, 'run.cjs'), SMOKE_CJS);
+    assert.match(execSync('node run.cjs', { cwd: dir }).toString(), /SMOKE_CJS_OK/);
     writeFileSync(join(dir, 'consumer.ts'), CONSUMER);
     assert.deepEqual(ourTypeErrors(dir), []);
   } finally {

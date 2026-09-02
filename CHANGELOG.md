@@ -21,6 +21,8 @@ The 1.0.0 hardening: every finding of an independent, enterprise-grade review of
 - **`ensureS3LifecycleRule()` requires a scoped `keyPrefix`** (non-empty, ending in `/`); an empty or root prefix, which would have installed a whole-bucket expiration rule, is rejected. The rule now expires objects `ceil(ttl days) + 2` days after creation (the sweep-lag margin) and expires noncurrent versions after the same period.
 - **The `examples/verify-*.mjs` scripts are gone**; the real-AWS test tier (`npm run test:aws`, nightly in CI) covers what they did.
 - **The conformance matrix tests the declared floor** (`@langchain/langgraph-checkpoint` 1.1.5) rather than 1.0.3, a version outside the peer range.
+- **`@langchain/langgraph` is no longer a peer dependency.** The package only needs `@langchain/langgraph-checkpoint` and `@langchain/core`; your application depends on `@langchain/langgraph` itself, and any 1.x release whose checkpoint dependency is in the supported range works. Installs that relied on the peer being pulled in transitively must add it.
+- **The tarball ships no source maps** (`.js.map`, `.d.ts.map`) and declares `sideEffects: false`; bundlers can tree-shake unused adapters. `npm run pack:check` (the pack listing, `publint` and `@arethetypeswrong/cli`) guards the published shape.
 
 ### Added
 
@@ -29,7 +31,7 @@ The 1.0.0 hardening: every finding of an independent, enterprise-grade review of
 - A `retry` option on every adapter (`maxAttempts`, `baseDelayMs`, `maxDelayMs`), every retry logged at `debug`, and the `RetryPolicy`, `RetryOptions` and `RetryAttemptInfo` types.
 - `DynamoDBFactory` shares `ttl`, `compression`, `s3` and `retry` across the adapters it builds, `createAll` accepts any subset of sections with a result typed by them, and a constructor failure inside `createAll` destroys the client it had built.
 - `DynamoDBStore.stop()` releases owned clients, hooking LangGraph's `BaseStore` lifecycle.
-- Exported types for every public signature: `VectorScoreDirection`, `RedactLoggerOptions`, `Redactable`, `SessionBackend`, `AdapterWindow`, `S3ClientLike`, `S3ClientConfigLike`, `AdapterSection`, and `CancelOptions`.
+- Exported types for every public signature: `VectorScoreDirection`, `RedactLoggerOptions`, `Redactable`, `SessionBackend`, `AdapterWindow`, `S3ClientLike`, `S3ClientConfigLike`, `S3ClientOptions`, `S3ClientOption`, `S3CommandLike`, `S3RegionLike`, `AdapterSection`, and `CancelOptions`.
 - `S3OffloadConfig.maxDownloadBytes` (default 50 MiB) caps the size of an offloaded object the adapters will buffer, checked before and while reading.
 - The S3 client inherits the DynamoDB `clientConfig.region` when its own config names none.
 - Payload descriptors carry `schemaVersion: 1`; a reader refuses a higher version or an unknown `location` with a `ValidationError` instead of guessing.

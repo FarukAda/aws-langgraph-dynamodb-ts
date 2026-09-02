@@ -36,7 +36,7 @@ The `ttl` attribute is Unix epoch seconds. Compression is gzip; `serdeType` name
 | Node.js | 22 and 24 | the unit tier on Linux, macOS and Windows |
 | TypeScript (consumers) | 5.x and later | the package smoke type-checks the shipped declarations |
 | `@langchain/langgraph-checkpoint` | `^1.1.5` | the conformance tier against the floor and the latest release, including LangChain's checkpointer validation suite |
-| `@langchain/langgraph` | `^1.3.2` | the compiled-graph conformance tests |
+| `@langchain/langgraph` | any 1.x release that depends on a supported `@langchain/langgraph-checkpoint` (not a peer of this package; the conformance tier runs the current 1.x) | the compiled-graph conformance tests |
 | `@langchain/core` | `^1.2.9` | the differential and history tests |
 | AWS SDK for JavaScript v3 (`@aws-sdk/client-dynamodb`, `lib-dynamodb`, optional `client-s3`) | the ranges in `package.json` | every tier |
 

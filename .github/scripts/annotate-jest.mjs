@@ -42,7 +42,8 @@ for (const file of report.testResults ?? []) {
 /** Workflow-command values must escape newlines and the two command delimiters. */
 const encode = (text) =>
   text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A').replace(/:/g, '%3A').replace(/,/g, '%2C');
-const strip = (text) => text.replace(/\[[0-9;]*m/g, '');
+const ANSI = new RegExp(String.fromCharCode(27) + '\\[[0-9;]*m', 'g');
+const strip = (text) => text.replace(ANSI, '');
 
 /** GitHub keeps ten error annotations per step, so the first one names every failure. */
 if (failures.length > 0) {
