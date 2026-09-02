@@ -7,6 +7,7 @@ import {
   DEFAULT_S3_THRESHOLD_BYTES,
 } from '../../constants';
 import { createDefaultS3Client, loadS3Sdk } from './client';
+import type { S3ClientConfigLike } from './client-types';
 import { buildS3Key, S3OffloadConfig } from './config';
 import { deleteObjects } from './delete';
 import { assertKeyInScope, isKeyInScope } from './key-scope';
@@ -48,10 +49,11 @@ export class S3Offloader {
 
   private getClient(): Promise<S3Client> {
     if (!this.clientPromise) {
-      const cfg = this.config.clientConfig ?? {};
+      const cfg: S3ClientConfigLike = this.config.clientConfig ?? {};
+      /** The hook is typed structurally for consumers; the runtime modules use the real SDK client. */
       this.clientPromise = (
         this.config.createS3Client
-          ? Promise.resolve(this.config.createS3Client({ maxAttempts: 1, ...cfg }))
+          ? Promise.resolve(this.config.createS3Client({ maxAttempts: 1, ...cfg }) as S3Client)
           : createDefaultS3Client(cfg)
       ).then(
         (client) => {

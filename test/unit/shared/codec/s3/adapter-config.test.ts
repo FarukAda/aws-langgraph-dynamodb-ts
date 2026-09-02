@@ -3,7 +3,7 @@ import { offloaderConfigFor } from '../../../../../src/shared/codec/s3/adapter-c
 describe('offloaderConfigFor (CODEC-15)', () => {
   it('inherits the DynamoDB region when the S3 client config names none', () => {
     const config = offloaderConfigFor({ bucketName: 'b' }, 'store', { region: 'eu-central-1' });
-    expect(config.clientConfig?.region).toBe('eu-central-1');
+    expect(config.clientConfig).toEqual({ region: 'eu-central-1' });
   });
 
   it('keeps an explicit S3 region and the rest of the S3 client config', () => {

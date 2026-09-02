@@ -1,6 +1,7 @@
 import type { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 
 import { DEFAULT_S3_KEY_PREFIX } from '../../constants';
+import { s3ClientOptions } from './client-types';
 import { defaultAdapterKeyPrefix, type S3OffloadConfig } from './config';
 
 /** The adapters that share one bucket, each under its own default key prefix. */
@@ -19,7 +20,7 @@ export function offloaderConfigFor(
   adapter: AdapterName,
   clientConfig?: DynamoDBClientConfig,
 ): S3OffloadConfig {
-  const region = s3.clientConfig?.region ?? clientConfig?.region;
+  const region = s3ClientOptions(s3.clientConfig).region ?? clientConfig?.region;
   return {
     ...s3,
     keyPrefix: s3.keyPrefix ?? defaultAdapterKeyPrefix(DEFAULT_S3_KEY_PREFIX, adapter),

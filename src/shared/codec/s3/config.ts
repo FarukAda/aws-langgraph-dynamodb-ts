@@ -1,7 +1,6 @@
-import type { S3Client, S3ClientConfig } from '@aws-sdk/client-s3';
-
 import { MAX_S3_KEY_BYTES } from '../../constants';
 import { ValidationError } from '../../errors/errors';
+import type { S3ClientConfigLike, S3ClientLike } from './client-types';
 import { encodeKeyPart } from './key-scope';
 
 /** Configuration for offloading large payloads to S3. */
@@ -13,8 +12,17 @@ export interface S3OffloadConfig {
   sseKmsKeyId?: string;
   /** Largest object this adapter will buffer from S3 (default 50 MiB). */
   maxDownloadBytes?: number;
-  clientConfig?: S3ClientConfig;
-  createS3Client?: (config: S3ClientConfig) => S3Client;
+  /**
+   * S3 client configuration (an `S3ClientConfig`). `region` defaults to the
+   * adapter's DynamoDB region.
+   */
+  clientConfig?: S3ClientConfigLike;
+  /**
+   * @internal Test seam and dependency-injection hook for constructing the
+   * S3 client; not part of the supported surface and absent from the
+   * shipped declarations.
+   */
+  createS3Client?: (config: S3ClientConfigLike) => S3ClientLike;
 }
 
 /**

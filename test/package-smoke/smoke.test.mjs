@@ -7,10 +7,12 @@
  */
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
+
+import ts from 'typescript';
 
 const RUNTIME_DEPS = [
   '@aws-sdk/client-dynamodb',
@@ -19,6 +21,57 @@ const RUNTIME_DEPS = [
   '@langchain/langgraph',
   '@langchain/langgraph-checkpoint',
 ];
+
+/** Type-checking the consumer needs a compiler and Node types; still no @aws-sdk/client-s3. */
+const TYPECHECK_DEPS = ['typescript', '@types/node'];
+
+const OPTIONAL_PEER = '@aws-sdk/client-s3';
+
+/**
+ * A consumer that names the S3 offload types. With skipLibCheck off, tsc
+ * follows every declaration this reaches; a `.d.ts` importing the optional
+ * peer would fail here with TS2307 pointing into node_modules.
+ */
+const CONSUMER = `
+import type { DynamoDBStoreOptions, S3OffloadConfig } from '@farukada/aws-langgraph-dynamodb-ts';
+
+export const s3: S3OffloadConfig = { bucketName: 'b', clientConfig: { region: 'eu-west-1' } };
+export const options: DynamoDBStoreOptions = { tableName: 't', clientConfig: { region: 'eu-west-1' }, s3 };
+`;
+
+/** Every `.d.ts` reachable from `entry` through relative imports (extensionless or `.js`). */
+function reachableDeclarations(entry) {
+  const seen = new Set();
+  const visit = (file) => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    const info = ts.preProcessFile(readFileSync(file, 'utf8'), true, true);
+    for (const imported of info.importedFiles) {
+      if (!imported.fileName.startsWith('.')) continue;
+      const base = resolve(dirname(file), imported.fileName).replace(/\.js$/, '');
+      const target = [`${base}.d.ts`, join(base, 'index.d.ts')].find((candidate) => existsSync(candidate));
+      if (target) visit(target);
+    }
+  };
+  visit(entry);
+  return [...seen];
+}
+
+/** The tsc diagnostics that point at this package or at the optional peer. */
+function ourTypeErrors(dir) {
+  const command =
+    'npx tsc --noEmit --strict --skipLibCheck false --module nodenext --moduleResolution nodenext ' +
+    '--target es2022 --types node consumer.ts';
+  try {
+    execSync(command, { cwd: dir, stdio: 'pipe' });
+    return [];
+  } catch (error) {
+    const output = error.stdout ? error.stdout.toString() : '';
+    return output
+      .split(/\r?\n/)
+      .filter((line) => /aws-langgraph-dynamodb-ts[\\/]dist|client-s3|^consumer\.ts/.test(line));
+  }
+}
 
 const SMOKE = `
 import assert from 'node:assert/strict';
@@ -51,12 +104,27 @@ test('packs, installs the tarball, and imports the published surface', { timeout
   const dir = mkdtempSync(join(tmpdir(), 'lg-ddb-smoke-'));
   try {
     execSync('npm init -y', { cwd: dir, stdio: 'ignore' });
-    execSync(`npm install "${tarballPath}" ${RUNTIME_DEPS.join(' ')}`, { cwd: dir, stdio: 'ignore' });
+    execSync(
+      `npm install "${tarballPath}" ${RUNTIME_DEPS.join(' ')} ${TYPECHECK_DEPS.join(' ')}`,
+      { cwd: dir, stdio: 'ignore' },
+    );
     writeFileSync(join(dir, 'run.mjs'), SMOKE);
     const output = execSync('node run.mjs', { cwd: dir }).toString();
     assert.match(output, /SMOKE_OK/);
+    writeFileSync(join(dir, 'consumer.ts'), CONSUMER);
+    assert.deepEqual(ourTypeErrors(dir), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(tarballPath, { force: true });
   }
+});
+
+test('the shipped declarations reachable from index.d.ts never import the optional S3 peer', { timeout: 600000 }, () => {
+  execSync('npm run build', { cwd: process.cwd(), stdio: 'ignore' });
+  const offenders = reachableDeclarations(resolve('dist/index.d.ts')).filter((file) =>
+    ts
+      .preProcessFile(readFileSync(file, 'utf8'), true, true)
+      .importedFiles.some((imported) => imported.fileName === OPTIONAL_PEER),
+  );
+  assert.deepEqual(offenders, []);
 });

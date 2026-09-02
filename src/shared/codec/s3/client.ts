@@ -1,6 +1,7 @@
-import type { S3Client, S3ClientConfig } from '@aws-sdk/client-s3';
+import type { S3Client } from '@aws-sdk/client-s3';
 
 import { ValidationError } from '../../errors/errors';
+import type { S3ClientConfigLike } from './client-types';
 
 type S3Sdk = typeof import('@aws-sdk/client-s3');
 
@@ -49,7 +50,7 @@ export async function loadS3Sdk(): Promise<S3Sdk> {
  * matching {@link resolveDynamoDBClient}'s equivalent default; an explicit
  * `maxAttempts` in `config` still wins.
  */
-export async function createDefaultS3Client(config: S3ClientConfig): Promise<S3Client> {
+export async function createDefaultS3Client(config: S3ClientConfigLike): Promise<S3Client> {
   const { S3Client: S3ClientCtor } = await loadS3Sdk();
   return new S3ClientCtor({ maxAttempts: 1, ...config });
 }
