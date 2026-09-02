@@ -55,8 +55,6 @@ interface ListOptions {
 
 const SEARCHES: SearchOptions[] = [
   {},
-  { limit: 3 },
-  { offset: 2, limit: 3 },
   { filter: { kind: 'note' } },
   { filter: { n: { $gt: 4 } } },
   { filter: { n: { $gte: 5, $lt: 10 } } },
@@ -68,6 +66,13 @@ const SEARCHES: SearchOptions[] = [
 ];
 
 const PREFIXES = [['a'], ['a', 'b'], ['b'], []];
+
+/** Result order is not part of the contract (insertion order there, key order here), so a page is compared by size and membership. */
+const PAGED_SEARCHES: SearchOptions[] = [
+  { limit: 3 },
+  { offset: 2, limit: 3 },
+  { offset: 1, limit: 1 },
+];
 
 const LISTINGS: ListOptions[] = [
   {},
@@ -134,6 +139,22 @@ describe('DynamoDBStore matches InMemoryStore (TEST-06)', () => {
           memory.search(prefix, options),
         ]);
         expect(digest(ours)).toEqual(digest(theirs));
+      }
+    },
+  );
+
+  it.each(PAGED_SEARCHES.map((options) => [JSON.stringify(options), options] as const))(
+    'search %s pages to a window of the same size drawn from the same items',
+    async (_label, options) => {
+      for (const prefix of PREFIXES) {
+        const [ours, theirs, all] = await Promise.all([
+          dynamo.search(prefix, options),
+          memory.search(prefix, options),
+          memory.search(prefix, { limit: 100 }),
+        ]);
+        expect(ours).toHaveLength(theirs.length);
+        const keys = new Set(all.map((item) => item.key));
+        for (const item of ours) expect(keys.has(item.key)).toBe(true);
       }
     },
   );

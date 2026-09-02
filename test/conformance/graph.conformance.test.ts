@@ -153,7 +153,8 @@ describe('a compiled LangGraph graph over DynamoDBSaver (TEST-01, CKPT-13)', () 
     const done = await graph.invoke(new Command({ resume: 'Bob' }), fork);
     expect(done.answer).toBe('Hello, Bob');
     expect(done.steps).toEqual(['forked', 'ask', 'finish']);
-    const original = await graph.getState(config);
+    /** The fork is the thread's newest checkpoint now; the pre-fork run is still readable at its own checkpoint. */
+    const original = await graph.getState(history[0].config);
     expect(original.values.answer).toBe('Hello, Ada');
   });
 

@@ -46,17 +46,28 @@ const threadConfig = (threadId: string, checkpointId?: string) => ({
   configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: checkpointId },
 });
 
+/** Objects the fake holds that no row references. */
+async function orphanKeys(): Promise<string[]> {
+  const referenced = await referencedS3Keys(reader, tableName);
+  return s3.keys().filter((key) => !referenced.includes(key));
+}
+
+/** Orphans left by earlier tests, so each race is judged on what it added. */
+let orphansBefore: string[] = [];
+beforeEach(async () => {
+  orphansBefore = await orphanKeys();
+});
+
 /**
  * The two invariants every race must keep: no row references an object that
- * is gone (a live object was deleted), and at most `allowedOrphans` objects are
- * referenced by no row.
+ * is gone (a live object was deleted), and at most `allowedOrphans` new
+ * objects are referenced by no row.
  */
 async function expectConsistent(allowedOrphans: number): Promise<void> {
   const referenced = await referencedS3Keys(reader, tableName);
   const stored = s3.keys();
-  const dangling = referenced.filter((key) => !stored.includes(key));
-  expect(dangling).toEqual([]);
-  const orphans = stored.filter((key) => !referenced.includes(key));
+  expect(referenced.filter((key) => !stored.includes(key))).toEqual([]);
+  const orphans = (await orphanKeys()).filter((key) => !orphansBefore.includes(key));
   expect(orphans.length).toBeLessThanOrEqual(allowedOrphans);
 }
 
@@ -69,8 +80,8 @@ describe('write races against DynamoDB Local with S3 in the loop (TEST-02)', () 
     ]);
     const tuple = await saver.getTuple(threadConfig('put-put', 'cp-1'));
     expect(String(tuple?.checkpoint.channel_values.blob)).toMatch(/^[AB]-x/);
-    /** The checkpoint transaction is unconditional, so the loser's payload can stay behind until the lifecycle rule. */
-    await expectConsistent(1);
+    /** The checkpoint transaction is unconditional, so the loser's metadata and payload objects stay behind until the lifecycle rule. */
+    await expectConsistent(2);
   });
 
   it('putWrites racing put leaves the checkpoint and every pending write readable', async () => {

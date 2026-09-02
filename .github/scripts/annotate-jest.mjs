@@ -44,7 +44,14 @@ const encode = (text) =>
   text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A').replace(/:/g, '%3A').replace(/,/g, '%2C');
 const strip = (text) => text.replace(/\[[0-9;]*m/g, '');
 
-for (const failure of failures.slice(0, MAX_ANNOTATIONS)) {
+/** GitHub keeps ten error annotations per step, so the first one names every failure. */
+if (failures.length > 0) {
+  const roll = failures.map((failure) => `${failure.path} › ${failure.name}`).join('\n');
+  console.log(
+    `::error title=${encode(`${label}: ${failures.length} failing test(s)`)}::${encode(roll.slice(0, 6000))}`,
+  );
+}
+for (const failure of failures.slice(0, MAX_ANNOTATIONS - 1)) {
   const message = strip(failure.message).slice(0, MAX_MESSAGE_CHARS);
   console.log(
     `::error file=${failure.path},line=1,title=${encode(`${label}: ${failure.name}`)}::${encode(message)}`,
