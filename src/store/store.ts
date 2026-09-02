@@ -93,6 +93,16 @@ export class DynamoDBStore extends BaseStore {
     );
   }
 
+  /**
+   * LangGraph's lifecycle hook. A host that manages stores through the
+   * upstream `BaseStore` interface calls `stop()`, so it releases the owned
+   * client exactly like {@link destroy}, which stays the explicit API. Both
+   * are idempotent.
+   */
+  override stop(): void {
+    this.destroy();
+  }
+
   /** Release owned resources (the underlying client and any S3 client). */
   destroy(): void {
     this.context.offloader?.destroy();

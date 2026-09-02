@@ -166,3 +166,21 @@ describe('cancellation via { signal } (CORE-04)', () => {
     expect(mock.calls()).toHaveLength(0);
   });
 });
+
+describe('BaseStore lifecycle (CORE-22)', () => {
+  it('stop() releases an owned client exactly once and leaves an injected one alone', async () => {
+    const destroy = jest.fn();
+    const fake = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
+    const owned = new DynamoDBStore({
+      tableName: 'store',
+      clientConfig: { region: 'us-east-1' },
+      createClient: () => fake as never,
+    });
+    await owned.stop();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    const injected = createStrictDocumentMock();
+    const spy = jest.spyOn(injected.client, 'destroy');
+    await new DynamoDBStore({ tableName: 'store', client: injected.client }).stop();
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
