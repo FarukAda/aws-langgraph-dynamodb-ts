@@ -33,6 +33,8 @@ export type { Logger, LogArgument } from './shared/logging/logger';
 export { redactLogger, redactSecrets } from './shared/logging/redaction';
 
 export type { CancelOptions, BaseAdapterOptions, CodecOptions } from './shared/options';
+export type { RetryAttemptInfo, RetryOptions } from './shared/dynamodb/retry';
+export type { RetryPolicy } from './shared/dynamodb/retry-policy';
 export type { TtlOption } from './shared/validation/ttl';
 export type { CompressionConfig } from './shared/codec/compression';
 export type { S3OffloadConfig } from './shared/codec/s3/config';
