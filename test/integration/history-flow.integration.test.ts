@@ -211,3 +211,24 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     expect(raw.Item).toBeUndefined();
   });
 });
+
+describe('hot-row append contention (TEST-03)', () => {
+  it('keeps every message and an exact count under 30 concurrent appends to one session', async () => {
+    /**
+     * The 18-attempt append budget exists because real DynamoDB raised
+     * TransactionConflict under exactly this load; DynamoDB Local may serialise
+     * instead, so the invariants — nothing lost, nothing duplicated, an exact
+     * count — are what this asserts, whatever the engine did underneath.
+     */
+    await Promise.all(
+      Array.from({ length: 30 }, (_unused, index) =>
+        history.addMessages('hot', [new HumanMessage(`m${index}`)]),
+      ),
+    );
+    const messages = await history.getMessages('hot');
+    expect(messages).toHaveLength(30);
+    expect(new Set(messages.map((message) => String(message.content))).size).toBe(30);
+    const session = (await history.listSessions()).find((entry) => entry.sessionId === 'hot');
+    expect(session?.messageCount).toBe(30);
+  });
+});
