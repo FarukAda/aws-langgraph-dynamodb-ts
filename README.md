@@ -144,7 +144,8 @@ const history = new DynamoDBChatMessageHistory({
 
 await history.addMessages('session-1', [new HumanMessage('Hello!')]);
 const messages = await history.getMessages('session-1');
-const sessions = await history.listSessions(); // [{ sessionId, title, messageCount, ... }]
+const recent = await history.getMessages('session-1', { limit: 20 }); // newest 20, chronological
+const sessions = await history.listSessions(); // [{ sessionId, title, messageCount, expiresAt?, ... }]
 await history.clear('session-1');
 ```
 
@@ -160,6 +161,8 @@ const withHistory = new RunnableWithMessageHistory({
   historyMessagesKey: 'history',
 });
 ```
+
+By default a read returns the whole session. `getMessages(sessionId, { limit, before })` returns a window instead — the newest `limit` messages, or only those appended before `before` — and `history.forSession(sessionId, { limit: 50 })` bounds what the adapter feeds the chain to the newest fifty, so a long-lived session does not grow the prompt without limit.
 
 ### Factory
 

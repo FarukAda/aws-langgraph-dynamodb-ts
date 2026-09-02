@@ -1,6 +1,7 @@
 import type { StoredMessage } from '@langchain/core/messages';
 
 import {
+  validateMessageWindow,
   validateSessionId,
   validateStorableMessages,
 } from '../../../../src/history/internal/validation';
@@ -71,5 +72,24 @@ describe('validateStorableMessages (HIST-04)', () => {
 
   it('accepts an empty list', () => {
     expect(() => validateStorableMessages([])).not.toThrow();
+  });
+});
+
+describe('validateMessageWindow (HIST-06)', () => {
+  it('accepts an empty window, a positive integer limit and a valid Date', () => {
+    expect(() => validateMessageWindow({})).not.toThrow();
+    expect(() => validateMessageWindow({ limit: 1, before: new Date(0) })).not.toThrow();
+  });
+
+  it('rejects a non-positive, fractional or non-numeric limit', () => {
+    expectValidationError(() => validateMessageWindow({ limit: 0 }));
+    expectValidationError(() => validateMessageWindow({ limit: 2.5 }));
+    expectValidationError(() => validateMessageWindow({ limit: '3' as never }));
+  });
+
+  it('rejects an invalid Date and a non-Date before', () => {
+    expectValidationError(() => validateMessageWindow({ before: new Date('x') }));
+    expectValidationError(() => validateMessageWindow({ before: 5 as never }));
+    expectValidationError(() => validateMessageWindow({ before: '2024-01-01' as never }));
   });
 });

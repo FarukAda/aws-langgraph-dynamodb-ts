@@ -40,6 +40,7 @@ export async function listSessions(
       messageCount: item.messageCount,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
+      expiresAt: item.ttl === undefined ? undefined : new Date(item.ttl * 1000).toISOString(),
     });
   }
   /**

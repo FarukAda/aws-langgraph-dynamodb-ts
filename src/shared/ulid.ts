@@ -38,6 +38,15 @@ function encodeTime(timeMs: number): string {
   return out;
 }
 
+/**
+ * The 10 time characters every ULID generated at `timeMs` starts with. Used
+ * as a sort-key bound: every id from that millisecond onwards sorts at or
+ * after it, every earlier id before it.
+ */
+export function ulidTimePrefix(timeMs: number): string {
+  return encodeTime(timeMs);
+}
+
 function randomDigits(rng: () => number): number[] {
   const digits: number[] = [];
   for (let i = 0; i < RANDOM_CHARS; i++) {

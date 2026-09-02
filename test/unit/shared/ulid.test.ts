@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import { createUlidFactory, secureRng } from '../../../src/shared/ulid';
+import { createUlidFactory, secureRng, ulidTimePrefix } from '../../../src/shared/ulid';
 
 jest.mock('node:crypto', () => {
   const actual = jest.requireActual<typeof import('node:crypto')>('node:crypto');
@@ -110,5 +110,16 @@ describe('secureRng (DDB-12)', () => {
     const id = createUlidFactory()();
     expect(id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
     expect(randomBytesMock).toHaveBeenCalled();
+  });
+});
+
+describe('ulidTimePrefix (HIST-06)', () => {
+  it('is the 10 time characters every ULID of that millisecond starts with, ordered by time', () => {
+    const t = 1_700_000_000_000;
+    const prefix = ulidTimePrefix(t);
+    expect(prefix).toHaveLength(10);
+    expect(createUlidFactory(() => t)().startsWith(prefix)).toBe(true);
+    expect(ulidTimePrefix(t - 1) < prefix).toBe(true);
+    expect(prefix < ulidTimePrefix(t + 1)).toBe(true);
   });
 });

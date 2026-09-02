@@ -9,6 +9,7 @@ export { DynamoDBSessionChatMessageHistory } from './history/session-adapter';
 export type {
   CorruptMessagePolicy,
   DynamoDBChatMessageHistoryOptions,
+  MessageWindow,
   SessionMetadata,
 } from './history/types';
 export { DynamoDBFactory } from './factory/factory';

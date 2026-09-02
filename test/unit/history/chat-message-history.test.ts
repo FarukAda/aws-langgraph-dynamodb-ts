@@ -167,3 +167,20 @@ describe('cancellation via { signal } (CORE-04)', () => {
     expect(mock.calls()).toHaveLength(0);
   });
 });
+
+describe('bounded reads (HIST-06)', () => {
+  it('getMessages passes the window through and forSession binds a limit to the adapter', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    const h = history(client);
+    await h.getMessages('s1', { limit: 3 });
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
+      Limit: 3,
+      ScanIndexForward: false,
+    });
+    await h.forSession('s1', { limit: 1 }).getMessages();
+    expect(mock.commandCalls(QueryCommand)[1].args[0].input.Limit).toBe(1);
+    await h.forSession('s1').getMessages();
+    expect(mock.commandCalls(QueryCommand)[2].args[0].input.Limit).toBeUndefined();
+  });
+});

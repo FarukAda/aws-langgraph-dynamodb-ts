@@ -9,8 +9,8 @@ import { getMessages as getMessagesAction } from './actions/get-messages';
 import { listSessions as listSessionsAction } from './actions/list-sessions';
 import { reconcileMessageCount as reconcileMessageCountAction } from './actions/reconcile-count';
 import { type HistoryContext, setUpHistory } from './internal/setup';
-import { DynamoDBSessionChatMessageHistory } from './session-adapter';
-import type { DynamoDBChatMessageHistoryOptions, SessionMetadata } from './types';
+import { type AdapterWindow, DynamoDBSessionChatMessageHistory } from './session-adapter';
+import type { DynamoDBChatMessageHistoryOptions, MessageWindow, SessionMetadata } from './types';
 
 /**
  * DynamoDB-backed multi-session chat history. Each message is its own item
@@ -32,10 +32,15 @@ export class DynamoDBChatMessageHistory {
     this.ddbClient = setup.ddbClient;
   }
 
-  /** Get a session's messages in order. */
-  getMessages(sessionId: string, options?: CancelOptions): Promise<BaseMessage[]> {
+  /**
+   * Get a session's messages in chronological order: the whole session by
+   * default, or a window of it — `{ limit }` returns only the newest `limit`
+   * messages, `{ before }` only those appended before that instant — so a
+   * long-lived session can be read a page at a time instead of whole.
+   */
+  getMessages(sessionId: string, options?: MessageWindow & CancelOptions): Promise<BaseMessage[]> {
     return guardPublic('history.getMessages', () =>
-      getMessagesAction(this.context, sessionId, options?.signal),
+      getMessagesAction(this.context, sessionId, options),
     );
   }
 
@@ -75,9 +80,12 @@ export class DynamoDBChatMessageHistory {
     );
   }
 
-  /** Get a single-session LangChain adapter for `sessionId`. */
-  forSession(sessionId: string): DynamoDBSessionChatMessageHistory {
-    return new DynamoDBSessionChatMessageHistory(this, sessionId);
+  /**
+   * Get a single-session LangChain adapter for `sessionId`. `{ limit }` bounds
+   * what the adapter feeds the chain to the newest `limit` messages.
+   */
+  forSession(sessionId: string, window?: AdapterWindow): DynamoDBSessionChatMessageHistory {
+    return new DynamoDBSessionChatMessageHistory(this, sessionId, window);
   }
 
   /** Release owned resources (the underlying client and any S3 client). */

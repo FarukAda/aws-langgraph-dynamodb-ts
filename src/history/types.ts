@@ -23,6 +23,18 @@ export type DynamoDBChatMessageHistoryOptions = BaseAdapterOptions &
 /** How `getMessages` handles an item it cannot decode. */
 export type CorruptMessagePolicy = 'skip' | 'throw';
 
+/**
+ * Which slice of a session `getMessages` returns. Both bounds are optional
+ * and combine: `{ limit: 50, before }` is the fifty messages just before
+ * `before`.
+ */
+export interface MessageWindow {
+  /** Return only the newest `limit` messages — still in chronological order. */
+  limit?: number;
+  /** Return only messages appended before this instant (millisecond precision). */
+  before?: Date;
+}
+
 /** Summary of a stored chat session. */
 export interface SessionMetadata {
   sessionId: string;
@@ -30,6 +42,8 @@ export interface SessionMetadata {
   messageCount: number;
   createdAt: string;
   updatedAt: string;
+  /** When the session's TTL expires, as an ISO-8601 instant; absent when no TTL is stored. */
+  expiresAt?: string;
 }
 
 /** A single stored chat message item (one per message, ordered by its ULID). */

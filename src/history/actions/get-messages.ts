@@ -4,19 +4,16 @@ import {
   mapStoredMessagesToChatMessages,
 } from '@langchain/core/messages';
 
-import { nowSeconds } from '../../shared/clock';
 import { type CodecDeps, readPayloadBytes } from '../../shared/codec/codec';
 import { isPermanentPayloadLoss } from '../../shared/codec/payload-loss';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { isExpiredRow } from '../../shared/dynamodb/expiry';
-import { paginateQuery } from '../../shared/dynamodb/paginate';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { toError } from '../../shared/errors/wrap-error';
-import { messageQuery } from '../internal/query';
+import type { CancelOptions } from '../../shared/options';
+import { readWindow } from '../internal/message-window';
 import type { HistoryContext } from '../internal/setup';
-import { validateSessionId } from '../internal/validation';
-import type { ChatMessageItem } from '../types';
+import { validateMessageWindow, validateSessionId } from '../internal/validation';
+import type { ChatMessageItem, MessageWindow } from '../types';
 
 /** One item's decode outcome: a rebuilt message, or a proof that it never can be. */
 type Decoded = { kind: 'ok'; message: BaseMessage } | { kind: 'corrupt'; error: Error };
@@ -58,9 +55,12 @@ async function decodeMessage(
 }
 
 /**
- * Return a session's messages in chronological order. Items past their TTL are
- * filtered out on read (DynamoDB's background TTL sweep can lag by up to 48h),
- * so the returned history is never stale. A corrupt item — see
+ * Return a session's messages in chronological order — the whole session, or
+ * the window `options` selects: `limit` keeps only the newest `limit`
+ * messages, `before` only those appended before that instant (see
+ * {@link readWindow}). Items past their TTL are filtered out on read
+ * (DynamoDB's background TTL sweep can lag by up to 48h), so the returned
+ * history is never stale. A corrupt item — see
  * {@link decodeMessage} for exactly what counts — is handled per
  * `onCorruptMessage`: `'throw'` fails the read with the underlying error;
  * `'skip'` (the default) reports it at `error` with its sort key and returns
@@ -69,22 +69,11 @@ async function decodeMessage(
 export async function getMessages(
   context: HistoryContext,
   sessionId: string,
-  signal?: AbortSignal,
+  options: MessageWindow & CancelOptions = {},
 ): Promise<BaseMessage[]> {
   validateSessionId(sessionId);
-  const now = nowSeconds();
-  const items: ChatMessageItem[] = [];
-  for await (const raw of paginateQuery({
-    retry: retryFor(context, signal),
-    signal,
-    client: context.client,
-    params: messageQuery(context.tableName, sessionId, { consistent: true }),
-    maxItems: Number.POSITIVE_INFINITY,
-    maxIterations: Number.POSITIVE_INFINITY,
-  })) {
-    const item = raw as ChatMessageItem;
-    if (!isExpiredRow(item, now)) items.push(item);
-  }
+  validateMessageWindow(options);
+  const items: ChatMessageItem[] = await readWindow(context, sessionId, options);
   /** Offloaded rows cost one S3 GET each, so they decode several at a time; the policy is applied in order. */
   const decoded = await mapWithConcurrency(items, DEFAULT_READ_CONCURRENCY, (item) =>
     decodeMessage(context, item, sessionId),
