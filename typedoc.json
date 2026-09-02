@@ -5,6 +5,7 @@
   "out": "docs/api",
   "name": "AWS LangGraph DynamoDB TypeScript",
   "includeVersion": false,
+  "gitRevision": "main",
   "readme": "none",
   "exclude": [
     "**/*+(.spec|.test).ts",

@@ -6,7 +6,7 @@
 
 # Class: CompensationFailedError
 
-Defined in: [shared/errors/errors.ts:125](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/errors.ts#L125)
+Defined in: [shared/errors/errors.ts:125](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L125)
 
 A compensating rollback failed after an append-saga chunk error, so the
 trigger error could not be cleanly undone. Carries the original trigger as
@@ -23,7 +23,7 @@ trigger error could not be cleanly undone. Carries the original trigger as
 
 > **new CompensationFailedError**(`cause`, `rollbackError`): `CompensationFailedError`
 
-Defined in: [shared/errors/errors.ts:128](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/errors.ts#L128)
+Defined in: [shared/errors/errors.ts:128](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L128)
 
 #### Parameters
 
@@ -49,7 +49,7 @@ Defined in: [shared/errors/errors.ts:128](https://github.com/FarukAda/aws-langgr
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L29)
+Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
 
 #### Inherited from
 
@@ -61,7 +61,7 @@ Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L30)
+Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
 
 #### Inherited from
 
@@ -73,4 +73,4 @@ Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-lan
 
 > `readonly` **rollbackError**: `Error`
 
-Defined in: [shared/errors/errors.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/errors.ts#L126)
+Defined in: [shared/errors/errors.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L126)

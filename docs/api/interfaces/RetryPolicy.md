@@ -6,7 +6,7 @@
 
 # Interface: RetryPolicy
 
-Defined in: [shared/dynamodb/retry-policy.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/dynamodb/retry-policy.ts#L15)
+Defined in: [shared/dynamodb/retry-policy.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry-policy.ts#L15)
 
 Caller-facing retry tunables for every DynamoDB call an adapter makes. The
 schedule is full-jitter exponential backoff: `baseDelayMs` doubling per
@@ -19,7 +19,7 @@ message-append path never goes below its own contention floor.
 
 > `optional` **baseDelayMs?**: `number`
 
-Defined in: [shared/dynamodb/retry-policy.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/dynamodb/retry-policy.ts#L19)
+Defined in: [shared/dynamodb/retry-policy.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry-policy.ts#L19)
 
 First backoff delay in milliseconds (default 100).
 
@@ -29,7 +29,7 @@ First backoff delay in milliseconds (default 100).
 
 > `optional` **maxAttempts?**: `number`
 
-Defined in: [shared/dynamodb/retry-policy.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/dynamodb/retry-policy.ts#L17)
+Defined in: [shared/dynamodb/retry-policy.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry-policy.ts#L17)
 
 Attempts per call before `RetryExhaustedError` (default 5).
 
@@ -39,6 +39,6 @@ Attempts per call before `RetryExhaustedError` (default 5).
 
 > `optional` **maxDelayMs?**: `number`
 
-Defined in: [shared/dynamodb/retry-policy.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/dynamodb/retry-policy.ts#L21)
+Defined in: [shared/dynamodb/retry-policy.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry-policy.ts#L21)
 
 Cap on a single backoff delay in milliseconds (default 5000).

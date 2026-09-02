@@ -6,7 +6,7 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory/factory.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L39)
+Defined in: [factory/factory.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L39)
 
 Convenience constructors for the adapters. Individual `create*` methods each
 build their own client; [createAll](#createall) builds one shared client used by all
@@ -18,7 +18,7 @@ three and returns a combined `destroy` that tears everything down once.
 
 > **new DynamoDBFactory**(`base?`): `DynamoDBFactory`
 
-Defined in: [factory/factory.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L40)
+Defined in: [factory/factory.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L40)
 
 #### Parameters
 
@@ -36,7 +36,7 @@ Defined in: [factory/factory.ts:40](https://github.com/FarukAda/aws-langgraph-dy
 
 > **createAll**\<`O`\>(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
-Defined in: [factory/factory.ts:81](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L81)
+Defined in: [factory/factory.ts:81](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L81)
 
 Build the adapters whose sections are given, all on one shared client and
 with the factory's shared defaults underneath each section. If any
@@ -66,7 +66,7 @@ before the error propagates, so a failed call leaks nothing.
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L70)
+Defined in: [factory/factory.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L70)
 
 A chat history on its own client, with the factory's shared defaults underneath `options`.
 
@@ -86,7 +86,7 @@ A chat history on its own client, with the factory's shared defaults underneath 
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:60](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L60)
+Defined in: [factory/factory.ts:60](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L60)
 
 A saver on its own client, with the factory's shared defaults underneath `options`.
 
@@ -106,7 +106,7 @@ A saver on its own client, with the factory's shared defaults underneath `option
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/factory/factory.ts#L65)
+Defined in: [factory/factory.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L65)
 
 A store on its own client, with the factory's shared defaults underneath `options`.
 

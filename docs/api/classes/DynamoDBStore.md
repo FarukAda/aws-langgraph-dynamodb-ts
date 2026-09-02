@@ -6,7 +6,7 @@
 
 # Class: DynamoDBStore
 
-Defined in: [store/store.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/store/store.ts#L32)
+Defined in: [store/store.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L32)
 
 DynamoDB-backed LangGraph store for long-term memory with optional semantic
 search. A thin orchestrator: the base class's get/put/search/delete/
@@ -22,7 +22,7 @@ listNamespaces all funnel into [batch](#batch), which dispatches each operation.
 
 > **new DynamoDBStore**(`options`): `DynamoDBStore`
 
-Defined in: [store/store.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/store/store.ts#L37)
+Defined in: [store/store.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L37)
 
 #### Parameters
 
@@ -44,7 +44,7 @@ Defined in: [store/store.ts:37](https://github.com/FarukAda/aws-langgraph-dynamo
 
 > **batch**\<`Op`\>(`operations`): `Promise`\<`OperationResults`\<`Op`\>\>
 
-Defined in: [store/store.ts:63](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/store/store.ts#L63)
+Defined in: [store/store.ts:63](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L63)
 
 Execute a batch of operations and return their results in operation
 order. Writes to one item stay ordered; writes to different items, and
@@ -85,7 +85,7 @@ ValidationError for a malformed namespace, key or value; UpstreamError; RetryExh
 
 > **destroy**(): `void`
 
-Defined in: [store/store.ts:112](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/store/store.ts#L112)
+Defined in: [store/store.ts:112](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L112)
 
 Release owned resources (the underlying client and any S3 client).
 
@@ -99,7 +99,7 @@ Release owned resources (the underlying client and any S3 client).
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/store/store.ts#L126)
+Defined in: [store/store.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L126)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever. No-ops when
@@ -119,7 +119,7 @@ deployment/provisioning, not per-request.
 
 > **reconcileVectorIndex**(`namespacePrefix`, `options?`): `Promise`\<[`VectorReconcileResult`](../interfaces/VectorReconcileResult.md)\>
 
-Defined in: [store/store.ts:92](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/store/store.ts#L92)
+Defined in: [store/store.ts:92](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L92)
 
 Repair the configured vector backend against the canonical items under
 `namespacePrefix`. A maintenance tool; see [reconcileVectorIndex](#reconcilevectorindex).
@@ -148,7 +148,7 @@ ValidationError without an `index` and `vectorBackend` or for an empty prefix; R
 
 > **search**(`namespacePrefix`, `options?`): `Promise`\<`SearchItem`[]\>
 
-Defined in: [store/store.ts:77](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/store/store.ts#L77)
+Defined in: [store/store.ts:77](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L77)
 
 Search with optional cancellation. Overrides the base implementation, which
 routes through [batch](#batch) and therefore cannot carry a signal. A plain
@@ -183,7 +183,7 @@ ValidationError when the candidate set exceeds `maxSearchCandidates`; AbortError
 
 > **stop**(): `void`
 
-Defined in: [store/store.ts:107](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/store/store.ts#L107)
+Defined in: [store/store.ts:107](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L107)
 
 LangGraph's lifecycle hook. A host that manages stores through the
 upstream `BaseStore` interface calls `stop()`, so it releases the owned

@@ -6,7 +6,7 @@
 
 # Interface: ListSessionsOptions
 
-Defined in: [history/types.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/types.ts#L42)
+Defined in: [history/types.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L42)
 
 Options for `listSessions`: the scan caps plus cancellation.
 
@@ -20,7 +20,7 @@ Options for `listSessions`: the scan caps plus cancellation.
 
 > `optional` **maxItems?**: `number`
 
-Defined in: [history/types.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/types.ts#L46)
+Defined in: [history/types.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L46)
 
 Cap on rows read into memory before `ResultTruncatedError` (default 10 000).
 
@@ -30,7 +30,7 @@ Cap on rows read into memory before `ResultTruncatedError` (default 10 000).
 
 > `optional` **maxIterations?**: `number`
 
-Defined in: [history/types.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/types.ts#L44)
+Defined in: [history/types.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L44)
 
 Cap on scan pages before `ResultTruncatedError` (default 1000).
 
@@ -40,7 +40,7 @@ Cap on scan pages before `ResultTruncatedError` (default 1000).
 
 > `optional` **signal?**: `AbortSignal`
 
-Defined in: [shared/options.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/options.ts#L46)
+Defined in: [shared/options.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L46)
 
 Aborting it rejects the call with `AbortError` (`ABORTED`) at the next wait.
 

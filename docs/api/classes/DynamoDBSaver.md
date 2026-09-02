@@ -6,7 +6,7 @@
 
 # Class: DynamoDBSaver
 
-Defined in: [checkpointer/saver.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/checkpointer/saver.ts#L29)
+Defined in: [checkpointer/saver.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L29)
 
 DynamoDB-backed LangGraph checkpoint saver. A thin orchestrator: it resolves
 its collaborators once and delegates every operation to a focused action.
@@ -23,7 +23,7 @@ escaping an action surfaces as an `UpstreamError`.
 
 > **new DynamoDBSaver**(`options`): `DynamoDBSaver`
 
-Defined in: [checkpointer/saver.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/checkpointer/saver.ts#L34)
+Defined in: [checkpointer/saver.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L34)
 
 #### Parameters
 
@@ -45,7 +45,7 @@ Defined in: [checkpointer/saver.ts:34](https://github.com/FarukAda/aws-langgraph
 
 > **deleteThread**(`threadId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:104](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/checkpointer/saver.ts#L104)
+Defined in: [checkpointer/saver.ts:104](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L104)
 
 Delete every checkpoint, payload and pending write of a thread and their
 offloaded objects. Single pass: call it when the thread is quiescent.
@@ -78,7 +78,7 @@ BatchWriteAllIncompleteError when a delete batch does not fully drain; UpstreamE
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/saver.ts:111](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/checkpointer/saver.ts#L111)
+Defined in: [checkpointer/saver.ts:111](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L111)
 
 Release owned resources (the underlying client and any S3 client).
 
@@ -92,7 +92,7 @@ Release owned resources (the underlying client and any S3 client).
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:125](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/checkpointer/saver.ts#L125)
+Defined in: [checkpointer/saver.ts:125](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L125)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever. No-ops when
@@ -112,7 +112,7 @@ deployment/provisioning, not per-request.
 
 > **getTuple**(`config`): `Promise`\<`CheckpointTuple` \| `undefined`\>
 
-Defined in: [checkpointer/saver.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/checkpointer/saver.ts#L50)
+Defined in: [checkpointer/saver.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L50)
 
 Read one checkpoint with its metadata and pending writes: the one
 `checkpoint_id` names, else the newest in the namespace. Strongly
@@ -144,7 +144,7 @@ ValidationError for a malformed identifier; UpstreamError, RetryExhaustedError, 
 
 > **list**(`config`, `options?`): `AsyncGenerator`\<`CheckpointTuple`\>
 
-Defined in: [checkpointer/saver.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/checkpointer/saver.ts#L62)
+Defined in: [checkpointer/saver.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L62)
 
 Stream checkpoints newest first: one namespace, every namespace of a
 thread when `checkpoint_ns` is omitted, or every thread in the table when
@@ -183,7 +183,7 @@ ValidationError, UpstreamError, RetryExhaustedError, AbortError.
 
 > **put**(`config`, `checkpoint`, `metadata`, `newVersions?`): `Promise`\<`RunnableConfig`\<`Record`\<`string`, `any`\>\>\>
 
-Defined in: [checkpointer/saver.ts:74](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/checkpointer/saver.ts#L74)
+Defined in: [checkpointer/saver.ts:74](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L74)
 
 Store a checkpoint and its metadata in one transaction and return the
 config that addresses it. `config.checkpoint_id` becomes the parent;
@@ -227,7 +227,7 @@ ValidationError; UpstreamError; RetryExhaustedError; AbortError; S3_OFFLOAD_FAIL
 
 > **putWrites**(`config`, `writes`, `taskId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:93](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/checkpointer/saver.ts#L93)
+Defined in: [checkpointer/saver.ts:93](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L93)
 
 Store a task's pending writes for the checkpoint `config` names, one row
 per write, written in parallel. Regular writes are first-write-wins;

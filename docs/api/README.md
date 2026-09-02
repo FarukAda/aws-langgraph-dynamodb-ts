@@ -44,6 +44,8 @@
 - [RetryOptions](interfaces/RetryOptions.md)
 - [RetryPolicy](interfaces/RetryPolicy.md)
 - [S3ClientLike](interfaces/S3ClientLike.md)
+- [S3ClientOptions](interfaces/S3ClientOptions.md)
+- [S3CommandLike](interfaces/S3CommandLike.md)
 - [S3OffloadConfig](interfaces/S3OffloadConfig.md)
 - [SessionBackend](interfaces/SessionBackend.md)
 - [SessionMetadata](interfaces/SessionMetadata.md)
@@ -64,6 +66,8 @@
 - [LogArgument](type-aliases/LogArgument.md)
 - [Redactable](type-aliases/Redactable.md)
 - [S3ClientConfigLike](type-aliases/S3ClientConfigLike.md)
+- [S3ClientOption](type-aliases/S3ClientOption.md)
+- [S3RegionLike](type-aliases/S3RegionLike.md)
 - [TtlOption](type-aliases/TtlOption.md)
 - [VectorScoreDirection](type-aliases/VectorScoreDirection.md)
 

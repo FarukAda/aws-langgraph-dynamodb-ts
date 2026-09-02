@@ -6,7 +6,7 @@
 
 # Interface: MessageWindow
 
-Defined in: [history/types.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/types.ts#L31)
+Defined in: [history/types.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L31)
 
 Which slice of a session `getMessages` returns. Both bounds are optional
 and combine: `{ limit: 50, before }` is the fifty messages just before
@@ -18,7 +18,7 @@ and combine: `{ limit: 50, before }` is the fifty messages just before
 
 > `optional` **before?**: `Date`
 
-Defined in: [history/types.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/types.ts#L35)
+Defined in: [history/types.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L35)
 
 Return only messages appended before this instant (millisecond precision).
 
@@ -28,6 +28,6 @@ Return only messages appended before this instant (millisecond precision).
 
 > `optional` **limit?**: `number`
 
-Defined in: [history/types.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/history/types.ts#L33)
+Defined in: [history/types.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L33)
 
 Return only the newest `limit` messages — still in chronological order.

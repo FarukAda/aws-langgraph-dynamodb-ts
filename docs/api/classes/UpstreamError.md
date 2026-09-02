@@ -6,7 +6,7 @@
 
 # Class: UpstreamError
 
-Defined in: [shared/errors/upstream-error.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/upstream-error.ts#L18)
+Defined in: [shared/errors/upstream-error.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/upstream-error.ts#L18)
 
 A failure that originated below this library — the AWS SDK, the transport,
 a third-party `VectorBackend` or `Embeddings` — and surfaced through one of
@@ -25,7 +25,7 @@ request id and HTTP status when present, and the original as `cause`.
 
 > **new UpstreamError**(`cause`, `operation`): `UpstreamError`
 
-Defined in: [shared/errors/upstream-error.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/upstream-error.ts#L24)
+Defined in: [shared/errors/upstream-error.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/upstream-error.ts#L24)
 
 #### Parameters
 
@@ -51,7 +51,7 @@ Defined in: [shared/errors/upstream-error.ts:24](https://github.com/FarukAda/aws
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L29)
+Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
 
 #### Inherited from
 
@@ -63,7 +63,7 @@ Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/base-error.ts#L30)
+Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
 
 #### Inherited from
 
@@ -75,7 +75,7 @@ Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-lan
 
 > `readonly` `optional` **httpStatusCode?**: `number`
 
-Defined in: [shared/errors/upstream-error.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/upstream-error.ts#L22)
+Defined in: [shared/errors/upstream-error.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/upstream-error.ts#L22)
 
 ***
 
@@ -83,7 +83,7 @@ Defined in: [shared/errors/upstream-error.ts:22](https://github.com/FarukAda/aws
 
 > `readonly` `optional` **requestId?**: `string`
 
-Defined in: [shared/errors/upstream-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/upstream-error.ts#L21)
+Defined in: [shared/errors/upstream-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/upstream-error.ts#L21)
 
 Declared, not emitted: absent metadata leaves no `undefined`-valued own property behind.
 
@@ -93,4 +93,4 @@ Declared, not emitted: absent metadata leaves no `undefined`-valued own property
 
 > `readonly` **upstreamName**: `string`
 
-Defined in: [shared/errors/upstream-error.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/3b5f72171f6f425e9907910e2c0cff527aeb82cf/src/shared/errors/upstream-error.ts#L19)
+Defined in: [shared/errors/upstream-error.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/upstream-error.ts#L19)
