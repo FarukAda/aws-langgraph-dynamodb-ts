@@ -6,7 +6,7 @@ import type { CompressionConfig } from '../../shared/codec/compression';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
 import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
-import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
+import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
 import { ValidationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
@@ -48,7 +48,9 @@ export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): Histor
       'onCorruptMessage',
     );
   }
+  const logger = resolveLogger(options.logger);
   const resolved = resolveDynamoDBClient(options);
+  if (!resolved.ownsClient) void warnOnStackedRetries(resolved.client, logger);
   return {
     context: {
       client: resolved.client,
@@ -59,7 +61,7 @@ export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): Histor
         ? new S3Offloader(offloaderConfigFor(options.s3, 'history', options.clientConfig))
         : undefined,
       ttl: options.ttl,
-      logger: resolveLogger(options.logger),
+      logger,
       ulid: createUlidFactory(),
       onCorruptMessage: options.onCorruptMessage ?? 'skip',
     },

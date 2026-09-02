@@ -117,3 +117,41 @@ describe('S3 region inheritance (CODEC-15)', () => {
     setup.context.offloader?.destroy();
   });
 });
+
+describe('SDK retry stacking warning (DDB-01)', () => {
+  it('warns at construction when an injected client keeps the SDK retries', async () => {
+    const warn = jest.fn();
+    const client = { send: jest.fn(), config: { maxAttempts: async () => 3 } } as never;
+    setUpCheckpointer(
+      {
+        tableName: 'ckpt',
+        client,
+        logger: { debug: jest.fn(), info: jest.fn(), warn, error: jest.fn() },
+      },
+      serde,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not warn for an owned client, which disables the SDK retries itself', async () => {
+    const warn = jest.fn();
+    const ddb = {
+      destroy: jest.fn(),
+      config: { maxAttempts: async () => 1 },
+      middlewareStack: { clone: () => ({}) },
+      send: jest.fn(),
+    };
+    setUpCheckpointer(
+      {
+        tableName: 'ckpt',
+        clientConfig: { region: 'eu-central-1' },
+        createClient: () => ddb as never,
+        logger: { debug: jest.fn(), info: jest.fn(), warn, error: jest.fn() },
+      },
+      serde,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(warn).not.toHaveBeenCalled();
+  });
+});

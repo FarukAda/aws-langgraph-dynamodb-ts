@@ -7,7 +7,7 @@ import { JSON_SERDE } from '../../shared/codec/json-serde';
 import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
 import { DEFAULT_MAX_SEARCH_CANDIDATES, MAX_TOTAL_ITEMS_IN_MEMORY } from '../../shared/constants';
-import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
+import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions } from '../types';
@@ -41,7 +41,9 @@ export interface StoreSetup {
 /** Validate the options, then resolve the client, offloader, serializer, and index. */
 export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
   validateStoreOptions(options);
+  const logger = resolveLogger(options.logger);
   const resolved = resolveDynamoDBClient(options);
+  if (!resolved.ownsClient) void warnOnStackedRetries(resolved.client, logger);
   return {
     context: {
       client: resolved.client,
@@ -52,7 +54,7 @@ export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
         ? new S3Offloader(offloaderConfigFor(options.s3, 'store', options.clientConfig))
         : undefined,
       ttl: options.ttl,
-      logger: resolveLogger(options.logger),
+      logger,
       index: options.index,
       vectorBackend: options.vectorBackend,
       vectorScoreDirection: options.vectorScoreDirection ?? 'relevance',

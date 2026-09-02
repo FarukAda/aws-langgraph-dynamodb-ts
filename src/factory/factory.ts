@@ -12,6 +12,11 @@ import type { DynamoDBStoreOptions } from '../store/types';
 
 /** Shared client/logger defaults applied to every adapter the factory builds. */
 export interface FactoryBaseOptions {
+  /**
+   * Reused as-is by every adapter. Construct it with `maxAttempts: 1`, or the
+   * SDK's own retries stack inside the library's retry budget (each adapter
+   * logs a `warn` at construction when they would).
+   */
   client?: DynamoDBDocument;
   clientConfig?: DynamoDBClientConfig;
   createClient?: (config: DynamoDBClientConfig) => DynamoDBClient;

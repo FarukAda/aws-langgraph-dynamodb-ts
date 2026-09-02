@@ -1,7 +1,10 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
-import { resolveDynamoDBClient } from '../../../../src/shared/dynamodb/client';
+import {
+  resolveDynamoDBClient,
+  warnOnStackedRetries,
+} from '../../../../src/shared/dynamodb/client';
 
 function createFakeClient(): DynamoDBClient {
   const middlewareStack = {
@@ -75,5 +78,44 @@ describe('resolveDynamoDBClient', () => {
     expect(resolved.ddbClient).toBeDefined();
     expect(resolved.client).toBeDefined();
     resolved.ddbClient?.destroy();
+  });
+});
+
+describe('warnOnStackedRetries (DDB-01)', () => {
+  const fakeLogger = () => ({
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  });
+  const clientWith = (maxAttempts?: () => Promise<number>) =>
+    ({ config: maxAttempts ? { maxAttempts } : {} }) as never;
+
+  it('warns once when the injected client keeps the SDK retries', async () => {
+    const logger = fakeLogger();
+    await warnOnStackedRetries(
+      clientWith(async () => 3),
+      logger,
+    );
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('maxAttempts: 1'), {
+      maxAttempts: 3,
+    });
+  });
+
+  it('stays silent for a single-attempt client, a client without config, and one that cannot report', async () => {
+    const logger = fakeLogger();
+    await warnOnStackedRetries(
+      clientWith(async () => 1),
+      logger,
+    );
+    await warnOnStackedRetries({} as never, logger);
+    await warnOnStackedRetries(
+      clientWith(async () => {
+        throw new Error('cannot report');
+      }),
+      logger,
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

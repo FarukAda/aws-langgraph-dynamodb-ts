@@ -188,7 +188,7 @@ All adapters share a common base. Provide **either** a prebuilt `client` (which 
 | Option | Type | Applies to | Notes |
 | --- | --- | --- | --- |
 | `tableName` | `string` | all | **required** |
-| `client` | `DynamoDBDocument` | all | reuse an existing client; not closed by `destroy()` |
+| `client` | `DynamoDBDocument` | all | reuse an existing client; not closed by `destroy()`. Construct it with `maxAttempts: 1` (`DynamoDBDocument.from(new DynamoDBClient({ maxAttempts: 1, … }))`): the SDK's own retries are not disabled on an injected client and would stack inside the library's retry budget — a `warn` is logged at construction when they would |
 | `clientConfig` | `DynamoDBClientConfig` | all | used to build a client when `client` is omitted |
 | `ttl` | `{ days: number }` \| `{ seconds: number }` | all | expiry written to the `ttl` attribute; one form only, capped at five years |
 | `logger` | `Logger` | all | per-instance logger (default: silent) |
