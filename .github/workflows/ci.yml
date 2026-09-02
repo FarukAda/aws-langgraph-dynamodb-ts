@@ -145,9 +145,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Prove the WRITES_IDX_MAP / checkpoint contract holds across the
-        # supported @langchain/langgraph-checkpoint range (Decision D3).
-        langgraph: ['1.0.3', 'latest']
+        # Prove the checkpoint contract holds across the supported
+        # @langchain/langgraph-checkpoint range: the declared floor (the
+        # peerDependencies range's lower bound) and the newest release.
+        langgraph: ['1.1.5', 'latest']
     services:
       dynamodb-local:
         image: amazon/dynamodb-local:latest
