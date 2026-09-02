@@ -65,10 +65,19 @@ export async function* listCheckpoints(
   const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
   const signal = config.signal;
   const { before, filter, limit } = readListOptions(options);
+  /**
+   * With no metadata filter every META row counts toward the caller's limit,
+   * so the page size can follow it instead of pulling a full 1 MB page for a
+   * `list({ limit: 1 })`. `before` and `checkpoint_id` still filter client-side;
+   * a page they empty simply continues to the next one.
+   */
   const params = beginsWithQuery(
     context.tableName,
     partitionKey(threadId),
     metaSortKeyPrefix(checkpointNs),
+    {
+      limit: filter === undefined ? limit : undefined,
+    },
   );
   let yielded = 0;
   let scanned = 0;
