@@ -1,0 +1,61 @@
+name: Bug report
+description: Something behaves differently from what the README documents
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      placeholder: "@farukada/aws-langgraph-dynamodb-ts 1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: peers
+    attributes:
+      label: LangChain versions
+      description: "@langchain/langgraph, @langchain/langgraph-checkpoint, @langchain/core"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version and runtime
+      placeholder: "22.x on Lambda / 24.x on ECS"
+    validations:
+      required: true
+  - type: checkboxes
+    id: features
+    attributes:
+      label: Configured features
+      options:
+        - label: s3 offloading
+        - label: compression
+        - label: vectorBackend / semantic index
+        - label: ttl
+        - label: an injected client
+  - type: dropdown
+    id: adapter
+    attributes:
+      label: Adapter
+      options: [DynamoDBSaver, DynamoDBStore, DynamoDBChatMessageHistory, DynamoDBFactory]
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The smallest sequence of calls that shows the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error and log output
+      description: The error code, name and context, and any warn/error log lines. Redact identifiers you consider sensitive.
+      render: text

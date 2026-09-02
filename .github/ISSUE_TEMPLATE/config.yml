@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/FarukAda/aws-langgraph-dynamodb-ts/security/advisories/new
+    about: Report privately; never in a public issue.
+  - name: Questions and ideas
+    url: https://github.com/FarukAda/aws-langgraph-dynamodb-ts/discussions
+    about: Ask before opening a bug when you are not sure it is one.

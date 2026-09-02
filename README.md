@@ -34,6 +34,7 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 - [Migrating from earlier versions](#migrating-from-earlier-versions)
 - [Operations](#operations)
 - [Testing](#testing)
+- [Support and policies](#support-and-policies)
 - [License](#license)
 
 ---
@@ -639,6 +640,13 @@ The `examples/live-*.mjs` scripts are demos that leave a table in place for insp
 | Real AWS (`npm run test:aws`) | nightly through OIDC | S3 offload, lifecycle rules and the S3 error taxonomy against the real services; real 30-way append contention; Bedrock embeddings (skipped with a reason when the model is not enabled) |
 
 Nothing in the suite provokes real throttling or `ProvisionedThroughputExceededException` (only its classification is tested), receives `UnprocessedItems` from a batch write (DynamoDB Local and on-demand tables never return them), observes DynamoDB's TTL sweep (only the stamped attribute is asserted), uses a versioned bucket, exercises a hot partition, or measures the write capacity the compare-and-swap fallback consumes. An injected `client` that keeps the SDK's own retries multiplies the library's attempt budget; the integration tier pins that count once and every adapter warns about it at construction.
+
+## Support and policies
+
+- [Stability and compatibility policy](docs/STABILITY.md) — what `1.x` promises for the API, the on-disk layout, error codes and peer ranges.
+- [Security policy](SECURITY.md) — private reporting, response targets, what the library does and does not do.
+- [Support](SUPPORT.md) — where to ask, what to include.
+- [Contributing](CONTRIBUTING.md) — setup, the guards, the test tiers, the toolchain, commits and releases.
 
 ## License
 
