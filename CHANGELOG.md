@@ -70,6 +70,10 @@ The 1.0.0 hardening: every finding of an independent, enterprise-grade review of
 - Static guards: no `any`/`unknown`/`instanceof` in `src`, no re-exports outside the entry, no import cycles, no dead error codes (AST-based, whole-token references), every log event documented, the IAM policy equal to the actions used, `@internal` on the client seams, the optional S3 peer out of every public module, and the public export set and adapter signatures locked by type tests.
 - Test tiers: property tests for sort-key order, item-size estimation, write resolution, redaction and backoff; write races against DynamoDB Local with an in-memory S3 fake; the DynamoDB semantics the unit mocks assume pinned against the engine; differential runs against `InMemoryStore` and `InMemoryChatMessageHistory`; a compiled LangGraph graph and LangChain's checkpointer validation suite in the conformance tier; failure-safe real-AWS teardown and a clean Bedrock skip; the unit tier times out at 15 s; failing DynamoDB-Local tests are surfaced as check-run annotations.
 
+### Dependencies
+
+- `@aws-sdk/client-dynamodb` and `@aws-sdk/lib-dynamodb` resolve to 3.1124.0 in the lock file (declared ranges unchanged). Development tooling updated in the same step: jest 30.5.1, eslint 10.9.1, typescript-eslint 8.69.0, knip 6.34.0, jscpd 5.1.1, typedoc-plugin-markdown 4.13.0, `@types/node` 26.4.1, `@langchain/langgraph` 1.4.13 for the conformance tier, `@aws-sdk/client-s3` 3.1124.0 for the S3 tests.
+
 ## [0.9.0] - 2026-08-29
 
 Closing every open finding from an independent review of `0.8.0` itself: 4
