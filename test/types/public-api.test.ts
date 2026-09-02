@@ -4,9 +4,11 @@ import type {
   AdapterWindow,
   CancelOptions,
   CreateAllOptions,
+  CreatedAdapters,
   DynamoDBChatMessageHistoryOptions,
   DynamoDBSaverOptions,
   DynamoDBStoreOptions,
+  FactoryBaseOptions,
   GetMessagesOptions,
   ListSessionsOptions,
   MessageWindow,
@@ -19,6 +21,7 @@ import type {
   VectorRef,
   VectorScoreDirection,
 } from '../../src/index';
+import type { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 
 describe('public API types', () => {
   it('models the ttl option as days | seconds', () => {
@@ -84,5 +87,27 @@ describe('types behind public signatures are exported (CORE-11)', () => {
     expectTypeOf<RedactLoggerOptions>().toHaveProperty('extraKeys');
     expectTypeOf<RedactLoggerOptions>().toHaveProperty('extraValuePatterns');
     expectTypeOf<Redactable>().not.toBeNever();
+  });
+});
+
+describe('factory shared defaults and partial createAll (CORE-17)', () => {
+  it('carries shared ttl, compression, s3 and retry on the factory base options', () => {
+    expectTypeOf<FactoryBaseOptions['ttl']>().toEqualTypeOf<TtlOption | undefined>();
+    expectTypeOf<FactoryBaseOptions>().toHaveProperty('compression');
+    expectTypeOf<FactoryBaseOptions>().toHaveProperty('s3');
+    expectTypeOf<FactoryBaseOptions>().toHaveProperty('retry');
+  });
+
+  it('types the created adapters by the sections given', () => {
+    type StoreOnly = CreatedAdapters<{ store: { tableName: string } }>;
+    expectTypeOf<StoreOnly['store']>().toEqualTypeOf<DynamoDBStore>();
+    expectTypeOf<StoreOnly['saver']>().toEqualTypeOf<undefined>();
+    expectTypeOf<StoreOnly['history']>().toEqualTypeOf<undefined>();
+    expectTypeOf<CreatedAdapters['saver']>().toEqualTypeOf<DynamoDBSaver>();
+    expectTypeOf<CreatedAdapters['history']>().toEqualTypeOf<DynamoDBChatMessageHistory>();
+    expectTypeOf<NonNullable<CreateAllOptions['saver']>>().not.toHaveProperty('clientConfig');
+    expectTypeOf<CreateAllOptions['saver']>().toEqualTypeOf<
+      Omit<DynamoDBSaverOptions, 'client' | 'clientConfig' | 'createClient'> | undefined
+    >();
   });
 });

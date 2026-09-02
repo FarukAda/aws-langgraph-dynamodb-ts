@@ -17,7 +17,12 @@ export type {
   SessionMetadata,
 } from './history/types';
 export { DynamoDBFactory } from './factory/factory';
-export type { CreateAllOptions, CreatedAdapters, FactoryBaseOptions } from './factory/factory';
+export type {
+  AdapterSection,
+  CreateAllOptions,
+  CreatedAdapters,
+  FactoryBaseOptions,
+} from './factory/types';
 
 export { DynamoDBLangGraphError, isDynamoDBLangGraphError } from './shared/errors/base-error';
 export type { ErrorContext } from './shared/errors/base-error';
