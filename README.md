@@ -423,16 +423,13 @@ npm run test:integration        # integration flows + LangGraph/LangChain contra
 npm run test:integration:down
 ```
 
-Real-AWS verification scripts live in `examples/` (each creates and tears down its own resources):
+The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. Every suite creates and tears down its own uniquely named table and bucket (`aws-langgraph-<suite>test-<uuid>`) in the account of the default credential chain; CI runs it nightly through OIDC, and it runs on demand:
 
 ```bash
-node examples/verify-checkpointer.mjs   # save/resume/writes/list/delete, compression, S3, TTL
-node examples/verify-store.mjs          # filters, semantic search, S3 offload, TTL
-node examples/verify-history.mjs        # per-message model, concurrency, RunnableWithMessageHistory agent
-node examples/verify-factory.mjs        # shared-client createAll across all three adapters
-node examples/verify-agents.mjs         # real LangGraph agents using the saver + store as memory
-node examples/verify-edge-cases.mjs     # filter operators, multi-page reads, compression+S3, scale
+npm run test:aws                # needs AWS credentials; AWS_REGION selects the region
 ```
+
+The `examples/live-*.mjs` scripts are demos that leave a table in place for inspection in the console; they are not a test tier.
 
 ## License
 
