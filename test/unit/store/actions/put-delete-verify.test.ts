@@ -42,6 +42,7 @@ function trackingOffloader() {
     buildKey: (parts: string[]) => parts.join('/'),
     upload: async (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
+    ownsKey: () => true,
   };
 }
 

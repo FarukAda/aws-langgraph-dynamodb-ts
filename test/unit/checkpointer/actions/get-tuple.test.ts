@@ -7,6 +7,10 @@ import {
   buildWriteItems,
 } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { buildS3Key } from '../../../../src/shared/codec/s3/config';
+import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -105,5 +109,51 @@ describe('getCheckpointTuple', () => {
     mock.on(QueryCommand).resolves({ Items: [meta] });
     mock.on(GetCommand).resolves({});
     expect(await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } })).toBeUndefined();
+  });
+});
+
+describe('getCheckpointTuple S3 key binding (SEC-03)', () => {
+  it("refuses to download a checkpoint payload whose key lies outside the thread's path", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = {
+      download: jest.fn(),
+      assertOwnedKey: (key: string, scope: readonly string[]) => assertKeyInScope(key, 'p/', scope),
+    };
+    const ctx = { ...context(client), offloader: offloader as never };
+    const meta = {
+      PK: 'CHKPT#t',
+      SK: 'META##ckpt-1',
+      threadId: 't',
+      checkpointNs: '',
+      checkpointId: 'ckpt-1',
+      metadata: {
+        location: PayloadLocation.INLINE,
+        serdeType: 'json',
+        compressed: false,
+        bytes: new TextEncoder().encode('{}'),
+      },
+    };
+    const payload = {
+      PK: 'CHKPT#t',
+      SK: 'PAYLOAD##ckpt-1',
+      checkpoint: {
+        location: PayloadLocation.S3,
+        serdeType: 'json',
+        compressed: false,
+        s3Key: buildS3Key('p/', ['victim', '', 'ckpt-1', 'checkpoint', 'n']),
+      },
+    };
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    await expect(
+      getCheckpointTuple(ctx, { configurable: { thread_id: 't' } }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 's3Key' },
+    });
+    expect(offloader.download).not.toHaveBeenCalled();
   });
 });

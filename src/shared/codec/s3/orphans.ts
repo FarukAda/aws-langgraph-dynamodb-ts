@@ -11,6 +11,12 @@ export interface OrphanCleanupOptions {
   rng?: () => number;
   maxAttempts?: number;
   signal?: AbortSignal;
+  /**
+   * The row's own leading key parts when `keys` were read back from a row.
+   * A key outside the path they produce is never deleted, only reported; own
+   * uploads (built by this call) pass no scope.
+   */
+  scope?: readonly string[];
 }
 
 /**
@@ -27,6 +33,32 @@ async function backoffSleep(delayMs: number, options: OrphanCleanupOptions): Pro
   }
 }
 
+/** Drop every key outside the row's scope, reporting each one. */
+function ownedOnly(
+  offloader: S3Offloader,
+  keys: string[],
+  scope: readonly string[],
+  context: string,
+  logger: Logger,
+): string[] {
+  return keys.filter((key) => {
+    if (offloader.ownsKey(key, scope)) return true;
+    logger.warn(`${context}: refusing to delete an S3 object outside this row's scope`, { key });
+    return false;
+  });
+}
+
+/** The non-empty keys, restricted to the row's scope when one is given. */
+function selectOrphans(
+  offloader: S3Offloader,
+  keys: ReadonlyArray<string | undefined>,
+  context: string,
+  logger: Logger,
+  options: OrphanCleanupOptions,
+): string[] {
+  const present = keys.filter((key): key is string => typeof key === 'string' && key.length > 0);
+  return options.scope ? ownedOnly(offloader, present, options.scope, context, logger) : present;
+}
 /**
  * Best-effort delete of S3 objects orphaned by a failed DynamoDB write. Retries
  * transient errors with full-jitter backoff; on persistent failure or when S3
@@ -42,7 +74,7 @@ export async function cleanUpS3Orphans(
   logger: Logger,
   options: OrphanCleanupOptions = {},
 ): Promise<void> {
-  const orphans = keys.filter((key): key is string => typeof key === 'string' && key.length > 0);
+  const orphans = selectOrphans(offloader, keys, context, logger, options);
   if (orphans.length === 0) return;
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   let delay = BASE_DELAY_MS;

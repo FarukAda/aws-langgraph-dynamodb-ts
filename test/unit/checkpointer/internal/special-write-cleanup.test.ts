@@ -39,6 +39,7 @@ function trackingOffloader() {
     buildKey: (parts: readonly string[]) => parts.join('/'),
     upload: async (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
+    ownsKey: jest.fn(() => true),
   };
 }
 
@@ -65,7 +66,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: async () => ({}),
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), []);
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', []);
     expect(result).toBeUndefined();
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
@@ -76,7 +77,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: async () => ({}),
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), [
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
       specialItem('new.bin'),
     ]);
     expect(result).toBeUndefined();
@@ -92,7 +93,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       },
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), [
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
       specialItem('new.bin'),
     ]);
     expect(result).toMatchObject({ message: 'boom' });
@@ -112,7 +113,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       },
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), [
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
       specialItem('one.bin', 'WRITE##c1#task-1#0000000007#one'),
       specialItem('two.bin', 'WRITE##c1#task-1#0000000008#two'),
     ]);
@@ -125,7 +126,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: async () => ({}),
     };
     await expect(
-      writeSpecialItemsWithCleanup(context(client), [specialItem('new.bin')]),
+      writeSpecialItemsWithCleanup(context(client), 't', [specialItem('new.bin')]),
     ).resolves.toBeUndefined();
   });
 
@@ -135,7 +136,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: async () => ({}),
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), [
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
       specialItem('new.bin'),
     ]);
     expect(result).toBeUndefined();
@@ -160,12 +161,33 @@ describe('writeSpecialItemsWithCleanup', () => {
       },
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), [
+    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
       specialItem('committed-new.bin', 'WRITE##c1#task-1#0000000007#committed'),
       specialItem('failed-new.bin', 'WRITE##c1#task-1#0000000008#failed'),
     ]);
     expect(result).toMatchObject({ message: 'boom' });
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['committed-old.bin']);
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['failed-new.bin']);
+  });
+});
+
+describe('writeSpecialItemsWithCleanup S3 key binding (SEC-03)', () => {
+  it("never deletes a superseded object outside the thread's own path", async () => {
+    const client: ClientStub = {
+      get: async () => ({ Item: { value: descriptor('foreign/old.bin'), writeGroup: 'g0' } }),
+      put: async () => ({}),
+    };
+    const offloader = { ...trackingOffloader(), ownsKey: jest.fn(() => false) };
+    const warn = jest.fn();
+    const ctx = {
+      ...context(client, offloader),
+      logger: { ...SILENT_LOGGER, warn },
+    } as CheckpointerContext;
+    await expect(
+      writeSpecialItemsWithCleanup(ctx, 't', [specialItem('new.bin')]),
+    ).resolves.toBeUndefined();
+    expect(offloader.ownsKey).toHaveBeenCalledWith('foreign/old.bin', ['t']);
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });

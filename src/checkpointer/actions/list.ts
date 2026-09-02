@@ -44,9 +44,10 @@ async function passesMetadataFilter(
   context: CheckpointerContext,
   meta: CheckpointMetaItem,
   filter: Record<string, FilterValue> | undefined,
+  threadId: string,
 ): Promise<boolean> {
   if (!filter) return true;
-  const metadata = (await readMetadata(context, meta)) as Record<string, FilterValue>;
+  const metadata = (await readMetadata(context, meta, threadId)) as Record<string, FilterValue>;
   return matchesFilter(metadata, filter);
 }
 
@@ -100,7 +101,7 @@ export async function* listCheckpoints(
       continue;
     }
     if (!passesKeyFilters(meta, checkpointId, before)) continue;
-    if (!(await passesMetadataFilter(context, meta, filter))) continue;
+    if (!(await passesMetadataFilter(context, meta, filter, threadId))) continue;
     const tuple = await assembleTuple(context, threadId, checkpointNs, meta);
     if (tuple) {
       yield tuple;

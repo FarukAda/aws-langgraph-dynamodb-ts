@@ -6,6 +6,8 @@ import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { buildS3Key } from '../../../../src/shared/codec/s3/config';
+import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -35,6 +37,7 @@ function offloaderStub(download: () => Promise<Uint8Array>) {
     upload: async (key: string) => key,
     download: jest.fn(download),
     deleteBatch: jest.fn(),
+    assertOwnedKey: () => undefined,
   };
 }
 
@@ -286,5 +289,64 @@ describe('getMessages', () => {
     }
     const result = await getMessages(context(client), 's1');
     expect(result).toHaveLength(pageSize * pageCount);
+  });
+});
+
+describe('S3 key binding (SEC-03)', () => {
+  const binding = () => ({
+    shouldOffload: () => true,
+    buildKey: (parts: readonly string[]) => buildS3Key('p/', parts),
+    upload: async (key: string) => key,
+    download: jest.fn(async () => new Uint8Array()),
+    deleteBatch: jest.fn(),
+    assertOwnedKey: (key: string, scope: readonly string[]) => assertKeyInScope(key, 'p/', scope),
+  });
+
+  async function foreignItem(
+    client: HistoryContext['client'],
+    offloader: ReturnType<typeof binding>,
+  ) {
+    const [human] = mapChatMessagesToStoredMessages([new HumanMessage('offloaded')]);
+    const item = await buildMessageItem(
+      context(client, { offloader: offloader as never }),
+      's1',
+      '01A',
+      human,
+    );
+    item.message = {
+      location: PayloadLocation.S3,
+      serdeType: 'json',
+      compressed: false,
+      s3Key: buildS3Key('p/', ['victim', '01A']),
+    };
+    return item;
+  }
+
+  it("skips a message whose key lies outside the session's path under 'skip' and logs it", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = binding();
+    mock.on(QueryCommand).resolves({ Items: [await foreignItem(client, offloader)] });
+    const error = jest.fn();
+    const reader = context(client, {
+      offloader: offloader as never,
+      logger: { ...SILENT_LOGGER, error },
+    });
+    await expect(getMessages(reader, 's1')).resolves.toEqual([]);
+    expect(offloader.download).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('corrupt'),
+      expect.objectContaining({ reason: 'ValidationError' }),
+    );
+  });
+
+  it("throws on such a message under 'throw'", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = binding();
+    mock.on(QueryCommand).resolves({ Items: [await foreignItem(client, offloader)] });
+    const reader = context(client, { offloader: offloader as never, onCorruptMessage: 'throw' });
+    await expect(getMessages(reader, 's1')).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 's3Key' },
+    });
   });
 });

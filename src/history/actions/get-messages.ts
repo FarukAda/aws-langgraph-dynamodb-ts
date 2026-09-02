@@ -5,7 +5,8 @@ import {
 } from '@langchain/core/messages';
 
 import { nowSeconds } from '../../shared/clock';
-import { type CodecDeps, isPermanentPayloadLoss, readPayloadBytes } from '../../shared/codec/codec';
+import { type CodecDeps, readPayloadBytes } from '../../shared/codec/codec';
+import { isPermanentPayloadLoss } from '../../shared/codec/payload-loss';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { toError } from '../../shared/errors/wrap-error';
 import { messageQuery } from '../internal/query';
@@ -31,7 +32,11 @@ type Decoded = { kind: 'ok'; message: BaseMessage } | { kind: 'corrupt'; error: 
  * so any failure there (bad bytes, a type LangChain cannot rebuild such as a
  * `RemoveMessage`) is corruption too, and is confined to that one message.
  */
-async function decodeMessage(context: HistoryContext, item: ChatMessageItem): Promise<Decoded> {
+async function decodeMessage(
+  context: HistoryContext,
+  item: ChatMessageItem,
+  sessionId: string,
+): Promise<Decoded> {
   const deps: CodecDeps = {
     serde: context.serde,
     compression: context.compression,
@@ -39,7 +44,7 @@ async function decodeMessage(context: HistoryContext, item: ChatMessageItem): Pr
   };
   let bytes: Uint8Array;
   try {
-    bytes = await readPayloadBytes(item.message, deps);
+    bytes = await readPayloadBytes(item.message, deps, [sessionId]);
   } catch (error) {
     if (isPermanentPayloadLoss(error as Error)) return { kind: 'corrupt', error: error as Error };
     throw error;
@@ -76,7 +81,7 @@ export async function getMessages(
   })) {
     const item = raw as ChatMessageItem;
     if (isExpired(item, now)) continue;
-    const decoded = await decodeMessage(context, item);
+    const decoded = await decodeMessage(context, item, sessionId);
     if (decoded.kind === 'ok') {
       messages.push(decoded.message);
       continue;

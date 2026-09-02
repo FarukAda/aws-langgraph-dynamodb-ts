@@ -78,5 +78,5 @@ export async function fetchPendingWrites(
   for await (const item of paginateQuery({ client: context.client, params })) {
     items.push(item as CheckpointWriteItem);
   }
-  return toPendingWrites(context, items);
+  return toPendingWrites(context, items, threadId);
 }

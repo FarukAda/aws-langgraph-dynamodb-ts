@@ -23,20 +23,26 @@ export function narrowMetaItem(raw: DocItem): CheckpointMetaItem | undefined {
     : undefined;
 }
 
-/** Decode the checkpoint stored in a PAYLOAD item. */
+/**
+ * Decode the checkpoint stored in a PAYLOAD item. `threadId` is the caller's
+ * (from the config), never the row's: it scopes which S3 object the row may
+ * point at, so it must come from the partition the caller asked for.
+ */
 export async function readCheckpoint(
   context: CheckpointerContext,
   item: CheckpointPayloadItem,
+  threadId: string,
 ): Promise<Checkpoint> {
-  return decodePayload<Checkpoint>(item.checkpoint, codecDeps(context));
+  return decodePayload<Checkpoint>(item.checkpoint, codecDeps(context), [threadId]);
 }
 
-/** Decode the metadata stored in a META item. */
+/** Decode the metadata stored in a META item; see {@link readCheckpoint} for `threadId`. */
 export async function readMetadata(
   context: CheckpointerContext,
   item: CheckpointMetaItem,
+  threadId: string,
 ): Promise<CheckpointMetadata> {
-  return decodePayload<CheckpointMetadata>(item.metadata, codecDeps(context));
+  return decodePayload<CheckpointMetadata>(item.metadata, codecDeps(context), [threadId]);
 }
 
 /**
@@ -92,11 +98,12 @@ export function dropSupersededWrites(items: CheckpointWriteItem[]): CheckpointWr
 export async function toPendingWrites(
   context: CheckpointerContext,
   items: CheckpointWriteItem[],
+  threadId: string,
 ): Promise<CheckpointPendingWrite[]> {
   const deps = codecDeps(context);
   const pending: CheckpointPendingWrite[] = [];
   for (const item of dropSupersededWrites(items)) {
-    const value = await decodePayload(item.value, deps);
+    const value = await decodePayload(item.value, deps, [threadId]);
     pending.push([item.taskId, item.channel, value]);
   }
   return pending;

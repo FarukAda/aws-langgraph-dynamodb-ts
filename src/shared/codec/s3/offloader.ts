@@ -9,6 +9,7 @@ import {
 import { createDefaultS3Client, loadS3Sdk } from './client';
 import { buildS3Key, S3OffloadConfig } from './config';
 import { deleteObjects } from './delete';
+import { assertKeyInScope, isKeyInScope } from './key-scope';
 import { ensureLifecycleRule } from './lifecycle';
 import { downloadObject, uploadObject } from './read-write';
 
@@ -84,6 +85,16 @@ export class S3Offloader {
   /** The configured key prefix. */
   getKeyPrefix(): string {
     return this.keyPrefix;
+  }
+
+  /** True when `key` lies under this offloader's prefix and the `scope` parts' path. */
+  ownsKey(key: string, scope: readonly string[]): boolean {
+    return isKeyInScope(key, this.keyPrefix, scope);
+  }
+
+  /** Refuse a row-sourced key outside the row's own path (see {@link assertKeyInScope}). */
+  assertOwnedKey(key: string, scope: readonly string[]): void {
+    assertKeyInScope(key, this.keyPrefix, scope);
   }
 
   /** Upload `data` under `key`, returning the key. */

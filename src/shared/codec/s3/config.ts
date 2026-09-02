@@ -2,6 +2,7 @@ import type { S3Client, S3ClientConfig } from '@aws-sdk/client-s3';
 
 import { MAX_S3_KEY_BYTES } from '../../constants';
 import { ValidationError } from '../../errors/errors';
+import { encodeKeyPart } from './key-scope';
 
 /** Configuration for offloading large payloads to S3. */
 export interface S3OffloadConfig {
@@ -28,7 +29,7 @@ export interface S3OffloadConfig {
  * own length rule can still compose a key S3 would reject with a raw error.
  */
 export function buildS3Key(prefix: string, parts: readonly string[]): string {
-  const encoded = parts.map((part) => Buffer.from(part, 'utf8').toString('base64url'));
+  const encoded = parts.map(encodeKeyPart);
   const key = `${prefix}${encoded.join('/')}.bin`;
   const bytes = Buffer.byteLength(key, 'utf8');
   if (bytes > MAX_S3_KEY_BYTES) {

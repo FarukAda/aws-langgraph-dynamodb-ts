@@ -51,7 +51,9 @@ describe('DynamoDBStore', () => {
 
   it('listNamespaces dispatches a Scan', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(ScanCommand).resolves({ Items: [{ namespace: ['a'] }] });
+    mock
+      .on(ScanCommand)
+      .resolves({ Items: [{ PK: 'STORE#a', SK: 'k', namespace: ['a'], key: 'k' }] });
     const store = new DynamoDBStore({ tableName: 'store', client });
     expect(await store.listNamespaces()).toEqual([['a']]);
   });

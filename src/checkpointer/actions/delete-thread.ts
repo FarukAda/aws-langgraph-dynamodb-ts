@@ -32,5 +32,6 @@ export async function deleteThread(context: CheckpointerContext, threadId: strin
     operation: 'deleteThread',
     ownsSortKey: isCheckpointerSortKey,
     descriptorsOf,
+    scope: [threadId],
   });
 }

@@ -27,8 +27,8 @@ export async function assembleTuple(
   const payload = await fetchPayload(context, threadId, checkpointNs, meta.checkpointId);
   if (!payload) return undefined;
   const [checkpoint, metadata, pendingWrites] = await Promise.all([
-    readCheckpoint(context, payload),
-    readMetadata(context, meta),
+    readCheckpoint(context, payload, threadId),
+    readMetadata(context, meta, threadId),
     fetchPendingWrites(context, threadId, checkpointNs, meta.checkpointId),
   ]);
   const tuple: CheckpointTuple = {

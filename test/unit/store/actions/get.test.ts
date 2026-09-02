@@ -1,6 +1,9 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
+import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { buildS3Key } from '../../../../src/shared/codec/s3/config';
+import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { ValidationError } from '../../../../src/shared/errors/errors';
@@ -109,6 +112,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
       buildKey: (parts: readonly string[]) => parts.join('/'),
       upload: async (key: string) => key,
       download: jest.fn(async (key: string) => downloads[key]()),
+      assertOwnedKey: () => undefined,
       deleteBatch: jest.fn(),
     };
   }
@@ -184,5 +188,35 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
       code: ErrorCode.S3_OFFLOAD_FAILED,
     });
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+  });
+});
+
+describe('getItem S3 key binding (SEC-03)', () => {
+  it("refuses to download a value whose key lies outside the item's own namespace/key path", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({
+      Item: {
+        PK: 'STORE#users',
+        SK: 'u1#profile',
+        namespace: ['users', 'u1'],
+        key: 'profile',
+        createdAt: 'c',
+        updatedAt: 'u',
+        value: {
+          location: PayloadLocation.S3,
+          serdeType: 'json',
+          compressed: false,
+          s3Key: buildS3Key('p/', ['victims', 'v1', 'secret', 'n']),
+        },
+      },
+    });
+    const offloader = {
+      download: jest.fn(),
+      assertOwnedKey: (key: string, scope: readonly string[]) => assertKeyInScope(key, 'p/', scope),
+    };
+    await expect(
+      getItem({ ...context(client), offloader: offloader as never }, ['users', 'u1'], 'profile'),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 's3Key' } });
+    expect(offloader.download).not.toHaveBeenCalled();
   });
 });

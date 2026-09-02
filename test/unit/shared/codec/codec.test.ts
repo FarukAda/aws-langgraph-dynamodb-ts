@@ -1,4 +1,7 @@
 import { decodePayload, encodePayload, PayloadLocation } from '../../../../src/shared/codec/codec';
+import { buildS3Key } from '../../../../src/shared/codec/s3/config';
+import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
 const serde = {
   dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
@@ -15,7 +18,7 @@ describe('encodePayload / decodePayload', () => {
     expect(descriptor.location).toBe(PayloadLocation.INLINE);
     expect(descriptor.serdeType).toBe('json');
     expect(descriptor.compressed).toBe(false);
-    expect(await decodePayload(descriptor, { serde })).toEqual({ a: 1 });
+    expect(await decodePayload(descriptor, { serde }, [])).toEqual({ a: 1 });
   });
 
   it('round-trips an inline payload whose serialized bytes start with 0x4C 0x47 0x43', async () => {
@@ -29,7 +32,7 @@ describe('encodePayload / decodePayload', () => {
     };
     const descriptor = await encodePayload('ignored', { serde: lgcSerde }, { keyParts: ['t'] });
     expect(descriptor.compressed).toBe(false);
-    expect(await decodePayload(descriptor, { serde: lgcSerde })).toEqual([
+    expect(await decodePayload(descriptor, { serde: lgcSerde }, [])).toEqual([
       0x4c, 0x47, 0x43, 1, 2, 3,
     ]);
   });
@@ -44,6 +47,7 @@ describe('encodePayload / decodePayload', () => {
         return key;
       }),
       download: jest.fn(async () => stored),
+      assertOwnedKey: () => undefined,
     };
     const descriptor = await encodePayload(
       { a: 1 },
@@ -55,7 +59,7 @@ describe('encodePayload / decodePayload', () => {
       expect(descriptor.s3Key).toBe('pfx/t/c/f.bin');
     }
     expect(offloader.upload).toHaveBeenCalled();
-    expect(await decodePayload(descriptor, { serde, offloader: offloader as never })).toEqual({
+    expect(await decodePayload(descriptor, { serde, offloader: offloader as never }, [])).toEqual({
       a: 1,
     });
   });
@@ -85,7 +89,9 @@ describe('encodePayload / decodePayload', () => {
     );
     expect(descriptor.location).toBe(PayloadLocation.INLINE);
     expect(descriptor.compressed).toBe(true);
-    expect(await decodePayload(descriptor, { serde, compression: { enabled: true } })).toEqual(big);
+    expect(await decodePayload(descriptor, { serde, compression: { enabled: true } }, [])).toEqual(
+      big,
+    );
   });
 
   it('throws when asked to decode an S3 payload without an offloader', async () => {
@@ -95,9 +101,41 @@ describe('encodePayload / decodePayload', () => {
       compressed: false,
       s3Key: 'k',
     };
-    await expect(decodePayload(descriptor, { serde })).rejects.toMatchObject({
+    await expect(decodePayload(descriptor, { serde }, [])).rejects.toMatchObject({
       name: 'ValidationError',
       message: expect.stringContaining('no `s3` configuration'),
     });
+  });
+});
+
+describe('row-sourced key binding (SEC-03)', () => {
+  const scoped = (prefix: string) => ({
+    shouldOffload: () => true,
+    buildKey: (parts: readonly string[]) => buildS3Key(prefix, parts),
+    upload: jest.fn(async (key: string) => key),
+    download: jest.fn(async () => new TextEncoder().encode('{"a":1}')),
+    assertOwnedKey: (key: string, scope: readonly string[]) => assertKeyInScope(key, prefix, scope),
+  });
+
+  it("refuses to download a descriptor whose key lies outside the row's own path", async () => {
+    const offloader = scoped('p/');
+    const descriptor = {
+      location: PayloadLocation.S3,
+      serdeType: 'json',
+      compressed: false,
+      s3Key: buildS3Key('p/', ['other-thread', 'c']),
+    } as const;
+    await expect(
+      decodePayload(descriptor, { serde, offloader: offloader as never }, ['my-thread']),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 's3Key' } });
+    expect(offloader.download).not.toHaveBeenCalled();
+  });
+
+  it("downloads a descriptor whose key lies under the row's own path", async () => {
+    const offloader = scoped('p/');
+    const deps = { serde, offloader: offloader as never };
+    const descriptor = await encodePayload({ a: 1 }, deps, { keyParts: ['my-thread', 'c', 'n'] });
+    await expect(decodePayload(descriptor, deps, ['my-thread'])).resolves.toEqual({ a: 1 });
+    expect(offloader.download).toHaveBeenCalledTimes(1);
   });
 });

@@ -8,7 +8,7 @@ const KEY_PARTS = ['t', 'ns', 'cp', 'payload'];
 
 async function roundTrip(value: unknown, deps: CodecDeps): Promise<unknown> {
   const descriptor = await encodePayload(value, deps, { keyParts: KEY_PARTS });
-  return decodePayload(descriptor, deps);
+  return decodePayload(descriptor, deps, []);
 }
 
 /**

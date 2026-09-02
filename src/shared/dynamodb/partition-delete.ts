@@ -28,6 +28,8 @@ export interface PartitionDeleteOptions {
   ownsSortKey: (sortKey: string) => boolean;
   /** The offloaded payload descriptors a row references, if any. */
   descriptorsOf: (row: DocItem) => (PayloadDescriptor | undefined)[];
+  /** The partition's own leading S3 key parts; objects outside their path are never deleted. */
+  scope: readonly string[];
 }
 
 /** A bounded buffer of keys to delete plus the S3 descriptors they reference. */
@@ -81,6 +83,7 @@ async function flushBuffer(
       collectS3Keys(buffer.descriptors),
       options.operation,
       options.logger,
+      { scope: options.scope },
     );
   }
   buffer.keys = [];

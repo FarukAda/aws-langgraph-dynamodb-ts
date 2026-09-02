@@ -26,7 +26,7 @@ describe('history item-mapper', () => {
     expect(item.SK).toBe('HISTORY#MSG#01HZX');
     expect(item.sessionId).toBe('s1');
     expect(item.ttl).toBeUndefined();
-    expect(await decodePayload(item.message, { serde: JSON_SERDE })).toEqual(stored);
+    expect(await decodePayload(item.message, { serde: JSON_SERDE }, [])).toEqual(stored);
   });
 
   it('stamps a ttl when provided', async () => {

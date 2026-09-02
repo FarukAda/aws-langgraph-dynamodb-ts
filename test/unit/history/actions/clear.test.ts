@@ -96,7 +96,7 @@ describe('clearSession', () => {
       ],
     });
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]), ownsKey: () => true };
     await clearSession(context(client, { offloader: offloader as never }), 'sess-1');
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['sess-1/U.bin']);
   });

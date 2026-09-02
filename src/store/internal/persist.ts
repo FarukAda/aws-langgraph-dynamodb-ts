@@ -8,14 +8,25 @@ import type { ExistingRecordMeta } from './read-existing';
 import type { StoreContext } from './setup';
 import { verifyWriteLanded, type WriteVerdict } from './write-verify';
 
-/** Best-effort delete of one descriptor's S3 object. */
+/**
+ * Best-effort delete of one descriptor's S3 object. `scope` is passed for a
+ * descriptor read back from the row (the superseded value) and omitted for
+ * this call's own upload.
+ */
 async function cleanUp(
   context: StoreContext,
   descriptor: PayloadDescriptor | undefined,
   label: string,
+  scope?: readonly string[],
 ): Promise<void> {
   if (!context.offloader || !descriptor) return;
-  await cleanUpS3Orphans(context.offloader, collectS3Keys([descriptor]), label, context.logger);
+  await cleanUpS3Orphans(
+    context.offloader,
+    collectS3Keys([descriptor]),
+    label,
+    context.logger,
+    scope === undefined ? {} : { scope },
+  );
 }
 
 /**
@@ -62,5 +73,8 @@ export async function persistRecord(
     if (verdict === 'not-landed') await cleanUp(context, record.value, 'store.put');
     if (verdict !== 'landed') throw error;
   }
-  await cleanUp(context, superseded.value, 'store.put.overwrite');
+  await cleanUp(context, superseded.value, 'store.put.overwrite', [
+    ...record.namespace,
+    record.key,
+  ]);
 }

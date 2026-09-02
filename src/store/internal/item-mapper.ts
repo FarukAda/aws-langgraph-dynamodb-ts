@@ -9,11 +9,19 @@ import type { StoreContext } from './setup';
 
 /**
  * Narrow a raw scanned row to a {@link StoreItemRecord}, or `undefined` for a
- * foreign row on a shared table (no `namespace`). Replaces an unchecked cast at
- * the scan boundary, the one place rows are not written by this library.
+ * foreign row on a shared table (no `namespace`) — and for a row whose
+ * `namespace`/`key` attributes disagree with the DynamoDB key it was found at.
+ * The attributes name the S3 path the row may reference, so they must be bound
+ * to the partition the row actually lives in: a writer confined to its own
+ * partition can then never make a row speak for another tenant's objects.
  */
 export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
-  return Array.isArray(raw.namespace) ? (raw as StoreItemRecord) : undefined;
+  if (!Array.isArray(raw.namespace) || typeof raw.key !== 'string') return undefined;
+  const record = raw as StoreItemRecord;
+  const consistent =
+    record.PK === partitionKey(record.namespace) &&
+    record.SK === sortKey(record.namespace, record.key);
+  return consistent ? record : undefined;
 }
 
 /** Map a store context to the codec collaborators. */
@@ -63,6 +71,7 @@ export async function readStoreItem(context: StoreContext, record: StoreItemReco
   const value = await decodePayload<Record<string, JsonValue>>(
     record.value,
     storeCodecDeps(context),
+    [...record.namespace, record.key],
   );
   return {
     namespace: record.namespace,

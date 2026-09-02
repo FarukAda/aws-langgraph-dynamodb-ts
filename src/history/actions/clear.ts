@@ -28,5 +28,6 @@ export async function clearSession(context: HistoryContext, sessionId: string): 
     operation: 'history.clear',
     ownsSortKey: isHistorySortKey,
     descriptorsOf,
+    scope: [sessionId],
   });
 }

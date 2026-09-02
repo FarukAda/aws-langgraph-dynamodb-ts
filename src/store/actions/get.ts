@@ -1,6 +1,7 @@
 import type { Item } from '@langchain/langgraph-checkpoint';
 
-import { isMissingObjectError, PayloadLocation } from '../../shared/codec/codec';
+import { PayloadLocation } from '../../shared/codec/codec';
+import { isMissingObjectError } from '../../shared/codec/payload-loss';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { narrowStoreRecord, readStoreItem } from '../internal/item-mapper';
 import { partitionKey, sortKey } from '../internal/keys';

@@ -48,7 +48,7 @@ describe('item-reader', () => {
       metadata,
       'nonce-1',
     );
-    expect(await readCheckpoint(context(), payload)).toEqual(checkpoint);
+    expect(await readCheckpoint(context(), payload, 't')).toEqual(checkpoint);
   });
 
   it('round-trips the metadata written by the item-writer', async () => {
@@ -60,7 +60,7 @@ describe('item-reader', () => {
       metadata,
       'nonce-1',
     );
-    expect(await readMetadata(context(), meta)).toEqual(metadata);
+    expect(await readMetadata(context(), meta, 't')).toEqual(metadata);
   });
 
   it('assembles pending writes as [taskId, channel, value] tuples', async () => {
@@ -76,7 +76,7 @@ describe('item-reader', () => {
       ],
       'nonce-1',
     );
-    const pending = await toPendingWrites(context(), items);
+    const pending = await toPendingWrites(context(), items, 't');
     expect(pending).toEqual([
       ['task-7', 'messages', 'a'],
       ['task-7', 'counter', 5],

@@ -3,6 +3,8 @@ import { BatchWriteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { deleteThread } from '../../../../src/checkpointer/actions/delete-thread';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { buildS3Key } from '../../../../src/shared/codec/s3/config';
+import { isKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
 import { MAX_LOOP_ITERATIONS } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -80,7 +82,7 @@ describe('deleteThread', () => {
       ],
     });
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
-    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]), ownsKey: () => true };
     await deleteThread({ ...context(client), offloader: offloader as never }, 't');
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k-cp']);
   });
@@ -152,5 +154,40 @@ describe('deleteThread', () => {
       deleted: 1,
       skipped: 0,
     });
+  });
+});
+
+describe('deleteThread S3 key binding (SEC-03)', () => {
+  it("never deletes an offloaded object outside the thread's own path, and warns", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const own = buildS3Key('p/', ['t', '', 'c1', 'checkpoint', 'n']);
+    const foreign = buildS3Key('p/', ['victim', '', 'c9', 'checkpoint', 'n']);
+    const s3 = (s3Key: string) => ({
+      location: PayloadLocation.S3,
+      serdeType: 'json',
+      compressed: false,
+      s3Key,
+    });
+    mock.on(QueryCommand).resolves({
+      Items: [
+        { PK: 'CHKPT#t', SK: 'PAYLOAD##c1', checkpoint: s3(own) },
+        { PK: 'CHKPT#t', SK: 'PAYLOAD##c2', checkpoint: s3(foreign) },
+      ],
+    });
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    const offloader = {
+      deleteBatch: jest.fn().mockResolvedValue([]),
+      ownsKey: (key: string, scope: readonly string[]) => isKeyInScope(key, 'p/', scope),
+    };
+    const warn = jest.fn();
+    await deleteThread(
+      { ...context(client), offloader: offloader as never, logger: { ...SILENT_LOGGER, warn } },
+      't',
+    );
+    expect(offloader.deleteBatch).toHaveBeenCalledWith([own]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('outside'),
+      expect.objectContaining({ key: foreign }),
+    );
   });
 });

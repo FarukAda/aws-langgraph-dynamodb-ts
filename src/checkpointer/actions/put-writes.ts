@@ -76,7 +76,7 @@ export async function putWrites(
   const special = items.filter((item) => item.index < 0);
   const regular = items.filter((item) => item.index >= 0);
   const [specialError, regularOutcome] = await Promise.all([
-    writeSpecialItemsWithCleanup(context, special),
+    writeSpecialItemsWithCleanup(context, threadId, special),
     writeRegularItems(context, regular),
   ]);
   await cleanUpItems(context, regularOutcome.deadUploads);

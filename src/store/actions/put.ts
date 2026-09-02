@@ -51,6 +51,7 @@ async function deleteStoreItem(
       collectS3Keys(existing?.value ? [existing.value] : []),
       'store.delete',
       context.logger,
+      { scope: [...op.namespace, op.key] },
     );
   }
   if (context.vectorBackend) {

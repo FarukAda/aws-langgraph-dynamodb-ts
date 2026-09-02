@@ -274,3 +274,15 @@ describe('download cap (CODEC-17)', () => {
     offloader.destroy();
   });
 });
+
+describe('row-sourced key binding (SEC-03)', () => {
+  it('ownsKey/assertOwnedKey bind a key to the prefix and the scope parts', () => {
+    const { offloader } = makeOffloader();
+    const own = offloader.buildKey(['t', 'ns', 'c', 'checkpoint', 'n']);
+    expect(offloader.ownsKey(own, ['t'])).toBe(true);
+    expect(offloader.ownsKey(own, ['other'])).toBe(false);
+    expect(() => offloader.assertOwnedKey(own, ['t'])).not.toThrow();
+    expect(() => offloader.assertOwnedKey(own, ['other'])).toThrow(ValidationError);
+    offloader.destroy();
+  });
+});

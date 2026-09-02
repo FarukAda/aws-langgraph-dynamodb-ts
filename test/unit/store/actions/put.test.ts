@@ -41,6 +41,7 @@ function trackingOffloader(
     buildKey: overrides.buildKey ?? ((parts: string[]) => parts.join('/')),
     upload: overrides.upload ?? (async (key: string) => key),
     deleteBatch: jest.fn().mockResolvedValue([]),
+    ownsKey: () => true,
   };
 }
 const binKey = (parts: string[]): string => parts.join('/') + '.bin';

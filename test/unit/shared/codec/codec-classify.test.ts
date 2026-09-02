@@ -3,11 +3,13 @@ import { randomBytes } from 'node:crypto';
 import {
   decodePayload,
   encodePayload,
-  isMissingObjectError,
-  isPermanentPayloadLoss,
   PayloadLocation,
   readPayloadBytes,
 } from '../../../../src/shared/codec/codec';
+import {
+  isMissingObjectError,
+  isPermanentPayloadLoss,
+} from '../../../../src/shared/codec/payload-loss';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { RetryExhaustedError, ValidationError } from '../../../../src/shared/errors/errors';
@@ -33,7 +35,7 @@ function s3Failure(causeName: string): DynamoDBLangGraphError {
 describe('readPayloadBytes', () => {
   it('returns the stored bytes of an inline descriptor without deserializing', async () => {
     const descriptor = await encodePayload({ a: 1 }, { serde }, { keyParts: ['k'] });
-    const bytes = await readPayloadBytes(descriptor, { serde });
+    const bytes = await readPayloadBytes(descriptor, { serde }, []);
     expect(new TextDecoder().decode(bytes)).toBe('{"a":1}');
   });
 
@@ -43,10 +45,11 @@ describe('readPayloadBytes', () => {
       buildKey: (parts: readonly string[]) => parts.join('/'),
       upload: jest.fn(async (key: string) => key),
       download: jest.fn(async () => new TextEncoder().encode('{"b":2}')),
+      assertOwnedKey: () => undefined,
     };
     const deps = { serde, offloader: offloader as never };
     const descriptor = await encodePayload({ b: 2 }, deps, { keyParts: ['k'] });
-    const bytes = await readPayloadBytes(descriptor, deps);
+    const bytes = await readPayloadBytes(descriptor, deps, []);
     expect(new TextDecoder().decode(bytes)).toBe('{"b":2}');
     expect(offloader.download).toHaveBeenCalledWith('k');
   });
@@ -60,7 +63,7 @@ describe('decodePayload without an offloader', () => {
       compressed: false,
       s3Key: 'somewhere',
     } as const;
-    await expect(decodePayload(descriptor, { serde })).rejects.toMatchObject({
+    await expect(decodePayload(descriptor, { serde }, [])).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       message: expect.stringContaining('s3'),
     });
