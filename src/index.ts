@@ -50,4 +50,11 @@ export type { RetryPolicy } from './shared/dynamodb/retry-policy';
 export type { TtlOption } from './shared/validation/ttl';
 export type { CompressionConfig } from './shared/codec/compression';
 export type { S3OffloadConfig } from './shared/codec/s3/config';
-export type { S3ClientConfigLike, S3ClientLike } from './shared/codec/s3/client-types';
+export type {
+  S3ClientConfigLike,
+  S3ClientLike,
+  S3ClientOption,
+  S3ClientOptions,
+  S3CommandLike,
+  S3RegionLike,
+} from './shared/codec/s3/client-types';

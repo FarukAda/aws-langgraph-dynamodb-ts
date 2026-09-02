@@ -11,7 +11,8 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded pushes to a branch are cancelled; runs on main always finish.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:
@@ -92,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       dynamodb-local:
-        image: amazon/dynamodb-local:latest
+        image: amazon/dynamodb-local:3.3.1
         ports:
           - 8000:8000
         # DDB Local's image has no healthcheck; the job waits below via a curl
@@ -159,7 +160,7 @@ jobs:
         langgraph: ['1.1.5', 'latest']
     services:
       dynamodb-local:
-        image: amazon/dynamodb-local:latest
+        image: amazon/dynamodb-local:3.3.1
         ports:
           - 8000:8000
     steps:
@@ -203,6 +204,78 @@ jobs:
         if: failure()
         run: node .github/scripts/annotate-jest.mjs jest-conformance-matrix.json conformance
 
+  hygiene:
+    name: repository hygiene (knip, depcheck, jscpd, actionlint, changelog)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unused exports, dependencies and files (knip)
+        run: npm run unused
+
+      - name: Unused and missing dependencies (depcheck)
+        run: npm run depcheck
+
+      - name: Duplicated source (jscpd)
+        run: npm run cpd
+
+      - name: Workflow syntax (actionlint)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+
+      - name: CHANGELOG entry for source changes (pull requests)
+        if: github.event_name == 'pull_request'
+        run: |
+          base="origin/${{ github.base_ref }}"
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          if git diff --name-only "$base"...HEAD | grep -q "^src/" && ! git diff --name-only "$base"...HEAD | grep -q "^CHANGELOG.md$"; then
+            echo "src/ changed without a CHANGELOG entry under [Unreleased]" >&2
+            exit 1
+          fi
+
+  peer-floors:
+    name: peer dependency floors
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install every declared peer at its floor
+        run: |
+          floors="$(node -e '
+            const p = require("./package.json");
+            console.log(Object.entries(p.peerDependencies).map(([n, r]) => n + "@" + r.replace(/^[\^~]/, "")).join(" "));
+          ')"
+          echo "installing $floors"
+          npm install --no-save $floors
+
+      - name: Type-check and unit-test against the floors
+        run: |
+          npm run typecheck:all
+          npm test -- --ci
+
   docs:
     name: API reference is regenerated
     runs-on: ubuntu-latest
@@ -222,10 +295,13 @@ jobs:
       - name: Regenerate docs/api and fail on drift
         run: |
           npm run docs
-          git diff --exit-code -- docs/api || {
+          if ! git diff --quiet -- docs/api; then
+            stat="$(git diff --stat -- docs/api | tail -n 20 | tr '\n' ' ')"
+            sample="$(git diff -- docs/api | head -n 40 | tr '\n' ' ' | tr -d '\r')"
+            echo "::error title=docs/api is stale::${stat} ${sample}"
             echo "docs/api is stale: run npm run docs and commit the result" >&2
             exit 1
-          }
+          fi
 
   package-smoke:
     name: package smoke (npm pack + install + import)
@@ -245,6 +321,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Verify the package listing, exports and types (pack:check)
+        run: npm run pack:check
 
       - name: Pack and smoke-test the tarball
         run: npm run test:package-smoke

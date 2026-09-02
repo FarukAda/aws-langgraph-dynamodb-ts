@@ -1,11 +1,15 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
+    "src/index.ts!",
     "examples/*.mjs",
+    "scripts/*.mjs",
+    ".github/scripts/*.mjs",
     "*.config.ts",
     "test/**/*.test.ts",
     "test/package-smoke/*.test.mjs"
   ],
   "project": ["src/**/*.ts", "test/**/*.ts"],
+  "ignore": ["stryker.conf.json"],
   "ignoreDependencies": ["ts-node"]
 }

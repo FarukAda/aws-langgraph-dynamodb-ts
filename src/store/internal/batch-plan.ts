@@ -7,7 +7,7 @@ import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
  * How one `batch()` call is dispatched: the positions of its writes, grouped
  * by the item they touch, and the positions of its reads.
  */
-export interface BatchPlan {
+interface BatchPlan {
   /** Each group holds the puts/deletes of one `(namespace, key)`, in operation order. */
   writeGroups: number[][];
   reads: number[];
@@ -23,7 +23,7 @@ function itemOf(op: PutOperation): string {
  * order given, since the later one wins; writes to different items and all
  * reads are independent of each other.
  */
-export function planBatch(operations: readonly Operation[]): BatchPlan {
+function planBatch(operations: readonly Operation[]): BatchPlan {
   const groups = new Map<string, number[]>();
   const reads: number[] = [];
   operations.forEach((op, index) => {

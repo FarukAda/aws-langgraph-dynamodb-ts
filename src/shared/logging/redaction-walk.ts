@@ -8,7 +8,7 @@ export type Redactable =
 export type RedactableObject = Redactable[] | { [key: string]: Redactable };
 
 /** One step of the recursive walk, threaded into the entry helpers. */
-export type Walk = (value: Redactable) => Redactable;
+type Walk = (value: Redactable) => Redactable;
 
 /** Collaborators threaded through the recursive walk. */
 export interface WalkDeps {

@@ -14,7 +14,7 @@ interface PutWriteRequest {
 }
 
 /** A BatchWriteItem DeleteRequest. */
-export interface DeleteWriteRequest {
+interface DeleteWriteRequest {
   DeleteRequest: { Key: DocItem };
 }
 

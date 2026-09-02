@@ -22,9 +22,15 @@ jobs:
   aws:
     name: real-AWS suite
     runs-on: ubuntu-latest
-    # Skip cleanly on forks / when the role isn't configured.
-    if: ${{ vars.AWS_TEST_ROLE_ARN != '' }}
+    # Forks skip cleanly; the canonical repository must have the role configured.
+    if: ${{ vars.AWS_TEST_ROLE_ARN != '' || github.repository == 'FarukAda/aws-langgraph-dynamodb-ts' }}
     steps:
+      - name: Fail when the canonical repository has no role configured
+        if: ${{ vars.AWS_TEST_ROLE_ARN == '' }}
+        run: |
+          echo "AWS_TEST_ROLE_ARN is not set; the nightly real-AWS suite cannot run" >&2
+          exit 1
+
       - name: Checkout code
         uses: actions/checkout@v7
 

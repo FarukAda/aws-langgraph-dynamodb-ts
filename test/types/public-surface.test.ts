@@ -43,7 +43,11 @@ import type {
   RetryPolicy,
   S3ClientConfigLike,
   S3ClientLike,
+  S3ClientOption,
+  S3ClientOptions,
+  S3CommandLike,
   S3OffloadConfig,
+  S3RegionLike,
   SessionBackend,
   SessionMetadata,
   TtlOption,
@@ -112,6 +116,9 @@ describe('public type exports (CORE-12, TEST-10)', () => {
     expectTypeOf<RetryPolicy>().toHaveProperty('maxAttempts');
     expectTypeOf<S3OffloadConfig['clientConfig']>().toEqualTypeOf<S3ClientConfigLike | undefined>();
     expectTypeOf<S3ClientLike>().toHaveProperty('destroy');
+    expectTypeOf<S3CommandLike>().toHaveProperty('input');
+    expectTypeOf<S3ClientOptions['region']>().toEqualTypeOf<S3RegionLike | undefined>();
+    expectTypeOf<S3ClientOption>().not.toBeNever();
     expectTypeOf<SessionBackend>().toHaveProperty('getMessages');
     expectTypeOf<SessionMetadata['expiresAt']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<TtlOption>().toEqualTypeOf<{ days: number } | { seconds: number }>();
