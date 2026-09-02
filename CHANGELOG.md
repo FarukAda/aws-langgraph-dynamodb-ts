@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-09-02
+
 The 1.0.0 hardening: every finding of an independent, enterprise-grade review of `0.9.0` (188 findings across the checkpointer, store, chat history, DynamoDB layer, codec and S3, error model, security and IAM, packaging, tests and documentation) was fixed or, where the finding was a documentation gap, documented. Every fix landed test-first, the test tiers now include a compiled LangGraph graph over the saver and LangChain's official checkpointer validation suite against DynamoDB Local, and the README states what each tier proves. Rows written by `0.9.0` remain fully readable; the two new row attributes (`storedChannels` on checkpoint META rows, `schemaVersion` inside payload descriptors) are additive.
 
 ### Changed (breaking)
@@ -722,7 +724,8 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 
 ---
 
-[Unreleased]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.9.0...v1.0.0-rc.1
 [0.9.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.6.0...v0.7.0
