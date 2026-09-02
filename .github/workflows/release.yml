@@ -53,7 +53,7 @@ jobs:
           # The CI workflow runs on the push to main that the tag points at;
           # every check run of that commit (unit matrix, typecheck, audit,
           # integration, conformance, docs, package smoke) must have succeeded.
-          for attempt in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100" \
               --jq '[.check_runs[] | select(.app.slug == "github-actions" and .name != "publish '"${GITHUB_REF_NAME}"'")]')"
             total="$(echo "$runs" | jq 'length')"

@@ -118,7 +118,7 @@ jobs:
           # (curl without `-f`, exit 0 on 4xx/5xx) as "up". Using -f here, as
           # we did previously, caused the poll to hang for all 30 attempts
           # because DDB Local never returns 2xx on a curl-unsigned request.
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/ \
                 2>/dev/null | grep -qE '^[1-5][0-9][0-9]$'; then
               echo "DynamoDB Local is up."
@@ -184,7 +184,7 @@ jobs:
 
       - name: Wait for DynamoDB Local
         run: |
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/ \
                 2>/dev/null | grep -qE '^[1-5][0-9][0-9]$'; then
               echo "DynamoDB Local is up."
@@ -264,12 +264,12 @@ jobs:
 
       - name: Install every declared peer at its floor
         run: |
-          floors="$(node -e '
+          read -ra floors <<< "$(node -e '
             const p = require("./package.json");
             console.log(Object.entries(p.peerDependencies).map(([n, r]) => n + "@" + r.replace(/^[\^~]/, "")).join(" "));
           ')"
-          echo "installing $floors"
-          npm install --no-save $floors
+          echo "installing ${floors[*]}"
+          npm install --no-save "${floors[@]}"
 
       - name: Type-check and unit-test against the floors
         run: |

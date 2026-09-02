@@ -40,6 +40,7 @@ The 1.0.0 hardening: every finding of an independent, enterprise-grade review of
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - Checkpointer: a failed `put` or `putWrites` no longer deletes an S3 object a live row may point at — the rows are read back first and only a confirmed non-commit cleans up its own nonced upload; checkpoint and metadata objects are nonced per put; a regular write's upload is never deleted on an unverified failure; `list()` covers every namespace when none is given, applies `before` at the key, reads eventually consistently and passes `limit` to the query when unfiltered; `getTuple` reads large fan-outs completely, treats a falsy `checkpoint_id` as "latest", narrows the head row instead of trusting it, and rebuilds a pre-v4 checkpoint's pending sends from its parent; pending-write channel names are validated like every other key segment.
 - Store: ambiguous writes are verified by revision (an inline overwrite whose acknowledgement was lost is reported as success and cleans up the previous object), `delete` uses `ReturnValues: ALL_OLD` instead of a pre-read so a racing put can no longer orphan its object, pre-write reads project only the fields they need, a revision swap whose re-read finds the row gone takes the put timestamp as `createdAt`, an overwrite racing a `get` is re-read once, embedding-dimension mismatches are reported at search time, `embedDocuments` is used for documents and fields are extracted like `InMemoryStore`, and the in-DB ranker refuses a candidate set over `maxSearchCandidates` before decoding anything.
 - Chat history: only a provably unreadable message is skipped under `onCorruptMessage: 'skip'` (a transient S3 or permission failure propagates), messages that could never be read back are rejected at write time, reads are strongly consistent, titles are derived from content blocks, `reconcileMessageCount` counts only unexpired rows, a re-created session is never decremented during rollback, and an ambiguous chunk failure is re-read before compensating.
@@ -95,6 +96,7 @@ in a later round.
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - **A lost `PutItem` acknowledgement could strand a live row on a deleted S3 object — the most serious defect in this release, found while reviewing this release's own fix, not the original review.** `withDynamoDBRetry` retries transient errors, so a compare-and-swap put that had already committed server-side but lost its response was retried, hit the row it had itself just written, and failed the identical guard a genuine competitor's win would have failed. Both compare-and-swap loops introduced in this release — the store's `putWithRevisionSwap` and the checkpointer's `attemptCasWrites` — read that rejection as having been superseded by a competitor and deleted the S3 object the live row itself now points at. Each loop now pins the state it observed *before* issuing its own put, and recognizes a re-read that finds the row already holding its own revision token, reporting what it actually superseded instead of its own just-committed value.
 - **Overwrite paths now compare-and-swap, so two concurrent overwrites can no longer both orphan the loser's S3 upload.** `store.put()`'s concurrent-write race and the checkpointer's special-write race (`__error__`/`__interrupt__`/`__resume__`/`__scheduled__`) both let two writers read the same previous payload descriptor, each commit their own nonced upload, and both then try to clean up that same previous descriptor — orphaning the loser's own upload with nothing left recording it ever existed. Each overwrite now pins the revision (store: a new `rev` attribute; checkpointer: the existing `writeGroup`) it observed and re-reads on rejection, so it supersedes exactly the payload actually there. The swap engages **only when an S3 offloader is configured** — with none there is nothing to orphan — and is bounded to 3 attempts, since a *failed* conditional write still consumes write capacity sized on the existing item; on exhaustion it falls back to an unconditional overwrite (the exact pre-0.9.0 behaviour) and logs a `warn`.
 - **A retry that legitimately wrote a channel more times than the original call had its extra write silently discarded on read.** The read-side dedup keyed identity on `(taskId, channel)` alone, so any second row for a channel — including one a retry validly added at an occurrence no earlier call had ever written, which the write-side first-write-wins guard accepted cleanly — was treated as a superseding duplicate and dropped. `putWrites()` had reported success; a later `getTuple()`/`list()` simply returned fewer values than were written. Every row now carries the occurrence ordinal of its channel within its own call, and identity is `(taskId, channel, occurrence)`; this restores the outcome the upstream `MemorySaver` already has, which keys first-write-wins on `(taskId, idx)` and keeps both values. **Rolling-deploy note:** a row written by a pre-0.9.0 node carries no `occurrence` attribute and reads back as occurrence `0`, so the fix takes effect for rows written by 0.9.0+ nodes — during a mixed-version rollout, a grown retry issued by an *old* node against *new* rows can still lose its extra value.
@@ -132,6 +134,7 @@ the review cited were never present in this repository.
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - **`deleteThread()` and `history.clear()` deleted an entire shared partition with no sort-key scoping** (Critical). Both paged a partition `Query` carrying no sort-key condition and deleted every row it returned. Beyond the tagged partition keys above, each now deletes only rows whose sort key belongs to it, leaves anything else in place, and logs both counts.
 - **Reads cast raw rows instead of narrowing them** (Critical). `store.get()` cast `result.Item` straight to a store record: a colliding checkpointer WRITE row carries a `value` descriptor in the identical shape, so it decoded cleanly and returned another thread's pending write as the caller's own value — no exception, no signal. Checkpointer `list()` blind-cast every `META#` match the same way. Both now narrow and skip a foreign row with a `warn`.
 - **A retried task with a changed write mix silently lost writes and duplicated others** (Critical). A regular write's index is its position in the call's array, so a retry that emitted a new channel first put that channel on an index another already held; the first-write-wins guard cannot tell a genuine retry from an unrelated write, so the new channel was permanently dropped while the shared one was written twice — `putWrites()` returning success either way. Fixed from both ends. The sort key now carries the **channel**, so two different channels can never contend for one row and nothing is lost. Positional indexing is kept (it is what makes writes replay in the order the task emitted them, and it matches the reference `MemorySaver`), so a re-emitted channel can still land at a second index; each call therefore stamps its rows with a shared `writeGroup`, and the read side drops rows a *later* call added for a channel an earlier one had already committed. That distinguishes the retry case from a channel a single call legitimately wrote more than once (a task emitting two Sends), where every value must survive — so an accumulating channel such as a `messages` add-reducer is never double-counted. Separately, the index was being computed twice — once during dedup, once from the position in the *deduped* array — which diverged from upstream for a mixed special/regular write array; it is now resolved once.
@@ -177,6 +180,7 @@ for the two fixes that touch on-wire key construction.
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - **A checkpoint's own `id` was never validated against the reserved `#` sort-key separator**, unlike every other identifier this module handles (`thread_id`, `checkpoint_ns`, the parent `checkpoint_id`). A caller-supplied id containing `#` (e.g. `"legit-cp#task-1"`) produced a WRITE sort-key prefix that was a literal string-prefix of a different, unrelated checkpoint's own WRITE row, so `getTuple`/`list` silently absorbed the wrong checkpoint's pending writes into the crafted one. `putCheckpoint` now validates `checkpoint.id` the same way the incoming parent id already is.
 - **`redactLogger`/`redactSecrets` provided zero redaction for this library's own error subclasses.** The pass-through exemption meant to preserve a bare `Error`'s stack trace matched *every* `Error` subclass by `Object.prototype.toString`, including this library's own `BatchWriteIncompleteError.unprocessed`, `BatchWriteAllIncompleteError.failedChunks`, and `CompensationFailedError.rollbackError` — each of which can carry raw checkpoint/message/store content. Logging a caught error through the package's own recommended `redactLogger` wrapper (`logger.error('failed', err)`) shipped that content unredacted. An `Error` (or subclass) with no own enumerable data still passes through unchanged by reference (nothing to redact, identity/stack trace preserved); one carrying its own data is now rebuilt with `name`/`message`/`stack` preserved and every other own property redacted or recursed like any other object.
 - **`batchWriteAll`'s `succeededCount` (added in 0.6.0 to fix rollback undercounting) could still undercount when a chunk partially drained before a later retry round failed outright** — e.g. 20 of 25 items persist, then sustained throttling exhausts the retry budget on the remaining 5: the earlier 20 confirmed successes were silently discarded to 0 instead of being reported. `drainUnprocessedWrites` now carries the running persisted-count through every exit path — a hard write-call failure, the backoff wait's own signal aborting, or clean `UnprocessedItems` exhaustion — not just the last of these. This directly improves the accuracy of `append-saga.ts`'s rollback `messageCount` reversion, the exact call site the 0.6.0 fix targeted.
@@ -193,6 +197,7 @@ Every functional fix carries a dedicated regression test.
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - **A repeated write to the same special (negative-index) checkpoint channel across two `putWrites` calls could silently corrupt the previously-committed payload.** The special-write S3 key was deterministic (not nonce'd) and uploaded before the DynamoDB write was attempted, so a second call's upload could overwrite the bytes a still-live row pointed at; if that second call's DynamoDB write then failed, the row kept describing the first call's content while the S3 bytes underneath were already the second call's. Separately, deduping a duplicate special write happened after it was already uploaded, leaking the discarded upload with no DynamoDB failure required. Special writes now nonce their S3 key like every other write, dedup happens before any upload, and a read-before-write step cleans up the correct side (old descriptor on confirmed commit, new upload on confirmed non-commit, neither when the outcome is genuinely ambiguous) once the batch write settles.
 - **`store.put()` could delete a just-written S3 payload that had actually landed server-side**, when the final `PutItem` retry attempt failed with a network-class error (e.g. `ETIMEDOUT`) after DynamoDB had already applied the write — the ack was lost, not the write. `persistRecord` now verifies by reading the row back before deleting anything on that specific ambiguous case, and treats a confirmed landing as success.
 - **Two concurrent `addMessages` calls on the same stale-or-missing-TTL-anchor chat session could let the shared `ttl` anchor regress backward**, since a stale-anchor heal force-set it unconditionally. The anchor `SET` is now guarded by a monotonic `ConditionExpression`, and a lost race retries the same chunk once without forcing ttl (safe: `if_not_exists` then converges to whichever value already won) instead of losing the message writes to a benign ttl race.
@@ -228,6 +233,7 @@ the fix to confirm the test actually fails without it).
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - **A failed overwrite `store.put()` could delete the *previous* version's S3-offloaded payload, losing data permanently** (`get`/`search` on that item would then throw `S3_OFFLOAD_FAILED` forever). This was the most serious bug found in the review. Every S3-offloaded write now carries a per-call nonce in its key, so a failed write can only ever clean up its own (never-committed) object; the previous object is only cleaned up after the new row is safely committed.
 - **Chat-history TTL anchors could get permanently stuck on an already-expired value.** DynamoDB's TTL sweep can lag up to ~48h, and the anchor was written once via `if_not_exists`, so once a stale value landed it could never self-correct. `resolveTtlAnchor` no longer trusts a stored anchor that has already passed; when the persisted anchor is missing or stale, the next append force-refreshes it instead of leaving the session stuck.
 - **S3 lifecycle rules could collide across adapters sharing one bucket** — fixed by the adapter-scoped default key prefix; see the breaking-change note above for migration steps if you already provisioned a lifecycle rule.
@@ -253,6 +259,7 @@ the fix to confirm the test actually fails without it).
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - **Concurrent `addMessages` calls on the same chat session could exhaust
   their retry budget under real contention.** Every append transactionally
   updates the session's shared `messageCount` row alongside its message
@@ -272,6 +279,7 @@ under Fixed).
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - **`putWrites` is now first-write-wins for regular writes.** Re-executing a
   task no longer overwrites an already-recorded write for the same
   `(thread, checkpoint, task, index)` — the first value committed is the one
@@ -510,6 +518,7 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - **`list()` and `getTuple()` "latest" branch worked incorrectly on real DDB**
   for any user-supplied checkpoint ID starting with a character that lex-sorts
   above `P` (every lowercase letter, most common ID patterns like `ckpt-1`).
@@ -584,6 +593,7 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - Minor README formatting fix
 
 ---
@@ -605,6 +615,7 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 
 ### Fixed
 
+- The optional `@aws-sdk/client-s3` peer floor is `^3.901.0`; the previous `^3.900.0` named a version that was never published, so nothing could install it. The `peer-floors` CI job installs every declared floor and runs the type check and unit tier against it.
 - README documentation corrections
 
 ---
