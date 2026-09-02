@@ -1,26 +1,17 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
-import {
-  CreateTableCommand,
-  DeleteTableCommand,
-  DynamoDBClient,
-  waitUntilTableExists,
-  waitUntilTableNotExists,
-} from '@aws-sdk/client-dynamodb';
+import { CreateTableCommand, DynamoDBClient, waitUntilTableExists } from '@aws-sdk/client-dynamodb';
 import {
   CreateBucketCommand,
-  DeleteBucketCommand,
-  DeleteObjectsCommand,
   GetBucketLifecycleConfigurationCommand,
-  ListObjectsV2Command,
   S3Client,
   waitUntilBucketExists,
-  waitUntilBucketNotExists,
 } from '@aws-sdk/client-s3';
 import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { buildLifecycleRuleId } from '../../src/shared/codec/s3/config';
+import { deleteBucketCompletely, deleteTableCompletely, settleAll } from './helpers/teardown';
 
 const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
 const clientConfig = region ? { region } : {};
@@ -115,23 +106,18 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
   });
 
   afterAll(async () => {
-    if (s3) {
-      const listed = await s3.send(new ListObjectsV2Command({ Bucket: bucketName }));
-      const objects = (listed.Contents ?? []).map((object) => ({ Key: object.Key as string }));
-      if (objects.length > 0) {
-        await s3.send(
-          new DeleteObjectsCommand({ Bucket: bucketName, Delete: { Objects: objects } }),
-        );
-      }
-      await s3.send(new DeleteBucketCommand({ Bucket: bucketName }));
-      await waitUntilBucketNotExists({ client: s3, maxWaitTime: 90 }, { Bucket: bucketName });
-      s3.destroy();
-    }
-    if (admin) {
-      await admin.send(new DeleteTableCommand({ TableName: tableName }));
-      await waitUntilTableNotExists({ client: admin, maxWaitTime: 90 }, { TableName: tableName });
-      admin.destroy();
-    }
+    await settleAll([
+      async () => {
+        if (!s3) return;
+        await deleteBucketCompletely(s3, bucketName);
+        s3.destroy();
+      },
+      async () => {
+        if (!admin) return;
+        await deleteTableCompletely(admin, tableName);
+        admin.destroy();
+      },
+    ]);
   });
 
   it('ensureS3LifecycleRule provisions a real, independently verifiable bucket rule', async () => {
