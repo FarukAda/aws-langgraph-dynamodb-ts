@@ -19,6 +19,11 @@ export interface FactoryBaseOptions {
    */
   client?: DynamoDBDocument;
   clientConfig?: DynamoDBClientConfig;
+  /**
+   * @internal Test seam and dependency-injection hook for constructing the
+   * shared DynamoDB client; not part of the supported surface and absent from the
+   * shipped declarations.
+   */
   createClient?: (config: DynamoDBClientConfig) => DynamoDBClient;
   logger?: Logger;
 }

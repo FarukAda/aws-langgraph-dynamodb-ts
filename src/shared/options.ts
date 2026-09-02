@@ -18,7 +18,11 @@ export interface BaseAdapterOptions {
   client?: DynamoDBDocument;
   /** Config used to build a client when `client` is not provided. */
   clientConfig?: DynamoDBClientConfig;
-  /** Factory seam for constructing the underlying client (testing). */
+  /**
+   * @internal Test seam and dependency-injection hook for constructing the
+   * underlying DynamoDB client; not part of the supported surface and absent from the
+   * shipped declarations.
+   */
   createClient?: (config: DynamoDBClientConfig) => DynamoDBClient;
   /** Optional time-to-live applied to written items. */
   ttl?: TtlOption;

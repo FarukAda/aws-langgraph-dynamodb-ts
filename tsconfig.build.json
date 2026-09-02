@@ -13,6 +13,7 @@
     "outDir": "dist",
     "declaration": true,
     "declarationMap": true,
+    "stripInternal": true,
     "sourceMap": true,
     "resolveJsonModule": true,
     "isolatedModules": true

@@ -14,6 +14,7 @@ export interface ResolvedDynamoDBClient {
 export interface ResolveClientOptions {
   client?: DynamoDBDocument;
   clientConfig?: DynamoDBClientConfig;
+  /** @internal Test seam and dependency-injection hook for constructing the client. */
   createClient?: (config: DynamoDBClientConfig) => DynamoDBClient;
 }
 
