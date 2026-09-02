@@ -1,4 +1,4 @@
-import { sharedJestConfig } from './jest.shared.config';
+import { sharedJestConfig } from './jest.shared.config.ts';
 
 /**
  * Unit tier: unit tests, static guards, type locks and property tests.

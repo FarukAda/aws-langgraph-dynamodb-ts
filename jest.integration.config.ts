@@ -1,4 +1,4 @@
-import { sharedJestConfig } from './jest.shared.config';
+import { sharedJestConfig } from './jest.shared.config.ts';
 
 /**
  * Integration and contract tiers against DynamoDB Local (docker-compose.yml):
