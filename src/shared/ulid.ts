@@ -1,7 +1,32 @@
+import { randomBytes } from 'node:crypto';
+
 const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const ENCODING_LEN = 32;
 const TIME_CHARS = 10;
 const RANDOM_CHARS = 16;
+/** Bytes drawn per refill of the {@link secureRng} pool: 16 ids per syscall. */
+const RNG_POOL_BYTES = 256;
+
+/**
+ * A CSPRNG-backed `rng` seam: uniform values in `[0, 1)` from `crypto.randomBytes`,
+ * drawn from a refilled pool so a burst of ids costs one syscall per 256
+ * digits rather than one per digit. `Math.random` is fine for uniqueness and
+ * ordering but is not a cryptographically secure source, which security
+ * baselines flag in identifier generation; the ULID spec recommends a CSPRNG.
+ */
+export function secureRng(): () => number {
+  let pool = Buffer.alloc(0);
+  let offset = 0;
+  return () => {
+    if (offset >= pool.length) {
+      pool = randomBytes(RNG_POOL_BYTES);
+      offset = 0;
+    }
+    const byte = pool[offset];
+    offset += 1;
+    return byte / 256;
+  };
+}
 
 function encodeTime(timeMs: number): string {
   let remaining = Math.floor(timeMs);
@@ -11,6 +36,15 @@ function encodeTime(timeMs: number): string {
     remaining = Math.floor(remaining / ENCODING_LEN);
   }
   return out;
+}
+
+/**
+ * The 10 time characters every ULID generated at `timeMs` starts with. Used
+ * as a sort-key bound: every id from that millisecond onwards sorts at or
+ * after it, every earlier id before it.
+ */
+export function ulidTimePrefix(timeMs: number): string {
+  return encodeTime(timeMs);
 }
 
 function randomDigits(rng: () => number): number[] {
@@ -45,11 +79,11 @@ function incrementDigits(digits: number[]): IncrementResult {
  * even when the clock regresses or the same-millisecond random space overflows:
  * any non-advancing clock reuses the last timestamp and increments the random
  * component, carrying into the timestamp on overflow. `now`/`rng` are seams for
- * deterministic tests.
+ * deterministic tests; the default `rng` is {@link secureRng}.
  */
 export function createUlidFactory(
   now: () => number = Date.now,
-  rng: () => number = Math.random,
+  rng: () => number = secureRng(),
 ): () => string {
   let lastTime = -1;
   let lastRandom: number[] = [];

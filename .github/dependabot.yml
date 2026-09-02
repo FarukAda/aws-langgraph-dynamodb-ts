@@ -8,6 +8,9 @@ updates:
       day: monday
     open-pull-requests-limit: 10
     groups:
+      aws-sdk:
+        patterns:
+          - "@aws-sdk/*"
       langchain:
         patterns:
           - "@langchain/*"

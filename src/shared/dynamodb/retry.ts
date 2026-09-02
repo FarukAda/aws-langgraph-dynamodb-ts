@@ -3,10 +3,19 @@ import {
   INITIAL_BACKOFF_DELAY_MS,
   MAX_BACKOFF_DELAY_MS,
 } from '../constants';
-import { AbortError, RetryExhaustedError } from '../errors/errors';
+import { RetryExhaustedError } from '../errors/errors';
 import { toError } from '../errors/wrap-error';
+import { redactedMessage } from '../logging/secret-patterns';
+import { abortErrorFrom } from './abort';
 import { fullJitter, sleep } from './backoff';
 import { DEFAULT_RETRYABLE_ERRORS, isRetryableError } from './retry-classifier';
+
+/** What {@link RetryOptions.onRetry} learns before each backoff sleep. */
+export interface RetryAttemptInfo {
+  attempt: number;
+  delayMs: number;
+  error: Error;
+}
 
 /** Options controlling {@link withRetry}. */
 export interface RetryOptions {
@@ -14,6 +23,14 @@ export interface RetryOptions {
   baseDelayMs?: number;
   maxDelayMs?: number;
   retryableErrors?: readonly string[];
+  /**
+   * Decides retryability instead of `retryableErrors`, so a call site can
+   * share one classifier (see `isTransientS3Error`) with paths that do not
+   * go through `withRetry`.
+   */
+  isRetryable?: (error: Error) => boolean;
+  /** Called before every backoff sleep, so retries are visible before the budget is exhausted. */
+  onRetry?: (info: RetryAttemptInfo) => void;
   signal?: AbortSignal;
   rng?: () => number;
 }
@@ -27,7 +44,7 @@ interface ResolvedRetryOptions {
   maxAttempts: number;
   baseDelayMs: number;
   maxDelayMs: number;
-  retryable: readonly string[];
+  isRetryable: (error: Error) => boolean;
   rng: () => number;
 }
 
@@ -37,7 +54,9 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
     maxAttempts: options.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS,
     baseDelayMs: options.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS,
     maxDelayMs: options.maxDelayMs ?? MAX_BACKOFF_DELAY_MS,
-    retryable: options.retryableErrors ?? DEFAULT_RETRYABLE_ERRORS,
+    isRetryable:
+      options.isRetryable ??
+      ((error) => isRetryableError(error, options.retryableErrors ?? DEFAULT_RETRYABLE_ERRORS)),
     rng: options.rng ?? Math.random,
   };
 }
@@ -48,9 +67,9 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
  * {@link RetryExhaustedError}; an aborted signal throws {@link AbortError}.
  */
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
-  const { maxAttempts, baseDelayMs, maxDelayMs, retryable, rng } = resolveRetryOptions(options);
+  const { maxAttempts, baseDelayMs, maxDelayMs, isRetryable, rng } = resolveRetryOptions(options);
 
-  if (options.signal?.aborted) throw new AbortError();
+  if (options.signal?.aborted) throw abortErrorFrom(options.signal);
 
   let lastError: Error = new Error('Retry failed without error');
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -58,13 +77,15 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
       return await fn();
     } catch (error) {
       lastError = toError(error as Error);
-      if (!isRetryableError(lastError, retryable)) throw lastError;
+      if (!isRetryable(lastError)) throw lastError;
       if (attempt === maxAttempts) break;
-      await sleep(delayForAttempt(attempt, baseDelayMs, maxDelayMs, rng), options.signal);
+      const delayMs = delayForAttempt(attempt, baseDelayMs, maxDelayMs, rng);
+      options.onRetry?.({ attempt, delayMs, error: lastError });
+      await sleep(delayMs, options.signal);
     }
   }
   throw new RetryExhaustedError(
-    `Operation failed after ${maxAttempts} attempts: ${lastError.message}`,
+    `Operation failed after ${maxAttempts} attempts: ${redactedMessage(lastError)}`,
     maxAttempts,
     lastError,
   );

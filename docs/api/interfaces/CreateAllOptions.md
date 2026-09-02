@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,30 +6,30 @@
 
 # Interface: CreateAllOptions
 
-Defined in: [factory/factory.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L22)
+Defined in: [factory/types.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L46)
 
-Per-adapter options for [DynamoDBFactory.createAll](../classes/DynamoDBFactory.md#createall) (client is shared).
+Per-adapter options for `DynamoDBFactory.createAll`; omit a section to skip that adapter.
 
 ## Properties
 
-### history
+### history?
 
-> **history**: `Omit`\<[`DynamoDBChatMessageHistoryOptions`](../type-aliases/DynamoDBChatMessageHistoryOptions.md), `"client"` \| `"clientConfig"` \| `"createClient"`\>
+> `optional` **history?**: [`AdapterSection`](../type-aliases/AdapterSection.md)\<[`DynamoDBChatMessageHistoryOptions`](../type-aliases/DynamoDBChatMessageHistoryOptions.md)\>
 
-Defined in: [factory/factory.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L25)
-
-***
-
-### saver
-
-> **saver**: `Omit`\<[`DynamoDBSaverOptions`](../type-aliases/DynamoDBSaverOptions.md), `"client"` \| `"clientConfig"` \| `"createClient"`\>
-
-Defined in: [factory/factory.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L23)
+Defined in: [factory/types.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L49)
 
 ***
 
-### store
+### saver?
 
-> **store**: `Omit`\<[`DynamoDBStoreOptions`](../type-aliases/DynamoDBStoreOptions.md), `"client"` \| `"clientConfig"` \| `"createClient"`\>
+> `optional` **saver?**: [`AdapterSection`](../type-aliases/AdapterSection.md)\<[`DynamoDBSaverOptions`](../type-aliases/DynamoDBSaverOptions.md)\>
 
-Defined in: [factory/factory.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L24)
+Defined in: [factory/types.ts:47](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L47)
+
+***
+
+### store?
+
+> `optional` **store?**: [`AdapterSection`](../type-aliases/AdapterSection.md)\<[`DynamoDBStoreOptions`](../type-aliases/DynamoDBStoreOptions.md)\>
+
+Defined in: [factory/types.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L48)

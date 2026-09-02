@@ -1,110 +1,145 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
+import { nowSeconds } from '../../shared/clock';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { paginateScan } from '../../shared/dynamodb/scan';
+import type { DocItem } from '../../shared/dynamodb/types';
 import { assembleTuple } from '../internal/assemble';
-import { readConfigurable } from '../internal/configurable';
-import { type FilterValue, matchesFilter } from '../internal/filter-match';
-import { narrowMetaItem, readMetadata } from '../internal/item-reader';
-import { metaSortKeyPrefix, partitionKey } from '../internal/keys';
-import { beginsWithQuery } from '../internal/query';
+import { fetchTargetMeta } from '../internal/fetch';
+import { narrowMetaItem } from '../internal/item-reader';
+import {
+  type ListScope,
+  listQuery,
+  listScan,
+  passesKeyFilters,
+  passesMetadataFilter,
+  readListScope,
+} from '../internal/list-scope';
 import type { CheckpointerContext } from '../internal/setup';
 import type { CheckpointMetaItem } from '../types';
 
-/** Read list options into a flat, typed shape. */
-function readListOptions(options?: CheckpointListOptions): {
-  before: string | undefined;
-  filter: Record<string, FilterValue> | undefined;
-  limit: number | undefined;
-} {
-  return {
-    before: options?.before?.configurable?.checkpoint_id as string | undefined,
-    filter: options?.filter as Record<string, FilterValue> | undefined,
-    limit: options?.limit,
-  };
-}
-
 /**
- * True when `meta` passes the key-level list filters: `before` (strictly older
- * checkpoints) and an explicitly requested `checkpoint_id`. Split out from the
- * loop so each filter stays independently readable.
+ * The tuple for one META item that passes every filter, assembled eventually
+ * consistently (a history listing tolerates a replica lag `getTuple` does not)
+ * and reusing the metadata the filter already decoded. Undefined when the row
+ * is filtered out or its payload is missing.
  */
-function passesKeyFilters(
-  meta: CheckpointMetaItem,
-  checkpointId: string | undefined,
-  before: string | undefined,
-): boolean {
-  if (checkpointId !== undefined && meta.checkpointId !== checkpointId) return false;
-  return before === undefined || meta.checkpointId < before;
-}
-
-/** True when `meta` passes the (optional) metadata-equality filter. */
-async function passesMetadataFilter(
+async function tupleFor(
   context: CheckpointerContext,
   meta: CheckpointMetaItem,
-  filter: Record<string, FilterValue> | undefined,
-): Promise<boolean> {
-  if (!filter) return true;
-  const metadata = (await readMetadata(context, meta)) as Record<string, FilterValue>;
-  return matchesFilter(metadata, filter);
+  scope: ListScope,
+): Promise<CheckpointTuple | undefined> {
+  if (!passesKeyFilters(meta, scope)) return undefined;
+  const verdict = await passesMetadataFilter(context, meta, scope);
+  if (!verdict.pass) return undefined;
+  return assembleTuple(context, meta.threadId, meta.checkpointNs, meta, {
+    signal: scope.signal,
+    consistent: false,
+    metadata: verdict.metadata,
+  });
+}
+
+/** A `checkpoint_id` addresses one row: read it directly instead of scanning the namespace for it. */
+async function* listOne(
+  context: CheckpointerContext,
+  scope: ListScope & { threadId: string },
+): AsyncGenerator<CheckpointTuple> {
+  const meta = await fetchTargetMeta(
+    context,
+    scope.threadId,
+    scope.checkpointNs ?? '',
+    scope.checkpointId,
+    scope.signal,
+  );
+  if (!meta) return;
+  const tuple = await tupleFor(context, meta, scope);
+  if (tuple) yield tuple;
+}
+
+/** Narrow a scanned row, warning about (and skipping) one that is not a checkpoint meta item. */
+function narrowOrWarn(context: CheckpointerContext, raw: DocItem): CheckpointMetaItem | undefined {
+  const meta = narrowMetaItem(raw);
+  if (!meta) {
+    context.logger.warn('list: skipped a row that is not a checkpoint meta item', {
+      sortKey: raw.SK as string,
+    });
+  }
+  return meta;
+}
+
+/** The META rows a scope covers: a partition query for a thread, a table scan without one. */
+function metaRows(
+  context: CheckpointerContext,
+  scope: ListScope,
+  now: number,
+): AsyncGenerator<DocItem> {
+  const retry = retryFor(context, scope.signal);
+  const bounds = { maxItems: Number.POSITIVE_INFINITY, maxIterations: Number.POSITIVE_INFINITY };
+  return scope.threadId === undefined
+    ? paginateScan({
+        retry,
+        signal: scope.signal,
+        client: context.client,
+        params: withoutExpired(listScan(context, scope), now),
+        ...bounds,
+      })
+    : paginateQuery({
+        retry,
+        signal: scope.signal,
+        client: context.client,
+        params: withoutExpired(listQuery(context, { ...scope, threadId: scope.threadId }), now),
+        ...bounds,
+      });
 }
 
 /**
- * Yield checkpoint tuples for a thread/namespace, newest first. Honors
- * `options.before` (only checkpoints older than the given id), `options.filter`
- * (metadata equality), and `options.limit` (max tuples yielded).
+ * Yield checkpoint tuples for a thread, newest first: every namespace when the
+ * config names none (grouped by namespace, newest first within each), else the
+ * one namespace given. Without a `thread_id` every thread in the table is
+ * listed through a table scan, as the reference savers do; that read is
+ * unordered across threads and cross-tenant by construction. Honors
+ * `options.before` (only checkpoints older than the given id),
+ * `options.filter` (metadata equality), and `options.limit` (max tuples
+ * yielded; the read stops right after the yield that reaches it).
+ *
+ * The scan is deliberately unbounded: this generator streams and never
+ * accumulates, `limit` returns early, and a raw-row cap would turn a caller
+ * asking for a handful of rare matches over a large thread into a hard error
+ * instead of the true (possibly empty) answer. Past the warning threshold an
+ * operator is told to narrow the filter or pass a limit.
  */
 export async function* listCheckpoints(
   context: CheckpointerContext,
   config: RunnableConfig,
   options?: CheckpointListOptions,
 ): AsyncGenerator<CheckpointTuple> {
-  const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
-  const { before, filter, limit } = readListOptions(options);
-  const params = beginsWithQuery(
-    context.tableName,
-    partitionKey(threadId),
-    metaSortKeyPrefix(checkpointNs),
-  );
+  const scope = readListScope(config, options);
+  if (scope.threadId !== undefined && scope.checkpointId !== undefined) {
+    yield* listOne(context, { ...scope, threadId: scope.threadId });
+    return;
+  }
+  const now = nowSeconds();
   let yielded = 0;
   let scanned = 0;
-  /**
-   * Unbounded: this is a generator that streams and never accumulates, and
-   * `limit` already returns early, so the caller's own bound is what stops the
-   * read. The shared in-memory cap counts *raw rows pulled*, not
-   * filter-matched ones, so leaving it in place turned a caller asking for a
-   * handful of rare matches over a large thread into a hard
-   * ResultTruncatedError instead of the true (possibly empty) answer.
-   */
-  for await (const raw of paginateQuery({
-    client: context.client,
-    params,
-    maxItems: Number.POSITIVE_INFINITY,
-    maxIterations: Number.POSITIVE_INFINITY,
-  })) {
+  for await (const raw of metaRows(context, scope, now)) {
     scanned += 1;
     if (scanned === LIST_SCAN_WARN_THRESHOLD) {
       context.logger.warn(
         'list: scanned a large number of rows without the caller stopping; this read is ' +
           'deliberately unbounded, so narrow the filter or pass options.limit',
-        { threadId, checkpointNs, scanned },
+        { threadId: scope.threadId, checkpointNs: scope.checkpointNs, scanned },
       );
     }
-    if (limit !== undefined && yielded >= limit) return;
-    const meta = narrowMetaItem(raw);
-    if (!meta) {
-      context.logger.warn('list: skipped a row that is not a checkpoint meta item', {
-        sortKey: raw.SK as string,
-      });
-      continue;
-    }
-    if (!passesKeyFilters(meta, checkpointId, before)) continue;
-    if (!(await passesMetadataFilter(context, meta, filter))) continue;
-    const tuple = await assembleTuple(context, threadId, checkpointNs, meta);
-    if (tuple) {
-      yield tuple;
-      yielded += 1;
-    }
+    const meta = narrowOrWarn(context, raw);
+    if (!meta || isExpiredRow(meta, now)) continue;
+    const tuple = await tupleFor(context, meta, scope);
+    if (!tuple) continue;
+    yield tuple;
+    yielded += 1;
+    if (scope.limit !== undefined && yielded >= scope.limit) return;
   }
 }

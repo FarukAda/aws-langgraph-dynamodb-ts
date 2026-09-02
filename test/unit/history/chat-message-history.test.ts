@@ -17,6 +17,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-history';
 import { DynamoDBSessionChatMessageHistory } from '../../../src/history/session-adapter';
 import { JSON_SERDE } from '../../../src/shared/codec/json-serde';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 
 const s3Mock = mockClient(S3Client);
@@ -145,5 +146,41 @@ describe('DynamoDBChatMessageHistory', () => {
       ttl: { days: 30 },
     });
     await expect(h.ensureS3LifecycleRule()).resolves.toBeUndefined();
+  });
+});
+
+describe('cancellation via { signal } (CORE-04)', () => {
+  it('rejects every long-running method before any DynamoDB call', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    controller.abort();
+    const h = history(client);
+    const options = { signal: controller.signal };
+    const expectAborted = (promise: Promise<unknown>) =>
+      expect(promise).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'AbortError' });
+    await expectAborted(h.getMessages('s1', options));
+    await expectAborted(h.addMessages('s1', [new HumanMessage('hi')], options));
+    await expectAborted(h.addMessage('s1', new HumanMessage('hi'), options));
+    await expectAborted(h.clear('s1', options));
+    await expectAborted(h.listSessions(options));
+    await expectAborted(h.reconcileMessageCount('s1', options));
+    expect(mock.calls()).toHaveLength(0);
+  });
+});
+
+describe('bounded reads (HIST-06)', () => {
+  it('getMessages passes the window through and forSession binds a limit to the adapter', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    const h = history(client);
+    await h.getMessages('s1', { limit: 3 });
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input).toMatchObject({
+      Limit: 3,
+      ScanIndexForward: false,
+    });
+    await h.forSession('s1', { limit: 1 }).getMessages();
+    expect(mock.commandCalls(QueryCommand)[1].args[0].input.Limit).toBe(1);
+    await h.forSession('s1').getMessages();
+    expect(mock.commandCalls(QueryCommand)[2].args[0].input.Limit).toBeUndefined();
   });
 });

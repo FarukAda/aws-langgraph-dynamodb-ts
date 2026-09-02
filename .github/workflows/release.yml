@@ -1,52 +1,97 @@
 name: Release NPM Package
 
+# Publishes a tagged commit to npm with provenance. Tags only: the tag must
+# equal `v<package.json version>`, and the commit must already have a fully
+# successful CI run. A prerelease version (one containing "-") publishes under
+# the `next` dist-tag and a prerelease GitHub release; a plain version goes to
+# `latest`. Actions are pinned by commit SHA and npm by exact version.
+
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
 
 jobs:
   release:
+    name: publish ${{ github.ref_name }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Update npm
-        run: npm install -g npm@latest
+      - name: Pin npm
+        run: npm install -g npm@11.19.1
+
+      - name: Assert the tag matches package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match package.json version ${version}" >&2
+            exit 1
+          fi
+          if [[ "${version}" == *-* ]]; then
+            echo "DIST_TAG=next" >> "$GITHUB_ENV"
+            echo "PRERELEASE=true" >> "$GITHUB_ENV"
+          else
+            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
+            echo "PRERELEASE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Wait for a fully successful CI run of this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The CI workflow runs on the push to main that the tag points at;
+          # every check run of that commit (unit matrix, typecheck, audit,
+          # integration, conformance, docs, package smoke) must have succeeded.
+          for _ in $(seq 1 60); do
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100" \
+              --jq '[.check_runs[] | select(.app.slug == "github-actions" and .name != "publish '"${GITHUB_REF_NAME}"'")]')"
+            total="$(echo "$runs" | jq 'length')"
+            done_ok="$(echo "$runs" | jq '[.[] | select(.status == "completed" and .conclusion == "success")] | length')"
+            failed="$(echo "$runs" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped")] | length')"
+            echo "CI check runs for ${GITHUB_SHA}: ${done_ok}/${total} succeeded, ${failed} failed"
+            if [ "$failed" != "0" ]; then
+              echo "CI failed for this commit; not publishing" >&2
+              exit 1
+            fi
+            if [ "$total" != "0" ] && [ "$done_ok" = "$total" ]; then
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "CI did not finish within 30 minutes" >&2
+          exit 1
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
-        run: npm run typecheck
+      - name: Gates
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run build
+          npm test -- --ci
 
-      - name: Build package
-        run: npm run build
-
-      - name: Lint code
-        run: npm run lint
-
-      - name: Run tests
-        run: npm test
+      - name: Package smoke
+        run: npm run test:package-smoke
 
       - name: Publish to npm
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "${DIST_TAG}"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           generate_release_notes: true
+          prerelease: ${{ env.PRERELEASE == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

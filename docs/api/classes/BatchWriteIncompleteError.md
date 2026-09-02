@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Class: BatchWriteIncompleteError
 
-Defined in: [shared/errors/errors.ts:61](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L61)
+Defined in: [shared/errors/errors.ts:63](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L63)
 
 A BatchWriteItem sequence could not drain its UnprocessedItems. Items NOT
 listed in [unprocessed](#unprocessed) were acked by DynamoDB and persist — there is
@@ -17,7 +17,7 @@ of the UnprocessedItems retry budget.
 
 ## Extends
 
-- [`DynamoDbLangGraphError`](DynamoDbLangGraphError.md)
+- [`DynamoDBLangGraphError`](DynamoDBLangGraphError.md)
 
 ## Constructors
 
@@ -25,7 +25,7 @@ of the UnprocessedItems retry budget.
 
 > **new BatchWriteIncompleteError**(`succeededCount`, `unprocessed`, `retries`, `cause?`): `BatchWriteIncompleteError`
 
-Defined in: [shared/errors/errors.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L65)
+Defined in: [shared/errors/errors.ts:67](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L67)
 
 #### Parameters
 
@@ -51,7 +51,7 @@ Defined in: [shared/errors/errors.ts:65](https://github.com/FarukAda/aws-langgra
 
 #### Overrides
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`constructor`](DynamoDbLangGraphError.md#constructor)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`constructor`](DynamoDBLangGraphError.md#constructor)
 
 ## Properties
 
@@ -59,11 +59,11 @@ Defined in: [shared/errors/errors.ts:65](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L20)
+Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
 
 #### Inherited from
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`code`](DynamoDbLangGraphError.md#code)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`code`](DynamoDBLangGraphError.md#code)
 
 ***
 
@@ -71,11 +71,11 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L21)
+Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
 
 #### Inherited from
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`context`](DynamoDbLangGraphError.md#context)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`context`](DynamoDBLangGraphError.md#context)
 
 ***
 
@@ -83,7 +83,7 @@ Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-lan
 
 > `readonly` **succeededCount**: `number`
 
-Defined in: [shared/errors/errors.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L62)
+Defined in: [shared/errors/errors.ts:64](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L64)
 
 ***
 
@@ -91,4 +91,4 @@ Defined in: [shared/errors/errors.ts:62](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **unprocessed**: `WriteRequest`[]
 
-Defined in: [shared/errors/errors.ts:63](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L63)
+Defined in: [shared/errors/errors.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L65)

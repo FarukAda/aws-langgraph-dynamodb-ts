@@ -1,20 +1,38 @@
 /** Marker substituted for anything recognised as secret. */
 export const REDACTED = '[REDACTED]';
 
-/** Key names (matched case-insensitively as substrings) whose value is a secret. */
+/**
+ * Key names whose value is a secret. Each entry is a *normalised* name — see
+ * {@link normaliseKey} — and matches a key whose normalised form equals it or
+ * ends with it. Suffix matching is what catches `secretAccessKey`, `x-api-key`,
+ * `client_secret` and `AUTH_TOKEN`; requiring the pattern to be a suffix, not a
+ * substring, is what spares `maxTokens`, `total_tokens`, `tokenizer` and
+ * `secretary`, which the old substring rule redacted.
+ */
 export const DEFAULT_SECRET_KEY_PATTERNS: readonly string[] = [
   'accesskey',
-  'secretkey',
+  'accesskeyid',
   'secret',
   'sessiontoken',
   'securitytoken',
   'authorization',
   'password',
+  'passwd',
+  'passphrase',
   'apikey',
   'bearer',
   'token',
   'privatekey',
 ];
+
+/**
+ * Canonical form of a key name for matching: lower-case with every character
+ * that is not a letter or digit removed, so `api_key`, `x-api-key`, `ApiKey`
+ * and `API KEY` all become `apikey`.
+ */
+export function normaliseKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
 
 /**
  * Secret shapes recognisable in free text, where key-name matching cannot
@@ -55,10 +73,19 @@ export const DEFAULT_SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /((?:aws_)?(?:secret_access_key|secretaccesskey|password|passwd|api_?key|token)["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)(?=\s*[,}\]]|\s*$)|[^\r\n]+)/gi,
 ];
 
-/** True when `key` matches any secret-key pattern. */
+/** True when `key`'s normalised form equals or ends with any (normalised) pattern. */
 export function isSecretKey(key: string, patterns: readonly string[]): boolean {
-  const lower = key.toLowerCase();
-  return patterns.some((pattern) => lower.includes(pattern));
+  const normalised = normaliseKey(key);
+  return patterns.some((pattern) => normalised === pattern || normalised.endsWith(pattern));
+}
+
+/**
+ * An error's message with recognised credential shapes redacted, for embedding
+ * in another error's message: a wrapper that quotes its cause must not leak a
+ * `password=` or token the cause happened to carry.
+ */
+export function redactedMessage(error: Error): string {
+  return redactText(error.message, DEFAULT_SECRET_VALUE_PATTERNS);
 }
 
 /**

@@ -41,6 +41,30 @@ export function installFaults(client: DynamoDBClient, rules: FaultRule[]): void 
   );
 }
 
+/**
+ * Let every matching command reach the service and then discard its response,
+ * for up to `times` occurrences, so the caller observes a transport failure
+ * for a write that actually committed — the lost-response ambiguity the
+ * verify-before-delete paths exist for. Installed at the `deserialize` step so
+ * the request has fully completed by the time the fault fires; use a client
+ * built with `maxAttempts: 1` so the SDK's own retries do not mask it.
+ */
+export function dropResponses(client: DynamoDBClient, commandName: string, times: number): void {
+  let remaining = times;
+  client.middlewareStack.add(
+    (next, context) => async (args) => {
+      const result = await next(args);
+      const name = (context as { commandName?: string }).commandName ?? '';
+      if (name === commandName && remaining > 0) {
+        remaining -= 1;
+        throw Object.assign(new Error('simulated lost response'), { name: 'ETIMEDOUT' });
+      }
+      return result;
+    },
+    { step: 'deserialize', name: 'drop-responses' },
+  );
+}
+
 /** Build a synthetic AWS error with the given exception `name`. */
 export function awsError(name: string, message = name): Error {
   return Object.assign(new Error(message), { name });

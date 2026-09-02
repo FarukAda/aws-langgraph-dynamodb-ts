@@ -1,9 +1,12 @@
 import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
 
-import { type CodecDeps, encodePayload } from '../../shared/codec/codec';
+import { type CodecDeps } from '../../shared/codec/codec';
+import { encodePayload } from '../../shared/codec/encode';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { metaSortKey, partitionKey, payloadSortKey, writeSortKey } from './keys';
 import type { CheckpointerContext } from './setup';
+import { withStoredChannels } from './stored-channels';
+import { validateChannel } from './validation';
 import { resolveWriteIndices } from './write-index';
 
 /** Map a context to the codec collaborators. */
@@ -16,23 +19,39 @@ function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T 
   return item;
 }
 
-/** Encode a checkpoint + metadata into its META and PAYLOAD items. */
+/**
+ * Encode a checkpoint + metadata into its META and PAYLOAD items. `nonce` is
+ * unique per `put()` call and is appended to both S3 key part lists, so a
+ * second put of the same checkpoint id — a retry after a lost response, or a
+ * repair tool re-writing a checkpoint — never shares an object with the first.
+ * That is what makes "the row holds my key" equivalent to "my write is live"
+ * for the post-failure verification in `put.ts`, and what keeps a failed
+ * re-put's cleanup from deleting the object the first, successful put's rows
+ * point at. `storedChannels` narrows the stored `channel_values` (see
+ * `selectStoredChannels`); by default every value is stored.
+ */
 export async function buildCheckpointItems(
   context: CheckpointerContext,
   threadId: string,
   checkpointNs: string,
   checkpoint: Checkpoint,
   metadata: CheckpointMetadata,
+  nonce: string,
   parentCheckpointId?: string,
   ttlTimestamp?: number,
+  storedChannels: readonly string[] = Object.keys(checkpoint.channel_values),
 ): Promise<{ meta: CheckpointMetaItem; payload: CheckpointPayloadItem }> {
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
-  const checkpointDescriptor = await encodePayload(checkpoint, deps, {
-    keyParts: [threadId, checkpointNs, checkpoint.id, 'checkpoint'],
-  });
+  const checkpointDescriptor = await encodePayload(
+    withStoredChannels(checkpoint, storedChannels),
+    deps,
+    {
+      keyParts: [threadId, checkpointNs, checkpoint.id, 'checkpoint', nonce],
+    },
+  );
   const metadataDescriptor = await encodePayload(metadata, deps, {
-    keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata'],
+    keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata', nonce],
   });
   const meta: CheckpointMetaItem = {
     PK: pk,
@@ -41,6 +60,7 @@ export async function buildCheckpointItems(
     checkpointNs,
     checkpointId: checkpoint.id,
     metadata: metadataDescriptor,
+    storedChannels: [...storedChannels],
   };
   if (parentCheckpointId !== undefined) meta.parentCheckpointId = parentCheckpointId;
   const payload: CheckpointPayloadItem = {
@@ -74,6 +94,8 @@ export async function buildWriteItems(
   nonce: string,
   ttlTimestamp?: number,
 ): Promise<CheckpointWriteItem[]> {
+  /** Reject a bad channel before any payload is encoded or uploaded. */
+  for (const [channel] of writes) validateChannel(channel);
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];

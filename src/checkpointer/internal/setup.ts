@@ -3,11 +3,13 @@ import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { CompressionConfig } from '../../shared/codec/compression';
-import { defaultAdapterKeyPrefix } from '../../shared/codec/s3/config';
+import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
-import { DEFAULT_S3_KEY_PREFIX } from '../../shared/constants';
-import { resolveDynamoDBClient } from '../../shared/dynamodb/client';
+import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
+import type { RetryOptions } from '../../shared/dynamodb/retry';
+import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
+import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBSaverOptions } from '../types';
 
@@ -20,6 +22,8 @@ export interface CheckpointerContext {
   offloader?: S3Offloader;
   ttl?: TtlOption;
   logger: Logger;
+  /** Retry budget and backoff for every DynamoDB call, with the retry debug log attached. */
+  retry?: RetryOptions;
 }
 
 /** Result of wiring up a checkpointer from its options. */
@@ -38,13 +42,12 @@ export function setUpCheckpointer(
   options: DynamoDBSaverOptions,
   serde: SerializerProtocol,
 ): CheckpointerSetup {
+  validateBaseAdapterOptions(options);
+  const logger = resolveLogger(options.logger);
   const resolved = resolveDynamoDBClient(options);
+  if (!resolved.ownsClient) void warnOnStackedRetries(resolved.client, logger);
   const offloader = options.s3
-    ? new S3Offloader({
-        ...options.s3,
-        keyPrefix:
-          options.s3.keyPrefix ?? defaultAdapterKeyPrefix(DEFAULT_S3_KEY_PREFIX, 'checkpointer'),
-      })
+    ? new S3Offloader(offloaderConfigFor(options.s3, 'checkpointer', options.clientConfig))
     : undefined;
   return {
     context: {
@@ -54,7 +57,8 @@ export function setUpCheckpointer(
       compression: options.compression,
       offloader,
       ttl: options.ttl,
-      logger: resolveLogger(options.logger),
+      logger,
+      retry: resolveRetryPolicy(options.retry, logger),
     },
     ddbClient: resolved.ddbClient,
     ownsClient: resolved.ownsClient,

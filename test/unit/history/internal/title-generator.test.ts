@@ -46,4 +46,44 @@ describe('deriveTitle', () => {
     expect(deriveTitle([human('')])).toBeUndefined();
     expect(deriveTitle([])).toBeUndefined();
   });
+
+  describe('content-block arrays (HIST-10)', () => {
+    const blocks = (content: unknown[]): StoredMessage =>
+      ({ type: 'human', data: { content } }) as never;
+
+    it('uses the first text block of a multimodal human message', () => {
+      const title = deriveTitle([
+        blocks([
+          { type: 'image_url', image_url: { url: 'https://example.com/a.png' } },
+          { type: 'text', text: 'Describe this image' },
+          { type: 'text', text: 'second text block' },
+        ]),
+      ]);
+      expect(title).toBe('Describe this image');
+    });
+
+    it('returns undefined when no block carries text', () => {
+      expect(
+        deriveTitle([blocks([{ type: 'image_url', image_url: { url: 'x' } }])]),
+      ).toBeUndefined();
+      expect(deriveTitle([blocks([{ type: 'text', text: '' }])])).toBeUndefined();
+      expect(deriveTitle([blocks([])])).toBeUndefined();
+    });
+
+    it('ignores entries that are not block objects and content that is neither string nor array', () => {
+      expect(deriveTitle([blocks(['plain string', null, 7, { type: 'text', text: 'ok' }])])).toBe(
+        'ok',
+      );
+      expect(deriveTitle([{ type: 'human', data: {} } as never])).toBeUndefined();
+      expect(
+        deriveTitle([{ type: 'human', data: { content: { nested: 1 } } } as never]),
+      ).toBeUndefined();
+    });
+
+    it('truncates block text like string content', () => {
+      const title = deriveTitle([blocks([{ type: 'text', text: 'z'.repeat(100) }])]) as string;
+      expect([...title]).toHaveLength(80);
+      expect(title.endsWith('…')).toBe(true);
+    });
+  });
 });

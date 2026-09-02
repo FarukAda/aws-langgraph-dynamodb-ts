@@ -2,6 +2,39 @@ import type { StoredMessage } from '@langchain/core/messages';
 
 const MAX_TITLE_LENGTH = 80;
 
+/** The shape of a text content block in a multimodal message. */
+interface TextBlock {
+  type: 'text';
+  text: string;
+}
+
+function isTextBlock(block: object): block is TextBlock {
+  const candidate = block as { type?: string; text?: string };
+  return candidate.type === 'text' && typeof candidate.text === 'string';
+}
+
+/**
+ * What a stored message's `content` holds at runtime. `StoredMessageData`
+ * declares it as `string`, but a multimodal message serializes its
+ * `MessageContentComplex[]` blocks verbatim, so an array must be handled too.
+ */
+type StoredContent = string | readonly (object | string | number | boolean | null)[];
+
+/**
+ * The human-readable text of a message's `content`: the string itself, or the
+ * first `text` block of a content-block array (a multimodal message carries
+ * image and text blocks side by side). Undefined when neither yields text.
+ */
+function textOf(content: StoredContent | undefined): string | undefined {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return undefined;
+  const block = content.find(
+    (entry): entry is TextBlock =>
+      typeof entry === 'object' && entry !== null && isTextBlock(entry),
+  );
+  return block?.text;
+}
+
 /**
  * Derive a session title from the first human message's text content, at most
  * {@link MAX_TITLE_LENGTH} characters including the ellipsis. Returns undefined
@@ -14,8 +47,9 @@ const MAX_TITLE_LENGTH = 80;
  */
 export function deriveTitle(messages: StoredMessage[]): string | undefined {
   const firstHuman = messages.find((message) => message.type === 'human');
-  const content = firstHuman?.data.content;
-  if (typeof content !== 'string' || content.length === 0) return undefined;
+  const content =
+    firstHuman === undefined ? undefined : textOf(firstHuman.data.content as StoredContent);
+  if (content === undefined || content.length === 0) return undefined;
   const codePoints = [...content];
   if (codePoints.length <= MAX_TITLE_LENGTH) return content;
   return `${codePoints.slice(0, MAX_TITLE_LENGTH - 1).join('')}…`;

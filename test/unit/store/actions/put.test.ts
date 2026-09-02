@@ -8,6 +8,7 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { stubEmbeddings } from '../../../shared/helpers/embeddings-stub';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -40,6 +41,7 @@ function trackingOffloader(
     buildKey: overrides.buildKey ?? ((parts: string[]) => parts.join('/')),
     upload: overrides.upload ?? (async (key: string) => key),
     deleteBatch: jest.fn().mockResolvedValue([]),
+    ownsKey: () => true,
   };
 }
 const binKey = (parts: string[]): string => parts.join('/') + '.bin';
@@ -91,7 +93,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.1, 0.2]) };
+    const embeddings = stubEmbeddings([0.1, 0.2]);
     await putItem(context(client, { index: { dims: 2, embeddings: embeddings as never } }), op({}));
     expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toEqual([0.1, 0.2]);
   });
@@ -100,12 +102,12 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn() };
+    const embeddings = { embedQuery: jest.fn(), embedDocuments: jest.fn() };
     await putItem(
       context(client, { index: { dims: 2, embeddings: embeddings as never } }),
       op({ index: false }),
     );
-    expect(embeddings.embedQuery).not.toHaveBeenCalled();
+    expect(embeddings.embedDocuments).not.toHaveBeenCalled();
     expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toBeUndefined();
   });
 
@@ -113,12 +115,12 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([1, 2]) };
+    const embeddings = stubEmbeddings([1, 2]);
     await putItem(
       context(client, { index: { dims: 2, embeddings: embeddings as never } }),
       op({ value: { name: 'Faruk', bio: 'builds things' }, index: ['bio'] }),
     );
-    expect(embeddings.embedQuery).toHaveBeenCalledWith('builds things');
+    expect(embeddings.embedDocuments).toHaveBeenCalledWith(['builds things']);
   });
 
   it('rethrows a write failure without cleanup when no offloader is set', async () => {
@@ -153,33 +155,17 @@ describe('putItem', () => {
   // Integration-level: prove persistRecord wires verifyWriteLanded's landed/not-landed/unverified verdict correctly into the delete/rethrow decision (its own branches are unit-tested in write-verify.test.ts).
   it('does not delete the new S3 object, and succeeds, when an ambiguous retry-exhaustion write actually landed', async () => {
     const { client, mock } = createStrictDocumentMock();
-    let uploadedKey = '';
-    mock.on(GetCommand).callsFake(async () =>
-      uploadedKey
-        ? {
-            Item: {
-              value: {
-                location: PayloadLocation.S3,
-                serdeType: 'json',
-                compressed: false,
-                s3Key: uploadedKey,
-              },
-            },
-          }
-        : {},
-    );
-    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
-    const offloader = trackingOffloader({
-      upload: async (key: string) => {
-        uploadedKey = key;
-        return key;
-      },
+    let rev: string | undefined;
+    mock.on(GetCommand).callsFake(async () => (rev ? { Item: { rev } } : {}));
+    mock.on(PutCommand).callsFake((input) => {
+      rev = input.Item.rev as string;
+      throw Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
     });
+    const offloader = trackingOffloader();
     const ctx = context(client, { offloader: offloader as never });
     await expect(putItem(ctx, op({}))).resolves.toBeUndefined();
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
-
   it('cleans up the new S3 object and rethrows when an ambiguous retry-exhaustion write genuinely did not land', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
@@ -206,7 +192,9 @@ describe('putItem', () => {
     mock.on(PutCommand).resolves({});
     await putItem(context(client), op({}));
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
-    expect(mock.commandCalls(GetCommand)[0].args[0].input.ProjectionExpression).toBe('#c, #v, #r');
+    const read = mock.commandCalls(GetCommand)[0].args[0].input;
+    expect(read.ProjectionExpression).toBe('#c, #r, #v.#loc, #v.#s3k');
+    expect(read.ExpressionAttributeNames).toMatchObject({ '#loc': 'location', '#s3k': 's3Key' });
   });
 
   it('offloads each successful put to a distinct S3 key (nonced, not deterministic)', async () => {
@@ -290,7 +278,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5, 0.6]) };
+    const embeddings = stubEmbeddings([0.5, 0.6]);
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await putItem(
       context(client, {
@@ -307,7 +295,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { createdAt: '2000-01-01T00:00:00.000Z' } });
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn() };
+    const embeddings = stubEmbeddings([0.5, 0.6]);
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await putItem(
       context(client, {
@@ -332,7 +320,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5, 0.6]) };
+    const embeddings = stubEmbeddings([0.5, 0.6]);
     const vectorBackend = {
       upsert: jest.fn().mockRejectedValue(new Error('backend down')),
       query: jest.fn(),
@@ -366,17 +354,18 @@ describe('putItem', () => {
     expect(logger.warn).toHaveBeenCalled();
   });
 
-  it('cleans up the offloaded S3 object when a large value is deleted', async () => {
+  it('cleans up the offloaded object DynamoDB reports as removed, without a pre-read (STORE-08)', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({
-      Item: {
+    mock.on(DeleteCommand).resolves({
+      Attributes: {
         value: { location: PayloadLocation.S3, serdeType: 'json', s3Key: 'users/u1/profile.bin' },
       },
     });
-    mock.on(DeleteCommand).resolves({});
     const offloader = trackingOffloader();
     await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['users/u1/profile.bin']);
+    expect(mock.commandCalls(DeleteCommand)[0].args[0].input.ReturnValues).toBe('ALL_OLD');
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
 
   it('does not attempt S3 cleanup on delete when no offloader is configured', async () => {

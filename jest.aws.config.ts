@@ -1,32 +1,16 @@
+import { sharedJestConfig } from './jest.shared.config.ts';
+
 /**
- * Real-AWS test runner. These tests create and delete a real DynamoDB table in
- * the account resolved from the default credential chain, so they are isolated
- * from `npm test` and `npm run test:integration` and only run on demand:
+ * Real-AWS tier: creates and deletes uniquely named tables and buckets
+ * (`aws-langgraph-<suite>test-<uuid>`) in the account of the default credential
+ * chain. Runs nightly in CI and on demand:
  *
- *   npm run test:aws
- *
- * Resources are uniquely named (`aws-langgraph-awstest-<uuid>`) and torn down in
- * afterAll. Set AWS_REGION to target a specific region.
+ *   AWS_REGION=eu-central-1 npm run test:aws
  */
 export default {
+  ...sharedJestConfig,
   testMatch: ['<rootDir>/test/aws/**/*.test.ts'],
-  transform: {
-    '^.+\\.tsx?$': [
-      'ts-jest',
-      {
-        tsconfig: {
-          esModuleInterop: true,
-          allowSyntheticDefaultImports: true,
-          rootDir: '.',
-        },
-      },
-    ],
-  },
-  verbose: true,
-  preset: 'ts-jest',
-  testEnvironment: 'node',
   testTimeout: 120000,
-  clearMocks: true,
   collectCoverage: false,
   maxWorkers: 1,
 };

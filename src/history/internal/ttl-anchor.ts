@@ -1,4 +1,6 @@
+import { nowSeconds } from '../../shared/clock';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
 import type { HistoryContext } from './setup';
 
@@ -29,19 +31,21 @@ export async function resolveTtlAnchor(
   context: HistoryContext,
   sessionId: string,
   candidate: number,
+  signal?: AbortSignal,
 ): Promise<TtlAnchorResult> {
-  const result = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
-      ConsistentRead: true,
-      ProjectionExpression: '#ttl',
-      ExpressionAttributeNames: { '#ttl': 'ttl' },
-    }),
+  const result = await withDynamoDBRetry(
+    () =>
+      context.client.get({
+        TableName: context.tableName,
+        Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+        ConsistentRead: true,
+        ProjectionExpression: '#ttl',
+        ExpressionAttributeNames: { '#ttl': 'ttl' },
+      }),
+    retryFor(context, signal),
   );
   const ttl = (result.Item as { ttl?: number } | undefined)?.ttl;
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  if (typeof ttl === 'number' && ttl > nowSeconds) {
+  if (typeof ttl === 'number' && ttl > nowSeconds()) {
     return { ttlTimestamp: ttl, refresh: false };
   }
   return { ttlTimestamp: candidate, refresh: true };

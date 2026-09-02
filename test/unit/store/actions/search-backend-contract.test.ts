@@ -58,6 +58,20 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     );
   });
 
+  it('rejects a query vector whose length disagrees with index.dims before asking the backend', async () => {
+    const { client } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([1, 2, 3]) };
+    const vectorBackend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      vectorBackend: vectorBackend as never,
+    });
+    await expect(
+      searchItems(ctx, { namespacePrefix: ['users'], query: 'q' }),
+    ).rejects.toMatchObject({ name: 'ValidationError' });
+    expect(vectorBackend.query).not.toHaveBeenCalled();
+  });
+
   it('does not warn for a correctly ordered backend (I3)', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };

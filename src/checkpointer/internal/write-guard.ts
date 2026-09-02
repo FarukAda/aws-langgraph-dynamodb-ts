@@ -1,16 +1,14 @@
+import { rejectedItem } from '../../shared/dynamodb/conditional-put';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
 
 /**
  * The channel recorded on the row that turned a write away, or undefined when
- * the service returned no attributes. `ReturnValuesOnConditionCheckFailure:
- * 'ALL_OLD'` attaches the existing item to the exception at no extra round
- * trip, but — verified against real DynamoDB — the document client does not
- * unmarshall an *error* payload the way it unmarshalls a response, so the
- * attribute arrives in raw AttributeValue form.
+ * the service returned no attributes (`ReturnValuesOnConditionCheckFailure:
+ * 'ALL_OLD'` attaches the existing item to the exception at no extra round trip).
  */
 function rejectedChannel(error: Error): string | undefined {
-  return (error as { Item?: { channel?: { S?: string } } }).Item?.channel?.S;
+  return rejectedItem(error)?.channel as string | undefined;
 }
 
 /**
@@ -40,4 +38,16 @@ export function reportGuardRejection(
     sortKey: item.SK,
     channel: item.channel,
   });
+}
+
+/**
+ * True when the guard rejection's returned row provably belongs to another
+ * `putWrites` call, so this call's own upload is dead and safe to delete. A
+ * retried put whose response was lost can be rejected by the row it wrote
+ * itself, so an equal group — or no attributes at all — proves nothing and
+ * must not be taken as "my upload is dead".
+ */
+export function rejectionProvesForeignRow(item: CheckpointWriteItem, error: Error): boolean {
+  const group = rejectedItem(error)?.writeGroup as string | undefined;
+  return group !== undefined && group !== item.writeGroup;
 }

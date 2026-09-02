@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,13 +6,13 @@
 
 # Class: RetryExhaustedError
 
-Defined in: [shared/errors/errors.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L22)
+Defined in: [shared/errors/errors.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L23)
 
 A retried operation exhausted its attempt budget.
 
 ## Extends
 
-- [`DynamoDbLangGraphError`](DynamoDbLangGraphError.md)
+- [`DynamoDBLangGraphError`](DynamoDBLangGraphError.md)
 
 ## Constructors
 
@@ -20,7 +20,7 @@ A retried operation exhausted its attempt budget.
 
 > **new RetryExhaustedError**(`message`, `attempts?`, `cause?`): `RetryExhaustedError`
 
-Defined in: [shared/errors/errors.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L23)
+Defined in: [shared/errors/errors.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L24)
 
 #### Parameters
 
@@ -42,7 +42,7 @@ Defined in: [shared/errors/errors.ts:23](https://github.com/FarukAda/aws-langgra
 
 #### Overrides
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`constructor`](DynamoDbLangGraphError.md#constructor)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`constructor`](DynamoDBLangGraphError.md#constructor)
 
 ## Properties
 
@@ -50,11 +50,11 @@ Defined in: [shared/errors/errors.ts:23](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L20)
+Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
 
 #### Inherited from
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`code`](DynamoDbLangGraphError.md#code)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`code`](DynamoDBLangGraphError.md#code)
 
 ***
 
@@ -62,8 +62,8 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L21)
+Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
 
 #### Inherited from
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`context`](DynamoDbLangGraphError.md#context)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`context`](DynamoDBLangGraphError.md#context)

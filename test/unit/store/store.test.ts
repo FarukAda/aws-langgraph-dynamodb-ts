@@ -12,6 +12,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
+import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 
@@ -51,7 +52,9 @@ describe('DynamoDBStore', () => {
 
   it('listNamespaces dispatches a Scan', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(ScanCommand).resolves({ Items: [{ namespace: ['a'] }] });
+    mock
+      .on(ScanCommand)
+      .resolves({ Items: [{ PK: 'STORE#a', SK: 'k', namespace: ['a'], key: 'k' }] });
     const store = new DynamoDBStore({ tableName: 'store', client });
     expect(await store.listNamespaces()).toEqual([['a']]);
   });
@@ -77,7 +80,13 @@ describe('DynamoDBStore', () => {
     const store = new DynamoDBStore({
       tableName: 'store',
       client,
-      index: { dims: 1, embeddings: { embedQuery: jest.fn().mockResolvedValue([1]) } as never },
+      index: {
+        dims: 1,
+        embeddings: {
+          embedQuery: jest.fn(),
+          embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [1])),
+        } as never,
+      },
       vectorBackend: backend,
     });
     const result = await store.reconcileVectorIndex(['users', 'u1']);
@@ -131,5 +140,47 @@ describe('DynamoDBStore', () => {
     const { client } = createStrictDocumentMock();
     const store = new DynamoDBStore({ tableName: 'store', client, ttl: { days: 30 } });
     await expect(store.ensureS3LifecycleRule()).resolves.toBeUndefined();
+  });
+});
+
+describe('cancellation via { signal } (CORE-04)', () => {
+  it('rejects search and reconcileVectorIndex before any DynamoDB call', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    controller.abort();
+    const embeddings = { embedQuery: jest.fn(), embedDocuments: jest.fn() };
+    const backend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
+    const store = new DynamoDBStore({
+      tableName: 'store',
+      client,
+      index: { dims: 1, embeddings: embeddings as never },
+      vectorBackend: backend,
+    });
+    await expect(store.search(['ns'], { signal: controller.signal })).rejects.toMatchObject({
+      code: ErrorCode.ABORTED,
+      name: 'AbortError',
+    });
+    await expect(
+      store.reconcileVectorIndex(['ns'], { signal: controller.signal }),
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED });
+    expect(mock.calls()).toHaveLength(0);
+  });
+});
+
+describe('BaseStore lifecycle (CORE-22)', () => {
+  it('stop() releases an owned client exactly once and leaves an injected one alone', async () => {
+    const destroy = jest.fn();
+    const fake = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
+    const owned = new DynamoDBStore({
+      tableName: 'store',
+      clientConfig: { region: 'us-east-1' },
+      createClient: () => fake as never,
+    });
+    await owned.stop();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    const injected = createStrictDocumentMock();
+    const spy = jest.spyOn(injected.client, 'destroy');
+    await new DynamoDBStore({ tableName: 'store', client: injected.client }).stop();
+    expect(spy).not.toHaveBeenCalled();
   });
 });

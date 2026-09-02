@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,9 +6,9 @@
 
 # Function: redactSecrets()
 
-> **redactSecrets**(`value`, `patterns?`, `valuePatterns?`): `Redactable`
+> **redactSecrets**(`value`, `patterns?`, `valuePatterns?`): [`Redactable`](../type-aliases/Redactable.md)
 
-Defined in: [shared/logging/redaction.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/logging/redaction.ts#L24)
+Defined in: [shared/logging/redaction.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L29)
 
 Recursively clone `value`, replacing any value at a secret-looking key with
 `[REDACTED]` and any recognised secret *shape* inside a string — including an
@@ -22,13 +22,14 @@ this way) or a secret in its text is rebuilt instead, with `name`/`message`/
 `stack` redacted and every other own property recursed like a plain object.
 `Date`/`RegExp` keep their identity rather than collapsing to `{}`,
 `Set`/`Map` render as their contents, and binary views become a short label.
-Does not mutate the input.
+Does not mutate the input. Accepts any log argument — a typed `Error`, a
+class instance, a `Record` — so callers never cast.
 
 ## Parameters
 
 ### value
 
-`Redactable`
+[`LogArgument`](../type-aliases/LogArgument.md) \| `undefined`
 
 ### patterns?
 
@@ -40,4 +41,4 @@ readonly `RegExp`[] = `DEFAULT_SECRET_VALUE_PATTERNS`
 
 ## Returns
 
-`Redactable`
+[`Redactable`](../type-aliases/Redactable.md)

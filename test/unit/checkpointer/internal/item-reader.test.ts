@@ -14,6 +14,7 @@ import type { CheckpointerContext } from '../../../../src/checkpointer/internal/
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
 
 const serde = {
   dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
@@ -40,13 +41,27 @@ const metadata: CheckpointMetadata = { source: 'loop', step: 3, parents: {} };
 
 describe('item-reader', () => {
   it('round-trips the checkpoint written by the item-writer', async () => {
-    const { payload } = await buildCheckpointItems(context(), 't', '', checkpoint, metadata);
-    expect(await readCheckpoint(context(), payload)).toEqual(checkpoint);
+    const { payload } = await buildCheckpointItems(
+      context(),
+      't',
+      '',
+      checkpoint,
+      metadata,
+      'nonce-1',
+    );
+    expect(await readCheckpoint(context(), payload, 't')).toEqual(checkpoint);
   });
 
   it('round-trips the metadata written by the item-writer', async () => {
-    const { meta } = await buildCheckpointItems(context(), 't', '', checkpoint, metadata);
-    expect(await readMetadata(context(), meta)).toEqual(metadata);
+    const { meta } = await buildCheckpointItems(
+      context(),
+      't',
+      '',
+      checkpoint,
+      metadata,
+      'nonce-1',
+    );
+    expect(await readMetadata(context(), meta, 't')).toEqual(metadata);
   });
 
   it('assembles pending writes as [taskId, channel, value] tuples', async () => {
@@ -62,7 +77,7 @@ describe('item-reader', () => {
       ],
       'nonce-1',
     );
-    const pending = await toPendingWrites(context(), items);
+    const pending = await toPendingWrites(context(), items, 't');
     expect(pending).toEqual([
       ['task-7', 'messages', 'a'],
       ['task-7', 'counter', 5],
@@ -183,5 +198,30 @@ describe('dropSupersededWrites (C3)', () => {
   it('separates identities per task', () => {
     const items = [row(0, 'messages', 'g1', 'task-1', 0), row(0, 'messages', 'g2', 'task-2', 0)];
     expect(dropSupersededWrites(items)).toHaveLength(2);
+  });
+});
+
+describe('toPendingWrites offloaded reads (CODEC-14)', () => {
+  it('decodes offloaded pending writes up to 8 at a time, preserving order', async () => {
+    const { offloader, maxInFlight } = overlapOffloader();
+    const ctx = { ...context(), offloader: offloader as never };
+    const items = await buildWriteItems(
+      ctx,
+      't',
+      '',
+      'ckpt-1',
+      'task-7',
+      [
+        ['a', 1],
+        ['b', 2],
+        ['c', 3],
+        ['d', 4],
+      ],
+      'nonce-1',
+    );
+    const pending = await toPendingWrites(ctx, items, 't');
+    expect(pending.map(([, , value]) => value)).toEqual([1, 2, 3, 4]);
+    expect(maxInFlight()).toBeGreaterThan(1);
+    expect(maxInFlight()).toBeLessThanOrEqual(8);
   });
 });

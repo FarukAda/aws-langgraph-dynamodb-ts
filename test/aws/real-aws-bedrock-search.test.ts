@@ -24,9 +24,20 @@ const EMBED_DIMS = 1024;
  * semantically closest item, not just that the call returns a well-formed
  * response.
  */
+const MODEL = 'amazon.titan-embed-text-v2:0';
+
+/** Errors Bedrock raises when the model is not enabled for this account or region. */
+const MODEL_UNAVAILABLE_ERRORS: readonly string[] = [
+  'AccessDeniedException',
+  'ValidationException',
+  'ResourceNotFoundException',
+];
+
 describe('DynamoDBStore semantic search against real Bedrock embeddings', () => {
   let admin: DynamoDBClient;
   let store: DynamoDBStore;
+  /** Set when the probe call fails for a model-availability reason; every test then skips with it. */
+  let unavailable: string | undefined;
 
   beforeAll(async () => {
     admin = new DynamoDBClient(clientConfig);
@@ -45,14 +56,15 @@ describe('DynamoDBStore semantic search against real Bedrock embeddings', () => 
       }),
     );
     await waitUntilTableExists({ client: admin, maxWaitTime: 90 }, { TableName: tableName });
-    store = new DynamoDBStore({
-      tableName,
-      clientConfig,
-      index: {
-        dims: EMBED_DIMS,
-        embeddings: new BedrockEmbeddings({ region, model: 'amazon.titan-embed-text-v2:0' }),
-      },
-    });
+    const embeddings = new BedrockEmbeddings({ region, model: MODEL });
+    store = new DynamoDBStore({ tableName, clientConfig, index: { dims: EMBED_DIMS, embeddings } });
+    try {
+      await embeddings.embedQuery('probe');
+    } catch (error) {
+      const { name, message } = error as Error;
+      if (!MODEL_UNAVAILABLE_ERRORS.includes(name)) throw error;
+      unavailable = `${name}: ${message}`;
+    }
   });
 
   afterAll(async () => {
@@ -65,6 +77,13 @@ describe('DynamoDBStore semantic search against real Bedrock embeddings', () => 
   });
 
   it('ranks the semantically closest real-embedded item highest', async () => {
+    if (unavailable !== undefined) {
+      process.stderr.write(
+        `skipped: Bedrock model ${MODEL} is not usable in ${region} (${unavailable})
+`,
+      );
+      return;
+    }
     await store.put(['docs'], 'cat', { text: 'The cat slept peacefully on the warm windowsill.' });
     await store.put(['docs'], 'finance', {
       text: 'Stock market indices rose sharply after the earnings report.',

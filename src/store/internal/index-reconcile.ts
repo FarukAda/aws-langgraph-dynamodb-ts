@@ -1,10 +1,13 @@
+import { nowSeconds } from '../../shared/clock';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { VectorBackend, VectorRef } from '../vector-backend';
 import type { JsonValue } from './filter';
 import { narrowStoreRecord, readStoreItem } from './item-mapper';
 import { namespaceMatchesPrefix, partitionKey, sortKey } from './keys';
 import { scopedQuery } from './query';
-import { embedValue } from './semantic-search';
+import { embedValues } from './semantic-search';
 import type { StoreContext } from './setup';
 import { rowIsAbsent } from './write-verify';
 
@@ -15,25 +18,32 @@ export interface ReconcileTarget {
   embedding: number[] | undefined;
 }
 
+/** A live item read back from DynamoDB, awaiting its embedding. */
+type LiveItem = Pick<ReconcileTarget, 'namespace' | 'key'> & { value: Record<string, JsonValue> };
+
 /** Stable, collision-free identity for a (namespace, key) pair. */
 function refIdentity(namespace: string[], key: string): string {
   return JSON.stringify([...namespace, key]);
 }
 
 /**
- * Enumerate canonical items under `prefix`, recomputing each embedding. A failed
- * embedding rejects the whole reconcile by design: silently skipping an item
- * would drop it from the live set, after which {@link selectOrphans} would prune
- * its still-valid backend vector. Fail-fast keeps the backend from losing data.
+ * Enumerate the live (unexpired) items under `prefix`, then recompute their
+ * embeddings in batches. A failed embedding rejects the whole reconcile: a
+ * skipped item would leave the live set and {@link selectOrphans} would prune
+ * its still-valid vector.
  */
 export async function collectReconcileTargets(
   context: StoreContext,
   prefix: string[],
+  signal?: AbortSignal,
 ): Promise<ReconcileTarget[]> {
-  const targets: ReconcileTarget[] = [];
+  const now = nowSeconds();
+  const live: LiveItem[] = [];
   const source = paginateQuery({
+    retry: retryFor(context, signal),
+    signal,
     client: context.client,
-    params: scopedQuery(context.tableName, prefix),
+    params: withoutExpired(scopedQuery(context.tableName, prefix), now),
     maxItems: context.maxScanItems,
   });
   for await (const raw of source) {
@@ -44,12 +54,23 @@ export async function collectReconcileTargets(
       });
       continue;
     }
-    if (!namespaceMatchesPrefix(record.namespace, prefix)) continue;
+    if (isExpiredRow(record, now) || !namespaceMatchesPrefix(record.namespace, prefix)) continue;
     const item = await readStoreItem(context, record);
-    const embedding = await embedValue(context, item.value as Record<string, JsonValue>);
-    targets.push({ namespace: record.namespace, key: record.key, embedding });
+    live.push({
+      namespace: record.namespace,
+      key: record.key,
+      value: item.value as Record<string, JsonValue>,
+    });
   }
-  return targets;
+  const embeddings = await embedValues(
+    context,
+    live.map((entry) => entry.value),
+  );
+  return live.map((entry, i) => ({
+    namespace: entry.namespace,
+    key: entry.key,
+    embedding: embeddings[i],
+  }));
 }
 
 /** Re-push every live embedding to the backend; returns the upsert count. */

@@ -5,6 +5,7 @@ import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 function context(client: HistoryContext['client']): HistoryContext {
   return { client, tableName: 'history', logger: SILENT_LOGGER } as never;
@@ -22,7 +23,14 @@ describe('reconcileMessageCount', () => {
     const result = await reconcileMessageCount(context(client), 's1');
 
     expect(result).toBe(3);
-    expect(mock.commandCalls(QueryCommand)[0].args[0].input.Select).toBe('COUNT');
+    const query = mock.commandCalls(QueryCommand)[0].args[0].input;
+    expect(query.Select).toBe('COUNT');
+    // Expired-but-unswept rows are invisible to getMessages, so counting them
+    // would "repair" the count to a number the read path never returns (HIST-08).
+    expect(query.FilterExpression).toBe('attribute_not_exists(#ttl) OR #ttl > :now');
+    expect(query.ExpressionAttributeNames).toEqual({ '#pk': 'PK', '#sk': 'SK', '#ttl': 'ttl' });
+    expect(query.ExpressionAttributeValues?.[':now']).toBe(Math.floor(FROZEN_NOW_MS / 1000));
+    expect(query.ExpressionAttributeValues?.[':pk']).toBe('HIST#s1');
     const update = mock.commandCalls(UpdateCommand)[0].args[0].input;
     expect(update.UpdateExpression).toBe('SET #count = :count');
     expect(update.ExpressionAttributeValues?.[':count']).toBe(3);

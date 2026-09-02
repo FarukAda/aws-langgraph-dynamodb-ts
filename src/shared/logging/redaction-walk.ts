@@ -8,7 +8,7 @@ export type Redactable =
 export type RedactableObject = Redactable[] | { [key: string]: Redactable };
 
 /** One step of the recursive walk, threaded into the entry helpers. */
-export type Walk = (value: Redactable) => Redactable;
+type Walk = (value: Redactable) => Redactable;
 
 /** Collaborators threaded through the recursive walk. */
 export interface WalkDeps {
@@ -27,9 +27,14 @@ function isMapValue(value: object): value is Map<Redactable, Redactable> {
   return Object.prototype.toString.call(value) === '[object Map]';
 }
 
-/** True when `value` is an Error (or subclass), tested by tag not `instanceof`. */
+/**
+ * True when `value` is an Error (or subclass) or a `DOMException` — which has
+ * its own tag yet carries the same `name`/`message`/`stack` — tested by tag,
+ * not `instanceof`, so a cross-realm error still matches.
+ */
 function isErrorValue(value: object): value is Error {
-  return Object.prototype.toString.call(value) === '[object Error]';
+  const tag = Object.prototype.toString.call(value);
+  return tag === '[object Error]' || tag === '[object DOMException]';
 }
 
 /**
@@ -41,7 +46,12 @@ function isOpaqueValue(value: object): boolean {
   return tag === '[object Date]' || tag === '[object RegExp]';
 }
 
-/** Rebuild entries into a plain object, redacting values at secret-looking keys. */
+/**
+ * Rebuild entries into a plain object, redacting values at secret-looking
+ * keys. Properties are defined, not assigned: `out['__proto__'] = …` would
+ * replace the result's prototype (and drop the entry) instead of recording the
+ * key as data.
+ */
 function redactEntries(
   entries: readonly (readonly [string, Redactable])[],
   keyPatterns: readonly string[],
@@ -49,7 +59,12 @@ function redactEntries(
 ): { [key: string]: Redactable } {
   const out: { [key: string]: Redactable } = {};
   for (const [key, value] of entries) {
-    out[key] = isSecretKey(key, keyPatterns) ? REDACTED : walk(value);
+    Object.defineProperty(out, key, {
+      value: isSecretKey(key, keyPatterns) ? REDACTED : walk(value),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return out;
 }
@@ -67,19 +82,21 @@ function redactMap(value: Map<Redactable, Redactable>, deps: WalkDeps): Redactab
 /**
  * Rebuild an Error as a plain object carrying its redacted text alongside its
  * redacted own properties. The one exception is an Error with no own
- * enumerable data whose text holds no secret: it is returned by reference so
- * its identity and stack trace survive, which is what keeps a caught error
- * useful in a log.
+ * enumerable data, no `cause`, no aggregated `errors`, and no secret in its
+ * text: it is returned by reference so its identity and stack trace survive,
+ * which is what keeps a caught error useful in a log.
  *
- * `cause` is copied explicitly because `new Error(msg, { cause })` defines it
- * as *non-enumerable* per spec, so `Object.entries` never sees it. Without
- * this the whole chain vanished on every rebuild — and the rebuild always
- * fires for this library's own error types, since each attaches an enumerable
- * `code`/`context`. A redacted `RetryExhaustedError` would then no longer say
- * whether the underlying failure was a throttle, a validation error or a
- * network fault, which is the entire reason it carries a cause. Recursing it
- * through `walk` redacts the chain too, and the cycle guard handles a cause
- * that points back at its own wrapper.
+ * `cause` and `AggregateError.errors` are copied explicitly because both are
+ * defined *non-enumerable* per spec, so `Object.entries` never sees them.
+ * Without this the whole chain vanished on every rebuild — and the rebuild
+ * always fires for this library's own error types, since each attaches an
+ * enumerable `code`/`context`. A redacted `RetryExhaustedError` would then no
+ * longer say whether the underlying failure was a throttle, a validation error
+ * or a network fault, which is the entire reason it carries a cause. A bare
+ * Error *with* a cause is rebuilt for the same reason: passing it by reference
+ * would hand the caller whatever secret the cause carries. Recursing through
+ * `walk` redacts the chain too, and the cycle guard handles a cause that
+ * points back at its own wrapper.
  */
 function redactError(
   current: RedactableObject & Error,
@@ -87,12 +104,15 @@ function redactError(
   deps: WalkDeps,
 ): Redactable {
   const text = redactErrorText(current, deps.valuePatterns);
-  if (entries.length === 0 && !text.changed) return current;
+  const aggregated = (current as { errors?: Redactable[] }).errors;
+  const bare = entries.length === 0 && current.cause === undefined && aggregated === undefined;
+  if (bare && !text.changed) return current;
   const out = redactEntries(entries, deps.keyPatterns, deps.walk);
   out.name = text.name;
   out.message = text.message;
   out.stack = text.stack;
   if (current.cause !== undefined) out.cause = deps.walk(current.cause as Redactable);
+  if (Array.isArray(aggregated)) out.errors = deps.walk(aggregated);
   return out;
 }
 

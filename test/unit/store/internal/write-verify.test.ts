@@ -1,6 +1,5 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
-import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import type { StoreContext } from '../../../../src/store/internal/setup';
@@ -23,47 +22,35 @@ function context(client: StoreContext['client']): StoreContext {
   };
 }
 
-describe('verifyWriteLanded', () => {
-  it("reports 'landed' when the row already holds the expected S3 key", async () => {
+const record = { PK: 'p', SK: 's', rev: 'r1' };
+
+describe('verifyWriteLanded (STORE-13)', () => {
+  it("reports 'landed' when the row holds this write's own rev, projecting only the rev", async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({
-      Item: {
-        value: {
-          location: PayloadLocation.S3,
-          serdeType: 'json',
-          compressed: false,
-          s3Key: 'k.bin',
-        },
-      },
-    });
-    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
-      'landed',
-    );
+    mock.on(GetCommand).resolves({ Item: { rev: 'r1' } });
+    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('landed');
+    const input = mock.commandCalls(GetCommand)[0].args[0].input;
+    expect(input.ProjectionExpression).toBe('#r');
+    expect(input.ExpressionAttributeNames).toEqual({ '#r': 'rev' });
+    expect(input.ConsistentRead).toBe(true);
   });
 
-  it("reports 'not-landed' when the row holds a different S3 key", async () => {
+  it("reports 'not-landed' when the row holds another rev or does not exist", async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({
-      Item: {
-        value: {
-          location: PayloadLocation.S3,
-          serdeType: 'json',
-          compressed: false,
-          s3Key: 'other.bin',
-        },
-      },
-    });
-    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
-      'not-landed',
-    );
+    mock
+      .on(GetCommand)
+      .resolvesOnce({ Item: { rev: 'other' } })
+      .resolves({});
+    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('not-landed');
+    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('not-landed');
   });
 
-  it("reports 'not-landed' when the row does not exist", async () => {
+  it("reports 'not-landed' without a read for a record that carries no rev", async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
+    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' })).resolves.toBe(
       'not-landed',
     );
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
 
   it("reports 'unverified', never 'not-landed', when the confirmation read itself fails", async () => {
@@ -72,22 +59,23 @@ describe('verifyWriteLanded', () => {
     // a live row points at.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
-    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' }, 'k.bin')).resolves.toBe(
-      'unverified',
-    );
+    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('unverified');
   });
 });
 
-describe('rowIsAbsent (I4)', () => {
-  it('returns true when the row is genuinely gone', async () => {
+describe('rowIsAbsent (I4, STORE-07)', () => {
+  it('returns true when the row is genuinely gone, projecting only the partition key', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     await expect(rowIsAbsent(context(client), { PK: 'p', SK: 's' })).resolves.toBe(true);
+    const input = mock.commandCalls(GetCommand)[0].args[0].input;
+    expect(input.ProjectionExpression).toBe('#pk');
+    expect(input.ExpressionAttributeNames).toEqual({ '#pk': 'PK' });
   });
 
   it('returns false when the row is still present', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: { value: {} } });
+    mock.on(GetCommand).resolves({ Item: { PK: 'p' } });
     await expect(rowIsAbsent(context(client), { PK: 'p', SK: 's' })).resolves.toBe(false);
   });
 

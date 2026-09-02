@@ -1,7 +1,8 @@
 import type { StoredMessage } from '@langchain/core/messages';
 
-import { buildMessageItem, decodeMessageItem } from '../../../../src/history/internal/item-mapper';
+import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
+import { decodePayload } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 
@@ -25,7 +26,7 @@ describe('history item-mapper', () => {
     expect(item.SK).toBe('HISTORY#MSG#01HZX');
     expect(item.sessionId).toBe('s1');
     expect(item.ttl).toBeUndefined();
-    expect(await decodeMessageItem(context(), item)).toEqual(stored);
+    expect(await decodePayload(item.message, { serde: JSON_SERDE }, [])).toEqual(stored);
   });
 
   it('stamps a ttl when provided', async () => {

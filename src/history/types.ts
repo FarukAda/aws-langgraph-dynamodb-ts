@@ -1,7 +1,7 @@
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { PayloadDescriptor } from '../shared/codec/codec';
-import type { BaseAdapterOptions, CodecOptions } from '../shared/options';
+import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';
 
 /** Options for {@link DynamoDBChatMessageHistory}. */
 export type DynamoDBChatMessageHistoryOptions = BaseAdapterOptions &
@@ -23,6 +23,29 @@ export type DynamoDBChatMessageHistoryOptions = BaseAdapterOptions &
 /** How `getMessages` handles an item it cannot decode. */
 export type CorruptMessagePolicy = 'skip' | 'throw';
 
+/**
+ * Which slice of a session `getMessages` returns. Both bounds are optional
+ * and combine: `{ limit: 50, before }` is the fifty messages just before
+ * `before`.
+ */
+export interface MessageWindow {
+  /** Return only the newest `limit` messages — still in chronological order. */
+  limit?: number;
+  /** Return only messages appended before this instant (millisecond precision). */
+  before?: Date;
+}
+
+/** Options for `getMessages`: the read window plus cancellation. */
+export type GetMessagesOptions = MessageWindow & CancelOptions;
+
+/** Options for `listSessions`: the scan caps plus cancellation. */
+export interface ListSessionsOptions extends CancelOptions {
+  /** Cap on scan pages before `ResultTruncatedError` (default 1000). */
+  maxIterations?: number;
+  /** Cap on rows read into memory before `ResultTruncatedError` (default 10 000). */
+  maxItems?: number;
+}
+
 /** Summary of a stored chat session. */
 export interface SessionMetadata {
   sessionId: string;
@@ -30,6 +53,8 @@ export interface SessionMetadata {
   messageCount: number;
   createdAt: string;
   updatedAt: string;
+  /** When the session's TTL expires, as an ISO-8601 instant; absent when no TTL is stored. */
+  expiresAt?: string;
 }
 
 /** A single stored chat message item (one per message, ordered by its ULID). */

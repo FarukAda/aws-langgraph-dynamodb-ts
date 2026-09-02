@@ -1,17 +1,10 @@
+import { nowSeconds as currentSeconds } from '../../shared/clock';
+import { isExpiredRow } from '../../shared/dynamodb/expiry';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import { SESSION_SORT_KEY } from '../internal/keys';
 import type { HistoryContext } from '../internal/setup';
 import type { ChatSessionItem, SessionMetadata } from '../types';
-
-/**
- * True when a session row is past its TTL. DynamoDB's background sweep can lag
- * up to 48h, so an expired session would otherwise keep appearing in listings
- * after `getMessages` had already stopped returning its messages — the same
- * filter that read path applies.
- */
-function isExpired(item: ChatSessionItem, nowSeconds: number): boolean {
-  return item.ttl !== undefined && item.ttl <= nowSeconds;
-}
 
 /**
  * List all sessions as metadata summaries, newest-updated first. The scan is
@@ -21,11 +14,13 @@ function isExpired(item: ChatSessionItem, nowSeconds: number): boolean {
  */
 export async function listSessions(
   context: HistoryContext,
-  options?: { maxIterations?: number; maxItems?: number },
+  options?: { maxIterations?: number; maxItems?: number; signal?: AbortSignal },
 ): Promise<SessionMetadata[]> {
   const sessions: SessionMetadata[] = [];
-  const nowSeconds = Math.floor(Date.now() / 1000);
+  const nowSeconds = currentSeconds();
   for await (const raw of paginateScan({
+    retry: retryFor(context, options?.signal),
+    signal: options?.signal,
     client: context.client,
     params: {
       TableName: context.tableName,
@@ -38,13 +33,14 @@ export async function listSessions(
   })) {
     const item = raw as ChatSessionItem;
     if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') continue;
-    if (isExpired(item, nowSeconds)) continue;
+    if (isExpiredRow(item, nowSeconds)) continue;
     sessions.push({
       sessionId: item.sessionId,
       title: item.title,
       messageCount: item.messageCount,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
+      expiresAt: item.ttl === undefined ? undefined : new Date(item.ttl * 1000).toISOString(),
     });
   }
   /**

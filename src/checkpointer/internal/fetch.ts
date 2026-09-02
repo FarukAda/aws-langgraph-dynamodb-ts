@@ -1,9 +1,14 @@
 import type { CheckpointPendingWrite } from '@langchain/langgraph-checkpoint';
 
+import { nowSeconds } from '../../shared/clock';
+import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry-policy';
+import type { DocItem } from '../../shared/dynamodb/types';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
-import { toPendingWrites } from './item-reader';
+import { narrowHead, toPendingWrites } from './item-reader';
 import {
   metaSortKey,
   metaSortKeyPrefix,
@@ -14,22 +19,39 @@ import {
 import { beginsWithQuery } from './query';
 import type { CheckpointerContext } from './setup';
 
-/** Fetch the target META item: by id when given, else the newest in the namespace. */
+/** Per-read options for the payload and writes reads. */
+export interface ReadOptions {
+  signal?: AbortSignal;
+  /** `false` for bulk reads (`list`) that trade read-your-writes for half the read cost. */
+  consistent?: boolean;
+}
+
+/**
+ * Fetch the target META item: by id when given, else the newest in the
+ * namespace. The newest-first read pages one row at a time past any foreign
+ * row until it finds a real checkpoint.
+ */
 export async function fetchTargetMeta(
   context: CheckpointerContext,
   threadId: string,
   checkpointNs: string,
   checkpointId?: string,
+  signal?: AbortSignal,
 ): Promise<CheckpointMetaItem | undefined> {
+  /** Expired rows are absent to every reader, however long DynamoDB's sweep lags. */
+  const now = nowSeconds();
   if (checkpointId !== undefined) {
-    const result = await withDynamoDBRetry(() =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
-        ConsistentRead: true,
-      }),
+    const result = await withDynamoDBRetry(
+      () =>
+        context.client.get({
+          TableName: context.tableName,
+          Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
+          ConsistentRead: true,
+        }),
+      retryFor(context, signal),
     );
-    return result.Item as CheckpointMetaItem | undefined;
+    const meta = narrowHead(context, result.Item as DocItem | undefined);
+    return meta && !isExpiredRow(meta, now) ? meta : undefined;
   }
   const params = beginsWithQuery(
     context.tableName,
@@ -40,8 +62,19 @@ export async function fetchTargetMeta(
       consistent: true,
     },
   );
-  const result = await withDynamoDBRetry(() => context.client.query(params));
-  return result.Items?.[0] as CheckpointMetaItem | undefined;
+  const rows = paginateQuery({
+    retry: retryFor(context, signal),
+    signal,
+    client: context.client,
+    params: withoutExpired(params, now),
+    maxItems: Number.POSITIVE_INFINITY,
+    maxIterations: Number.POSITIVE_INFINITY,
+  });
+  for await (const raw of rows) {
+    const meta = narrowHead(context, raw);
+    if (meta && !isExpiredRow(meta, now)) return meta;
+  }
+  return undefined;
 }
 
 /** Fetch the PAYLOAD item for a checkpoint. */
@@ -50,13 +83,16 @@ export async function fetchPayload(
   threadId: string,
   checkpointNs: string,
   checkpointId: string,
+  read: ReadOptions = {},
 ): Promise<CheckpointPayloadItem | undefined> {
-  const result = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: partitionKey(threadId), SK: payloadSortKey(checkpointNs, checkpointId) },
-      ConsistentRead: true,
-    }),
+  const result = await withDynamoDBRetry(
+    () =>
+      context.client.get({
+        TableName: context.tableName,
+        Key: { PK: partitionKey(threadId), SK: payloadSortKey(checkpointNs, checkpointId) },
+        ConsistentRead: read.consistent ?? true,
+      }),
+    retryFor(context, read.signal),
   );
   return result.Item as CheckpointPayloadItem | undefined;
 }
@@ -67,16 +103,40 @@ export async function fetchPendingWrites(
   threadId: string,
   checkpointNs: string,
   checkpointId: string,
+  read: ReadOptions = {},
 ): Promise<CheckpointPendingWrite[]> {
   const params = beginsWithQuery(
     context.tableName,
     partitionKey(threadId),
     writeSortKeyPrefix(checkpointNs, checkpointId),
-    { ascending: true, consistent: true },
+    { ascending: true, consistent: read.consistent ?? true },
   );
+  /**
+   * Unbounded: the read must be complete to be correct, and a Send fan-out
+   * retried with a changed write order leaves superseded rows behind that
+   * count toward any cap. Past the warning threshold the read still succeeds,
+   * but an operator is told the checkpoint is unusually heavy.
+   */
   const items: CheckpointWriteItem[] = [];
-  for await (const item of paginateQuery({ client: context.client, params })) {
+  for await (const item of paginateQuery({
+    retry: retryFor(context, read.signal),
+    signal: read.signal,
+    client: context.client,
+    params,
+    maxItems: Number.POSITIVE_INFINITY,
+    maxIterations: Number.POSITIVE_INFINITY,
+  })) {
     items.push(item as CheckpointWriteItem);
   }
-  return toPendingWrites(context, items);
+  if (items.length >= LIST_SCAN_WARN_THRESHOLD) {
+    context.logger.warn(
+      'getTuple: a checkpoint carries very many pending-write rows; the read is complete but slow',
+      {
+        threadId,
+        checkpointId,
+        rows: items.length,
+      },
+    );
+  }
+  return toPendingWrites(context, items, threadId);
 }

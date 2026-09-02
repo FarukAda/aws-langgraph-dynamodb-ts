@@ -1,5 +1,5 @@
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, RemoveMessage } from '@langchain/core/messages';
 
 import { addMessages } from '../../../../src/history/actions/add-messages';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
@@ -84,6 +84,18 @@ describe('addMessages', () => {
       addMessages(context(client, { serde }), 's1', [new HumanMessage('a')]),
     ).rejects.toThrow('serde failed');
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+  });
+
+  it('rejects a message the read side could never rebuild before touching DynamoDB (HIST-04)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    await expect(
+      addMessages(context(client), 's1', [new HumanMessage('a'), new RemoveMessage({ id: 'x' })]),
+    ).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      message: expect.stringContaining('remove'),
+    });
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
 
   it('omits the title clause when there is no human message', async () => {

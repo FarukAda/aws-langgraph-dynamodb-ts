@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,7 +6,7 @@
 
 # Interface: CodecOptions
 
-Defined in: [shared/options.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/options.ts#L29)
+Defined in: [shared/options.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L36)
 
 Options enabling payload compression and/or S3 offloading.
 
@@ -16,7 +16,7 @@ Options enabling payload compression and/or S3 offloading.
 
 > `optional` **compression?**: [`CompressionConfig`](CompressionConfig.md)
 
-Defined in: [shared/options.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/options.ts#L31)
+Defined in: [shared/options.ts:38](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L38)
 
 Gzip compression configuration.
 
@@ -26,6 +26,6 @@ Gzip compression configuration.
 
 > `optional` **s3?**: [`S3OffloadConfig`](S3OffloadConfig.md)
 
-Defined in: [shared/options.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/options.ts#L33)
+Defined in: [shared/options.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L40)
 
 S3 offload configuration for payloads over DynamoDB's item limit.

@@ -14,7 +14,7 @@ import { chunkBySize } from '../internal/message-chunker';
 import type { HistoryContext } from '../internal/setup';
 import { deriveTitle } from '../internal/title-generator';
 import { resolveTtlAnchor } from '../internal/ttl-anchor';
-import { validateSessionId } from '../internal/validation';
+import { validateSessionId, validateStorableMessages } from '../internal/validation';
 import type { ChatMessageItem } from '../types';
 
 /** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
@@ -78,19 +78,27 @@ export async function addMessages(
   context: HistoryContext,
   sessionId: string,
   messages: BaseMessage[],
+  signal?: AbortSignal,
 ): Promise<void> {
   validateSessionId(sessionId);
   if (messages.length === 0) return;
   const stored = mapChatMessagesToStoredMessages(messages);
+  validateStorableMessages(stored);
   const anchor = context.ttl
-    ? await resolveTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl))
+    ? await resolveTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl), signal)
     : undefined;
   const items = await buildItems(context, sessionId, stored, anchor?.ttlTimestamp);
   const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
-  await appendChunks(context, sessionId, chunks, {
-    now: nowIso(),
-    title: deriveTitle(stored),
-    ttlTimestamp: anchor?.ttlTimestamp,
-    forceTtlRefresh: anchor?.refresh,
-  });
+  await appendChunks(
+    context,
+    sessionId,
+    chunks,
+    {
+      now: nowIso(),
+      title: deriveTitle(stored),
+      ttlTimestamp: anchor?.ttlTimestamp,
+      forceTtlRefresh: anchor?.refresh,
+    },
+    signal,
+  );
 }

@@ -1,9 +1,16 @@
 import type { S3Client } from '@aws-sdk/client-s3';
 
-import { DEFAULT_S3_KEY_PREFIX, DEFAULT_S3_SSE, DEFAULT_S3_THRESHOLD_BYTES } from '../../constants';
-import { createDefaultS3Client } from './client';
+import {
+  DEFAULT_MAX_S3_DOWNLOAD_BYTES,
+  DEFAULT_S3_KEY_PREFIX,
+  DEFAULT_S3_SSE,
+  DEFAULT_S3_THRESHOLD_BYTES,
+} from '../../constants';
+import { createDefaultS3Client, loadS3Sdk } from './client';
+import type { S3ClientConfigLike } from './client-types';
 import { buildS3Key, S3OffloadConfig } from './config';
 import { deleteObjects } from './delete';
+import { assertKeyInScope, isKeyInScope } from './key-scope';
 import { ensureLifecycleRule } from './lifecycle';
 import { downloadObject, uploadObject } from './read-write';
 
@@ -20,6 +27,7 @@ export class S3Offloader {
   private readonly thresholdBytes: number;
   private readonly sse: string;
   private readonly sseKmsKeyId?: string;
+  private readonly maxDownloadBytes: number;
   private readonly config: S3OffloadConfig;
 
   constructor(config: S3OffloadConfig) {
@@ -29,14 +37,23 @@ export class S3Offloader {
     this.thresholdBytes = config.thresholdBytes ?? DEFAULT_S3_THRESHOLD_BYTES;
     this.sse = config.serverSideEncryption ?? DEFAULT_S3_SSE;
     this.sseKmsKeyId = config.sseKmsKeyId;
+    this.maxDownloadBytes = config.maxDownloadBytes ?? DEFAULT_MAX_S3_DOWNLOAD_BYTES;
+    /**
+     * Warm the optional peer's import so a missing `@aws-sdk/client-s3`
+     * surfaces on the very first S3 operation, typed, rather than on the first
+     * oversize payload days later. The rejection is handled here; whichever
+     * operation runs first re-raises it through its own `loadS3Sdk()` call.
+     */
+    void loadS3Sdk().catch(() => undefined);
   }
 
   private getClient(): Promise<S3Client> {
     if (!this.clientPromise) {
-      const cfg = this.config.clientConfig ?? {};
+      const cfg: S3ClientConfigLike = this.config.clientConfig ?? {};
+      /** The hook is typed structurally for consumers; the runtime modules use the real SDK client. */
       this.clientPromise = (
         this.config.createS3Client
-          ? Promise.resolve(this.config.createS3Client({ maxAttempts: 1, ...cfg }))
+          ? Promise.resolve(this.config.createS3Client({ maxAttempts: 1, ...cfg }) as S3Client)
           : createDefaultS3Client(cfg)
       ).then(
         (client) => {
@@ -72,6 +89,16 @@ export class S3Offloader {
     return this.keyPrefix;
   }
 
+  /** True when `key` lies under this offloader's prefix and the `scope` parts' path. */
+  ownsKey(key: string, scope: readonly string[]): boolean {
+    return isKeyInScope(key, this.keyPrefix, scope);
+  }
+
+  /** Refuse a row-sourced key outside the row's own path (see {@link assertKeyInScope}). */
+  assertOwnedKey(key: string, scope: readonly string[]): void {
+    assertKeyInScope(key, this.keyPrefix, scope);
+  }
+
   /** Upload `data` under `key`, returning the key. */
   async upload(key: string, data: Uint8Array): Promise<string> {
     await uploadObject(await this.getClient(), {
@@ -84,9 +111,9 @@ export class S3Offloader {
     return key;
   }
 
-  /** Download the bytes stored under `key`. */
+  /** Download the bytes stored under `key`, refusing objects over `maxDownloadBytes`. */
   async download(key: string): Promise<Uint8Array> {
-    return downloadObject(await this.getClient(), this.bucketName, key);
+    return downloadObject(await this.getClient(), this.bucketName, key, this.maxDownloadBytes);
   }
 
   /** Delete `keys`, returning the keys S3 reported as failed. */

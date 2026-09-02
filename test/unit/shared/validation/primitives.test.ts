@@ -1,8 +1,9 @@
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
+  assertMaxBytes,
   assertNoControlChars,
   assertNoSeparator,
-  validateArrayMaxDepth,
+  validateIdentifier,
   validateInteger,
   validateNonEmptyArray,
   validateNonEmptyString,
@@ -20,6 +21,30 @@ describe('validateNonEmptyString', () => {
     } catch (error) {
       expect((error as { code: ErrorCode }).code).toBe(ErrorCode.VALIDATION);
     }
+  });
+
+  it('rejects a whitespace-only string (SEC-10)', () => {
+    expect(() => validateNonEmptyString('   ', 'threadId')).toThrow(/threadId/);
+    expect(() => validateNonEmptyString(String.fromCharCode(9, 10), 'threadId')).toThrow(
+      /threadId/,
+    );
+  });
+});
+
+describe('assertMaxBytes', () => {
+  it('measures UTF-8 bytes, not UTF-16 code units', () => {
+    const accented = 'é'.repeat(3);
+    expect(() => assertMaxBytes(accented, 'key', 6)).not.toThrow();
+    expect(() => assertMaxBytes(accented, 'key', 5)).toThrow('key must be at most 5 bytes');
+  });
+});
+
+describe('validateIdentifier', () => {
+  it('bounds the identifier length in bytes', () => {
+    expect(() => validateIdentifier('a'.repeat(8), '#', 'id', 8)).not.toThrow();
+    expect(() => validateIdentifier('a'.repeat(9), '#', 'id', 8)).toThrow(
+      'id must be at most 8 bytes',
+    );
   });
 });
 
@@ -58,20 +83,5 @@ describe('assertNoSeparator', () => {
   it('rejects the reserved separator', () => {
     expect(() => assertNoSeparator('a#b', '#', 'namespace')).toThrow(/namespace/);
     expect(() => assertNoSeparator('ab', '#', 'namespace')).not.toThrow();
-  });
-});
-
-describe('validateArrayMaxDepth', () => {
-  it('rejects nesting beyond the max depth', () => {
-    expect(() => validateArrayMaxDepth([[[1]]], 'v', 2)).toThrow(/depth/);
-    expect(() => validateArrayMaxDepth([[1]], 'v', 2)).not.toThrow();
-  });
-
-  it('accepts arrays exactly at the max depth', () => {
-    expect(() => validateArrayMaxDepth([[1]], 'v', 2)).not.toThrow();
-  });
-
-  it('short-circuits and rejects arrays nested well beyond the max depth', () => {
-    expect(() => validateArrayMaxDepth([[[[1]]]], 'v', 2)).toThrow(/depth/);
   });
 });

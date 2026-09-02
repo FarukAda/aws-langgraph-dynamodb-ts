@@ -6,6 +6,17 @@ import {
 import { setUpStore } from '../../../../src/store/internal/setup';
 
 describe('setUpStore', () => {
+  it('rejects an invalid tableName and non-positive caps at construction (CORE-05)', () => {
+    const client = { send: jest.fn() } as never;
+    expect(() => setUpStore({ tableName: 'bad name', client })).toThrow(/tableName/);
+    expect(() => setUpStore({ tableName: 'store', client, maxScanItems: 0 })).toThrow(
+      /maxScanItems/,
+    );
+    expect(() => setUpStore({ tableName: 'store', client, maxSearchCandidates: 1.5 })).toThrow(
+      /maxSearchCandidates/,
+    );
+  });
+
   it('defaults to the JSON serializer and owns a built client', () => {
     const fake = { destroy: jest.fn(), config: {}, middlewareStack: {}, send: jest.fn() };
     const setup = setUpStore({
@@ -25,7 +36,10 @@ describe('setUpStore', () => {
     const setup = setUpStore({
       tableName: 'store',
       client: { send: jest.fn() } as never,
-      index: { dims: 3, embeddings: { embedQuery: async () => [0] } as never },
+      index: {
+        dims: 3,
+        embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
+      },
       vectorBackend: vectorBackend as never,
       maxSearchCandidates: 50,
     });
@@ -50,7 +64,10 @@ describe('setUpStore', () => {
   });
 
   it('does not own an injected client and carries index/compression/ttl', () => {
-    const index = { dims: 3, embeddings: { embedQuery: async () => [0] } as never };
+    const index = {
+      dims: 3,
+      embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
+    };
     const setup = setUpStore({
       tableName: 'store',
       client: { send: jest.fn() } as never,
@@ -118,8 +135,15 @@ describe('index configuration validation (F6)', () => {
     );
   });
 
+  it('rejects an index whose embeddings cannot embedDocuments', () => {
+    const embeddings = { embedQuery: async () => [0] };
+    expect(() => setUpStore({ ...base, index: { dims: 1, embeddings } } as never)).toThrow(
+      /embedDocuments/,
+    );
+  });
+
   it('accepts an index that can embed, and does not require dims to be read', () => {
-    const embeddings = { embedQuery: async () => [1, 2, 3] };
+    const embeddings = { embedQuery: async () => [1, 2, 3], embedDocuments: async () => [[1]] };
     expect(() => setUpStore({ ...base, index: { dims: 3, embeddings } } as never)).not.toThrow();
   });
 
@@ -149,5 +173,49 @@ describe('index configuration validation (F6)', () => {
       setUpStore({ ...base, vectorScoreDirection: 'distance' } as never).context
         .vectorScoreDirection,
     ).toBe('distance');
+  });
+});
+
+describe('S3 region inheritance (CODEC-15)', () => {
+  it('builds the S3 client in the DynamoDB region when s3.clientConfig names none', async () => {
+    let seen: { region?: unknown } | undefined;
+    const ddb = {
+      destroy: jest.fn(),
+      config: {},
+      middlewareStack: { clone: () => ({}) },
+      send: jest.fn(),
+    };
+    const s3Client = {
+      destroy: jest.fn(),
+      send: jest.fn(async () => ({})),
+      config: {},
+      middlewareStack: { clone: () => ({}) },
+    };
+    const setup = setUpStore({
+      tableName: 'store',
+      clientConfig: { region: 'eu-central-1' },
+      createClient: () => ddb as never,
+      s3: {
+        bucketName: 'b',
+        createS3Client: (config) => {
+          seen = config;
+          return s3Client as never;
+        },
+      },
+    });
+    await setup.context.offloader?.deleteBatch([]);
+    expect(seen).toMatchObject({ region: 'eu-central-1' });
+    setup.context.offloader?.destroy();
+  });
+});
+
+describe('retry policy (DDB-03)', () => {
+  it('resolves the retry policy onto the context, defaulting to five attempts', () => {
+    const client = { send: jest.fn() } as never;
+    expect(setUpStore({ tableName: 't123', client }).context.retry?.maxAttempts).toBe(5);
+    expect(
+      setUpStore({ tableName: 't123', client, retry: { maxAttempts: 2, baseDelayMs: 1 } }).context
+        .retry,
+    ).toMatchObject({ maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 5000 });
   });
 });

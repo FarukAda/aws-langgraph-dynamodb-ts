@@ -339,3 +339,43 @@ describe('writeSpecialItem', () => {
     expect(outcome).toEqual({ committed: true, superseded: descriptor('theirs') });
   });
 });
+
+describe('writeSpecialItem with the rejected row on the exception (DDB-07)', () => {
+  it('re-pins from the exception and reads the row only once, up front', async () => {
+    let reads = 0;
+    let puts = 0;
+    const rejected = Object.assign(new Error('rejected'), {
+      name: 'ConditionalCheckFailedException',
+      Item: {
+        writeGroup: { S: 'g9' },
+        value: {
+          M: {
+            location: { S: 'S3' },
+            serdeType: { S: 'json' },
+            compressed: { BOOL: false },
+            s3Key: { S: 'racer' },
+          },
+        },
+      },
+    });
+    const context = {
+      tableName: 'c',
+      logger: SILENT_LOGGER,
+      offloader: {},
+      client: {
+        get: async () => {
+          reads += 1;
+          return { Item: { value: descriptor('old'), writeGroup: 'g1' } };
+        },
+        put: async () => {
+          puts += 1;
+          if (puts === 1) throw rejected;
+          return {};
+        },
+      },
+    };
+    const outcome = await writeSpecialItem(context as never, item());
+    expect(outcome).toEqual({ committed: true, superseded: descriptor('racer') });
+    expect(reads).toBe(1);
+  });
+});

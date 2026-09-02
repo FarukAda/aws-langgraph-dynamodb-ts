@@ -1,4 +1,5 @@
 import { fullJitter, nextBackoffDelay, sleep } from '../../../../src/shared/dynamodb/backoff';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { AbortError } from '../../../../src/shared/errors/errors';
 
 describe('nextBackoffDelay', () => {
@@ -98,5 +99,18 @@ describe('sleep', () => {
       clearSpy.mockRestore();
     }
     expect(removed).toBe(false);
+  });
+});
+
+describe('sleep abort normalisation (DDB-05)', () => {
+  it('rejects with the library AbortError while pending, keeping the raw reason as cause', async () => {
+    const controller = new AbortController();
+    const pending = sleep(10_000, controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({
+      code: ErrorCode.ABORTED,
+      name: 'AbortError',
+      cause: expect.objectContaining({ name: 'AbortError' }),
+    });
   });
 });

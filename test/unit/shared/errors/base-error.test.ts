@@ -1,13 +1,13 @@
 import {
-  DynamoDbLangGraphError,
-  isDynamoDbLangGraphError,
+  DynamoDBLangGraphError,
+  isDynamoDBLangGraphError,
 } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
-describe('DynamoDbLangGraphError', () => {
+describe('DynamoDBLangGraphError', () => {
   it('carries code, context, and a native cause chain', () => {
     const cause = new Error('boom');
-    const err = new DynamoDbLangGraphError(
+    const err = new DynamoDBLangGraphError(
       'failed',
       ErrorCode.VALIDATION,
       { operation: 'put' },
@@ -17,20 +17,20 @@ describe('DynamoDbLangGraphError', () => {
     expect(err.code).toBe(ErrorCode.VALIDATION);
     expect(err.context).toEqual({ operation: 'put' });
     expect(err.cause).toBe(cause);
-    expect(err.name).toBe('DynamoDbLangGraphError');
+    expect(err.name).toBe('DynamoDBLangGraphError');
   });
 
   it('defaults context to an empty object and cause to undefined', () => {
-    const err = new DynamoDbLangGraphError('x', ErrorCode.CONDITION_CONFLICT);
+    const err = new DynamoDBLangGraphError('x', ErrorCode.CONDITION_CONFLICT);
     expect(err.context).toEqual({});
     expect(err.cause).toBeUndefined();
   });
 });
 
-describe('isDynamoDbLangGraphError', () => {
+describe('isDynamoDBLangGraphError', () => {
   it('recognizes our errors by brand, not instanceof', () => {
-    const ours = new DynamoDbLangGraphError('x', ErrorCode.ABORTED);
-    expect(isDynamoDbLangGraphError(ours)).toBe(true);
-    expect(isDynamoDbLangGraphError(new Error('plain'))).toBe(false);
+    const ours = new DynamoDBLangGraphError('x', ErrorCode.ABORTED);
+    expect(isDynamoDBLangGraphError(ours)).toBe(true);
+    expect(isDynamoDBLangGraphError(new Error('plain'))).toBe(false);
   });
 });

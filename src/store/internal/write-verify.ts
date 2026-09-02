@@ -1,4 +1,4 @@
-import { type PayloadDescriptor, PayloadLocation } from '../../shared/codec/codec';
+import { REVISION_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { StoreContext } from './setup';
 
@@ -10,23 +10,26 @@ export function isRetryExhausted(error: Error): boolean {
 /**
  * True when the row is confirmed absent — used to resolve an ambiguous
  * retry-exhausted *delete*, where the delete may well have landed server-side
- * and only its acknowledgement was lost. A failure reading this is not treated
- * as confirmation, which is fail-safe here: the caller only rethrows, and
- * nothing is deleted on the strength of a `false`.
+ * and only its acknowledgement was lost. Only the partition key is projected:
+ * existence is the whole question. A failure reading this is not treated as
+ * confirmation, which is fail-safe here: the caller only rethrows, and nothing
+ * is deleted on the strength of a `false`.
  */
 export async function rowIsAbsent(
   context: StoreContext,
   key: { PK: string; SK: string },
 ): Promise<boolean> {
   try {
-    const result = await withDynamoDBRetry(() =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: key,
-        ConsistentRead: true,
-        ProjectionExpression: '#v',
-        ExpressionAttributeNames: { '#v': 'value' },
-      }),
+    const result = await withDynamoDBRetry(
+      () =>
+        context.client.get({
+          TableName: context.tableName,
+          Key: key,
+          ConsistentRead: true,
+          ProjectionExpression: '#pk',
+          ExpressionAttributeNames: { '#pk': 'PK' },
+        }),
+      context.retry,
     );
     return result.Item === undefined;
   } catch {
@@ -38,12 +41,16 @@ export async function rowIsAbsent(
 export type WriteVerdict = 'landed' | 'not-landed' | 'unverified';
 
 /**
- * Read `record`'s row back to establish what an ambiguous write actually did.
+ * Read `record`'s row back to establish what an ambiguous write actually did,
+ * comparing the row's revision with the one this write carried. Every put
+ * stamps a fresh per-call `rev`, so the comparison works for inline and
+ * offloaded records alike.
  *
- * - `'landed'`: the row holds `expectedS3Key`, so the write committed
- *   server-side and only its acknowledgement was lost.
- * - `'not-landed'`: the row was read and holds something else, or nothing, so
- *   this call's own nonced upload is dead and safe to delete.
+ * - `'landed'`: the row holds this write's `rev`, so it committed server-side
+ *   and only its acknowledgement was lost.
+ * - `'not-landed'`: the row was read and holds something else, or nothing —
+ *   or the record carries no `rev` to compare — so this call's own upload, if
+ *   any, is dead and safe to delete.
  * - `'unverified'`: the read itself failed, so nothing is established.
  *
  * The third answer used to be folded into the second as a plain `false`, which
@@ -55,23 +62,22 @@ export type WriteVerdict = 'landed' | 'not-landed' | 'unverified';
  */
 export async function verifyWriteLanded(
   context: StoreContext,
-  record: { PK: string; SK: string },
-  expectedS3Key: string,
+  record: { PK: string; SK: string; rev?: string },
 ): Promise<WriteVerdict> {
+  if (record.rev === undefined) return 'not-landed';
   try {
-    const result = await withDynamoDBRetry(() =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: record.PK, SK: record.SK },
-        ConsistentRead: true,
-        ProjectionExpression: '#v',
-        ExpressionAttributeNames: { '#v': 'value' },
-      }),
+    const result = await withDynamoDBRetry(
+      () =>
+        context.client.get({
+          TableName: context.tableName,
+          Key: { PK: record.PK, SK: record.SK },
+          ConsistentRead: true,
+          ProjectionExpression: '#r',
+          ExpressionAttributeNames: { '#r': REVISION_ATTRIBUTE },
+        }),
+      context.retry,
     );
-    const value = result.Item?.value as PayloadDescriptor | undefined;
-    return value?.location === PayloadLocation.S3 && value.s3Key === expectedS3Key
-      ? 'landed'
-      : 'not-landed';
+    return result.Item?.[REVISION_ATTRIBUTE] === record.rev ? 'landed' : 'not-landed';
   } catch {
     return 'unverified';
   }

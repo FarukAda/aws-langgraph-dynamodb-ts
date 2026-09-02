@@ -8,7 +8,12 @@ import type { VectorBackend } from './vector-backend';
 /** Options for {@link DynamoDBStore}. */
 export type DynamoDBStoreOptions = BaseAdapterOptions &
   CodecOptions & {
-    /** Optional semantic-search index configuration (embeddings + fields). */
+    /**
+     * Optional semantic-search index configuration (embeddings + fields). The
+     * embedding is stored inline on the item (about 10 bytes per dimension) and
+     * is not counted toward `s3.thresholdBytes`; see that option's note on the
+     * 400 KB item limit.
+     */
     index?: IndexConfig;
     /** Optional serializer override (defaults to the JSON serializer). */
     serde?: SerializerProtocol;

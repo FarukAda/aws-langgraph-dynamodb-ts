@@ -1,32 +1,15 @@
+import { sharedJestConfig } from './jest.shared.config.ts';
+
 /**
- * Conformance test runner. Drives the public adapters against a real DynamoDB
- * Local instance (see docker-compose.yml) to validate LangGraph contract
- * behaviors that unit mocks cannot prove — notably the WRITES_IDX_MAP
- * special-write dedup/ordering contract.
+ * Conformance tier against DynamoDB Local: a compiled LangGraph graph over the
+ * saver and LangChain's checkpointer validation suite.
  *
- *   docker compose up -d
- *   npm run test:conformance
- *   docker compose down
+ *   docker compose up -d && npm run test:conformance && docker compose down
  */
 export default {
+  ...sharedJestConfig,
   testMatch: ['<rootDir>/test/conformance/**/*.test.ts'],
-  transform: {
-    '^.+\\.tsx?$': [
-      'ts-jest',
-      {
-        tsconfig: {
-          esModuleInterop: true,
-          allowSyntheticDefaultImports: true,
-          rootDir: '.',
-        },
-      },
-    ],
-  },
-  verbose: true,
-  preset: 'ts-jest',
-  testEnvironment: 'node',
   testTimeout: 120000,
-  clearMocks: true,
   collectCoverage: false,
   maxWorkers: 1,
 };

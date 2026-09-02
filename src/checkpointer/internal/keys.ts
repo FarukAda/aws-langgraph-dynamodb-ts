@@ -1,3 +1,4 @@
+import { MAX_SORT_KEY_BYTES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
 
 /** Reserved separator joining sort-key segments; forbidden inside any segment. */
@@ -12,6 +13,14 @@ const WRITE_INDEX_PAD_WIDTH = 10;
  * integers that order below positional (0+) writes.
  */
 const WRITE_INDEX_OFFSET = 8;
+
+/**
+ * The most negative write index the sort key can encode, `-WRITE_INDEX_OFFSET`.
+ * A static test pins it against the peer's `WRITES_IDX_MAP`, so a peer bump
+ * that adds a more negative special slot fails loudly instead of producing
+ * unsortable keys.
+ */
+export const MIN_ENCODABLE_WRITE_INDEX = -WRITE_INDEX_OFFSET;
 
 /** Sort-key kinds for the checkpoints table (the approved SK separation). */
 enum CheckpointItemKind {
@@ -31,6 +40,11 @@ enum CheckpointItemKind {
  */
 const ADAPTER_PARTITION_PREFIX = `CHKPT${SORT_KEY_SEPARATOR}`;
 
+/** The tag every checkpointer partition key starts with, for a table-wide `begins_with`. */
+export function checkpointerPartitionPrefix(): string {
+  return ADAPTER_PARTITION_PREFIX;
+}
+
 /** Partition key for a thread: the adapter tag plus the thread id. */
 export function partitionKey(threadId: string): string {
   return `${ADAPTER_PARTITION_PREFIX}${threadId}`;
@@ -44,6 +58,11 @@ export function metaSortKey(checkpointNs: string, checkpointId: string): string 
 /** `begins_with` prefix selecting every META item in a namespace (for list). */
 export function metaSortKeyPrefix(checkpointNs: string): string {
   return `${CheckpointItemKind.META}${SORT_KEY_SEPARATOR}${checkpointNs}${SORT_KEY_SEPARATOR}`;
+}
+
+/** `begins_with` prefix selecting every META item of a thread, whatever its namespace. */
+export function metaAnyNamespacePrefix(): string {
+  return `${CheckpointItemKind.META}${SORT_KEY_SEPARATOR}`;
 }
 
 /** Sort key for a checkpoint's heavy payload item. */
@@ -78,9 +97,23 @@ export function writeSortKey(
     );
   }
   const paddedIndex = offsetIndex.toString().padStart(WRITE_INDEX_PAD_WIDTH, '0');
-  return [CheckpointItemKind.WRITE, checkpointNs, checkpointId, taskId, paddedIndex, channel].join(
-    SORT_KEY_SEPARATOR,
-  );
+  const sortKey = [
+    CheckpointItemKind.WRITE,
+    checkpointNs,
+    checkpointId,
+    taskId,
+    paddedIndex,
+    channel,
+  ].join(SORT_KEY_SEPARATOR);
+  const bytes = Buffer.byteLength(sortKey, 'utf8');
+  if (bytes > MAX_SORT_KEY_BYTES) {
+    throw new ValidationError(
+      `checkpoint_ns, checkpoint_id, taskId and channel compose a ${bytes}-byte sort key; ` +
+        `DynamoDB caps sort keys at ${MAX_SORT_KEY_BYTES} bytes`,
+      'sortKey',
+    );
+  }
+  return sortKey;
 }
 
 /**

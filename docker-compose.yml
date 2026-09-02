@@ -1,6 +1,6 @@
 services:
   dynamodb-local:
-    image: amazon/dynamodb-local:latest
+    image: amazon/dynamodb-local:3.3.1
     container_name: aws-langgraph-ddb-local
     command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory']
     ports:

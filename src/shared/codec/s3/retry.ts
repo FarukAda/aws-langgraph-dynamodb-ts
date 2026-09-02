@@ -1,26 +1,21 @@
+import { DEFAULT_RETRYABLE_ERRORS, isRetryableError } from '../../dynamodb/retry-classifier';
+
+/**
+ * Transient S3 signals: everything the DynamoDB classifier already treats as
+ * transient (the SDK transport `TimeoutError`, socket errors, `RequestTimeout`,
+ * `ServiceUnavailable`, …) plus the two names only S3 uses. HTTP 429/5xx and
+ * the `$retryable` trait are recognised by the shared classifier itself.
+ */
 const RETRYABLE_S3_SIGNALS: readonly string[] = [
+  ...DEFAULT_RETRYABLE_ERRORS,
   'SlowDown',
   'InternalError',
-  'ServiceUnavailable',
-  'RequestTimeout',
-  'ThrottlingException',
-  'ECONNRESET',
-  'ETIMEDOUT',
-  'NetworkingError',
 ];
 
-export { RETRYABLE_S3_SIGNALS };
-
-/** True when `error` looks like a transient S3 failure worth retrying. */
+/**
+ * True when `error` looks like a transient S3 failure worth retrying — the one
+ * classifier for uploads, downloads and orphan cleanup.
+ */
 export function isTransientS3Error(error: Error): boolean {
-  const fields = error as { name?: string; code?: string; $metadata?: { httpStatusCode?: number } };
-  const status = fields.$metadata?.httpStatusCode;
-  if (typeof status === 'number' && (status === 429 || (status >= 500 && status < 600)))
-    return true;
-  const signals = [fields.name, fields.code].filter(
-    (value): value is string => typeof value === 'string',
-  );
-  return signals.some((signal) =>
-    RETRYABLE_S3_SIGNALS.some((retryable) => signal.includes(retryable)),
-  );
+  return isRetryableError(error, RETRYABLE_S3_SIGNALS);
 }

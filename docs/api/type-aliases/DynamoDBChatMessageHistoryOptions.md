@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -8,7 +8,7 @@
 
 > **DynamoDBChatMessageHistoryOptions** = [`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md) & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
 
-Defined in: [history/types.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/history/types.ts#L7)
+Defined in: [history/types.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L7)
 
 Options for [DynamoDBChatMessageHistory](../classes/DynamoDBChatMessageHistory.md).
 

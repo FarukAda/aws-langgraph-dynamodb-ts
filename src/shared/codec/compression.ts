@@ -6,7 +6,7 @@ import {
   DEFAULT_COMPRESSION_MIN_BYTES,
   DEFAULT_MAX_DECOMPRESSED_BYTES,
 } from '../constants';
-import { DynamoDbLangGraphError } from '../errors/base-error';
+import { DynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 
 const gzipAsync = promisify(gzip);
@@ -50,7 +50,7 @@ export async function compress(
 
 /**
  * Gunzip `data` when `compressed` is true; otherwise return it unchanged. Throws
- * a {@link DynamoDbLangGraphError} with code `COMPRESSION_LIMIT` if the output
+ * a {@link DynamoDBLangGraphError} with code `COMPRESSION_LIMIT` if the output
  * would exceed `maxBytes` (bomb guard).
  */
 export async function decompress(
@@ -64,7 +64,7 @@ export async function decompress(
   } catch (error) {
     const err = error as { code?: string };
     if (err.code === 'ERR_BUFFER_TOO_LARGE') {
-      throw new DynamoDbLangGraphError(
+      throw new DynamoDBLangGraphError(
         `Refusing to decompress: output would exceed ${maxBytes} bytes`,
         ErrorCode.COMPRESSION_LIMIT,
         {},

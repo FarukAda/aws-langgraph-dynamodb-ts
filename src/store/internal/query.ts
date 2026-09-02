@@ -29,3 +29,20 @@ export function storeScan(tableName: string): ScanCommandInput {
     ExpressionAttributeNames: { '#ns': 'namespace' },
   };
 }
+
+/**
+ * Restrict a Query/Scan to the attributes `narrowStoreRecord` needs, leaving the
+ * payload behind: a namespace listing never reads a value. RCU is billed on
+ * the stored size regardless, so the saving is transfer and unmarshalling.
+ */
+export function projectKeys<T extends QueryCommandInput | ScanCommandInput>(params: T): T {
+  return {
+    ...params,
+    ProjectionExpression: 'PK, SK, #ns, #key',
+    ExpressionAttributeNames: {
+      ...params.ExpressionAttributeNames,
+      '#ns': 'namespace',
+      '#key': 'key',
+    },
+  };
+}

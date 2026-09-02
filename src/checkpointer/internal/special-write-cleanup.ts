@@ -6,16 +6,27 @@ import type { CheckpointerContext } from './setup';
 import { writeSpecialItem } from './special-write-cas';
 import type { SpecialWriteOutcome } from './special-write-verify';
 
-/** Best-effort delete the S3 objects backing `descriptors`, if offloading is on. */
+/**
+ * Best-effort delete the S3 objects backing `descriptors`, if offloading is on.
+ * `scope` is given for descriptors read back from rows (the superseded values)
+ * and omitted for this call's own uploads.
+ */
 async function deleteDescriptors(
   context: CheckpointerContext,
   descriptors: (PayloadDescriptor | undefined)[],
   label: string,
+  scope?: readonly string[],
 ): Promise<void> {
   if (!context.offloader) return;
   const present = descriptors.filter((d): d is PayloadDescriptor => d !== undefined);
   if (present.length === 0) return;
-  await cleanUpS3Orphans(context.offloader, collectS3Keys(present), label, context.logger);
+  await cleanUpS3Orphans(
+    context.offloader,
+    collectS3Keys(present),
+    label,
+    context.logger,
+    scope === undefined ? {} : { scope },
+  );
 }
 
 /**
@@ -40,19 +51,22 @@ async function deleteDescriptors(
  */
 export async function writeSpecialItemsWithCleanup(
   context: CheckpointerContext,
+  threadId: string,
   items: CheckpointWriteItem[],
+  signal?: AbortSignal,
 ): Promise<Error | undefined> {
   if (items.length === 0) return undefined;
   const outcomes = await Promise.all(
     items.map(async (item): Promise<[CheckpointWriteItem, SpecialWriteOutcome]> => [
       item,
-      await writeSpecialItem(context, item),
+      await writeSpecialItem(context, item, signal),
     ]),
   );
   await deleteDescriptors(
     context,
     outcomes.filter(([, o]) => o.committed).map(([, o]) => o.superseded),
     'putWrites.special.previous',
+    [threadId],
   );
   await deleteDescriptors(
     context,

@@ -1,10 +1,20 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
-import type { CheckpointTuple } from '@langchain/langgraph-checkpoint';
+import type { CheckpointMetadata, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
 import type { CheckpointMetaItem } from '../types';
 import { fetchPayload, fetchPendingWrites } from './fetch';
 import { readCheckpoint, readMetadata } from './item-reader';
+import { migratePendingSends } from './pending-sends';
 import type { CheckpointerContext } from './setup';
+
+/** How a tuple is assembled: cancellation, read consistency, and metadata already decoded by the caller. */
+export interface AssembleOptions {
+  signal?: AbortSignal;
+  /** `true` for `getTuple` (read-your-writes), `false` for the eventually-consistent `list` path. */
+  consistent: boolean;
+  /** Metadata the caller decoded to apply a filter, so it is not decoded (or downloaded) twice. */
+  metadata?: CheckpointMetadata;
+}
 
 /** Build a config that addresses a specific checkpoint. */
 function configFor(threadId: string, checkpointNs: string, checkpointId: string): RunnableConfig {
@@ -23,13 +33,17 @@ export async function assembleTuple(
   threadId: string,
   checkpointNs: string,
   meta: CheckpointMetaItem,
+  options: AssembleOptions,
 ): Promise<CheckpointTuple | undefined> {
-  const payload = await fetchPayload(context, threadId, checkpointNs, meta.checkpointId);
+  const read = { signal: options.signal, consistent: options.consistent };
+  const payload = await fetchPayload(context, threadId, checkpointNs, meta.checkpointId, read);
   if (!payload) return undefined;
   const [checkpoint, metadata, pendingWrites] = await Promise.all([
-    readCheckpoint(context, payload),
-    readMetadata(context, meta),
-    fetchPendingWrites(context, threadId, checkpointNs, meta.checkpointId),
+    readCheckpoint(context, payload, threadId).then((stored) =>
+      migratePendingSends(context, stored, threadId, checkpointNs, meta.parentCheckpointId, read),
+    ),
+    options.metadata ?? readMetadata(context, meta, threadId),
+    fetchPendingWrites(context, threadId, checkpointNs, meta.checkpointId, read),
   ]);
   const tuple: CheckpointTuple = {
     config: configFor(threadId, checkpointNs, meta.checkpointId),

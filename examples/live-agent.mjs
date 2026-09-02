@@ -16,8 +16,8 @@ import { createReactAgent } from '@langchain/langgraph/prebuilt';
 
 import { DynamoDBSaver } from '../dist/index.js';
 
-const REGION = 'eu-west-1';
-const TABLE = 'langgraph-saver-demo';
+const REGION = process.env.AWS_REGION ?? 'eu-west-1';
+const TABLE = process.env.LANGGRAPH_DEMO_TABLE ?? 'langgraph-saver-demo';
 const MODEL = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
 const THREAD = { configurable: { thread_id: 'agent-memory-demo' } };
 const clientConfig = { region: REGION };

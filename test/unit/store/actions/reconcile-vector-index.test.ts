@@ -45,7 +45,10 @@ describe('reconcileVectorIndex', () => {
 
   it('re-pushes live embeddings and prunes orphaned vectors', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5]) };
+    const embeddings = {
+      embedQuery: jest.fn(),
+      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+    };
     const backend = {
       upsert: jest.fn().mockResolvedValue(undefined),
       delete: jest.fn().mockResolvedValue(undefined),
@@ -88,7 +91,10 @@ describe('reconcileVectorIndex', () => {
 
   it('passes maxScanItems through to the underlying paginated query', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5]) };
+    const embeddings = {
+      embedQuery: jest.fn(),
+      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+    };
     const backend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
     const ctx = context(client, {
       index: { dims: 1, embeddings: embeddings as never },
@@ -112,5 +118,49 @@ describe('reconcileVectorIndex', () => {
     await expect(reconcileVectorIndex(ctx, ['users', 'u1'])).rejects.toMatchObject({
       code: ErrorCode.RESULT_TRUNCATED,
     });
+  });
+});
+
+describe('reconcileVectorIndex prefix scoping', () => {
+  it('skips a row in the same partition whose deeper namespace lies outside the prefix', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = {
+      embedQuery: jest.fn(),
+      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+    };
+    const backend = {
+      upsert: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn(),
+      query: jest.fn(),
+      listKeys: jest.fn().mockResolvedValue([]),
+    };
+    const ctx = context(client, {
+      index: { dims: 1, embeddings: embeddings as never },
+      vectorBackend: backend,
+    });
+    const inside = await buildStoreItem(
+      ctx,
+      ['users', 'u1'],
+      'a',
+      { text: 'hello' },
+      {
+        createdAt: 'c',
+        updatedAt: 'u',
+      },
+    );
+    const sibling = await buildStoreItem(
+      ctx,
+      ['users', 'u10'],
+      'a',
+      { text: 'other' },
+      {
+        createdAt: 'c',
+        updatedAt: 'u',
+      },
+    );
+    mock.on(QueryCommand).resolves({ Items: [inside, sibling] });
+    const result = await reconcileVectorIndex(ctx, ['users', 'u1']);
+    expect(result).toEqual({ upserted: 1, pruned: 0 });
+    expect(backend.upsert).toHaveBeenCalledTimes(1);
   });
 });

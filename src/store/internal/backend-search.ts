@@ -11,6 +11,7 @@ import type { VectorBackend, VectorMatch } from '../vector-backend';
 import { namespaceMatchesPrefix } from './keys';
 import { toRelevanceScores } from './score-direction';
 import { passesFilter } from './search-filter';
+import { assertVectorDims } from './semantic-search';
 import type { StoreContext } from './setup';
 
 /**
@@ -42,9 +43,13 @@ function warnOnNonDescendingScores(
  * element containing the reserved separator would otherwise turn the whole
  * search into a ValidationError instead of dropping the one bad match.
  */
-async function fetchMatch(context: StoreContext, match: VectorMatch): Promise<Item | null> {
+async function fetchMatch(
+  context: StoreContext,
+  match: VectorMatch,
+  signal?: AbortSignal,
+): Promise<Item | null> {
   try {
-    return await getItem(context, match.namespace, match.key);
+    return await getItem(context, match.namespace, match.key, signal);
   } catch (error) {
     context.logger.warn('search: skipped an unusable vectorBackend match', {
       namespace: match.namespace,
@@ -62,8 +67,10 @@ export async function searchViaBackend(
   op: SearchOperation,
   offset: number,
   limit: number,
+  signal?: AbortSignal,
 ): Promise<SearchItem[]> {
   const queryVector = await index.embeddings.embedQuery(op.query as string);
+  assertVectorDims(index, queryVector, 'query');
   const need = offset + limit;
   if (need > context.maxSearchCandidates) {
     throw new ValidationError(
@@ -83,11 +90,18 @@ export async function searchViaBackend(
     results = [];
     for (const match of matches) {
       if (!namespaceMatchesPrefix(match.namespace, op.namespacePrefix)) continue;
-      const item = await fetchMatch(context, match);
+      const item = await fetchMatch(context, match, signal);
       if (item && passesFilter(item, op)) results.push({ ...item, score: match.score });
     }
-    if (results.length >= need || matches.length < topK || topK >= context.maxSearchCandidates)
-      break;
+    if (results.length >= need || matches.length < topK) break;
+    if (topK >= context.maxSearchCandidates) {
+      /** The backend still holds matches, but the filter left the page short at the cap: the same answer the in-DB ranker gives, not a silently short page. */
+      throw new ValidationError(
+        `Semantic search collected ${results.length} of ${need} matches within maxSearchCandidates ` +
+          `(${context.maxSearchCandidates}); narrow the filter or raise maxSearchCandidates`,
+        'maxSearchCandidates',
+      );
+    }
     topK = Math.min(topK * 2, context.maxSearchCandidates);
   }
   return results;

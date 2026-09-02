@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -6,15 +6,16 @@
 
 # Class: ResultTruncatedError
 
-Defined in: [shared/errors/errors.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L34)
+Defined in: [shared/errors/errors.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L36)
 
 A paginated read hit its runaway guard (item or iteration cap) while more
 data remained, so the result would have been silently truncated. Narrow the
 query (filter/prefix) or raise the cap rather than trusting a partial result.
+`context.field` names the cap that was hit.
 
 ## Extends
 
-- [`DynamoDbLangGraphError`](DynamoDbLangGraphError.md)
+- [`DynamoDBLangGraphError`](DynamoDBLangGraphError.md)
 
 ## Constructors
 
@@ -22,7 +23,7 @@ query (filter/prefix) or raise the cap rather than trusting a partial result.
 
 > **new ResultTruncatedError**(`cap`, `limit`): `ResultTruncatedError`
 
-Defined in: [shared/errors/errors.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/errors.ts#L35)
+Defined in: [shared/errors/errors.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L37)
 
 #### Parameters
 
@@ -40,7 +41,7 @@ Defined in: [shared/errors/errors.ts:35](https://github.com/FarukAda/aws-langgra
 
 #### Overrides
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`constructor`](DynamoDbLangGraphError.md#constructor)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`constructor`](DynamoDBLangGraphError.md#constructor)
 
 ## Properties
 
@@ -48,11 +49,11 @@ Defined in: [shared/errors/errors.ts:35](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L20)
+Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
 
 #### Inherited from
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`code`](DynamoDbLangGraphError.md#code)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`code`](DynamoDBLangGraphError.md#code)
 
 ***
 
@@ -60,8 +61,8 @@ Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/shared/errors/base-error.ts#L21)
+Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
 
 #### Inherited from
 
-[`DynamoDbLangGraphError`](DynamoDbLangGraphError.md).[`context`](DynamoDbLangGraphError.md#context)
+[`DynamoDBLangGraphError`](DynamoDBLangGraphError.md).[`context`](DynamoDBLangGraphError.md#context)

@@ -5,6 +5,7 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { ValidationError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { listNamespaces } from '../../../../src/store/actions/list-namespaces';
+import { partitionKey, sortKey } from '../../../../src/store/internal/keys';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -20,11 +21,19 @@ function context(client: StoreContext['client']): StoreContext {
   };
 }
 
+/** A store row whose attributes agree with the DynamoDB key it lives at (SEC-03). */
+const row = (namespace: string[], key = 'k') => ({
+  PK: partitionKey(namespace),
+  SK: sortKey(namespace, key),
+  namespace,
+  key,
+});
+
 const items = [
-  { namespace: ['users', 'u1'] },
-  { namespace: ['users', 'u1'] },
-  { namespace: ['users', 'u2'] },
-  { namespace: ['orgs', 'o1'] },
+  row(['users', 'u1'], 'a'),
+  row(['users', 'u1'], 'b'),
+  row(['users', 'u2']),
+  row(['orgs', 'o1']),
 ];
 
 describe('listNamespaces maxDepth validation (M10)', () => {
@@ -67,7 +76,7 @@ describe('listNamespaces', () => {
   it('does not collapse namespaces that differ only at an element boundary', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({
-      Items: [{ namespace: ['a b', 'c'] }, { namespace: ['a', 'b c'] }],
+      Items: [row(['a b', 'c']), row(['a', 'b c'])],
     });
     const out = await listNamespaces(context(client), { limit: 100, offset: 0 });
     expect(out).toHaveLength(2);
@@ -85,7 +94,9 @@ describe('listNamespaces', () => {
       ['users', 'u1'],
       ['users', 'u2'],
     ]);
-    expect(mock.commandCalls(QueryCommand)[0].args[0].input.ExpressionAttributeValues).toEqual({
+    expect(
+      mock.commandCalls(QueryCommand)[0].args[0].input.ExpressionAttributeValues,
+    ).toMatchObject({
       ':pk': 'STORE#users',
     });
   });
@@ -124,10 +135,10 @@ describe('listNamespaces', () => {
 
   it('filters to store items and skips foreign rows on a shared table', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(ScanCommand).resolves({ Items: [{ SK: 'META##c' }, { namespace: ['users', 'u1'] }] });
+    mock.on(ScanCommand).resolves({ Items: [{ SK: 'META##c' }, row(['users', 'u1'])] });
     const out = await listNamespaces(context(client), { limit: 100, offset: 0 });
     expect(out).toEqual([['users', 'u1']]);
-    expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toBe(
+    expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toContain(
       'attribute_exists(#ns)',
     );
   });

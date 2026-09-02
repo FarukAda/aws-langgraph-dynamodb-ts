@@ -1,4 +1,4 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
@@ -8,7 +8,7 @@
 
 > **DynamoDBStoreOptions** = [`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md) & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
 
-Defined in: [store/types.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/store/types.ts#L9)
+Defined in: [store/types.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L9)
 
 Options for [DynamoDBStore](../classes/DynamoDBStore.md).
 
@@ -18,7 +18,10 @@ Options for [DynamoDBStore](../classes/DynamoDBStore.md).
 
 > `optional` **index?**: `IndexConfig`
 
-Optional semantic-search index configuration (embeddings + fields).
+Optional semantic-search index configuration (embeddings + fields). The
+embedding is stored inline on the item (about 10 bytes per dimension) and
+is not counted toward `s3.thresholdBytes`; see that option's note on the
+400 KB item limit.
 
 ### maxScanItems?
 
@@ -46,7 +49,7 @@ Optional external vector index; when set, similarity search delegates to it.
 
 ### vectorScoreDirection?
 
-> `optional` **vectorScoreDirection?**: `VectorScoreDirection`
+> `optional` **vectorScoreDirection?**: [`VectorScoreDirection`](VectorScoreDirection.md)
 
 Direction of the score a `vectorBackend` returns. `'relevance'` (the
 default) forwards it unchanged; `'distance'` negates and re-sorts, so a

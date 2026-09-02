@@ -110,3 +110,66 @@ describe('isRetryableError', () => {
     ).toBe(true);
   });
 });
+
+describe('isRetryableError parity with the SDK classifier (DDB-02)', () => {
+  const withStatus = (name: string, status: number): Error =>
+    Object.assign(new Error(name), { name, $metadata: { httpStatusCode: status } });
+
+  it('retries an unmodeled 5xx and a 429 by status alone', () => {
+    for (const status of [500, 502, 503, 504, 429]) {
+      expect(isRetryableError(withStatus('Unknown', status), DEFAULT_RETRYABLE_ERRORS)).toBe(true);
+    }
+  });
+
+  it('retries an error the SDK marks retryable by trait', () => {
+    const err = Object.assign(new Error('replicated'), {
+      name: 'ReplicatedWriteConflictException',
+      $retryable: {},
+    });
+    expect(isRetryableError(err, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
+  });
+
+  it('retries the remaining Node network codes the SDK treats as transient', () => {
+    for (const code of ['EHOSTUNREACH', 'ENETUNREACH', 'ENOTFOUND']) {
+      expect(
+        isRetryableError(Object.assign(new Error(code), { code }), DEFAULT_RETRYABLE_ERRORS),
+      ).toBe(true);
+    }
+  });
+
+  it('finds a transient status two causes deep', () => {
+    const deep = new Error('outer', {
+      cause: new Error('middle', { cause: withStatus('Unknown', 500) }),
+    });
+    expect(isRetryableError(deep, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
+  });
+
+  it('does not retry a permanent 4xx even when it carries a status', () => {
+    for (const name of [
+      'ConditionalCheckFailedException',
+      'ResourceNotFoundException',
+      'AccessDeniedException',
+      'ValidationException',
+    ]) {
+      expect(isRetryableError(withStatus(name, 400), DEFAULT_RETRYABLE_ERRORS)).toBe(false);
+    }
+  });
+
+  it('keeps the cancellation verdict ahead of the status and trait rules', () => {
+    const permanent = Object.assign(new Error('cancelled'), {
+      name: 'TransactionCanceledException',
+      CancellationReasons: [{ Code: 'ConditionalCheckFailed' }],
+      $metadata: { httpStatusCode: 500 },
+      $retryable: {},
+    });
+    expect(isRetryableError(permanent, DEFAULT_RETRYABLE_ERRORS)).toBe(false);
+  });
+
+  it('matches names exactly, not as substrings', () => {
+    for (const name of ['ThrottlingExceptionX', 'NotAThrottlingException']) {
+      expect(
+        isRetryableError(Object.assign(new Error('x'), { name }), DEFAULT_RETRYABLE_ERRORS),
+      ).toBe(false);
+    }
+  });
+});

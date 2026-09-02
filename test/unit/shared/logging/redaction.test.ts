@@ -331,3 +331,12 @@ describe('scalar values end at a real delimiter (F2 follow-up)', () => {
     expect(redactSecrets('token=123abc')).toBe('token=[REDACTED]');
   });
 });
+
+describe('redactSecrets accepts typed inputs without casts (CORE-11)', () => {
+  it('takes an Error carrying own data and a Record directly', () => {
+    const error = Object.assign(new Error('x'), { apiKey: 'k' });
+    expect((redactSecrets(error) as { apiKey?: string }).apiKey).toBe('[REDACTED]');
+    const record: Record<string, object> = { nested: { password: 'p' } };
+    expect(redactSecrets(record)).toEqual({ nested: { password: '[REDACTED]' } });
+  });
+});

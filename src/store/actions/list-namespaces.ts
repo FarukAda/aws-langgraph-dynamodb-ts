@@ -1,26 +1,30 @@
 import type { ListNamespacesOperation } from '@langchain/langgraph-checkpoint';
 
+import { nowSeconds } from '../../shared/clock';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import { narrowStoreRecord } from '../internal/item-mapper';
 import { NAMESPACE_SEPARATOR } from '../internal/keys';
 import { matchNamespace, prefixRoot, truncateDepth } from '../internal/namespace-match';
-import { scopedQuery, storeScan } from '../internal/query';
+import { projectKeys, scopedQuery, storeScan } from '../internal/query';
 import type { StoreContext } from '../internal/setup';
 import { validateMaxDepth, validatePaging } from '../internal/validation';
 
-function namespaceSource(context: StoreContext, op: ListNamespacesOperation) {
+function namespaceSource(context: StoreContext, op: ListNamespacesOperation, now: number) {
   const root = prefixRoot(op.matchConditions);
   if (root.length > 0) {
     return paginateQuery({
+      retry: context.retry,
       client: context.client,
-      params: scopedQuery(context.tableName, root),
+      params: withoutExpired(projectKeys(scopedQuery(context.tableName, root)), now),
       maxItems: context.maxScanItems,
     });
   }
   return paginateScan({
+    retry: context.retry,
     client: context.client,
-    params: storeScan(context.tableName),
+    params: withoutExpired(projectKeys(storeScan(context.tableName)), now),
     maxItems: context.maxScanItems,
   });
 }
@@ -36,11 +40,12 @@ export async function listNamespaces(
 ): Promise<string[][]> {
   validatePaging(op.offset, op.limit);
   validateMaxDepth(op.maxDepth);
+  const now = nowSeconds();
   const seen = new Set<string>();
   const namespaces: string[][] = [];
-  for await (const raw of namespaceSource(context, op)) {
+  for await (const raw of namespaceSource(context, op, now)) {
     const record = narrowStoreRecord(raw);
-    if (!record) continue;
+    if (!record || isExpiredRow(record, now)) continue;
     const namespace = record.namespace;
     if (
       op.matchConditions &&

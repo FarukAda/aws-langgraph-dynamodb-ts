@@ -77,6 +77,14 @@ export default defineConfig([
     },
   },
   {
+    files: ['**/*.mjs'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly', URL: 'readonly' },
+    },
+    rules: { ...js.configs.recommended.rules },
+  },
+  {
     files: ['src/index.ts'],
     rules: {
       'no-restricted-syntax': ['error', NO_UNKNOWN],

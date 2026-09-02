@@ -3,8 +3,12 @@ import { type Redactable, walkObject } from './redaction-walk';
 import {
   DEFAULT_SECRET_KEY_PATTERNS,
   DEFAULT_SECRET_VALUE_PATTERNS,
+  normaliseKey,
   redactText,
 } from './secret-patterns';
+
+/** Substituted for a log argument whose redaction itself failed (a throwing getter, say). */
+const UNREDACTABLE = '[UNREDACTABLE]';
 
 /**
  * Recursively clone `value`, replacing any value at a secret-looking key with
@@ -19,10 +23,11 @@ import {
  * `stack` redacted and every other own property recursed like a plain object.
  * `Date`/`RegExp` keep their identity rather than collapsing to `{}`,
  * `Set`/`Map` render as their contents, and binary views become a short label.
- * Does not mutate the input.
+ * Does not mutate the input. Accepts any log argument — a typed `Error`, a
+ * class instance, a `Record` — so callers never cast.
  */
 export function redactSecrets(
-  value: Redactable,
+  value: LogArgument | undefined,
   patterns: readonly string[] = DEFAULT_SECRET_KEY_PATTERNS,
   valuePatterns: readonly RegExp[] = DEFAULT_SECRET_VALUE_PATTERNS,
 ): Redactable {
@@ -38,12 +43,16 @@ export function redactSecrets(
       seen.delete(current);
     }
   };
-  return walk(value);
+  return walk(value as Redactable);
 }
 
 /** Options controlling {@link redactLogger}. */
 export interface RedactLoggerOptions {
-  /** Additional key names (matched case-insensitively as substrings) to redact. */
+  /**
+   * Additional key names to redact. Matched like the defaults: a key is
+   * redacted when its normalised form (lower-case, punctuation removed) equals
+   * or ends with the normalised name, so `'ssn'` covers `SSN` and `user_ssn`.
+   */
   extraKeys?: readonly string[];
   /**
    * Additional secret shapes to redact wherever they appear inside a string.
@@ -54,18 +63,35 @@ export interface RedactLoggerOptions {
 }
 
 /**
+ * Redact one log argument, never throwing: an argument whose redaction fails
+ * (a getter that throws, an exotic object) is replaced by a fixed marker rather
+ * than either leaking unredacted or failing the library operation that logged.
+ */
+function safeRedact(
+  arg: LogArgument,
+  patterns: readonly string[],
+  valuePatterns: readonly RegExp[],
+): LogArgument {
+  try {
+    return redactSecrets(arg, patterns, valuePatterns) as LogArgument;
+  } catch {
+    return UNREDACTABLE;
+  }
+}
+
+/**
  * Wrap a logger so object args are redacted before delegation. The message
  * string is passed through unchanged (never interpolate secrets into it).
  */
 export function redactLogger(inner: Logger, options: RedactLoggerOptions = {}): Logger {
   const patterns = options.extraKeys
-    ? [...DEFAULT_SECRET_KEY_PATTERNS, ...options.extraKeys.map((key) => key.toLowerCase())]
+    ? [...DEFAULT_SECRET_KEY_PATTERNS, ...options.extraKeys.map(normaliseKey)]
     : DEFAULT_SECRET_KEY_PATTERNS;
   const valuePatterns = options.extraValuePatterns
     ? [...DEFAULT_SECRET_VALUE_PATTERNS, ...options.extraValuePatterns]
     : DEFAULT_SECRET_VALUE_PATTERNS;
   const wrap = (args: LogArgument[]): LogArgument[] =>
-    args.map((arg) => redactSecrets(arg as Redactable, patterns, valuePatterns) as LogArgument);
+    args.map((arg) => safeRedact(arg, patterns, valuePatterns));
   return {
     info: (message, ...args) => inner.info(message, ...wrap(args)),
     warn: (message, ...args) => inner.warn(message, ...wrap(args)),

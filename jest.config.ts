@@ -1,4 +1,12 @@
+import { sharedJestConfig } from './jest.shared.config.ts';
+
+/**
+ * Unit tier: unit tests, static guards, type locks and property tests.
+ * Coverage (100 % on every metric) is collected when jest runs with
+ * `--coverage`, which `npm test` passes; a single-file run stays fast.
+ */
 export default {
+  ...sharedJestConfig,
   testMatch: [
     '<rootDir>/test/unit/**/*.test.ts',
     '<rootDir>/test/static/**/*.test.ts',
@@ -12,35 +20,10 @@ export default {
     '/test/package-smoke/',
   ],
   setupFilesAfterEnv: ['<rootDir>/test/shared/helpers/test-setup.ts'],
-  transform: {
-    '^.+\\.tsx?$': [
-      'ts-jest',
-      {
-        tsconfig: {
-          esModuleInterop: true,
-          allowSyntheticDefaultImports: true,
-          rootDir: '.',
-          module: 'commonjs',
-        },
-      },
-    ],
-  },
-  verbose: true,
-  preset: 'ts-jest',
-  testEnvironment: 'node',
-  testTimeout: 90000,
-  clearMocks: true,
-  collectCoverage: true,
+  testTimeout: 15000,
   collectCoverageFrom: ['<rootDir>/src/**/*.ts', '!<rootDir>/src/**/*.d.ts'],
   coverageDirectory: 'coverage',
   coverageThreshold: {
     global: { branches: 100, functions: 100, lines: 100, statements: 100 },
   },
-  reporters: [
-    'default',
-    [
-      'jest-sonar',
-      { outputDirectory: 'coverage', outputName: 'test-report.xml', reportedFilePath: 'relative' },
-    ],
-  ],
 };

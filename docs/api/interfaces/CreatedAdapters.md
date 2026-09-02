@@ -1,14 +1,21 @@
-[**AWS LangGraph DynamoDB TypeScript v0.9.0**](../README.md)
+[**AWS LangGraph DynamoDB TypeScript**](../README.md)
 
 ***
 
 [AWS LangGraph DynamoDB TypeScript](../README.md) / CreatedAdapters
 
-# Interface: CreatedAdapters
+# Interface: CreatedAdapters\<O\>
 
-Defined in: [factory/factory.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L29)
+Defined in: [factory/types.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L56)
 
-The three adapters sharing one client, plus a combined `destroy`.
+The adapters `createAll` built, typed by the sections it was given: an
+omitted section is `undefined`. The default names the all-three result.
+
+## Type Parameters
+
+### O
+
+`O` *extends* [`CreateAllOptions`](CreateAllOptions.md) = `Required`\<[`CreateAllOptions`](CreateAllOptions.md)\>
 
 ## Properties
 
@@ -16,7 +23,9 @@ The three adapters sharing one client, plus a combined `destroy`.
 
 > **destroy**: () => `void`
 
-Defined in: [factory/factory.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L33)
+Defined in: [factory/types.ts:61](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L61)
+
+Tear down every built adapter and the shared client, once.
 
 #### Returns
 
@@ -26,22 +35,22 @@ Defined in: [factory/factory.ts:33](https://github.com/FarukAda/aws-langgraph-dy
 
 ### history
 
-> **history**: [`DynamoDBChatMessageHistory`](../classes/DynamoDBChatMessageHistory.md)
+> **history**: `O` *extends* `object` ? [`DynamoDBChatMessageHistory`](../classes/DynamoDBChatMessageHistory.md) : `undefined`
 
-Defined in: [factory/factory.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L32)
+Defined in: [factory/types.ts:59](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L59)
 
 ***
 
 ### saver
 
-> **saver**: [`DynamoDBSaver`](../classes/DynamoDBSaver.md)
+> **saver**: `O` *extends* `object` ? [`DynamoDBSaver`](../classes/DynamoDBSaver.md) : `undefined`
 
-Defined in: [factory/factory.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L30)
+Defined in: [factory/types.ts:57](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L57)
 
 ***
 
 ### store
 
-> **store**: [`DynamoDBStore`](../classes/DynamoDBStore.md)
+> **store**: `O` *extends* `object` ? [`DynamoDBStore`](../classes/DynamoDBStore.md) : `undefined`
 
-Defined in: [factory/factory.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/c3f018f37290d04fc34b7157d4ff279f0567c7f1/src/factory/factory.ts#L31)
+Defined in: [factory/types.ts:58](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L58)

@@ -17,6 +17,7 @@ import type {
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 
 const s3Mock = mockClient(S3Client);
@@ -145,5 +146,51 @@ describe('DynamoDBSaver', () => {
     const { client } = createStrictDocumentMock();
     const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde, ttl: { days: 30 } });
     await expect(saver.ensureS3LifecycleRule()).resolves.toBeUndefined();
+  });
+});
+
+describe('cancellation via RunnableConfig.signal (CORE-04)', () => {
+  const aborted = (): AbortSignal => {
+    const controller = new AbortController();
+    controller.abort();
+    return controller.signal;
+  };
+  const expectAborted = (promise: Promise<unknown>) =>
+    expect(promise).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'AbortError' });
+
+  it('rejects getTuple, list, put, putWrites and deleteThread before any DynamoDB call', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+    const config = { configurable: { thread_id: 't', checkpoint_id: 'ckpt-1' }, signal: aborted() };
+    await expectAborted(saver.getTuple(config));
+    await expectAborted(drain(saver.list(config)));
+    await expectAborted(saver.put(config, checkpoint, metadata));
+    await expectAborted(saver.putWrites(config, [['ch', 1]], 'task-1'));
+    await expectAborted(saver.deleteThread('t', { signal: aborted() }));
+    expect(mock.calls()).toHaveLength(0);
+  });
+
+  it('stops a multi-page deleteThread when the signal aborts between pages', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    let pages = 0;
+    mock.on(QueryCommand).callsFake(() => {
+      pages += 1;
+      controller.abort();
+      // Only the first page announces a continuation, so the read stays finite even
+      // when cancellation is ignored; honouring the signal must stop it after one fetch.
+      return pages === 1
+        ? {
+            Items: [{ PK: 'CHKPT#t', SK: 'META##c1' }],
+            LastEvaluatedKey: { PK: 'CHKPT#t', SK: 'x' },
+          }
+        : { Items: [] };
+    });
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+    await expect(saver.deleteThread('t', { signal: controller.signal })).rejects.toMatchObject({
+      code: ErrorCode.ABORTED,
+    });
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(1);
   });
 });

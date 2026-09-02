@@ -56,16 +56,30 @@ describe('listCheckpoints', () => {
 
   async function fixtures(client: CheckpointerContext['client']) {
     const ctx = context(client);
-    const a = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), {
-      source: 'loop',
-      step: 2,
-      parents: {},
-    } as CheckpointMetadata);
-    const b = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), {
-      source: 'input',
-      step: 1,
-      parents: {},
-    } as CheckpointMetadata);
+    const a = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint('c2'),
+      {
+        source: 'loop',
+        step: 2,
+        parents: {},
+      } as CheckpointMetadata,
+      'nonce-1',
+    );
+    const b = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint('c1'),
+      {
+        source: 'input',
+        step: 1,
+        parents: {},
+      } as CheckpointMetadata,
+      'nonce-1',
+    );
     const metas: Record<string, CheckpointMetaItem> = { c2: a.meta, c1: b.meta };
     const payloads: Record<string, CheckpointPayloadItem> = { c2: a.payload, c1: b.payload };
     return { metas, payloads };
@@ -85,7 +99,9 @@ describe('listCheckpoints', () => {
     });
     mock.on(GetCommand).callsFake((input) => {
       const sk = input.Key.SK as string;
-      return { Item: sk.endsWith('c2') ? data.payloads.c2 : data.payloads.c1 };
+      const id = sk.endsWith('c2') ? 'c2' : 'c1';
+      // an addressed checkpoint_id reads its META row directly, everything else reads a payload
+      return { Item: sk.startsWith('META') ? data.metas[id] : data.payloads[id] };
     });
   }
 
@@ -205,5 +221,58 @@ describe('list scan visibility (F7)', () => {
     );
     expect(scanWarnings).toHaveLength(1);
     expect(scanWarnings[0][1]).toMatchObject({ scanned: LIST_SCAN_WARN_THRESHOLD });
+  });
+});
+
+describe('list passes its limit to DynamoDB (DDB-13)', () => {
+  const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
+
+  it('sets the page Limit when no metadata filter is given, and leaves it off when one is', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    await collect(
+      listCheckpoints(context(client), { configurable: { thread_id: 't' } }, { limit: 1 }),
+    );
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.Limit).toBe(1);
+    await collect(
+      listCheckpoints(
+        context(client),
+        { configurable: { thread_id: 't' } },
+        {
+          limit: 1,
+          filter: { source: 'loop' },
+        },
+      ),
+    );
+    expect(mock.commandCalls(QueryCommand)[1].args[0].input.Limit).toBeUndefined();
+  });
+
+  it('still yields a checkpoint from a later page when `before` filters the first page out', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const newer = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), meta, 'n2');
+    const older = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta, 'n1');
+    let metaPages = 0;
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      if (!prefix.startsWith('META')) return { Items: [] };
+      metaPages += 1;
+      return metaPages === 1
+        ? { Items: [newer.meta], LastEvaluatedKey: { PK: 'CHKPT#t', SK: newer.meta.SK } }
+        : { Items: [older.meta] };
+    });
+    mock.on(GetCommand).resolves({ Item: older.payload });
+    const tuples = await collect(
+      listCheckpoints(
+        ctx,
+        { configurable: { thread_id: 't' } },
+        {
+          limit: 1,
+          before: { configurable: { checkpoint_id: 'c2' } },
+        },
+      ),
+    );
+    expect(tuples.map((tuple) => tuple.checkpoint.id)).toEqual(['c1']);
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.Limit).toBe(1);
   });
 });

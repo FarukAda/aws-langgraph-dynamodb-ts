@@ -153,3 +153,15 @@ describe('listSessions', () => {
     );
   });
 });
+
+describe('SessionMetadata.expiresAt (HIST-18)', () => {
+  it('exposes the stored ttl as an ISO instant and omits it when no ttl is stored', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({
+      Items: [session('a', '2026-01-02', { ttl: 4102444800 }), session('b', '2026-01-01')],
+    });
+    const sessions = await listSessions(context(client));
+    expect(sessions[0].expiresAt).toBe('2100-01-01T00:00:00.000Z');
+    expect(sessions[1].expiresAt).toBeUndefined();
+  });
+});

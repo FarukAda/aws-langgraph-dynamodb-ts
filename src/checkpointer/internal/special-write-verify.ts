@@ -1,4 +1,5 @@
 import type { PayloadDescriptor } from '../../shared/codec/codec';
+import { isConditionalCheckFailed, rejectedItem } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
@@ -35,20 +36,41 @@ export async function readSpecialRow(
   context: CheckpointerContext,
   item: CheckpointWriteItem,
 ): Promise<SpecialRowState> {
-  const result = await withDynamoDBRetry(() =>
-    context.client.get({
-      TableName: context.tableName,
-      Key: { PK: item.PK, SK: item.SK },
-      ConsistentRead: true,
-      ProjectionExpression: '#v, #g',
-      ExpressionAttributeNames: { '#v': 'value', '#g': SPECIAL_REVISION_ATTRIBUTE },
-    }),
+  const result = await withDynamoDBRetry(
+    () =>
+      context.client.get({
+        TableName: context.tableName,
+        Key: { PK: item.PK, SK: item.SK },
+        ConsistentRead: true,
+        ProjectionExpression: '#v, #g',
+        ExpressionAttributeNames: { '#v': 'value', '#g': SPECIAL_REVISION_ATTRIBUTE },
+      }),
+    context.retry,
   );
   if (!result.Item) return { exists: false };
   return {
     exists: true,
     value: result.Item.value as PayloadDescriptor | undefined,
     revision: result.Item[SPECIAL_REVISION_ATTRIBUTE] as string | undefined,
+  };
+}
+
+/**
+ * The row as it stood when the put failed: a guard rejection carries it (see
+ * `rejectedItem`), so the strongly-consistent read is spent only for a failure
+ * that does not — a lost response, or a rejection whose row vanished since.
+ */
+async function observeRow(
+  context: CheckpointerContext,
+  item: CheckpointWriteItem,
+  error: Error,
+): Promise<SpecialRowState> {
+  const rejected = isConditionalCheckFailed(error) ? rejectedItem(error) : undefined;
+  if (!rejected) return readSpecialRow(context, item);
+  return {
+    exists: true,
+    value: rejected.value as PayloadDescriptor | undefined,
+    revision: rejected[SPECIAL_REVISION_ATTRIBUTE] as string | undefined,
   };
 }
 
@@ -83,7 +105,7 @@ export async function verifyAfterFailure(
   error: Error,
 ): Promise<VerifiedFailure> {
   try {
-    const observed = await readSpecialRow(context, item);
+    const observed = await observeRow(context, item, error);
     if (observed.revision === item.writeGroup) {
       return { outcome: { committed: true, superseded: attempted.value } };
     }

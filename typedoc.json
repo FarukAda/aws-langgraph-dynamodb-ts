@@ -4,7 +4,8 @@
   "entryPointStrategy": "expand",
   "out": "docs/api",
   "name": "AWS LangGraph DynamoDB TypeScript",
-  "includeVersion": true,
+  "includeVersion": false,
+  "gitRevision": "main",
   "readme": "none",
   "exclude": [
     "**/*+(.spec|.test).ts",
@@ -13,7 +14,7 @@
   "excludePrivate": true,
   "excludeProtected": false,
   "excludeExternals": true,
-  "excludeInternal": false,
+  "excludeInternal": true,
   "hideGenerator": false,
   "searchInComments": true,
   "cleanOutputDir": true,

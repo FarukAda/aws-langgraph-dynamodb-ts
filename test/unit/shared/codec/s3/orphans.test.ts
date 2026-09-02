@@ -93,3 +93,44 @@ describe('cleanUpS3Orphans', () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('cleanUpS3Orphans row scope (SEC-03)', () => {
+  it("skips and warns for a key outside the row's scope, deleting only the owned keys", async () => {
+    const offloader = {
+      deleteBatch: jest.fn().mockResolvedValue([]),
+      ownsKey: jest.fn((key: string) => key.startsWith('own/')),
+    };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(
+      offloader as never,
+      ['own/a.bin', 'foreign/b.bin'],
+      'deleteThread',
+      logger,
+      {
+        scope: ['t'],
+      },
+    );
+    expect(offloader.ownsKey).toHaveBeenCalledWith('own/a.bin', ['t']);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['own/a.bin']);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('outside'),
+      expect.objectContaining({ key: 'foreign/b.bin' }),
+    );
+  });
+
+  it('deletes nothing when every key is foreign, without calling S3', async () => {
+    const offloader = { deleteBatch: jest.fn(), ownsKey: () => false };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, ['foreign/b.bin'], 'deleteThread', logger, {
+      scope: ['t'],
+    });
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not consult ownsKey when no scope is given (own uploads)', async () => {
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]), ownsKey: jest.fn() };
+    await cleanUpS3Orphans(offloader as never, ['k'], 'put', fakeLogger());
+    expect(offloader.ownsKey).not.toHaveBeenCalled();
+  });
+});

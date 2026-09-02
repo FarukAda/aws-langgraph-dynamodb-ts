@@ -1,4 +1,5 @@
 import { buildLifecycleRuleId, buildS3Key } from '../../../../../src/shared/codec/s3/config';
+import { ValidationError } from '../../../../../src/shared/errors/errors';
 
 describe('buildS3Key', () => {
   it('base64url-encodes each part before joining under the prefix', () => {
@@ -21,6 +22,20 @@ describe('buildS3Key', () => {
   });
 });
 
+describe('buildS3Key length cap (CODEC-11)', () => {
+  // 600 raw bytes base64url-encode to 800 characters; one part fits, two overflow.
+  const part = 'x'.repeat(600);
+
+  it('accepts a produced key within the 1024-byte S3 limit', () => {
+    expect(() => buildS3Key('p/', [part])).not.toThrow();
+  });
+
+  it('rejects a produced key over the 1024-byte S3 limit with a typed error', () => {
+    expect(() => buildS3Key('p/', [part, part])).toThrow(ValidationError);
+    expect(() => buildS3Key('p/', [part, part])).toThrow(/1607 bytes.*1024/);
+  });
+});
+
 describe('buildLifecycleRuleId', () => {
   it('slugifies the prefix into a stable, ttl-independent id', () => {
     expect(buildLifecycleRuleId('langgraph-checkpoints/')).toBe(
@@ -30,5 +45,18 @@ describe('buildLifecycleRuleId', () => {
 
   it('falls back to "default" when the prefix has no usable characters', () => {
     expect(buildLifecycleRuleId('/')).toBe('langgraph-ttl-default');
+  });
+});
+
+describe('buildLifecycleRuleId trailing slashes (SEC-17)', () => {
+  it('strips every trailing slash without a quadratic regex, however many there are', () => {
+    expect(buildLifecycleRuleId('langgraph/checkpointer///')).toBe(
+      'langgraph-ttl-langgraph-checkpointer',
+    );
+    const started = Date.now();
+    expect(buildLifecycleRuleId(`${'/'.repeat(50_000)}a`)).toBe(
+      'langgraph-ttl-' + '-'.repeat(50_000) + 'a',
+    );
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 });

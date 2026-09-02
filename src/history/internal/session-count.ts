@@ -27,6 +27,13 @@ function isCancelledByCondition(error: Error): boolean {
  * surfaced — this runs only from an already-in-progress rollback, where a
  * spurious error for a no-op would misrepresent what happened.
  *
+ * The same condition also pins the *incarnation*: `createdAt <= createdBefore`
+ * (this call's own append timestamp). A session `clear()`-ed and re-created by
+ * another caller between this call's commit and its rollback carries a later
+ * `createdAt`; decrementing it would corrupt the new incarnation's count, and
+ * its rows were never this call's to revert. That rejection is swallowed too,
+ * for the same reason as a vanished row.
+ *
  * Deliberately does not revert a `forceTtlRefresh`-driven ttl SET from an
  * earlier committed chunk: the healed anchor is never shorter than what
  * was there before, so leaving it in place after a rollback only means the
@@ -40,19 +47,20 @@ export async function revertSessionCount(
   context: HistoryContext,
   sessionId: string,
   delta: number,
+  createdBefore: string,
 ): Promise<void> {
   if (delta === 0) return;
   const update = {
     TableName: context.tableName,
     Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
     UpdateExpression: 'ADD #count :neg',
-    ConditionExpression: 'attribute_exists(PK)',
-    ExpressionAttributeNames: { '#count': 'messageCount' },
-    ExpressionAttributeValues: { ':neg': -delta },
+    ConditionExpression: 'attribute_exists(PK) AND #c <= :now',
+    ExpressionAttributeNames: { '#count': 'messageCount', '#c': 'createdAt' },
+    ExpressionAttributeValues: { ':neg': -delta, ':now': createdBefore },
   };
   const input = { TransactItems: [{ Update: update }], ClientRequestToken: randomUUID() };
   try {
-    await withDynamoDBRetry(() => context.client.transactWrite(input));
+    await withDynamoDBRetry(() => context.client.transactWrite(input), context.retry);
   } catch (error) {
     if (isCancelledByCondition(error as Error)) return;
     throw error;
@@ -102,11 +110,11 @@ export async function revertSessionCreation(
     ClientRequestToken: randomUUID(),
   };
   try {
-    await withDynamoDBRetry(() => context.client.transactWrite(input));
+    await withDynamoDBRetry(() => context.client.transactWrite(input), context.retry);
     return;
   } catch (error) {
     if (!isCancelledByCondition(error as Error)) throw error;
   }
-  await revertSessionCount(context, sessionId, total);
+  await revertSessionCount(context, sessionId, total, createdAt);
   if (title !== undefined) await removeRolledBackTitle(context, sessionId, createdAt, title);
 }

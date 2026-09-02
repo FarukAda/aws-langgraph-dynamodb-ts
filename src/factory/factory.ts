@@ -1,36 +1,34 @@
-import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-
 import { DynamoDBSaver } from '../checkpointer/saver';
 import type { DynamoDBSaverOptions } from '../checkpointer/types';
 import { DynamoDBChatMessageHistory } from '../history/chat-message-history';
 import type { DynamoDBChatMessageHistoryOptions } from '../history/types';
 import { resolveDynamoDBClient } from '../shared/dynamodb/client';
-import type { Logger } from '../shared/logging/logger';
 import { DynamoDBStore } from '../store/store';
 import type { DynamoDBStoreOptions } from '../store/types';
+import type { CreateAllOptions, CreatedAdapters, FactoryBaseOptions } from './types';
 
-/** Shared client/logger defaults applied to every adapter the factory builds. */
-export interface FactoryBaseOptions {
-  client?: DynamoDBDocument;
-  clientConfig?: DynamoDBClientConfig;
-  createClient?: (config: DynamoDBClientConfig) => DynamoDBClient;
-  logger?: Logger;
+/** What every adapter offers the factory for teardown. */
+interface Destroyable {
+  destroy(): void;
 }
 
-/** Per-adapter options for {@link DynamoDBFactory.createAll} (client is shared). */
-export interface CreateAllOptions {
-  saver: Omit<DynamoDBSaverOptions, 'client' | 'clientConfig' | 'createClient'>;
-  store: Omit<DynamoDBStoreOptions, 'client' | 'clientConfig' | 'createClient'>;
-  history: Omit<DynamoDBChatMessageHistoryOptions, 'client' | 'clientConfig' | 'createClient'>;
-}
+/** The base options that carry over to an adapter whatever client it ends up with. */
+type SharedDefaults = Pick<FactoryBaseOptions, 'logger' | 'ttl' | 'compression' | 's3' | 'retry'>;
 
-/** The three adapters sharing one client, plus a combined `destroy`. */
-export interface CreatedAdapters {
-  saver: DynamoDBSaver;
-  store: DynamoDBStore;
-  history: DynamoDBChatMessageHistory;
+/** The adapters a `createAll` call produced, before the result is typed by its sections. */
+interface BuiltAdapters {
+  saver: DynamoDBSaver | undefined;
+  store: DynamoDBStore | undefined;
+  history: DynamoDBChatMessageHistory | undefined;
   destroy: () => void;
+}
+
+function overridesClient(options: FactoryBaseOptions): boolean {
+  return (
+    options.client !== undefined ||
+    options.clientConfig !== undefined ||
+    options.createClient !== undefined
+  );
 }
 
 /**
@@ -41,34 +39,70 @@ export interface CreatedAdapters {
 export class DynamoDBFactory {
   constructor(private readonly base: FactoryBaseOptions = {}) {}
 
+  /** The base options every adapter inherits regardless of which client it uses. */
+  private sharedDefaults(): SharedDefaults {
+    const { logger, ttl, compression, s3, retry } = this.base;
+    return { logger, ttl, compression, s3, retry };
+  }
+
+  /**
+   * Per-adapter options replace the factory's client choice as a unit: a
+   * `client` handed to `createSaver` also displaces the base `clientConfig`
+   * and `createClient`, because carrying those along is exactly the ambiguous
+   * combination the adapters' option validation rejects. The shared
+   * `ttl`/`compression`/`s3`/`retry` defaults stay either way.
+   */
+  private defaultsFor(options: FactoryBaseOptions): FactoryBaseOptions {
+    return overridesClient(options) ? this.sharedDefaults() : this.base;
+  }
+
+  /** A saver on its own client, with the factory's shared defaults underneath `options`. */
   createSaver(options: DynamoDBSaverOptions): DynamoDBSaver {
-    return new DynamoDBSaver({ ...this.base, ...options });
+    return new DynamoDBSaver({ ...this.defaultsFor(options), ...options });
   }
 
+  /** A store on its own client, with the factory's shared defaults underneath `options`. */
   createStore(options: DynamoDBStoreOptions): DynamoDBStore {
-    return new DynamoDBStore({ ...this.base, ...options });
+    return new DynamoDBStore({ ...this.defaultsFor(options), ...options });
   }
 
+  /** A chat history on its own client, with the factory's shared defaults underneath `options`. */
   createChatMessageHistory(options: DynamoDBChatMessageHistoryOptions): DynamoDBChatMessageHistory {
-    return new DynamoDBChatMessageHistory({ ...this.base, ...options });
+    return new DynamoDBChatMessageHistory({ ...this.defaultsFor(options), ...options });
   }
 
-  createAll(options: CreateAllOptions): CreatedAdapters {
+  /**
+   * Build the adapters whose sections are given, all on one shared client and
+   * with the factory's shared defaults underneath each section. If any
+   * constructor throws (a store with `vectorBackend` but no `index`, say), the
+   * adapters already built and the freshly created client are destroyed
+   * before the error propagates, so a failed call leaks nothing.
+   */
+  createAll<O extends CreateAllOptions>(options: O): CreatedAdapters<O> {
     const resolved = resolveDynamoDBClient(this.base);
-    const client = resolved.client;
-    const saver = new DynamoDBSaver({ ...this.base, ...options.saver, client });
-    const store = new DynamoDBStore({ ...this.base, ...options.store, client });
-    const history = new DynamoDBChatMessageHistory({ ...this.base, ...options.history, client });
-    return {
-      saver,
-      store,
-      history,
-      destroy: () => {
-        saver.destroy();
-        store.destroy();
-        history.destroy();
-        resolved.ddbClient?.destroy();
-      },
+    const shared = { ...this.sharedDefaults(), client: resolved.client };
+    const built: Destroyable[] = [];
+    /** Record an adapter the moment it exists, so a later failure can still tear it down. */
+    const track = <T extends Destroyable>(adapter: T): T => {
+      built.push(adapter);
+      return adapter;
     };
+    const destroy = (): void => {
+      for (const adapter of built) adapter.destroy();
+      resolved.ddbClient?.destroy();
+    };
+    const { saver, store, history } = options;
+    try {
+      const adapters: BuiltAdapters = {
+        saver: saver && track(new DynamoDBSaver({ ...shared, ...saver })),
+        store: store && track(new DynamoDBStore({ ...shared, ...store })),
+        history: history && track(new DynamoDBChatMessageHistory({ ...shared, ...history })),
+        destroy,
+      };
+      return adapters as CreatedAdapters<O>;
+    } catch (error) {
+      destroy();
+      throw error;
+    }
   }
 }

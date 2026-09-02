@@ -58,6 +58,7 @@ describe('buildCheckpointItems', () => {
       '',
       checkpoint,
       metadata,
+      'nonce-1',
       'parent-0',
     );
     expect(meta.PK).toBe('CHKPT#thread-1');
@@ -77,12 +78,25 @@ describe('buildCheckpointItems', () => {
       'ns',
       checkpoint,
       metadata,
+      'nonce-1',
       undefined,
       1750,
     );
     expect(meta.ttl).toBe(1750);
     expect(payload.ttl).toBe(1750);
     expect(meta.parentCheckpointId).toBeUndefined();
+  });
+
+  it('appends the per-call nonce to both S3 keys so a re-put never reuses an object', async () => {
+    // Deterministic keys let a failing re-put of the same checkpoint id delete
+    // the objects the first, committed put's rows still reference (CKPT-01).
+    const ctx = offloadingContext();
+    const first = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata, 'NONCE-A');
+    const second = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata, 'NONCE-B');
+    expect(s3Key({ value: first.payload.checkpoint })).toBe('t1//ckpt-1/checkpoint/NONCE-A');
+    expect(s3Key({ value: first.meta.metadata })).toBe('t1//ckpt-1/metadata/NONCE-A');
+    expect(s3Key({ value: second.payload.checkpoint })).toBe('t1//ckpt-1/checkpoint/NONCE-B');
+    expect(s3Key({ value: second.meta.metadata })).toBe('t1//ckpt-1/metadata/NONCE-B');
   });
 });
 
@@ -243,5 +257,55 @@ describe('resolveWriteIndices', () => {
       ['__error__', 'e'],
     ]);
     expect(resolved.map((w) => w.channel)).toEqual(['__error__', 'regular']);
+  });
+});
+
+describe('channel validation (SEC-09)', () => {
+  it('rejects a channel with the reserved separator or a control character before encoding anything', async () => {
+    const upload = jest.fn(async (key: string) => key);
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[]) => parts.join('/'),
+      upload,
+      deleteBatch: async () => [],
+    };
+    const ctx = { ...context(), offloader: offloader as never };
+    await expect(
+      buildWriteItems(
+        ctx,
+        't',
+        '',
+        'ckpt-1',
+        'task-7',
+        [
+          ['ok', 1],
+          ['bad#channel', 2],
+        ],
+        'n',
+      ),
+    ).rejects.toThrow(/channel must not contain the reserved/);
+    await expect(
+      buildWriteItems(
+        ctx,
+        't',
+        '',
+        'ckpt-1',
+        'task-7',
+        [['esc' + String.fromCharCode(27), 1]],
+        'n',
+      ),
+    ).rejects.toThrow(/channel must not contain control/);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('accepts ordinary and special LangGraph channel names', async () => {
+    const writes: PendingWrite[] = [
+      ['branch:to:node', 1],
+      ['__error__', 2],
+      ['messages', 3],
+    ];
+    await expect(
+      buildWriteItems(context(), 't', '', 'ckpt-1', 'task-7', writes, 'n'),
+    ).resolves.toHaveLength(3);
   });
 });

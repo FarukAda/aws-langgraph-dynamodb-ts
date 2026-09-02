@@ -131,7 +131,10 @@ describe('pruneOrphans', () => {
 describe('collectReconcileTargets', () => {
   it('enumerates canonical items under the prefix and recomputes each embedding', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5]) };
+    const embeddings = {
+      embedQuery: jest.fn(),
+      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+    };
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
     const record = await buildStoreItem(
       ctx,
@@ -145,12 +148,38 @@ describe('collectReconcileTargets', () => {
     const targets = await collectReconcileTargets(ctx, ['users', 'u1']);
 
     expect(targets).toEqual([{ namespace: ['users', 'u1'], key: 'a', embedding: [0.5] }]);
-    expect(embeddings.embedQuery).toHaveBeenCalledTimes(1);
+    expect(embeddings.embedDocuments).toHaveBeenCalledTimes(1);
+    expect(embeddings.embedQuery).not.toHaveBeenCalled();
+  });
+
+  it('embeds every live item in one embedDocuments call rather than one call per item', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embedDocuments = jest.fn(async (texts: string[]) => texts.map((t) => [t.length]));
+    const embeddings = { embedQuery: jest.fn(), embedDocuments };
+    const ctx = context(client, {
+      index: { dims: 1, embeddings: embeddings as never, fields: ['text'] },
+    });
+    const meta = { createdAt: 'c', updatedAt: 'u' };
+    const a = await buildStoreItem(ctx, ['users', 'u1'], 'a', { text: 'ab' }, meta);
+    const b = await buildStoreItem(ctx, ['users', 'u1'], 'b', { text: 'abcd' }, meta);
+    mock.on(QueryCommand).resolves({ Items: [a, b] });
+
+    const targets = await collectReconcileTargets(ctx, ['users', 'u1']);
+
+    expect(targets.map((t) => [t.key, t.embedding])).toEqual([
+      ['a', [2]],
+      ['b', [4]],
+    ]);
+    expect(embedDocuments).toHaveBeenCalledTimes(1);
+    expect(embedDocuments).toHaveBeenCalledWith(['ab', 'abcd']);
   });
 
   it('skips records that do not match the prefix element-wise', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0.5]) };
+    const embeddings = {
+      embedQuery: jest.fn(),
+      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+    };
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
     const match = await buildStoreItem(
       ctx,

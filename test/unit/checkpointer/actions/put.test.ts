@@ -1,4 +1,4 @@
-import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { putCheckpoint } from '../../../../src/checkpointer/actions/put';
@@ -28,6 +28,25 @@ const metadata: CheckpointMetadata = { source: 'loop', step: 0, parents: {} };
 
 function contextWith(client: CheckpointerContext['client']): CheckpointerContext {
   return { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
+}
+
+function trackingOffloader() {
+  return {
+    shouldOffload: () => true,
+    buildKey: (parts: readonly string[]) => parts.join('/'),
+    upload: async (key: string) => key,
+    deleteBatch: jest.fn().mockResolvedValue([]),
+  };
+}
+
+function transientTimeout(): Error {
+  return Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
+}
+
+/** The metadata descriptor the transaction tried to write, as the row would hold it. */
+function committedMetaRow(mock: ReturnType<typeof createStrictDocumentMock>['mock']) {
+  const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
+  return { Item: { metadata: items[0].Put?.Item?.metadata } };
 }
 
 describe('putCheckpoint', () => {
@@ -78,25 +97,88 @@ describe('putCheckpoint', () => {
     ).rejects.toThrow('nope');
   });
 
-  it('cleans up offloaded S3 objects when the write fails', async () => {
+  it('cleans up its own nonced uploads when the write is confirmed not to have landed', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
-      upload: async (key: string) => key,
-      deleteBatch: jest.fn().mockResolvedValue([]),
-    };
+    mock.on(GetCommand).resolves({});
+    const offloader = trackingOffloader();
     const context = { ...contextWith(client), offloader: offloader as never };
     await expect(
       putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
     ).rejects.toThrow('boom');
     expect(offloader.deleteBatch).toHaveBeenCalledWith([
-      't1//ckpt-1/metadata',
-      't1//ckpt-1/checkpoint',
+      expect.stringMatching(/^t1\/\/ckpt-1\/metadata\/[0-9A-HJKMNP-TV-Z]{26}$/),
+      expect.stringMatching(/^t1\/\/ckpt-1\/checkpoint\/[0-9A-HJKMNP-TV-Z]{26}$/),
     ]);
+  });
+
+  it('keeps the uploads and returns the config when a retried transaction landed but lost its response', async () => {
+    // Attempt 1 commits server-side; every re-issue times out at the transport,
+    // so the budget is spent on RetryExhaustedError although the rows are live.
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(transientTimeout());
+    mock.on(GetCommand).callsFake(async () => committedMetaRow(mock));
+    const offloader = trackingOffloader();
+    const context = { ...contextWith(client), offloader: offloader as never };
+    await expect(
+      putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
+    ).resolves.toEqual({
+      configurable: { thread_id: 't1', checkpoint_ns: '', checkpoint_id: 'ckpt-1' },
+    });
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it("cleans up its own uploads when the row holds another attempt's descriptor after retry exhaustion", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(transientTimeout());
+    mock.on(GetCommand).resolves({
+      Item: { metadata: { location: 'S3', serdeType: 'json', compressed: false, s3Key: 'other' } },
+    });
+    const offloader = trackingOffloader();
+    const context = { ...contextWith(client), offloader: offloader as never };
+    await expect(
+      putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaks rather than deletes when the verification read itself fails', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(transientTimeout());
+    mock
+      .on(GetCommand)
+      .rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
+    const offloader = trackingOffloader();
+    const context = { ...contextWith(client), offloader: offloader as never };
+    await expect(
+      putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it('does not read back on failure when no offloader is configured', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(transientTimeout());
+    await expect(
+      putCheckpoint(
+        contextWith(client),
+        { configurable: { thread_id: 't1' } },
+        checkpoint,
+        metadata,
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+
+  it('rejects an over-limit checkpoint with a typed error before any write when s3 is not configured (CKPT-03)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const huge: Checkpoint = { ...checkpoint, channel_values: { blob: 'x'.repeat(400 * 1024) } };
+    await expect(
+      putCheckpoint(contextWith(client), { configurable: { thread_id: 't1' } }, huge, metadata),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'payload' } });
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
   it('stamps a ttl attribute on both items when ttl is configured', async () => {
@@ -107,5 +189,68 @@ describe('putCheckpoint', () => {
     const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
     expect(typeof items[0].Put?.Item?.ttl).toBe('number');
     expect(items[1].Put?.Item?.ttl).toBe(items[0].Put?.Item?.ttl);
+  });
+});
+
+/** The checkpoint the PAYLOAD row of the transaction holds, decoded. */
+function storedCheckpoint(mock: ReturnType<typeof createStrictDocumentMock>['mock']): Checkpoint {
+  const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
+  const bytes = items[1].Put?.Item?.checkpoint.bytes as Uint8Array;
+  return JSON.parse(new TextDecoder().decode(bytes)) as Checkpoint;
+}
+
+const valued: Checkpoint = {
+  ...checkpoint,
+  channel_values: { foo: 'bar', baz: 'qux' },
+  channel_versions: { foo: 1, baz: 1 },
+};
+
+describe('putCheckpoint stores channel values per newVersions (validation suite)', () => {
+  it('stores only the channels newVersions names for a checkpoint without a parent', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    await putCheckpoint(
+      contextWith(client),
+      { configurable: { thread_id: 't1' } },
+      valued,
+      metadata,
+      { foo: 1 },
+    );
+    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar' });
+    const meta =
+      mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems?.[0].Put?.Item;
+    expect(meta?.storedChannels).toEqual(['foo']);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+
+  it('carries the channels the parent stored that this put still holds', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    mock.on(GetCommand).resolves({ Item: { storedChannels: ['baz'] } });
+    await putCheckpoint(
+      contextWith(client),
+      { configurable: { thread_id: 't1', checkpoint_id: 'parent-0' } },
+      valued,
+      metadata,
+      { foo: 1 },
+    );
+    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
+      PK: 'CHKPT#t1',
+      SK: 'META##parent-0',
+    });
+  });
+
+  it('stores every value when newVersions is omitted', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    await putCheckpoint(
+      contextWith(client),
+      { configurable: { thread_id: 't1', checkpoint_id: 'p' } },
+      valued,
+      metadata,
+    );
+    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
 });

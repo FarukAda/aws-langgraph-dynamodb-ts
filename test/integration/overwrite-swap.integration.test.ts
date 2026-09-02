@@ -85,7 +85,7 @@ describe('overwrite compare-and-swap (F5)', () => {
   // That this returned descriptor is exactly what persist.ts then deletes
   // from S3 is already proven against a mocked client by
   // test/unit/store/internal/overwrite-swap.test.ts and
-  // test/unit/store/internal/persist.test.ts; this case's job is only to
+  // test/unit/store/actions/put.test.ts; this case's job is only to
   // prove the guarded put/re-read cycle those mocks assume actually behaves
   // that way against a real DynamoDB.
   it('supersedes exactly one payload per writer across a real concurrent compare-and-swap', async () => {

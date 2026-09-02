@@ -7,6 +7,10 @@ import {
   buildWriteItems,
 } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { buildS3Key } from '../../../../src/shared/codec/s3/config';
+import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -51,6 +55,7 @@ describe('getCheckpointTuple', () => {
       '',
       checkpoint,
       metadata,
+      'nonce-1',
       'parent-0',
     );
     const writeItems = await buildWriteItems(
@@ -79,7 +84,14 @@ describe('getCheckpointTuple', () => {
   it('omits parentConfig when the checkpoint has no parent', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta, payload } = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint,
+      metadata,
+      'nonce-1',
+    );
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
@@ -93,9 +105,202 @@ describe('getCheckpointTuple', () => {
   it('returns undefined when the payload item is missing', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata, 'nonce-1');
     mock.on(QueryCommand).resolves({ Items: [meta] });
     mock.on(GetCommand).resolves({});
     expect(await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } })).toBeUndefined();
+  });
+});
+
+describe('getCheckpointTuple S3 key binding (SEC-03)', () => {
+  it("refuses to download a checkpoint payload whose key lies outside the thread's path", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = {
+      download: jest.fn(),
+      assertOwnedKey: (key: string, scope: readonly string[]) => assertKeyInScope(key, 'p/', scope),
+    };
+    const ctx = { ...context(client), offloader: offloader as never };
+    const meta = {
+      PK: 'CHKPT#t',
+      SK: 'META##ckpt-1',
+      threadId: 't',
+      checkpointNs: '',
+      checkpointId: 'ckpt-1',
+      metadata: {
+        location: PayloadLocation.INLINE,
+        serdeType: 'json',
+        compressed: false,
+        bytes: new TextEncoder().encode('{}'),
+      },
+    };
+    const payload = {
+      PK: 'CHKPT#t',
+      SK: 'PAYLOAD##ckpt-1',
+      checkpoint: {
+        location: PayloadLocation.S3,
+        serdeType: 'json',
+        compressed: false,
+        s3Key: buildS3Key('p/', ['victim', '', 'ckpt-1', 'checkpoint', 'n']),
+      },
+    };
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    await expect(
+      getCheckpointTuple(ctx, { configurable: { thread_id: 't' } }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 's3Key' },
+    });
+    expect(offloader.download).not.toHaveBeenCalled();
+  });
+});
+
+describe('getCheckpointTuple with a foreign head row (CKPT-08)', () => {
+  it('falls back to the newest real checkpoint instead of reporting an empty thread', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const warn = jest.fn();
+    const ctx = { ...context(client), logger: { ...SILENT_LOGGER, warn } };
+    const { meta, payload } = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint,
+      metadata,
+      'nonce-1',
+    );
+    let metaPages = 0;
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      if (!prefix.startsWith('META')) return { Items: [] };
+      metaPages += 1;
+      return metaPages === 1
+        ? {
+            Items: [{ PK: 'CHKPT#t', SK: 'META##zzz', value: {} }],
+            LastEvaluatedKey: { PK: 'CHKPT#t', SK: 'META##zzz' },
+          }
+        : { Items: [meta] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    const tuple = await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } });
+    expect(tuple?.checkpoint.id).toBe('ckpt-1');
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('getCheckpointTuple reads strongly consistently (CKPT-07)', () => {
+  it('sets ConsistentRead on the payload get and the writes query', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const { meta, payload } = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint,
+      metadata,
+      'nonce-1',
+    );
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } });
+    expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);
+    const writesQuery = mock
+      .commandCalls(QueryCommand)
+      .find((c) =>
+        (c.args[0].input.ExpressionAttributeValues?.[':skPrefix'] as string).startsWith('WRITE'),
+      );
+    expect(writesQuery?.args[0].input.ConsistentRead).toBe(true);
+  });
+});
+
+describe('getCheckpointTuple validation-suite behaviours', () => {
+  it('returns undefined without touching DynamoDB when the config names no thread', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    await expect(
+      getCheckpointTuple(context(client), { configurable: { checkpoint_ns: '' } }),
+    ).resolves.toBeUndefined();
+    await expect(getCheckpointTuple(context(client), {})).resolves.toBeUndefined();
+    expect(mock.calls()).toHaveLength(0);
+  });
+
+  it("rebuilds a pre-v4 checkpoint's pending sends from its parent's __pregel_tasks writes", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const legacy: Checkpoint = {
+      ...checkpoint,
+      v: 1,
+      id: 'c1',
+      channel_values: {},
+      channel_versions: {},
+    };
+    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', legacy, metadata, 'n', 'c0');
+    const parentWrites = [
+      ...(await buildWriteItems(
+        ctx,
+        't',
+        '',
+        'c0',
+        'task-1',
+        [
+          ['__pregel_tasks', 'send-1'],
+          ['__pregel_tasks', 'send-2'],
+        ],
+        'g1',
+      )),
+      ...(await buildWriteItems(
+        ctx,
+        't',
+        '',
+        'c0',
+        'task-2',
+        [
+          ['__pregel_tasks', 'send-3'],
+          ['other', 'x'],
+        ],
+        'g2',
+      )),
+    ];
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      if (prefix.startsWith('META')) return { Items: [meta] };
+      return { Items: prefix.includes('#c0#') ? parentWrites : [] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    const tuple = await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } });
+    expect(tuple?.checkpoint.channel_values).toEqual({
+      __pregel_tasks: ['send-1', 'send-2', 'send-3'],
+    });
+    expect(tuple?.checkpoint.channel_versions.__pregel_tasks).toBe(1);
+  });
+
+  it('stamps the migrated sends channel with the highest existing version and leaves a v4 or root checkpoint alone', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const legacy: Checkpoint = {
+      ...checkpoint,
+      v: 3,
+      id: 'c1',
+      channel_values: {},
+      channel_versions: { a: 2, b: 5 },
+    };
+    const child = await buildCheckpointItems(ctx, 't', '', legacy, metadata, 'n', 'c0');
+    const root = await buildCheckpointItems(ctx, 't', '', { ...legacy, id: 'c0' }, metadata, 'n');
+    let head = child;
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [head.meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).callsFake(() => ({ Item: head.payload }));
+    const migrated = await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } });
+    expect(migrated?.checkpoint.channel_values).toEqual({ __pregel_tasks: [] });
+    expect(migrated?.checkpoint.channel_versions.__pregel_tasks).toBe(5);
+    head = root;
+    const untouched = await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } });
+    expect(untouched?.checkpoint.channel_values).toEqual({});
   });
 });

@@ -5,6 +5,8 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { decodePayload } from '../../shared/codec/codec';
+import { mapWithConcurrency } from '../../shared/concurrency';
+import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import type { DocItem } from '../../shared/dynamodb/types';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { codecDeps } from './item-writer';
@@ -23,20 +25,47 @@ export function narrowMetaItem(raw: DocItem): CheckpointMetaItem | undefined {
     : undefined;
 }
 
-/** Decode the checkpoint stored in a PAYLOAD item. */
+/**
+ * Narrow a candidate head row, warning when a row that merely shares the
+ * `META#` prefix is not a checkpoint meta item. Returning such a row used to
+ * make `assembleTuple` miss its payload and report the thread as empty, so
+ * LangGraph started a new run on top of the real history; a foreign row is
+ * skipped and logged instead, exactly as `list()` treats it.
+ */
+export function narrowHead(
+  context: CheckpointerContext,
+  raw: DocItem | undefined,
+): CheckpointMetaItem | undefined {
+  if (raw === undefined) return undefined;
+  const meta = narrowMetaItem(raw);
+  if (!meta) {
+    context.logger.warn('getTuple: skipped a row that is not a checkpoint meta item', {
+      sortKey: raw.SK as string,
+    });
+  }
+  return meta;
+}
+
+/**
+ * Decode the checkpoint stored in a PAYLOAD item. `threadId` is the caller's
+ * (from the config), never the row's: it scopes which S3 object the row may
+ * point at, so it must come from the partition the caller asked for.
+ */
 export async function readCheckpoint(
   context: CheckpointerContext,
   item: CheckpointPayloadItem,
+  threadId: string,
 ): Promise<Checkpoint> {
-  return decodePayload<Checkpoint>(item.checkpoint, codecDeps(context));
+  return decodePayload<Checkpoint>(item.checkpoint, codecDeps(context), [threadId]);
 }
 
-/** Decode the metadata stored in a META item. */
+/** Decode the metadata stored in a META item; see {@link readCheckpoint} for `threadId`. */
 export async function readMetadata(
   context: CheckpointerContext,
   item: CheckpointMetaItem,
+  threadId: string,
 ): Promise<CheckpointMetadata> {
-  return decodePayload<CheckpointMetadata>(item.metadata, codecDeps(context));
+  return decodePayload<CheckpointMetadata>(item.metadata, codecDeps(context), [threadId]);
 }
 
 /**
@@ -92,12 +121,16 @@ export function dropSupersededWrites(items: CheckpointWriteItem[]): CheckpointWr
 export async function toPendingWrites(
   context: CheckpointerContext,
   items: CheckpointWriteItem[],
+  threadId: string,
 ): Promise<CheckpointPendingWrite[]> {
   const deps = codecDeps(context);
-  const pending: CheckpointPendingWrite[] = [];
-  for (const item of dropSupersededWrites(items)) {
-    const value = await decodePayload(item.value, deps);
-    pending.push([item.taskId, item.channel, value]);
-  }
-  return pending;
+  const live = dropSupersededWrites(items);
+  const values = await mapWithConcurrency(live, DEFAULT_READ_CONCURRENCY, (item) =>
+    decodePayload(item.value, deps, [threadId]),
+  );
+  return live.map((item, index): CheckpointPendingWrite => [
+    item.taskId,
+    item.channel,
+    values[index],
+  ]);
 }

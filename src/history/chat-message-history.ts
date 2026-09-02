@@ -1,21 +1,29 @@
 import type { BaseMessage } from '@langchain/core/messages';
 
-import { resolveTtlDaysCeil } from '../shared/validation/ttl';
+import { guardPublic } from '../shared/errors/boundary';
+import type { CancelOptions } from '../shared/options';
+import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { addMessages as addMessagesAction } from './actions/add-messages';
 import { clearSession } from './actions/clear';
 import { getMessages as getMessagesAction } from './actions/get-messages';
 import { listSessions as listSessionsAction } from './actions/list-sessions';
 import { reconcileMessageCount as reconcileMessageCountAction } from './actions/reconcile-count';
 import { type HistoryContext, setUpHistory } from './internal/setup';
-import { DynamoDBSessionChatMessageHistory } from './session-adapter';
-import type { DynamoDBChatMessageHistoryOptions, SessionMetadata } from './types';
+import { type AdapterWindow, DynamoDBSessionChatMessageHistory } from './session-adapter';
+import type {
+  DynamoDBChatMessageHistoryOptions,
+  GetMessagesOptions,
+  ListSessionsOptions,
+  SessionMetadata,
+} from './types';
 
 /**
  * DynamoDB-backed multi-session chat history. Each message is its own item
  * (ordered by a monotonic ULID, compressed / S3-offloaded as needed) alongside a
  * per-session metadata item; every message in a session shares one uniform TTL.
  * Appends are O(1) and lock-free. Use {@link forSession} to get a single-session
- * LangChain adapter.
+ * LangChain adapter. Every public method is the library's error boundary — a
+ * raw AWS SDK error escaping an action surfaces as an `UpstreamError`.
  */
 export class DynamoDBChatMessageHistory {
   private readonly context: HistoryContext;
@@ -29,45 +37,76 @@ export class DynamoDBChatMessageHistory {
     this.ddbClient = setup.ddbClient;
   }
 
-  /** Get a session's messages in order. */
-  getMessages(sessionId: string): Promise<BaseMessage[]> {
-    return getMessagesAction(this.context, sessionId);
+  /**
+   * Get a session's messages in chronological order: the whole session by
+   * default, or a window of it — `{ limit }` returns only the newest `limit`
+   * messages, `{ before }` only those appended before that instant — so a
+   * long-lived session can be read a page at a time instead of whole.
+   * @remarks Strongly consistent; one query page plus one S3 download per offloaded message.
+   * @throws ValidationError for a malformed session id or window; UpstreamError; AbortError; and, under `onCorruptMessage: 'throw'`, the decode error of a corrupt row.
+   */
+  getMessages(sessionId: string, options?: GetMessagesOptions): Promise<BaseMessage[]> {
+    return guardPublic('history.getMessages', () =>
+      getMessagesAction(this.context, sessionId, options),
+    );
   }
 
-  /** Append messages to a session. */
-  addMessages(sessionId: string, messages: BaseMessage[]): Promise<void> {
-    return addMessagesAction(this.context, sessionId, messages);
+  /**
+   * Append messages to a session in one transaction per chunk of up to 99
+   * messages, keeping the session's `messageCount` exact. Lock-free and safe
+   * under concurrent appends to one session; every message shares the
+   * session's TTL when one is configured.
+   * @throws ValidationError for a message that could never be read back; CompensationFailedError when a later chunk fails and the rollback fails too; RetryExhaustedError after 18 contended attempts; UpstreamError; AbortError.
+   */
+  addMessages(sessionId: string, messages: BaseMessage[], options?: CancelOptions): Promise<void> {
+    return guardPublic('history.addMessages', () =>
+      addMessagesAction(this.context, sessionId, messages, options?.signal),
+    );
   }
 
-  /** Append a single message to a session. */
-  addMessage(sessionId: string, message: BaseMessage): Promise<void> {
-    return addMessagesAction(this.context, sessionId, [message]);
+  /** Append one message; see {@link addMessages}. */
+  addMessage(sessionId: string, message: BaseMessage, options?: CancelOptions): Promise<void> {
+    return guardPublic('history.addMessage', () =>
+      addMessagesAction(this.context, sessionId, [message], options?.signal),
+    );
   }
 
-  /** Delete a session and any offloaded payload. */
-  clear(sessionId: string): Promise<void> {
-    return clearSession(this.context, sessionId);
+  /**
+   * Delete a session's messages, metadata and offloaded objects. Single pass:
+   * call it when the session is quiescent.
+   * @throws BatchWriteAllIncompleteError when a delete batch does not fully drain; UpstreamError; AbortError.
+   */
+  clear(sessionId: string, options?: CancelOptions): Promise<void> {
+    return guardPublic('history.clear', () => clearSession(this.context, sessionId, options));
   }
 
-  /** List all sessions as metadata summaries. */
-  listSessions(options?: {
-    maxIterations?: number;
-    maxItems?: number;
-  }): Promise<SessionMetadata[]> {
-    return listSessionsAction(this.context, options);
+  /**
+   * List every session as a metadata summary, most recently updated first.
+   * A table scan: cross-tenant by construction and bounded by `maxItems` /
+   * `maxIterations`.
+   * @throws ResultTruncatedError past either cap; UpstreamError; AbortError.
+   */
+  listSessions(options?: ListSessionsOptions): Promise<SessionMetadata[]> {
+    return guardPublic('history.listSessions', () => listSessionsAction(this.context, options));
   }
 
   /**
    * Recompute and repair a session's `messageCount` from the stored messages.
    * A maintenance tool for external corruption; run it when the session is idle.
+   * @throws ConflictError when the session does not exist or changed while counting; UpstreamError; AbortError.
    */
-  reconcileMessageCount(sessionId: string): Promise<number> {
-    return reconcileMessageCountAction(this.context, sessionId);
+  reconcileMessageCount(sessionId: string, options?: CancelOptions): Promise<number> {
+    return guardPublic('history.reconcileMessageCount', () =>
+      reconcileMessageCountAction(this.context, sessionId, options?.signal),
+    );
   }
 
-  /** Get a single-session LangChain adapter for `sessionId`. */
-  forSession(sessionId: string): DynamoDBSessionChatMessageHistory {
-    return new DynamoDBSessionChatMessageHistory(this, sessionId);
+  /**
+   * Get a single-session LangChain adapter for `sessionId`. `{ limit }` bounds
+   * what the adapter feeds the chain to the newest `limit` messages.
+   */
+  forSession(sessionId: string, window?: AdapterWindow): DynamoDBSessionChatMessageHistory {
+    return new DynamoDBSessionChatMessageHistory(this, sessionId, window);
   }
 
   /** Release owned resources (the underlying client and any S3 client). */
@@ -77,15 +116,18 @@ export class DynamoDBChatMessageHistory {
   }
 
   /**
-   * Best-effort provision an S3 lifecycle expiration rule matching the
-   * configured TTL, so offloaded objects don't outlive their DynamoDB item
-   * forever. No-ops when S3 offload or TTL isn't configured. Requires the
-   * `s3:GetLifecycleConfiguration`/`s3:PutLifecycleConfiguration` bucket-level
-   * permissions (broader than the object-level CRUD the rest of S3 offload
-   * needs) — call this once during deployment/provisioning, not per-request.
+   * Provision an S3 lifecycle expiration rule matching the configured TTL, so
+   * offloaded objects don't outlive their DynamoDB item forever. No-ops when
+   * S3 offload or TTL isn't configured; throws when the bucket cannot be read
+   * or written. Requires the `s3:GetLifecycleConfiguration` /
+   * `s3:PutLifecycleConfiguration` bucket-level permissions (broader than the
+   * object-level CRUD the rest of S3 offload needs) — call this once during
+   * deployment/provisioning, not per-request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    if (!this.context.offloader || !this.context.ttl) return;
-    await this.context.offloader.ensureLifecycleRule(resolveTtlDaysCeil(this.context.ttl));
+    return guardPublic('history.ensureS3LifecycleRule', async () => {
+      if (!this.context.offloader || !this.context.ttl) return;
+      await this.context.offloader.ensureLifecycleRule(lifecycleExpirationDays(this.context.ttl));
+    });
   }
 }

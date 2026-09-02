@@ -32,3 +32,12 @@ describe('matchesFilter', () => {
     expect(matchesFilter({ step: 3 }, { step: '3' })).toBe(false);
   });
 });
+
+describe('matchesFilter and the prototype chain (SEC-16)', () => {
+  it('treats an inherited name as absent, exactly like any other missing key', () => {
+    /** A missing key equals an undefined filter value; an inherited method must not stand in for it. */
+    expect(matchesFilter({}, { missing: undefined as never })).toBe(true);
+    expect(matchesFilter({}, { constructor: undefined as never })).toBe(true);
+    expect(matchesFilter({}, { toString: 'x' })).toBe(false);
+  });
+});
