@@ -94,3 +94,34 @@ describe('withDynamoDBRetry', () => {
     ).rejects.toBeInstanceOf(RetryExhaustedError);
   });
 });
+
+describe('withRetry isRetryable predicate', () => {
+  it('lets a predicate decide instead of the signal list', async () => {
+    let calls = 0;
+    const result = await withRetry(
+      async () => {
+        calls += 1;
+        if (calls < 2) throw new Error('custom-transient');
+        return 'ok';
+      },
+      {
+        rng: () => 0,
+        baseDelayMs: 0,
+        isRetryable: (error) => error.message === 'custom-transient',
+      },
+    );
+    expect(result).toBe('ok');
+    expect(calls).toBe(2);
+  });
+
+  it('rethrows immediately when the predicate rejects a signal the list would retry', async () => {
+    await expect(
+      withRetry(
+        async () => {
+          throw Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
+        },
+        { baseDelayMs: 0, isRetryable: () => false },
+      ),
+    ).rejects.toMatchObject({ name: 'ThrottlingException' });
+  });
+});

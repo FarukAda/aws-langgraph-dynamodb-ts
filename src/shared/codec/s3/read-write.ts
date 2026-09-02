@@ -4,7 +4,7 @@ import { withRetry } from '../../dynamodb/retry';
 import { DynamoDBLangGraphError } from '../../errors/base-error';
 import { ErrorCode } from '../../errors/error-code';
 import { loadS3Sdk } from './client';
-import { RETRYABLE_S3_SIGNALS } from './retry';
+import { isTransientS3Error } from './retry';
 
 /** Parameters for {@link uploadObject}. */
 export interface UploadParams {
@@ -31,7 +31,7 @@ export async function uploadObject(client: S3Client, params: UploadParams): Prom
             ...(params.sseKmsKeyId ? { SSEKMSKeyId: params.sseKmsKeyId } : {}),
           }),
         ),
-      { maxAttempts: 3, retryableErrors: RETRYABLE_S3_SIGNALS },
+      { maxAttempts: 3, isRetryable: isTransientS3Error },
     );
   } catch (error) {
     throw new DynamoDBLangGraphError(
@@ -59,7 +59,7 @@ export async function downloadObject(
         }
         return new Uint8Array(await response.Body.transformToByteArray());
       },
-      { maxAttempts: 3, retryableErrors: RETRYABLE_S3_SIGNALS },
+      { maxAttempts: 3, isRetryable: isTransientS3Error },
     );
   } catch (error) {
     throw new DynamoDBLangGraphError(

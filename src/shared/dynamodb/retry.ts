@@ -15,6 +15,12 @@ export interface RetryOptions {
   baseDelayMs?: number;
   maxDelayMs?: number;
   retryableErrors?: readonly string[];
+  /**
+   * Decides retryability instead of `retryableErrors`, so a call site can
+   * share one classifier (see `isTransientS3Error`) with paths that do not
+   * go through `withRetry`.
+   */
+  isRetryable?: (error: Error) => boolean;
   signal?: AbortSignal;
   rng?: () => number;
 }
@@ -28,7 +34,7 @@ interface ResolvedRetryOptions {
   maxAttempts: number;
   baseDelayMs: number;
   maxDelayMs: number;
-  retryable: readonly string[];
+  isRetryable: (error: Error) => boolean;
   rng: () => number;
 }
 
@@ -38,7 +44,9 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
     maxAttempts: options.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS,
     baseDelayMs: options.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS,
     maxDelayMs: options.maxDelayMs ?? MAX_BACKOFF_DELAY_MS,
-    retryable: options.retryableErrors ?? DEFAULT_RETRYABLE_ERRORS,
+    isRetryable:
+      options.isRetryable ??
+      ((error) => isRetryableError(error, options.retryableErrors ?? DEFAULT_RETRYABLE_ERRORS)),
     rng: options.rng ?? Math.random,
   };
 }
@@ -49,7 +57,7 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
  * {@link RetryExhaustedError}; an aborted signal throws {@link AbortError}.
  */
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
-  const { maxAttempts, baseDelayMs, maxDelayMs, retryable, rng } = resolveRetryOptions(options);
+  const { maxAttempts, baseDelayMs, maxDelayMs, isRetryable, rng } = resolveRetryOptions(options);
 
   if (options.signal?.aborted) throw new AbortError();
 
@@ -59,7 +67,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
       return await fn();
     } catch (error) {
       lastError = toError(error as Error);
-      if (!isRetryableError(lastError, retryable)) throw lastError;
+      if (!isRetryable(lastError)) throw lastError;
       if (attempt === maxAttempts) break;
       await sleep(delayForAttempt(attempt, baseDelayMs, maxDelayMs, rng), options.signal);
     }

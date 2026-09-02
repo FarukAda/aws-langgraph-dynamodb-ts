@@ -115,3 +115,50 @@ describe('downloadObject', () => {
     ).rejects.toMatchObject({ code: ErrorCode.S3_OFFLOAD_FAILED });
   });
 });
+
+describe('S3 retry classification (CODEC-02)', () => {
+  const client = () => new S3Client({ region: 'us-east-1' });
+  const params = { bucket: 'b', key: 'k', data: new Uint8Array([1]) };
+
+  it('retries the SDK transport TimeoutError on upload', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejectsOnce(Object.assign(new Error('socket timed out'), { name: 'TimeoutError' }))
+      .resolves({});
+    await uploadObject(client(), params);
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(2);
+  });
+
+  it('retries a bodiless 5xx that is named only by its status code', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejectsOnce(
+        Object.assign(new Error(''), { name: '503', $metadata: { httpStatusCode: 503 } }),
+      )
+      .resolves({});
+    await uploadObject(client(), params);
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(2);
+  });
+
+  it('retries a transport timeout on download too', async () => {
+    s3Mock
+      .on(GetObjectCommand)
+      .rejectsOnce(Object.assign(new Error('socket timed out'), { name: 'TimeoutError' }))
+      .resolves({ Body: { transformToByteArray: async () => new Uint8Array([1]) } as never });
+    await expect(downloadObject(client(), 'b', 'k.bin')).resolves.toEqual(new Uint8Array([1]));
+    expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(2);
+  });
+
+  it('does not retry a 403 AccessDenied', async () => {
+    s3Mock.on(GetObjectCommand).rejects(
+      Object.assign(new Error('denied'), {
+        name: 'AccessDenied',
+        $metadata: { httpStatusCode: 403 },
+      }),
+    );
+    await expect(downloadObject(client(), 'b', 'k.bin')).rejects.toMatchObject({
+      code: ErrorCode.S3_OFFLOAD_FAILED,
+    });
+    expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(1);
+  });
+});
