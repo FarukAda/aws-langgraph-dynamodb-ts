@@ -1,19 +1,10 @@
 import { nowSeconds as currentSeconds } from '../../shared/clock';
+import { isExpiredRow } from '../../shared/dynamodb/expiry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import { SESSION_SORT_KEY } from '../internal/keys';
 import type { HistoryContext } from '../internal/setup';
 import type { ChatSessionItem, SessionMetadata } from '../types';
-
-/**
- * True when a session row is past its TTL. DynamoDB's background sweep can lag
- * up to 48h, so an expired session would otherwise keep appearing in listings
- * after `getMessages` had already stopped returning its messages — the same
- * filter that read path applies.
- */
-function isExpired(item: ChatSessionItem, nowSeconds: number): boolean {
-  return item.ttl !== undefined && item.ttl <= nowSeconds;
-}
 
 /**
  * List all sessions as metadata summaries, newest-updated first. The scan is
@@ -42,7 +33,7 @@ export async function listSessions(
   })) {
     const item = raw as ChatSessionItem;
     if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') continue;
-    if (isExpired(item, nowSeconds)) continue;
+    if (isExpiredRow(item, nowSeconds)) continue;
     sessions.push({
       sessionId: item.sessionId,
       title: item.title,

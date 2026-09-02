@@ -10,6 +10,7 @@ import { buildCheckpointItems } from '../../../../src/checkpointer/internal/item
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 const serde = {
   dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
@@ -194,5 +195,43 @@ describe('list() addressed by checkpoint_id: edge cases', () => {
       ),
     );
     expect(tuples).toEqual([]);
+  });
+});
+
+describe('list() skips expired checkpoints (CKPT-10)', () => {
+  const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
+
+  it('omits a META row past its ttl and asks DynamoDB to filter them too', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const now = Math.floor(FROZEN_NOW_MS / 1000);
+    const expired = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint('c2'),
+      meta,
+      'n2',
+      undefined,
+      now - 1,
+    );
+    const live = await buildCheckpointItems(
+      ctx,
+      't',
+      '',
+      checkpoint('c1'),
+      meta,
+      'n1',
+      undefined,
+      now + 60,
+    );
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [expired.meta, live.meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).resolves({ Item: live.payload });
+    const tuples = await collect(listCheckpoints(ctx, { configurable: { thread_id: 't' } }));
+    expect(tuples.map((t) => t.checkpoint.id)).toEqual(['c1']);
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.FilterExpression).toContain('#ttl');
   });
 });

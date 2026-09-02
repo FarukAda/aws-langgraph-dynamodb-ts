@@ -1,7 +1,9 @@
 import type { Item } from '@langchain/langgraph-checkpoint';
 
+import { nowSeconds } from '../../shared/clock';
 import { PayloadLocation } from '../../shared/codec/codec';
 import { isMissingObjectError } from '../../shared/codec/payload-loss';
+import { isExpiredRow } from '../../shared/dynamodb/expiry';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { narrowStoreRecord, readStoreItem } from '../internal/item-mapper';
@@ -39,8 +41,10 @@ async function readRow(
       partitionKey: partitionKey(namespace),
       sortKey: sortKey(namespace, key),
     });
+    return undefined;
   }
-  return record;
+  /** A row past its ttl is absent to every reader, however long DynamoDB's sweep lags. */
+  return isExpiredRow(record, nowSeconds()) ? undefined : record;
 }
 
 /** True when both records point at the same offloaded object. */

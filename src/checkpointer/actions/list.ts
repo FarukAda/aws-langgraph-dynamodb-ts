@@ -1,7 +1,9 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
+import { nowSeconds } from '../../shared/clock';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { DocItem } from '../../shared/dynamodb/types';
@@ -90,13 +92,14 @@ export async function* listCheckpoints(
     yield* listOne(context, scope);
     return;
   }
+  const now = nowSeconds();
   let yielded = 0;
   let scanned = 0;
   for await (const raw of paginateQuery({
     retry: retryFor(context, scope.signal),
     signal: scope.signal,
     client: context.client,
-    params: listQuery(context, scope),
+    params: withoutExpired(listQuery(context, scope), now),
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
@@ -109,7 +112,7 @@ export async function* listCheckpoints(
       );
     }
     const meta = narrowOrWarn(context, raw);
-    if (!meta) continue;
+    if (!meta || isExpiredRow(meta, now)) continue;
     const tuple = await tupleFor(context, meta, scope);
     if (!tuple) continue;
     yield tuple;

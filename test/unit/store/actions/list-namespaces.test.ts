@@ -94,7 +94,9 @@ describe('listNamespaces', () => {
       ['users', 'u1'],
       ['users', 'u2'],
     ]);
-    expect(mock.commandCalls(QueryCommand)[0].args[0].input.ExpressionAttributeValues).toEqual({
+    expect(
+      mock.commandCalls(QueryCommand)[0].args[0].input.ExpressionAttributeValues,
+    ).toMatchObject({
       ':pk': 'STORE#users',
     });
   });
@@ -136,7 +138,7 @@ describe('listNamespaces', () => {
     mock.on(ScanCommand).resolves({ Items: [{ SK: 'META##c' }, row(['users', 'u1'])] });
     const out = await listNamespaces(context(client), { limit: 100, offset: 0 });
     expect(out).toEqual([['users', 'u1']]);
-    expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toBe(
+    expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toContain(
       'attribute_exists(#ns)',
     );
   });

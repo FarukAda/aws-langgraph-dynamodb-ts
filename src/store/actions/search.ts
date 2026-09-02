@@ -1,7 +1,9 @@
 import type { SearchItem, SearchOperation } from '@langchain/langgraph-checkpoint';
 
+import { nowSeconds } from '../../shared/clock';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
@@ -23,28 +25,29 @@ async function collectCandidates(
   op: SearchOperation,
   signal?: AbortSignal,
 ): Promise<RankCandidate[]> {
+  const now = nowSeconds();
   const source =
     op.namespacePrefix.length > 0
       ? paginateQuery({
           retry: retryFor(context, signal),
           signal,
           client: context.client,
-          params: scopedQuery(context.tableName, op.namespacePrefix),
+          params: withoutExpired(scopedQuery(context.tableName, op.namespacePrefix), now),
           maxItems: context.maxScanItems,
         })
       : paginateScan({
           retry: retryFor(context, signal),
           signal,
           client: context.client,
-          params: storeScan(context.tableName),
+          params: withoutExpired(storeScan(context.tableName), now),
           maxItems: context.maxScanItems,
         });
   /** Rows first, decodes second: an offloaded row costs one S3 GET, so they run several at a time. */
   const records: StoreItemRecord[] = [];
   for await (const raw of source) {
     const record = narrowStoreRecord(raw);
-    if (record && namespaceMatchesPrefix(record.namespace, op.namespacePrefix))
-      records.push(record);
+    if (!record || isExpiredRow(record, now)) continue;
+    if (namespaceMatchesPrefix(record.namespace, op.namespacePrefix)) records.push(record);
   }
   const items = await mapWithConcurrency(records, DEFAULT_READ_CONCURRENCY, (record) =>
     readStoreItem(context, record),

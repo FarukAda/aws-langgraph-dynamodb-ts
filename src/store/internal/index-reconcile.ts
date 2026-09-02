@@ -1,3 +1,5 @@
+import { nowSeconds } from '../../shared/clock';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { VectorBackend, VectorRef } from '../vector-backend';
@@ -25,24 +27,23 @@ function refIdentity(namespace: string[], key: string): string {
 }
 
 /**
- * Enumerate canonical items under `prefix`, then recompute their embeddings in
- * batches (one `embedDocuments` call per 100 items rather than one per item).
- * A failed embedding rejects the whole reconcile by design: silently skipping
- * an item would drop it from the live set, after which {@link selectOrphans}
- * would prune its still-valid backend vector. Fail-fast keeps the backend from
- * losing data.
+ * Enumerate the live (unexpired) items under `prefix`, then recompute their
+ * embeddings in batches. A failed embedding rejects the whole reconcile: a
+ * skipped item would leave the live set and {@link selectOrphans} would prune
+ * its still-valid vector.
  */
 export async function collectReconcileTargets(
   context: StoreContext,
   prefix: string[],
   signal?: AbortSignal,
 ): Promise<ReconcileTarget[]> {
+  const now = nowSeconds();
   const live: LiveItem[] = [];
   const source = paginateQuery({
     retry: retryFor(context, signal),
     signal,
     client: context.client,
-    params: scopedQuery(context.tableName, prefix),
+    params: withoutExpired(scopedQuery(context.tableName, prefix), now),
     maxItems: context.maxScanItems,
   });
   for await (const raw of source) {
@@ -53,7 +54,7 @@ export async function collectReconcileTargets(
       });
       continue;
     }
-    if (!namespaceMatchesPrefix(record.namespace, prefix)) continue;
+    if (isExpiredRow(record, now) || !namespaceMatchesPrefix(record.namespace, prefix)) continue;
     const item = await readStoreItem(context, record);
     live.push({
       namespace: record.namespace,

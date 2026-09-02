@@ -9,6 +9,7 @@ import { type CodecDeps, readPayloadBytes } from '../../shared/codec/codec';
 import { isPermanentPayloadLoss } from '../../shared/codec/payload-loss';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { isExpiredRow } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { toError } from '../../shared/errors/wrap-error';
@@ -16,10 +17,6 @@ import { messageQuery } from '../internal/query';
 import type { HistoryContext } from '../internal/setup';
 import { validateSessionId } from '../internal/validation';
 import type { ChatMessageItem } from '../types';
-
-function isExpired(item: ChatMessageItem, nowSeconds: number): boolean {
-  return item.ttl !== undefined && item.ttl <= nowSeconds;
-}
 
 /** One item's decode outcome: a rebuilt message, or a proof that it never can be. */
 type Decoded = { kind: 'ok'; message: BaseMessage } | { kind: 'corrupt'; error: Error };
@@ -86,7 +83,7 @@ export async function getMessages(
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
     const item = raw as ChatMessageItem;
-    if (!isExpired(item, now)) items.push(item);
+    if (!isExpiredRow(item, now)) items.push(item);
   }
   /** Offloaded rows cost one S3 GET each, so they decode several at a time; the policy is applied in order. */
   const decoded = await mapWithConcurrency(items, DEFAULT_READ_CONCURRENCY, (item) =>

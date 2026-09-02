@@ -10,6 +10,7 @@ import type { CheckpointerContext } from '../../../../src/checkpointer/internal/
 import { LIST_SCAN_WARN_THRESHOLD } from '../../../../src/shared/constants';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 const serde = {
   dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
@@ -192,5 +193,37 @@ describe('fetchPendingWrites on a very large fan-out (CKPT-04)', () => {
       expect.stringContaining('pending-write'),
       expect.objectContaining({ rows: total }),
     );
+  });
+});
+
+describe('fetchTargetMeta skips expired head rows (CKPT-10)', () => {
+  const NOW = Math.floor(FROZEN_NOW_MS / 1000);
+  const metaRow = (id: string, ttl: number) => ({
+    PK: 'CHKPT#t',
+    SK: `META##${id}`,
+    checkpointId: id,
+    checkpointNs: '',
+    metadata: {},
+    ttl,
+  });
+
+  it('returns the newest live checkpoint when the head has expired but is not yet swept', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    let pages = 0;
+    mock.on(QueryCommand).callsFake(() => {
+      pages += 1;
+      return pages === 1
+        ? { Items: [metaRow('c2', NOW - 1)], LastEvaluatedKey: { PK: 'CHKPT#t', SK: 'META##c2' } }
+        : { Items: [metaRow('c1', NOW + 60)] };
+    });
+    const meta = await fetchTargetMeta(context(client), 't', '');
+    expect(meta?.checkpointId).toBe('c1');
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.FilterExpression).toContain('#ttl');
+  });
+
+  it('treats an addressed checkpoint past its ttl as absent', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({ Item: metaRow('c1', NOW - 1) });
+    await expect(fetchTargetMeta(context(client), 't', '', 'c1')).resolves.toBeUndefined();
   });
 });

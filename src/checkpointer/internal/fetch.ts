@@ -1,6 +1,8 @@
 import type { CheckpointPendingWrite } from '@langchain/langgraph-checkpoint';
 
+import { nowSeconds } from '../../shared/clock';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
@@ -36,6 +38,8 @@ export async function fetchTargetMeta(
   checkpointId?: string,
   signal?: AbortSignal,
 ): Promise<CheckpointMetaItem | undefined> {
+  /** Expired rows are absent to every reader, however long DynamoDB's sweep lags. */
+  const now = nowSeconds();
   if (checkpointId !== undefined) {
     const result = await withDynamoDBRetry(
       () =>
@@ -46,7 +50,8 @@ export async function fetchTargetMeta(
         }),
       retryFor(context, signal),
     );
-    return narrowHead(context, result.Item as DocItem | undefined);
+    const meta = narrowHead(context, result.Item as DocItem | undefined);
+    return meta && !isExpiredRow(meta, now) ? meta : undefined;
   }
   const params = beginsWithQuery(
     context.tableName,
@@ -61,13 +66,13 @@ export async function fetchTargetMeta(
     retry: retryFor(context, signal),
     signal,
     client: context.client,
-    params,
+    params: withoutExpired(params, now),
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   });
   for await (const raw of rows) {
     const meta = narrowHead(context, raw);
-    if (meta) return meta;
+    if (meta && !isExpiredRow(meta, now)) return meta;
   }
   return undefined;
 }
