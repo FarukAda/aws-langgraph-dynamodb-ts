@@ -6,7 +6,7 @@
 
 # Interface: BackfillOptions
 
-Defined in: shared/dynamodb/backfill-index.ts:28
+Defined in: [shared/dynamodb/backfill-index.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L28)
 
 What the backfill needs to walk a table.
 
@@ -16,7 +16,7 @@ What the backfill needs to walk a table.
 
 > **client**: `DynamoDBDocument`
 
-Defined in: shared/dynamodb/backfill-index.ts:29
+Defined in: [shared/dynamodb/backfill-index.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L29)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: shared/dynamodb/backfill-index.ts:29
 
 > `optional` **cursor?**: `string`
 
-Defined in: shared/dynamodb/backfill-index.ts:37
+Defined in: [shared/dynamodb/backfill-index.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L37)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: shared/dynamodb/backfill-index.ts:37
 
 > `optional` **dryRun?**: `boolean`
 
-Defined in: shared/dynamodb/backfill-index.ts:39
+Defined in: [shared/dynamodb/backfill-index.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L39)
 
 Report what would change without writing.
 
@@ -42,7 +42,7 @@ Report what would change without writing.
 
 > `optional` **indexShards?**: `number`
 
-Defined in: shared/dynamodb/backfill-index.ts:32
+Defined in: [shared/dynamodb/backfill-index.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L32)
 
 Must equal the adapters' `indexShards`, or rows land on shards no listing queries.
 
@@ -52,7 +52,7 @@ Must equal the adapters' `indexShards`, or rows land on shards no listing querie
 
 > `optional` **maxPages?**: `number`
 
-Defined in: shared/dynamodb/backfill-index.ts:36
+Defined in: [shared/dynamodb/backfill-index.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L36)
 
 Stop after this many pages and return a cursor. Default: walk the whole table.
 
@@ -62,7 +62,7 @@ Stop after this many pages and return a cursor. Default: walk the whole table.
 
 > `optional` **pageSize?**: `number`
 
-Defined in: shared/dynamodb/backfill-index.ts:34
+Defined in: [shared/dynamodb/backfill-index.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L34)
 
 Rows per scan page.
 
@@ -72,7 +72,7 @@ Rows per scan page.
 
 > `optional` **retry?**: [`RetryOptions`](RetryOptions.md)
 
-Defined in: shared/dynamodb/backfill-index.ts:40
+Defined in: [shared/dynamodb/backfill-index.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L40)
 
 ***
 
@@ -80,7 +80,7 @@ Defined in: shared/dynamodb/backfill-index.ts:40
 
 > `optional` **signal?**: `AbortSignal`
 
-Defined in: shared/dynamodb/backfill-index.ts:41
+Defined in: [shared/dynamodb/backfill-index.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L41)
 
 ***
 
@@ -88,4 +88,4 @@ Defined in: shared/dynamodb/backfill-index.ts:41
 
 > **tableName**: `string`
 
-Defined in: shared/dynamodb/backfill-index.ts:30
+Defined in: [shared/dynamodb/backfill-index.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L30)

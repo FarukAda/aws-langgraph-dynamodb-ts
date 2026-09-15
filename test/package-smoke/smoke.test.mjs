@@ -29,12 +29,13 @@ const RUNTIME_DEPS = Object.entries(manifest.peerDependencies)
 const TYPECHECK_DEPS = ['@types/node'];
 
 /**
- * The compilers the shipped declarations are checked against: the floor
- * `docs/STABILITY.md` promises consumers, and the newest release. Installing an
- * unpinned `typescript` checked only whatever was latest that day, so the
- * promised floor was never exercised — and the repository's own typecheck
- * cannot stand in for it, since that compiles the source with the pinned
- * TypeScript 6/7, not the emitted `.d.ts` with a consumer's compiler.
+ * The compilers the shipped declarations are checked against: the floor the
+ * README's "Versioning and compatibility" section promises consumers, and the
+ * newest release. Installing an unpinned `typescript` checked only whatever was
+ * latest that day, so the promised floor was never exercised — and the
+ * repository's own typecheck cannot stand in for it, since that compiles the
+ * source with the pinned TypeScript 6/7, not the emitted `.d.ts` with a
+ * consumer's compiler.
  */
 const TYPECHECK_COMPILERS = ['typescript@5', 'typescript@latest'];
 

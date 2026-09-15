@@ -35,9 +35,9 @@ describe('contractGapsIn', () => {
 });
 
 /**
- * `docs/CONTRACTS.md` asks every exported function to state what it accepts,
- * what it returns and what it throws. Stating it is what forces the cells to be
- * decided rather than discovered by a caller.
+ * Every exported function states what it accepts, what it returns and what it
+ * throws. Stating it is what forces the cells to be decided rather than
+ * discovered by a caller.
  */
 describe('every exported function states its contract (DOCS-08)', () => {
   it('leaves no exported function without Accepts, Returns and Throws', () => {

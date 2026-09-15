@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 import { listSourceFiles, SRC_ROOT } from './source-files';
 
-/** The sections `docs/CONTRACTS.md` requires of an exported function's doc comment. */
+/** The sections an exported function's doc comment must state. */
 export const REQUIRED_SECTIONS = ['Accepts:', 'Returns:', 'Throws:'] as const;
 
 /** An exported function whose doc comment does not state the whole contract. */

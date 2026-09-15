@@ -76,8 +76,9 @@ const COMPARATORS: Record<string, (actual: ActualValue, expected: JsonValue) => 
  *
  * An empty condition qualifies, and therefore imposes no constraint: `every`
  * over no operators is true, exactly as it is upstream, so `{ field: {} }`
- * matches every item that has the field. Requiring at least one key inverted
- * that answer and made the same filter match nothing.
+ * matches every item — including one that does not hold the field at all, for
+ * which there is likewise no operator to fail. Requiring at least one key
+ * inverted that answer and made the same filter match nothing.
  *
  * Arrays are excluded where the reference does not. Upstream an empty array
  * reaches `Object.keys([]).every(...)` and is likewise vacuously true, so `[]`

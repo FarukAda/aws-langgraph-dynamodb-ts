@@ -27,11 +27,14 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
   - [Factory](#factory)
 - [Options](#options)
 - [Features](#features)
+- [Retries and backoff](#retries-and-backoff)
 - [Error handling](#error-handling)
 - [Logging](#logging)
 - [Infrastructure setup](#infrastructure-setup)
 - [IAM permissions](#iam-permissions)
 - [Migrating from earlier versions](#migrating-from-earlier-versions)
+- [Versioning and compatibility](#versioning-and-compatibility)
+- [Production notes](#production-notes)
 - [Operations](#operations)
 - [Testing](#testing)
 - [Support and policies](#support-and-policies)
@@ -244,13 +247,13 @@ When `keyPrefix` is omitted, each adapter defaults to its own sub-prefix under t
 
 **Gzip compression** — set `compression: { enabled: true }`. Payloads at or above `minSizeBytes` (default 1 KB) are gzipped transparently; the stored descriptor records whether a payload was compressed, so reads never infer it from the bytes, and decompression is guarded against decompression-bomb expansion (`maxDecompressedBytes`, default 50 MiB).
 
-**S3 offloading** — set `s3: { bucketName }`. Any serialized payload at or above `thresholdBytes` (default 350 KB) is written to S3, with only a reference stored in DynamoDB. Only the payload counts toward the threshold: the store's inline embedding (about 10 bytes per dimension, so ~10 KB at 1024 dims and ~45 KB at 4096) is stored on the same item, so keep `thresholdBytes` plus the embedding's size under DynamoDB's 400 KB item limit or the put fails with a raw `ValidationException`; reads rehydrate transparently. Requires the optional `@aws-sdk/client-s3` peer: constructing an adapter with `s3` starts loading it, and a missing package fails the first S3 operation with a `ValidationError` naming the install command — bundlers must keep it installed or external. Deleting a checkpoint thread / chat session also best-effort deletes its offloaded objects. When a `ttl` is also configured, call `ensureS3LifecycleRule()` once (e.g. during deployment) to best-effort install a matching S3 lifecycle expiration rule (logged, never fatal) — this is opt-in rather than automatic, since it requires the broader `s3:PutLifecycleConfiguration` bucket-level permission and is not safe to fire on every adapter construction. If you configure `ttl` + `s3` but never call it, nothing reclaims objects that best-effort cleanup misses — they stay in the bucket until you remove them or add a lifecycle rule yourself. Both the store's concurrent-`put` overwrite race and the checkpointer's *special*-write overwrite race (`__error__`, `__interrupt__`, `__resume__`, `__scheduled__`) are now **prevented** by a compare-and-swap: each overwrite pins the previous descriptor it observed and re-reads on rejection, so it deletes exactly the payload it actually superseded instead of racing another writer for the same one. A leak from either path is now possible only in these residual cases, still backstopped by `ensureS3LifecycleRule()`: the bounded compare-and-swap (3 attempts) is exhausted under pathological contention, which falls back to an unconditional overwrite and logs a `warn`; a best-effort delete genuinely fails; or one double-fault interleaving — a write that loses the swap and then exhausts its transient-error retries on an attempt that actually landed — leaves cleanup targeting the stale descriptor rather than the one it truly superseded, orphaning one object (it never deletes a live object). Separately, and unchanged by any of the above, the checkpointer's *regular* (non-special) writes still resolve a genuine race first-write-wins with no compare-and-swap, so the loser's own upload there remains an orphan reclaimed only by best-effort cleanup and `ensureS3LifecycleRule()`. Likewise, a store `delete` whose acknowledgement is lost after the row was removed cannot learn which object that row referenced — the row is gone and its `ReturnValues` travelled with the lost response — so that one object is left to the lifecycle rule too.
+**S3 offloading** — set `s3: { bucketName }`. Any serialized payload at or above `thresholdBytes` (default 350 KB) is written to S3, with only a reference stored in DynamoDB. Only the payload counts toward the threshold: the store's inline vectors sit on the same item and are not weighed against it. Budget about 10 bytes per dimension **per configured field** — the store embeds one vector per extracted path, so `fields: ['title', 'body', 'summary']` at 1024 dims costs roughly 30 KB, not 10 KB — and keep `thresholdBytes` plus that total under DynamoDB's 400 KB item limit or the put fails with a raw `ValidationException`. A value near the threshold indexed over many fields is the combination to watch. Reads rehydrate transparently. Requires the optional `@aws-sdk/client-s3` peer: constructing an adapter with `s3` starts loading it, and a missing package fails the first S3 operation with a `ValidationError` naming the install command — bundlers must keep it installed or external. Deleting a checkpoint thread / chat session also best-effort deletes its offloaded objects. When a `ttl` is also configured, call `ensureS3LifecycleRule()` once (e.g. during deployment) to install a matching S3 lifecycle expiration rule. It **throws** on failure rather than logging — a `ValidationError` for a `keyPrefix` it will not scope a rule to, and an `UpstreamError` for anything S3 refuses, most often a missing `s3:PutLifecycleConfiguration` — so call it from a provisioning step and treat a rejection as a deployment error, not as something to ignore. It is opt-in rather than automatic because it needs that broader bucket-level permission and is not safe to fire on every adapter construction. If you configure `ttl` + `s3` but never call it, nothing reclaims objects that best-effort cleanup misses — they stay in the bucket until you remove them or add a lifecycle rule yourself. Both the store's concurrent-`put` overwrite race and the checkpointer's *special*-write overwrite race (`__error__`, `__interrupt__`, `__resume__`, `__scheduled__`) are now **prevented** by a compare-and-swap: each overwrite pins the previous descriptor it observed and re-reads on rejection, so it deletes exactly the payload it actually superseded instead of racing another writer for the same one. A leak from either path is now possible only in these residual cases, still backstopped by `ensureS3LifecycleRule()`: the bounded compare-and-swap (3 attempts) is exhausted under pathological contention, which falls back to an unconditional overwrite and logs a `warn`; a best-effort delete genuinely fails; or one double-fault interleaving — a write that loses the swap and then exhausts its transient-error retries on an attempt that actually landed — leaves cleanup targeting the stale descriptor rather than the one it truly superseded, orphaning one object (it never deletes a live object). Separately, and unchanged by any of the above, the checkpointer's *regular* (non-special) writes still resolve a genuine race first-write-wins with no compare-and-swap, so the loser's own upload there remains an orphan reclaimed only by best-effort cleanup and `ensureS3LifecycleRule()`. Likewise, a store `delete` whose acknowledgement is lost after the row was removed cannot learn which object that row referenced — the row is gone and its `ReturnValues` travelled with the lost response — so that one object is left to the lifecycle rule too.
 
 **TTL expiry** — set `ttl: { days }` or `ttl: { seconds }`. The `ttl` attribute is written as a Unix-epoch-seconds timestamp; enable DynamoDB TTL on the `ttl` attribute for automatic deletion. Every adapter filters rows past their `ttl` on read — `get`/`search`/`listNamespaces` in the store, `getTuple`/`list` in the checkpointer, `getMessages`/`listSessions` in chat history — so nothing expired comes back during DynamoDB's sweep lag. For the checkpointer that means a thread whose head expired reads as its newest *live* checkpoint (or as empty), older checkpoints can expire while the head lives (so `parentConfig` may point at a checkpoint that is gone, which LangGraph's resume path does not need), and a swept payload reads as "no checkpoint" only for an already-expired head. Chat history anchors a single **uniform whole-conversation TTL** on the session's metadata row, shared by every message: normally it's set once, at session creation, via `if_not_exists`; but if the previously-stored anchor is ever found missing or already expired (DynamoDB's own TTL sweep can lag up to ~48h), the next append heals it with a plain overwrite instead of staying stuck. Every message written at any point in time shares whatever the current anchor is; expired messages are also filtered out on read. If the append that triggers a stale-anchor heal is itself later rolled back (a later chunk in the same call failed), the healed ttl is not reverted — the session simply keeps the fresher, never-shorter expiry rather than risk regressing a value a concurrent legitimate extension may have since written; this is a deliberate, self-healing tradeoff, not a bug. Turning `ttl` on for a chat-history table that already holds sessions stamps the anchor and every *new* message only; message rows written before that keep no `ttl`, outlive their session row, and still come back from `getMessages` — clear those sessions or backfill a `ttl` onto their rows when enabling expiry retroactively.
 
 **Plain (metadata) search** (store) — a `search()` call with no `query` (or with a `query` but no `index`/`vectorBackend` configured) reads rows under the `namespacePrefix` and decodes them in batches of 8 — applying `filter` in-process — until `offset + limit` matching items are in hand, then stops: the page is the complete answer, so a namespace far larger than the page costs neither a full decode nor a `ResultTruncatedError`. Only a page that cannot be filled from fewer rows is bounded by `maxScanItems` (default 10,000; exceeding it throws rather than silently returning a partial result). This is a different cap from `maxSearchCandidates` below: `maxScanItems` gates rows read, `maxSearchCandidates` gates the in-DB semantic ranker. For namespaces that routinely exceed the default, prefer a `vectorBackend` or a narrower `namespacePrefix` over raising the cap indefinitely.
 
-**Semantic search** (store) — provide `index` with a LangChain `Embeddings` implementation. On `put`, the configured `fields` are embedded; on `search` with a `query`, results are ranked by cosine similarity. By default the embedding is stored on the item and ranking happens in-process over the scoped candidate set (bounded by `maxSearchCandidates`, default 1000 — exceeding it throws a `ValidationError` as soon as more rows than that exist under the prefix, before any row is decoded or the query embedded, steering you to an external index). A `vectorBackend` search that reaches `maxSearchCandidates` while its `filter` has left fewer than `offset + limit` matches throws the same error instead of returning a silently short page. For large corpora, pass a `vectorBackend`: the embedding is sent there instead, similarity search is delegated to it, and DynamoDB still holds the canonical item. Per-item indexing can be overridden via the `index` argument to `put` (`false` to skip, or a `string[]` of fields).
+**Semantic search** (store) — provide `index` with a LangChain `Embeddings` implementation. On `put`, each configured field is embedded separately — one vector per extracted path, as the reference store does — and on `search` with a `query` an item is ranked by its **best-matching** vector, so a long document with one strongly relevant section is found instead of being averaged away. By default those vectors are stored on the item and ranking happens in-process over the scoped candidate set (bounded by `maxSearchCandidates`, default 1000 — exceeding it throws a `ValidationError` as soon as more rows than that exist under the prefix, before any row is decoded or the query embedded, steering you to an external index). A row written before the per-path change carries a single vector and still ranks exactly as it did. A `vectorBackend` search that reaches `maxSearchCandidates` while its `filter` has left fewer than `offset + limit` matches throws the same error instead of returning a silently short page. For large corpora, pass a `vectorBackend`: a **single** vector over the joined fields is sent there instead of the per-path set, similarity search is delegated to it, and DynamoDB still holds the canonical item. Per-item indexing can be overridden via the `index` argument to `put` (`false` to skip, or a `string[]` of fields).
 
 **Vector index consistency** — when a `vectorBackend` is configured, **DynamoDB holds the canonical item** and the backend is a rebuildable index. After each canonical write the embedding is synced to the backend best-effort: a failure is logged (not thrown), so a backend hiccup never fails an otherwise-successful `put`/`delete`. To repair drift, call `store.reconcileVectorIndex(namespacePrefix)` — it re-pushes every live embedding and, when the backend implements the optional `listKeys`, prunes vectors with no canonical item; it returns `{ upserted, pruned }`. Run it when the namespace is idle. Caveats: reconciliation re-embeds with the store's **configured** index fields, so per-`put` field overrides are not reproduced; prune happens only when `listKeys` is implemented (otherwise reconcile re-pushes only and logs that prune was skipped); the prefix must be a non-empty namespace.
 
@@ -258,7 +261,7 @@ When `keyPrefix` is omitted, each adapter defaults to its own sub-prefix under t
 
 **Chat history semantics** — message order is the write order of one adapter instance (its ULIDs are strictly monotonic even within a millisecond); across instances or processes it is the writers' wall clocks at millisecond precision, so a process whose clock lags can sort a later turn before an earlier one. The default `serde` is plain JSON: a `Uint8Array`/`Buffer` inside a message (a `ToolMessage.artifact`, say) reads back as an index-keyed object and a `Date` as a string — pass `serde: new JsonPlusSerializer()` from `@langchain/langgraph-checkpoint` for binary and `Date` fidelity. A batch over 99 messages or 3.5 MB is committed in chunks and is atomic from the writer's perspective only: a concurrent reader can see the first chunks before the append settles, and a rolled-back append still bumps the session's `updatedAt`. Under heavy contention on one session an append can spend up to about 61 seconds per chunk in retries (18 attempts, 5 s cap) — three times that when an injected client keeps the SDK's own retries. `clear()` has the same single-pass, quiescent-session caveat as `deleteThread()`.
 
-**Differences from `InMemoryStore`** — the store follows the reference semantics with these deliberate exceptions: one embedding per item (the configured fields are joined and embedded once, where the reference embeds each field and ranks by the best); `$gt`/`$gte`/`$lt`/`$lte` never coerce types (`'10'` does not match `{ $gt: 5 }`), `$eq`/`$ne`/`$in`/`$nin` use deep equality, and an empty field condition `{}` matches nothing; results come back in key order, not insertion order; and the per-item `index` argument of `put` is honoured only on direct `DynamoDBStore` calls — LangGraph's `AsyncBatchedStore`, which wraps the store inside a graph, does not forward it.
+**Differences from `InMemoryStore`** — the store follows the reference semantics, and every observable difference is listed under [Versioning and compatibility](#differences-from-the-reference-implementations). The ones a caller meets first: `$gt`/`$gte`/`$lt`/`$lte` compare like types only, where the reference reduces both sides with `Number()` (a stored `'10'` does not match `{ $gt: 5 }` here, and two ISO-8601 date strings compare as dates rather than as `NaN`); results come back in key order, not insertion order; and the per-item `index` argument of `put` is honoured only on direct `DynamoDBStore` calls — LangGraph's `AsyncBatchedStore`, which wraps the store inside a graph, does not forward it. `$eq`/`$ne`/`$in`/`$nin` use deep equality and an empty field condition `{}` constrains nothing, both as upstream does.
 
 **Strong consistency** — checkpointer read-your-writes (`getTuple`) and every `store.get` use `ConsistentRead`, so a value written and immediately read back is never served a stale replica. Bulk reads (`list`, `listNamespaces`, `listSessions`) stay eventually consistent for lower cost.
 
@@ -592,6 +595,82 @@ unaffected.
 - **Per-instance `logger` option** replaces the global `setGlobalLogger` singleton; default logging is now silent.
 - **Unified error model** — all errors extend `DynamoDBLangGraphError` with an `ErrorCode`.
 
+## Versioning and compatibility
+
+This package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). For a persistence adapter the storage layout is as much a contract as the TypeScript API, so both are stated here: what a `1.x` release promises to keep, what a minor may add, and what only a `2.0` may change.
+
+### The public API
+
+The public API is everything exported from the package entry point (`dist/index.js` / `dist/index.d.ts`): the five classes `DynamoDBSaver`, `DynamoDBStore`, `DynamoDBChatMessageHistory`, `DynamoDBSessionChatMessageHistory` and `DynamoDBFactory`; the error model (`DynamoDBLangGraphError`, `ErrorCode`, the typed error classes, `UpstreamError`, `isDynamoDBLangGraphError`); the operator tool `backfillRecencyIndex`; the logging helpers (`redactLogger`, `redactSecrets`); and every exported type. A test (`test/types/public-surface.test.ts`) enumerates the set and pins the adapter method signatures.
+
+- A **minor** may add exports, add optional options and parameters, add optional fields to returned objects, and widen accepted inputs.
+- A **patch** changes behaviour only to fix a defect against the documented behaviour.
+- Removing or renaming an export, making an option required, narrowing an input, or changing a return type requires a **major**, preceded by a deprecation.
+- Deep imports (`@farukada/aws-langgraph-dynamodb-ts/dist/...`) are blocked by the `exports` map and are not part of the API. The `createClient` / `createS3Client` seams are test hooks stripped from the shipped declarations and are not supported.
+
+### The on-disk layout
+
+Every `1.x` release reads every row a `1.0` release wrote. New attributes may be added in a minor; they are optional, and a row without them keeps its `1.0` meaning. The key formats, the required attributes and the payload descriptor change only in a major, with a migration note.
+
+| Adapter | Partition key | Sort keys | Attributes |
+| --- | --- | --- | --- |
+| Checkpointer | `CHKPT#<thread_id>` | `META#<ns>#<checkpoint_id>`, `PAYLOAD#<ns>#<checkpoint_id>`, `WRITE#<ns>#<checkpoint_id>#<task>#<idx>#<channel>` | META: `threadId`, `checkpointNs`, `checkpointId`, `metadata`, `v`, optional `parentCheckpointId`, `gsi1pk`, `gsi1sk`, `ttl`; PAYLOAD: `checkpoint`, `v`, optional `ttl`; WRITE: `taskId`, `index`, `channel`, `writeGroup`, `value`, `v`, optional `occurrence`, `ttl` |
+| Store | `STORE#<namespace[0]>` | `<namespace[1..]>#<key>` | `namespace`, `key`, `value`, `createdAt`, `updatedAt`, `v`, optional `embeddings`, `embedding`, `gsi1pk`, `gsi1sk`, `rev`, `ttl` |
+| Chat history | `HIST#<sessionId>` | `HISTORY#SESSION`, `HISTORY#MSG#<ULID>` | session: `sessionId`, `messageCount`, `createdAt`, `updatedAt`, `v`, optional `title`, `gsi1pk`, `gsi1sk`, `ttl`; message: `sessionId`, `message`, `v`, optional `ttl` |
+
+`gsi1pk`/`gsi1sk` are the [recency-index](#table-schema) keys; they are written whether or not a table defines the index, so enabling `indexName` later needs only a backfill. `embeddings` holds one vector per indexed field; `embedding` is the single joined vector older rows carry and is still read. `storedChannels` was written by `1.0.0-rc.1` and no longer is: it is ignored on read and rows carrying it keep their meaning.
+
+Offloaded objects live at `<keyPrefix><base64url(part)/...>/<sha256 base64url>.bin` — the parts identify the row that points at the object, the last segment is the content address of the bytes. Each object also carries its row's key as S3 user metadata (`dynamodb-pk-b64`, `dynamodb-sk-b64`), the backlink AWS recommends for cleaning up orphans, and the lifecycle rule id is `langgraph-ttl-<slug of keyPrefix>`. All three are stable for `1.x`. Objects written by `1.0.0-rc.1`, whose last segment was a random nonce rather than a hash, are still read and deleted exactly as before — a descriptor always records the full key, so nothing needs migrating. The `ttl` attribute is Unix epoch seconds; compression is gzip; `serdeType` names the serializer that produced the bytes and is honoured on read even when the adapter is configured with another one.
+
+### Errors, logs and row versions
+
+Every row this release writes carries `v`, its format version. A reader treats a row without `v` as version 0 and reads it under the rules that applied when it was written; a row whose `v` is higher than the reader understands fails with `FORMAT_UNSUPPORTED` rather than being read as though its unknown attributes did not matter. A minor may raise the version it writes only in a way older `1.x` readers still accept.
+
+`ErrorCode` values are append-only in `1.x`; error class names and the `code` each carries are stable, and `ErrorContext` only gains fields. Error *messages* and log *messages* are not covered — branch on `code`, `name` and the structured fields, never on text.
+
+### Supported runtimes and peers
+
+| Dependency | Supported | Verified by |
+| --- | --- | --- |
+| Node.js | 22 and 24 | the unit tier on Linux, macOS and Windows |
+| TypeScript (consumers) | 5.x and later | the package smoke type-checks the shipped declarations with both the 5.x floor and the newest release |
+| `@langchain/langgraph-checkpoint` | `^1.1.5` | the conformance tier against the floor and the latest release, including LangChain's checkpointer validation suite |
+| `@langchain/langgraph` | any 1.x release depending on a supported `@langchain/langgraph-checkpoint` (not a peer of this package) | the compiled-graph conformance tests |
+| `@langchain/core` | `^1.2.11` | the differential and history tests |
+| AWS SDK v3 (`@aws-sdk/client-dynamodb`, `lib-dynamodb`, optional `client-s3`) | the ranges in `package.json` | every tier |
+
+Raising a floor (dropping a Node major after its end of life, requiring a newer LangChain minor) is a **minor** and is announced in the CHANGELOG. A peer range is never narrowed in a patch.
+
+### Deprecation
+
+Anything scheduled for removal is marked `@deprecated` in its JSDoc and listed in the CHANGELOG for at least one minor before the major that removes it. Deprecated members keep working until then.
+
+### Not covered
+
+`saver.getDeltaChannelHistory()` tracks an upstream API that `@langchain/langgraph-checkpoint` marks beta: its signature and return shape follow that contract, so a change there can reach a minor of this package. The `ANCESTOR_EXPIRED` code it raises is covered like every other code.
+
+Also not covered: the wording of error messages and log lines, the order of rows returned by table scans, the exact request counts in the [cost table](#what-each-operation-costs), the layout of `docs/api`, timing characteristics, and the internal module structure.
+
+### Differences from the reference implementations
+
+`MemorySaver` and `InMemoryStore` are the behaviour this package matches. Every observable difference is listed here; anything not in this table is a defect, not a choice, and the differential tests are what enforce that. Adding a row is a **minor** at most, and only when the reference itself is the defect; changing one a caller may already rely on is a **major**.
+
+| # | Difference | Kept because |
+| --- | --- | --- |
+| V-1 | Write identity is `(taskId, channel, occurrence)` | index positions are unstable across a retry; kept unobservable by read-side dedup |
+| V-2 | Namespace prefixes match element-wise | the reference compares the joined string, so `['users']` matches `['userspace']` |
+| V-3 | Namespace elements may not contain `#` | the separator is structural in the sort key |
+| V-4 | A namespace whose items are all deleted stops being listed | the reference retains an empty namespace with no row behind it |
+| V-5 | `search` / `listNamespaces` raise `RESULT_TRUNCATED` past `maxScanItems` | silently truncating a result set is worse than refusing it |
+| V-6 | Re-putting with `index: false` clears the stored vector | the reference keeps a stale vector for a changed value |
+| V-7 | `batch` returns `undefined` for a put, the reference returns `null` | cosmetic; recorded so it is not mistaken for a bug |
+| V-8 | A value JSON refuses (circular, `BigInt`) yields no index text instead of throwing from inside text extraction | the put is refused a moment later by the codec, with a `ValidationError` naming `value` rather than a raw `TypeError` from the embedding step |
+| V-9 | Namespaces the collation calls equal are ordered by code unit | the reference leaves that pair to insertion order, which here is DynamoDB's read order, so a page boundary could fall between them differently on two calls |
+| V-10 | `put` stores every channel value, never only the ones `newVersions` names | narrowing stored *nothing* when LangGraph forks a checkpoint or writes an empty update, both of which pass an empty `newVersions`. `MemorySaver.put` takes no `newVersions` either, and LangChain's validation suite exempts its own `MemorySaver`, MongoDB and SQLite savers from the delta test on the same grounds; the exemption is keyed on a module-name list, so `test/conformance/validation.conformance.test.ts` applies it by name |
+| V-11 | `$gt`/`$gte`/`$lt`/`$lte` compare like types only | the reference reduces both sides with `Number()`, which makes every comparison between two ISO-8601 date strings `NaN`-false; native `>` instead coerces, so a stored `'10'` satisfied `{ $gt: 5 }`. Comparing like types directly is well-defined in both cases |
+| V-12 | An array used as a field condition is compared as a literal | upstream reaches `Object.keys([]).every(...)`, so `[]` as a condition matches everything there; comparing the stored array is the answer a caller means |
+| V-13 | `search` results come back in key order, not insertion order | the sort key is the order DynamoDB reads a partition in, and paging has to be stable across calls |
+
 ## Production notes
 
 - **Sharing one table** across all three adapters is supported — adapter-tagged partition keys make the key spaces provably disjoint (see [Table schema](#table-schema)), and table-wide reads filter to their own items. Checkpointer, chat-history, and *scoped* store reads are all partition-scoped (`Query`/`GetItem`).
@@ -631,7 +710,7 @@ Requests per call, before retries. "Consistent" reads are `ConsistentRead: true`
 | `saver.getTuple` | 1 consistent `GetItem` (by id) or `Query` (newest) for the META row, 1 consistent `GetItem` for the payload, 1 consistent `Query` for the pending writes; a pre-v4 checkpoint adds a `Query` of its parent's writes | 1 `GET` per offloaded payload, 8 at a time |
 | `saver.put` | 1 `TransactWriteItems` (META + PAYLOAD); 1 consistent `GetItem` of the parent META when `newVersions` leaves channels to carry over; verification reads only after a failure | 1 `PUT` per offloaded payload |
 | `saver.putWrites` | 1 guarded `PutItem` per write, all in parallel; with `s3` each special write adds 1 consistent `GetItem` and up to 3 compare-and-swap attempts | 1 `PUT` per offloaded write, `DELETE` of a superseded special write |
-| `saver.list` | 1 eventually consistent `Query` per page (or `Scan` without a `thread_id`); per yielded tuple 1 `GetItem` and 1 `Query` for its writes | `GET` per offloaded payload and metadata |
+| `saver.list` | 1 eventually consistent `Query` per page; without a `thread_id` a `Scan`, or — with `indexName` — 1 `Query` per index shard; per yielded tuple 1 `GetItem` and 1 `Query` for its writes | `GET` per offloaded payload and metadata |
 | `saver.deleteThread`, `history.clear` | 1 consistent `Query` per page, 1 `BatchWriteItem` per 25 rows | 1 `DeleteObjects` per 1000 keys |
 | `store.get` | 1 consistent `GetItem` | 1 `GET` |
 | `store.put` | 1 consistent `GetItem` (previous descriptor and revision), 1 guarded `PutItem` (up to 3 attempts under contention, each re-reading from the rejection), plus the `vectorBackend` upsert | 1 `PUT`, then `DELETE` of the superseded object |
@@ -640,7 +719,7 @@ Requests per call, before retries. "Consistent" reads are `ConsistentRead: true`
 | `store.listNamespaces` | key-only `Query` (`Scan` without a prefix root) per page | none |
 | `history.addMessages` | 1 consistent `GetItem` of the session row when `ttl` is set, then 1 `TransactWriteItems` per chunk (up to 99 messages plus the session update); a rollback costs 1 `BatchWriteItem` per 25 rows plus a session update | 1 `PUT` per offloaded message |
 | `history.getMessages` | 1 consistent `Query` per page (newest-first with a page cap under `limit`) | 1 `GET` per offloaded message, 8 at a time |
-| `history.listSessions` | 1 `Scan` per page | none |
+| `history.listSessions` | 1 `Scan` per page, or — with `indexName` — 1 `Query` per index shard (8 by default), bounded by `limit` and pageable by cursor | none |
 | `history.reconcileMessageCount` | `Query` (`Select: COUNT`) per page, 1 guarded `UpdateItem` | none |
 | `store.reconcileVectorIndex` | 1 `Query` per page, embedding calls in batches, backend upserts and deletes | `GET` per offloaded item |
 
@@ -659,11 +738,22 @@ See [Multi-tenant deployments](#multi-tenant-deployments) under IAM permissions 
 ## Testing
 
 ```bash
-npm test            # unit + static-guard + type tests, 100% coverage
+npm test            # unit + static-guard + property + type tests, 100% coverage
+npm run test:static # the static guards alone
 npm run typecheck
 npm run lint
-npm run build
+npm run build       # removes dist/ first, so no output outlives its source
 ```
+
+The surface tier runs the public API against a large table of malformed inputs and compares the result — one line per case — to a committed baseline, so any change to what the package accepts or rejects shows up as a reviewed diff. It runs against the built package, so build first:
+
+```bash
+npm run build
+npm run test:surface         # compare against test/surface/baseline.txt
+npm run test:surface:update  # accept the current behaviour as the new baseline
+```
+
+Only run `test:surface:update` after reading the diff `test:surface` printed. A line that changed for a reason you cannot name is a regression, not a baseline to refresh.
 
 Integration and contract tiers run against DynamoDB Local (Docker) and are kept out of the default `npm test`:
 
@@ -695,7 +785,7 @@ Nothing in the suite provokes real throttling or `ProvisionedThroughputExceededE
 
 ## Support and policies
 
-- [Stability and compatibility policy](docs/STABILITY.md) — what `1.x` promises for the API, the on-disk layout, error codes and peer ranges.
+- [Versioning and compatibility](#versioning-and-compatibility) — what `1.x` promises for the API, the on-disk layout, error codes and peer ranges.
 - [Security policy](SECURITY.md) — private reporting, response targets, what the library does and does not do.
 - [Support](SUPPORT.md) — where to ask, what to include.
 - [Contributing](CONTRIBUTING.md) — setup, the guards, the test tiers, the toolchain, commits and releases.

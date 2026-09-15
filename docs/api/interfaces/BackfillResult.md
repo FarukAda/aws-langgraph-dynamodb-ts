@@ -6,7 +6,7 @@
 
 # Interface: BackfillResult
 
-Defined in: shared/dynamodb/backfill-index.ts:13
+Defined in: [shared/dynamodb/backfill-index.ts:13](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L13)
 
 What one pass of the backfill did, and where to resume.
 
@@ -16,7 +16,7 @@ What one pass of the backfill did, and where to resume.
 
 > **indexed**: `number`
 
-Defined in: shared/dynamodb/backfill-index.ts:17
+Defined in: [shared/dynamodb/backfill-index.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L17)
 
 Rows given index keys.
 
@@ -26,7 +26,7 @@ Rows given index keys.
 
 > `optional` **nextCursor?**: `string`
 
-Defined in: shared/dynamodb/backfill-index.ts:24
+Defined in: [shared/dynamodb/backfill-index.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L24)
 
 Opaque; absent when the table is fully walked. Pass it back to continue —
 the pass is resumable, so a large table can be backfilled in bounded runs.
@@ -37,7 +37,7 @@ the pass is resumable, so a large table can be backfilled in bounded runs.
 
 > **scanned**: `number`
 
-Defined in: shared/dynamodb/backfill-index.ts:15
+Defined in: [shared/dynamodb/backfill-index.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L15)
 
 Rows the scan evaluated.
 
@@ -47,6 +47,6 @@ Rows the scan evaluated.
 
 > **skipped**: `number`
 
-Defined in: shared/dynamodb/backfill-index.ts:19
+Defined in: [shared/dynamodb/backfill-index.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L19)
 
 Rows no listing reaches, so no keys were written.

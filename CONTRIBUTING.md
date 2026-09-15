@@ -1,6 +1,6 @@
 # Contributing to aws-langgraph-dynamodb-ts
 
-Thank you for helping. This guide is the operational one; the [README](README.md) explains the library and [docs/STABILITY.md](docs/STABILITY.md) what a release may change.
+Thank you for helping. This guide is the operational one; the [README](README.md) explains the library, and its [*Versioning and compatibility*](README.md#versioning-and-compatibility) section says what a release may change.
 
 ## Setup
 
@@ -50,7 +50,7 @@ A real-AWS test creates its own resources and tears them down in `afterAll` (use
 
 Two TypeScript versions are installed on purpose: the `typescript` alias resolves to TypeScript 6 and drives ts-jest, ESLint and TypeDoc; `@typescript/native` (TypeScript 7) provides `tsc` and builds `dist` and the shipped declarations. `npm run typecheck` checks `src` with the compiler that emits; `npm run typecheck:all` checks the whole program including tests and configs. Linting is ESLint with Prettier; run `npm run lint:fix` before committing.
 
-Three stricter compiler flags were evaluated for the build and deliberately not enabled: `verbatimModuleSyntax` (incompatible with the CommonJS build, which would need `import = require` syntax everywhere), `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (39 and 56 sites whose guards would be unreachable branches under the 100 % branch gate). The `overrides.uuid` entry in `package.json` exists because `@langchain/langgraph` still declares `uuid@^10`; the override keeps one `uuid` 11 in the tree. `npm run pack:check` verifies the tarball listing, `publint` and `@arethetypeswrong/cli` before a release.
+Three stricter compiler flags were evaluated for the build and deliberately not enabled: `verbatimModuleSyntax` (incompatible with the CommonJS build, which would need `import = require` syntax everywhere), `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (39 and 56 sites whose guards would be unreachable branches under the 100 % branch gate). `package.json` carries no `overrides` block: the one it used to hold pinned `uuid`, which no longer appears in the lock file at all. `npm run pack:check` verifies the tarball listing, `publint` and `@arethetypeswrong/cli` before a release.
 
 ## Commits and pull requests
 
@@ -60,7 +60,7 @@ A pull request follows the template: what, why, how, how it was tested, breaking
 
 ## Releases
 
-Maintainers release from `main`: bump the version, move the `[Unreleased]` entry under the new version, tag `v<version>` and push the tag; the release workflow publishes with provenance. A prerelease tag publishes under the `next` dist-tag. What each release type may change is defined in [docs/STABILITY.md](docs/STABILITY.md).
+Maintainers release from `main`: bump the version, move the `[Unreleased]` entry under the new version, tag `v<version>` and push the tag; the release workflow publishes with provenance. A prerelease tag publishes under the `next` dist-tag. What each release type may change is defined in the README's [*Versioning and compatibility*](README.md#versioning-and-compatibility) section.
 
 ## Code of conduct
 

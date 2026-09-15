@@ -8,7 +8,7 @@
 
 > **backfillRecencyIndex**(`options`): `Promise`\<[`BackfillResult`](../interfaces/BackfillResult.md)\>
 
-Defined in: shared/dynamodb/backfill-index.ts:131
+Defined in: [shared/dynamodb/backfill-index.ts:131](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L131)
 
 Give rows written before the recency index their index keys.
 
