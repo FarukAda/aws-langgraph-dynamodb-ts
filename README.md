@@ -76,8 +76,18 @@ Every adapter uses the **same simple key schema**: a string partition key `PK`, 
 | `PK` | String (HASH) | partition key |
 | `SK` | String (RANGE) | sort key |
 | `ttl` | Number | (optional) Unix-epoch-seconds expiry; enable DynamoDB TTL on this attribute |
+| `gsi1pk` | String | (optional) recency-index partition key; written to the rows that listings cross partitions for — checkpointer `META`, store items, history `SESSION` |
+| `gsi1sk` | String | (optional) recency-index sort key, `<updatedAt>#<id>` |
 
-Payloads live under one reserved attribute per row kind (`checkpoint`, `metadata`, `value`, `message`) as a **payload descriptor**: `{ schemaVersion: 1, location: 'INLINE' | 'S3', serdeType, compressed, bytes | s3Key }`. This shape is a compatibility contract: unknown fields are ignored, a missing `schemaVersion` reads as 1, and a higher `schemaVersion` or an unknown `location` is refused with a `ValidationError` (field `descriptor`) rather than misread. Offloaded S3 keys embed the row's identifiers base64url-encoded (`<keyPrefix><enc(thread_id)>/<enc(checkpoint_ns)>/…`), which is trivially reversible — treat S3 keys and `S3_OFFLOAD_FAILED` error context as identifier-bearing in your log-redaction policy.
+Those two index attributes are always written; they cost nothing until the table
+carries a global secondary index on them and an adapter is told its name with
+`indexName`. Without it every listing behaves exactly as before, so upgrading
+changes nothing until you create the index — see
+[Infrastructure setup](#infrastructure-setup) for the definition and
+[Maintenance operations](#maintenance-operations) for the backfill that must run
+first.
+
+Payloads live under one reserved attribute per row kind (`checkpoint`, `metadata`, `value`, `message`) as a **payload descriptor**: `{ schemaVersion: 1, location: 'INLINE' | 'S3', serdeType, compressed, bytes | s3Key }`. This shape is a compatibility contract: unknown fields are ignored, a missing `schemaVersion` reads as 1, and a higher `schemaVersion` or an unknown `location` is refused with a `ValidationError` (field `descriptor`) rather than misread. Offloaded S3 keys are `<keyPrefix><the row's identifiers, each base64url-encoded>/<sha256 of the bytes, base64url>.bin` — the row above the hash, so an object belongs to exactly one row and is deleted with it, and the hash below it, so writing the same bytes twice writes one object. The identifier segments are trivially reversible — treat S3 keys and `S3_OFFLOAD_FAILED` error context as identifier-bearing in your log-redaction policy.
 
 How each adapter lays out keys (informational — you don't manage this):
 
@@ -216,6 +226,9 @@ All adapters share a common base. Provide **either** a prebuilt `client` (which 
 | `compression` | `CompressionConfig` | all | `{ enabled, minSizeBytes?, level?, maxDecompressedBytes? }` |
 | `s3` | `S3OffloadConfig` | all | offload large payloads to S3 (see below) |
 | `serde` | `SerializerProtocol` | all | serializer override (checkpointer defaults to LangGraph's; store/history to JSON) |
+| `indexName` | `string` | all | the name of the recency index (a GSI on `gsi1pk`/`gsi1sk`) on this table. Naming it turns `history.listSessions()` and a thread-less `saver.list()` from a table scan into a bounded query per index shard. Opt-in: whether the table has the index is your deployment fact, not something this package probes for. **Run `backfillRecencyIndex()` before setting it** — a row written before the index carries no keys, so the listings that read it would not find rows that are still there |
+| `indexShards` | `number` | all | index partitions per adapter (default 8). Fixed when the table is created: changing it changes every row's shard and requires another backfill. One partition per adapter would concentrate every listing on one key, which is worse than the scan it replaces |
+| `readConcurrency` | `number` | all | payloads decoded at once by a single call (default 8). It is the multiplier on this package's memory ceiling — `readConcurrency × (s3.maxDownloadBytes + compression.maxDecompressedBytes)`, 800 MiB at the defaults — so lower it on a small container |
 | `onCorruptMessage` | `'skip' \| 'throw'` | history only | what `getMessages` does with an item it cannot decode (default `skip`: drop it, log at `error`, return the rest) |
 | `index` | `IndexConfig` | store only | `{ dims, embeddings, fields? }` for semantic search |
 | `vectorBackend` | `VectorBackend` | store only | delegate similarity search to an external index; DynamoDB keeps the canonical item. **Requires `index`** — constructing a store with one and not the other throws |
@@ -286,6 +299,9 @@ try {
 | `RESULT_TRUNCATED` | `ResultTruncatedError` | the paginated reads that keep rows in memory — `store.search`, `store.listNamespaces`, `store.reconcileVectorIndex`, `history.listSessions` — past `maxScanItems` / `maxItems` / `maxIterations` |
 | `S3_OFFLOAD_FAILED` | `DynamoDBLangGraphError` | an upload, download or delete of an offloaded object that failed after the S3 retries, an object over `maxDownloadBytes`, or an object that no longer exists (`context.key`) |
 | `COMPRESSION_LIMIT` | `DynamoDBLangGraphError` | a payload whose decompressed size would exceed `maxDecompressedBytes` |
+| `PAYLOAD_CORRUPT` | `DynamoDBLangGraphError` | a stored payload that can never be read: bytes marked compressed that are not gzip, or bytes the serializer cannot parse. Classified permanent, so a caller reports it instead of retrying |
+| `FORMAT_UNSUPPORTED` | `DynamoDBLangGraphError` | a row written by a newer release of this package than the one reading it. Raised rather than skipped: hiding a row that exists is worse than failing |
+| `ANCESTOR_EXPIRED` | `DynamoDBLangGraphError` | `saver.getDeltaChannelHistory` when a checkpoint a delta channel still needs has expired (`context.threadId`, `context.checkpointId`). Lower `snapshotFrequency`, or do not put a `ttl` on threads that use delta channels |
 
 **Cancellation** — every long-running method takes an `AbortSignal`: the checkpointer reads `RunnableConfig.signal` (which LangGraph propagates) on `getTuple`, `list`, `put` and `putWrites`, and `deleteThread`, `search`, `reconcileVectorIndex`, `getMessages`, `addMessages`, `addMessage`, `clear`, `listSessions` and `reconcileMessageCount` take a trailing `{ signal }`. A signal that is already aborted, or aborts while the library waits (a retry backoff, the next page of a paginated read), rejects the call with the library's `AbortError` (`code: 'ABORTED'`) whatever the abort reason was — the raw reason (a `DOMException` for a bare `controller.abort()`) is kept as `cause`. Cleanup and verification reads that run after a failure are not cancelled, so an abort never strands a live row pointing at a deleted object. Typed subclasses are exported where callers commonly branch: `ValidationError`, `ConflictError`, `RetryExhaustedError`, `BatchWriteIncompleteError`, `BatchWriteAllIncompleteError`, `ResultTruncatedError`, `AbortError`, `CompensationFailedError`.
 
@@ -293,10 +309,11 @@ try {
 
 ### Maintenance operations
 
-Three methods repair or provision state and are meant for deployment scripts and operators, not request paths:
+Four tools repair or provision state and are meant for deployment scripts and operators, not request paths:
 
 - **`ensureS3LifecycleRule()`** (all three adapters) — installs the S3 lifecycle expiration rule that matches the configured `ttl` under the adapter's key prefix, idempotently. It **throws** when the bucket cannot be read or written (`AccessDenied`, `NoSuchBucket`, throttling) — nothing is swallowed or merely logged — so call it once at deployment time, from a role that holds the two lifecycle actions, and treat a failure as a deployment failure. It is a no-op when `s3` or `ttl` is not configured.
 - **`store.reconcileVectorIndex(namespacePrefix)`** — re-pushes every live item's embedding to the configured `vectorBackend` and, when the backend implements `listKeys`, prunes vectors whose item is gone; returns `{ upserted, pruned }`. Run it when the namespace is idle; it reads every row under the prefix (bounded by `maxScanItems`).
+- **`backfillRecencyIndex({ tableName, client, … })`** — gives rows written before the recency index their `gsi1pk`/`gsi1sk`. **Run it before setting `indexName` on any adapter**: a row without the keys is not in the index, so enabling the index first makes every pre-existing session, item and checkpoint vanish from the listings that read it — the rows are still there, and every other read still returns them, but a listing would not. Resumable through the `cursor` it returns, re-runnable, and safe against a live table: every write is conditional on the row having no keys yet. `indexShards` must match what the adapters use.
 - **`history.reconcileMessageCount(sessionId)`** — recounts a session's live messages and rewrites the stored `messageCount`; returns the count. Run it after a `CompensationFailedError` or the `rollback failed` log event, when the session is idle; it throws `ConflictError` if an append lands while it counts.
 
 ## Logging
@@ -385,6 +402,15 @@ new dynamodb.Table(this, 'LangGraph', {
   billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
   timeToLiveAttribute: 'ttl', // optional; only needed if you use the `ttl` option
 });
+
+// Optional: the recency index. Add it, run backfillRecencyIndex(), then set
+// `indexName: 'gsi1'` on the adapters. Without it every listing still works.
+table.addGlobalSecondaryIndex({
+  indexName: 'gsi1',
+  partitionKey: { name: 'gsi1pk', type: dynamodb.AttributeType.STRING },
+  sortKey: { name: 'gsi1sk', type: dynamodb.AttributeType.STRING },
+  projectionType: dynamodb.ProjectionType.ALL,
+});
 ```
 
 </details>
@@ -405,6 +431,18 @@ resource "aws_dynamodb_table" "langgraph" {
   ttl {
     attribute_name = "ttl"
     enabled        = true
+  }
+
+  # Optional: the recency index. Add it, run backfillRecencyIndex(), then set
+  # `indexName = "gsi1"` on the adapters. Without it every listing still works.
+  attribute { name = "gsi1pk" type = "S" }
+  attribute { name = "gsi1sk" type = "S" }
+
+  global_secondary_index {
+    name            = "gsi1"
+    hash_key        = "gsi1pk"
+    range_key       = "gsi1sk"
+    projection_type = "ALL"
   }
 }
 ```
@@ -440,6 +478,15 @@ Transactional writes are authorised by the item-level actions they carry — the
     }
   ]
 }
+```
+
+When the table carries the recency index and an adapter names it with `indexName`, the `Query` action also needs the index's own ARN — a permission on the table alone does not cover its indexes:
+
+```json
+"Resource": [
+  "arn:aws:dynamodb:<region>:<account>:table/langgraph",
+  "arn:aws:dynamodb:<region>:<account>:table/langgraph/index/gsi1"
+]
 ```
 
 `LangGraphTableScans` is needed only by the four table-wide reads — a rootless `store.search([])`, `store.listNamespaces()` without a concrete prefix root, `history.listSessions()`, and `saver.list()` without a `thread_id`. Every other operation is a `GetItem`, a partition `Query` or a write. Leave the statement out of any role that must not read across tenants (see below).
