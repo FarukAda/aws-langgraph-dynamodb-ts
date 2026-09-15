@@ -325,6 +325,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Surface baseline (what the public API accepts and rejects)
+        run: npm run test:surface
+
       - name: Verify the package listing, exports and types (pack:check)
         run: npm run pack:check
 

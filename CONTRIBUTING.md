@@ -41,7 +41,7 @@ Write the failing test first, then the code. A change that touches behaviour nee
 | Package smoke | `npm run test:package-smoke` | network (`npm pack` + install into a temp project) |
 | Real AWS | `AWS_REGION=eu-central-1 npm run test:aws` | AWS credentials |
 
-CI runs the unit, integration, conformance and package-smoke tiers on each push and pull request. Two tiers run outside it. The surface baseline is not yet wired into CI — run it locally after any change to what the public API accepts or rejects, and regenerate with `npm run test:surface:update` only after reading the diff it printed. The real-AWS tier is deliberately not scheduled: one of its suites calls Bedrock, so a maintainer runs it against their own credentials, `AWS_REGION=eu-central-1 npm run test:aws`, before a release.
+CI runs the unit, integration, conformance, surface and package-smoke tiers on each push and pull request. The surface baseline runs beside the package smoke test, on one platform: it is a snapshot, and comparing a snapshot across six matrix legs is six chances to disagree about nothing. Run it locally as well after any change to what the public API accepts or rejects, and regenerate with `npm run test:surface:update` only after reading the diff it printed. One tier runs outside CI. The real-AWS tier is deliberately not scheduled: one of its suites calls Bedrock, so a maintainer runs it against their own credentials, `AWS_REGION=eu-central-1 npm run test:aws`, before a release.
 
 ### Real-AWS tests
 
