@@ -49,6 +49,8 @@
     "test:aws": "jest --config jest.aws.config.ts",
     "test:static": "jest test/static",
     "test:package-smoke": "node --test test/package-smoke/smoke.test.mjs",
+    "test:surface": "node --test test/surface/surface.test.mjs",
+    "test:surface:update": "node scripts/update-surface-baseline.mjs",
     "prepublishOnly": "npm run typecheck && npm run typecheck:all && npm run lint && npm run build && npm test",
     "docs": "typedoc",
     "docs:watch": "typedoc --watch",
