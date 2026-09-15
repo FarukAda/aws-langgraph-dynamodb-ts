@@ -115,7 +115,7 @@ async function fuzzSaver() {
   await tryAsync(E + '.getTuple', 'thread_ts=123 (legacy alias)', () => saver.getTuple({ configurable: { thread_id: 't', thread_ts: 123 } }));
   await tryAsync(E + '.getTuple', 'extra configurable keys', () => saver.getTuple({ configurable: { thread_id: 't', foo: { bar: 1 } } }));
   const okCfg = { configurable: { thread_id: 't', checkpoint_ns: '' } };
-  const okCp = { v: 1, id: 'cp1', ts: new Date().toISOString(), channel_values: { a: 1 }, channel_versions: { a: 1 }, versions_seen: {} };
+  const okCp = { v: 1, id: 'cp1', ts: '2024-01-01T00:00:00.000Z', channel_values: { a: 1 }, channel_versions: { a: 1 }, versions_seen: {} };
   for (const v of [undefined, null, {}, 'x', 1, [], { id: '' }, { id: 123 }, { id: 'a#b' }, { id: 'c1' }, { ...okCp, channel_values: null }, { ...okCp, id: 'x'.repeat(2000) }]) await tryAsync(E + '.put', `checkpoint=${describe(v)}`, () => saver.put(okCfg, v, {}));
   for (const v of [undefined, null, 'x', [], 1, { source: 'input', step: NaN }]) await tryAsync(E + '.put', `metadata=${describe(v)}`, () => saver.put(okCfg, okCp, v));
   for (const v of [undefined, null, 'x', 1, {}]) await tryAsync(E + '.put', `config=${describe(v)}`, () => saver.put(v, okCp, {}));
