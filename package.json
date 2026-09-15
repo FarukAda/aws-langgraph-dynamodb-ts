@@ -36,7 +36,7 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "typecheck:all": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"*.config.ts\" \"**/*.mjs\" --no-error-on-unmatched-pattern",
