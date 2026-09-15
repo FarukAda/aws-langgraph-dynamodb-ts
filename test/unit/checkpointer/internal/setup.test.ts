@@ -1,4 +1,5 @@
 import { setUpCheckpointer } from '../../../../src/checkpointer/internal/setup';
+import { fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
   dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new Uint8Array()],
@@ -19,7 +20,12 @@ describe('setUpCheckpointer', () => {
   });
 
   it('builds and owns a client from clientConfig and exposes the context', () => {
-    const fakeClient = { destroy: jest.fn(), config: {}, middlewareStack: {}, send: jest.fn() };
+    const fakeClient = {
+      destroy: jest.fn(),
+      config: {},
+      middlewareStack: fakeMiddlewareStack(),
+      send: jest.fn(),
+    };
     const setup = setUpCheckpointer(
       {
         tableName: 'ckpt',
@@ -88,14 +94,14 @@ describe('S3 region inheritance (CODEC-15)', () => {
     const ddb = {
       destroy: jest.fn(),
       config: {},
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
       send: jest.fn(),
     };
     const s3Client = {
       destroy: jest.fn(),
       send: jest.fn(async () => ({})),
       config: {},
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
     };
     const setup = setUpCheckpointer(
       {
@@ -139,7 +145,7 @@ describe('SDK retry stacking warning (DDB-01)', () => {
     const ddb = {
       destroy: jest.fn(),
       config: { maxAttempts: async () => 1 },
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
       send: jest.fn(),
     };
     setUpCheckpointer(

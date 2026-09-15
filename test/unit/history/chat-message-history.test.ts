@@ -19,7 +19,7 @@ import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-hi
 import { DynamoDBSessionChatMessageHistory } from '../../../src/history/session-adapter';
 import { JSON_SERDE } from '../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
-import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -103,7 +103,7 @@ describe('DynamoDBChatMessageHistory', () => {
     expect(() => history(injected.client).destroy()).not.toThrow();
 
     const destroy = jest.fn();
-    const fake = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
+    const fake = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
     const owned = new DynamoDBChatMessageHistory({
       tableName: 'history',
       clientConfig: { region: 'us-east-1' },

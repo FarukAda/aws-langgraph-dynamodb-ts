@@ -14,7 +14,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
-import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -101,7 +101,7 @@ describe('DynamoDBStore', () => {
     ).not.toThrow();
 
     const destroy = jest.fn();
-    const fake = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
+    const fake = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
     const owned = new DynamoDBStore({
       tableName: 'store',
       clientConfig: { region: 'us-east-1' },
@@ -170,7 +170,7 @@ describe('cancellation via { signal } (CORE-04)', () => {
 describe('BaseStore lifecycle (CORE-22)', () => {
   it('stop() releases an owned client exactly once and leaves an injected one alone', async () => {
     const destroy = jest.fn();
-    const fake = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
+    const fake = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
     const owned = new DynamoDBStore({
       tableName: 'store',
       clientConfig: { region: 'us-east-1' },

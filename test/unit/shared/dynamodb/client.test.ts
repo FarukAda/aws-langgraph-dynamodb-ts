@@ -5,23 +5,13 @@ import {
   resolveDynamoDBClient,
   warnOnStackedRetries,
 } from '../../../../src/shared/dynamodb/client';
+import { fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 function createFakeClient(): DynamoDBClient {
-  const middlewareStack = {
-    add: jest.fn(),
-    addRelativeTo: jest.fn(),
-    use: jest.fn(),
-    clone() {
-      return middlewareStack;
-    },
-    concat() {
-      return middlewareStack;
-    },
-  };
   return {
     destroy: jest.fn(),
     config: {},
-    middlewareStack,
+    middlewareStack: fakeMiddlewareStack(),
     send: jest.fn(),
   } as unknown as DynamoDBClient;
 }

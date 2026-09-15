@@ -1,5 +1,6 @@
 import { setUpHistory } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 describe('setUpHistory', () => {
   it('rejects an invalid tableName and an unknown corrupt-message policy at construction (CORE-05)', () => {
@@ -11,7 +12,12 @@ describe('setUpHistory', () => {
   });
 
   it('defaults to the JSON serializer and owns a built client', () => {
-    const fake = { destroy: jest.fn(), config: {}, middlewareStack: {}, send: jest.fn() };
+    const fake = {
+      destroy: jest.fn(),
+      config: {},
+      middlewareStack: fakeMiddlewareStack(),
+      send: jest.fn(),
+    };
     const setup = setUpHistory({
       tableName: 'history',
       clientConfig: { region: 'us-east-1' },
@@ -61,14 +67,14 @@ describe('S3 region inheritance (CODEC-15)', () => {
     const ddb = {
       destroy: jest.fn(),
       config: {},
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
       send: jest.fn(),
     };
     const s3Client = {
       destroy: jest.fn(),
       send: jest.fn(async () => ({})),
       config: {},
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
     };
     const setup = setUpHistory({
       tableName: 'hist',

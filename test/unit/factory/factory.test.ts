@@ -11,14 +11,14 @@ import { DynamoDBFactory } from '../../../src/factory/factory';
 import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-history';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
-import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
 
 function fakeClientFactory() {
   const destroy = jest.fn();
-  const client = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
+  const client = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
   return { destroy, create: () => client as never };
 }
 
@@ -191,7 +191,7 @@ describe('createAll teardown is total', () => {
         throw new Error('socket already closed');
       },
       config: {},
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
       send: jest.fn(),
     };
     const factory = new DynamoDBFactory({ createClient: () => client as never });

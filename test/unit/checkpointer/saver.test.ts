@@ -18,7 +18,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
-import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -102,7 +102,7 @@ describe('DynamoDBSaver', () => {
     const fakeClient = {
       destroy,
       config: {},
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
       send: jest.fn(),
     };
     const saver = new DynamoDBSaver({

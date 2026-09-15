@@ -4,6 +4,7 @@ import {
   MAX_TOTAL_ITEMS_IN_MEMORY,
 } from '../../../../src/shared/constants';
 import { setUpStore } from '../../../../src/store/internal/setup';
+import { fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 describe('setUpStore', () => {
   it('rejects an invalid tableName and non-positive caps at construction (CORE-05)', () => {
@@ -18,7 +19,12 @@ describe('setUpStore', () => {
   });
 
   it('defaults to the JSON serializer and owns a built client', () => {
-    const fake = { destroy: jest.fn(), config: {}, middlewareStack: {}, send: jest.fn() };
+    const fake = {
+      destroy: jest.fn(),
+      config: {},
+      middlewareStack: fakeMiddlewareStack(),
+      send: jest.fn(),
+    };
     const setup = setUpStore({
       tableName: 'store',
       clientConfig: { region: 'us-east-1' },
@@ -117,7 +123,12 @@ describe('index configuration validation (F6)', () => {
     tableName: 'store',
     clientConfig: { region: 'us-east-1' },
     createClient: () =>
-      ({ destroy: jest.fn(), config: {}, middlewareStack: {}, send: jest.fn() }) as never,
+      ({
+        destroy: jest.fn(),
+        config: {},
+        middlewareStack: fakeMiddlewareStack(),
+        send: jest.fn(),
+      }) as never,
   };
 
   it('rejects an index with no embeddings, instead of a TypeError at first use', () => {
@@ -182,14 +193,14 @@ describe('S3 region inheritance (CODEC-15)', () => {
     const ddb = {
       destroy: jest.fn(),
       config: {},
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
       send: jest.fn(),
     };
     const s3Client = {
       destroy: jest.fn(),
       send: jest.fn(async () => ({})),
       config: {},
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
     };
     const setup = setUpStore({
       tableName: 'store',
