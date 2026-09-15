@@ -6,7 +6,7 @@
 
 # Interface: CancelOptions
 
-Defined in: [shared/options.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L44)
+Defined in: [shared/options.ts:78](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L78)
 
 Per-call cancellation for the long-running adapter methods.
 
@@ -20,6 +20,6 @@ Per-call cancellation for the long-running adapter methods.
 
 > `optional` **signal?**: `AbortSignal`
 
-Defined in: [shared/options.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L46)
+Defined in: [shared/options.ts:80](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L80)
 
 Aborting it rejects the call with `AbortError` (`ABORTED`) at the next wait.

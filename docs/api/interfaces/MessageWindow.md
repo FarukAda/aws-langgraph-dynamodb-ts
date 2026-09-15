@@ -18,7 +18,7 @@ and combine: `{ limit: 50, before }` is the fifty messages just before
 
 > `optional` **before?**: `Date`
 
-Defined in: [history/types.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L35)
+Defined in: [history/types.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L39)
 
 Return only messages appended before this instant (millisecond precision).
 
@@ -28,6 +28,8 @@ Return only messages appended before this instant (millisecond precision).
 
 > `optional` **limit?**: `number`
 
-Defined in: [history/types.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L33)
+Defined in: [history/types.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L37)
 
-Return only the newest `limit` messages — still in chronological order.
+Return only the newest `limit` messages — still in chronological order. A
+positive integer; `0` is refused rather than answered with nothing, since
+for a window into a conversation it is far more likely a bug.

@@ -23,6 +23,16 @@ Attempts made before a retry budget was exhausted.
 
 ***
 
+### checkpointId?
+
+> `optional` **checkpointId?**: `string`
+
+Defined in: [shared/errors/base-error.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L23)
+
+The checkpoint a checkpointer failure names.
+
+***
+
 ### field?
 
 > `optional` **field?**: `string`
@@ -60,3 +70,13 @@ The public operation (`saver.put`, `store.batch`, …) or internal step that fai
 Defined in: [shared/errors/base-error.ts:11](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L11)
 
 The DynamoDB table the operation targeted, when known.
+
+***
+
+### threadId?
+
+> `optional` **threadId?**: `string`
+
+Defined in: [shared/errors/base-error.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L21)
+
+The thread a checkpointer failure belongs to.

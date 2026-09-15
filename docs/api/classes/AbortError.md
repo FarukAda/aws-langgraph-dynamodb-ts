@@ -6,7 +6,7 @@
 
 # Class: AbortError
 
-Defined in: [shared/errors/errors.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L48)
+Defined in: [shared/errors/errors.ts:89](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L89)
 
 An operation was cancelled via its AbortSignal.
 
@@ -20,7 +20,15 @@ An operation was cancelled via its AbortSignal.
 
 > **new AbortError**(`message?`, `cause?`): `AbortError`
 
-Defined in: [shared/errors/errors.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L49)
+Defined in: [shared/errors/errors.ts:99](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L99)
+
+Accepts: `cause` — the `AbortSignal`'s own reason, when it carried one.
+
+Returns: the error, with `code: ABORTED`. Distinct from every failure code on
+purpose: a caller who cancelled did not encounter a fault, and treating
+the two alike reported an incomplete write for a deliberate stop.
+
+Throws: nothing; building an error may not fail.
 
 #### Parameters
 
@@ -46,7 +54,7 @@ Defined in: [shared/errors/errors.ts:49](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
+Defined in: [shared/errors/base-error.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L33)
 
 #### Inherited from
 
@@ -58,7 +66,7 @@ Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
+Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L34)
 
 #### Inherited from
 

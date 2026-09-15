@@ -6,11 +6,15 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory/factory.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L39)
+Defined in: [factory/factory.ts:85](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L85)
 
-Convenience constructors for the adapters. Individual `create*` methods each
-build their own client; [createAll](#createall) builds one shared client used by all
-three and returns a combined `destroy` that tears everything down once.
+Convenience constructors for the adapters.
+
+Individual `create*` methods each build their own client; [createAll](#createall)
+builds one shared client used by all three and returns a combined `destroy`
+that tears everything down once. The factory validates nothing itself: each
+adapter validates the options it ends up with, so the same mistake is caught
+the same way however the adapter was built.
 
 ## Constructors
 
@@ -18,7 +22,19 @@ three and returns a combined `destroy` that tears everything down once.
 
 > **new DynamoDBFactory**(`base?`): `DynamoDBFactory`
 
-Defined in: [factory/factory.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L40)
+Defined in: [factory/factory.ts:99](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L99)
+
+Accepts: `base` — the defaults every adapter inherits. Checked here, where
+the caller wrote them: an unknown key would otherwise be ignored, and a
+`client` next to a `clientConfig` was refused by the first `create*` call
+and accepted by `createAll`, for the same base.
+
+Returns: a factory holding those defaults. It opens nothing: every client
+is built by the `create*` call that needs one.
+
+Throws: ValidationError naming the offending option. Everything else each
+adapter validates for itself, since a per-adapter value may still replace
+it.
 
 #### Parameters
 
@@ -36,13 +52,28 @@ Defined in: [factory/factory.ts:40](https://github.com/FarukAda/aws-langgraph-dy
 
 > **createAll**\<`O`\>(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
-Defined in: [factory/factory.ts:81](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L81)
+Defined in: [factory/factory.ts:206](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L206)
 
-Build the adapters whose sections are given, all on one shared client and
-with the factory's shared defaults underneath each section. If any
-constructor throws (a store with `vectorBackend` but no `index`, say), the
-adapters already built and the freshly created client are destroyed
-before the error propagates, so a failed call leaks nothing.
+Build the adapters whose sections are given, all on one shared client.
+
+Accepts: `options` — a section per adapter, laid over the factory's shared
+defaults; omitting one skips that adapter, and `{}` builds none. A key that
+is not a section name is refused rather than ignored: a misspelt one
+silently built nothing and handed back three `undefined`s.
+
+Returns: the adapters, typed by the sections asked for, and one `destroy`
+that releases all of them and the shared client. A client the factory was
+given rather than built is never destroyed.
+
+Throws: ValidationError naming the offending option or section key.
+Whatever an adapter's constructor throws — after the adapters already
+built and the freshly created client have been released, so a failed call
+leaks nothing and the constructor's own error is the one that propagates.
+
+Guarantees: one DynamoDB client for all three adapters, and one S3 client
+per adapter, each under its own key prefix in the shared bucket. Teardown
+is total: one adapter failing to release its resources cannot strand the
+others.
 
 #### Type Parameters
 
@@ -66,9 +97,15 @@ before the error propagates, so a failed call leaks nothing.
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L70)
+Defined in: [factory/factory.ts:180](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L180)
 
-A chat history on its own client, with the factory's shared defaults underneath `options`.
+A chat history on its own client.
+
+Accepts: as [createSaver](#createsaver), for the history's options.
+
+Returns: the chat history.
+
+Throws: as [createSaver](#createsaver).
 
 #### Parameters
 
@@ -86,9 +123,18 @@ A chat history on its own client, with the factory's shared defaults underneath 
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:60](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L60)
+Defined in: [factory/factory.ts:154](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L154)
 
-A saver on its own client, with the factory's shared defaults underneath `options`.
+A saver on its own client.
+
+Accepts: `options` — the saver's own, laid over the factory's defaults. A
+per-adapter value wins; see defaultsFor for how a client choice
+replaces the factory's as a unit.
+
+Returns: the saver, which owns the client it built and releases it on
+`destroy()`.
+
+Throws: ValidationError for any invalid option, naming it.
 
 #### Parameters
 
@@ -106,9 +152,15 @@ A saver on its own client, with the factory's shared defaults underneath `option
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L65)
+Defined in: [factory/factory.ts:167](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L167)
 
-A store on its own client, with the factory's shared defaults underneath `options`.
+A store on its own client.
+
+Accepts: as [createSaver](#createsaver), for the store's options.
+
+Returns: the store.
+
+Throws: as [createSaver](#createsaver).
 
 #### Parameters
 

@@ -6,7 +6,7 @@
 
 # Class: BatchWriteAllIncompleteError
 
-Defined in: [shared/errors/errors.ts:92](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L92)
+Defined in: [shared/errors/errors.ts:153](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L153)
 
 batchWriteAll attempts every chunk rather than stopping at the first
 failure — a mid-sequence chunk failing does not abandon the chunks after
@@ -28,7 +28,19 @@ when a chunk partially drains before exhausting its retries.
 
 > **new BatchWriteAllIncompleteError**(`succeededChunks`, `totalChunks`, `failedChunks`, `succeededCount?`): `BatchWriteAllIncompleteError`
 
-Defined in: [shared/errors/errors.ts:98](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L98)
+Defined in: [shared/errors/errors.ts:172](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L172)
+
+Accepts: `succeededChunks`/`totalChunks` — the chunk tally.
+`failedChunks` — each failing chunk's own error, commonly a
+[BatchWriteIncompleteError](BatchWriteIncompleteError.md). `succeededCount` — individual writes
+confirmed persisted across every chunk, which is more precise than the
+chunk tally when a chunk partially drains.
+
+Returns: the error, with the first failing chunk's error as `cause`. Every
+chunk not represented in `failedChunks` drained successfully and its writes
+persist — there is no rollback.
+
+Throws: nothing; building an error may not fail.
 
 #### Parameters
 
@@ -62,7 +74,7 @@ Defined in: [shared/errors/errors.ts:98](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
+Defined in: [shared/errors/base-error.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L33)
 
 #### Inherited from
 
@@ -74,7 +86,7 @@ Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
+Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L34)
 
 #### Inherited from
 
@@ -86,7 +98,7 @@ Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-lan
 
 > `readonly` **failedChunks**: `Error`[]
 
-Defined in: [shared/errors/errors.ts:95](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L95)
+Defined in: [shared/errors/errors.ts:156](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L156)
 
 ***
 
@@ -94,7 +106,7 @@ Defined in: [shared/errors/errors.ts:95](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **succeededChunks**: `number`
 
-Defined in: [shared/errors/errors.ts:93](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L93)
+Defined in: [shared/errors/errors.ts:154](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L154)
 
 ***
 
@@ -102,7 +114,7 @@ Defined in: [shared/errors/errors.ts:93](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **succeededCount**: `number`
 
-Defined in: [shared/errors/errors.ts:96](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L96)
+Defined in: [shared/errors/errors.ts:157](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L157)
 
 ***
 
@@ -110,4 +122,4 @@ Defined in: [shared/errors/errors.ts:96](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **totalChunks**: `number`
 
-Defined in: [shared/errors/errors.ts:94](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L94)
+Defined in: [shared/errors/errors.ts:155](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L155)

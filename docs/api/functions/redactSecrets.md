@@ -8,7 +8,7 @@
 
 > **redactSecrets**(`value`, `patterns?`, `valuePatterns?`): [`Redactable`](../type-aliases/Redactable.md)
 
-Defined in: [shared/logging/redaction.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L29)
+Defined in: [shared/logging/redaction.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L44)
 
 Recursively clone `value`, replacing any value at a secret-looking key with
 `[REDACTED]` and any recognised secret *shape* inside a string — including an
@@ -22,8 +22,21 @@ this way) or a secret in its text is rebuilt instead, with `name`/`message`/
 `stack` redacted and every other own property recursed like a plain object.
 `Date`/`RegExp` keep their identity rather than collapsing to `{}`,
 `Set`/`Map` render as their contents, and binary views become a short label.
-Does not mutate the input. Accepts any log argument — a typed `Error`, a
-class instance, a `Record` — so callers never cast.
+
+Accepts: `value` — any log argument, including `undefined`, a primitive, a
+typed `Error`, a class instance or a `Record`, so callers never cast. A
+cyclic or shared graph is fine; each node is walked once. `patterns` and
+`valuePatterns` — the key names and value shapes to redact; both default to
+this package's own lists, and an entry of `valuePatterns` that is not a
+`RegExp` is skipped.
+
+Returns: a redacted clone. The input is never mutated — a logger that
+scrubbed the caller's own object would corrupt the very data the application
+is working with.
+
+Throws: nothing. A node whose own redaction fails — a throwing getter, a
+structure deep enough to exhaust the stack — becomes `[UNREDACTABLE]`, since
+a logger that throws takes down the operation it was only observing.
 
 ## Parameters
 

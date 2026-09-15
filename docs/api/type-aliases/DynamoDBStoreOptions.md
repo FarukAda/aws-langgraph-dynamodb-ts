@@ -18,22 +18,31 @@ Options for [DynamoDBStore](../classes/DynamoDBStore.md).
 
 > `optional` **index?**: `IndexConfig`
 
-Optional semantic-search index configuration (embeddings + fields). The
-embedding is stored inline on the item (about 10 bytes per dimension) and
-is not counted toward `s3.thresholdBytes`; see that option's note on the
-400 KB item limit.
+Optional semantic-search index configuration (embeddings + fields).
+
+Without a `vectorBackend` the vectors live on the item itself, one per
+extracted path at roughly 10 bytes per dimension. They are not counted
+toward `s3.thresholdBytes` — offload decides on the payload alone — so a
+value near the threshold plus many vectors is the combination to watch
+against DynamoDB's 400 KB item limit; see that option's note.
 
 ### maxScanItems?
 
 > `optional` **maxScanItems?**: `number`
 
-Cap on items scanned into memory during a plain (non-semantic) search before ResultTruncatedError. Defaults to MAX_TOTAL_ITEMS_IN_MEMORY.
+Cap on rows read into memory by one search, namespace listing or
+reconcile before `ResultTruncatedError`. Reaching it is an error, not a
+truncation: a partial answer is never returned as a complete one.
+Defaults to `MAX_TOTAL_ITEMS_IN_MEMORY`.
 
 ### maxSearchCandidates?
 
 > `optional` **maxSearchCandidates?**: `number`
 
-Max candidates the in-DB ranker will score before erroring (default 1000).
+Max candidates a semantic search may hold in memory to rank, and the
+furthest a `vectorBackend` page may reach, before erroring (default
+1000). It bounds this process's memory, not the corpus — a corpus larger
+than this belongs behind a `vectorBackend`.
 
 ### serde?
 

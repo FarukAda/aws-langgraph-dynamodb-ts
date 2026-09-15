@@ -6,7 +6,7 @@
 
 # Interface: CreatedAdapters\<O\>
 
-Defined in: [factory/types.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L56)
+Defined in: [factory/types.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L65)
 
 The adapters `createAll` built, typed by the sections it was given: an
 omitted section is `undefined`. The default names the all-three result.
@@ -23,7 +23,7 @@ omitted section is `undefined`. The default names the all-three result.
 
 > **destroy**: () => `void`
 
-Defined in: [factory/types.ts:61](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L61)
+Defined in: [factory/types.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L70)
 
 Tear down every built adapter and the shared client, once.
 
@@ -37,7 +37,7 @@ Tear down every built adapter and the shared client, once.
 
 > **history**: `O` *extends* `object` ? [`DynamoDBChatMessageHistory`](../classes/DynamoDBChatMessageHistory.md) : `undefined`
 
-Defined in: [factory/types.ts:59](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L59)
+Defined in: [factory/types.ts:68](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L68)
 
 ***
 
@@ -45,7 +45,7 @@ Defined in: [factory/types.ts:59](https://github.com/FarukAda/aws-langgraph-dyna
 
 > **saver**: `O` *extends* `object` ? [`DynamoDBSaver`](../classes/DynamoDBSaver.md) : `undefined`
 
-Defined in: [factory/types.ts:57](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L57)
+Defined in: [factory/types.ts:66](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L66)
 
 ***
 
@@ -53,4 +53,4 @@ Defined in: [factory/types.ts:57](https://github.com/FarukAda/aws-langgraph-dyna
 
 > **store**: `O` *extends* `object` ? [`DynamoDBStore`](../classes/DynamoDBStore.md) : `undefined`
 
-Defined in: [factory/types.ts:58](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L58)
+Defined in: [factory/types.ts:67](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L67)

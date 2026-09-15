@@ -6,9 +6,11 @@
 
 # Interface: CreateAllOptions
 
-Defined in: [factory/types.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L46)
+Defined in: [factory/types.ts:55](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L55)
 
-Per-adapter options for `DynamoDBFactory.createAll`; omit a section to skip that adapter.
+Per-adapter options for `DynamoDBFactory.createAll`; omit a section to skip
+that adapter, and pass none to build none. A key that is not one of these
+three is refused: it would otherwise skip every adapter silently.
 
 ## Properties
 
@@ -16,7 +18,7 @@ Per-adapter options for `DynamoDBFactory.createAll`; omit a section to skip that
 
 > `optional` **history?**: [`AdapterSection`](../type-aliases/AdapterSection.md)\<[`DynamoDBChatMessageHistoryOptions`](../type-aliases/DynamoDBChatMessageHistoryOptions.md)\>
 
-Defined in: [factory/types.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L49)
+Defined in: [factory/types.ts:58](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L58)
 
 ***
 
@@ -24,7 +26,7 @@ Defined in: [factory/types.ts:49](https://github.com/FarukAda/aws-langgraph-dyna
 
 > `optional` **saver?**: [`AdapterSection`](../type-aliases/AdapterSection.md)\<[`DynamoDBSaverOptions`](../type-aliases/DynamoDBSaverOptions.md)\>
 
-Defined in: [factory/types.ts:47](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L47)
+Defined in: [factory/types.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L56)
 
 ***
 
@@ -32,4 +34,4 @@ Defined in: [factory/types.ts:47](https://github.com/FarukAda/aws-langgraph-dyna
 
 > `optional` **store?**: [`AdapterSection`](../type-aliases/AdapterSection.md)\<[`DynamoDBStoreOptions`](../type-aliases/DynamoDBStoreOptions.md)\>
 
-Defined in: [factory/types.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L48)
+Defined in: [factory/types.ts:57](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L57)

@@ -20,7 +20,17 @@ Input failed a validation rule before any AWS call was made; `context.field` nam
 
 > **new ValidationError**(`message`, `field?`, `cause?`): `ValidationError`
 
-Defined in: [shared/errors/errors.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L8)
+Defined in: [shared/errors/errors.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L19)
+
+Accepts: `field` — the option, argument or cap that failed, dotted for a
+nested one (`s3.bucketName`). Omitted only where no single input is at
+fault.
+
+Returns: the error, with `code: VALIDATION` and `context.field` set when a
+field was named — which is what a caller branches on to point at the
+offending input.
+
+Throws: nothing; building an error may not fail.
 
 #### Parameters
 
@@ -50,7 +60,7 @@ Defined in: [shared/errors/errors.ts:8](https://github.com/FarukAda/aws-langgrap
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
+Defined in: [shared/errors/base-error.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L33)
 
 #### Inherited from
 
@@ -62,7 +72,7 @@ Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
+Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L34)
 
 #### Inherited from
 

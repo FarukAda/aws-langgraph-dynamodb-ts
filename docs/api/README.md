@@ -28,6 +28,8 @@
 
 ## Interfaces
 
+- [BackfillOptions](interfaces/BackfillOptions.md)
+- [BackfillResult](interfaces/BackfillResult.md)
 - [BaseAdapterOptions](interfaces/BaseAdapterOptions.md)
 - [CancelOptions](interfaces/CancelOptions.md)
 - [CodecOptions](interfaces/CodecOptions.md)
@@ -49,6 +51,7 @@
 - [S3OffloadConfig](interfaces/S3OffloadConfig.md)
 - [SessionBackend](interfaces/SessionBackend.md)
 - [SessionMetadata](interfaces/SessionMetadata.md)
+- [SessionPage](interfaces/SessionPage.md)
 - [VectorBackend](interfaces/VectorBackend.md)
 - [VectorMatch](interfaces/VectorMatch.md)
 - [VectorReconcileResult](interfaces/VectorReconcileResult.md)
@@ -73,6 +76,7 @@
 
 ## Functions
 
+- [backfillRecencyIndex](functions/backfillRecencyIndex.md)
 - [isDynamoDBLangGraphError](functions/isDynamoDBLangGraphError.md)
 - [redactLogger](functions/redactLogger.md)
 - [redactSecrets](functions/redactSecrets.md)

@@ -6,7 +6,7 @@
 
 # Class: RetryExhaustedError
 
-Defined in: [shared/errors/errors.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L23)
+Defined in: [shared/errors/errors.ts:43](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L43)
 
 A retried operation exhausted its attempt budget.
 
@@ -20,7 +20,17 @@ A retried operation exhausted its attempt budget.
 
 > **new RetryExhaustedError**(`message`, `attempts?`, `cause?`): `RetryExhaustedError`
 
-Defined in: [shared/errors/errors.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L24)
+Defined in: [shared/errors/errors.ts:55](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L55)
+
+Accepts: `attempts` — how many were made before the budget ran out. `cause` —
+the last failure, kept so a caller can classify what actually went wrong.
+
+Returns: the error, with `code: RETRY_EXHAUSTED` and `context.attempts`. It
+says the attempts are spent, **not** that the operation did not happen: a
+write whose response was lost is reported this way too, which is why every
+caller that would delete something reads the row back first.
+
+Throws: nothing; building an error may not fail.
 
 #### Parameters
 
@@ -50,7 +60,7 @@ Defined in: [shared/errors/errors.ts:24](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
+Defined in: [shared/errors/base-error.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L33)
 
 #### Inherited from
 
@@ -62,7 +72,7 @@ Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
+Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L34)
 
 #### Inherited from
 

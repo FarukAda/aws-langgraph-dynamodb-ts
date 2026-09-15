@@ -33,6 +33,41 @@ Config used to build a client when `client` is not provided.
 
 ***
 
+### indexName?
+
+> `optional` **indexName?**: `string`
+
+Defined in: [shared/options.ts:55](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L55)
+
+Name of the recency index (a GSI on `gsi1pk`/`gsi1sk`) on this table.
+
+Opt-in on purpose: whether the table carries the index is deployment
+configuration the operator knows, and probing for it would spend a failed
+request per process to find out. Naming it switches the listings that would
+otherwise scan the whole table — `history.listSessions` today — onto a
+bounded, pageable query. Leaving it unset keeps the current behaviour, so
+upgrading changes nothing until the index exists.
+
+***
+
+### indexShards?
+
+> `optional` **indexShards?**: `number`
+
+Defined in: [shared/options.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L44)
+
+Index partitions per adapter in the recency index (GSI1), default 8.
+
+Rows carry the index attributes whether or not the table defines the
+index, so enabling it later needs no rewrite of new rows — only a backfill
+of the old ones. The value is fixed at table creation: changing it changes
+every row's shard, so an existing index must be backfilled again.
+
+A single index partition per adapter would concentrate every listing on
+one partition, which is worse than the table scan it replaces.
+
+***
+
 ### logger?
 
 > `optional` **logger?**: [`Logger`](Logger.md)
@@ -40,6 +75,23 @@ Config used to build a client when `client` is not provided.
 Defined in: [shared/options.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L30)
 
 Optional per-instance logger (defaults to a silent logger).
+
+***
+
+### readConcurrency?
+
+> `optional` **readConcurrency?**: `number`
+
+Defined in: [shared/options.ts:66](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L66)
+
+How many payloads a single call decodes at once, default 8.
+
+It is the multiplier on this package's memory ceiling, which is
+`readConcurrency × (s3.maxDownloadBytes + compression.maxDecompressedBytes)`
+— a downloaded object and its decompressed form are both resident while a
+payload is decoded, and that much can be in flight for each concurrent
+decode. Lower it on a small container; raising it trades memory for
+latency on reads that fetch many offloaded payloads.
 
 ***
 
