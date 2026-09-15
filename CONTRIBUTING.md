@@ -35,12 +35,13 @@ Write the failing test first, then the code. A change that touches behaviour nee
 | Tier | Command | Needs |
 | --- | --- | --- |
 | Unit, static, type, property | `npm test` | nothing |
+| Surface baseline | `npm run build && npm run test:surface` | a current `dist` |
 | Integration and contract | `npm run test:integration:up && npm run test:integration` | Docker (DynamoDB Local) |
 | Conformance (LangGraph contract, LangChain's validation suite) | `npm run test:conformance` | Docker |
 | Package smoke | `npm run test:package-smoke` | network (`npm pack` + install into a temp project) |
 | Real AWS | `AWS_REGION=eu-central-1 npm run test:aws` | AWS credentials |
 
-CI runs every tier except the real-AWS one on each push and pull request. The real-AWS tier is not scheduled: a maintainer runs it locally against their own credentials, `AWS_REGION=eu-central-1 npm run test:aws`, before a release.
+CI runs the unit, integration, conformance and package-smoke tiers on each push and pull request. Two tiers run outside it. The surface baseline is not yet wired into CI — run it locally after any change to what the public API accepts or rejects, and regenerate with `npm run test:surface:update` only after reading the diff it printed. The real-AWS tier is deliberately not scheduled: one of its suites calls Bedrock, so a maintainer runs it against their own credentials, `AWS_REGION=eu-central-1 npm run test:aws`, before a release.
 
 ### Real-AWS tests
 
