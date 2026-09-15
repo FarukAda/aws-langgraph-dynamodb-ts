@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The real-AWS test tier no longer runs on a schedule.** The nightly workflow is gone; `npm run test:aws` is a maintainer step before a release. One of its nine suites exercises Bedrock, and a scheduled job that retried or looped would bill the account unattended — the kind of cost nobody notices until the invoice arrives. Running it by hand keeps the spend attached to a person who chose it. What the tier covers is unchanged: 52 tests over real DynamoDB, S3 and Bedrock, each creating and deleting its own uniquely named resources.
+
 ### Fixed
 
 - **The published tarball no longer carries modules whose source was deleted.** `npm run build` compiled into whatever `dist/` already held, so output outlived the source it came from — `1.0.0-rc.1` shipped a `stored-channels` module with nothing behind it. The build now clears `dist/` first, and the pack check refuses any `dist/**/*.js` without a matching `src/**/*.ts`, so the same drift cannot reappear silently.
