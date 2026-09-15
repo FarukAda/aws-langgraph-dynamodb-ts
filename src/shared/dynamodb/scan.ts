@@ -21,8 +21,8 @@ export interface ScanOptions extends PaginateCoreOptions {
  * Throws: as {@link paginateQuery}.
  *
  * A `Scan` reads every row of the table before filtering, so the four reads
- * allowed to call this are fixed and guarded (`test/static/scan-sites.test.ts`,
- * DESIGN D-1).
+ * allowed to call this are fixed and guarded; `test/static/guards/scan-sites.ts`
+ * lists them and states the rule they follow.
  */
 export function paginateScan(options: ScanOptions): AsyncGenerator<DocItem> {
   return paginatePages(async (startKey) => {

@@ -56,7 +56,8 @@ function compareNamespaces(a: string[], b: string[]): number {
  * Accepts: `op.matchConditions` — every one must hold; absent or empty matches
  * every namespace. A concrete prefix root scopes the read to one partition's
  * Query, and anything else — a suffix condition, a leading `*`, no conditions —
- * spans the table and is the Scan this adapter reserves for it (DESIGN D-1).
+ * spans the table and is one of the four reads allowed to Scan
+ * (`test/static/guards/scan-sites.ts`).
  * `op.maxDepth` — at least 1; namespaces are truncated to it and then
  * deduplicated, so `['a','b']` and `['a','c']` list once as `['a']`.
  * `op.offset` and `op.limit` — required non-negative integers, as the operation

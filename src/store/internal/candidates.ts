@@ -110,7 +110,8 @@ function tooManyCandidates(count: number, cap: number): ValidationError {
  *
  * Accepts: `op.namespacePrefix` — a non-empty prefix is a Query on one
  * partition; an empty one spans every partition and is the Scan this adapter
- * reserves for exactly that (DESIGN D-1). `bound` — a page stops as soon as
+ * reserves for exactly that (`test/static/guards/scan-sites.ts`). `bound` — a
+ * page stops as soon as
  * `need` matching items are in hand; a semantic collection needs every
  * candidate and is refused past `cap`. `op.filter` — applied after decoding,
  * since the filter reads the value.

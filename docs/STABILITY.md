@@ -41,7 +41,7 @@ Every row this release writes carries `v`, its format version. A reader treats a
 | TypeScript (consumers) | 5.x and later | the package smoke type-checks the shipped declarations with both the 5.x floor and the newest release |
 | `@langchain/langgraph-checkpoint` | `^1.1.5` | the conformance tier against the floor and the latest release, including LangChain's checkpointer validation suite |
 | `@langchain/langgraph` | any 1.x release that depends on a supported `@langchain/langgraph-checkpoint` (not a peer of this package; the conformance tier runs the current 1.x) | the compiled-graph conformance tests |
-| `@langchain/core` | `^1.2.9` | the differential and history tests |
+| `@langchain/core` | `^1.2.11` | the differential and history tests |
 | AWS SDK for JavaScript v3 (`@aws-sdk/client-dynamodb`, `lib-dynamodb`, optional `client-s3`) | the ranges in `package.json` | every tier |
 
 Raising a floor (dropping a Node major after its end of life, requiring a newer LangChain minor) is a **minor** release and is announced in the CHANGELOG. A peer range is never narrowed in a patch.
@@ -55,3 +55,26 @@ Anything scheduled for removal is marked `@deprecated` in its JSDoc and listed i
 `saver.getDeltaChannelHistory()` tracks an upstream API that `@langchain/langgraph-checkpoint` marks beta: its signature and return shape follow that contract, so a change there can reach a minor of this package. The `ANCESTOR_EXPIRED` code it raises is covered by §3 like every other code.
 
 The wording of error messages and log lines, the order of rows returned by table scans, the exact request counts in the README's cost table, the layout of `docs/api`, timing characteristics, and the internal module structure.
+
+## 7. Differences from the reference implementations
+
+`MemorySaver` and `InMemoryStore` are the behaviour this package matches. Every
+observable difference is listed here; anything not in this table is a defect,
+not a choice, and the differential tests are what enforce that.
+
+| # | Difference | Kept because |
+| --- | --- | --- |
+| V-1 | Write identity is `(taskId, channel, occurrence)` | index positions are unstable across a retry; kept unobservable by read-side dedup |
+| V-2 | Namespace prefixes match element-wise | the reference compares the joined string, so `['users']` matches `['userspace']` |
+| V-3 | Namespace elements may not contain `#` | the separator is structural in the sort key |
+| V-4 | A namespace whose items are all deleted stops being listed | the reference retains an empty namespace with no row behind it |
+| V-5 | `search` / `listNamespaces` raise `RESULT_TRUNCATED` past `maxScanItems` | silently truncating a result set is worse than refusing it |
+| V-6 | Re-putting with `index: false` clears the stored vector | the reference keeps a stale vector for a changed value |
+| V-7 | `batch` returns `undefined` for a put, the reference returns `null` | cosmetic; recorded so it is not mistaken for a bug |
+| V-8 | A value JSON refuses (circular, `BigInt`) yields no index text instead of throwing from inside text extraction | the put is refused a moment later by the codec, with a `ValidationError` naming `value` rather than a raw `TypeError` from the embedding step |
+| V-9 | Namespaces the collation calls equal are ordered by code unit | the reference leaves that pair to insertion order, which here is DynamoDB's read order, so a page boundary could fall between them differently on two calls |
+| V-10 | `put` stores every channel value, never only the ones `newVersions` names | narrowing stored *nothing* when LangGraph forks a checkpoint or writes an empty update, both of which pass an empty `newVersions`. `MemorySaver.put` takes no `newVersions` either, and LangChain's validation suite exempts its own `MemorySaver`, MongoDB and SQLite savers from the delta test on the same grounds; the exemption is keyed on a module-name list, so `test/conformance/validation.conformance.test.ts` applies it by name |
+
+Adding a difference to this table is a **minor** release at most, and only when
+the reference itself is the defect; changing one a caller may already rely on is
+a **major**.

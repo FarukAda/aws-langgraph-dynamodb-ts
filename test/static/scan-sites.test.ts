@@ -17,7 +17,7 @@ describe('findScanCalls', () => {
  * A `Scan` reads the whole table and then filters, which AWS names as the thing
  * to avoid for a production access pattern. This package may still scan, but
  * only where no key condition could have served the read — the four reads named
- * in `ALLOWED_SCAN_SITES` (DESIGN D-1).
+ * in `ALLOWED_SCAN_SITES`, whose doc states the rule.
  *
  * The list is the point: a read that starts scanning outside it has an access
  * pattern a key *could* have served, and that is the defect this guard exists
