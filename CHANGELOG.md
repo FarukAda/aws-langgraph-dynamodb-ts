@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Mutation testing is retired.** The weekly workflow and its configuration are gone. The gate never produced a number: every scheduled run since 2026-06-01 failed, because the runner was fetched into an `npx` sandbox that resolves a real `typescript` package while this repository aliases that name to `@typescript/typescript6`. A `break` threshold of 70 was therefore never once evaluated. Keeping a gate that has never reported is indistinguishable from having no gate, and worse, because it reads like coverage that exists. The quality floor is unchanged and is enforced on every run: 100 % branches, functions, lines and statements, the static guards under `test/static`, and the surface baseline.
+
 ### Changed
 
 - **The real-AWS test tier no longer runs on a schedule.** The nightly workflow is gone; `npm run test:aws` is a maintainer step before a release. One of its nine suites exercises Bedrock, and a scheduled job that retried or looped would bill the account unattended — the kind of cost nobody notices until the invoice arrives. Running it by hand keeps the spend attached to a person who chose it. What the tier covers is unchanged: 52 tests over real DynamoDB, S3 and Bedrock, each creating and deleting its own uniquely named resources.

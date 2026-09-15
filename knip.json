@@ -10,6 +10,5 @@
     "test/package-smoke/*.test.mjs"
   ],
   "project": ["src/**/*.ts", "test/**/*.ts"],
-  "ignore": ["stryker.conf.json"],
   "ignoreDependencies": ["ts-node"]
 }
