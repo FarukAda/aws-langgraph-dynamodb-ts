@@ -7,6 +7,15 @@ import { setUpStore } from '../../../../src/store/internal/setup';
 import { fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 describe('setUpStore', () => {
+  it('rejects an option key this package does not read', () => {
+    expect(() => setUpStore({ tableName: 'tbl', readConcurency: 4 } as never)).toThrow(
+      expect.objectContaining({
+        code: 'VALIDATION',
+        context: { field: 'options.readConcurency' },
+      }),
+    );
+  });
+
   it('rejects an invalid tableName and non-positive caps at construction (CORE-05)', () => {
     const client = { send: jest.fn() } as never;
     expect(() => setUpStore({ tableName: 'bad name', client })).toThrow(/tableName/);

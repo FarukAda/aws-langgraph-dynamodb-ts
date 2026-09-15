@@ -11,6 +11,8 @@ import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
+import { SAVER_KEYS } from '../../shared/validation/adapter-keys';
+import { assertShape } from '../../shared/validation/option-shape';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBSaverOptions } from '../types';
@@ -63,6 +65,7 @@ export function setUpCheckpointer(
   options: DynamoDBSaverOptions,
   serde: SerializerProtocol,
 ): CheckpointerSetup {
+  assertShape(options, SAVER_KEYS, 'options');
   validateBaseAdapterOptions(options);
   const logger = resolveLogger(options.logger);
   const resolved = resolveDynamoDBClient(options);

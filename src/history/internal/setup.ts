@@ -14,6 +14,8 @@ import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { ValidationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
+import { HISTORY_KEYS } from '../../shared/validation/adapter-keys';
+import { assertShape } from '../../shared/validation/option-shape';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { CorruptMessagePolicy, DynamoDBChatMessageHistoryOptions } from '../types';
@@ -69,6 +71,7 @@ export interface HistorySetup {
  * Guarantees: constructing an adapter performs no I/O.
  */
 export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): HistorySetup {
+  assertShape(options, HISTORY_KEYS, 'options');
   validateBaseAdapterOptions(options);
   if (
     options.onCorruptMessage !== undefined &&

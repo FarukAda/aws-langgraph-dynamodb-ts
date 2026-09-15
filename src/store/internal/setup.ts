@@ -16,6 +16,8 @@ import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
+import { STORE_KEYS } from '../../shared/validation/adapter-keys';
+import { assertShape } from '../../shared/validation/option-shape';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions } from '../types';
 import type { VectorBackend } from '../vector-backend';
@@ -74,6 +76,7 @@ export interface StoreSetup {
  * a precondition.
  */
 export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
+  assertShape(options, STORE_KEYS, 'options');
   validateStoreOptions(options);
   const logger = resolveLogger(options.logger);
   const resolved = resolveDynamoDBClient(options);

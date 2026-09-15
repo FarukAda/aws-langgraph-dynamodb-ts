@@ -7,6 +7,17 @@ const serde = {
 };
 
 describe('setUpCheckpointer', () => {
+  it('rejects an option key this package does not read', () => {
+    expect(() =>
+      setUpCheckpointer({ tableName: 'tbl', readConcurency: 4 } as never, serde),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'VALIDATION',
+        context: { field: 'options.readConcurency' },
+      }),
+    );
+  });
+
   it('rejects an invalid tableName and an ambiguous client configuration at construction (CORE-05)', () => {
     expect(() =>
       setUpCheckpointer({ tableName: 'bad name', client: { send: jest.fn() } as never }, serde),

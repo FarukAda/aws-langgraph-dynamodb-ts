@@ -3,6 +3,15 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 describe('setUpHistory', () => {
+  it('rejects an option key this package does not read', () => {
+    expect(() => setUpHistory({ tableName: 'tbl', readConcurency: 4 } as never)).toThrow(
+      expect.objectContaining({
+        code: 'VALIDATION',
+        context: { field: 'options.readConcurency' },
+      }),
+    );
+  });
+
   it('rejects an invalid tableName and an unknown corrupt-message policy at construction (CORE-05)', () => {
     const client = { send: jest.fn() } as never;
     expect(() => setUpHistory({ tableName: 'bad name', client })).toThrow(/tableName/);

@@ -13,7 +13,7 @@ DynamoDBChatMessageHistory | compression={"enabled":true,"level":10} | sync thro
 DynamoDBChatMessageHistory | compression={"enabled":true,"maxDecompressedBytes":0} | sync throws ValidationError/VALIDATION field=compression.maxDecompressedBytes
 DynamoDBChatMessageHistory | compression={"enabled":true,"minSizeBytes":-1} | sync throws ValidationError/VALIDATION field=compression.minSizeBytes
 DynamoDBChatMessageHistory | compression={} | sync throws ValidationError/VALIDATION field=compression.enabled
-DynamoDBChatMessageHistory | foo=1 | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | foo=1 | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBChatMessageHistory | indexName="" | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBChatMessageHistory | indexName="idx name" | OK DynamoDBChatMessageHistory
 DynamoDBChatMessageHistory | indexName="idx#1" | OK DynamoDBChatMessageHistory
@@ -40,7 +40,7 @@ DynamoDBChatMessageHistory | onCorruptMessage=null | sync throws ValidationError
 DynamoDBChatMessageHistory | onCorruptMessage={} | sync throws ValidationError/VALIDATION field=onCorruptMessage
 DynamoDBChatMessageHistory | options="str" | sync throws ValidationError/VALIDATION field=options
 DynamoDBChatMessageHistory | options=42 | sync throws ValidationError/VALIDATION field=options
-DynamoDBChatMessageHistory | options=[] | sync throws ValidationError/VALIDATION field=tableName
+DynamoDBChatMessageHistory | options=[] | sync throws ValidationError/VALIDATION field=options
 DynamoDBChatMessageHistory | options=null | sync throws ValidationError/VALIDATION field=options
 DynamoDBChatMessageHistory | options=undefined | sync throws ValidationError/VALIDATION field=options
 DynamoDBChatMessageHistory | options={} | sync throws ValidationError/VALIDATION field=tableName
@@ -104,7 +104,7 @@ DynamoDBChatMessageHistory | ttl={"days":1000000000000} | sync throws Validation
 DynamoDBChatMessageHistory | ttl={"days":null} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBChatMessageHistory | ttl={"seconds":0.5} | sync throws ValidationError/VALIDATION field=ttl.seconds
 DynamoDBChatMessageHistory | ttl={} | sync throws ValidationError/VALIDATION field=ttl
-DynamoDBChatMessageHistory | vectorBackend without index (store only) | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | vectorBackend without index (store only) | sync throws ValidationError/VALIDATION field=options.vectorBackend
 DynamoDBChatMessageHistory.addMessage | message="x" | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessage | message=5 | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessage | message=null | throws ValidationError/VALIDATION field=messages
@@ -267,20 +267,20 @@ DynamoDBFactory.createAll | options=[] | sync throws ValidationError/VALIDATION 
 DynamoDBFactory.createAll | options=null | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory.createAll | options=undefined | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory.createAll | options={"foo":{}} | sync throws ValidationError/VALIDATION field=options.foo
-DynamoDBFactory.createAll | options={"saver":"x"} | sync throws ValidationError/VALIDATION field=tableName
+DynamoDBFactory.createAll | options={"saver":"x"} | sync throws ValidationError/VALIDATION field=options.0
 DynamoDBFactory.createAll | options={"saver":null} | OK Object
 DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","client":{}}} | OK Object
 DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","clientConfig":{"region":"x"}}} | sync throws ValidationError/VALIDATION field=client
-DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","foo":1}} | OK Object
+DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","foo":1}} | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table"},"store":{"tableName":"bad#"}} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBFactory.createAll | options={"saver":{}} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBFactory.createAll | options={} | OK Object
-DynamoDBFactory.createChatMessageHistory | options='x' | sync throws ValidationError/VALIDATION field=tableName
-DynamoDBFactory.createSaver | options="x" | sync throws ValidationError/VALIDATION field=tableName
+DynamoDBFactory.createChatMessageHistory | options='x' | sync throws ValidationError/VALIDATION field=options.0
+DynamoDBFactory.createSaver | options="x" | sync throws ValidationError/VALIDATION field=options.0
 DynamoDBFactory.createSaver | options=null | sync BARE TypeError
 DynamoDBFactory.createSaver | options=undefined | sync BARE TypeError
 DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","client":{}} | OK DynamoDBSaver
-DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","foo":1} | OK DynamoDBSaver
+DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","foo":1} | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBFactory.createSaver | options={} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBFactory.createStore | options={}  | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBSaver | client + clientConfig both | sync throws ValidationError/VALIDATION field=client
@@ -298,7 +298,7 @@ DynamoDBSaver | compression={"enabled":true,"level":10} | sync throws Validation
 DynamoDBSaver | compression={"enabled":true,"maxDecompressedBytes":0} | sync throws ValidationError/VALIDATION field=compression.maxDecompressedBytes
 DynamoDBSaver | compression={"enabled":true,"minSizeBytes":-1} | sync throws ValidationError/VALIDATION field=compression.minSizeBytes
 DynamoDBSaver | compression={} | sync throws ValidationError/VALIDATION field=compression.enabled
-DynamoDBSaver | foo=1 | OK DynamoDBSaver
+DynamoDBSaver | foo=1 | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBSaver | indexName="" | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBSaver | indexName="idx name" | OK DynamoDBSaver
 DynamoDBSaver | indexName="idx#1" | OK DynamoDBSaver
@@ -319,7 +319,7 @@ DynamoDBSaver | logger={"info":1,"warn":1,"error":1,"debug":1} | OK DynamoDBSave
 DynamoDBSaver | logger={} | OK DynamoDBSaver
 DynamoDBSaver | options="str" | sync throws ValidationError/VALIDATION field=options
 DynamoDBSaver | options=42 | sync throws ValidationError/VALIDATION field=options
-DynamoDBSaver | options=[] | sync throws ValidationError/VALIDATION field=tableName
+DynamoDBSaver | options=[] | sync throws ValidationError/VALIDATION field=options
 DynamoDBSaver | options=null | sync BARE TypeError
 DynamoDBSaver | options=undefined | sync BARE TypeError
 DynamoDBSaver | options={} | sync throws ValidationError/VALIDATION field=tableName
@@ -383,7 +383,7 @@ DynamoDBSaver | ttl={"days":1000000000000} | sync throws ValidationError/VALIDAT
 DynamoDBSaver | ttl={"days":null} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBSaver | ttl={"seconds":0.5} | sync throws ValidationError/VALIDATION field=ttl.seconds
 DynamoDBSaver | ttl={} | sync throws ValidationError/VALIDATION field=ttl
-DynamoDBSaver | vectorBackend without index (store only) | OK DynamoDBSaver
+DynamoDBSaver | vectorBackend without index (store only) | sync throws ValidationError/VALIDATION field=options.vectorBackend
 DynamoDBSaver.deleteThread | options="x" | RESOLVED undefined
 DynamoDBSaver.deleteThread | options=null | throws UpstreamError/UPSTREAM
 DynamoDBSaver.deleteThread | options={"foo":1} | RESOLVED undefined
@@ -544,7 +544,7 @@ DynamoDBStore | compression={"enabled":true,"level":10} | sync throws Validation
 DynamoDBStore | compression={"enabled":true,"maxDecompressedBytes":0} | sync throws ValidationError/VALIDATION field=compression.maxDecompressedBytes
 DynamoDBStore | compression={"enabled":true,"minSizeBytes":-1} | sync throws ValidationError/VALIDATION field=compression.minSizeBytes
 DynamoDBStore | compression={} | sync throws ValidationError/VALIDATION field=compression.enabled
-DynamoDBStore | foo=1 | OK DynamoDBStore
+DynamoDBStore | foo=1 | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBStore | index="x" | sync throws ValidationError/VALIDATION field=index
 DynamoDBStore | index=null | OK DynamoDBStore
 DynamoDBStore | index={"dims":"3"} | sync throws ValidationError/VALIDATION field=index
@@ -589,7 +589,7 @@ DynamoDBStore | maxSearchCandidates=1000000000000 | OK DynamoDBStore
 DynamoDBStore | maxSearchCandidates=NaN | sync throws ValidationError/VALIDATION field=maxSearchCandidates
 DynamoDBStore | options="str" | sync throws ValidationError/VALIDATION field=options
 DynamoDBStore | options=42 | sync throws ValidationError/VALIDATION field=options
-DynamoDBStore | options=[] | sync throws ValidationError/VALIDATION field=tableName
+DynamoDBStore | options=[] | sync throws ValidationError/VALIDATION field=options
 DynamoDBStore | options=null | sync throws ValidationError/VALIDATION field=options
 DynamoDBStore | options=undefined | sync throws ValidationError/VALIDATION field=options
 DynamoDBStore | options={} | sync throws ValidationError/VALIDATION field=tableName

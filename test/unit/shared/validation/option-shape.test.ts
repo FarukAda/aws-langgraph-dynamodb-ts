@@ -1,5 +1,9 @@
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { allKeysOf, assertShape } from '../../../../src/shared/validation/option-shape';
+import {
+  allKeysOf,
+  assertShape,
+  checkedShape,
+} from '../../../../src/shared/validation/option-shape';
 import { validateClientChoice } from '../../../../src/shared/validation/options';
 
 interface Sample {
@@ -41,6 +45,19 @@ describe('assertShape', () => {
         /sample must be an object/,
       );
     }
+  });
+});
+
+describe('checkedShape', () => {
+  it('returns the value unchanged when every key is known', () => {
+    const value = { alpha: 1 };
+    expect(checkedShape(value, SAMPLE_KEYS, 'sample')).toBe(value);
+  });
+
+  it('throws for an unknown key, same as assertShape', () => {
+    expect(() => checkedShape({ alpah: 1 }, SAMPLE_KEYS, 'sample')).toThrow(
+      expect.objectContaining({ context: { field: 'sample.alpah' } }),
+    );
   });
 });
 
