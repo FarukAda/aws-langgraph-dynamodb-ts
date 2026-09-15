@@ -2,13 +2,15 @@
 
 [![npm version](https://img.shields.io/npm/v/%40farukada%2Faws-langgraph-dynamodb-ts)](https://www.npmjs.com/package/@farukada/aws-langgraph-dynamodb-ts)
 [![CI](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/actions/workflows/ci.yml/badge.svg)](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/actions/workflows/ci.yml)
-[![Sponsor](https://img.shields.io/badge/Sponsor-FarukAda-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/FarukAda)
+[![CodeQL](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/actions/workflows/codeql.yml/badge.svg)](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/FarukAda/aws-langgraph-dynamodb-ts/badge)](https://scorecard.dev/viewer/?uri=github.com/FarukAda/aws-langgraph-dynamodb-ts)
 ![Node >=22](https://img.shields.io/badge/node-%3E%3D22-339933)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![AWS SDK v3](https://img.shields.io/badge/AWS%20SDK-v3-FF9900)
 [![npm provenance](https://img.shields.io/badge/npm-provenance-2ea44f?logo=npm)](https://www.npmjs.com/package/@farukada/aws-langgraph-dynamodb-ts#provenance)
 ![coverage 100%](https://img.shields.io/badge/coverage-100%25-brightgreen)
+[![Sponsor](https://img.shields.io/badge/Sponsor-FarukAda-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/FarukAda)
 
 A DynamoDB persistence layer for [LangGraph](https://langchain-ai.github.io/langgraphjs/) in TypeScript (CommonJS build, consumable from both ESM and CommonJS; Node ≥ 22). It provides three LangGraph/LangChain adapters plus a factory:
 
