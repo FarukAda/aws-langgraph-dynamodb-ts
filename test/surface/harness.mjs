@@ -26,7 +26,9 @@ function describe(v) {
   if (typeof v === 'bigint') return `${v}n`;
   if (typeof v === 'symbol') return 'Symbol()';
   if (typeof v === 'function') return 'fn';
-  if (v instanceof Date) return `Date(${v.toString().slice(0, 15)})`;
+  if (v instanceof Date) {
+    return Number.isNaN(v.getTime()) ? 'Date(Invalid)' : `Date(${v.toISOString().slice(0, 10)})`;
+  }
   if (Array.isArray(v)) return `[${v.map(describe).join(',')}]`.slice(0, 60);
   if (v && typeof v === 'object') { try { return JSON.stringify(v, (k, x) => typeof x === 'function' ? 'fn' : x === undefined ? '<undef>' : typeof x === 'bigint' ? `${x}n` : x).slice(0, 70); } catch { return '<obj>'; } }
   return String(v);
