@@ -11,6 +11,12 @@ on:
     - cron: '0 5 * * 1'
   workflow_dispatch: {}
 
+# Least privilege for every job: nothing here writes to the repository, creates
+# a release or requests an OIDC token, so the default token scope is wider than
+# any job needs. Jobs that need more must ask for it explicitly.
+permissions:
+  contents: read
+
 concurrency:
   group: mutation-${{ github.ref }}
   cancel-in-progress: true
@@ -22,10 +28,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '22'
           cache: npm

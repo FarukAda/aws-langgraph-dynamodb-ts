@@ -11,6 +11,12 @@ on:
     tags:
       - 'v*'
 
+# Restrictive default so any job added later starts read-only; the publish job
+# elevates explicitly to what it needs (contents + id-token for the release and
+# for npm provenance).
+permissions:
+  contents: read
+
 jobs:
   release:
     name: publish ${{ github.ref_name }}
