@@ -69,9 +69,6 @@
     "@langchain/core": "^1.2.11",
     "@langchain/langgraph-checkpoint": "^1.1.5"
   },
-  "overrides": {
-    "uuid": ">=11.1.1"
-  },
   "peerDependenciesMeta": {
     "@aws-sdk/client-s3": {
       "optional": true
