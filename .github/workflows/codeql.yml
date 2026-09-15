@@ -1,9 +1,15 @@
-# Static analysis of the package's own source.
+# Static analysis of the package's own source and of its workflows.
 #
 # The repository had no SAST: `npm audit` covers known advisories in
 # dependencies, and the static guards under test/static enforce house rules,
 # but nothing looked for injection, unsafe deserialization or tainted-path
 # patterns in the code this package ships.
+#
+# Two languages, because they catch different things and only one of them is
+# TypeScript. `actions` analyses the workflow files themselves — excessive
+# GITHUB_TOKEN scope, untrusted input reaching a `run:` block, an action
+# pinned to a movable tag. Dropping it would leave CI unexamined by the very
+# workflow whose job is to examine the repository.
 #
 # Actions are pinned by commit SHA rather than by tag, as release.yml already
 # is: a tag can be moved, and a security workflow is the last place to trust a
@@ -29,9 +35,15 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze
+    name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      # One language's failure must not cancel the other's analysis; a partial
+      # upload is still a result.
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
     permissions:
       # Needed to upload the SARIF results to the Security tab.
       security-events: write
@@ -44,17 +56,18 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
-          languages: javascript-typescript
+          languages: ${{ matrix.language }}
           # security-extended adds the lower-severity queries; this package
           # handles caller-supplied identifiers that become storage keys, so the
           # extra taint-tracking is worth the runtime.
           queries: security-extended
 
-      # No build step: CodeQL analyses TypeScript sources directly for the
-      # javascript-typescript language, so `npm ci && npm run build` would cost
-      # minutes and tell it nothing it does not already see.
+      # No build step for either language: CodeQL analyses TypeScript sources
+      # directly, and workflow files are already the artifact, so
+      # `npm ci && npm run build` would cost minutes and tell it nothing it does
+      # not already see.
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
-          category: /language:javascript-typescript
+          category: /language:${{ matrix.language }}
