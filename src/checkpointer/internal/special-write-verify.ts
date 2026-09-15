@@ -1,6 +1,7 @@
 import type { PayloadDescriptor } from '../../shared/codec/codec';
 import { isConditionalCheckFailed, rejectedItem } from '../../shared/dynamodb/conditional-put';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import type { DocItem } from '../../shared/dynamodb/types';
+import { readRow, type RowProbe, verdictFor, verifyRow } from '../../shared/dynamodb/write-verify';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
 
@@ -31,61 +32,64 @@ export interface VerifiedFailure {
   observed?: SpecialRowState;
 }
 
-/** Read a special row's current descriptor and the writeGroup guarding it. */
-export async function readSpecialRow(
-  context: CheckpointerContext,
-  item: CheckpointWriteItem,
-): Promise<SpecialRowState> {
-  const result = await withDynamoDBRetry(
-    () =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: item.PK, SK: item.SK },
-        ConsistentRead: true,
-        ProjectionExpression: '#v, #g',
-        ExpressionAttributeNames: { '#v': 'value', '#g': SPECIAL_REVISION_ATTRIBUTE },
-      }),
-    context.retry,
-  );
-  if (!result.Item) return { exists: false };
+/**
+ * The probe that recognises `item`'s own write on its row.
+ *
+ * Accepts: `item` — the row this call tried to write, carrying its own
+ * `writeGroup`.
+ *
+ * Returns: the probe, which projects the guard attribute and the descriptor —
+ * the descriptor because a caller that has to re-pin a compare-and-swap needs
+ * the value it lost to, not just the fact that it lost.
+ *
+ * Throws: nothing.
+ */
+export function specialRowProbe(item: CheckpointWriteItem): RowProbe {
+  return {
+    key: { PK: item.PK, SK: item.SK },
+    kind: 'attribute',
+    attribute: SPECIAL_REVISION_ATTRIBUTE,
+    expected: item.writeGroup,
+    also: ['value'],
+  };
+}
+
+/** A read row, in the shape the compare-and-swap pins its next attempt to. */
+function stateOf(row: DocItem | undefined): SpecialRowState {
+  if (!row) return { exists: false };
   return {
     exists: true,
-    value: result.Item.value as PayloadDescriptor | undefined,
-    revision: result.Item[SPECIAL_REVISION_ATTRIBUTE] as string | undefined,
+    value: row.value as PayloadDescriptor | undefined,
+    revision: row[SPECIAL_REVISION_ATTRIBUTE] as string | undefined,
   };
 }
 
 /**
- * The row as it stood when the put failed: a guard rejection carries it (see
- * `rejectedItem`), so the strongly-consistent read is spent only for a failure
- * that does not — a lost response, or a rejection whose row vanished since.
+ * Read a special row's current descriptor and the writeGroup guarding it.
+ *
+ * Accepts: `item` — the row to read, by its key.
+ *
+ * Returns: the row's state, with `exists: false` when there is none — which is
+ * what a first writer pins its compare-and-swap to.
+ *
+ * Throws: whatever the read throws. Deliberately not swallowed: the caller
+ * reports that failure with its own cause rather than guessing at the row's
+ * state, which is why this is separate from {@link verifyAfterFailure}.
  */
-async function observeRow(
+export async function readSpecialRow(
   context: CheckpointerContext,
   item: CheckpointWriteItem,
-  error: Error,
 ): Promise<SpecialRowState> {
-  const rejected = isConditionalCheckFailed(error) ? rejectedItem(error) : undefined;
-  if (!rejected) return readSpecialRow(context, item);
-  return {
-    exists: true,
-    value: rejected.value as PayloadDescriptor | undefined,
-    revision: rejected[SPECIAL_REVISION_ATTRIBUTE] as string | undefined,
-  };
+  return stateOf(await readRow(context, specialRowProbe(item)));
 }
 
 /**
  * Read the row back after a put failed, and report what that failure actually
  * did — never assuming it did nothing.
  *
- * No rejection is proof of a non-commit. `withDynamoDBRetry` re-issues a put
- * whose response was lost, and those re-issues can time out at the transport
- * without ever reaching DynamoDB, so the budget is spent on a
- * `RetryExhaustedError` and never on a `ConditionalCheckFailedException` — yet
- * the row is committed. Reporting that as a confirmed non-commit let
- * `writeSpecialItemsWithCleanup` delete the S3 object the live row points at,
- * so every later `getTuple()` on that checkpoint failed with `NoSuchKey`,
- * permanently.
+ * A guard rejection already carries the row that turned it away (see
+ * `rejectedItem`), so the strongly-consistent read is spent only for a failure
+ * that does not: a lost response, or a rejection whose row vanished since.
  *
  * Three answers are possible:
  * - the row holds this item's own `writeGroup`: the write landed, and the
@@ -97,6 +101,18 @@ async function observeRow(
  *   commit and keeps the originating error. That leaks one S3 object at worst
  *   (reclaimed by `ensureS3LifecycleRule`) where the alternative strands a live
  *   row — the same trade `store/internal/persist.ts` makes.
+ *
+ * Accepts: `attempted` — the state this attempt pinned, whose descriptor is the
+ * one superseded if the write did land. `error` — the failure being explained.
+ *
+ * Returns: the outcome, and the row's observed state when another writer holds
+ * it, so a rejected compare-and-swap can re-pin and try again.
+ *
+ * Throws: nothing. It exists to turn a failure into a decision.
+ *
+ * Guarantees: a guard rejection already carries the row that turned it away, so
+ * the strongly-consistent read is spent only for a failure that does not — a
+ * lost response, or a rejection whose row vanished since.
  */
 export async function verifyAfterFailure(
   context: CheckpointerContext,
@@ -104,13 +120,12 @@ export async function verifyAfterFailure(
   attempted: SpecialRowState,
   error: Error,
 ): Promise<VerifiedFailure> {
-  try {
-    const observed = await observeRow(context, item, error);
-    if (observed.revision === item.writeGroup) {
-      return { outcome: { committed: true, superseded: attempted.value } };
-    }
-    return { outcome: { committed: false, error }, observed };
-  } catch {
-    return { outcome: { committed: true, error } };
-  }
+  const probe = specialRowProbe(item);
+  const rejected = isConditionalCheckFailed(error) ? rejectedItem(error) : undefined;
+  const { verdict, row } = rejected
+    ? { verdict: verdictFor(probe, rejected), row: rejected }
+    : await verifyRow(context, probe);
+  if (verdict === 'landed') return { outcome: { committed: true, superseded: attempted.value } };
+  if (verdict === 'unverified') return { outcome: { committed: true, error } };
+  return { outcome: { committed: false, error }, observed: stateOf(row) };
 }

@@ -8,6 +8,7 @@ import type {
 import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
 import { buildCheckpointItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
@@ -35,6 +36,19 @@ async function collect(gen: AsyncGenerator<CheckpointTuple>): Promise<Checkpoint
   return out;
 }
 
+/**
+ * DynamoDB refuses a fractional `Limit` with a raw `ValidationException` after
+ * the round trip, naming neither the option nor the caller who set it.
+ */
+describe('list() page size', () => {
+  it.each([1.5, Number.NaN, '5' as never])('refuses a non-integer limit %p', async (limit) => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      collect(listCheckpoints(context(client), { configurable: { thread_id: 't' } }, { limit })),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'limit' } });
+  });
+});
+
 describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
   const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
   type Built = Awaited<ReturnType<typeof buildCheckpointItems>>;
@@ -56,8 +70,8 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
   it('covers every namespace of the thread when checkpoint_ns is not given', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const root = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta, 'n1');
-    const child = await buildCheckpointItems(ctx, 't', 'child:abc', checkpoint('c2'), meta, 'n2');
+    const root = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    const child = await buildCheckpointItems(ctx, 't', 'child:abc', checkpoint('c2'), meta);
     serve(mock, [root, child]);
     const tuples = await collect(listCheckpoints(ctx, { configurable: { thread_id: 't' } }));
     expect(tuples.map((t) => t.config.configurable?.checkpoint_ns).sort()).toEqual([
@@ -69,13 +83,15 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
     ).toBe('META#');
   });
 
-  it('addresses one checkpoint with a GetItem when checkpoint_id is set, never scanning the namespace', async () => {
+  it('addresses one checkpoint with a GetItem when checkpoint_id and checkpoint_ns are both set', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta, 'n1');
+    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
     serve(mock, [one]);
     const tuples = await collect(
-      listCheckpoints(ctx, { configurable: { thread_id: 't', checkpoint_id: 'c1' } }),
+      listCheckpoints(ctx, {
+        configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: 'c1' },
+      }),
     );
     expect(tuples.map((t) => t.checkpoint.id)).toEqual(['c1']);
     const metaQueries = mock
@@ -115,7 +131,7 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
     const { client, mock } = createStrictDocumentMock();
     const loads = jest.fn(serde.loadsTyped);
     const ctx = { ...context(client), serde: { ...serde, loadsTyped: loads } };
-    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta, 'n1');
+    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
     serve(mock, [one]);
     const tuples = await collect(
       listCheckpoints(ctx, { configurable: { thread_id: 't' } }, { filter: { step: 1 } }),
@@ -128,8 +144,8 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
   it('stops after the yield that reaches limit without fetching the next page', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const first = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), meta, 'n2');
-    const second = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta, 'n1');
+    const first = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), meta);
+    const second = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
     let metaPages = 0;
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
@@ -150,7 +166,7 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
   it('reads payloads and writes eventually consistently on the list path', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta, 'n1');
+    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
     serve(mock, [one]);
     await collect(listCheckpoints(ctx, { configurable: { thread_id: 't' } }));
     const payloadGet = mock
@@ -166,6 +182,50 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
   });
 });
 
+describe('list() addressed by checkpoint_id without a namespace', () => {
+  const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
+
+  /**
+   * A config naming a `checkpoint_id` but no `checkpoint_ns` covers every
+   * namespace, as the reference savers do. Point-reading the root namespace
+   * instead returned nothing for any checkpoint written inside a subgraph.
+   */
+  it('finds a checkpoint that lives in a non-root namespace', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const sub = await buildCheckpointItems(ctx, 't', 'child:abc', checkpoint('c9'), meta);
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [sub.meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).callsFake((input) => ({
+      Item: (input.Key.SK as string).startsWith('PAYLOAD') ? sub.payload : sub.meta,
+    }));
+    const tuples = await collect(
+      listCheckpoints(ctx, { configurable: { thread_id: 't', checkpoint_id: 'c9' } }),
+    );
+    expect(tuples.map((t) => t.checkpoint.id)).toEqual(['c9']);
+  });
+
+  it('narrows a namespace-wide read to the requested checkpoint', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const wanted = await buildCheckpointItems(ctx, 't', 'a', checkpoint('c1'), meta);
+    const other = await buildCheckpointItems(ctx, 't', 'b', checkpoint('c2'), meta);
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [wanted.meta, other.meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).callsFake((input) => ({
+      Item: [wanted, other].find((b) => b.payload.SK === input.Key.SK)?.payload,
+    }));
+    const tuples = await collect(
+      listCheckpoints(ctx, { configurable: { thread_id: 't', checkpoint_id: 'c1' } }),
+    );
+    expect(tuples.map((t) => t.checkpoint.id)).toEqual(['c1']);
+  });
+});
+
 describe('list() addressed by checkpoint_id: edge cases', () => {
   const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
 
@@ -174,7 +234,7 @@ describe('list() addressed by checkpoint_id: edge cases', () => {
     mock.on(GetCommand).resolves({});
     const tuples = await collect(
       listCheckpoints(context(client), {
-        configurable: { thread_id: 't', checkpoint_id: 'missing' },
+        configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: 'missing' },
       }),
     );
     expect(tuples).toEqual([]);
@@ -183,12 +243,12 @@ describe('list() addressed by checkpoint_id: edge cases', () => {
   it('yields nothing when `before` excludes the addressed checkpoint', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c5'), meta, 'n1');
+    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c5'), meta);
     mock.on(GetCommand).resolves({ Item: one.meta });
     const tuples = await collect(
       listCheckpoints(
         ctx,
-        { configurable: { thread_id: 't', checkpoint_id: 'c5' } },
+        { configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: 'c5' } },
         {
           before: { configurable: { checkpoint_id: 'c5' } },
         },
@@ -211,7 +271,6 @@ describe('list() skips expired checkpoints (CKPT-10)', () => {
       '',
       checkpoint('c2'),
       meta,
-      'n2',
       undefined,
       now - 1,
     );
@@ -221,7 +280,6 @@ describe('list() skips expired checkpoints (CKPT-10)', () => {
       '',
       checkpoint('c1'),
       meta,
-      'n1',
       undefined,
       now + 60,
     );
@@ -233,5 +291,45 @@ describe('list() skips expired checkpoints (CKPT-10)', () => {
     const tuples = await collect(listCheckpoints(ctx, { configurable: { thread_id: 't' } }));
     expect(tuples.map((t) => t.checkpoint.id)).toEqual(['c1']);
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.FilterExpression).toContain('#ttl');
+  });
+});
+
+describe('list() with a non-positive limit', () => {
+  const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
+
+  /**
+   * The reference saver returns nothing for a limit of zero
+   * (@langchain/langgraph-checkpoint@1.1.5 dist/memory.js:172). Passing the
+   * value through reached DynamoDB as `Limit: 0`, which the service rejects,
+   * and the scan path yielded one tuple before testing the limit at all.
+   */
+  it('yields nothing and issues no request', async () => {
+    for (const limit of [0, -1]) {
+      const { client, mock } = createStrictDocumentMock();
+      const tuples = await collect(
+        listCheckpoints(context(client), { configurable: { thread_id: 't' } }, { limit }),
+      );
+      expect(tuples).toEqual([]);
+      expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
+      expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+    }
+  });
+
+  it('never sends a Limit below 1 when one row is asked for', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [one.meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).callsFake(() => ({ Item: one.payload }));
+    await collect(
+      listCheckpoints(ctx, { configurable: { thread_id: 't', checkpoint_ns: '' } }, { limit: 1 }),
+    );
+    for (const call of mock.commandCalls(QueryCommand)) {
+      const limit = call.args[0].input.Limit;
+      if (limit !== undefined) expect(limit).toBeGreaterThanOrEqual(1);
+    }
   });
 });

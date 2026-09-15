@@ -53,3 +53,22 @@ describe('prefixRoot', () => {
     expect(prefixRoot([{ matchType: 'prefix', path: ['*', 'u1'] }])).toEqual([]);
   });
 });
+
+/**
+ * The contract defines exactly two match types
+ * (@langchain/langgraph-checkpoint@1.1.5 dist/store/base.d.ts:211). An
+ * unrecognised one took the suffix branch and answered as if the caller had
+ * asked for a suffix match — a wrong answer, not an obvious failure.
+ */
+describe('matchNamespace refuses a match type it does not define', () => {
+  it.each(['contains', '', undefined, 42])('rejects %p', (matchType) => {
+    expect(() => matchNamespace(['users', 'u1'], { matchType, path: ['u1'] } as never)).toThrow(
+      /matchType/,
+    );
+  });
+
+  it('accepts the two it does define', () => {
+    expect(matchNamespace(['users', 'u1'], { matchType: 'prefix', path: ['users'] })).toBe(true);
+    expect(matchNamespace(['users', 'u1'], { matchType: 'suffix', path: ['u1'] })).toBe(true);
+  });
+});

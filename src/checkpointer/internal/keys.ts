@@ -40,32 +40,90 @@ enum CheckpointItemKind {
  */
 const ADAPTER_PARTITION_PREFIX = `CHKPT${SORT_KEY_SEPARATOR}`;
 
-/** The tag every checkpointer partition key starts with, for a table-wide `begins_with`. */
+/**
+ * The tag every checkpointer partition key starts with.
+ *
+ * Accepts: nothing — the tag is fixed, and the function exists so no caller
+ * composes it by hand.
+ *
+ * Returns: the tag, for a table-wide `begins_with` over this adapter's rows.
+ *
+ * Throws: nothing.
+ */
 export function checkpointerPartitionPrefix(): string {
   return ADAPTER_PARTITION_PREFIX;
 }
 
-/** Partition key for a thread: the adapter tag plus the thread id. */
+/**
+ * Partition key for a thread: the adapter tag plus the thread id.
+ *
+ * Accepts: `threadId` — normally validated, so it cannot contain the separator.
+ *
+ * Returns: the partition key. Total, like every key builder here: a row read
+ * from a shared table is *tested* against these, so a malformed value must
+ * compose a key that matches nothing rather than fail the read.
+ *
+ * Throws: nothing.
+ */
 export function partitionKey(threadId: string): string {
   return `${ADAPTER_PARTITION_PREFIX}${threadId}`;
 }
 
-/** Sort key for a checkpoint's lightweight metadata item. */
+/**
+ * Sort key for a checkpoint's lightweight metadata item.
+ *
+ * Accepts: `checkpointNs` — possibly empty, which is the root namespace.
+ * `checkpointId` — the checkpoint's own id.
+ *
+ * Returns: the sort key. The namespace sits above the id so a namespace's
+ * checkpoints are contiguous and a `begins_with` selects exactly them.
+ *
+ * Throws: nothing.
+ */
 export function metaSortKey(checkpointNs: string, checkpointId: string): string {
   return `${CheckpointItemKind.META}${SORT_KEY_SEPARATOR}${checkpointNs}${SORT_KEY_SEPARATOR}${checkpointId}`;
 }
 
-/** `begins_with` prefix selecting every META item in a namespace (for list). */
+/**
+ * `begins_with` prefix selecting every META item in one namespace.
+ *
+ * Accepts: `checkpointNs` — the namespace to scope to; empty scopes to the root
+ * namespace, not to every namespace.
+ *
+ * Returns: the prefix, separator-terminated, so the namespace `a` does not also
+ * select `ab`.
+ *
+ * Throws: nothing.
+ */
 export function metaSortKeyPrefix(checkpointNs: string): string {
   return `${CheckpointItemKind.META}${SORT_KEY_SEPARATOR}${checkpointNs}${SORT_KEY_SEPARATOR}`;
 }
 
-/** `begins_with` prefix selecting every META item of a thread, whatever its namespace. */
+/**
+ * `begins_with` prefix selecting every META item of a thread.
+ *
+ * Accepts: nothing — the prefix is the same for every thread, because the
+ * thread is already the partition.
+ *
+ * Returns: the kind prefix alone, so the selection spans every namespace of the
+ * thread — what a `list` with no `checkpoint_ns` asks for.
+ *
+ * Throws: nothing.
+ */
 export function metaAnyNamespacePrefix(): string {
   return `${CheckpointItemKind.META}${SORT_KEY_SEPARATOR}`;
 }
 
-/** Sort key for a checkpoint's heavy payload item. */
+/**
+ * Sort key for a checkpoint's heavy payload item.
+ *
+ * Accepts: as {@link metaSortKey}.
+ *
+ * Returns: the sort key of the row holding the checkpoint itself, which is
+ * written before its META row and read only after one is found.
+ *
+ * Throws: nothing.
+ */
 export function payloadSortKey(checkpointNs: string, checkpointId: string): string {
   return `${CheckpointItemKind.PAYLOAD}${SORT_KEY_SEPARATOR}${checkpointNs}${SORT_KEY_SEPARATOR}${checkpointId}`;
 }
@@ -80,6 +138,19 @@ export function payloadSortKey(checkpointNs: string, checkpointId: string): stri
  * only when their channels are byte-identical; `writeSortKeyPrefix` stops at
  * the checkpoint id, ahead of this segment, so `begins_with` reads are
  * unaffected.
+ *
+ * Accepts: `index` — an integer; padding a fraction produced `00000009.5`,
+ * which no longer orders numerically. `channel` — separator-free, which
+ * `validateChannel` establishes before any key is built. The other segments are
+ * the validated identifiers.
+ *
+ * Returns: the sort key, its index zero-padded to a fixed width so the special
+ * negative slots order below the positional ones.
+ *
+ * Throws: ValidationError naming `index` for an index this encoding cannot
+ * represent, and `sortKey` for a composed key over
+ * {@link MAX_SORT_KEY_BYTES} — identifiers that each pass their own length rule
+ * can still compose a key DynamoDB would refuse with a raw error.
  */
 export function writeSortKey(
   checkpointNs: string,
@@ -89,9 +160,13 @@ export function writeSortKey(
   channel: string,
 ): string {
   const offsetIndex = index + WRITE_INDEX_OFFSET;
-  if (offsetIndex < 0 || offsetIndex.toString().length > WRITE_INDEX_PAD_WIDTH) {
+  if (
+    !Number.isInteger(offsetIndex) ||
+    offsetIndex < 0 ||
+    offsetIndex.toString().length > WRITE_INDEX_PAD_WIDTH
+  ) {
     throw new ValidationError(
-      `write index ${index} is outside the range encodable at offset ${WRITE_INDEX_OFFSET} ` +
+      `write index ${index} is not an integer encodable at offset ${WRITE_INDEX_OFFSET} ` +
         `with ${WRITE_INDEX_PAD_WIDTH} digits`,
       'index',
     );
@@ -117,9 +192,16 @@ export function writeSortKey(
 }
 
 /**
- * True when `sortKey` is one this adapter writes. A partition query carries no
- * sort-key condition, so a partition-wide delete uses this to leave any row it
- * does not own in place rather than deleting the whole partition blindly.
+ * Whether `sortKey` is one this adapter writes.
+ *
+ * Accepts: any sort key read from a thread's partition.
+ *
+ * Returns: whether it starts with one of this adapter's kind tags. A partition
+ * query carries no sort-key condition, so a partition-wide delete uses this to
+ * leave a row it does not own in place rather than deleting the whole partition
+ * blindly.
+ *
+ * Throws: nothing.
  */
 export function isCheckpointerSortKey(sortKey: string): boolean {
   return Object.values(CheckpointItemKind).some((kind) =>
@@ -127,7 +209,16 @@ export function isCheckpointerSortKey(sortKey: string): boolean {
   );
 }
 
-/** `begins_with` prefix selecting every WRITE item for one checkpoint. */
+/**
+ * `begins_with` prefix selecting every WRITE item of one checkpoint.
+ *
+ * Accepts: the namespace and checkpoint the writes belong to.
+ *
+ * Returns: the prefix, separator-terminated, so one checkpoint's writes never
+ * include another's whose id merely starts the same way.
+ *
+ * Throws: nothing.
+ */
 export function writeSortKeyPrefix(checkpointNs: string, checkpointId: string): string {
   return `${CheckpointItemKind.WRITE}${SORT_KEY_SEPARATOR}${checkpointNs}${SORT_KEY_SEPARATOR}${checkpointId}${SORT_KEY_SEPARATOR}`;
 }

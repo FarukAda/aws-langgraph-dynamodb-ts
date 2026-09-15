@@ -28,9 +28,16 @@ function descriptorBytes(descriptor: PayloadDescriptor): number {
 }
 
 /**
- * Conservatively estimate a message item's stored size, so chunks can stay under
- * the DynamoDB transaction byte limit. The overhead allowance keeps the estimate
- * on the safe side of the real marshalled size.
+ * Conservatively estimate a message item's stored size.
+ *
+ * Accepts: any message item, inline or offloaded — an offloaded one measures
+ * its S3 key, since that is what the row actually carries.
+ *
+ * Returns: an estimate at or above the real marshalled size. Erring high is the
+ * whole point: an underestimate builds a transaction DynamoDB refuses, and the
+ * cost of erring high is one extra transaction.
+ *
+ * Throws: nothing.
  */
 export function estimateItemBytes(item: ChatMessageItem): number {
   return (
@@ -54,9 +61,21 @@ function shouldFlush(
 }
 
 /**
- * Split message items into transaction-sized chunks bounded by both the item
- * count and the aggregate byte budget. A single item larger than the budget is
- * placed alone rather than dropped.
+ * Split message items into transaction-sized chunks.
+ *
+ * Accepts: `items` — in order; empty yields no chunks, so an append of nothing
+ * issues no write. `maxItems` and `maxBytes` — the transaction's two limits,
+ * both binding.
+ *
+ * Returns: the chunks, in order, each within both limits — except that a single
+ * item larger than `maxBytes` is placed alone rather than dropped: refusing it
+ * here would lose a message that DynamoDB might still accept, and if it does
+ * not, the transaction says so.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: order is preserved across chunks, so messages keep the order the
+ * caller wrote them in, which is the order their ULIDs already encode.
  */
 export function chunkBySize(
   items: ChatMessageItem[],

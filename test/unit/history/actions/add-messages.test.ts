@@ -53,7 +53,7 @@ describe('addMessages', () => {
     const deleteBatch = jest.fn().mockResolvedValue([]);
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
+      buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
       upload: async (key: string) => {
         uploads += 1;
         if (uploads === 2) throw new Error('upload failed');
@@ -67,7 +67,7 @@ describe('addMessages', () => {
         new HumanMessage('second'),
       ]),
     ).rejects.toThrow('upload failed');
-    expect(deleteBatch).toHaveBeenCalledWith(['s1/U0']);
+    expect(deleteBatch).toHaveBeenCalledWith([expect.stringMatching(/^s1\/U0\/[\w-]{43}$/)]);
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
@@ -179,7 +179,7 @@ describe('addMessages', () => {
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts: string[]) => parts.join('/'),
+      buildKey: (parts: string[], hash: string) => [...parts, hash].join('/'),
       upload: async (key: string) => key,
       deleteBatch: jest.fn().mockResolvedValue([]),
     };
@@ -188,6 +188,8 @@ describe('addMessages', () => {
         new HumanMessage('hi'),
       ]),
     ).rejects.toThrow('boom');
-    expect(offloader.deleteBatch).toHaveBeenCalledWith(['s1/U0']);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith([
+      expect.stringMatching(/^s1\/U0\/[\w-]{43}$/),
+    ]);
   });
 });

@@ -35,6 +35,18 @@ export interface ResolvedWrite {
  * `Object.hasOwn` guards WRITES_IDX_MAP's own `Object.prototype` chain — a
  * channel literally named `constructor`/`toString`/etc. must be treated as
  * regular, not resolve to an inherited function reference.
+ *
+ * Accepts: `writes` — one `putWrites` call's writes, already validated for
+ * channel shape; empty is empty.
+ *
+ * Returns: the special writes first, then the regular ones. A special channel
+ * appearing twice yields one entry (the last), a regular channel appearing
+ * twice yields two, distinguished by `occurrence`.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: within one call, `(channel, occurrence)` is unique — which is
+ * what lets `dropSupersededWrites` treat it as an identity across calls.
  */
 export function resolveWriteIndices(writes: PendingWrite[]): ResolvedWrite[] {
   const bySpecialIndex = new Map<number, ResolvedWrite>();

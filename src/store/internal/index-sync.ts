@@ -3,10 +3,17 @@ import type { VectorBackend } from '../vector-backend';
 
 /**
  * Best-effort sync of one item's embedding to the vector backend after the
- * canonical DynamoDB write has already succeeded. A present embedding upserts;
- * its absence deletes any stale vector. Failures are logged at `warn` and
- * swallowed — the canonical item stands and `reconcileVectorIndex` repairs any
- * drift — so a backend hiccup never fails an otherwise-successful put.
+ * canonical DynamoDB write has already succeeded.
+ *
+ * Accepts: `embedding` — present upserts it; absent deletes any vector the
+ * backend still holds, which is what a re-put with no indexable text, an
+ * `index: false` put and a delete all mean.
+ *
+ * Returns: nothing, in both the synced and the failed case.
+ *
+ * Throws: nothing. The canonical item is already committed, so failing here
+ * would report a put that in fact succeeded; the drift is logged at `warn` and
+ * `reconcileVectorIndex` repairs it.
  */
 export async function syncVectorIndex(
   backend: VectorBackend,
@@ -19,10 +26,11 @@ export async function syncVectorIndex(
     if (embedding) await backend.upsert(namespace, key, embedding);
     else await backend.delete(namespace, key);
   } catch (error) {
+    /** The name, not the message: a backend's error text is not an identifier. */
     logger.warn('store.put vector-index sync failed; reconcileVectorIndex will repair', {
       namespace,
       key,
-      message: (error as Error).message,
+      reason: (error as Error).name,
     });
   }
 }

@@ -22,9 +22,17 @@ export interface RetryPolicy {
 }
 
 /**
- * Resolve an adapter's retry policy once, attaching the context logger so
- * every retry is visible at `debug` (attempt, the delay about to be slept, the
- * error name) instead of only surfacing once the budget is exhausted.
+ * Resolve an adapter's retry policy once, at construction.
+ *
+ * Accepts: `policy` — the caller's, already validated, or nothing. `logger` —
+ * the adapter's resolved logger.
+ *
+ * Returns: the options every DynamoDB call of that adapter uses, with each
+ * field defaulted and the logger attached, so every retry is visible at `debug`
+ * (the attempt, the delay about to be slept, the error's name) instead of only
+ * surfacing once the budget is exhausted.
+ *
+ * Throws: nothing; the policy was validated where it was given.
  */
 export function resolveRetryPolicy(policy: RetryPolicy | undefined, logger: Logger): RetryOptions {
   return {
@@ -36,7 +44,18 @@ export function resolveRetryPolicy(policy: RetryPolicy | undefined, logger: Logg
   };
 }
 
-/** The context's retry options plus a per-call cancellation signal, when one is given. */
+/**
+ * The context's retry options plus a per-call cancellation signal.
+ *
+ * Accepts: `context.retry` — the adapter's resolved policy. `signal` — the
+ * caller's, when the call takes one.
+ *
+ * Returns: the adapter's options untouched when there is no signal — the same
+ * object, so no per-call allocation on the common path — and a copy carrying it
+ * when there is.
+ *
+ * Throws: nothing.
+ */
 export function retryFor(
   context: { retry?: RetryOptions },
   signal?: AbortSignal,

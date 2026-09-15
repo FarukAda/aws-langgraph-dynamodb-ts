@@ -35,17 +35,40 @@ export interface S3OffloadConfig {
 
 /**
  * Build a fully-qualified S3 key: `${prefix}${parts, each base64url-encoded,
- * joined with '/'}.bin`. Encoding (not rejecting) is what makes two distinct
- * `parts` arrays never collide, since a namespace element or key is allowed
- * to contain '/' (only the DynamoDB '#' separator is forbidden at the
- * validation layer) and base64url's output alphabet never contains '/'.
+ * joined with '/'}/${hash}.bin`.
  *
- * The produced key is checked against S3's 1024-byte object-key cap: the
- * encoding grows every part by a third, so identifiers that each pass their
- * own length rule can still compose a key S3 would reject with a raw error.
+ * `parts` are the identity of the DynamoDB row that will point at the object,
+ * and they are encoded rather than rejected: a namespace element or key may
+ * contain '/' (only the DynamoDB '#' separator is forbidden at the validation
+ * layer), and base64url's output alphabet never contains '/', so two distinct
+ * `parts` arrays can never compose one key.
+ *
+ * `hash` is the content address of the bytes and is appended verbatim — it is
+ * already base64url. Putting the row above the hash means an object belongs to
+ * exactly one row, which is what lets that row delete it without consulting
+ * anything else.
+ *
+ * Accepts: `prefix` — the offloader's, already validated and separator-
+ * terminated. `parts` — at least one; the identity of the row that will point
+ * at the object. `hash` — a content address from `contentHash`.
+ *
+ * Returns: the key. Two distinct `(prefix, parts, hash)` triples never compose
+ * one key, and the same triple always composes the same one.
+ *
+ * Throws: ValidationError naming `s3Key` for an empty `parts` — an object with
+ * no row above it is outside every row's scope and could never be read back —
+ * and for a key over the 1024-byte cap. The encoding grows every part by a
+ * third, so identifiers that each pass their own length rule can still compose
+ * a key S3 would reject with a raw error.
  */
-export function buildS3Key(prefix: string, parts: readonly string[]): string {
-  const encoded = parts.map(encodeKeyPart);
+export function buildS3Key(prefix: string, parts: readonly string[], hash: string): string {
+  if (parts.length === 0) {
+    throw new ValidationError(
+      'an offloaded object needs the identity of the row that points at it; parts was empty',
+      's3Key',
+    );
+  }
+  const encoded = [...parts.map(encodeKeyPart), hash];
   const key = `${prefix}${encoded.join('/')}.bin`;
   const bytes = Buffer.byteLength(key, 'utf8');
   if (bytes > MAX_S3_KEY_BYTES) {
@@ -59,10 +82,18 @@ export function buildS3Key(prefix: string, parts: readonly string[]): string {
 }
 
 /**
- * The key prefix doubles as the S3 lifecycle rule's `Filter.Prefix`. An empty
- * or root prefix would make that rule expire the whole bucket, and a prefix
- * without a trailing `/` (`app/langgraph`) would also match every sibling
- * object that merely starts with the same characters (`app/langgraph-other/`).
+ * Refuse a key prefix that does not scope what it is used for.
+ *
+ * Accepts: `keyPrefix` — must be non-empty, not `/`, and end in `/`.
+ *
+ * Returns: nothing; acceptance is the absence of a throw.
+ *
+ * Throws: ValidationError naming `s3.keyPrefix`.
+ *
+ * Guarantees: the prefix scopes both the objects and the lifecycle rule built
+ * from it. An empty or root prefix would make that rule expire the whole
+ * bucket, and one without a trailing `/` (`app/langgraph`) would also match
+ * every sibling starting with the same characters (`app/langgraph-other/`).
  */
 export function assertScopedKeyPrefix(keyPrefix: string): void {
   if (keyPrefix === '' || keyPrefix === '/' || !keyPrefix.endsWith('/')) {
@@ -75,9 +106,20 @@ export function assertScopedKeyPrefix(keyPrefix: string): void {
 }
 
 /**
- * Build a deterministic, TTL-independent lifecycle rule id from the prefix.
- * Trailing slashes are trimmed with a loop rather than `/\/+$/`, whose
- * backtracking is quadratic in the number of slashes.
+ * The lifecycle rule id for `prefix`: `langgraph-ttl-` plus its slug.
+ *
+ * Accepts: `prefix` — any string; trailing slashes are trimmed, and every
+ * character outside `[A-Za-z0-9-]` becomes `-`.
+ *
+ * Returns: a deterministic id that does not change with the TTL, so raising or
+ * lowering the TTL updates one rule rather than adding another. A prefix with
+ * no usable characters yields `langgraph-ttl-default`.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: the slug is not injective — `a/b/` and `a-b/` produce one id —
+ * and `ensureLifecycleRule` refuses rather than take over a rule that a
+ * different prefix already holds.
  */
 export function buildLifecycleRuleId(prefix: string): string {
   let trimmed = prefix;
@@ -86,7 +128,18 @@ export function buildLifecycleRuleId(prefix: string): string {
   return `langgraph-ttl-${slug}`;
 }
 
-/** An adapter's default S3 key prefix: the shared base plus its own segment. */
+/**
+ * An adapter's default S3 key prefix.
+ *
+ * Accepts: `base` — the shared prefix, ending in `/`. `adapter` — the adapter's
+ * own segment.
+ *
+ * Returns: `base` + `adapter` + `/`, so three adapters sharing one bucket write
+ * under three paths and one adapter's lifecycle rule never sweeps another's
+ * objects.
+ *
+ * Throws: nothing.
+ */
 export function defaultAdapterKeyPrefix(base: string, adapter: string): string {
   return `${base}${adapter}/`;
 }

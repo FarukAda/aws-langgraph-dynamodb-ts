@@ -11,9 +11,28 @@ const DEFAULT_LIMIT = 10;
 
 /**
  * Search items under a namespace prefix: metadata filtering plus optional
- * semantic ranking. A non-empty prefix uses a native Query; an empty prefix
- * falls back to a (filtered) Scan. Semantic ranking uses the configured
- * VectorBackend when present, else an in-memory cosine ranking (capped).
+ * semantic ranking.
+ *
+ * Accepts: `op.namespacePrefix` — empty spans the whole table. `op.query` —
+ * absent, or empty (which is absent: there is no query to embed), ranks
+ * nothing and returns the page as read, which is what the reference store does
+ * (`@langchain/langgraph-checkpoint@1.1.5` `dist/store/memory.js:70-80`, where a
+ * falsy query takes the unscored path). A query without a configured `index`
+ * does the same, since there is nothing to embed it with. `op.offset` and
+ * `op.limit` — non-negative integers, defaulting to 0 and
+ * {@link DEFAULT_LIMIT}, the reference's default page size.
+ *
+ * Returns: at most `limit` items from `offset`. With a query and an index every
+ * item carries a `score`; without one none does. Scores rank best-first; an item
+ * that cannot be scored ranks last rather than being dropped.
+ *
+ * Throws: ValidationError naming `offset`, `limit`, `maxSearchCandidates` or
+ * `index.dims`; whatever the reads, decodes and the embeddings model throw.
+ *
+ * Guarantees: only the page's own items are decoded on the unranked path — the
+ * read stops as soon as it is full. A semantic search must read every candidate
+ * to rank it, which is why it is capped and why a large corpus belongs in a
+ * `vectorBackend`.
  */
 export async function searchItems(
   context: StoreContext,

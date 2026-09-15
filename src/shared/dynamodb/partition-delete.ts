@@ -97,12 +97,27 @@ async function flushBuffer(
 }
 
 /**
- * Delete every row in a partition that belongs to the calling adapter,
- * best-effort deleting any offloaded S3 objects. Streams the partition with
- * unbounded pagination and flushes in batches, so a partition of any size is
- * deleted to completion with bounded memory — never silently truncated at the
- * in-memory page caps, and never discarding already-flushed progress if a
- * later batch fails. Returns the number of rows deleted.
+ * Delete every row of one partition that belongs to the calling adapter.
+ *
+ * Accepts: `params` — the partition query, which carries no sort-key
+ * condition. `ownsSortKey` — decides per row; a row it rejects is left in
+ * place and reported at `warn`, which is what keeps a shared table's other
+ * adapters intact. `descriptorsOf` — the offloaded payloads a row references.
+ * `scope` — the partition's own leading S3 key parts; an object outside their
+ * path is never deleted. `signal` — stops the read between pages.
+ *
+ * Returns: how many rows were deleted, not counting the ones left in place.
+ *
+ * Throws: {@link BatchWriteAllIncompleteError} when a batch does not drain,
+ * carrying what did succeed across every earlier batch; `AbortError` when the
+ * signal fires. S3 cleanup never throws ({@link cleanUpS3Orphans}).
+ *
+ * Guarantees: the read is deliberately uncapped (`maxItems` and
+ * `maxIterations` are `Infinity`), so a partition of any size is deleted to
+ * completion rather than truncated at the in-memory page caps — memory stays
+ * bounded because rows are flushed in batches of {@link BATCH_WRITE_MAX} and
+ * never accumulated. A failure part-way keeps the rows already deleted; this is
+ * a single pass over a quiescent partition, not a transaction.
  */
 export async function deletePartitionRows(options: PartitionDeleteOptions): Promise<number> {
   const buffer: DeleteBuffer = { keys: [], descriptors: [] };

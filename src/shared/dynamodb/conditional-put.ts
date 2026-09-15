@@ -55,6 +55,19 @@ const RETURN_REJECTED_ROW = { ReturnValuesOnConditionCheckFailure: 'ALL_OLD' } a
  * *absence* is what makes the swap correct across an upgrade: the first writer
  * to touch such a row stamps one, and any racer still holding the pre-upgrade
  * observation is turned away.
+ *
+ * Accepts: `attribute` — the revision attribute's name, since the checkpointer
+ * reuses its `writeGroup` rather than carrying a second one. `observed` — the
+ * three states a caller can have seen: no row, a row with no revision, a row
+ * with one.
+ *
+ * Returns: the condition fragments for a `PutCommand`, one per state —
+ * `attribute_not_exists(PK)`, `attribute_not_exists(<attribute>)`, and
+ * equality. Every one asks DynamoDB to attach the existing row to a rejection,
+ * so a swap that loses re-pins from the exception instead of spending a second
+ * strongly-consistent read.
+ *
+ * Throws: nothing.
  */
 export function revisionGuard(attribute: string, observed: ObservedRow): RevisionGuard {
   if (!observed.exists)
@@ -75,9 +88,18 @@ export function revisionGuard(attribute: string, observed: ObservedRow): Revisio
 }
 
 /**
- * True when the guard rejected a write — NOT evidence a competitor won: a
- * `PutCommand` retried after its response was lost can re-hit its own
- * committed row and fail identically; the two cases are indistinguishable.
+ * Whether a conditional write was turned away by its guard.
+ *
+ * Accepts: `error` — any error-shaped value; only the name is read.
+ *
+ * Returns: true for `ConditionalCheckFailedException`.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: **not** evidence that a competitor won. A `PutCommand` retried
+ * after its response was lost can re-hit the row it wrote itself and fail
+ * identically, and the two are indistinguishable from the rejection alone —
+ * which is why every caller reads the row back before deleting anything.
  */
 export function isConditionalCheckFailed(error: { name?: string }): boolean {
   return error.name === 'ConditionalCheckFailedException';
@@ -91,6 +113,14 @@ export function isConditionalCheckFailed(error: { name?: string }): boolean {
  * is unmarshalled here. Undefined when the rejection carries no item — the row
  * was deleted between the observation and the write — in which case the caller
  * falls back to a read.
+ *
+ * Accepts: `error` — any error; only a rejection from a guard built by
+ * {@link revisionGuard} carries the item.
+ *
+ * Returns: the row as a plain document, or undefined.
+ *
+ * Throws: whatever `unmarshall` rejects for an item that is not in
+ * AttributeValue form.
  */
 export function rejectedItem(error: Error): DocItem | undefined {
   const raw = (error as { Item?: Record<string, AttributeValue> }).Item;

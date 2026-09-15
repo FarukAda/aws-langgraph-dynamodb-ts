@@ -49,7 +49,7 @@ describe('verifyCheckpointLanded', () => {
     const input = mock.commandCalls(GetCommand)[0].args[0].input;
     expect(input.Key).toEqual({ PK: 'CHKPT#t', SK: 'META##c1' });
     expect(input.ConsistentRead).toBe(true);
-    expect(input.ExpressionAttributeNames).toEqual({ '#d': 'metadata' });
+    expect(Object.values(input.ExpressionAttributeNames!)).toEqual(['metadata']);
   });
 
   it('probes the PAYLOAD row when only the checkpoint is offloaded', async () => {
@@ -59,7 +59,7 @@ describe('verifyCheckpointLanded', () => {
     await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toBe('landed');
     const input = mock.commandCalls(GetCommand)[0].args[0].input;
     expect(input.Key).toEqual({ PK: 'CHKPT#t', SK: 'PAYLOAD##c1' });
-    expect(input.ExpressionAttributeNames).toEqual({ '#d': 'checkpoint' });
+    expect(Object.values(input.ExpressionAttributeNames!)).toEqual(['checkpoint']);
   });
 
   it('reports not-landed when the row is absent', async () => {

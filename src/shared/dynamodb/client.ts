@@ -19,9 +19,24 @@ export interface ResolveClientOptions {
 }
 
 /**
- * Resolve the DocumentClient for an adapter. An injected `client` is used as-is
- * and not owned; otherwise a client is built from `clientConfig` (via the
- * `createClient` seam) and owned, so the adapter destroys it on `destroy()`.
+ * The DocumentClient an adapter will use, and whether it owns it.
+ *
+ * Accepts: `client` — an injected DocumentClient, used as-is; `clientConfig` —
+ * used to build one when no client is injected; `createClient` — the test seam
+ * that builds it. `validateBaseAdapterOptions` rejects an injected client given
+ * alongside either of the other two, so only one branch is ever taken.
+ *
+ * Returns: the document client, the raw client behind it when this call built
+ * one, and `ownsClient` — true only then. An injected client is never
+ * destroyed by `destroy()`; it may be shared with the caller's own code and
+ * with the other adapters.
+ *
+ * Throws: whatever the SDK constructor throws for an unusable config.
+ *
+ * Guarantees: a client this call builds gets `maxAttempts: 1` unless the config
+ * overrides it, so the SDK performs no retries of its own and this library's
+ * retry layer is the only one. An injected client keeps whatever it was built
+ * with — see {@link warnOnStackedRetries}.
  */
 export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDynamoDBClient {
   if (options.client) {
@@ -33,11 +48,24 @@ export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDy
 }
 
 /**
- * Warn once when an injected client keeps the SDK's own retries. They run
- * inside every attempt of this library's retry layer, so the budget the
- * constants and README describe multiplies (5 × 3 requests per operation with
- * the SDK default) and a throttling event turns into a retry storm. A client
- * that cannot report its setting is left alone; the check never throws.
+ * Warn once when an injected client keeps the SDK's own retries.
+ *
+ * Accepts: `client` — the caller's. A client that cannot report its setting —
+ * a stub, a mock, a future SDK shape — is left alone.
+ *
+ * Returns: nothing. Deliberately not awaited by its callers: it is a warning
+ * about a caller-supplied client, not a precondition for using it, so
+ * constructing an adapter stays free of I/O.
+ *
+ * Throws: nothing, ever. The SDK's own config resolution can reject, and a
+ * rejection here would surface as an unhandled rejection from a constructor
+ * that did nothing wrong.
+ *
+ * Guarantees: the SDK's retries run inside every attempt of this library's
+ * retry layer, so the budget the constants and README describe multiplies (5 ×
+ * 3 requests per operation at the SDK default) and a throttling event turns
+ * into a retry storm. Saying so once, at construction, is the only place the
+ * caller can act on it.
  */
 export async function warnOnStackedRetries(
   client: DynamoDBDocument,

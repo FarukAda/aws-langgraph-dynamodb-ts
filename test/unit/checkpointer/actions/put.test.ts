@@ -1,5 +1,9 @@
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
-import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
+import type {
+  ChannelVersions,
+  Checkpoint,
+  CheckpointMetadata,
+} from '@langchain/langgraph-checkpoint';
 
 import { putCheckpoint } from '../../../../src/checkpointer/actions/put';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
@@ -33,7 +37,7 @@ function contextWith(client: CheckpointerContext['client']): CheckpointerContext
 function trackingOffloader() {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => parts.join('/'),
+    buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
     upload: async (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
   };
@@ -97,7 +101,7 @@ describe('putCheckpoint', () => {
     ).rejects.toThrow('nope');
   });
 
-  it('cleans up its own nonced uploads when the write is confirmed not to have landed', async () => {
+  it('cleans up the objects it uploaded when the write is confirmed not to have landed', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(TransactWriteCommand)
@@ -109,8 +113,8 @@ describe('putCheckpoint', () => {
       putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
     ).rejects.toThrow('boom');
     expect(offloader.deleteBatch).toHaveBeenCalledWith([
-      expect.stringMatching(/^t1\/\/ckpt-1\/metadata\/[0-9A-HJKMNP-TV-Z]{26}$/),
-      expect.stringMatching(/^t1\/\/ckpt-1\/checkpoint\/[0-9A-HJKMNP-TV-Z]{26}$/),
+      expect.stringMatching(/^t1\/\/ckpt-1\/metadata\/[\w-]{43}$/),
+      expect.stringMatching(/^t1\/\/ckpt-1\/checkpoint\/[\w-]{43}$/),
     ]);
   });
 
@@ -205,8 +209,14 @@ const valued: Checkpoint = {
   channel_versions: { foo: 1, baz: 1 },
 };
 
-describe('putCheckpoint stores channel values per newVersions (validation suite)', () => {
-  it('stores only the channels newVersions names for a checkpoint without a parent', async () => {
+describe('putCheckpoint stores every channel value the checkpoint carries', () => {
+  /**
+   * The reference saver does not narrow what it stores: `MemorySaver.put` takes
+   * three parameters and has no `newVersions` at all
+   * (@langchain/langgraph-checkpoint@1.1.5 dist/memory.js:206). This adapter
+   * matches that, so `newVersions` cannot change what is written.
+   */
+  it('stores every value when newVersions names only one channel', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
     await putCheckpoint(
@@ -216,29 +226,22 @@ describe('putCheckpoint stores channel values per newVersions (validation suite)
       metadata,
       { foo: 1 },
     );
-    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar' });
-    const meta =
-      mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems?.[0].Put?.Item;
-    expect(meta?.storedChannels).toEqual(['foo']);
-    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
   });
 
-  it('carries the channels the parent stored that this put still holds', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(TransactWriteCommand).resolves({});
-    mock.on(GetCommand).resolves({ Item: { storedChannels: ['baz'] } });
-    await putCheckpoint(
-      contextWith(client),
-      { configurable: { thread_id: 't1', checkpoint_id: 'parent-0' } },
-      valued,
-      metadata,
-      { foo: 1 },
-    );
-    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
-    expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
-      PK: 'CHKPT#t1',
-      SK: 'META##parent-0',
-    });
+  /**
+   * LangGraph passes an empty `newVersions` when forking a checkpoint
+   * (`updateState(..., '__copy__')`) and when writing an empty-checkpoint
+   * update (@langchain/langgraph@1.4.13 dist/pregel/index.js:668 and :613).
+   * Narrowing by it wrote a checkpoint with no channel values at all.
+   */
+  it('stores every value when newVersions is empty, with and without a parent', async () => {
+    for (const configurable of [{ thread_id: 't1' }, { thread_id: 't1', checkpoint_id: 'p' }]) {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(TransactWriteCommand).resolves({});
+      await putCheckpoint(contextWith(client), { configurable }, valued, metadata, {});
+      expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
+    }
   });
 
   it('stores every value when newVersions is omitted', async () => {
@@ -251,6 +254,37 @@ describe('putCheckpoint stores channel values per newVersions (validation suite)
       metadata,
     );
     expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
-    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+
+  /** The parent read existed only to carry channels forward; nothing needs it now. */
+  it('never reads the parent row, whatever newVersions says', async () => {
+    const cases: (ChannelVersions | undefined)[] = [undefined, {}, { foo: 1 }];
+    for (const versions of cases) {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(TransactWriteCommand).resolves({});
+      await putCheckpoint(
+        contextWith(client),
+        { configurable: { thread_id: 't1', checkpoint_id: 'parent-0' } },
+        valued,
+        metadata,
+        versions,
+      );
+      expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+    }
+  });
+
+  it('writes no storedChannels attribute on the META row', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    await putCheckpoint(
+      contextWith(client),
+      { configurable: { thread_id: 't1' } },
+      valued,
+      metadata,
+      { foo: 1 },
+    );
+    const meta =
+      mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems?.[0].Put?.Item;
+    expect(meta).not.toHaveProperty('storedChannels');
   });
 });

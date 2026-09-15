@@ -11,9 +11,18 @@ export interface ScanOptions extends PaginateCoreOptions {
 }
 
 /**
- * Drive a DynamoDB Scan across all pages, yielding each item. Shares the
- * pagination core with {@link paginateQuery}: abort handling, retry per page,
- * and runaway guards.
+ * Every item a Scan returns, across all its pages.
+ *
+ * Accepts: as {@link paginateQuery}; only the request differs.
+ *
+ * Returns: as {@link paginateQuery} — an async generator over the items, which
+ * a consumer may abandon early to stop reading.
+ *
+ * Throws: as {@link paginateQuery}.
+ *
+ * A `Scan` reads every row of the table before filtering, so the four reads
+ * allowed to call this are fixed and guarded (`test/static/scan-sites.test.ts`,
+ * DESIGN D-1).
  */
 export function paginateScan(options: ScanOptions): AsyncGenerator<DocItem> {
   return paginatePages(async (startKey) => {

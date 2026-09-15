@@ -17,7 +17,10 @@ npm run lint && npm run typecheck && npm run typecheck:all && npm test
 
 The static guards fail the build rather than rely on review:
 
-- a `src` file is at most 150 lines; a test file at most 400;
+- a `src` file is at most 150 lines, counting code and blank lines but not
+  comments — the cap governs how much a file *does*, and documenting it well
+  must never be what pushes it over; a test file is at most 400 lines, counting
+  everything;
 - comments are JSDoc only (`/** ... */`) — no `//` comments in `src`;
 - no `any`, no `unknown`, no `instanceof` in `src` (errors are detected by brand and `code`);
 - no re-exports outside `src/index.ts`, no import cycles, no dead `ErrorCode` member;
@@ -37,11 +40,11 @@ Write the failing test first, then the code. A change that touches behaviour nee
 | Package smoke | `npm run test:package-smoke` | network (`npm pack` + install into a temp project) |
 | Real AWS | `AWS_REGION=eu-central-1 npm run test:aws` | AWS credentials |
 
-CI runs every tier except the real-AWS one on each push and pull request; the real-AWS tier runs nightly through OIDC and can be dispatched by a maintainer.
+CI runs every tier except the real-AWS one on each push and pull request. The real-AWS tier is not scheduled: a maintainer runs it locally against their own credentials, `AWS_REGION=eu-central-1 npm run test:aws`, before a release.
 
 ### Real-AWS tests
 
-A real-AWS test creates its own resources and tears them down in `afterAll` (use `test/aws/helpers/teardown.ts`, which finishes every step before rethrowing). Resource names must match `aws-langgraph-<suite>test-<uuid>` — the nightly role is scoped to `aws-langgraph-*test-*` and nothing else — and a test must never assume a region, a table or a bucket exists. A Bedrock-backed test probes the model first and skips with a reason when the account has not enabled it.
+A real-AWS test creates its own resources and tears them down in `afterAll` (use `test/aws/helpers/teardown.ts`, which finishes every step before rethrowing). Resource names must match `aws-langgraph-<suite>test-<uuid>` — the test role is scoped to `aws-langgraph-*test-*` and nothing else — and a test must never assume a region, a table or a bucket exists. A Bedrock-backed test probes the model first and skips with a reason when the account has not enabled it.
 
 ## Toolchain
 

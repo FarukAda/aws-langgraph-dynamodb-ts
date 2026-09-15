@@ -60,12 +60,26 @@ function selectOrphans(
   return options.scope ? ownedOnly(offloader, present, options.scope, context, logger) : present;
 }
 /**
- * Best-effort delete of S3 objects orphaned by a failed DynamoDB write. Retries
- * transient errors with full-jitter backoff; on persistent failure or when S3
- * reports keys it could not delete, it logs at `warn` and never throws — the
- * sole non-throwing path in the library. There is no automatic backstop: an
- * S3 lifecycle rule sweeps the leftovers only if one was provisioned via
- * `ensureS3LifecycleRule()`, which is opt-in.
+ * Best-effort delete of S3 objects orphaned by a failed DynamoDB write.
+ *
+ * Accepts: `keys` — may hold `undefined` and empty entries, which are dropped;
+ * nothing left means no request. `context` — names the operation in every log
+ * line. `options.scope` — the row's own leading key parts when `keys` came from
+ * a row: a key outside that path is reported and never deleted. Own uploads
+ * pass no scope. `options.maxAttempts` — attempts on a transient failure,
+ * default 3. `options.signal` — aborts the wait between attempts.
+ *
+ * Returns: nothing.
+ *
+ * Throws: **nothing**, ever. This is the library's sole non-throwing path: a
+ * cleanup failure must not mask the write failure that caused it. Every
+ * outcome that is not a clean delete is logged at `warn`, carrying counts and
+ * the failing error's *name* — never its message, which can hold a credential
+ * fragment.
+ *
+ * Guarantees: an object outside the row's scope is never deleted. Leftovers
+ * have no automatic backstop — an S3 lifecycle rule sweeps them only if one was
+ * provisioned through `ensureS3LifecycleRule()`, which is opt-in.
  */
 export async function cleanUpS3Orphans(
   offloader: S3Offloader,
@@ -95,10 +109,13 @@ export async function cleanUpS3Orphans(
       delay = nextBackoffDelay(delay);
     }
   }
+  /**
+   * The error's *name*, never its message: an underlying failure can carry a
+   * credential fragment in its text, and this package promises that its logs
+   * hold identifiers and counts only.
+   */
   logger.warn(
     `Failed to clean up orphaned S3 objects after ${context}; a lifecycle rule from ensureS3LifecycleRule() would sweep them, otherwise clean up manually`,
-    {
-      message: lastError.message,
-    },
+    { reason: lastError.name },
   );
 }

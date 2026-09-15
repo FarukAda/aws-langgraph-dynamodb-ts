@@ -5,7 +5,9 @@ import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 import type { CompressionConfig } from '../../shared/codec/compression';
 import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
+import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
+import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
@@ -24,6 +26,15 @@ export interface CheckpointerContext {
   logger: Logger;
   /** Retry budget and backoff for every DynamoDB call, with the retry debug log attached. */
   retry?: RetryOptions;
+  /**
+   * Index partitions per adapter for the recency index; see `indexKeys`.
+   * Absent means the default, which is where it is resolved.
+   */
+  indexShards?: number;
+  /** Payloads decoded at once by one call; the memory ceiling’s multiplier. */
+  readConcurrency?: number;
+  /** Name of the recency index, when the table carries one; see `BaseAdapterOptions.indexName`. */
+  indexName?: string;
 }
 
 /** Result of wiring up a checkpointer from its options. */
@@ -34,9 +45,19 @@ export interface CheckpointerSetup {
 }
 
 /**
- * Resolve the DynamoDB client, optional S3 offloader, and logging into the
- * context every action receives, plus the ownership info the class needs to
- * tear resources down.
+ * Validate the options, then resolve the client, offloader and serializer.
+ *
+ * Accepts: `options` — validated first, so no half-built saver exists when one
+ * is wrong. `serde` — the base class's, which is the caller's own serializer
+ * when they gave one.
+ *
+ * Returns: the context every action receives, plus the client and whether this
+ * saver owns it — a client the caller passed in is never destroyed by
+ * `destroy()`.
+ *
+ * Throws: ValidationError naming the offending option.
+ *
+ * Guarantees: constructing a saver performs no I/O.
  */
 export function setUpCheckpointer(
   options: DynamoDBSaverOptions,
@@ -59,6 +80,9 @@ export function setUpCheckpointer(
       ttl: options.ttl,
       logger,
       retry: resolveRetryPolicy(options.retry, logger),
+      indexShards: options.indexShards ?? DEFAULT_INDEX_SHARDS,
+      readConcurrency: options.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
+      indexName: options.indexName,
     },
     ddbClient: resolved.ddbClient,
     ownsClient: resolved.ownsClient,

@@ -65,6 +65,23 @@ function sameObject(a: StoreItemRecord, b: StoreItemRecord): boolean {
  * one strongly-consistent re-read settles it — the row now points at the new
  * object (return that), is gone (null), or still points at the same missing
  * object (a genuine loss, rethrown). Any other download failure propagates.
+ *
+ * Accepts: `namespace` and `key` — validated as the item address they form.
+ * `signal` — aborts the reads.
+ *
+ * Returns: the item, or `null` for one that does not exist, has expired, or
+ * whose key holds a row this adapter does not own. The three are one answer on
+ * purpose: a caller cannot act on the difference, and reporting a foreign row
+ * would leak that a shared table holds one.
+ *
+ * Throws: ValidationError naming `namespace` or `key`; `FORMAT_UNSUPPORTED` for
+ * a row written by a newer version, which is *not* reported as absent — hiding
+ * an item that exists is worse than failing; `PAYLOAD_CORRUPT` or the download's
+ * own error for a payload that cannot be read; `AbortError` when the signal
+ * fires.
+ *
+ * Guarantees: strongly consistent — an item just written is always seen, and
+ * the ttl is honoured here rather than waited for.
  */
 export async function getItem(
   context: StoreContext,

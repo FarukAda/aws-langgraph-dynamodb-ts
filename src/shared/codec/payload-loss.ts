@@ -1,8 +1,16 @@
 import { ErrorCode } from '../errors/error-code';
 
 /**
- * True when an offloaded object no longer exists — a lifecycle sweep removed
- * it, or a competing overwrite deleted it between a row read and the download.
+ * True when an offloaded object no longer exists.
+ *
+ * Accepts: `error` — any error; only `S3_OFFLOAD_FAILED` carrying a `NoSuchKey`
+ * cause matches. An error with no `cause`, or one whose cause names another
+ * S3 failure, is not a missing object.
+ *
+ * Returns: whether the object is gone — a lifecycle sweep removed it, or a
+ * competing overwrite deleted it between a row read and the download.
+ *
+ * Throws: nothing.
  */
 export function isMissingObjectError(error: Error): boolean {
   const coded = error as { code?: string; cause?: { name?: string } };
@@ -27,15 +35,26 @@ function isRowRejection(error: Error): boolean {
 }
 
 /**
- * True when a payload can never be read again — its object is gone, it trips
- * the decompression guard, or its key lies outside the row's own path — as
- * opposed to a failure that may succeed on retry or after a configuration fix
- * (throttling, network, permissions).
+ * True when a payload can never be read again, as opposed to a failure that may
+ * succeed on retry or after a configuration fix (throttling, network,
+ * permissions).
+ *
+ * Accepts: `error` — any error. Permanent are: its object is gone
+ * ({@link isMissingObjectError}), its bytes are not the form the row declares
+ * (`PAYLOAD_CORRUPT`), it trips the decompression guard (`COMPRESSION_LIMIT`),
+ * or the row's own key lies outside the path its identifiers allow
+ * ({@link isRowRejection}). Everything else is false, including an error that
+ * carries no code at all.
+ *
+ * Returns: whether a caller should report rather than retry.
+ *
+ * Throws: nothing.
  */
 export function isPermanentPayloadLoss(error: Error): boolean {
   const coded = error as { code?: string };
   return (
     coded.code === ErrorCode.COMPRESSION_LIMIT ||
+    coded.code === ErrorCode.PAYLOAD_CORRUPT ||
     isMissingObjectError(error) ||
     isRowRejection(error)
   );

@@ -65,6 +65,25 @@ async function decodeMessage(
  * `onCorruptMessage`: `'throw'` fails the read with the underlying error;
  * `'skip'` (the default) reports it at `error` with its sort key and returns
  * the rest. Every other failure propagates regardless of the policy.
+ *
+ * Accepts: `options.limit` — the newest N; absent asks for the whole session.
+ * `options.before` — only messages appended before that instant.
+ * `options.signal` — aborts the reads.
+ *
+ * Returns: the messages in chronological order, oldest first. A session that
+ * does not exist and one whose messages have all expired both return nothing:
+ * a conversation nobody can read is a conversation that is not there.
+ *
+ * Throws: ValidationError naming `sessionId`, `limit` or `before`;
+ * `FORMAT_UNSUPPORTED` for a row a newer version wrote; the decode error of a
+ * corrupt row under `onCorruptMessage: 'throw'`; any infrastructure failure —
+ * a throttle, a permission, a transport error — whatever the policy, because
+ * dropping a message for one of those would hand back a silently truncated
+ * conversation that the chain then re-persists as the truth.
+ *
+ * Guarantees: strongly consistent, so the turn just appended is visible.
+ * Offloaded messages download several at a time, and the corruption policy is
+ * applied in message order however they finish.
  */
 export async function getMessages(
   context: HistoryContext,
@@ -75,8 +94,10 @@ export async function getMessages(
   validateMessageWindow(options);
   const items: ChatMessageItem[] = await readWindow(context, sessionId, options);
   /** Offloaded rows cost one S3 GET each, so they decode several at a time; the policy is applied in order. */
-  const decoded = await mapWithConcurrency(items, DEFAULT_READ_CONCURRENCY, (item) =>
-    decodeMessage(context, item, sessionId),
+  const decoded = await mapWithConcurrency(
+    items,
+    context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
+    (item) => decodeMessage(context, item, sessionId),
   );
   const messages: BaseMessage[] = [];
   decoded.forEach((result, index) => {

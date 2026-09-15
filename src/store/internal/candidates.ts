@@ -25,6 +25,16 @@ import type { StoreContext } from './setup';
  */
 export type CollectBound = { kind: 'page'; need: number } | { kind: 'semantic'; cap: number };
 
+/**
+ * The vectors a row carries, whichever shape it was written in: a list of
+ * per-path vectors, or the single joined vector of an earlier version read as
+ * a one-element list so it ranks as it always did.
+ */
+function storedVectors(record: StoreItemRecord): number[][] | undefined {
+  if (record.embeddings) return record.embeddings;
+  return record.embedding ? [record.embedding] : undefined;
+}
+
 /** Rows waiting for a decode batch, and the candidates decoded so far. */
 interface Collector {
   pending: StoreItemRecord[];
@@ -66,12 +76,14 @@ async function flush(context: StoreContext, op: SearchOperation, state: Collecto
   if (state.pending.length === 0) return;
   const batch = state.pending;
   state.pending = [];
-  const items = await mapWithConcurrency(batch, DEFAULT_READ_CONCURRENCY, (record) =>
-    readStoreItem(context, record),
+  const items = await mapWithConcurrency(
+    batch,
+    context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
+    (record) => readStoreItem(context, record),
   );
   batch.forEach((record, index) => {
     if (passesFilter(items[index], op)) {
-      state.collected.push({ item: items[index], embedding: record.embedding });
+      state.collected.push({ item: items[index], embeddings: storedVectors(record) });
     }
   });
 }
@@ -81,10 +93,8 @@ async function flush(context: StoreContext, op: SearchOperation, state: Collecto
  * one, since any row may be dropped; without one every decoded row is a match,
  * so the batch never exceeds what the page still needs.
  */
-function batchSize(op: SearchOperation, need: number, collected: number): number {
-  return op.filter === undefined
-    ? Math.min(DEFAULT_READ_CONCURRENCY, need - collected)
-    : DEFAULT_READ_CONCURRENCY;
+function batchSize(op: SearchOperation, need: number, collected: number, limit: number): number {
+  return op.filter === undefined ? Math.min(limit, need - collected) : limit;
 }
 
 function tooManyCandidates(count: number, cap: number): ValidationError {
@@ -96,10 +106,30 @@ function tooManyCandidates(count: number, cap: number): ValidationError {
 }
 
 /**
- * Collect the live rows under the prefix and decode them within `bound`. A
- * page decodes rows in batches of {@link DEFAULT_READ_CONCURRENCY} and closes
- * the paginator as soon as the page is full, so a namespace far larger than the
- * page costs neither a full decode nor a truncation error.
+ * Collect the live rows under the prefix and decode them within `bound`.
+ *
+ * Accepts: `op.namespacePrefix` — a non-empty prefix is a Query on one
+ * partition; an empty one spans every partition and is the Scan this adapter
+ * reserves for exactly that (DESIGN D-1). `bound` — a page stops as soon as
+ * `need` matching items are in hand; a semantic collection needs every
+ * candidate and is refused past `cap`. `op.filter` — applied after decoding,
+ * since the filter reads the value.
+ *
+ * Returns: the matching candidates with the vectors their rows carry, in the
+ * order read: sort-key order within a partition, unspecified across partitions.
+ * A page therefore pages stably within a namespace, and only there.
+ *
+ * Throws: ValidationError naming `maxSearchCandidates` before any decode when a
+ * semantic collection exceeds `cap`; {@link ResultTruncatedError} when
+ * `maxScanItems` is reached while rows remain — a search never silently answers
+ * from part of the table; `AbortError` when the signal fires between pages;
+ * whatever a decode throws for a corrupt or unreadable row.
+ *
+ * Guarantees: a page closes the paginator as soon as it is full, so a namespace
+ * far larger than the page costs neither a full decode nor a truncation error.
+ * Expired rows, rows of other adapters and rows whose own `namespace` does not
+ * match the prefix are skipped — the last matters because a Scan has no
+ * key condition at all, so the prefix is enforced here rather than by DynamoDB.
  */
 export async function collectCandidates(
   context: StoreContext,
@@ -108,6 +138,7 @@ export async function collectCandidates(
   signal?: AbortSignal,
 ): Promise<RankCandidate[]> {
   const now = nowSeconds();
+  const limit = context.readConcurrency ?? DEFAULT_READ_CONCURRENCY;
   const state: Collector = { pending: [], collected: [] };
   for await (const raw of candidateSource(context, op, signal, now)) {
     const record = liveRecord(raw, op, now);
@@ -118,7 +149,7 @@ export async function collectCandidates(
         throw tooManyCandidates(state.pending.length, bound.cap);
       continue;
     }
-    if (state.pending.length < batchSize(op, bound.need, state.collected.length)) continue;
+    if (state.pending.length < batchSize(op, bound.need, state.collected.length, limit)) continue;
     await flush(context, op, state);
     if (state.collected.length >= bound.need) return state.collected;
   }

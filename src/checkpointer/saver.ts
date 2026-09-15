@@ -6,17 +6,19 @@ import {
   type CheckpointListOptions,
   type CheckpointMetadata,
   type CheckpointTuple,
+  type DeltaChannelHistory,
   type PendingWrite,
 } from '@langchain/langgraph-checkpoint';
 
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
-import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
+import { ensureS3Lifecycle } from './actions/ensure-lifecycle';
 import { getCheckpointTuple } from './actions/get-tuple';
 import { listCheckpoints } from './actions/list';
 import { putCheckpoint } from './actions/put';
 import { putWrites as putWritesAction } from './actions/put-writes';
+import { deltaChannelHistory } from './internal/delta-history';
 import { type CheckpointerContext, setUpCheckpointer } from './internal/setup';
 import type { DynamoDBSaverOptions } from './types';
 
@@ -31,6 +33,20 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   private readonly ownsClient: boolean;
   private readonly ddbClient: ReturnType<typeof setUpCheckpointer>['ddbClient'];
 
+  /**
+   * Accepts: `options` — validated here, so a misconfiguration surfaces at
+   * construction rather than on the first request. `options.serde` reaches the
+   * base class, which is why the resolved `this.serde` is what the context
+   * gets.
+   *
+   * Returns: a saver that owns the client it built, or borrows the one it was
+   * given.
+   *
+   * Throws: ValidationError naming the offending option.
+   *
+   * Guarantees: no I/O. Constructing a saver issues no request, so it is safe
+   * at module scope and in a Lambda's init phase.
+   */
   constructor(options: DynamoDBSaverOptions) {
     super(options.serde);
     const setup = setUpCheckpointer(options, this.serde);
@@ -40,36 +56,68 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   }
 
   /**
-   * Read one checkpoint with its metadata and pending writes: the one
-   * `checkpoint_id` names, else the newest in the namespace. Strongly
-   * consistent, so a checkpoint just written is always seen. Returns
-   * `undefined` for an unknown thread or checkpoint, or a config without a
-   * thread.
-   * @throws ValidationError for a malformed identifier; UpstreamError, RetryExhaustedError, AbortError (`config.signal`).
+   * Read one checkpoint with its metadata and pending writes.
+   *
+   * Accepts: `config.configurable.checkpoint_id` — names the checkpoint; its
+   * absence asks for the newest in the namespace. `checkpoint_ns` defaults to
+   * the root namespace. A config naming no `thread_id` is accepted: its other
+   * identifiers are still validated. `config.signal` — aborts the reads.
+   *
+   * Returns: the tuple, or `undefined` for an unknown thread, an unknown
+   * checkpoint, a config naming no thread, or a checkpoint whose payload row is
+   * not there yet.
+   *
+   * Throws: ValidationError for a malformed identifier; `FORMAT_UNSUPPORTED`
+   * for a row a newer release wrote; UpstreamError; RetryExhaustedError;
+   * AbortError.
+   *
+   * Guarantees: strongly consistent, so a checkpoint just written is always
+   * seen.
    */
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     return guardPublic('saver.getTuple', () => getCheckpointTuple(this.context, config));
   }
 
   /**
-   * Stream checkpoints newest first: one namespace, every namespace of a
-   * thread when `checkpoint_ns` is omitted, or every thread in the table when
-   * `thread_id` is omitted (a table scan). Eventually consistent. `before`,
-   * `filter` and `limit` follow the reference savers.
+   * Stream checkpoints newest first.
+   *
+   * Accepts: `config` — one namespace, every namespace of a thread when
+   * `checkpoint_ns` is omitted, or every thread in the table when `thread_id`
+   * is omitted, which is a table scan. `options.before`, `options.filter` and
+   * `options.limit` follow the reference savers; a limit of 0 or less yields
+   * nothing.
+   *
+   * Returns: an async generator over the tuples. Abandoning it stops the read,
+   * so a consumer that breaks early pays for no further page.
+   *
+   * Throws: ValidationError for a malformed identifier or limit;
+   * `FORMAT_UNSUPPORTED`; UpstreamError; RetryExhaustedError; AbortError.
+   *
+   * Guarantees: eventually consistent — a listing tolerates the replica lag
+   * `getTuple` does not.
    * @remarks One read per page plus two per yielded tuple (see the README cost table).
-   * @throws ValidationError, UpstreamError, RetryExhaustedError, AbortError.
    */
   list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple> {
     return guardPublicIterable('saver.list', listCheckpoints(this.context, config, options));
   }
 
   /**
-   * Store a checkpoint and its metadata in one transaction and return the
-   * config that addresses it. `config.checkpoint_id` becomes the parent;
-   * `newVersions` names the channels that changed, and only those plus the
-   * ones the parent stored are persisted. Last writer wins for a repeated
-   * `checkpoint_id`.
-   * @throws ValidationError; UpstreamError; RetryExhaustedError; AbortError; S3_OFFLOAD_FAILED when an offloaded payload cannot be uploaded.
+   * Store a checkpoint and its metadata in one transaction.
+   *
+   * Accepts: `config.configurable.checkpoint_id` — becomes the new
+   * checkpoint's parent. `checkpoint` — every channel value it carries is
+   * stored. `newVersions` — accepted to satisfy `BaseCheckpointSaver.put` and
+   * deliberately ignored; see `putCheckpoint` for why narrowing by it lost
+   * state on a fork.
+   *
+   * Returns: the config addressing the stored checkpoint, which is what the
+   * caller passes back to continue the thread.
+   *
+   * Throws: ValidationError; `S3_OFFLOAD_FAILED` when an offloaded payload
+   * cannot be uploaded; UpstreamError; RetryExhaustedError; AbortError.
+   *
+   * Guarantees: both rows land or neither does. Writing the same
+   * `checkpoint.id` again replaces both, so a retry is safe.
    */
   async put(
     config: RunnableConfig,
@@ -83,12 +131,22 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   }
 
   /**
-   * Store a task's pending writes for the checkpoint `config` names, one row
-   * per write, written in parallel. Regular writes are first-write-wins;
-   * special channels (`__interrupt__`, `__resume__`, `__error__`,
-   * `__scheduled__`) overwrite, guarded so two concurrent calls never orphan
-   * an offloaded object.
-   * @throws ValidationError when `checkpoint_id` is missing or a channel is malformed; UpstreamError; RetryExhaustedError; AbortError.
+   * Store a task's pending writes for the checkpoint `config` names.
+   *
+   * Accepts: `config` — must name a `checkpoint_id`, since writes attach to a
+   * checkpoint. `writes` — one row each, written in parallel; an empty list
+   * writes nothing. `taskId` — validated as the key segment it becomes.
+   *
+   * Returns: nothing. Losing a first-write-wins race is a normal outcome, not
+   * a failure.
+   *
+   * Throws: ValidationError when `checkpoint_id` is missing or a channel is
+   * malformed; `S3_OFFLOAD_FAILED`; UpstreamError; RetryExhaustedError;
+   * AbortError.
+   *
+   * Guarantees: regular writes are first-write-wins; special channels
+   * (`__interrupt__`, `__resume__`, `__error__`, `__scheduled__`) overwrite,
+   * guarded so two concurrent calls never orphan an offloaded object.
    */
   async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
     return guardPublic('saver.putWrites', () =>
@@ -97,9 +155,19 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   }
 
   /**
-   * Delete every checkpoint, payload and pending write of a thread and their
-   * offloaded objects. Single pass: call it when the thread is quiescent.
-   * @throws BatchWriteAllIncompleteError when a delete batch does not fully drain; UpstreamError; AbortError (`options.signal`).
+   * Delete every checkpoint, payload and pending write of a thread.
+   *
+   * Accepts: `threadId` — validated. `options.signal` — aborts between pages.
+   *
+   * Returns: nothing. Deleting a thread that does not exist is not an error.
+   *
+   * Throws: ValidationError for a malformed `threadId`;
+   * BatchWriteAllIncompleteError when a delete batch does not fully drain,
+   * carrying what did succeed; UpstreamError; AbortError.
+   *
+   * Guarantees: a row this adapter did not write is left in place and logged.
+   * Single pass: call it when the thread is quiescent, since a checkpoint
+   * written while it runs may survive it.
    */
   async deleteThread(threadId: string, options?: CancelOptions): Promise<void> {
     return guardPublic('saver.deleteThread', () =>
@@ -107,7 +175,46 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     );
   }
 
-  /** Release owned resources (the underlying client and any S3 client). */
+  /**
+   * Walk a checkpoint's ancestors for the delta channels named, returning each
+   * channel's on-path writes oldest-first and its nearest stored value.
+   *
+   * Overrides the inherited walk, which stops silently at an ancestor it cannot
+   * read and lets the consumer restart the channel from empty. A TTL computed
+   * per put puts that within reach here, so an ancestor a channel still needs
+   * that has expired is reported instead of dropped; see `deltaChannelHistory`.
+   *
+   * Accepts: `options.channels` — the delta channels to rebuild; none reads
+   * nothing. `options.config` — the checkpoint to walk back from.
+   *
+   * Returns: per channel, its on-path writes oldest-first and the nearest
+   * stored value found.
+   *
+   * Throws: `ANCESTOR_EXPIRED` when a checkpoint a channel still needs has
+   * expired; UpstreamError; RetryExhaustedError.
+   *
+   * Guarantees: the walk stops at the first ancestor answering for every
+   * channel, so a deep thread costs reads only as far back as the nearest
+   * snapshot.
+   */
+  getDeltaChannelHistory(
+    options: Parameters<BaseCheckpointSaver['getDeltaChannelHistory']>[0],
+  ): Promise<Record<string, DeltaChannelHistory>> {
+    return guardPublic('saver.getDeltaChannelHistory', () =>
+      deltaChannelHistory(this.context, (c) => this.getTuple(c), options.config, options.channels),
+    );
+  }
+
+  /**
+   * Release owned resources.
+   *
+   * Accepts: nothing.
+   *
+   * Returns: nothing. Idempotent, and a no-op for a client the caller injected
+   * — that one is theirs to close.
+   *
+   * Throws: nothing this adapter raises.
+   */
   destroy(): void {
     this.context.offloader?.destroy();
     if (this.ownsClient) this.ddbClient?.destroy();
@@ -115,17 +222,23 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
 
   /**
    * Provision an S3 lifecycle expiration rule matching the configured TTL, so
-   * offloaded objects don't outlive their DynamoDB item forever. No-ops when
-   * S3 offload or TTL isn't configured; throws when the bucket cannot be read
-   * or written. Requires the `s3:GetLifecycleConfiguration` /
-   * `s3:PutLifecycleConfiguration` bucket-level permissions (broader than the
-   * object-level CRUD the rest of S3 offload needs) — call this once during
-   * deployment/provisioning, not per-request.
+   * offloaded payloads don't outlive the items that point at them.
+   *
+   * Accepts: nothing; the rule follows the configured `s3` and `ttl`. A no-op
+   * without both, since there would be no bucket to rule over or no expiry to
+   * match.
+   *
+   * Returns: nothing. Installing a rule that is already there is a no-op too,
+   * so calling it on every deploy is safe.
+   *
+   * Throws: ValidationError naming `s3.keyPrefix` on a rule-id collision;
+   * UpstreamError when the bucket's lifecycle cannot be read or written.
+   * @remarks Needs the bucket-level `s3:GetLifecycleConfiguration` and
+   * `s3:PutLifecycleConfiguration` permissions, which are broader than the
+   * object-level CRUD the rest of S3 offload needs. Call it once at deployment,
+   * not per request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    return guardPublic('saver.ensureS3LifecycleRule', async () => {
-      if (!this.context.offloader || !this.context.ttl) return;
-      await this.context.offloader.ensureLifecycleRule(lifecycleExpirationDays(this.context.ttl));
-    });
+    return guardPublic('saver.ensureS3LifecycleRule', () => ensureS3Lifecycle(this.context));
   }
 }

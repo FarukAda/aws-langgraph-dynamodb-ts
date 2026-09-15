@@ -42,6 +42,18 @@ function isCancelledByCondition(error: Error): boolean {
  * resolves it), unlike reverting, which would need to re-check for a
  * concurrent legitimate extension to avoid regressing it. See README.md's
  * "TTL expiry" section.
+ *
+ * Accepts: `delta` — how many messages to subtract; `0` is a no-op and spends
+ * no write. `createdBefore` — this call's own append timestamp, which pins the
+ * incarnation.
+ *
+ * Returns: nothing, whether the decrement applied or the guard correctly
+ * refused it.
+ *
+ * Throws: whatever the write throws other than its own condition failure. A
+ * vanished row and a newer incarnation are both "nothing of mine to revert",
+ * not errors — this runs from an in-progress rollback, where a spurious error
+ * for a no-op would misrepresent what happened.
  */
 export async function revertSessionCount(
   context: HistoryContext,
@@ -86,6 +98,15 @@ export async function revertSessionCount(
  * committed messages — so it falls through to the plain decrement, and then
  * strips just the title this call contributed, which is the only part of the
  * row still carrying rolled-back message content.
+ *
+ * Accepts: `total` — every message this call counted onto the row; `0` is a
+ * no-op. `createdAt` — this call's timestamp, which is what "I created this
+ * row" means here. `title` — the title this call may have contributed.
+ *
+ * Returns: nothing. The row is deleted, or decremented and stripped of this
+ * call's title; both are a complete undo of what this call contributed.
+ *
+ * Throws: whatever the writes throw other than their own condition failures.
  */
 export async function revertSessionCreation(
   context: HistoryContext,

@@ -30,3 +30,26 @@ describe('UpstreamError', () => {
     expect('requestId' in error).toBe(false);
   });
 });
+
+describe('UpstreamError redacts the cause it quotes (SEC-05)', () => {
+  /**
+   * The wrapped message reaches `err.message`, which an application may print
+   * with a plain console call rather than through a redacting logger. An SDK
+   * error can carry a credential fragment in its own text, so quoting it raw
+   * leaked it through the one path that bypasses the logger entirely.
+   */
+  it('replaces a credential shape in the quoted message', () => {
+    const cause = new Error('SignatureDoesNotMatch: Credential=AKIAIOSFODNN7EXAMPLE/20240101');
+    const error = new UpstreamError(cause, 'saver.put');
+    expect(error.message).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    expect(error.message).toContain('[REDACTED]');
+  });
+
+  it('keeps the operation, the upstream name and the cause itself', () => {
+    const cause = new Error('throttled');
+    const error = new UpstreamError(cause, 'store.put');
+    expect(error.message).toBe('store.put: Error: throttled');
+    expect(error.upstreamName).toBe('Error');
+    expect(error.cause).toBe(cause);
+  });
+});

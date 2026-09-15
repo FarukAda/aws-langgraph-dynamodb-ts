@@ -3,9 +3,11 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import {
   assertVectorDims,
   cosineSimilarity,
+  embedPassages,
   embedValue,
   embedValues,
   extractText,
+  extractTexts,
 } from '../../../../src/store/internal/semantic-search';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { stubEmbeddings } from '../../../shared/helpers/embeddings-stub';
@@ -104,6 +106,66 @@ describe('embedValue', () => {
   });
 });
 
+describe('embedPassages', () => {
+  it('returns undefined when no index is configured', async () => {
+    expect(await embedPassages(context(), { a: 1 })).toBeUndefined();
+  });
+
+  /**
+   * One vector per configured path, so a long document with one strongly
+   * matching section stays findable; joining them averaged that away.
+   */
+  it('embeds each configured field separately, in one call', async () => {
+    const embeddings = stubEmbeddings([1, 0]);
+    const vectors = await embedPassages(
+      context({ dims: 2, embeddings: embeddings as never, fields: ['title', 'body'] }),
+      { title: 'a', body: 'b' },
+    );
+    expect(vectors).toEqual([
+      [1, 0],
+      [1, 0],
+    ]);
+    expect(embeddings.embedDocuments).toHaveBeenCalledTimes(1);
+    expect(embeddings.embedDocuments).toHaveBeenCalledWith(['a', 'b']);
+  });
+
+  it('defaults to the whole document when no fields are configured', async () => {
+    const embeddings = stubEmbeddings([0.5, 0.5]);
+    await embedPassages(context({ dims: 2, embeddings: embeddings as never }), { a: 1 });
+    expect(embeddings.embedDocuments).toHaveBeenCalledWith([JSON.stringify({ a: 1 }, null, 2)]);
+  });
+
+  it('uses a fields override when provided', async () => {
+    const embeddings = stubEmbeddings([0.5, 0.5]);
+    await embedPassages(
+      context({ dims: 2, embeddings: embeddings as never, fields: ['title'] }),
+      { title: 'a', body: 'b' },
+      ['body'],
+    );
+    expect(embeddings.embedDocuments).toHaveBeenCalledWith(['b']);
+  });
+
+  /** An undefined result is what clears a stale vector on a re-put. */
+  it('returns undefined without embedding when the value yields no text', async () => {
+    const embeddings = stubEmbeddings([0.5, 0.5]);
+    expect(
+      await embedPassages(context({ dims: 2, embeddings: embeddings as never, fields: ['gone'] }), {
+        title: 'hi',
+      }),
+    ).toBeUndefined();
+    expect(embeddings.embedDocuments).not.toHaveBeenCalled();
+  });
+
+  it('rejects a vector whose length disagrees with index.dims', async () => {
+    const embeddings = stubEmbeddings([0.5, 0.5, 0.5]);
+    await expect(
+      embedPassages(context({ dims: 2, embeddings: embeddings as never, fields: ['title'] }), {
+        title: 'hi',
+      }),
+    ).rejects.toThrow(/dims/);
+  });
+});
+
 describe('embedValues', () => {
   it('embeds every non-empty text in one embedDocuments call and keeps order', async () => {
     const embedDocuments = jest.fn(async (texts: string[]) => texts.map((t) => [t.length]));
@@ -145,5 +207,52 @@ describe('assertVectorDims', () => {
   it('skips the check when dims is not a positive integer', () => {
     expect(() => assertVectorDims(index(0), [1, 2], 'query')).not.toThrow();
     expect(() => assertVectorDims(index(Number.NaN), [1, 2], 'query')).not.toThrow();
+  });
+});
+
+describe('extractTexts keeps the paths apart (STORE-10)', () => {
+  const doc = {
+    title: 'a title',
+    chapters: [{ content: 'first chapter' }, { content: 'second chapter' }],
+    empty: '',
+  };
+
+  it('returns one text per extracted path, in field order', () => {
+    expect(extractTexts(doc, ['title', 'chapters[*].content'])).toEqual([
+      'a title',
+      'first chapter',
+      'second chapter',
+    ]);
+  });
+
+  it('drops paths that yield no text, so no empty vector is embedded', () => {
+    expect(extractTexts(doc, ['empty', 'title'])).toEqual(['a title']);
+  });
+
+  it('yields nothing when no configured field matches', () => {
+    expect(extractTexts(doc, ['missing'])).toEqual([]);
+  });
+
+  /**
+   * An indexed field holding `undefined` is an ordinary JS object that stores
+   * fine — `JSON.stringify` simply drops the key — so it must index as "no
+   * text", not fail the put from inside the embedding step.
+   */
+  it('indexes a field with no JSON representation as no text', async () => {
+    const value = { title: undefined, body: 'kept' } as never;
+    expect(extractTexts(value, ['title', 'body'])).toEqual(['kept']);
+    expect(extractText(value, ['title'])).toBe('');
+    const embeddings = stubEmbeddings([1, 0]);
+    await expect(
+      embedPassages(context({ dims: 2, embeddings: embeddings as never }), value, ['title']),
+    ).resolves.toBeUndefined();
+    expect(embeddings.embedDocuments).not.toHaveBeenCalled();
+  });
+
+  /** The joined form is what a single-vector `vectorBackend` still receives. */
+  it('joins the same texts for the backend path', () => {
+    expect(extractText(doc, ['title', 'chapters[*].content'])).toBe(
+      'a title first chapter second chapter',
+    );
   });
 });

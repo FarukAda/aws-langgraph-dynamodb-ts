@@ -37,7 +37,11 @@ describe('syncVectorIndex', () => {
     await expect(syncVectorIndex(backend, ['n'], 'k', [1], logger)).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('vector-index sync failed'),
-      expect.objectContaining({ key: 'k', message: 'backend down' }),
+      /**
+       * The error's name, never its text: the package promises its logs carry
+       * identifiers and counts only, and a backend's message is neither.
+       */
+      expect.objectContaining({ key: 'k', reason: 'Error' }),
     );
   });
 });

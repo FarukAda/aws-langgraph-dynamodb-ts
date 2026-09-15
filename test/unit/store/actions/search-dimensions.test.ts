@@ -30,7 +30,7 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
       logger: { ...SILENT_LOGGER, warn },
     });
     // Both items were embedded by a 3-dimensional model; the query is 2-dimensional.
-    const meta = { createdAt: 'c', updatedAt: 'u', embedding: [1, 0, 0] };
+    const meta = { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0, 0]] };
     const stale1 = await buildStoreItem(ctx, ['users', 'u1'], 's1', { v: 1 }, meta);
     const stale2 = await buildStoreItem(ctx, ['users', 'u1'], 's2', { v: 2 }, meta);
     mock.on(QueryCommand).resolves({ Items: [stale1, stale2] });
@@ -53,12 +53,44 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
       index: { dims: 2, embeddings: embeddings as never },
       logger: { ...SILENT_LOGGER, warn },
     });
-    const meta = { createdAt: 'c', updatedAt: 'u', embedding: [1, 0] };
+    const meta = { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0]] };
     const fresh = await buildStoreItem(ctx, ['users', 'u1'], 'f', { v: 1 }, meta);
     mock.on(QueryCommand).resolves({ Items: [fresh] });
 
-    await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
 
+    expect(items[0].score).toBeDefined();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Before per-path vectors, a row carried one joined `embedding`. Those rows
+   * are still out there and still rank: the reader reads the single vector as
+   * a one-element list, so it scores exactly as it did when it was written.
+   */
+  it('ranks a row that still carries the single joined embedding', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const warn = jest.fn();
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      logger: { ...SILENT_LOGGER, warn },
+    });
+    const row = await buildStoreItem(
+      ctx,
+      ['users', 'u1'],
+      'legacy',
+      { v: 1 },
+      {
+        createdAt: 'c',
+        updatedAt: 'u',
+      },
+    );
+    mock.on(QueryCommand).resolves({ Items: [{ ...row, embedding: [0, 1] }] });
+
+    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+
+    expect(items[0].score).toBe(1);
     expect(warn).not.toHaveBeenCalled();
   });
 

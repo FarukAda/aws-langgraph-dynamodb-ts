@@ -50,6 +50,7 @@ import type {
   S3RegionLike,
   SessionBackend,
   SessionMetadata,
+  SessionPage,
   TtlOption,
   VectorBackend,
   VectorMatch,
@@ -80,6 +81,8 @@ const VALUE_EXPORTS = [
   'RetryExhaustedError',
   'UpstreamError',
   'ValidationError',
+  /** Operator tool: see `backfillRecencyIndex`; run before enabling `indexName`. */
+  'backfillRecencyIndex',
   'isDynamoDBLangGraphError',
   'redactLogger',
   'redactSecrets',
@@ -143,6 +146,9 @@ describe('adapter signatures (TEST-10)', () => {
     expectTypeOf<DynamoDBSaver['put']>().parameters.toEqualTypeOf<
       [RunnableConfig, Checkpoint, CheckpointMetadata, ChannelVersions?]
     >();
+    expectTypeOf<DynamoDBSaver['getDeltaChannelHistory']>().toEqualTypeOf<
+      BaseCheckpointSaver['getDeltaChannelHistory']
+    >();
     expectTypeOf<DynamoDBSaver['ensureS3LifecycleRule']>().returns.resolves.toBeVoid();
     expectTypeOf<DynamoDBSaver['destroy']>().returns.toBeVoid();
   });
@@ -179,9 +185,9 @@ describe('adapter signatures (TEST-10)', () => {
     expectTypeOf<DynamoDBChatMessageHistory['listSessions']>().parameters.toEqualTypeOf<
       [ListSessionsOptions?]
     >();
-    expectTypeOf<DynamoDBChatMessageHistory['listSessions']>().returns.resolves.toEqualTypeOf<
-      SessionMetadata[]
-    >();
+    expectTypeOf<
+      DynamoDBChatMessageHistory['listSessions']
+    >().returns.resolves.toEqualTypeOf<SessionPage>();
     expectTypeOf<DynamoDBChatMessageHistory['addMessage']>().parameters.toEqualTypeOf<
       [string, BaseMessage, CancelOptions?]
     >();

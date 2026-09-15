@@ -111,9 +111,19 @@ async function overwriteUnconditionally(
  * `catch` may report `committed: false` without verifying: with no offloader
  * there is no object for the caller to delete on the strength of it.
  *
- * Never rejects: the caller runs this concurrently with the regular writes
+ * Accepts: `item` — one special-channel row, carrying this call's `writeGroup`.
+ * `signal` — aborts the attempts.
+ *
+ * Returns: whether the write committed, the descriptor it superseded when it
+ * did, and the failure when it did not.
+ *
+ * Throws: nothing. The caller runs this concurrently with the regular writes
  * under `Promise.all`, whose own cleanup depends on every branch resolving
  * rather than short-circuiting.
+ *
+ * Guarantees: each call supersedes exactly one payload, so two concurrent calls
+ * to the same channel cannot both delete the same object and orphan the loser's
+ * upload.
  */
 export async function writeSpecialItem(
   context: CheckpointerContext,

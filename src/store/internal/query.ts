@@ -2,7 +2,19 @@ import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb'
 
 import { partitionKey, sortKeyPrefix } from './keys';
 
-/** Query input for a scoped prefix (PK = prefix[0], optional SK begins_with). */
+/**
+ * Query input for a scoped prefix.
+ *
+ * Accepts: `prefix` — at least one element; the first selects the partition and
+ * the rest, when there are any, become a `begins_with` on the sort key. Callers
+ * decide the rootless case before reaching here: an empty prefix spans every
+ * partition, which is a Scan ({@link storeScan}), not a Query.
+ *
+ * Returns: the Query input. The `begins_with` prefix is separator-terminated,
+ * so the scope `['users', 'u1']` does not also read `u10`.
+ *
+ * Throws: nothing.
+ */
 export function scopedQuery(tableName: string, prefix: string[]): QueryCommandInput {
   const skPrefix = sortKeyPrefix(prefix);
   if (skPrefix.length === 0) {
@@ -21,7 +33,18 @@ export function scopedQuery(tableName: string, prefix: string[]): QueryCommandIn
   };
 }
 
-/** Scan input for the rootless case, filtered to store items only. */
+/**
+ * Scan input for the rootless case, filtered to store items only.
+ *
+ * Accepts: the table name. There is nothing to scope by — this is the read for
+ * a search or listing whose conditions name no concrete partition.
+ *
+ * Returns: the Scan input. The filter drops rows without a `namespace`
+ * attribute, which is every other adapter's and every foreign row on a shared
+ * table; it is applied after the read, so it saves transfer, not RCU.
+ *
+ * Throws: nothing.
+ */
 export function storeScan(tableName: string): ScanCommandInput {
   return {
     TableName: tableName,
@@ -32,8 +55,19 @@ export function storeScan(tableName: string): ScanCommandInput {
 
 /**
  * Restrict a Query/Scan to the attributes `narrowStoreRecord` needs, leaving the
- * payload behind: a namespace listing never reads a value. RCU is billed on
- * the stored size regardless, so the saving is transfer and unmarshalling.
+ * payload behind: a namespace listing never reads a value.
+ *
+ * Accepts: any Query or Scan input; its own attribute names are preserved and
+ * the projection's are added.
+ *
+ * Returns: the same input, projected onto the row's identity. A row read this
+ * way can be narrowed but not decoded — {@link readStoreItem} needs the whole
+ * row.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: RCU is billed on the stored size regardless, so the saving is
+ * transfer and unmarshalling, not cost.
  */
 export function projectKeys<T extends QueryCommandInput | ScanCommandInput>(params: T): T {
   return {

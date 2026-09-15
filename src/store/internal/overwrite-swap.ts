@@ -50,6 +50,21 @@ async function put(
  * orphan, reclaimed by a lifecycle rule — so pathological contention degrades
  * instead of turning a working put into an error. `createdAt` is refreshed from
  * each re-read so a row created by whoever won keeps its true creation time.
+ *
+ * Accepts: `record` — the row to commit, carrying this call's own `rev`.
+ * `existing` — what the caller read before encoding, used as the first pin; an
+ * `exists: false` observation pins "no row", so a creation races correctly too.
+ *
+ * Returns: the state this write actually superseded — the descriptor safe to
+ * delete — which is the last observation the winning put was pinned to, never
+ * this record's own value.
+ *
+ * Throws: whatever the put throws other than a conditional-check failure; those
+ * are the swap's own business.
+ *
+ * Guarantees: at most {@link OVERWRITE_CAS_MAX_ATTEMPTS} conditional puts, and
+ * a re-read only when the rejection did not already carry the row that caused
+ * it.
  */
 export async function putWithRevisionSwap(
   context: StoreContext,

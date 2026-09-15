@@ -78,3 +78,15 @@ describe('validateChannel (SEC-09)', () => {
     expectValidationError(() => validateChannel('c'.repeat(257)));
   });
 });
+
+describe('validateCheckpointNs applies every rule except non-blank', () => {
+  const HIGH = String.fromCharCode(0xd83d);
+
+  it('accepts the empty root namespace', () => {
+    expect(() => validateCheckpointNs('')).not.toThrow();
+  });
+
+  it('rejects an ill-formed namespace, which reaches both the sort key and the object key', () => {
+    expect(() => validateCheckpointNs(`child${HIGH}`)).toThrow(/checkpoint_ns/);
+  });
+});

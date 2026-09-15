@@ -102,6 +102,107 @@ describe('DynamoDBFactory', () => {
   });
 });
 
+describe('the factory validates its own defaults', () => {
+  /**
+   * The same base was refused by the first `create*` call and accepted by
+   * `createAll`, so whether the mistake was reported depended on which method
+   * the caller reached for.
+   */
+  it('refuses a client alongside a clientConfig, where the caller wrote it', () => {
+    const { client } = createStrictDocumentMock();
+    expect(() => new DynamoDBFactory({ client, clientConfig: { region: 'eu-west-1' } })).toThrow(
+      /either `client` or `clientConfig`/,
+    );
+  });
+
+  it('refuses an option it does not read', () => {
+    expect(() => new DynamoDBFactory({ s3Config: { bucketName: 'b' } } as never)).toThrow(
+      /options.s3Config/,
+    );
+  });
+
+  it('accepts no options at all', () => {
+    expect(() => new DynamoDBFactory()).not.toThrow();
+  });
+});
+
+describe('createAll rejects a section it cannot build', () => {
+  /**
+   * `CreateAllOptions` has three keys, and a misspelt one escapes the type
+   * through any variable that is not an object literal: the call then built
+   * nothing and handed back three `undefined`s.
+   */
+  it('refuses a key that is not a section name', () => {
+    const factory = new DynamoDBFactory({ client: createStrictDocumentMock().client });
+    expect(() => factory.createAll({ savers: { tableName: 'ckpt' } } as never)).toThrow(
+      /options.savers/,
+    );
+  });
+
+  it('builds nothing for an empty selection', () => {
+    const fake = fakeClientFactory();
+    const factory = new DynamoDBFactory({ createClient: fake.create });
+    const all = factory.createAll({});
+    expect([all.saver, all.store, all.history]).toEqual([undefined, undefined, undefined]);
+    all.destroy();
+    expect(fake.destroy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('createAll teardown is total', () => {
+  const throwingS3 = () => ({
+    bucketName: 'shared',
+    createS3Client: () => {
+      const client = new S3Client({ region: 'us-east-1' });
+      client.destroy = (): never => {
+        throw new Error('socket already closed');
+      };
+      return client;
+    },
+  });
+
+  /**
+   * A teardown failure used to strand every resource after it — including the
+   * shared client, which no other code can reach once `destroy` has returned.
+   */
+  it('releases the rest when one adapter fails to release its own', async () => {
+    const fake = fakeClientFactory();
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
+    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    const factory = new DynamoDBFactory({
+      createClient: fake.create,
+      ttl: { days: 30 },
+      s3: throwingS3(),
+    });
+    const all = factory.createAll({ saver: { tableName: 'ckpt' }, store: { tableName: 'store' } });
+    await all.saver.ensureS3LifecycleRule();
+    await all.store.ensureS3LifecycleRule();
+    expect(() => all.destroy()).not.toThrow();
+    expect(fake.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The rollback of a failed build runs the same teardown, where a throw would
+   * replace the constructor error the caller actually needs.
+   */
+  it('reports the constructor error, not a teardown failure', () => {
+    const client = {
+      destroy: () => {
+        throw new Error('socket already closed');
+      },
+      config: {},
+      middlewareStack: { clone: () => ({}) },
+      send: jest.fn(),
+    };
+    const factory = new DynamoDBFactory({ createClient: () => client as never });
+    expect(() =>
+      factory.createAll({
+        store: { tableName: 'store', vectorBackend: {} as never },
+      }),
+    ).toThrow(/vectorBackend requires a configured/);
+  });
+});
+
 describe('shared adapter defaults (CORE-17)', () => {
   const s3 = () => ({
     bucketName: 'shared',
@@ -114,6 +215,40 @@ describe('shared adapter defaults (CORE-17)', () => {
       .map((call) => JSON.stringify(call.args[0].input))
       .map((json) => Number(/"Days":(\d+)/.exec(json)![1]));
   }
+
+  /**
+   * An adapter reads the S3 region off its own `clientConfig`, and the adapters
+   * `createAll` builds are handed the shared `client` instead — so the region
+   * has to travel on the `s3` config. Without it a bucket reachable only
+   * through that region failed with `PermanentRedirect` on the first offload,
+   * while the same configuration through `createStore` worked.
+   */
+  it('gives every adapter the DynamoDB region for S3, on both build paths', async () => {
+    const seen: object[] = [];
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
+    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    const base = {
+      clientConfig: { region: 'eu-central-1' },
+      createClient: fakeClientFactory().create,
+      ttl: { days: 30 },
+      s3: {
+        bucketName: 'shared',
+        createS3Client: (config: object) => {
+          seen.push(config);
+          return new S3Client({ region: 'us-east-1' });
+        },
+      },
+    };
+
+    const store = new DynamoDBFactory(base).createStore({ tableName: 'store' });
+    await store.ensureS3LifecycleRule();
+    expect(seen.pop()).toMatchObject({ region: 'eu-central-1' });
+
+    const all = new DynamoDBFactory(base).createAll({ store: { tableName: 'store' } });
+    await all.store.ensureS3LifecycleRule();
+    expect(seen.pop()).toMatchObject({ region: 'eu-central-1' });
+    all.destroy();
+  });
 
   it('propagates shared ttl and s3 to every adapter, a per-adapter ttl winning', async () => {
     const { client } = createStrictDocumentMock();

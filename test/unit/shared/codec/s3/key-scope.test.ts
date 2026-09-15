@@ -7,6 +7,7 @@ import {
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 
 const enc = (value: string): string => Buffer.from(value, 'utf8').toString('base64url');
+const HASH = 'A'.repeat(43);
 
 describe('s3KeyScope / isKeyInScope (SEC-03)', () => {
   it('names the path every key built from the parts shares', () => {
@@ -14,19 +15,31 @@ describe('s3KeyScope / isKeyInScope (SEC-03)', () => {
     expect(s3KeyScope('p/', [])).toBe('p/');
   });
 
-  it('accepts a key built from exactly the parts or from the parts plus more', () => {
-    const exact = buildS3Key('p/', ['users', 'u1', 'k']);
-    expect(isKeyInScope(exact, 'p/', ['users', 'u1', 'k'])).toBe(true);
-    const nonced = buildS3Key('p/', ['users', 'u1', 'k', 'nonce']);
-    expect(isKeyInScope(nonced, 'p/', ['users', 'u1', 'k'])).toBe(true);
-    const checkpoint = buildS3Key('p/', ['t', '', 'c', 'checkpoint', 'n']);
+  /**
+   * A reader checks a row-sourced key against the row's *leading* parts, and
+   * the content hash is always one segment deeper, so this is the branch every
+   * key this release writes takes.
+   */
+  it('accepts a key whose path continues below the scope', () => {
+    const item = buildS3Key('p/', ['users', 'u1', 'k'], HASH);
+    expect(isKeyInScope(item, 'p/', ['users', 'u1', 'k'])).toBe(true);
+    const checkpoint = buildS3Key('p/', ['t', '', 'c', 'checkpoint'], HASH);
     expect(isKeyInScope(checkpoint, 'p/', ['t'])).toBe(true);
   });
 
+  /**
+   * Before content addressing a store item without a nonce was written at
+   * exactly `<scope>.bin`, with no segment below the row. Those objects are
+   * still referenced by rows written then, so the equality branch stays.
+   */
+  it('accepts a key that is exactly the scope, as earlier releases wrote it', () => {
+    expect(isKeyInScope(`p/${enc('users')}/${enc('u1')}.bin`, 'p/', ['users', 'u1'])).toBe(true);
+  });
+
   it('rejects another identifier, a sibling sharing a leading substring, and another prefix', () => {
-    expect(isKeyInScope(buildS3Key('p/', ['t2', 'x']), 'p/', ['t'])).toBe(false);
-    expect(isKeyInScope(buildS3Key('p/', ['t1']), 'p/', ['t'])).toBe(false);
-    expect(isKeyInScope(buildS3Key('other/', ['t', 'x']), 'p/', ['t'])).toBe(false);
+    expect(isKeyInScope(buildS3Key('p/', ['t2', 'x'], HASH), 'p/', ['t'])).toBe(false);
+    expect(isKeyInScope(buildS3Key('p/', ['t1'], HASH), 'p/', ['t'])).toBe(false);
+    expect(isKeyInScope(buildS3Key('other/', ['t', 'x'], HASH), 'p/', ['t'])).toBe(false);
     expect(isKeyInScope('unrelated/object.bin', 'p/', ['t'])).toBe(false);
   });
 
@@ -38,7 +51,7 @@ describe('s3KeyScope / isKeyInScope (SEC-03)', () => {
 
 describe('assertKeyInScope', () => {
   it('throws a ValidationError naming the s3Key field and the allowed path', () => {
-    expect(() => assertKeyInScope(buildS3Key('p/', ['t']), 'p/', ['t'])).not.toThrow();
+    expect(() => assertKeyInScope(buildS3Key('p/', ['t'], HASH), 'p/', ['t'])).not.toThrow();
     try {
       assertKeyInScope('p/elsewhere.bin', 'p/', ['t']);
       throw new Error('should have thrown');

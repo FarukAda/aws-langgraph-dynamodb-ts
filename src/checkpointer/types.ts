@@ -23,17 +23,16 @@ export interface CheckpointConfigurable {
 export interface CheckpointMetaItem {
   PK: string;
   SK: string;
+  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
+  v?: number;
+  /** Recency-index keys; absent on rows written before the index existed. */
+  gsi1pk?: string;
+  gsi1sk?: string;
   threadId: string;
   checkpointNs: string;
   checkpointId: string;
   parentCheckpointId?: string;
   metadata: PayloadDescriptor;
-  /**
-   * The channels whose values the PAYLOAD row holds: those the put's
-   * `newVersions` named plus those carried over from the parent. Absent on
-   * rows written before this attribute, which hold every value they were given.
-   */
-  storedChannels?: string[];
   ttl?: number;
 }
 
@@ -41,6 +40,8 @@ export interface CheckpointMetaItem {
 export interface CheckpointPayloadItem {
   PK: string;
   SK: string;
+  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
+  v?: number;
   checkpoint: PayloadDescriptor;
   ttl?: number;
 }
@@ -49,6 +50,8 @@ export interface CheckpointPayloadItem {
 export interface CheckpointWriteItem {
   PK: string;
   SK: string;
+  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
+  v?: number;
   taskId: string;
   index: number;
   channel: string;

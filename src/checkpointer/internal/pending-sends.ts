@@ -9,8 +9,16 @@ import type { CheckpointerContext } from './setup';
  * checkpoint rebuilds `channel_values[TASKS]` from those writes and stamps
  * the channel with the highest version the checkpoint already carries (or
  * the first version when it carries none), exactly as the reference savers
- * do, so a thread written before LangGraph 0.2 still resumes. A v4 checkpoint,
- * or one without a parent, is returned untouched.
+ * do, so a thread written before LangGraph 0.2 still resumes.
+ *
+ * Accepts: `checkpoint` — any version. `parentCheckpointId` — the parent whose
+ * pending writes hold the sends; absent means there is nowhere to migrate from.
+ *
+ * Returns: the checkpoint untouched when it is v4 or has no parent, and
+ * otherwise a copy with `channel_values[TASKS]` rebuilt. The input is never
+ * mutated.
+ *
+ * Throws: whatever reading the parent's pending writes throws.
  */
 export async function migratePendingSends(
   context: CheckpointerContext,

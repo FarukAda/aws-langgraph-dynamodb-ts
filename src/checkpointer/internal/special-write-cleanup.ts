@@ -1,28 +1,41 @@
 import type { PayloadDescriptor } from '../../shared/codec/codec';
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
+import { releasableS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
 import { writeSpecialItem } from './special-write-cas';
 import type { SpecialWriteOutcome } from './special-write-verify';
 
+/** A descriptor to release paired with the one the surviving row keeps. */
+interface CleanupPair {
+  release: PayloadDescriptor | undefined;
+  keep: PayloadDescriptor | undefined;
+}
+
 /**
- * Best-effort delete the S3 objects backing `descriptors`, if offloading is on.
+ * Best-effort delete the S3 objects behind the `release` side of each pair,
+ * skipping any object the matching `keep` side still points at. A special
+ * write that stores the same value twice produces the same content-addressed
+ * key on both sides, and deleting it would strand the row that survives (see
+ * {@link releasableS3Keys}).
+ *
  * `scope` is given for descriptors read back from rows (the superseded values)
  * and omitted for this call's own uploads.
  */
 async function deleteDescriptors(
   context: CheckpointerContext,
-  descriptors: (PayloadDescriptor | undefined)[],
+  pairs: CleanupPair[],
   label: string,
   scope?: readonly string[],
 ): Promise<void> {
   if (!context.offloader) return;
-  const present = descriptors.filter((d): d is PayloadDescriptor => d !== undefined);
-  if (present.length === 0) return;
+  const keys = pairs.flatMap(({ release, keep }) =>
+    release ? releasableS3Keys([release], keep ? [keep] : []) : [],
+  );
+  if (keys.length === 0) return;
   await cleanUpS3Orphans(
     context.offloader,
-    collectS3Keys(present),
+    keys,
     label,
     context.logger,
     scope === undefined ? {} : { scope },
@@ -44,10 +57,19 @@ async function deleteDescriptors(
  * unless the read proves otherwise. Deleting on *unknown* would strand a live
  * row pointing at a deleted object; leaking one object instead is recoverable.
  *
- * Never rejects — a failure is reported via the return value, because the
+ * Accepts: `items` — this call's special-channel rows; empty writes nothing.
+ * `threadId` — the caller's, which scopes every object this cleanup may delete.
+ *
+ * Returns: the first failure, or undefined when every item committed.
+ *
+ * Throws: nothing — a failure is reported via the return value, because the
  * caller runs this concurrently with `writeRegularItems` under `Promise.all`,
  * whose own cleanup depends on every branch resolving rather than
  * short-circuiting.
+ *
+ * Guarantees: an object is released only when the row that survives does not
+ * point at it — identical bytes produce an identical key, so the loser's "dead"
+ * upload is the winner's live object when the two wrote the same value.
  */
 export async function writeSpecialItemsWithCleanup(
   context: CheckpointerContext,
@@ -64,13 +86,17 @@ export async function writeSpecialItemsWithCleanup(
   );
   await deleteDescriptors(
     context,
-    outcomes.filter(([, o]) => o.committed).map(([, o]) => o.superseded),
+    outcomes
+      .filter(([, o]) => o.committed)
+      .map(([item, o]) => ({ release: o.superseded, keep: item.value })),
     'putWrites.special.previous',
     [threadId],
   );
   await deleteDescriptors(
     context,
-    outcomes.filter(([, o]) => !o.committed).map(([item]) => item.value),
+    outcomes
+      .filter(([, o]) => !o.committed)
+      .map(([item, o]) => ({ release: item.value, keep: o.superseded })),
     'putWrites.special.newUpload',
   );
   return outcomes.find(([, o]) => o.error)?.[1].error;

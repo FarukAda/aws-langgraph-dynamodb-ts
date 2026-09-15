@@ -1,15 +1,27 @@
 import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
 
+import { nowIso } from '../../shared/clock';
 import { type CodecDeps } from '../../shared/codec/codec';
 import { encodePayload } from '../../shared/codec/encode';
+import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
+import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { metaSortKey, partitionKey, payloadSortKey, writeSortKey } from './keys';
 import type { CheckpointerContext } from './setup';
-import { withStoredChannels } from './stored-channels';
 import { validateChannel } from './validation';
 import { resolveWriteIndices } from './write-index';
 
-/** Map a context to the codec collaborators. */
+/**
+ * Map a context to the codec collaborators.
+ *
+ * Accepts: the adapter's context.
+ *
+ * Returns: the three the codec needs — the serializer, the compression config
+ * and the offloader — so a codec call names what it uses rather than taking the
+ * whole context.
+ *
+ * Throws: nothing.
+ */
 export function codecDeps(context: CheckpointerContext): CodecDeps {
   return { serde: context.serde, compression: context.compression, offloader: context.offloader };
 }
@@ -20,15 +32,26 @@ function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T 
 }
 
 /**
- * Encode a checkpoint + metadata into its META and PAYLOAD items. `nonce` is
- * unique per `put()` call and is appended to both S3 key part lists, so a
- * second put of the same checkpoint id — a retry after a lost response, or a
- * repair tool re-writing a checkpoint — never shares an object with the first.
- * That is what makes "the row holds my key" equivalent to "my write is live"
- * for the post-failure verification in `put.ts`, and what keeps a failed
- * re-put's cleanup from deleting the object the first, successful put's rows
- * point at. `storedChannels` narrows the stored `channel_values` (see
- * `selectStoredChannels`); by default every value is stored.
+ * Encode a checkpoint + metadata into its META and PAYLOAD items.
+ *
+ * Each offloaded payload is addressed by its own content hash under the row
+ * that points at it, so a second put of the same checkpoint id — a retry after
+ * a lost response, or a repair tool re-writing a checkpoint — writes the same
+ * bytes to the same key instead of creating a second object.
+ *
+ * Accepts: `checkpoint` — every channel value it carries is stored; see
+ * `putCheckpoint` for why nothing is narrowed away. `parentCheckpointId` — the
+ * checkpoint this one continues, absent for a root. `ttlTimestamp` — stamped on
+ * both rows so they expire together.
+ *
+ * Returns: the META row (light: ids, metadata, index keys) and the PAYLOAD row
+ * (heavy: the checkpoint itself), which the caller writes in that order —
+ * payload first, so a META row never names a payload that is not there yet.
+ *
+ * Throws: ValidationError naming `value` for a checkpoint the serializer cannot
+ * represent; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded.
+ * Encoding precedes every write, so a checkpoint that cannot be stored never
+ * half-writes a thread.
  */
 export async function buildCheckpointItems(
   context: CheckpointerContext,
@@ -36,53 +59,68 @@ export async function buildCheckpointItems(
   checkpointNs: string,
   checkpoint: Checkpoint,
   metadata: CheckpointMetadata,
-  nonce: string,
   parentCheckpointId?: string,
   ttlTimestamp?: number,
-  storedChannels: readonly string[] = Object.keys(checkpoint.channel_values),
 ): Promise<{ meta: CheckpointMetaItem; payload: CheckpointPayloadItem }> {
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
-  const checkpointDescriptor = await encodePayload(
-    withStoredChannels(checkpoint, storedChannels),
-    deps,
-    {
-      keyParts: [threadId, checkpointNs, checkpoint.id, 'checkpoint', nonce],
-    },
-  );
-  const metadataDescriptor = await encodePayload(metadata, deps, {
-    keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata', nonce],
+  const checkpointDescriptor = await encodePayload(checkpoint, deps, {
+    keyParts: [threadId, checkpointNs, checkpoint.id, 'checkpoint'],
+    row: { pk, sk: payloadSortKey(checkpointNs, checkpoint.id) },
   });
+  const metadataDescriptor = await encodePayload(metadata, deps, {
+    keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata'],
+    row: { pk, sk: metaSortKey(checkpointNs, checkpoint.id) },
+  });
+  /**
+   * The META row takes part in the recency index, so that listing checkpoints
+   * across threads is a bounded, pageable query instead of a table scan. The
+   * PAYLOAD and WRITE rows do not: nothing lists them across partitions, and
+   * indexing them would pay an extra write for an access pattern that does not
+   * exist.
+   */
+  const index = indexKeys(
+    'CHKPT',
+    checkpoint.id,
+    nowIso(),
+    context.indexShards ?? DEFAULT_INDEX_SHARDS,
+  );
   const meta: CheckpointMetaItem = {
     PK: pk,
     SK: metaSortKey(checkpointNs, checkpoint.id),
+    v: ROW_FORMAT_VERSION,
+    ...index,
     threadId,
     checkpointNs,
     checkpointId: checkpoint.id,
     metadata: metadataDescriptor,
-    storedChannels: [...storedChannels],
   };
   if (parentCheckpointId !== undefined) meta.parentCheckpointId = parentCheckpointId;
   const payload: CheckpointPayloadItem = {
     PK: pk,
     SK: payloadSortKey(checkpointNs, checkpoint.id),
+    v: ROW_FORMAT_VERSION,
     checkpoint: checkpointDescriptor,
   };
   return { meta: withTtl(meta, ttlTimestamp), payload: withTtl(payload, ttlTimestamp) };
 }
 
 /**
- * Encode a task's pending writes into one item per write. `nonce` must be
- * unique per `putWrites` *call* (not per write) and is appended to every
- * write's S3 offload keyParts — regular and special alike — so a repeated
- * write (a retried task re-emitting the same channel, or two calls to the
- * same special channel) never shares an S3 location with any earlier
- * attempt. Special (negative-index) writes still overwrite their DynamoDB
- * row in place (see {@link writeSpecialItemsWithCleanup}), but that
- * overwrite-safety now comes from reading the previous descriptor before
- * writing and only cleaning it up after the new row is confirmed committed —
- * the same pattern store/actions/put.ts uses for the identical "overwrite in
- * place, nonce every upload" shape.
+ * Encode a task's pending writes into one item per write.
+ *
+ * Accepts: `writes` — one call's, in order; their channels are validated
+ * before any payload is encoded or uploaded, so a bad channel costs no S3
+ * object. `writeGroup` — unique per `putWrites` *call*, not per write, and
+ * stored on every row the call produces: it is what tells one call's writes
+ * apart from another's when `dropSupersededWrites` resolves first-write-wins.
+ * It identifies a DynamoDB write rather than an S3 object — offloaded payloads
+ * are addressed by content hash under their own row, so two calls writing the
+ * same bytes for the same row share one object by design.
+ *
+ * Returns: one row per write, special channels first, each carrying its
+ * `occurrence` so a channel emitted twice by one call keeps both values.
+ *
+ * Throws: ValidationError naming `channel` or `value`; `S3_OFFLOAD_FAILED`.
  */
 export async function buildWriteItems(
   context: CheckpointerContext,
@@ -91,7 +129,7 @@ export async function buildWriteItems(
   checkpointId: string,
   taskId: string,
   writes: PendingWrite[],
-  nonce: string,
+  writeGroup: string,
   ttlTimestamp?: number,
 ): Promise<CheckpointWriteItem[]> {
   /** Reject a bad channel before any payload is encoded or uploaded. */
@@ -105,12 +143,15 @@ export async function buildWriteItems(
      * share an index (each channel's first occurrence is 0), so without it
      * their uploads would collide on one S3 object within a single call.
      */
+    const sk = writeSortKey(checkpointNs, checkpointId, taskId, index, channel);
     const descriptor = await encodePayload(value, deps, {
-      keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`, channel, nonce],
+      keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`, channel],
+      row: { pk, sk },
     });
     const item: CheckpointWriteItem = {
       PK: pk,
-      SK: writeSortKey(checkpointNs, checkpointId, taskId, index, channel),
+      SK: sk,
+      v: ROW_FORMAT_VERSION,
       taskId,
       index,
       channel,
@@ -121,7 +162,7 @@ export async function buildWriteItems(
        * is what lets the read side tell that apart from a channel a single
        * call legitimately wrote more than once.
        */
-      writeGroup: nonce,
+      writeGroup,
       occurrence,
       value: descriptor,
     };

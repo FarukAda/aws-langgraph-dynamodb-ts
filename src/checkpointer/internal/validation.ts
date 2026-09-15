@@ -3,40 +3,88 @@ import {
   assertMaxBytes,
   assertNoControlChars,
   assertNoSeparator,
+  assertWellFormed,
   validateIdentifier,
 } from '../../shared/validation/primitives';
 import { SORT_KEY_SEPARATOR } from './keys';
 
-/** Validate a thread id: non-blank, separator- and control-char-free, at most 1024 bytes. */
+/**
+ * Validate a thread id as the partition key it becomes.
+ *
+ * Accepts: `threadId` — non-blank, free of the sort-key separator and of
+ * control characters, well-formed UTF-16, at most
+ * {@link MAX_PARTITION_ID_BYTES}.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `thread_id`.
+ */
 export function validateThreadId(threadId: string): void {
   validateIdentifier(threadId, SORT_KEY_SEPARATOR, 'thread_id', MAX_PARTITION_ID_BYTES);
 }
 
 /**
- * Validate a checkpoint namespace. Unlike the other identifiers an empty value
- * is legal — it is the root namespace — so only the separator, control-character
- * and length rules apply.
+ * Validate a checkpoint namespace.
+ *
+ * Accepts: `checkpointNs` — unlike every other identifier an empty value is
+ * legal, because it *is* the root namespace. The non-blank rule is therefore
+ * dropped and every other rule `validateIdentifier` applies is repeated here
+ * rather than skipped: the namespace is a segment of both the sort key and the
+ * offloaded object's key, so a lone surrogate or a control character in it is
+ * as damaging as anywhere else.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `checkpoint_ns`, including for a value that is
+ * not a string — that case used to reach `Buffer.byteLength` and surface as a
+ * raw Node `TypeError` out of a public method.
  */
 export function validateCheckpointNs(checkpointNs: string): void {
+  assertMaxBytes(checkpointNs, 'checkpoint_ns', MAX_KEY_SEGMENT_BYTES);
   assertNoSeparator(checkpointNs, SORT_KEY_SEPARATOR, 'checkpoint_ns');
   assertNoControlChars(checkpointNs, 'checkpoint_ns');
-  assertMaxBytes(checkpointNs, 'checkpoint_ns', MAX_KEY_SEGMENT_BYTES);
+  assertWellFormed(checkpointNs, 'checkpoint_ns');
 }
 
-/** Validate a checkpoint id: non-blank, separator- and control-char-free, at most 256 bytes. */
+/**
+ * Validate a checkpoint id as the sort-key segment it becomes.
+ *
+ * Accepts: `checkpointId` — non-blank, free of the separator and of control
+ * characters, at most {@link MAX_KEY_SEGMENT_BYTES}.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `checkpoint_id`.
+ */
 export function validateCheckpointId(checkpointId: string): void {
   validateIdentifier(checkpointId, SORT_KEY_SEPARATOR, 'checkpoint_id', MAX_KEY_SEGMENT_BYTES);
 }
 
-/** Validate a task id: non-blank, separator- and control-char-free, at most 256 bytes. */
+/**
+ * Validate a task id as the sort-key segment it becomes.
+ *
+ * Accepts: `taskId` — non-blank, free of the separator and of control
+ * characters, at most {@link MAX_KEY_SEGMENT_BYTES}. LangGraph's own task ids
+ * are UUIDs; the rule is stated for whatever else a caller passes.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `taskId`.
+ */
 export function validateTaskId(taskId: string): void {
   validateIdentifier(taskId, SORT_KEY_SEPARATOR, 'taskId', MAX_KEY_SEGMENT_BYTES);
 }
 
 /**
- * Validate a pending-write channel name. It is the trailing segment of the
- * WRITE sort key, so it obeys the same rules as every other segment; LangGraph
- * channel names never contain the reserved separator.
+ * Validate a pending-write channel name.
+ *
+ * Accepts: `channel` — the trailing segment of the WRITE sort key, so the same
+ * rules as every other segment. LangGraph's own channel names never contain the
+ * reserved separator.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `channel`.
  */
 export function validateChannel(channel: string): void {
   validateIdentifier(channel, SORT_KEY_SEPARATOR, 'channel', MAX_KEY_SEGMENT_BYTES);

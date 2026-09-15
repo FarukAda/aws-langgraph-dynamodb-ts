@@ -13,10 +13,21 @@ function descriptorsOf(row: DocItem): (PayloadDescriptor | undefined)[] {
 }
 
 /**
- * Delete a whole session: every message item plus the metadata item, best-effort
- * deleting any offloaded S3 objects. Rows this adapter does not own are left in
- * place and logged, so a shared-table partition holding a foreign row is never
- * collaterally wiped.
+ * Delete a whole session: every message item plus the metadata item.
+ *
+ * Accepts: `sessionId` — validated. `options.signal` — aborts between pages.
+ *
+ * Returns: nothing. Clearing a session that does not exist is not an error;
+ * there is simply nothing in the partition.
+ *
+ * Throws: ValidationError naming `sessionId`; `BatchWriteAllIncompleteError`
+ * when a delete batch does not drain, carrying what did succeed; `AbortError`.
+ *
+ * Guarantees: a row this adapter did not write is left in place and logged, so
+ * a shared-table partition is never collaterally wiped. Offloaded objects are
+ * deleted best-effort after their rows, and only objects under this session's
+ * own path. One pass over a quiescent session: a message appended while this
+ * runs may survive it.
  */
 export async function clearSession(
   context: HistoryContext,

@@ -11,9 +11,18 @@ export interface PaginateOptions extends PaginateCoreOptions {
 }
 
 /**
- * Drive a DynamoDB Query across all pages, yielding each item. Follows
- * `LastEvaluatedKey`, honors the abort signal, wraps each page in
- * {@link withDynamoDBRetry}, and enforces runaway guards via the shared core.
+ * Every item a Query returns, across all its pages.
+ *
+ * Accepts: `params` — the Query input; `ExclusiveStartKey` is set per page and
+ * anything the caller put there is replaced. `retry` and `signal` are applied
+ * to each page read, `maxItems` / `maxIterations` to the walk (see
+ * {@link paginatePages}).
+ *
+ * Returns: an async generator over the items, following `LastEvaluatedKey`
+ * until it is absent. A page carrying no `Items` is an empty page, not the end.
+ *
+ * Throws: whatever the page read throws, plus the caps and abort behaviour of
+ * {@link paginatePages}.
  */
 export function paginateQuery(options: PaginateOptions): AsyncGenerator<DocItem> {
   return paginatePages(async (startKey) => {

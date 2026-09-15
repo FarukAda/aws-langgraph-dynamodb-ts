@@ -12,7 +12,17 @@ interface StreamingBody {
   destroy?: () => void;
 }
 
-/** The typed error for an object over the download cap. */
+/**
+ * The typed error for an object over the download cap.
+ *
+ * Accepts: `bytes` — what the object declared or what had been read when the
+ * cap was passed; the message says which is not distinguished, because either
+ * way the download stops.
+ *
+ * Returns: the error, coded `S3_OFFLOAD_FAILED` and carrying the key.
+ *
+ * Throws: nothing — it builds the error, the caller throws it.
+ */
 export function oversizedObjectError(
   key: string,
   bytes: number,
@@ -37,10 +47,22 @@ function concat(chunks: Uint8Array[], total: number): Uint8Array {
 }
 
 /**
- * Buffer an S3 body without ever holding more than `maxBytes` of it. A
- * streaming body is consumed chunk by chunk and abandoned the moment the
- * running total passes the cap; a body that only offers
- * `transformToByteArray()` is read whole and then checked.
+ * The bytes of an S3 body, refused once they pass `maxBytes`.
+ *
+ * Accepts: `body` — a streaming body (Node's `IncomingMessage`, which the SDK
+ * returns) is consumed chunk by chunk; a body offering only
+ * `transformToByteArray()` is read whole and then checked. `key` — named in the
+ * error. `maxBytes` — the cap; `0` admits only an empty body.
+ *
+ * Returns: the buffered bytes.
+ *
+ * Throws: `S3_OFFLOAD_FAILED` naming the key once the total passes `maxBytes`.
+ * A streaming body is destroyed at that point, so the rest is never fetched.
+ *
+ * Guarantees: for a streaming body, peak memory is `maxBytes` plus the one
+ * chunk that crossed it — the chunks already held never exceed the cap. For a
+ * body without a stream the SDK has already buffered it, so the check bounds
+ * what is *returned*, not what was read.
  */
 export async function readBodyBounded(
   body: S3Body,

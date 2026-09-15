@@ -158,7 +158,9 @@ await history.addMessages('session-1', [new HumanMessage('Hello!')]);
 await history.addMessage('session-1', new AIMessage('Hi!'));
 const messages = await history.getMessages('session-1');
 const recent = await history.getMessages('session-1', { limit: 20 }); // newest 20, chronological
-const sessions = await history.listSessions({ maxItems: 500 }); // [{ sessionId, title, messageCount, expiresAt?, ... }]
+// { sessions: [{ sessionId, title, messageCount, expiresAt?, ... }], nextCursor?: string }
+const page = await history.listSessions({ limit: 50 });
+const next = page.nextCursor ? await history.listSessions({ cursor: page.nextCursor }) : undefined;
 await history.clear('session-1');
 ```
 
@@ -339,26 +341,28 @@ const logger: Logger = {
 
 | Level | Message | Fields | Meaning and what to do |
 | --- | --- | --- | --- |
-| `error` | `history.addMessages rollback failed; messageCount may have drifted` | `sessionId`, `committedChunks`, `message` | a multi-chunk append failed and its rollback failed too (`CompensationFailedError`); run `reconcileMessageCount` for the session once it is idle |
+| `error` | `history.addMessages rollback failed; messageCount may have drifted` | `sessionId`, `committedChunks` | a multi-chunk append failed and its rollback failed too (`CompensationFailedError`); run `reconcileMessageCount` for the session once it is idle |
 | `error` | `getMessages: skipped a corrupt message item` | `sessionId`, `sortKey`, `reason` | a message row could not be decoded (or its S3 object is gone) and was dropped under `onCorruptMessage: 'skip'`; inspect or delete the row |
 | `warn` | `store.put: compare-and-swap exhausted; overwriting unconditionally` | `namespace`, `key`, `attempts` | three concurrent overwrites of one item; the put succeeded but one S3 object may be orphaned until the lifecycle rule sweeps it |
 | `warn` | `putWrites: special-write compare-and-swap exhausted; overwriting unconditionally` | `sortKey`, `channel`, `attempts` | same, for an interrupt/resume/error write written concurrently for one task |
 | `warn` | `Some orphaned S3 objects could not be deleted after` | `failedCount` | objects leaked after a failed write or a delete; `ensureS3LifecycleRule()` reclaims them, otherwise clean up by prefix |
-| `warn` | `Failed to clean up orphaned S3 objects after` | `message`, `keys` | the cleanup itself failed after retries; same remedy |
+| `warn` | `Failed to clean up orphaned S3 objects after` | `reason` | the cleanup itself failed after retries; same remedy |
 | `warn` | `: refusing to delete an S3 object outside this row's scope` | `key` | a row referenced an object outside its own key path — a tampered or foreign row; the object was left alone, investigate the writer |
-| `warn` | `store.put vector-index sync failed; reconcileVectorIndex will repair` | `namespace`, `key`, `message` | the `vectorBackend` rejected an upsert or delete; the canonical item is fine, run `reconcileVectorIndex` when convenient |
+| `warn` | `store.put vector-index sync failed; reconcileVectorIndex will repair` | `namespace`, `key`, `reason` | the `vectorBackend` rejected an upsert or delete; the canonical item is fine, run `reconcileVectorIndex` when convenient |
+| `warn` | `factory.destroy: an adapter did not release its resources` | `reason` | one adapter's teardown failed; the rest were released anyway and the process may hold that adapter's sockets until it exits |
 | `warn` | `injected DynamoDB client keeps the SDK's own retries` | `maxAttempts` | construct the injected client with `maxAttempts: 1` unless you want the SDK's retries to stack inside the library's budget |
 | `warn` | `putWrites: write row held by an unexpected channel; write not persisted` | `sortKey`, `expected`, `found` | another writer holds this task's row for a different channel; only this library should write the key space |
 | `warn` | `history.addMessages compensating committed chunks after a chunk failed` | `sessionId`, `committedChunks` | a large append is being rolled back; the caller receives the original error |
 | `warn` | `list: scanned a large number of rows without the caller stopping` | `threadId`, `checkpointNs`, `scanned` | a `list()` walked over 10 000 rows; pass `limit` or narrow the filter |
+| `warn` | `getMessages: a session holds very many messages; the read is complete but slow. Pass a ` | `sessionId`, `messages` | over 10 000 messages read in one call; pass `limit` to read only the newest turns |
 | `warn` | `getTuple: a checkpoint carries very many pending-write rows; the read is complete but slow` | `threadId`, `checkpointId`, `rows` | over 10 000 pending writes on one checkpoint (a huge fan-out or many retried tasks); the read is correct |
 | `warn` | `search: some candidates carry an embedding of a different dimension than the query` | `namespacePrefix`, `count` | items embedded with another model or `dims`; re-put them or run `reconcileVectorIndex` |
 | `warn` | `search: vectorBackend returned ascending scores; VectorMatch.score must be a relevance` | `namespacePrefix` | the backend reports distances; set `vectorScoreDirection: 'distance'` |
-| `warn` | `search: skipped an unusable vectorBackend match` | `namespace`, `key` | the backend returned a key this store cannot address; run `reconcileVectorIndex` |
+| `warn` | `search: skipped an unusable vectorBackend match` | `namespace`, `key`, `reason` | the backend returned a key this store cannot address; run `reconcileVectorIndex` |
 | `warn` | `: left a foreign row in place` | `sortKey` | `deleteThread`/`clear` found a row another adapter owns in the partition and kept it |
 | `warn` | `list: skipped a row that is not a checkpoint meta item` | `sortKey` | a foreign row shares the `META#` prefix on a shared table |
 | `warn` | `getTuple: skipped a row that is not a checkpoint meta item` | `sortKey` | same, on the read-your-writes path |
-| `warn` | `store.get: ignored a row that is not a store item` | `namespace`, `key` | a foreign row at a store key |
+| `warn` | `store.get: ignored a row that is not a store item` | `partitionKey`, `sortKey` | a foreign row at a store key |
 | `warn` | `reconcileVectorIndex: skipped a row that is not a store item` | `sortKey` | same, during reconciliation |
 | `info` | `: deleted rows` | `deleted`, `skipped` | `deleteThread`/`clear` finished |
 | `info` | `reconcileVectorIndex prune skipped: backend has no listKeys` | `prefix` | the backend cannot enumerate vectors, so stale ones were not pruned |
@@ -622,7 +626,7 @@ npm run test:integration        # integration flows + LangGraph/LangChain contra
 npm run test:integration:down
 ```
 
-The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. Every suite creates and tears down its own uniquely named table and bucket (`aws-langgraph-<suite>test-<uuid>`) in the account of the default credential chain; CI runs it nightly through OIDC, and it runs on demand:
+The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. Every suite creates and tears down its own uniquely named table and bucket (`aws-langgraph-<suite>test-<uuid>`) in the account of the default credential chain. It is not run by CI: a maintainer runs it on demand before a release, so no scheduled job bills this account.
 
 ```bash
 npm run test:aws                # needs AWS credentials; AWS_REGION selects the region
@@ -638,7 +642,7 @@ The `examples/live-*.mjs` scripts are demos against real AWS, not a test tier: `
 | Integration (`npm run test:integration`, DynamoDB Local) | every push and PR | end-to-end adapter flows and fault injection; the write races the compare-and-swap exists for, with an in-memory S3 in the loop; the DynamoDB semantics the unit mocks assume; parity with `InMemoryStore` and `InMemoryChatMessageHistory` under `RunnableWithMessageHistory`; a 30-way single-session append storm |
 | Conformance (`npm run test:conformance`, DynamoDB Local) | every push and PR, against the declared floor and the latest `@langchain/langgraph-checkpoint` | a compiled LangGraph graph over the saver (interrupt/resume, subgraph namespaces, forks, history windows, crash-and-resume, `Send` fan-out) and LangChain's official checkpointer validation suite |
 | Package smoke (`npm run test:package-smoke`) | every push and PR | the packed tarball installs and imports without the optional S3 peer, and its declarations type-check without it |
-| Real AWS (`npm run test:aws`) | nightly through OIDC | S3 offload, lifecycle rules and the S3 error taxonomy against the real services; real 30-way append contention; Bedrock embeddings (skipped with a reason when the model is not enabled) |
+| Real AWS (`npm run test:aws`) | on demand, before a release | S3 offload, lifecycle rules and the S3 error taxonomy against the real services; real 30-way append contention; Bedrock embeddings (skipped with a reason when the model is not enabled) |
 
 Nothing in the suite provokes real throttling or `ProvisionedThroughputExceededException` (only its classification is tested), receives `UnprocessedItems` from a batch write (DynamoDB Local and on-demand tables never return them), observes DynamoDB's TTL sweep (only the stamped attribute is asserted), uses a versioned bucket, exercises a hot partition, or measures the write capacity the compare-and-swap fallback consumes. An injected `client` that keeps the SDK's own retries multiplies the library's attempt budget; the integration tier pins that count once and every adapter warns about it at construction.
 

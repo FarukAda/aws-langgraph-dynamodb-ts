@@ -26,6 +26,22 @@ export interface TtlAnchorResult {
  * `reconcileMessageCount` repairs the count), `messageCount` can therefore be
  * temporarily overstated relative to what `getMessages` actually returns.
  * This is expected, not a bug.
+ *
+ * Accepts: `candidate` — the anchor this append would use if the session has
+ * none, already computed from the configured ttl.
+ *
+ * Returns: the anchor to stamp on this append's messages, and whether the
+ * SESSION row's own `ttl` must be force-overwritten rather than left to
+ * `if_not_exists`.
+ *
+ * Throws: whatever the read throws after retries.
+ *
+ * Guarantees: a read, never a write — so a failure of the append that follows
+ * cannot leave a metadata-only orphan row behind. Strongly consistent, so an
+ * anchor an earlier append committed is always seen. Two appends that start
+ * together on a session that has none each propose their own candidate; the
+ * append transaction's own condition is what settles which persists, so this
+ * read never has to be the arbiter (see {@link buildSessionUpdateItem}).
  */
 export async function resolveTtlAnchor(
   context: HistoryContext,

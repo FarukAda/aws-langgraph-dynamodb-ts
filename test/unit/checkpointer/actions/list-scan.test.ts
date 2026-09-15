@@ -9,6 +9,7 @@ import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
 import { buildCheckpointItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import type { CheckpointMetaItem, CheckpointPayloadItem } from '../../../../src/checkpointer/types';
+import { DEFAULT_INDEX_SHARDS } from '../../../../src/shared/dynamodb/index-keys';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
@@ -49,10 +50,10 @@ async function fixtures(ctx: CheckpointerContext): Promise<Row[]> {
     parents: {},
   });
   return Promise.all([
-    buildCheckpointItems(ctx, 't1', '', checkpoint('c1'), meta('input', -1), 'n'),
-    buildCheckpointItems(ctx, 't1', '', checkpoint('c2'), meta('loop', 0), 'n', 'c1'),
-    buildCheckpointItems(ctx, 't1', 'child', checkpoint('c3'), meta('loop', 1), 'n'),
-    buildCheckpointItems(ctx, 't2', '', checkpoint('c4'), meta('loop', 0), 'n'),
+    buildCheckpointItems(ctx, 't1', '', checkpoint('c1'), meta('input', -1)),
+    buildCheckpointItems(ctx, 't1', '', checkpoint('c2'), meta('loop', 0), 'c1'),
+    buildCheckpointItems(ctx, 't1', 'child', checkpoint('c3'), meta('loop', 1)),
+    buildCheckpointItems(ctx, 't2', '', checkpoint('c4'), meta('loop', 0)),
   ]);
 }
 
@@ -124,5 +125,62 @@ describe('listCheckpoints without a thread_id scans every thread (validation sui
     await expect(
       collect(listCheckpoints(ctx, { configurable: { checkpoint_ns: 'a#b' } })),
     ).rejects.toThrow(/checkpoint_ns/);
+  });
+});
+
+describe('list() without a thread_id uses the recency index when the table has one (CKPT-13)', () => {
+  const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
+
+  /**
+   * Listing every thread was a full-table Scan: read capacity for every row
+   * evaluated, not every row returned. With the index it is a bounded query
+   * per index shard, and an early `break` fetches no further page.
+   */
+  it('queries the index instead of scanning', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = { ...context(client), indexName: 'gsi1', indexShards: 2 } as never;
+    const built = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    mock
+      .on(QueryCommand)
+      .callsFake((input) => (input.IndexName === 'gsi1' ? { Items: [built.meta] } : { Items: [] }));
+    mock.on(GetCommand).resolves({ Item: built.payload });
+
+    const tuples = await collect(listCheckpoints(ctx, { configurable: {} }));
+
+    expect(tuples.map((t) => t.checkpoint.id)).toEqual(['c1', 'c1']);
+    expect(mock.commandCalls(ScanCommand)).toHaveLength(0);
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.IndexName).toBe('gsi1');
+  });
+
+  /**
+   * A table indexed without naming a shard count is read on the same default
+   * the writers stamp, or the listing would query shards no row is on.
+   */
+  it('queries every default shard when indexShards is not configured', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = { ...context(client), indexName: 'gsi1' } as never;
+    mock.on(QueryCommand).resolves({ Items: [] });
+
+    const tuples = await collect(listCheckpoints(ctx, { configurable: {} }));
+
+    expect(tuples).toEqual([]);
+    const partitions = mock
+      .commandCalls(QueryCommand)
+      .map((call) => call.args[0].input.ExpressionAttributeValues?.[':pk'] as string);
+    expect(new Set(partitions).size).toBe(DEFAULT_INDEX_SHARDS);
+  });
+
+  it('still scans when no index is configured', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const built = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), meta);
+    mock.on(ScanCommand).resolves({ Items: [built.meta] });
+    mock.on(QueryCommand).resolves({ Items: [] });
+    mock.on(GetCommand).resolves({ Item: built.payload });
+
+    const tuples = await collect(listCheckpoints(ctx, { configurable: {} }));
+
+    expect(tuples.map((t) => t.checkpoint.id)).toEqual(['c2']);
+    expect(mock.commandCalls(ScanCommand).length).toBeGreaterThan(0);
   });
 });

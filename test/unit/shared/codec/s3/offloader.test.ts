@@ -61,8 +61,9 @@ describe('S3Offloader', () => {
   it('buildKey base64url-encodes parts under the default prefix and getKeyPrefix returns it', () => {
     const { offloader } = makeOffloader();
     const encode = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
-    expect(offloader.buildKey(['t', 'c', 'checkpoint'])).toBe(
-      `langgraph-checkpoints/${encode('t')}/${encode('c')}/${encode('checkpoint')}.bin`,
+    const hash = 'A'.repeat(43);
+    expect(offloader.buildKey(['t', 'c', 'checkpoint'], hash)).toBe(
+      `langgraph-checkpoints/${encode('t')}/${encode('c')}/${encode('checkpoint')}/${hash}.bin`,
     );
     expect(offloader.getKeyPrefix()).toBe('langgraph-checkpoints/');
   });
@@ -70,8 +71,80 @@ describe('S3Offloader', () => {
   it('upload sends a PutObject and returns the key', async () => {
     s3Mock.on(PutObjectCommand).resolves({});
     const { offloader } = makeOffloader();
-    expect(await offloader.upload('k.bin', new Uint8Array([1]))).toBe('k.bin');
+    expect(await offloader.upload('k.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' })).toBe(
+      'k.bin',
+    );
     expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(1);
+  });
+
+  /**
+   * The write is conditional, so it cannot overwrite an object that is already
+   * there. It needs only `s3:PutObject` — the `If-Match` variant would also
+   * need `s3:GetObject` (S3 User Guide, *How to prevent object overwrites with
+   * conditional writes*).
+   */
+  it('upload asks S3 to write only if the key is free', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    const { offloader } = makeOffloader();
+    await offloader.upload('k.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
+    expect(s3Mock.commandCalls(PutObjectCommand)[0].args[0].input.IfNoneMatch).toBe('*');
+  });
+
+  it('upload stores the DynamoDB backlink as object metadata', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    const { offloader } = makeOffloader();
+    await offloader.upload('k.bin', new Uint8Array([1]), { pk: 'CHKPT#t', sk: 'PAYLOAD##c' });
+    const metadata = s3Mock.commandCalls(PutObjectCommand)[0].args[0].input.Metadata!;
+    expect(Buffer.from(metadata['dynamodb-pk-b64'], 'base64url').toString('utf8')).toBe('CHKPT#t');
+    expect(Buffer.from(metadata['dynamodb-sk-b64'], 'base64url').toString('utf8')).toBe(
+      'PAYLOAD##c',
+    );
+  });
+
+  /**
+   * The key is the content hash of the bytes, so an object already at that key
+   * holds exactly these bytes. A `412` therefore means the upload has nothing
+   * left to do — it is the success case, not a failure to report.
+   */
+  it('upload treats a 412 as already stored and reports success', async () => {
+    s3Mock.on(PutObjectCommand).rejects(
+      Object.assign(new Error('At least one of the pre-conditions you specified did not hold'), {
+        name: 'PreconditionFailed',
+      }),
+    );
+    const { offloader } = makeOffloader();
+    await expect(
+      offloader.upload('k.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' }),
+    ).resolves.toBe('k.bin');
+  });
+
+  it('upload recognises a 412 reported only by its HTTP status', async () => {
+    s3Mock.on(PutObjectCommand).rejects(
+      Object.assign(new Error('precondition failed'), {
+        name: 'SomeOtherName',
+        $metadata: { httpStatusCode: 412 },
+      }),
+    );
+    const { offloader } = makeOffloader();
+    await expect(
+      offloader.upload('k.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' }),
+    ).resolves.toBe('k.bin');
+  });
+
+  /**
+   * S3 answers `409 ConditionalRequestConflict` when a delete lands between the
+   * check and the write, and its own remedy for `PutObject` is to retry.
+   */
+  it('upload retries a conditional-request conflict', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejectsOnce(Object.assign(new Error('conflict'), { name: 'ConditionalRequestConflict' }))
+      .resolves({});
+    const { offloader } = makeOffloader();
+    await expect(
+      offloader.upload('k.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' }),
+    ).resolves.toBe('k.bin');
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(2);
   });
 
   it('download fetches the object bytes', async () => {
@@ -92,8 +165,8 @@ describe('S3Offloader', () => {
     s3Mock.on(PutObjectCommand).resolves({});
     const createS3Client = jest.fn(() => new S3Client({ region: 'us-east-1' }));
     const offloader = new S3Offloader({ bucketName: 'b', createS3Client });
-    await offloader.upload('a.bin', new Uint8Array([1]));
-    await offloader.upload('b.bin', new Uint8Array([1]));
+    await offloader.upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
+    await offloader.upload('b.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
     expect(createS3Client).toHaveBeenCalledTimes(1);
   });
 
@@ -105,7 +178,7 @@ describe('S3Offloader', () => {
       clientConfig: { region: 'us-east-1' },
       createS3Client,
     });
-    await offloader.upload('a.bin', new Uint8Array([1]));
+    await offloader.upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
     expect(createS3Client).toHaveBeenCalledWith({ maxAttempts: 1, region: 'us-east-1' });
   });
 
@@ -117,7 +190,7 @@ describe('S3Offloader', () => {
       clientConfig: { region: 'us-east-1', maxAttempts: 3 },
       createS3Client,
     });
-    await offloader.upload('a.bin', new Uint8Array([1]));
+    await offloader.upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
     expect(createS3Client).toHaveBeenCalledWith({ region: 'us-east-1', maxAttempts: 3 });
   });
 
@@ -132,7 +205,7 @@ describe('S3Offloader', () => {
   it('builds a default S3 client when no factory seam is given', async () => {
     s3Mock.on(PutObjectCommand).resolves({});
     const offloader = new S3Offloader({ bucketName: 'b' });
-    await offloader.upload('k.bin', new Uint8Array([1]));
+    await offloader.upload('k.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
     expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(1);
     offloader.destroy();
   });
@@ -154,7 +227,7 @@ describe('S3Offloader', () => {
       }),
     );
     const offloader = new S3Offloader({ bucketName: 'b' });
-    const pending = offloader.upload('k.bin', new Uint8Array([1]));
+    const pending = offloader.upload('k.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
 
     offloader.destroy();
 
@@ -175,8 +248,8 @@ describe('S3Offloader', () => {
     s3Mock.on(PutObjectCommand).resolves({});
     const offloader = new S3Offloader({ bucketName: 'b' });
     await Promise.all([
-      offloader.upload('a.bin', new Uint8Array([1])),
-      offloader.upload('b.bin', new Uint8Array([1])),
+      offloader.upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' }),
+      offloader.upload('b.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' }),
     ]);
     expect(createDefaultS3ClientMock).toHaveBeenCalledTimes(1);
   });
@@ -190,10 +263,12 @@ describe('S3Offloader', () => {
 
     const offloader = new S3Offloader({ bucketName: 'b' });
 
-    await expect(offloader.upload('a.bin', new Uint8Array([1]))).rejects.toThrow(
-      'transient construction failure',
-    );
-    await expect(offloader.upload('b.bin', new Uint8Array([1]))).resolves.toBe('b.bin');
+    await expect(
+      offloader.upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' }),
+    ).rejects.toThrow('transient construction failure');
+    await expect(
+      offloader.upload('b.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' }),
+    ).resolves.toBe('b.bin');
 
     expect(createDefaultS3ClientMock).toHaveBeenCalledTimes(2);
     offloader.destroy();
@@ -209,7 +284,9 @@ describe('S3Offloader', () => {
       createDefaultS3ClientMock.mockRejectedValueOnce(new Error('boom'));
       const offloader = new S3Offloader({ bucketName: 'b' });
 
-      await expect(offloader.upload('a.bin', new Uint8Array([1]))).rejects.toThrow('boom');
+      await expect(
+        offloader.upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' }),
+      ).rejects.toThrow('boom');
 
       // Let Node's unhandled-rejection detection run; it fires after the
       // microtask queue drains, so a macrotask tick is enough to observe it.
@@ -240,7 +317,9 @@ describe('optional peer preload (CODEC-05)', () => {
       loadS3SdkMock.mockRejectedValueOnce(missing).mockRejectedValueOnce(missing);
       const { offloader } = makeOffloader();
       await new Promise((resolve) => setImmediate(resolve));
-      await expect(offloader.upload('a.bin', new Uint8Array([1]))).rejects.toMatchObject({
+      await expect(
+        offloader.upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' }),
+      ).rejects.toMatchObject({
         code: ErrorCode.VALIDATION,
         context: { field: 's3' },
       });
@@ -278,7 +357,7 @@ describe('download cap (CODEC-17)', () => {
 describe('row-sourced key binding (SEC-03)', () => {
   it('ownsKey/assertOwnedKey bind a key to the prefix and the scope parts', () => {
     const { offloader } = makeOffloader();
-    const own = offloader.buildKey(['t', 'ns', 'c', 'checkpoint', 'n']);
+    const own = offloader.buildKey(['t', 'ns', 'c', 'checkpoint'], 'A'.repeat(43));
     expect(offloader.ownsKey(own, ['t'])).toBe(true);
     expect(offloader.ownsKey(own, ['other'])).toBe(false);
     expect(() => offloader.assertOwnedKey(own, ['t'])).not.toThrow();

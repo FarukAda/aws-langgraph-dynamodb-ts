@@ -1,54 +1,68 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
+import { releasableS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { ValidationError } from '../../shared/errors/errors';
 import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
 import { buildWriteItems } from '../internal/item-writer';
-import { writeRegularItems } from '../internal/regular-write';
+import { type DeadUpload, writeRegularItems } from '../internal/regular-write';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
 import { validateTaskId } from '../internal/validation';
-import type { CheckpointWriteItem } from '../types';
 
 /**
- * Stamps each `putWrites` call, serving two purposes at once. It nonces every
- * S3 upload, so a repeated write never shares an object with an earlier
- * attempt. And because ULIDs are lexicographically time-ordered — and this
- * factory is strictly monotonic even within a single millisecond — it lets the
- * read side identify the *earliest* call that wrote a given channel (see
- * `dropSupersededWrites`). A random UUID nonces just as well but carries no
- * ordering, which would leave that choice arbitrary.
+ * Stamps each `putWrites` call, identifying its rows as one group.
+ *
+ * It is what a guard rejection is compared against to tell "another call holds
+ * this row" from "my own retry does", and — because ULIDs are lexicographically
+ * time-ordered, and this factory is strictly monotonic even within a single
+ * millisecond — it lets the read side identify the *earliest* call that wrote a
+ * given channel (see `dropSupersededWrites`). A random UUID would identify a
+ * call just as well but carries no ordering, which would leave that choice
+ * arbitrary.
  */
 const nextWriteGroup = createUlidFactory();
 
-/** Best-effort delete `items`' offloaded S3 objects, if an offloader is configured. */
-async function cleanUpItems(
-  context: CheckpointerContext,
-  items: CheckpointWriteItem[],
-): Promise<void> {
+/**
+ * Best-effort delete the offloaded objects of uploads this call's rows do not
+ * reference, if an offloader is configured. A key the row that actually exists
+ * still points at is held back: two calls writing the same value for one write
+ * address one object, so the loser's "dead" upload can be the winner's live one
+ * (see {@link releasableS3Keys}).
+ */
+async function cleanUpItems(context: CheckpointerContext, dead: DeadUpload[]): Promise<void> {
   if (!context.offloader) return;
-  await cleanUpS3Orphans(
-    context.offloader,
-    collectS3Keys(items.map((item) => item.value)),
-    'putWrites',
-    context.logger,
-  );
+  const keys = dead.flatMap(({ item, live }) => releasableS3Keys([item.value], live ? [live] : []));
+  if (keys.length === 0) return;
+  await cleanUpS3Orphans(context.offloader, keys, 'putWrites', context.logger);
 }
 
 /**
- * Persist a task's intermediate writes for a checkpoint as one item per write.
- * Requires `checkpoint_id` in the config — writes always attach to a checkpoint.
- * Regular writes are first-write-wins (matching the reference checkpointer
- * contract); special negative-index writes always overwrite (see
- * {@link writeSpecialItemsWithCleanup}). Regular-write cleanup only ever
- * targets uploads confirmed unreferenced (see {@link writeRegularItems}): a
- * verified non-commit, or a guard rejection whose returned row provably
- * belongs to another call. An upload can leak but a live row can never be
- * stranded pointing at a deleted object.
+ * Persist a task's intermediate writes for a checkpoint, one item per write.
+ *
+ * Accepts: `config` — must name a `checkpoint_id`, since writes always attach
+ * to a checkpoint. `writes` — one task's, in order; their channels are
+ * validated before anything is encoded or uploaded. `taskId` — validated as the
+ * sort-key segment it becomes.
+ *
+ * Returns: nothing. Every write is attempted; a regular write that loses its
+ * first-write-wins race is a normal outcome, not a failure.
+ *
+ * Throws: ValidationError naming `checkpoint_id`, `taskId`, `channel` or
+ * `value`; the first genuine write failure, after every write has settled and
+ * the cleanup has run.
+ *
+ * Guarantees: regular writes are first-write-wins, matching the reference
+ * checkpointer; special negative-index writes always overwrite (see
+ * {@link writeSpecialItemsWithCleanup}). Cleanup only ever targets uploads
+ * confirmed unreferenced (see {@link writeRegularItems}): a verified
+ * non-commit, or a guard rejection whose returned row provably belongs to
+ * another call — and in both cases only when the row that exists does not point
+ * at the same object. An upload can leak; a live row can never be stranded
+ * pointing at a deleted object.
  */
 export async function putWrites(
   context: CheckpointerContext,

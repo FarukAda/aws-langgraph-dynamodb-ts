@@ -14,14 +14,27 @@ import type { WriteRequest } from './types';
  * chunks succeeded vs. failed, and exactly how many individual writes
  * persisted, once every chunk has been attempted.
  *
- * This is this function's ONLY throw site. Two callers —
+ * Accepts: `requests` — any number, in any order, of writes that do not depend
+ * on each other; none is a no-op. `options` — the drain's retry budget and
+ * signal.
+ *
+ * Returns: nothing, and only when every request persisted.
+ *
+ * Throws: {@link BatchWriteAllIncompleteError}, once every chunk has been
+ * attempted, reporting how many chunks succeeded and how many individual writes
+ * persisted. This is this function's ONLY throw site. Two callers —
  * checkpointer/internal/special-write-cleanup.ts and
- * history/internal/append-saga.ts — type-assert a caught error straight to
- * {@link BatchWriteAllIncompleteError} on that guarantee (not `instanceof`,
- * banned repo-wide) instead of narrowing it, since this project enforces
- * 100% branch coverage and a defensive else-branch here would be
- * unreachable, hence untestable. Adding another throw path to this function
- * requires updating both call sites.
+ * history/internal/append-saga.ts — type-assert a caught error straight to that
+ * type on this guarantee (not `instanceof`, banned repo-wide) instead of
+ * narrowing it, since this project enforces 100% branch coverage and a
+ * defensive else-branch here would be unreachable, hence untestable. Adding
+ * another throw path to this function requires updating both call sites.
+ *
+ * Guarantees: every chunk is attempted regardless of an earlier chunk's
+ * failure — these writes are order-independent, so losing the later ones to an
+ * earlier failure would delete less than the caller asked and report no more
+ * for it. The count the error carries is exact, which is what lets a
+ * compensating caller revert precisely what landed.
  */
 export async function batchWriteAll(
   client: DynamoDBDocument,
@@ -40,13 +53,7 @@ export async function batchWriteAll(
       succeededChunks += 1;
       succeededCount += chunk.length;
     } catch (error) {
-      /**
-       * drainUnprocessedWrites has exactly three throw sites and every one
-       * constructs a BatchWriteIncompleteError with an accurate
-       * succeededCount — asserted, not name-checked, since the false case is
-       * unreachable and this project enforces 100% branch coverage with no
-       * exceptions (see drain-unprocessed.ts).
-       */
+      /** Every failure it throws carries an accurate count; see its Guarantees. */
       const err = error as BatchWriteIncompleteError;
       failedChunks.push(err);
       succeededCount += err.succeededCount;

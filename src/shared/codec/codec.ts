@@ -57,8 +57,20 @@ function requireOffloader(deps: CodecDeps): S3Offloader {
   return deps.offloader;
 }
 
-/** Refuse a descriptor this version cannot read: a newer schema, or an unknown location. */
+/**
+ * Refuse a descriptor this version cannot read: one that is not an object at
+ * all, one whose schema is newer, or one whose location is unknown. A row can
+ * hold anything its writer stored, and reading `.schemaVersion` off `null`
+ * raised a raw `TypeError` out of a public method.
+ */
 function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
+  if (descriptor === null || typeof descriptor !== 'object') {
+    throw new ValidationError(
+      `payload descriptor is ${descriptor === null ? 'null' : typeof descriptor}, not a descriptor ` +
+        'this library wrote',
+      'descriptor',
+    );
+  }
   const version = descriptor.schemaVersion ?? DESCRIPTOR_SCHEMA_VERSION;
   if (version > DESCRIPTOR_SCHEMA_VERSION) {
     throw new ValidationError(
@@ -77,14 +89,27 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
 }
 
 /**
- * Fetch a descriptor's bytes — an S3 download when offloaded — and undo
- * compression. Infrastructure only, no deserialization: a caller that needs to
- * tell a transport or permission failure from bad data does this step and
- * `loadsTyped` separately (see `history/actions/get-messages.ts`).
+ * The payload bytes a descriptor stands for: downloaded when offloaded, then
+ * decompressed. Infrastructure only, no deserialization — a caller that needs
+ * to tell a transport or permission failure from bad data does this step and
+ * `loadsTyped` separately (see `src/history/actions/get-messages.ts`).
  *
- * `scope` is the row's own leading key parts (`[threadId]`, `[...namespace,
- * key]`, `[sessionId]`): an offloaded key is downloaded only when it lies under
- * the path those parts produce, so a row can never point this adapter at an
+ * Accepts: `descriptor` — as written by {@link encodePayload}; a
+ * `schemaVersion` above this release's, or a `location` it does not know, is
+ * refused rather than guessed at. `deps.offloader` — required only for an `S3`
+ * descriptor. `scope` — the row's own leading key parts (`[threadId]`,
+ * `[...namespace, key]`, `[sessionId]`); `[]` degrades the check to the
+ * configured prefix.
+ *
+ * Returns: the decoded bytes.
+ *
+ * Throws: ValidationError naming `descriptor` for an unreadable shape and `s3`
+ * for an offloaded row with no offloader configured; ValidationError naming
+ * `s3Key` when the key lies outside `scope`; `S3_OFFLOAD_FAILED` from the
+ * download; `COMPRESSION_LIMIT` or `PAYLOAD_CORRUPT` from decompression.
+ *
+ * Guarantees: an offloaded object is downloaded only when its key lies under
+ * the path `scope` produces, so a row can never point this adapter at an
  * object it does not own.
  */
 export async function readPayloadBytes(
@@ -104,7 +129,18 @@ export async function readPayloadBytes(
   return decompress(raw, descriptor.compressed, deps.compression?.maxDecompressedBytes);
 }
 
-/** Decode a {@link PayloadDescriptor} produced by `encodePayload`; see {@link readPayloadBytes} for `scope`. */
+/**
+ * The value a descriptor stands for: {@link readPayloadBytes} followed by the
+ * serde's `loadsTyped`.
+ *
+ * Accepts: as {@link readPayloadBytes}; `scope` has the same meaning.
+ *
+ * Returns: whatever the serde reconstructs, typed as the caller declares.
+ *
+ * Throws: everything {@link readPayloadBytes} throws, plus whatever
+ * `loadsTyped` raises for bytes it cannot parse — `PAYLOAD_CORRUPT` from this
+ * package's own serde.
+ */
 export async function decodePayload<T>(
   descriptor: PayloadDescriptor,
   deps: CodecDeps,

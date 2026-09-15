@@ -5,19 +5,27 @@ describe('buildSessionUpdateItem', () => {
     const { Update } = buildSessionUpdateItem('history', { sessionId: 's1', count: 2, now: 'u' });
     expect(Update?.Key).toEqual({ PK: 'HIST#s1', SK: 'HISTORY#SESSION' });
     expect(Update?.UpdateExpression).toBe(
-      'ADD #count :n SET #u = :u, #c = if_not_exists(#c, :c), #sid = if_not_exists(#sid, :sid)',
+      'ADD #count :n SET #u = :u, #c = if_not_exists(#c, :c), #sid = if_not_exists(#sid, :sid), #v = :v, #gpk = :gpk, #gsk = :gsk',
     );
     expect(Update?.ExpressionAttributeValues).toEqual({
       ':n': 2,
       ':u': 'u',
       ':c': 'u',
       ':sid': 's1',
+      /** Rewritten on every update, so a row states the version that last touched it. */
+      ':v': 1,
+      /** The recency index, rewritten on every append so a listing needs no in-memory sort. */
+      ':gpk': expect.stringMatching(/^SESS#\d+$/) as unknown as string,
+      ':gsk': 'u#s1',
     });
     expect(Update?.ExpressionAttributeNames).toEqual({
       '#count': 'messageCount',
       '#u': 'updatedAt',
       '#c': 'createdAt',
       '#sid': 'sessionId',
+      '#v': 'v',
+      '#gpk': 'gsi1pk',
+      '#gsk': 'gsi1sk',
     });
   });
 

@@ -1,7 +1,8 @@
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import {
-  dropSupersededWrites,
+  narrowHead,
+  narrowMetaItem,
   readCheckpoint,
   readMetadata,
   toPendingWrites,
@@ -11,6 +12,7 @@ import {
   buildWriteItems,
 } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { dropSupersededWrites } from '../../../../src/checkpointer/internal/write-dedup';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -41,26 +43,12 @@ const metadata: CheckpointMetadata = { source: 'loop', step: 3, parents: {} };
 
 describe('item-reader', () => {
   it('round-trips the checkpoint written by the item-writer', async () => {
-    const { payload } = await buildCheckpointItems(
-      context(),
-      't',
-      '',
-      checkpoint,
-      metadata,
-      'nonce-1',
-    );
+    const { payload } = await buildCheckpointItems(context(), 't', '', checkpoint, metadata);
     expect(await readCheckpoint(context(), payload, 't')).toEqual(checkpoint);
   });
 
   it('round-trips the metadata written by the item-writer', async () => {
-    const { meta } = await buildCheckpointItems(
-      context(),
-      't',
-      '',
-      checkpoint,
-      metadata,
-      'nonce-1',
-    );
+    const { meta } = await buildCheckpointItems(context(), 't', '', checkpoint, metadata);
     expect(await readMetadata(context(), meta, 't')).toEqual(metadata);
   });
 
@@ -223,5 +211,133 @@ describe('toPendingWrites offloaded reads (CODEC-14)', () => {
     expect(pending.map(([, , value]) => value)).toEqual([1, 2, 3, 4]);
     expect(maxInFlight()).toBeGreaterThan(1);
     expect(maxInFlight()).toBeLessThanOrEqual(8);
+  });
+});
+
+describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', () => {
+  const meta = {
+    PK: 'CHKPT#t',
+    SK: 'META##c1',
+    threadId: 't',
+    checkpointNs: '',
+    checkpointId: 'c1',
+    metadata: { location: 'INLINE', serdeType: 'json', compressed: false, bytes: new Uint8Array() },
+  };
+
+  it('reads a row without a version, and one at the supported version', () => {
+    expect(narrowMetaItem(meta as never)).toBeDefined();
+    expect(narrowMetaItem({ ...meta, v: 1 } as never)).toBeDefined();
+  });
+
+  /**
+   * A newer row is this adapter's, not a foreign one: skipping it would report
+   * the thread as shorter than it is and LangGraph would resume on top of a
+   * truncated history. It fails loudly instead.
+   */
+  it('throws FORMAT_UNSUPPORTED rather than skipping a newer row', () => {
+    expect(() => narrowMetaItem({ ...meta, v: 99 } as never)).toThrow(/format version 99/);
+  });
+
+  it('still skips a genuinely foreign row, whatever version it claims', () => {
+    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 99 } as never)).toBeUndefined();
+  });
+});
+
+/**
+ * A META row's own attributes name the S3 scope its payloads are read under and
+ * the thread the assembled tuple reports. Unbound, a writer confined to its own
+ * partition could put `threadId: 'tenantB'` on a row in its own partition and
+ * have `list()` hand back tenant B's offloaded payload — the cross-tenant read
+ * `narrowStoreRecord` already refuses for store items (SEC-03).
+ */
+describe('narrowMetaItem binds a row to the partition it lives in (SEC-03)', () => {
+  const row = (over: Record<string, unknown>) => ({
+    PK: 'CHKPT#tenantA',
+    SK: 'META#ns#c1',
+    threadId: 'tenantA',
+    checkpointNs: 'ns',
+    checkpointId: 'c1',
+    metadata: { location: 'INLINE' },
+    ...over,
+  });
+
+  it('accepts a row whose identifiers agree with the key it was found at', () => {
+    expect(narrowMetaItem(row({}) as never)).toBeDefined();
+  });
+
+  it('rejects a row claiming a thread, namespace or checkpoint that is not its own', () => {
+    expect(narrowMetaItem(row({ threadId: 'tenantB' }) as never)).toBeUndefined();
+    expect(narrowMetaItem(row({ checkpointNs: 'other' }) as never)).toBeUndefined();
+    expect(narrowMetaItem(row({ checkpointId: 'c2' }) as never)).toBeUndefined();
+    expect(narrowMetaItem(row({ threadId: 42 }) as never)).toBeUndefined();
+  });
+
+  /** Refused as foreign before the version check, since it is not this adapter's row at all. */
+  it('rejects a mismatched row without even reading its format version', () => {
+    expect(narrowMetaItem(row({ threadId: 'tenantB', v: 99 }) as never)).toBeUndefined();
+  });
+});
+
+/**
+ * `narrowMetaItem` guards the one boundary where a row in this adapter's key
+ * space may not have been written by it. A `metadata` of `null` passed the
+ * `!== undefined` test and then raised a raw `TypeError` in the decoder.
+ */
+describe('narrowMetaItem rejects a row whose descriptor is not one', () => {
+  const base = {
+    PK: 'CHKPT#t',
+    SK: 'META##c',
+    threadId: 't',
+    checkpointId: 'c',
+    checkpointNs: '',
+  };
+
+  it.each([
+    ['null', null],
+    ['absent', undefined],
+    ['a string', 'INLINE'],
+    ['a number', 7],
+  ])('skips a row whose metadata is %s', (_name, metadata) => {
+    expect(narrowMetaItem({ ...base, metadata } as never)).toBeUndefined();
+  });
+
+  it('accepts a row carrying a descriptor object', () => {
+    expect(narrowMetaItem({ ...base, metadata: { location: 'INLINE' } } as never)).toBeDefined();
+  });
+});
+
+describe('narrowHead', () => {
+  const ctx = (warn = jest.fn()) =>
+    ({ logger: { info() {}, warn, error() {}, debug() {} } }) as never;
+  const head = {
+    PK: 'CHKPT#t',
+    SK: 'META##c1',
+    threadId: 't',
+    checkpointNs: '',
+    checkpointId: 'c1',
+    metadata: { location: 'INLINE' },
+  };
+
+  it('returns the item for a real head row', () => {
+    expect(narrowHead(ctx(), head)?.checkpointId).toBe('c1');
+  });
+
+  /** An absent row is an ordinary answer, not something to warn about. */
+  it('answers undefined silently when the read returned nothing', () => {
+    const warn = jest.fn();
+    expect(narrowHead(ctx(warn), undefined)).toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Returning a foreign row made the assembly miss its payload and report the
+   * thread as empty, so LangGraph started a new run on top of real history.
+   */
+  it('skips a foreign row at the head and reports its sort key', () => {
+    const warn = jest.fn();
+    expect(narrowHead(ctx(warn), { PK: 'CHKPT#t', SK: 'META##zzz' })).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a checkpoint meta item'), {
+      sortKey: 'META##zzz',
+    });
   });
 });

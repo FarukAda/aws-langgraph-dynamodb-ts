@@ -45,7 +45,7 @@ async function rows(
         ['users', 'u1'],
         `k${i}`,
         { kind: kindOf(i), i },
-        { createdAt: 'c', updatedAt: 'u', embedding: [1, 0] },
+        { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0]] },
       ),
     );
   }

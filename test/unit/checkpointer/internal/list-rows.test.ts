@@ -1,0 +1,112 @@
+import { QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+
+import { metaRows, narrowOrWarn } from '../../../../src/checkpointer/internal/list-rows';
+import type { ListScope } from '../../../../src/checkpointer/internal/list-scope';
+import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+
+function context(
+  client: CheckpointerContext['client'],
+  extra?: Partial<CheckpointerContext>,
+): CheckpointerContext {
+  return {
+    client,
+    tableName: 'ckpt',
+    serde: JSON_SERDE,
+    logger: SILENT_LOGGER,
+    ...extra,
+  } as CheckpointerContext;
+}
+
+const scope = (over: Partial<ListScope> = {}): ListScope => ({
+  threadId: 't',
+  checkpointNs: '',
+  checkpointId: undefined,
+  before: undefined,
+  filter: undefined,
+  limit: undefined,
+  signal: undefined,
+  ...over,
+});
+
+const row = (id: string) => ({
+  PK: 'CHKPT#t',
+  SK: `META##${id}`,
+  threadId: 't',
+  checkpointNs: '',
+  checkpointId: id,
+  metadata: { location: 'INLINE' },
+});
+
+async function collect(source: AsyncGenerator<unknown>): Promise<unknown[]> {
+  const out: unknown[] = [];
+  for await (const item of source) out.push(item);
+  return out;
+}
+
+describe('metaRows', () => {
+  it('queries the thread s partition when the scope names a thread', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [row('c1')] });
+    const rows = await collect(metaRows(context(client), scope(), 1_000));
+    expect(rows).toHaveLength(1);
+    expect(mock.commandCalls(ScanCommand)).toHaveLength(0);
+  });
+
+  /** No thread means every thread, which without the recency index is a table scan. */
+  it('scans the table when the scope names no thread and there is no index', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({ Items: [row('c1')] });
+    const rows = await collect(metaRows(context(client), scope({ threadId: undefined }), 1_000));
+    expect(rows).toHaveLength(1);
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
+  });
+
+  it('reads the recency index instead when the table has one', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    const rows = await collect(
+      metaRows(context(client, { indexName: 'gsi1' }), scope({ threadId: undefined }), 1_000),
+    );
+    expect(rows).toEqual([]);
+    expect(mock.commandCalls(ScanCommand)).toHaveLength(0);
+    expect(mock.commandCalls(QueryCommand)[0].args[0].input.IndexName).toBe('gsi1');
+  });
+
+  /** The stream must not accumulate: abandoning it stops the read. */
+  it('stops reading when the consumer stops consuming', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    let pages = 0;
+    mock.on(QueryCommand).callsFake(() => {
+      pages += 1;
+      return { Items: [row(`c${pages}`)], LastEvaluatedKey: { PK: 'CHKPT#t', SK: 'x' } };
+    });
+    for await (const _ of metaRows(context(client), scope(), 1_000)) break;
+    expect(pages).toBe(1);
+  });
+});
+
+describe('narrowOrWarn', () => {
+  it('returns the item for a row this adapter wrote', () => {
+    expect(narrowOrWarn(context({} as never), row('c1'))?.checkpointId).toBe('c1');
+  });
+
+  /** A foreign row sharing the META# prefix is skipped, and an operator is told it is there. */
+  it('skips a foreign row and reports its sort key', () => {
+    const warn = jest.fn();
+    const ctx = context({} as never, { logger: { ...SILENT_LOGGER, warn } });
+    expect(narrowOrWarn(ctx, { PK: 'CHKPT#t', SK: 'META##zzz', value: {} })).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a checkpoint meta item'), {
+      sortKey: 'META##zzz',
+    });
+  });
+
+  /** A row of ours from a newer release fails loudly rather than shortening the thread. */
+  it('throws for a row of this adapter written by a newer format version', () => {
+    expect(() => narrowOrWarn(context({} as never), { ...row('c1'), v: 99 })).toThrow(
+      /format version 99/,
+    );
+  });
+});

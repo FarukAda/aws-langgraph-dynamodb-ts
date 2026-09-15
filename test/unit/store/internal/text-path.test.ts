@@ -75,4 +75,27 @@ describe('getTextAtPath', () => {
   it('treats a leading "$" token as the whole document, like the reference', () => {
     expect(getTextAtPath(doc, '$.text')).toEqual([JSON.stringify(doc, null, 2)]);
   });
+
+  /** Strict equality throughout: `toEqual` reads `[undefined]` as `[]`, the very bug. */
+  it('yields nothing for a leaf JSON cannot represent, never a hole in the array', () => {
+    expect(getTextAtPath({ a: undefined } as never, 'a')).toStrictEqual([]);
+    expect(getTextAtPath({ a: () => 1 } as never, 'a')).toStrictEqual([]);
+    expect(getTextAtPath({ a: Symbol('s') } as never, 'a')).toStrictEqual([]);
+    expect(getTextAtPath({ a: { b: undefined } } as never, '{a.b}')).toStrictEqual([]);
+  });
+
+  it('yields nothing for a value JSON refuses, leaving the refusal to the codec', () => {
+    const circular: Record<string, unknown> = { name: 'x' };
+    circular.self = circular;
+    expect(getTextAtPath({ a: circular } as never, 'a')).toEqual([]);
+    expect(getTextAtPath({ a: 1n } as never, 'a')).toEqual([]);
+    expect(getTextAtPath(circular as never, '$')).toEqual([]);
+  });
+
+  it('resolves an unterminated group as a plain member name, as the reference does', () => {
+    expect(tokenizePath('tags[0')).toEqual(['tags', '[0']);
+    expect(tokenizePath('{text,count')).toEqual(['{text,count']);
+    expect(getTextAtPath(doc, 'tags[0')).toEqual([]);
+    expect(getTextAtPath({ tags: { '[0': 'literal' } }, 'tags[0')).toEqual(['literal']);
+  });
 });

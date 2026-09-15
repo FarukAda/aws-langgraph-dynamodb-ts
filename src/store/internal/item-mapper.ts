@@ -2,6 +2,8 @@ import type { Item } from '@langchain/langgraph-checkpoint';
 
 import { type CodecDeps, decodePayload } from '../../shared/codec/codec';
 import { encodePayload } from '../../shared/codec/encode';
+import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
+import { assertReadableRow, ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
 import type { DocItem } from '../../shared/dynamodb/types';
 import type { StoreItemRecord } from '../types';
 import type { JsonValue } from './filter';
@@ -15,6 +17,16 @@ import type { StoreContext } from './setup';
  * The attributes name the S3 path the row may reference, so they must be bound
  * to the partition the row actually lives in: a writer confined to its own
  * partition can then never make a row speak for another tenant's objects.
+ *
+ * Accepts: `raw` — any row, whole or projected. The identity test reads only
+ * `PK`, `SK`, `namespace` and `key`, which is what lets a namespace listing
+ * narrow rows it deliberately read without their payload.
+ *
+ * Returns: the record, or undefined for a row that is not this adapter's item.
+ *
+ * Throws: `FORMAT_UNSUPPORTED` for a row that *is* this adapter's but was
+ * written by a newer format version — skipping it would hide an item that
+ * exists, so it fails loudly instead.
  */
 export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
   if (!Array.isArray(raw.namespace) || typeof raw.key !== 'string') return undefined;
@@ -22,7 +34,14 @@ export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
   const consistent =
     record.PK === partitionKey(record.namespace) &&
     record.SK === sortKey(record.namespace, record.key);
-  return consistent ? record : undefined;
+  if (!consistent) return undefined;
+  /**
+   * A row that is this adapter's but newer than this version understands is not
+   * a foreign row to skip: skipping it would hide an item that exists, so it
+   * fails loudly.
+   */
+  assertReadableRow(record, 'store item');
+  return record;
 }
 
 /** Map a store context to the codec collaborators. */
@@ -30,17 +49,37 @@ function storeCodecDeps(context: StoreContext): CodecDeps {
   return { serde: context.serde, compression: context.compression, offloader: context.offloader };
 }
 
-/** Fields controlling a stored item's timestamps, embedding, ttl, and S3 key nonce. */
+/** Fields controlling a stored item's timestamps, embeddings, ttl and revision token. */
 export interface BuildItemOptions {
   createdAt: string;
   updatedAt: string;
-  embedding?: number[];
+  embeddings?: number[][];
   ttlTimestamp?: number;
-  /** Per-call nonce: uniquifies the S3 key and becomes the row's revision token. */
-  nonce?: string;
+  /**
+   * The row's revision token, unique per `put` call. It is the value a
+   * concurrent overwrite pins with a compare-and-swap, so each writer can tell
+   * whether the row it read is still the row it is replacing. It never reaches
+   * an S3 key: offloaded payloads are addressed by content hash.
+   */
+  rev?: string;
 }
 
-/** Encode a value into the DynamoDB record for a stored item. */
+/**
+ * Encode a value into the DynamoDB record for a stored item.
+ *
+ * Accepts: `namespace` and `key` — already validated; they become the row's key
+ * and, with it, the S3 path any offloaded payload may occupy. `value` — a value
+ * the serializer can represent. `options.rev` — this put's own revision token,
+ * which the compare-and-swap pins and the write verification reads back.
+ *
+ * Returns: the complete row, including the recency-index attributes: a store
+ * item is listed across partitions by a rootless search, so it is indexed.
+ *
+ * Throws: ValidationError naming `value` for a value with no JSON
+ * representation; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be
+ * uploaded. Encoding happens before any write, so a value that cannot be stored
+ * never half-writes a row.
+ */
 export async function buildStoreItem(
   context: StoreContext,
   namespace: string[],
@@ -48,26 +87,49 @@ export async function buildStoreItem(
   value: Record<string, JsonValue>,
   options: BuildItemOptions,
 ): Promise<StoreItemRecord> {
+  const pk = partitionKey(namespace);
+  const sk = sortKey(namespace, key);
   const descriptor = await encodePayload(value, storeCodecDeps(context), {
-    keyParts:
-      options.nonce === undefined ? [...namespace, key] : [...namespace, key, options.nonce],
+    keyParts: [...namespace, key],
+    row: { pk, sk },
   });
+  /** Store items are listed across partitions by a rootless search, so they are indexed. */
+  const index = indexKeys(
+    'STORE',
+    sk,
+    options.updatedAt,
+    context.indexShards ?? DEFAULT_INDEX_SHARDS,
+  );
   const record: StoreItemRecord = {
-    PK: partitionKey(namespace),
-    SK: sortKey(namespace, key),
+    PK: pk,
+    SK: sk,
+    v: ROW_FORMAT_VERSION,
+    ...index,
     namespace,
     key,
     value: descriptor,
     createdAt: options.createdAt,
     updatedAt: options.updatedAt,
   };
-  if (options.embedding) record.embedding = options.embedding;
+  if (options.embeddings) record.embeddings = options.embeddings;
   if (options.ttlTimestamp !== undefined) record.ttl = options.ttlTimestamp;
-  if (options.nonce !== undefined) record.rev = options.nonce;
+  if (options.rev !== undefined) record.rev = options.rev;
   return record;
 }
 
-/** Decode a DynamoDB record back into a store {@link Item}. */
+/**
+ * Decode a DynamoDB record back into a store {@link Item}.
+ *
+ * Accepts: `record` — a whole row, never a projection: the value and the
+ * timestamps are read from it, and `projectKeys` rows exist only to establish
+ * identity for a namespace listing.
+ *
+ * Returns: the item, with the timestamps this library stamped at write time.
+ *
+ * Throws: `PAYLOAD_CORRUPT` for a payload that cannot be decoded, and whatever
+ * the download throws for an offloaded one — including the missing-object error
+ * `getItem` resolves against a concurrent overwrite.
+ */
 export async function readStoreItem(context: StoreContext, record: StoreItemRecord): Promise<Item> {
   const value = await decodePayload<Record<string, JsonValue>>(
     record.value,

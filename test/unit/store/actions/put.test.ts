@@ -6,6 +6,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
+import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { stubEmbeddings } from '../../../shared/helpers/embeddings-stub';
@@ -32,19 +33,19 @@ const op = (over: Partial<PutOperation>): PutOperation => ({
 function trackingOffloader(
   overrides: {
     shouldOffload?: boolean;
-    buildKey?: (parts: string[]) => string;
+    buildKey?: (parts: string[], hash: string) => string;
     upload?: (key: string) => Promise<string>;
   } = {},
 ) {
   return {
     shouldOffload: () => overrides.shouldOffload ?? true,
-    buildKey: overrides.buildKey ?? ((parts: string[]) => parts.join('/')),
+    buildKey: overrides.buildKey ?? ((parts: string[], hash: string) => [...parts, hash].join('/')),
     upload: overrides.upload ?? (async (key: string) => key),
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: () => true,
   };
 }
-const binKey = (parts: string[]): string => parts.join('/') + '.bin';
+const binKey = (parts: string[], hash: string): string => [...parts, hash].join('/') + '.bin';
 
 describe('putItem', () => {
   it('writes a new item, defaulting createdAt to now', async () => {
@@ -89,13 +90,18 @@ describe('putItem', () => {
     }
   });
 
-  it('computes an embedding when an index is configured', async () => {
+  /**
+   * One vector per extracted path, scored by best match on read, as the
+   * reference store does. A single joined vector averaged a long document into
+   * one point and buried a strongly-matching section.
+   */
+  it('stores one vector per extracted path when an index is configured', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
     const embeddings = stubEmbeddings([0.1, 0.2]);
     await putItem(context(client, { index: { dims: 2, embeddings: embeddings as never } }), op({}));
-    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toEqual([0.1, 0.2]);
+    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embeddings).toEqual([[0.1, 0.2]]);
   });
 
   it('skips embedding when index is false for the item', async () => {
@@ -197,7 +203,12 @@ describe('putItem', () => {
     expect(read.ExpressionAttributeNames).toMatchObject({ '#loc': 'location', '#s3k': 's3Key' });
   });
 
-  it('offloads each successful put to a distinct S3 key (nonced, not deterministic)', async () => {
+  /**
+   * Re-putting the same value addresses the same object, so a retry adds
+   * nothing to the bucket. A changed value addresses a different one, which is
+   * what lets the overwrite delete exactly the payload it superseded.
+   */
+  it('offloads identical values to one key and a changed value to another', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
@@ -208,9 +219,12 @@ describe('putItem', () => {
         return key;
       },
     });
-    await putItem(context(client, { offloader: offloader as never }), op({}));
-    await putItem(context(client, { offloader: offloader as never }), op({}));
-    expect(uploaded[0]).not.toBe(uploaded[1]);
+    const ctx = context(client, { offloader: offloader as never });
+    await putItem(ctx, op({}));
+    await putItem(ctx, op({}));
+    await putItem(ctx, op({ value: { name: 'someone else' } }));
+    expect(uploaded[1]).toBe(uploaded[0]);
+    expect(uploaded[2]).not.toBe(uploaded[0]);
   });
 
   it('does NOT delete the previous S3 object when an overwrite put fails (regression: this was the data-loss bug)', async () => {
@@ -234,6 +248,50 @@ describe('putItem', () => {
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
     expect(keys).not.toContain('old-key.bin');
+  });
+
+  /**
+   * Re-putting the same value lands on the same content-addressed key, so the
+   * "previous" object and the new one are one object. Deleting it after the
+   * overwrite would leave the live row pointing at nothing.
+   */
+  it('never deletes the object the surviving row still points at (identical re-put)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = trackingOffloader({ buildKey: binKey });
+    const ctx = context(client, { offloader: offloader as never });
+    const first = await buildStoreItem(ctx, ['users', 'u1'], 'profile', op({}).value as never, {
+      createdAt: 'c',
+      updatedAt: 'u',
+      rev: 'A',
+    });
+    mock.on(GetCommand).resolves({ Item: first });
+    mock.on(PutCommand).resolves({});
+
+    await putItem(ctx, op({}));
+
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The same hazard from the other side: a confirmed non-commit deletes its own
+   * upload, which is the object the row that survived is still using when the
+   * bytes are unchanged.
+   */
+  it('never deletes its own upload when the surviving previous row shares it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = trackingOffloader({ buildKey: binKey });
+    const ctx = context(client, { offloader: offloader as never });
+    const first = await buildStoreItem(ctx, ['users', 'u1'], 'profile', op({}).value as never, {
+      createdAt: 'c',
+      updatedAt: 'u',
+      rev: 'A',
+    });
+    mock.on(GetCommand).resolves({ Item: first });
+    mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+
+    await expect(putItem(ctx, op({}))).rejects.toThrow('boom');
+
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
   it('cleans up the previous S3 object after a successful overwrite', async () => {
@@ -272,86 +330,6 @@ describe('putItem', () => {
     const offloader = trackingOffloader({ shouldOffload: false, buildKey: binKey });
     await putItem(context(client, { offloader: offloader as never }), op({}));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
-  });
-
-  it('sends the embedding to a vector backend instead of storing it on the item', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
-    const embeddings = stubEmbeddings([0.5, 0.6]);
-    const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
-    await putItem(
-      context(client, {
-        index: { dims: 2, embeddings: embeddings as never },
-        vectorBackend: vectorBackend as never,
-      }),
-      op({}),
-    );
-    expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toBeUndefined();
-    expect(vectorBackend.upsert).toHaveBeenCalledWith(['users', 'u1'], 'profile', [0.5, 0.6]);
-  });
-
-  it('removes the backend vector when a re-put yields no embedding (index:false)', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: { createdAt: '2000-01-01T00:00:00.000Z' } });
-    mock.on(PutCommand).resolves({});
-    const embeddings = stubEmbeddings([0.5, 0.6]);
-    const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
-    await putItem(
-      context(client, {
-        index: { dims: 2, embeddings: embeddings as never },
-        vectorBackend: vectorBackend as never,
-      }),
-      op({ index: false }),
-    );
-    expect(vectorBackend.upsert).not.toHaveBeenCalled();
-    expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
-  });
-
-  it('deletes from the vector backend when removing an item', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(DeleteCommand).resolves({});
-    const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
-    await putItem(context(client, { vectorBackend: vectorBackend as never }), op({ value: null }));
-    expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
-  });
-
-  it('does not fail a put when the vector backend upsert throws', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
-    const embeddings = stubEmbeddings([0.5, 0.6]);
-    const vectorBackend = {
-      upsert: jest.fn().mockRejectedValue(new Error('backend down')),
-      query: jest.fn(),
-      delete: jest.fn(),
-    };
-    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
-    const ctx = context(client, {
-      index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
-      logger,
-    });
-    await expect(putItem(ctx, op({}))).resolves.toBeUndefined();
-    expect(mock.commandCalls(PutCommand)).toHaveLength(1);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('vector-index sync failed'),
-      expect.objectContaining({ key: 'profile' }),
-    );
-  });
-
-  it('does not fail a delete when the vector backend delete throws', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(DeleteCommand).resolves({});
-    const vectorBackend = {
-      upsert: jest.fn(),
-      query: jest.fn(),
-      delete: jest.fn().mockRejectedValue(new Error('backend down')),
-    };
-    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
-    const ctx = context(client, { vectorBackend: vectorBackend as never, logger });
-    await expect(putItem(ctx, op({ value: null }))).resolves.toBeUndefined();
-    expect(logger.warn).toHaveBeenCalled();
   });
 
   it('cleans up the offloaded object DynamoDB reports as removed, without a pre-read (STORE-08)', async () => {

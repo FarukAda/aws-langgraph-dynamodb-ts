@@ -36,7 +36,7 @@ function specialItem(
 function trackingOffloader() {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => parts.join('/'),
+    buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
     upload: async (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: jest.fn(() => true),

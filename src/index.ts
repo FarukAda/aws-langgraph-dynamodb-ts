@@ -13,9 +13,18 @@ export type {
   DynamoDBChatMessageHistoryOptions,
   GetMessagesOptions,
   ListSessionsOptions,
+  SessionPage,
   MessageWindow,
   SessionMetadata,
 } from './history/types';
+/**
+ * Operator tool: give rows written before the recency index their index keys.
+ * Run it before setting `indexName` on any adapter — see its own documentation
+ * for why enabling the index first hides pre-existing rows from the listings.
+ */
+export { backfillRecencyIndex } from './shared/dynamodb/backfill-index';
+export type { BackfillOptions, BackfillResult } from './shared/dynamodb/backfill-index';
+
 export { DynamoDBFactory } from './factory/factory';
 export type {
   AdapterSection,

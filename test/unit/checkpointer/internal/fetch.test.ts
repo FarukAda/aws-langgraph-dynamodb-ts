@@ -28,7 +28,16 @@ function context(client: CheckpointerContext['client']): CheckpointerContext {
 describe('fetchTargetMeta', () => {
   it('gets a specific checkpoint by id', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: { checkpointId: 'c1', checkpointNs: '', metadata: {} } });
+    mock.on(GetCommand).resolves({
+      Item: {
+        PK: 'CHKPT#t',
+        SK: 'META##c1',
+        threadId: 't',
+        checkpointId: 'c1',
+        checkpointNs: '',
+        metadata: {},
+      },
+    });
     const meta = await fetchTargetMeta(context(client), 't', '', 'c1');
     expect(meta?.checkpointId).toBe('c1');
     expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
@@ -40,9 +49,18 @@ describe('fetchTargetMeta', () => {
 
   it('queries the newest META item when no id is given', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock
-      .on(QueryCommand)
-      .resolves({ Items: [{ checkpointId: 'newest', checkpointNs: '', metadata: {} }] });
+    mock.on(QueryCommand).resolves({
+      Items: [
+        {
+          PK: 'CHKPT#t',
+          SK: 'META##newest',
+          threadId: 't',
+          checkpointId: 'newest',
+          checkpointNs: '',
+          metadata: {},
+        },
+      ],
+    });
     const meta = await fetchTargetMeta(context(client), 't', '');
     expect(meta?.checkpointId).toBe('newest');
     const input = mock.commandCalls(QueryCommand)[0].args[0].input;
@@ -97,6 +115,7 @@ describe('fetchTargetMeta head row narrowing (CKPT-08)', () => {
   const validMeta = {
     PK: 'CHKPT#t',
     SK: 'META##c1',
+    threadId: 't',
     checkpointId: 'c1',
     checkpointNs: '',
     metadata: {},
@@ -201,6 +220,7 @@ describe('fetchTargetMeta skips expired head rows (CKPT-10)', () => {
   const metaRow = (id: string, ttl: number) => ({
     PK: 'CHKPT#t',
     SK: `META##${id}`,
+    threadId: 't',
     checkpointId: id,
     checkpointNs: '',
     metadata: {},

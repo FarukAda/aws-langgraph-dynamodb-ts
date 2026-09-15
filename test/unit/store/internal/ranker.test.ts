@@ -11,7 +11,7 @@ function candidate(key: string, embedding?: number[]): RankCandidate {
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };
-  return { item, embedding };
+  return { item, embeddings: embedding ? [embedding] : undefined };
 }
 
 describe('rankInMemory', () => {
@@ -59,5 +59,76 @@ describe('rankInMemory', () => {
     } catch (error) {
       expect((error as { code: ErrorCode }).code).toBe(ErrorCode.VALIDATION);
     }
+  });
+});
+
+describe('rankInMemory scores an item by its best passage (STORE-10)', () => {
+  function multi(key: string, embeddings: number[][]): RankCandidate {
+    return {
+      item: {
+        namespace: ['n'],
+        key,
+        value: {},
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      },
+      embeddings,
+    };
+  }
+
+  /**
+   * The reference store embeds each extracted path separately and scores an
+   * item by its best-matching one. Joining the paths and embedding once
+   * averages a long document into a single point, so a document whose one
+   * relevant section matches perfectly ranked below a document that matches
+   * everywhere but weakly. This is that case.
+   */
+  it('ranks one perfectly-matching section above a uniformly weak match', () => {
+    const query = [1, 0];
+    const withSection = multi('long-doc', [
+      [1, 0],
+      [0, 1],
+    ]);
+    const uniformlyWeak = multi('short-doc', [[0.7071, 0.7071]]);
+    const ranked = rankInMemory([uniformlyWeak, withSection], query, 10);
+    expect(ranked.map((item) => item.key)).toEqual(['long-doc', 'short-doc']);
+    expect(ranked[0].score).toBeCloseTo(1, 5);
+  });
+
+  it('ignores a vector of the wrong length but still scores a comparable one', () => {
+    const ranked = rankInMemory(
+      [
+        multi('mixed', [
+          [1, 0, 0],
+          [1, 0],
+        ]),
+      ],
+      [1, 0],
+      10,
+    );
+    expect(ranked[0].score).toBeCloseTo(1, 5);
+  });
+
+  it('reports a dimension mismatch only when no vector of the item is comparable', () => {
+    const onMismatch = jest.fn();
+    rankInMemory(
+      [
+        multi('mixed', [
+          [1, 0, 0],
+          [1, 0],
+        ]),
+      ],
+      [1, 0],
+      10,
+      onMismatch,
+    );
+    expect(onMismatch).not.toHaveBeenCalled();
+    rankInMemory([multi('stale', [[1, 0, 0]])], [1, 0], 10, onMismatch);
+    expect(onMismatch).toHaveBeenCalledWith(1);
+  });
+
+  it('scores a row written with a single joined vector exactly as before', () => {
+    const ranked = rankInMemory([candidate('old', [1, 0])], [1, 0], 10);
+    expect(ranked[0].score).toBeCloseTo(1, 5);
   });
 });

@@ -14,11 +14,21 @@ function isLibraryAbort(reason: Error | undefined): reason is AbortError {
 }
 
 /**
- * The library's error for an aborted `signal`. A caller's own `AbortError`
- * used as the abort reason is returned unchanged; anything else — the
- * `DOMException` a bare `controller.abort()` produces, a string, a custom
- * error — becomes the `cause` of a fresh {@link AbortError}, so
- * `code === 'ABORTED'` holds however the signal was aborted.
+ * This library's error for an aborted `signal`.
+ *
+ * Accepts: `signal` — aborted; its `reason` may be this library's own
+ * `AbortError`, the `DOMException` a bare `controller.abort()` produces, a
+ * string, any other error, or `undefined`.
+ *
+ * Returns: the reason unchanged when it already is this library's `AbortError`,
+ * so an error does not accumulate wrappers across layers; otherwise a fresh
+ * `AbortError` carrying the reason as `cause` (`undefined` reason carries
+ * none).
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: `code === 'ABORTED'` holds however the signal was aborted, so a
+ * caller branches on the code rather than on the reason's shape.
  */
 export function abortErrorFrom(signal: AbortSignal): AbortError {
   const reason = signal.reason as Error | undefined;

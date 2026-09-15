@@ -39,7 +39,7 @@ const op = (over: Partial<PutOperation>): PutOperation => ({
 function trackingOffloader() {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: string[]) => parts.join('/'),
+    buildKey: (parts: string[], hash: string) => [...parts, hash].join('/'),
     upload: async (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: () => true,

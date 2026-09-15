@@ -17,10 +17,21 @@ function descriptorsOf(row: DocItem): (PayloadDescriptor | undefined)[] {
 }
 
 /**
- * Delete every checkpoint, payload, and write for a thread (all share the
- * thread's partition), best-effort deleting any offloaded S3 objects. Rows
- * this adapter does not own are left in place and logged, so a shared-table
- * partition holding a foreign row is never collaterally wiped.
+ * Delete every checkpoint, payload and write of one thread.
+ *
+ * Accepts: `threadId` — validated like every identifier. `options.signal` —
+ * stops the read between pages.
+ *
+ * Returns: nothing. Deleting a thread that does not exist is not an error:
+ * there is simply nothing in the partition.
+ *
+ * Throws: ValidationError for a malformed `threadId`;
+ * `BatchWriteAllIncompleteError` when a delete batch does not drain, carrying
+ * what did succeed; `AbortError` when the signal fires.
+ *
+ * Guarantees: a row this adapter did not write is left in place and logged, so
+ * a shared-table partition is never collaterally wiped. One pass over a
+ * quiescent thread: a checkpoint written while this runs may survive it.
  */
 export async function deleteThread(
   context: CheckpointerContext,

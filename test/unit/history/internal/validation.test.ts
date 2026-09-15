@@ -1,6 +1,7 @@
-import type { StoredMessage } from '@langchain/core/messages';
+import { type StoredMessage, HumanMessage } from '@langchain/core/messages';
 
 import {
+  toStoredMessages,
   validateMessageWindow,
   validateSessionId,
   validateStorableMessages,
@@ -38,6 +39,30 @@ describe('validateSessionId', () => {
 
   it('rejects control characters (M7)', () => {
     expectValidationError(() => validateSessionId('s[31m'));
+  });
+});
+
+describe('toStoredMessages', () => {
+  it('serializes real messages in order', () => {
+    const stored = toStoredMessages([new HumanMessage('one'), new HumanMessage('two')]);
+    expect(stored.map((message) => message.data.content)).toEqual(['one', 'two']);
+  });
+
+  /**
+   * A JavaScript caller, or an `any` arriving through a chain, used to fail with
+   * `TypeError: message.toDict is not a function` from inside LangChain — no
+   * index, no field, no sign of which library refused it.
+   */
+  it('names the offending index for a value that is not a message', () => {
+    expect(() => toStoredMessages([new HumanMessage('ok'), {} as never])).toThrow(
+      /messages\[1\] is not a LangChain message/,
+    );
+    expectValidationError(() => toStoredMessages(['hi' as never]));
+    expectValidationError(() => toStoredMessages([null as never]));
+  });
+
+  it('accepts an empty list', () => {
+    expect(toStoredMessages([])).toEqual([]);
   });
 });
 

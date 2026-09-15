@@ -57,7 +57,7 @@ describe('drainUnprocessedWrites', () => {
     expect((error as { cause?: Error }).cause?.message).toBe('throttled');
   });
 
-  it('reports the confirmed persisted count when the signal aborts during backoff after a partial drain', async () => {
+  it('raises the AbortError unchanged when the signal aborts during backoff', async () => {
     const { client, mock } = createStrictDocumentMock();
     const controller = new AbortController();
     // Round 1: 5 in, 3 persist (a,b,c), 2 (d,e) unprocessed — same partial
@@ -73,11 +73,55 @@ describe('drainUnprocessedWrites', () => {
       [put('a'), put('b'), put('c'), put('d'), put('e')],
       { rng: () => 0, signal: controller.signal },
     ).catch((e: unknown) => e);
-    expect(error).toMatchObject({
-      name: 'BatchWriteIncompleteError',
-      succeededCount: 3,
-      unprocessed: [put('d'), put('e')],
+    /**
+     * A cancelled drain is an abort. Reporting BATCH_WRITE_INCOMPLETE here
+     * contradicted the ABORTED that every cancellable method documents, and
+     * left a caller branching on the wrong code for their own cancellation.
+     */
+    expect(error).toMatchObject({ name: 'AbortError', code: 'ABORTED' });
+  });
+});
+
+describe('the drain obeys the configured retry policy (CORE-04)', () => {
+  /**
+   * The wall clock is frozen for determinism, so the wait is asserted at the
+   * timer rather than measured. `rng: () => 1` takes the top of the jitter
+   * window, which makes the configured base exactly observable.
+   */
+  function recordDelays(): number[] {
+    const delays: number[] = [];
+    const real = globalThis.setTimeout;
+    jest.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      delays.push(ms ?? 0);
+      return real(fn, 0);
+    }) as unknown as typeof setTimeout);
+    return delays;
+  }
+
+  function onePartialRound(mock: ReturnType<typeof createStrictDocumentMock>['mock']): void {
+    let rounds = 0;
+    mock.on(BatchWriteCommand).callsFake(() => {
+      rounds += 1;
+      return rounds === 1 ? { UnprocessedItems: { t: [put('b')] } } : {};
     });
-    expect((error as { cause?: Error }).cause?.name).toBe('AbortError');
+  }
+
+  it('waits the configured base delay between rounds, not the module default', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    onePartialRound(mock);
+    const delays = recordDelays();
+    await drainUnprocessedWrites(client, 't', [put('a'), put('b')], {
+      retry: { baseDelayMs: 150 },
+      rng: () => 1,
+    });
+    expect(delays).toEqual([150]);
+  });
+
+  it('falls back to the module default when no policy is given', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    onePartialRound(mock);
+    const delays = recordDelays();
+    await drainUnprocessedWrites(client, 't', [put('a'), put('b')], { rng: () => 1 });
+    expect(delays).toEqual([100]);
   });
 });

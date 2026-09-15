@@ -44,6 +44,18 @@ function textOf(content: StoredContent | undefined): string | undefined {
  * could cut a surrogate pair in half, leaving a lone surrogate that no longer
  * round-trips through UTF-8. The ellipsis is also counted against the maximum
  * rather than appended past it.
+ *
+ * Accepts: `messages` — one append's messages, in order. The first `human` one
+ * is the title's source; an append of only AI or tool messages has none, and an
+ * append to an existing session produces a title that is then discarded by
+ * `if_not_exists`.
+ *
+ * Returns: the title, or undefined when there is no usable text — no human
+ * message, empty content, or a multimodal message carrying no text block.
+ * Undefined means "do not write a title", not "write an empty one".
+ *
+ * Throws: nothing. A title is a convenience; nothing about it may fail an
+ * append.
  */
 export function deriveTitle(messages: StoredMessage[]): string | undefined {
   const firstHuman = messages.find((message) => message.type === 'human');

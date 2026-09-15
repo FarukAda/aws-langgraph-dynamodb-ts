@@ -62,9 +62,30 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
 }
 
 /**
- * Run `fn`, retrying retryable transient errors with full-jitter exponential
- * backoff. Non-retryable errors are re-thrown unchanged; exhaustion throws
- * {@link RetryExhaustedError}; an aborted signal throws {@link AbortError}.
+ * Run `fn`, retrying transient failures with full-jitter exponential backoff.
+ *
+ * Accepts: `options.maxAttempts` — total attempts including the first, default
+ * {@link DEFAULT_RETRY_MAX_ATTEMPTS}; at least 1, which `validateRetryPolicy`
+ * enforces for every caller-supplied policy. `options.baseDelayMs` /
+ * `maxDelayMs` — the backoff schedule. `options.isRetryable` — replaces
+ * `retryableErrors` entirely, so a call site can share one classifier with
+ * paths that do not go through here. `options.signal` — checked once before
+ * the first attempt and again during every backoff wait. `options.onRetry` —
+ * called synchronously before each wait; an exception from it is not caught
+ * and ends the operation.
+ *
+ * Returns: whatever `fn` resolves to, from the first attempt that succeeds.
+ *
+ * Throws: the error itself, unchanged, when it is not retryable — a
+ * `ValidationException` or a permission failure is never retried;
+ * {@link AbortError} when the signal fires, including during a wait;
+ * {@link RetryExhaustedError} once the attempts are spent, carrying the attempt
+ * count and the last error as `cause`. Its message quotes the last error
+ * **redacted**, because it reaches `err.message`, which an application may
+ * print without a redacting logger.
+ *
+ * Guarantees: `fn` is called at least once and at most `maxAttempts` times. A
+ * thrown non-`Error` is wrapped, so what a caller catches is always an `Error`.
  */
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const { maxAttempts, baseDelayMs, maxDelayMs, isRetryable, rng } = resolveRetryOptions(options);
@@ -91,7 +112,16 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
   );
 }
 
-/** {@link withRetry} preset for DynamoDB operations. */
+/**
+ * {@link withRetry} with this package's DynamoDB defaults.
+ *
+ * Accepts: `overrides` — merged over `maxAttempts:`
+ * {@link DEFAULT_RETRY_MAX_ATTEMPTS}, so an adapter's resolved policy wins.
+ *
+ * Returns: as {@link withRetry}.
+ *
+ * Throws: as {@link withRetry}.
+ */
 export async function withDynamoDBRetry<T>(
   fn: () => Promise<T>,
   overrides?: Partial<RetryOptions>,

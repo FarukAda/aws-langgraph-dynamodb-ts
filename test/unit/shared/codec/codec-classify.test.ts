@@ -32,9 +32,31 @@ function s3Failure(causeName: string): DynamoDBLangGraphError {
   );
 }
 
+/**
+ * A row holds whatever its writer stored. Reading `.schemaVersion` off a
+ * descriptor that is not an object raised a raw `TypeError` with no code, out
+ * of a public method that promises a typed error.
+ */
+describe('a descriptor that is not an object', () => {
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['a string', 'INLINE'],
+    ['a number', 7],
+  ])('is refused as a descriptor when it is %s', async (_name, descriptor) => {
+    await expect(
+      readPayloadBytes(descriptor as never, { serde: {} as never }, []),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'descriptor' } });
+  });
+});
+
 describe('readPayloadBytes', () => {
   it('returns the stored bytes of an inline descriptor without deserializing', async () => {
-    const descriptor = await encodePayload({ a: 1 }, { serde }, { keyParts: ['k'] });
+    const descriptor = await encodePayload(
+      { a: 1 },
+      { serde },
+      { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } },
+    );
     const bytes = await readPayloadBytes(descriptor, { serde }, []);
     expect(new TextDecoder().decode(bytes)).toBe('{"a":1}');
   });
@@ -42,16 +64,19 @@ describe('readPayloadBytes', () => {
   it('downloads the bytes of an offloaded descriptor', async () => {
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
+      buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
       upload: jest.fn(async (key: string) => key),
       download: jest.fn(async () => new TextEncoder().encode('{"b":2}')),
       assertOwnedKey: () => undefined,
     };
     const deps = { serde, offloader: offloader as never };
-    const descriptor = await encodePayload({ b: 2 }, deps, { keyParts: ['k'] });
+    const descriptor = await encodePayload({ b: 2 }, deps, {
+      keyParts: ['k'],
+      row: { pk: 'PK', sk: 'SK' },
+    });
     const bytes = await readPayloadBytes(descriptor, deps, []);
     expect(new TextDecoder().decode(bytes)).toBe('{"b":2}');
-    expect(offloader.download).toHaveBeenCalledWith('k');
+    expect(offloader.download).toHaveBeenCalledWith((descriptor as { s3Key: string }).s3Key);
   });
 });
 
@@ -75,7 +100,9 @@ describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', ()
   const nearlyBig = { blob: 'x'.repeat(380 * 1024) };
 
   it('rejects a payload that cannot fit a DynamoDB item when no offloader is configured', async () => {
-    await expect(encodePayload(big, { serde }, { keyParts: ['k'] })).rejects.toMatchObject({
+    await expect(
+      encodePayload(big, { serde }, { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } }),
+    ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 'payload' },
       message: expect.stringMatching(/s3/),
@@ -85,7 +112,7 @@ describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', ()
   it('offloads the same payload when an offloader is configured', async () => {
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
+      buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
       upload: jest.fn(async (key: string) => key),
     };
     const descriptor = await encodePayload(
@@ -93,24 +120,35 @@ describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', ()
       { serde, offloader: offloader as never },
       {
         keyParts: ['k'],
+        row: { pk: 'PK', sk: 'SK' },
       },
     );
     expect(descriptor.location).toBe(PayloadLocation.S3);
   });
 
   it('keeps a payload just under the cap inline', async () => {
-    const descriptor = await encodePayload(nearlyBig, { serde }, { keyParts: ['k'] });
+    const descriptor = await encodePayload(
+      nearlyBig,
+      { serde },
+      { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } },
+    );
     expect(descriptor.location).toBe(PayloadLocation.INLINE);
   });
 
   it('suggests enabling compression when it is not on, and only s3 when it is', async () => {
-    await expect(encodePayload(big, { serde }, { keyParts: ['k'] })).rejects.toMatchObject({
+    await expect(
+      encodePayload(big, { serde }, { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } }),
+    ).rejects.toMatchObject({
       message: expect.stringMatching(/compression/),
     });
     // ~683 KB of base64 over random bytes: gzip cannot bring it under the cap.
     const incompressible = { blob: randomBytes(512 * 1024).toString('base64') };
     await expect(
-      encodePayload(incompressible, { serde, compression: { enabled: true } }, { keyParts: ['k'] }),
+      encodePayload(
+        incompressible,
+        { serde, compression: { enabled: true } },
+        { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } },
+      ),
     ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       message: expect.not.stringMatching(/enable compression/),

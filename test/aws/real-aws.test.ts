@@ -116,7 +116,7 @@ describe('DynamoDB adapters against real AWS', () => {
     const messages = await history.getMessages('hot');
     expect(messages).toHaveLength(30);
     expect(new Set(messages.map((m) => m.content)).size).toBe(30);
-    const sessions = await history.listSessions();
+    const { sessions: sessions } = await history.listSessions();
     expect(sessions.find((s) => s.sessionId === 'hot')?.messageCount).toBe(30);
   });
 

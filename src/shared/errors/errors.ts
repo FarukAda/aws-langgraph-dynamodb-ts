@@ -5,6 +5,17 @@ import { ErrorCode } from './error-code';
 
 /** Input failed a validation rule before any AWS call was made; `context.field` names the input. */
 export class ValidationError extends DynamoDBLangGraphError {
+  /**
+   * Accepts: `field` — the option, argument or cap that failed, dotted for a
+   * nested one (`s3.bucketName`). Omitted only where no single input is at
+   * fault.
+   *
+   * Returns: the error, with `code: VALIDATION` and `context.field` set when a
+   * field was named — which is what a caller branches on to point at the
+   * offending input.
+   *
+   * Throws: nothing; building an error may not fail.
+   */
   constructor(message: string, field?: string, cause?: Error) {
     super(message, ErrorCode.VALIDATION, field === undefined ? {} : { field }, cause);
     this.name = 'ValidationError';
@@ -13,6 +24,15 @@ export class ValidationError extends DynamoDBLangGraphError {
 
 /** A conditional write failed because the precondition no longer holds. */
 export class ConflictError extends DynamoDBLangGraphError {
+  /**
+   * Accepts: `message` — what precondition no longer held. `cause` — the rejection
+   * beneath it, when there is one.
+   *
+   * Returns: the error, with `code: CONDITION_CONFLICT`. A caller may retry the
+   * operation from a fresh read; nothing was written.
+   *
+   * Throws: nothing; building an error may not fail.
+   */
   constructor(message: string, cause?: Error) {
     super(message, ErrorCode.CONDITION_CONFLICT, {}, cause);
     this.name = 'ConflictError';
@@ -21,6 +41,17 @@ export class ConflictError extends DynamoDBLangGraphError {
 
 /** A retried operation exhausted its attempt budget. */
 export class RetryExhaustedError extends DynamoDBLangGraphError {
+  /**
+   * Accepts: `attempts` — how many were made before the budget ran out. `cause` —
+   * the last failure, kept so a caller can classify what actually went wrong.
+   *
+   * Returns: the error, with `code: RETRY_EXHAUSTED` and `context.attempts`. It
+   * says the attempts are spent, **not** that the operation did not happen: a
+   * write whose response was lost is reported this way too, which is why every
+   * caller that would delete something reads the row back first.
+   *
+   * Throws: nothing; building an error may not fail.
+   */
   constructor(message: string, attempts?: number, cause?: Error) {
     super(message, ErrorCode.RETRY_EXHAUSTED, attempts === undefined ? {} : { attempts }, cause);
     this.name = 'RetryExhaustedError';
@@ -34,6 +65,16 @@ export class RetryExhaustedError extends DynamoDBLangGraphError {
  * `context.field` names the cap that was hit.
  */
 export class ResultTruncatedError extends DynamoDBLangGraphError {
+  /**
+   * Accepts: `cap` — which cap was hit (`maxItems`, `maxIterations`). `limit` —
+   * its value, quoted in the message so the fix is obvious.
+   *
+   * Returns: the error, with `code: RESULT_TRUNCATED` and `context.field` naming
+   * the cap. Raised only when data actually remained, so it never turns a
+   * complete result into a failure.
+   *
+   * Throws: nothing; building an error may not fail.
+   */
   constructor(cap: string, limit: number) {
     super(
       `paginated read truncated at the ${cap} cap (${limit}) with more data remaining`,
@@ -46,6 +87,15 @@ export class ResultTruncatedError extends DynamoDBLangGraphError {
 
 /** An operation was cancelled via its AbortSignal. */
 export class AbortError extends DynamoDBLangGraphError {
+  /**
+   * Accepts: `cause` — the `AbortSignal`'s own reason, when it carried one.
+   *
+   * Returns: the error, with `code: ABORTED`. Distinct from every failure code on
+   * purpose: a caller who cancelled did not encounter a fault, and treating
+   * the two alike reported an incomplete write for a deliberate stop.
+   *
+   * Throws: nothing; building an error may not fail.
+   */
   constructor(message = 'Operation aborted', cause?: Error) {
     super(message, ErrorCode.ABORTED, {}, cause);
     this.name = 'AbortError';
@@ -64,6 +114,17 @@ export class BatchWriteIncompleteError extends DynamoDBLangGraphError {
   readonly succeededCount: number;
   readonly unprocessed: WriteRequest[];
 
+  /**
+   * Accepts: `succeededCount` — writes DynamoDB acked. `unprocessed` — the
+   * requests it did not, verbatim, so they can be re-submitted. `retries` —
+   * rounds spent. `cause` — an error that interrupted the drain, rather than a
+   * clean exhaustion of the budget.
+   *
+   * Returns: the error, carrying both counts. Items *not* listed in `unprocessed`
+   * persist: there is no rollback, so reconciliation is driven from that list.
+   *
+   * Throws: nothing; building an error may not fail.
+   */
   constructor(succeededCount: number, unprocessed: WriteRequest[], retries: number, cause?: Error) {
     super(
       `batchWrite did not drain after ${retries} UnprocessedItems retries: ` +
@@ -95,6 +156,19 @@ export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
   readonly failedChunks: Error[];
   readonly succeededCount: number;
 
+  /**
+   * Accepts: `succeededChunks`/`totalChunks` — the chunk tally.
+   * `failedChunks` — each failing chunk's own error, commonly a
+   * {@link BatchWriteIncompleteError}. `succeededCount` — individual writes
+   * confirmed persisted across every chunk, which is more precise than the
+   * chunk tally when a chunk partially drains.
+   *
+   * Returns: the error, with the first failing chunk's error as `cause`. Every
+   * chunk not represented in `failedChunks` drained successfully and its writes
+   * persist — there is no rollback.
+   *
+   * Throws: nothing; building an error may not fail.
+   */
   constructor(
     succeededChunks: number,
     totalChunks: number,
@@ -125,6 +199,16 @@ export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
 export class CompensationFailedError extends DynamoDBLangGraphError {
   readonly rollbackError: Error;
 
+  /**
+   * Accepts: `cause` — the failure that triggered the rollback. `rollbackError` —
+   * why the rollback itself could not finish.
+   *
+   * Returns: the error, carrying both. The session's `messageCount` may have
+   * drifted, which `reconcileMessageCount` repairs; the quoted text of both
+   * errors is redacted before it is embedded.
+   *
+   * Throws: nothing; building an error may not fail.
+   */
   constructor(cause: Error, rollbackError: Error) {
     super(
       `compensation failed after an append error: ${redactedMessage(cause)} ` +

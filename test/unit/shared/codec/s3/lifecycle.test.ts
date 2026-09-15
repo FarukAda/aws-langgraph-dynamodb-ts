@@ -44,7 +44,24 @@ describe('ensureLifecycleRule', () => {
     expect(rules[0].Expiration?.Days).toBe(30);
   });
 
-  it('is a no-op when the matching rule already has the right ttl', async () => {
+  it('is a no-op when the matching rule already scopes this prefix with the right ttl', async () => {
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+      Rules: [
+        {
+          ID: 'langgraph-ttl-langgraph-checkpoints',
+          Filter: { Prefix: 'langgraph-checkpoints/' },
+          Status: 'Enabled',
+          Expiration: { Days: 30 },
+          NoncurrentVersionExpiration: { NoncurrentDays: 30 },
+        },
+      ],
+    });
+    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30);
+    expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
+  });
+
+  /** A rule carrying this id but no filter scopes nothing knowable; it is rewritten. */
+  it('rewrites a rule that has the right ttl but carries no prefix filter', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
       Rules: [
         {
@@ -55,7 +72,36 @@ describe('ensureLifecycleRule', () => {
         },
       ],
     });
+    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30);
+    const rules =
+      s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0].args[0].input
+        .LifecycleConfiguration?.Rules ?? [];
+    expect(rules[0].Filter?.Prefix).toBe('langgraph-checkpoints/');
+  });
+
+  /**
+   * The rule id is a slug of the prefix, and slugging maps every
+   * non-alphanumeric character to `-`, so `a/b/` and `a-b/` produce one id.
+   * Taking the rule over would expire one prefix's objects on the other's
+   * schedule; leaving it would give this prefix no rule at all.
+   */
+  it('refuses when the id it would use is already held by a different prefix', async () => {
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+      Rules: [
+        {
+          ID: 'langgraph-ttl-a-b',
+          Filter: { Prefix: 'a/b/' },
+          Status: 'Enabled',
+          Expiration: { Days: 30 },
+          NoncurrentVersionExpiration: { NoncurrentDays: 30 },
+        },
+      ],
+    });
+    await expect(ensureLifecycleRule(client(), 'b', 'a-b/', 30)).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 's3.keyPrefix' },
+    });
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
   });
 

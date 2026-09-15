@@ -1,7 +1,16 @@
 /**
- * Map `items` through `fn` with at most `limit` calls in flight, preserving
- * input order in the result. The first rejection wins: no further item is
- * started, the calls already in flight settle, and that error propagates.
+ * Map `items` through `fn` with at most `limit` calls in flight.
+ *
+ * Accepts: `items` — any length, including empty, which calls `fn` never.
+ * `limit` — calls in flight; a value below 1 degrades to sequential rather
+ * than stalling, and one above `items.length` starts only as many workers as
+ * there are items. `fn` — receives the item and its index.
+ *
+ * Returns: the results in **input** order, not completion order.
+ *
+ * Throws: the first rejection. No further item is started after it, the calls
+ * already in flight are allowed to settle, and that first error is the one
+ * thrown — a later failure never displaces it.
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],

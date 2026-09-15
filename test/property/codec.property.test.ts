@@ -8,7 +8,10 @@ import { JSON_SERDE } from '../../src/shared/codec/json-serde';
 const KEY_PARTS = ['t', 'ns', 'cp', 'payload'];
 
 async function roundTrip(value: unknown, deps: CodecDeps): Promise<unknown> {
-  const descriptor = await encodePayload(value, deps, { keyParts: KEY_PARTS });
+  const descriptor = await encodePayload(value, deps, {
+    keyParts: KEY_PARTS,
+    row: { pk: 'PK', sk: 'SK' },
+  });
   return decodePayload(descriptor, deps, []);
 }
 

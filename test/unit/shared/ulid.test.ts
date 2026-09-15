@@ -105,6 +105,21 @@ describe('secureRng (DDB-12)', () => {
     expect(randomBytesMock).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * The guarantee the CSPRNG is there for: a digit drawn as `floor(rng() * 32)`
+   * must be uniform. 256 is a whole multiple of 32, so every digit comes from
+   * exactly eight byte values and no digit is more likely than another.
+   */
+  it('maps every byte onto a digit without modulo bias', () => {
+    randomBytesMock.mockClear();
+    const everyByte = Buffer.from(Array.from({ length: 256 }, (_v, index) => index));
+    (randomBytesMock as unknown as jest.Mock).mockReturnValueOnce(everyByte);
+    const rng = secureRng();
+    const histogram = new Array<number>(32).fill(0);
+    for (let draw = 0; draw < 256; draw += 1) histogram[Math.floor(rng() * 32)] += 1;
+    expect(histogram).toEqual(new Array<number>(32).fill(8));
+  });
+
   it('is the default random source of a ULID factory', () => {
     randomBytesMock.mockClear();
     const id = createUlidFactory()();

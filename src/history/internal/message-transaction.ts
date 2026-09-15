@@ -71,6 +71,23 @@ async function attempt(
  * cancellation caused by any other item (a genuine message-row conflict) is
  * not retried here — it propagates for the normal transient-conflict retry
  * budget inside `withDynamoDBRetry` to handle, or to the caller otherwise.
+ *
+ * Accepts: `items` — one chunk, already within the transaction's limits.
+ * `fields` — the session-metadata update accompanying it; its `indexShards` is
+ * taken from the adapter's context, never from the caller. `retry.signal` —
+ * aborts between attempts.
+ *
+ * Returns: nothing. The chunk and the count are committed together or not at
+ * all.
+ *
+ * Throws: whatever the transaction throws — including a
+ * `TransactionCanceledException` for a genuine conflict, after the retry budget
+ * is spent. The caller compensates; this function never partially succeeds.
+ *
+ * Guarantees: `messageCount` can never disagree with the messages that landed,
+ * because they land in one transaction. At most one extra attempt is spent on
+ * the benign ttl race, and it carries its own request token, so a retry can
+ * never double-apply the count.
  */
 export async function writeMessageChunk(
   context: HistoryContext,
@@ -78,11 +95,13 @@ export async function writeMessageChunk(
   fields: SessionUpdateFields,
   retry: ChunkRetryOptions = {},
 ): Promise<void> {
+  /** The index shard comes from the adapter's context, not from the caller's fields. */
+  const withIndex = { ...fields, indexShards: context.indexShards };
   try {
-    await attempt(context, items, fields, retry);
+    await attempt(context, items, withIndex, retry);
   } catch (error) {
     if (fields.forceTtlRefresh && isTtlConditionLoss(error as Error)) {
-      await attempt(context, items, { ...fields, forceTtlRefresh: false }, retry);
+      await attempt(context, items, { ...withIndex, forceTtlRefresh: false }, retry);
       return;
     }
     throw error;

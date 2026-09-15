@@ -27,9 +27,23 @@ export interface ReadOptions {
 }
 
 /**
- * Fetch the target META item: by id when given, else the newest in the
- * namespace. The newest-first read pages one row at a time past any foreign
- * row until it finds a real checkpoint.
+ * The META row a read is about: the one `checkpointId` names, else the newest
+ * in the namespace.
+ *
+ * Accepts: `checkpointId` — its absence asks for the newest. `signal` — aborts
+ * the read.
+ *
+ * Returns: the row, or undefined when there is none — including when every row
+ * in the namespace has expired, or when the only rows there belong to another
+ * writer.
+ *
+ * Throws: `FORMAT_UNSUPPORTED` for a row of ours written by a newer version;
+ * whatever the read throws.
+ *
+ * Guarantees: strongly consistent, and expiry is judged here rather than waited
+ * for, so a checkpoint past its ttl is absent to every reader however long
+ * DynamoDB's sweep lags. The newest-first read pages one row at a time past any
+ * foreign row until it finds a real checkpoint.
  */
 export async function fetchTargetMeta(
   context: CheckpointerContext,
@@ -77,7 +91,18 @@ export async function fetchTargetMeta(
   return undefined;
 }
 
-/** Fetch the PAYLOAD item for a checkpoint. */
+/**
+ * The PAYLOAD row of one checkpoint.
+ *
+ * Accepts: `read.consistent` — defaults to true; `list` passes false and
+ * accepts replica lag, since a listing tolerates what a read-your-writes
+ * `getTuple` does not.
+ *
+ * Returns: the row, or undefined when it is not there — the window the ordered
+ * PAYLOAD→META write leaves open, which the caller answers as "no checkpoint".
+ *
+ * Throws: whatever the read throws.
+ */
 export async function fetchPayload(
   context: CheckpointerContext,
   threadId: string,
@@ -97,7 +122,23 @@ export async function fetchPayload(
   return result.Item as CheckpointPayloadItem | undefined;
 }
 
-/** Fetch and decode every pending write for a checkpoint, in write order. */
+/**
+ * Every pending write stored for one checkpoint, decoded, in write order.
+ *
+ * Accepts: `read.consistent` — omitted reads strongly consistently; `list`
+ * passes `false` explicitly and accepts replica lag, `getTuple` passes `true`.
+ *
+ * Returns: the writes after `dropSupersededWrites` has resolved
+ * first-write-wins; a checkpoint with none returns an empty array.
+ *
+ * Throws: whatever the query or the payload decode throws.
+ *
+ * Guarantees: the read is deliberately uncapped. It must be complete to be
+ * correct — a `Send` fan-out retried with a changed write order leaves
+ * superseded rows behind that would count toward any cap — so past
+ * {@link LIST_SCAN_WARN_THRESHOLD} rows the read still succeeds and an operator
+ * is told the checkpoint is unusually heavy.
+ */
 export async function fetchPendingWrites(
   context: CheckpointerContext,
   threadId: string,

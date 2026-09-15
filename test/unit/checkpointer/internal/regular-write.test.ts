@@ -114,7 +114,7 @@ describe('writeRegularItems', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).rejects(ccf({ channel: { S: 'ch' }, writeGroup: { S: 'OTHER' } }));
     const outcome = await writeRegularItems(context(client), [item('G1')]);
-    expect(outcome).toEqual({ deadUploads: [item('G1')] });
+    expect(outcome).toEqual({ deadUploads: [{ item: item('G1'), live: undefined }] });
   });
 
   it('never marks a guard-rejected write dead when the returned row is its own (lost-response re-hit)', async () => {

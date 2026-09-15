@@ -61,10 +61,10 @@ async function rollbackCommitted(
     );
   } catch (error) {
     /**
-     * batchWriteAll has exactly one throw site and it is always a
-     * BatchWriteAllIncompleteError (see Task 9) — asserted, not instanceof-
-     * checked, since the false case is unreachable and this project
-     * enforces 100% branch coverage with no exceptions.
+     * `batchWriteAll` has exactly one throw site and it always raises a
+     * {@link BatchWriteAllIncompleteError}, which its own contract states —
+     * asserted here rather than narrowed, since the false branch is
+     * unreachable and this project enforces 100% branch coverage.
      */
     const deleted = (error as BatchWriteAllIncompleteError).succeededCount;
     await revertSessionCount(context, sessionId, deleted, now);
@@ -86,6 +86,21 @@ async function rollbackCommitted(
  * outcome could not be verified: its rows may be live, so its objects are
  * leaked rather than deleted, while the never-attempted chunks after it are
  * still cleaned.
+ *
+ * Accepts: `committed` — the chunks known to have landed, in order; empty means
+ * the very first chunk failed, and then the only thing to undo is the session
+ * row this call may have created. `trigger` — the failure that started this.
+ * `uncertain` — see above.
+ *
+ * Returns: never; the declared `Promise<never>` is the contract.
+ *
+ * Throws: `trigger` when the rollback succeeded, {@link CompensationFailedError}
+ * when it did not.
+ *
+ * Guarantees: an object is deleted only once no row can reference it — the
+ * never-committed suffix immediately, the committed prefix only after its rows
+ * are confirmed gone, and an unverified chunk never. Storage is leaked in
+ * preference to leaving a live row pointing at a deleted object.
  */
 export async function compensate(
   context: HistoryContext,

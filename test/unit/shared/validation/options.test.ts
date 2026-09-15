@@ -204,4 +204,102 @@ describe('validateBaseAdapterOptions', () => {
       ).not.toThrow();
     });
   });
+  /**
+   * The multiplier on the memory ceiling: one call holds up to
+   * `readConcurrency` payloads, each with its downloaded and its decompressed
+   * form resident. A zero would stall every read, a fraction is meaningless.
+   */
+  /**
+   * A key this package does not read is a misconfiguration, not an extension:
+   * the caller overrode nothing and runs on the default. The allowed sets are
+   * compile-checked against the option types, so they cannot drift.
+   */
+  describe('unknown and malformed nested options', () => {
+    it.each([
+      ['retry', { retry: { maxAttempt: 3 } }, 'retry.maxAttempt'],
+      ['compression', { compression: { enabled: true, minSize: 10 } }, 'compression.minSize'],
+      ['s3', { s3: { bucketName: 'b', bucket: 'b' } }, 's3.bucket'],
+    ])('rejects a misspelt %s key by name', (_name, extra, field) => {
+      expectValidationError(
+        () => validateBaseAdapterOptions({ ...base, ...extra } as never),
+        field,
+      );
+    });
+
+    it.each([
+      ['retry', { retry: 5 }, 'retry'],
+      ['compression', { compression: 'on' }, 'compression'],
+      ['s3', { s3: ['bucket'] }, 's3'],
+    ])('rejects a %s that is not an object', (_name, extra, field) => {
+      expectValidationError(
+        () => validateBaseAdapterOptions({ ...base, ...extra } as never),
+        field,
+      );
+    });
+
+    it('accepts every key each nested option actually declares', () => {
+      expect(() =>
+        validateBaseAdapterOptions({
+          ...base,
+          retry: { maxAttempts: 3, baseDelayMs: 10, maxDelayMs: 20 },
+          compression: { enabled: true, level: 6, minSizeBytes: 10, maxDecompressedBytes: 1024 },
+          s3: {
+            bucketName: 'b',
+            keyPrefix: 'p/',
+            thresholdBytes: 1024,
+            serverSideEncryption: 'AES256',
+            sseKmsKeyId: 'k',
+            maxDownloadBytes: 2048,
+            clientConfig: {},
+          },
+        }),
+      ).not.toThrow();
+    });
+  });
+
+  describe('the options object itself', () => {
+    it.each([undefined, null, 'table', 42] as never[])('rejects %p', (options) => {
+      expectValidationError(() => validateBaseAdapterOptions(options), 'options');
+    });
+  });
+
+  describe('readConcurrency', () => {
+    it.each([0, -1, 1.5, '8' as never])('rejects %j', (readConcurrency) => {
+      expectValidationError(
+        () => validateBaseAdapterOptions({ ...base, readConcurrency }),
+        'readConcurrency',
+      );
+    });
+
+    it('accepts a positive integer', () => {
+      expect(() => validateBaseAdapterOptions({ ...base, readConcurrency: 2 })).not.toThrow();
+    });
+  });
+
+  /**
+   * A shard count the writers and the readers disagree on puts rows on
+   * partitions no listing queries, which looks exactly like the rows being
+   * gone. It is rejected where it is written, not on the first read.
+   */
+  describe('the recency index', () => {
+    it.each([0, -1, 1.5, '8' as never])('rejects indexShards %j', (indexShards) => {
+      expectValidationError(
+        () => validateBaseAdapterOptions({ ...base, indexShards }),
+        'indexShards',
+      );
+    });
+
+    it('rejects an empty indexName', () => {
+      expectValidationError(
+        () => validateBaseAdapterOptions({ ...base, indexName: '' }),
+        'indexName',
+      );
+    });
+
+    it('accepts a named index with an explicit shard count', () => {
+      expect(() =>
+        validateBaseAdapterOptions({ ...base, indexName: 'gsi1', indexShards: 4 }),
+      ).not.toThrow();
+    });
+  });
 });

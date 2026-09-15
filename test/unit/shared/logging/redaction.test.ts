@@ -340,3 +340,43 @@ describe('redactSecrets accepts typed inputs without casts (CORE-11)', () => {
     expect(redactSecrets(record)).toEqual({ nested: { password: '[REDACTED]' } });
   });
 });
+
+describe('redactSecrets visits a shared node once (SEC-04)', () => {
+  /**
+   * A guard that only removes a node when its subtree finishes is correct for
+   * cycles and re-walks every node reachable by more than one path. On a graph
+   * that merely shares structure that is exponential: each added level doubles
+   * the work, so a sub-kilobyte argument with a few dozen shared objects blocks
+   * the event loop for minutes. Counting the visits proves the cost is linear
+   * without depending on a clock.
+   */
+  it('walks a diamond-shaped graph in linear time, not exponential', () => {
+    let visits = 0;
+    const leaf = {
+      get marker(): number {
+        visits += 1;
+        return 1;
+      },
+    };
+    let level: unknown = leaf;
+    for (let depth = 0; depth < 18; depth++) level = { left: level, right: level };
+    redactSecrets(level as Record<string, unknown>);
+    expect(visits).toBe(1);
+  });
+
+  it('still reports a cycle as [Circular]', () => {
+    const node: Record<string, unknown> = { name: 'root' };
+    node.self = node;
+    expect(redactSecrets(node)).toMatchObject({ name: 'root', self: '[Circular]' });
+  });
+
+  it('redacts both paths to one shared secret-bearing node', () => {
+    const shared = { password: 'hunter2' };
+    const redacted = redactSecrets({ a: shared, b: shared }) as Record<
+      string,
+      Record<string, string>
+    >;
+    expect(redacted.a.password).toBe('[REDACTED]');
+    expect(redacted.b.password).toBe('[REDACTED]');
+  });
+});

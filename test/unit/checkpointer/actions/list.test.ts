@@ -56,30 +56,16 @@ describe('listCheckpoints', () => {
 
   async function fixtures(client: CheckpointerContext['client']) {
     const ctx = context(client);
-    const a = await buildCheckpointItems(
-      ctx,
-      't',
-      '',
-      checkpoint('c2'),
-      {
-        source: 'loop',
-        step: 2,
-        parents: {},
-      } as CheckpointMetadata,
-      'nonce-1',
-    );
-    const b = await buildCheckpointItems(
-      ctx,
-      't',
-      '',
-      checkpoint('c1'),
-      {
-        source: 'input',
-        step: 1,
-        parents: {},
-      } as CheckpointMetadata,
-      'nonce-1',
-    );
+    const a = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), {
+      source: 'loop',
+      step: 2,
+      parents: {},
+    } as CheckpointMetadata);
+    const b = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), {
+      source: 'input',
+      step: 1,
+      parents: {},
+    } as CheckpointMetadata);
     const metas: Record<string, CheckpointMetaItem> = { c2: a.meta, c1: b.meta };
     const payloads: Record<string, CheckpointPayloadItem> = { c2: a.payload, c1: b.payload };
     return { metas, payloads };
@@ -250,8 +236,8 @@ describe('list passes its limit to DynamoDB (DDB-13)', () => {
   it('still yields a checkpoint from a later page when `before` filters the first page out', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const newer = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), meta, 'n2');
-    const older = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta, 'n1');
+    const newer = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), meta);
+    const older = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
     let metaPages = 0;
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;

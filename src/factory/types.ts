@@ -25,6 +25,11 @@ export interface FactoryBaseOptions {
    * logs a `warn` at construction when they would).
    */
   client?: DynamoDBDocument;
+  /**
+   * Used to build the client, and read for its `region` when an `s3` config
+   * names none — including by `createAll`, whose adapters are handed the shared
+   * client rather than this config.
+   */
   clientConfig?: DynamoDBClientConfig;
   /**
    * @internal Test seam and dependency-injection hook for constructing the
@@ -42,7 +47,11 @@ export interface FactoryBaseOptions {
 /** An adapter's own options inside {@link CreateAllOptions}: everything but the shared client. */
 export type AdapterSection<Options> = Omit<Options, 'client' | 'clientConfig' | 'createClient'>;
 
-/** Per-adapter options for `DynamoDBFactory.createAll`; omit a section to skip that adapter. */
+/**
+ * Per-adapter options for `DynamoDBFactory.createAll`; omit a section to skip
+ * that adapter, and pass none to build none. A key that is not one of these
+ * three is refused: it would otherwise skip every adapter silently.
+ */
 export interface CreateAllOptions {
   saver?: AdapterSection<DynamoDBSaverOptions>;
   store?: AdapterSection<DynamoDBStoreOptions>;

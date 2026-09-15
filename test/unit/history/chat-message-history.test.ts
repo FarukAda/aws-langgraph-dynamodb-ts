@@ -6,6 +6,7 @@ import {
 import {
   BatchWriteCommand,
   DynamoDBDocument,
+  GetCommand,
   QueryCommand,
   ScanCommand,
   TransactWriteCommand,
@@ -73,12 +74,14 @@ describe('DynamoDBChatMessageHistory', () => {
         },
       ],
     });
-    const sessions = await history(client).listSessions();
+    const { sessions: sessions } = await history(client).listSessions();
     expect(sessions.map((s) => s.sessionId)).toEqual(['s']);
   });
 
   it('reconcileMessageCount recomputes and writes back the stored count', async () => {
     const { client, mock } = createStrictDocumentMock();
+    /** The repair pins its write to the count the row held, so it reads that first. */
+    mock.on(GetCommand).resolves({ Item: { messageCount: 0 } });
     mock.on(QueryCommand).resolves({ Count: 2 });
     mock.on(UpdateCommand).resolves({});
     await expect(history(client).reconcileMessageCount('sess-1')).resolves.toBe(2);

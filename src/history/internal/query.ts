@@ -7,7 +7,17 @@ export interface SessionItemsQueryOptions {
   consistent?: boolean;
 }
 
-/** Query input selecting every item in a session's partition (messages + metadata). */
+/**
+ * Query input selecting every item in a session's partition.
+ *
+ * Accepts: `options.consistent` — for a read whose answer a write depends on.
+ *
+ * Returns: the Query input, with no sort-key condition: it selects the
+ * messages, the SESSION metadata row, and any row another adapter left in this
+ * partition — which is why every caller filters with `isHistorySortKey`.
+ *
+ * Throws: nothing.
+ */
 export function sessionItemsQuery(
   tableName: string,
   sessionId: string,
@@ -38,7 +48,19 @@ export interface MessageQueryOptions extends SessionItemsQueryOptions {
   beforeSortKey?: string;
 }
 
-/** Query input selecting a session's message items, chronological unless `descending`. */
+/**
+ * Query input selecting a session's message items.
+ *
+ * Accepts: `options.descending` — newest-first, which is how a tail window is
+ * read. `options.limit` — the rows DynamoDB evaluates per page, not a total.
+ * `options.beforeSortKey` — an upper bound, expressed as `BETWEEN prefix AND
+ * bound` because a key condition allows one sort-key operator.
+ *
+ * Returns: the Query input, selecting messages only — the SESSION row does not
+ * carry the message prefix.
+ *
+ * Throws: nothing.
+ */
 export function messageQuery(
   tableName: string,
   sessionId: string,

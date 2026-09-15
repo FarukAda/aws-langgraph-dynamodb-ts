@@ -22,7 +22,17 @@ export interface S3ClientOptions {
  */
 export type S3ClientConfigLike = S3ClientOptions | object;
 
-/** The options of a config, read through the structural type. */
+/**
+ * The options of a config, read through the structural type.
+ *
+ * Accepts: a config as the caller gave it, or nothing.
+ *
+ * Returns: the same object seen as {@link S3ClientOptions} so `region` and
+ * `maxAttempts` can be read; an absent config reads as empty rather than
+ * needing a guard at every call site.
+ *
+ * Throws: nothing.
+ */
 export function s3ClientOptions(config: S3ClientConfigLike | undefined): S3ClientOptions {
   return (config ?? {}) as S3ClientOptions;
 }

@@ -1,3 +1,4 @@
+import { redactedMessage } from '../logging/secret-patterns';
 import { DynamoDBLangGraphError } from './base-error';
 import { ErrorCode } from './error-code';
 
@@ -21,9 +22,29 @@ export class UpstreamError extends DynamoDBLangGraphError {
   declare readonly requestId?: string;
   declare readonly httpStatusCode?: number;
 
+  /**
+   * Accepts: `cause` — the failure from below: the AWS SDK, the transport, a
+   * third-party `VectorBackend` or `Embeddings`. `operation` — the public
+   * method it surfaced through.
+   *
+   * Returns: the error, with `code: UPSTREAM`, the SDK's own error name as
+   * `upstreamName`, and the request id and HTTP status when the SDK supplied
+   * them. Absent metadata leaves no `undefined`-valued own property behind, so
+   * a serialized error carries only what is real.
+   *
+   * Throws: nothing; building an error may not fail.
+   */
   constructor(cause: Error, operation: string) {
+    /**
+     * The cause's text is redacted before it is quoted, exactly as
+     * `RetryExhaustedError` and `CompensationFailedError` do. An SDK error can
+     * carry a credential fragment in its message — a `SignatureDoesNotMatch`
+     * quoting `Credential=AKIA…`, for instance — and this message reaches
+     * `err.message`, which an application may print without going through a
+     * redacting logger.
+     */
     super(
-      `${operation}: ${cause.name}: ${cause.message}`,
+      `${operation}: ${cause.name}: ${redactedMessage(cause)}`,
       ErrorCode.UPSTREAM,
       { operation },
       cause,

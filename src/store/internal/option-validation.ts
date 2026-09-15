@@ -73,6 +73,16 @@ function validateLimits(options: DynamoDBStoreOptions): void {
  * listing with no `.score` field and no error — a semantic query returning a
  * normal-looking but meaningless response. `reconcileVectorIndex` already
  * refused this exact misconfiguration.
+ *
+ * Accepts: every option the store takes. The types describe the intended
+ * shapes; this runs for the JavaScript caller the types never see, and for the
+ * combinations no type can express — a backend without an index, an
+ * `embeddings` object missing a method, a direction outside its union.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming the offending option. Every failure is raised
+ * at construction, where the fix is, rather than at the first put or search.
  */
 export function validateStoreOptions(options: DynamoDBStoreOptions): void {
   validateBaseAdapterOptions(options);

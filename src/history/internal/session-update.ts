@@ -1,5 +1,7 @@
 import type { NativeAttributeValue, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 
+import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
+import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
 
 /** One member of a {@link TransactWriteCommandInput} `TransactItems` list. */
@@ -8,6 +10,8 @@ export type HistoryTransactItem = NonNullable<TransactWriteCommandInput['Transac
 /** Fields driving the per-session metadata update inside the append transaction. */
 export interface SessionUpdateFields {
   sessionId: string;
+  /** Index partitions, from the adapter's context; see `indexKeys`. */
+  indexShards?: number;
   count: number;
   now: string;
   title?: string;
@@ -28,24 +32,67 @@ export interface SessionUpdateFields {
  * the SET is additionally guarded by a ConditionExpression so a concurrent
  * caller's already-healed anchor can never be regressed backward — see
  * message-transaction.ts for how a lost race is retried without forcing.
+ *
+ * Accepts: `count` — how many messages this append adds, which `ADD` applies to
+ * whatever the row holds, so two concurrent appends both count. `title` —
+ * written once and never overwritten, so a session keeps the title its first
+ * turn produced. `ttlTimestamp` — absent leaves the row without an expiry.
+ * `forceTtlRefresh` — see above.
+ *
+ * Returns: the `Update` transact-item. It creates the row when there is none:
+ * every once-only field is an `if_not_exists`, so the first append and the
+ * thousandth build the same item.
+ *
+ * Throws: nothing. The condition it carries is evaluated by DynamoDB, and a
+ * failed condition surfaces from the transaction, not from here.
  */
 export function buildSessionUpdateItem(
   tableName: string,
   fields: SessionUpdateFields,
 ): HistoryTransactItem {
+  const index = indexKeys(
+    'SESS',
+    fields.sessionId,
+    fields.now,
+    fields.indexShards ?? DEFAULT_INDEX_SHARDS,
+  );
   const names: Record<string, string> = {
     '#count': 'messageCount',
     '#u': 'updatedAt',
     '#c': 'createdAt',
     '#sid': 'sessionId',
+    '#v': 'v',
+    '#gpk': 'gsi1pk',
+    '#gsk': 'gsi1sk',
   };
   const values: Record<string, NativeAttributeValue> = {
     ':n': fields.count,
     ':u': fields.now,
     ':c': fields.now,
     ':sid': fields.sessionId,
+    ':v': ROW_FORMAT_VERSION,
+    ':gpk': index.gsi1pk,
+    ':gsk': index.gsi1sk,
   };
-  const sets = ['#u = :u', '#c = if_not_exists(#c, :c)', '#sid = if_not_exists(#sid, :sid)'];
+  /**
+   * The row's format version is rewritten on every update, not only on
+   * creation: an append by this version leaves a row this version wrote, and a
+   * reader must be told that rather than infer it from which attributes happen
+   * to be present.
+   */
+  const sets = [
+    '#u = :u',
+    '#c = if_not_exists(#c, :c)',
+    '#sid = if_not_exists(#sid, :sid)',
+    '#v = :v',
+    /**
+     * The session row is listed by recency across partitions, so it carries the
+     * index keys — rewritten on every append, which is what keeps "most
+     * recently updated first" true without an in-memory sort.
+     */
+    '#gpk = :gpk',
+    '#gsk = :gsk',
+  ];
   if (fields.title !== undefined) {
     names['#title'] = 'title';
     values[':title'] = fields.title;

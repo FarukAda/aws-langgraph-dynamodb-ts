@@ -30,8 +30,7 @@ describe('verifyWriteLanded (STORE-13)', () => {
     mock.on(GetCommand).resolves({ Item: { rev: 'r1' } });
     await expect(verifyWriteLanded(context(client), record)).resolves.toBe('landed');
     const input = mock.commandCalls(GetCommand)[0].args[0].input;
-    expect(input.ProjectionExpression).toBe('#r');
-    expect(input.ExpressionAttributeNames).toEqual({ '#r': 'rev' });
+    expect(Object.values(input.ExpressionAttributeNames!)).toEqual(['rev']);
     expect(input.ConsistentRead).toBe(true);
   });
 
@@ -69,8 +68,7 @@ describe('rowIsAbsent (I4, STORE-07)', () => {
     mock.on(GetCommand).resolves({});
     await expect(rowIsAbsent(context(client), { PK: 'p', SK: 's' })).resolves.toBe(true);
     const input = mock.commandCalls(GetCommand)[0].args[0].input;
-    expect(input.ProjectionExpression).toBe('#pk');
-    expect(input.ExpressionAttributeNames).toEqual({ '#pk': 'PK' });
+    expect(Object.values(input.ExpressionAttributeNames!)).toEqual(['PK']);
   });
 
   it('returns false when the row is still present', async () => {

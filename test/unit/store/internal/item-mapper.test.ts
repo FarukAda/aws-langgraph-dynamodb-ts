@@ -61,52 +61,58 @@ describe('store item-mapper', () => {
       {
         createdAt: 'x',
         updatedAt: 'y',
-        embedding: [0.1, 0.2],
+        embeddings: [[0.1, 0.2]],
         ttlTimestamp: 1750,
       },
     );
-    expect(record.embedding).toEqual([0.1, 0.2]);
+    expect(record.embeddings).toEqual([[0.1, 0.2]]);
     expect(record.ttl).toBe(1750);
   });
 
-  it('appends a nonce to the S3 keyParts only when one is provided, and carries it onto rev', async () => {
+  /**
+   * `rev` is the row's revision token for the compare-and-swap, and nothing
+   * else. It used to double as the S3 key's uniquifier, which tied a DynamoDB
+   * write identity to an object identity; the object is addressed by its
+   * content hash under the row's own path instead.
+   */
+  it('keeps rev off the S3 key path and carries it onto the record', async () => {
     const seenParts: string[][] = [];
     const ctx: StoreContext = {
-      client: {} as never,
-      tableName: 's',
-      serde: JSON_SERDE,
-      logger: SILENT_LOGGER,
-      maxSearchCandidates: 1000,
-      maxScanItems: 10000,
-      vectorScoreDirection: 'relevance',
+      ...context(),
       offloader: {
         shouldOffload: () => true,
-        buildKey: (parts: readonly string[]) => {
+        buildKey(parts: readonly string[], hash: string) {
           seenParts.push([...parts]);
-          return parts.join('/');
+          return [...parts, hash].join('/');
         },
         upload: async (key: string) => key,
       } as never,
     };
-    const withNonce = await buildStoreItem(
+
+    const withRev = await buildStoreItem(
       ctx,
       ['n'],
       'k',
       { a: 1 },
-      { createdAt: 'c', updatedAt: 'u', nonce: 'abc' },
+      { createdAt: 'c', updatedAt: 'u', rev: 'abc' },
     );
-    expect(seenParts[0]).toEqual(['n', 'k', 'abc']);
-    expect(withNonce.rev).toBe('abc');
-
-    const withoutNonce = await buildStoreItem(
+    const withoutRev = await buildStoreItem(
       ctx,
       ['n'],
       'k',
       { a: 1 },
       { createdAt: 'c', updatedAt: 'u' },
     );
-    expect(seenParts[1]).toEqual(['n', 'k']);
-    expect(withoutNonce.rev).toBeUndefined();
+
+    expect(seenParts).toEqual([
+      ['n', 'k'],
+      ['n', 'k'],
+    ]);
+    expect(withRev.rev).toBe('abc');
+    expect(withoutRev.rev).toBeUndefined();
+    expect((withoutRev.value as { s3Key: string }).s3Key).toBe(
+      (withRev.value as { s3Key: string }).s3Key,
+    );
   });
 });
 
@@ -136,5 +142,44 @@ describe('narrowStoreRecord key consistency (SEC-03)', () => {
     expect(narrowStoreRecord(row({ namespace: ['tenantB', 'u1'] }))).toBeUndefined();
     expect(narrowStoreRecord(row({ key: 'other' }))).toBeUndefined();
     expect(narrowStoreRecord(row({ key: 42 }))).toBeUndefined();
+  });
+});
+
+describe('narrowStoreRecord refuses a row from a newer format version (STORE-11)', () => {
+  const row = {
+    PK: 'STORE#n',
+    SK: 'k',
+    namespace: ['n'],
+    key: 'k',
+    value: { location: 'INLINE', serdeType: 'json', compressed: false, bytes: new Uint8Array() },
+    createdAt: 'c',
+    updatedAt: 'u',
+  };
+
+  it('reads a row without a version, and one at the supported version', () => {
+    expect(narrowStoreRecord(row as never)).toBeDefined();
+    expect(narrowStoreRecord({ ...row, v: 1 } as never)).toBeDefined();
+  });
+
+  /** Skipping it would hide an item that exists, so it fails loudly. */
+  it('throws FORMAT_UNSUPPORTED rather than hiding a newer row', () => {
+    expect(() => narrowStoreRecord({ ...row, v: 99 } as never)).toThrow(/format version 99/);
+  });
+
+  it('still skips a row whose attributes disagree with its key', () => {
+    expect(narrowStoreRecord({ ...row, key: 'other', v: 99 } as never)).toBeUndefined();
+  });
+});
+
+describe('buildStoreItem stamps the row format version', () => {
+  it('writes v on every item', async () => {
+    const record = await buildStoreItem(
+      { serde: JSON_SERDE } as never,
+      ['n'],
+      'k',
+      { a: 1 },
+      { createdAt: 'c', updatedAt: 'u' },
+    );
+    expect(record.v).toBe(1);
   });
 });

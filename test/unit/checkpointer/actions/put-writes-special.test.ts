@@ -20,7 +20,7 @@ function context(client: CheckpointerContext['client']): CheckpointerContext {
 function trackingOffloader(upload: (key: string) => Promise<string> = async (key) => key) {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => parts.join('/'),
+    buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
     upload,
     deleteBatch: jest.fn().mockResolvedValue([]),
   };

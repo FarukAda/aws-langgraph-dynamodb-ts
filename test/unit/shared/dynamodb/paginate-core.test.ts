@@ -8,6 +8,47 @@ async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {
   return out;
 }
 
+/**
+ * A cap of 0 used to yield one item before noticing: with a single-item page it
+ * returned that item and succeeded, and with a two-item page it threw *after*
+ * yielding one. Either way the cap it was given was exceeded.
+ */
+describe('paginatePages cap validation', () => {
+  const onePage = async () => ({ items: [{ n: 1 }], lastKey: undefined });
+
+  it.each([0, -1, Number.NaN])('refuses maxItems %p before reading anything', async (maxItems) => {
+    const read = jest.fn(onePage);
+    const rows = paginatePages(read, { maxItems });
+    await expect(rows.next()).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'maxItems' },
+    });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it.each([0, -1, Number.NaN])('refuses maxIterations %p', async (maxIterations) => {
+    const rows = paginatePages(onePage, { maxIterations });
+    await expect(rows.next()).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'maxIterations' },
+    });
+  });
+
+  it('accepts Infinity as the way to ask for no cap', async () => {
+    const rows = paginatePages(onePage, { maxItems: Infinity, maxIterations: Infinity });
+    const out = [];
+    for await (const row of rows) out.push(row);
+    expect(out).toEqual([{ n: 1 }]);
+  });
+
+  it('accepts a cap of exactly 1', async () => {
+    const rows = paginatePages(onePage, { maxItems: 1 });
+    const out = [];
+    for await (const row of rows) out.push(row);
+    expect(out).toEqual([{ n: 1 }]);
+  });
+});
+
 describe('paginatePages', () => {
   it('follows lastKey across pages, including an empty middle page', async () => {
     const pages = [

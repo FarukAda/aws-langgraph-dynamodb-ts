@@ -28,14 +28,14 @@ async function records(ctx: StoreContext) {
       ['users', 'u1'],
       'a',
       { kind: 'note', score: 1 },
-      { createdAt: 'c', updatedAt: 'u', embedding: [1, 0] },
+      { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0]] },
     ),
     await buildStoreItem(
       ctx,
       ['users', 'u1'],
       'b',
       { kind: 'note', score: 9 },
-      { createdAt: 'c', updatedAt: 'u', embedding: [0, 1] },
+      { createdAt: 'c', updatedAt: 'u', embeddings: [[0, 1]] },
     ),
     await buildStoreItem(
       ctx,
@@ -100,7 +100,7 @@ describe('searchItems', () => {
       ['users', 'u1'],
       'b',
       { score: 9 },
-      { createdAt: 'c', updatedAt: 'u', embedding: [0, 1] },
+      { createdAt: 'c', updatedAt: 'u', embeddings: [[0, 1]] },
     );
     const noVec = await buildStoreItem(
       ctx,

@@ -25,7 +25,7 @@ function conditionalCheckFailed(): Error {
 function trackingOffloader(upload: (key: string) => Promise<string> = async (key) => key) {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => parts.join('/'),
+    buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
     upload,
     deleteBatch: jest.fn().mockResolvedValue([]),
   };
@@ -194,7 +194,13 @@ describe('putWrites', () => {
     );
   });
 
-  it('gives each putWrites call its own S3 key for the same logical write (nonce uniqueness)', async () => {
+  /**
+   * Two calls writing the same value for the same write address one object, so
+   * a retry after a lost response cannot leave a second one behind. The key is
+   * the content hash under the write's own row, and both parts matter: the hash
+   * is why a retry converges, the row is why no other write shares the object.
+   */
+  it('gives two putWrites calls one S3 key for the same logical write and value', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).resolves({});
     const upload = jest.fn(async (key: string) => key);
@@ -203,11 +209,22 @@ describe('putWrites', () => {
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
     expect(upload).toHaveBeenCalledTimes(2);
-    // A hardcoded/constant nonce would also satisfy the key-shape regex used
-    // elsewhere in this file; this proves two attempts actually diverge.
     const [firstKey] = upload.mock.calls[0] as [string];
     const [secondKey] = upload.mock.calls[1] as [string];
-    expect(firstKey).not.toBe(secondKey);
+    expect(secondKey).toBe(firstKey);
+  });
+
+  it('gives a changed value its own S3 key', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(PutCommand).resolves({});
+    const upload = jest.fn(async (key: string) => key);
+    const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
+    const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
+    await putWrites(ctx, config, [['ch', 'a']], 'task-1');
+    await putWrites(ctx, config, [['ch', 'b']], 'task-1');
+    const [firstKey] = upload.mock.calls[0] as [string];
+    const [secondKey] = upload.mock.calls[1] as [string];
+    expect(secondKey).not.toBe(firstKey);
   });
 
   it('never deletes an S3 object when a regular write loses the conditional-check race', async () => {

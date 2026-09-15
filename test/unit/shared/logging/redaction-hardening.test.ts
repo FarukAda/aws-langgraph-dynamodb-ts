@@ -1,6 +1,7 @@
 import { withRetry } from '../../../../src/shared/dynamodb/retry';
 import { CompensationFailedError } from '../../../../src/shared/errors/errors';
 import { redactLogger, redactSecrets } from '../../../../src/shared/logging/redaction';
+import { redactText } from '../../../../src/shared/logging/secret-patterns';
 
 type Redacted = Record<string, unknown>;
 
@@ -102,6 +103,88 @@ describe('redactSecrets error handling (CORE-02, CORE-20)', () => {
     };
     expect(out.err.name).toBe('AbortError');
     expect(out.err.message).toBe('The operation was aborted');
+  });
+});
+
+/**
+ * The walk is recursive, so a structure deeper than the stack can hold raises
+ * `RangeError` from inside it. A caller who asked for a redacted copy gets the
+ * marker the wrapped logger would have substituted, not a thrown stack error.
+ */
+describe('redactSecrets on a structure deeper than the stack', () => {
+  it('yields the marker instead of a RangeError', () => {
+    const root: Record<string, unknown> = {};
+    let tip = root;
+    for (let depth = 0; depth < 200_000; depth += 1) {
+      const next: Record<string, unknown> = {};
+      tip.next = next;
+      tip = next;
+    }
+
+    expect(redactSecrets(root)).toBe('[UNREDACTABLE]');
+  });
+});
+
+/**
+ * Only the stack-depth failure is answered with a marker: it is a property of
+ * the walk, not of the data. Anything the caller's own accessors throw is the
+ * caller's to see — `redactLogger` is what keeps it out of a log call.
+ */
+describe('redactSecrets propagates a failure that is not stack exhaustion', () => {
+  it.each([
+    ['an Error', new TypeError('getter exploded')],
+    ['a thrown non-object', null],
+  ])('rethrows %s raised by a getter', (_name, thrown) => {
+    const hostile = {
+      get secret(): string {
+        throw thrown;
+      },
+    };
+    expect(() => redactSecrets(hostile)).toThrow();
+  });
+});
+
+/**
+ * A redaction rule that quietly protects nothing is worse than none: the caller
+ * believes the secret is hidden. Each of these failed silently.
+ */
+describe('redactLogger refuses options that would not redact', () => {
+  const inner = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+
+  it('rejects a non-string extraKeys entry, instead of a TypeError at the first log', () => {
+    expect(() => redactLogger(inner, { extraKeys: [42 as unknown as string] })).toThrow(
+      /extraKeys/,
+    );
+  });
+
+  it('rejects a non-RegExp extraValuePatterns entry', () => {
+    expect(() =>
+      redactLogger(inner, { extraValuePatterns: ['password' as unknown as RegExp] }),
+    ).toThrow(/extraValuePatterns/);
+  });
+
+  it('accepts the shapes it documents', () => {
+    expect(() =>
+      redactLogger(inner, { extraKeys: ['ssn'], extraValuePatterns: [/x-\d+/g] }),
+    ).not.toThrow();
+  });
+});
+
+/**
+ * `String.prototype.replace` without `g` substitutes only the first match, so a
+ * caller-supplied pattern written without the flag redacted the first
+ * occurrence of a secret and printed every later one verbatim.
+ */
+describe('redactText applies a pattern globally whether or not it says so', () => {
+  it('redacts every occurrence for a pattern without the g flag', () => {
+    expect(redactText('a secret-1 and secret-2 here', [/secret-\d/])).toBe(
+      'a [REDACTED] and [REDACTED] here',
+    );
+  });
+
+  it('skips an entry that is not a RegExp rather than corrupting the text', () => {
+    const notAPattern = ['password'] as unknown as RegExp[];
+    expect(redactText('harmless text', notAPattern)).toBe('harmless text');
   });
 });
 

@@ -29,9 +29,16 @@ function wrapMissingPeer(error: Error): never {
 }
 
 /**
- * Lazily import the optional `@aws-sdk/client-s3` peer, caching the module. A
- * failed import is not cached, so an install or a fixed bundle can succeed on
- * a later call.
+ * The optional `@aws-sdk/client-s3` peer, imported on first use.
+ *
+ * Accepts: nothing. Concurrent callers share one import.
+ *
+ * Returns: the module, cached for every later call.
+ *
+ * Throws: ValidationError naming `s3` when the package is not installed,
+ * carrying the install command; any other import failure — a broken build, a
+ * syntax error inside the package — passes through unchanged. A failure is not
+ * cached, so an install or a fixed bundle succeeds on a later call.
  */
 export async function loadS3Sdk(): Promise<S3Sdk> {
   if (!sdkPromise) {
@@ -44,11 +51,19 @@ export async function loadS3Sdk(): Promise<S3Sdk> {
 }
 
 /**
- * Construct an `S3Client` from `config` using the lazily-loaded SDK. Defaults
- * `maxAttempts: 1` so the SDK's own internal retries are disabled and this
- * library's retry/backoff/classification system is the sole retry layer,
- * matching {@link resolveDynamoDBClient}'s equivalent default; an explicit
- * `maxAttempts` in `config` still wins.
+ * An `S3Client` built from `config` with the lazily-loaded SDK.
+ *
+ * Accepts: `config` — any `S3ClientConfig`; an explicit `maxAttempts` wins over
+ * the default below.
+ *
+ * Returns: the client. The caller owns it and destroys it.
+ *
+ * Throws: whatever {@link loadS3Sdk} throws.
+ *
+ * Guarantees: `maxAttempts` defaults to 1, so the SDK performs no retries of
+ * its own and this library's retry, backoff and classification are the only
+ * retry layer — the same default `resolveDynamoDBClient` applies on the
+ * DynamoDB side.
  */
 export async function createDefaultS3Client(config: S3ClientConfigLike): Promise<S3Client> {
   const { S3Client: S3ClientCtor } = await loadS3Sdk();

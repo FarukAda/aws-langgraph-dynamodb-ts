@@ -30,6 +30,19 @@ export const VECTOR_SCORE_DIRECTIONS: readonly VectorScoreDirection[] = ['releva
  * lives downstream of this conversion, so it could never fire). `setUpStore`
  * rejects such a value outright; this keeps the failure harmless for any
  * caller that reaches the function some other way.
+ *
+ * Accepts: `matches` — in any order, including empty. `direction` — only the
+ * exact string `'distance'` converts; every other value, recognised or not,
+ * passes the matches through untouched.
+ *
+ * Returns: matches whose `score` follows the relevance direction upstream
+ * documents, highest first. Converting re-sorts, so a backend that returned its
+ * matches in some other order still ranks correctly.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: the conversion is exactly invertible — the original distance is
+ * `-score` — so nothing about the backend's answer is lost.
  */
 export function toRelevanceScores(
   matches: VectorMatch[],

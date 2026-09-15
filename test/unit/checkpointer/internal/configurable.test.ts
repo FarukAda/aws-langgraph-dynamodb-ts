@@ -1,4 +1,7 @@
-import { readConfigurable } from '../../../../src/checkpointer/internal/configurable';
+import {
+  readConfigurable,
+  readThreadlessConfigurable,
+} from '../../../../src/checkpointer/internal/configurable';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
 describe('readConfigurable', () => {
@@ -64,5 +67,48 @@ describe('readConfigurable falsy checkpoint_id (CKPT-06)', () => {
     expect(() =>
       readConfigurable({ configurable: { thread_id: 't', thread_ts: 'a#b' } }),
     ).toThrow();
+  });
+});
+
+describe('readThreadlessConfigurable', () => {
+  it('resolves the identifiers a thread-less config gives, with an empty thread', () => {
+    expect(readThreadlessConfigurable({ configurable: { checkpoint_ns: 'ns' } })).toEqual({
+      threadId: '',
+      checkpointNs: 'ns',
+      checkpointId: undefined,
+    });
+  });
+
+  it('defaults the namespace to the root one and reads the legacy id alias', () => {
+    expect(readThreadlessConfigurable({ configurable: { thread_ts: 'c1' } })).toEqual({
+      threadId: '',
+      checkpointNs: '',
+      checkpointId: 'c1',
+    });
+  });
+
+  /** A falsy id means "the latest", exactly as the reference resolves it. */
+  it('treats an empty checkpoint id as absent', () => {
+    expect(readThreadlessConfigurable({ configurable: { checkpoint_id: '' } })).toMatchObject({
+      checkpointId: undefined,
+    });
+  });
+
+  /** The identifiers it does give are still validated; that was the defect. */
+  it('validates the identifiers it does carry', () => {
+    expect(() => readThreadlessConfigurable({ configurable: { checkpoint_ns: 'a#b' } })).toThrow(
+      /checkpoint_ns/,
+    );
+    expect(() => readThreadlessConfigurable({ configurable: { checkpoint_id: 'a#b' } })).toThrow(
+      /checkpoint_id/,
+    );
+  });
+
+  it('accepts a config with no configurable block at all', () => {
+    expect(readThreadlessConfigurable({})).toEqual({
+      threadId: '',
+      checkpointNs: '',
+      checkpointId: undefined,
+    });
   });
 });

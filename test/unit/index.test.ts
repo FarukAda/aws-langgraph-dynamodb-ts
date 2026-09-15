@@ -16,6 +16,7 @@ import {
   RetryExhaustedError,
   UpstreamError,
   ValidationError,
+  backfillRecencyIndex,
   redactLogger,
   redactSecrets,
 } from '../../src/index';
@@ -27,6 +28,17 @@ describe('public entry point', () => {
     expect(DynamoDBChatMessageHistory.prototype.forSession).toBeDefined();
     expect(DynamoDBSessionChatMessageHistory.prototype.getMessages).toBeDefined();
     expect(DynamoDBFactory.prototype.createAll).toBeDefined();
+  });
+
+  /**
+   * The operator tool has to be reachable from the package entry point, not
+   * only from its own module: an operator runs it before turning the index on.
+   */
+  it('exports the recency-index backfill tool', async () => {
+    expect(typeof backfillRecencyIndex).toBe('function');
+    await expect(
+      backfillRecencyIndex({ client: {} as never, tableName: 't', pageSize: 0 }),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'pageSize' } });
   });
 
   it('exports the full error model', () => {

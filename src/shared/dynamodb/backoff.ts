@@ -2,10 +2,20 @@ import { MAX_BACKOFF_DELAY_MS } from '../constants';
 import { abortErrorFrom } from './abort';
 
 /**
- * Sleep for `ms` milliseconds, cancellable via `signal`. An already-aborted
- * signal rejects at once and an abort while pending rejects the moment it fires; both
- * reject with the library's `AbortError` (see `abortErrorFrom`), so a caller
- * branching on `code === 'ABORTED'` sees it however the signal was aborted.
+ * Wait `ms` milliseconds, cancellable.
+ *
+ * Accepts: `ms` — the delay. `signal` — omitted waits uninterruptibly; already
+ * aborted rejects before any timer is set; aborting while pending rejects at
+ * that moment and clears the timer.
+ *
+ * Returns: a promise resolving when the delay elapses.
+ *
+ * Throws: `AbortError` (`code === 'ABORTED'`) however the signal was aborted —
+ * with a `DOMException`, a string or a custom reason (see
+ * {@link abortErrorFrom}).
+ *
+ * Guarantees: exactly one of resolve and reject runs, and neither the timer nor
+ * the abort listener outlives the call.
  */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) {
@@ -29,15 +39,31 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-/** Next exponential-backoff delay: double `currentMs`, capped at `maxMs`. */
+/**
+ * The next exponential-backoff delay.
+ *
+ * Accepts: `currentMs` — the delay just used; at least 1, since doubling 0
+ * never grows. `maxMs` — the ceiling, default {@link MAX_BACKOFF_DELAY_MS}.
+ *
+ * Returns: `min(currentMs * 2, maxMs)`.
+ *
+ * Throws: nothing.
+ */
 export function nextBackoffDelay(currentMs: number, maxMs: number = MAX_BACKOFF_DELAY_MS): number {
   return Math.min(currentMs * 2, maxMs);
 }
 
 /**
- * Apply AWS-recommended full jitter: a uniform random value in `[0, delayMs)`.
+ * AWS's full jitter over a backoff delay.
  *
- * @param rng - RNG seam returning `[0, 1)`. Defaults to `Math.random`.
+ * Accepts: `delayMs` — the unjittered delay. `rng` — a seam returning
+ * `[0, 1)`, default `Math.random`; tests inject a fixed one.
+ *
+ * Returns: a value in `[0, delayMs)`, so two clients retrying the same failure
+ * do not retry together
+ * (https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/).
+ *
+ * Throws: nothing.
  */
 export function fullJitter(delayMs: number, rng: () => number = Math.random): number {
   return rng() * delayMs;

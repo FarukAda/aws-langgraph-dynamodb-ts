@@ -4,6 +4,7 @@ import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 import {
   buildCheckpointItems,
   buildWriteItems,
+  codecDeps,
 } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { resolveWriteIndices } from '../../../../src/checkpointer/internal/write-index';
@@ -27,7 +28,7 @@ function context(): CheckpointerContext {
 function offloadingContext(): CheckpointerContext {
   const offloader = {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => parts.join('/'),
+    buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
     upload: async (key: string) => key,
     deleteBatch: async () => [],
   };
@@ -58,7 +59,6 @@ describe('buildCheckpointItems', () => {
       '',
       checkpoint,
       metadata,
-      'nonce-1',
       'parent-0',
     );
     expect(meta.PK).toBe('CHKPT#thread-1');
@@ -78,7 +78,6 @@ describe('buildCheckpointItems', () => {
       'ns',
       checkpoint,
       metadata,
-      'nonce-1',
       undefined,
       1750,
     );
@@ -87,16 +86,41 @@ describe('buildCheckpointItems', () => {
     expect(meta.parentCheckpointId).toBeUndefined();
   });
 
-  it('appends the per-call nonce to both S3 keys so a re-put never reuses an object', async () => {
-    // Deterministic keys let a failing re-put of the same checkpoint id delete
-    // the objects the first, committed put's rows still reference (CKPT-01).
+  /**
+   * The checkpoint and its metadata live on different rows, so they are
+   * addressed under different paths even when they hold identical bytes.
+   */
+  it('addresses each payload under its own row, below which the content hash sits', async () => {
     const ctx = offloadingContext();
-    const first = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata, 'NONCE-A');
-    const second = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata, 'NONCE-B');
-    expect(s3Key({ value: first.payload.checkpoint })).toBe('t1//ckpt-1/checkpoint/NONCE-A');
-    expect(s3Key({ value: first.meta.metadata })).toBe('t1//ckpt-1/metadata/NONCE-A');
-    expect(s3Key({ value: second.payload.checkpoint })).toBe('t1//ckpt-1/checkpoint/NONCE-B');
-    expect(s3Key({ value: second.meta.metadata })).toBe('t1//ckpt-1/metadata/NONCE-B');
+    const { meta, payload } = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
+    expect(s3Key({ value: payload.checkpoint })).toMatch(/^t1\/\/ckpt-1\/checkpoint\/[\w-]{43}$/);
+    expect(s3Key({ value: meta.metadata })).toMatch(/^t1\/\/ckpt-1\/metadata\/[\w-]{43}$/);
+  });
+
+  /**
+   * A re-put of the same checkpoint — a retry after a lost response, or a
+   * repair tool — writes the same bytes to the same key instead of creating a
+   * second object, so there is nothing left over to clean up or to confuse a
+   * later cleanup about which object a given attempt owned.
+   */
+  it('gives a re-put of identical content the identical key', async () => {
+    const ctx = offloadingContext();
+    const first = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
+    const second = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
+    expect(s3Key({ value: second.payload.checkpoint })).toBe(
+      s3Key({ value: first.payload.checkpoint }),
+    );
+    expect(s3Key({ value: second.meta.metadata })).toBe(s3Key({ value: first.meta.metadata }));
+  });
+
+  it('gives a re-put of changed content a different key', async () => {
+    const ctx = offloadingContext();
+    const first = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
+    const changed = await buildCheckpointItems(ctx, 't1', '', checkpoint, {
+      ...metadata,
+      step: metadata.step + 1,
+    });
+    expect(s3Key({ value: changed.meta.metadata })).not.toBe(s3Key({ value: first.meta.metadata }));
   });
 });
 
@@ -146,7 +170,13 @@ describe('buildWriteItems', () => {
     expect(interrupt.SK < regular.SK).toBe(true);
   });
 
-  it('appends the nonce to every write S3 key, regular or special', async () => {
+  /**
+   * A write's row is thread, namespace, checkpoint, task, index and channel —
+   * every segment that makes it a distinct row — with the content hash below.
+   * The `writeGroup` is not part of it: it identifies the DynamoDB write, not
+   * the object.
+   */
+  it('addresses every write S3 key under its own row, regular or special', async () => {
     const items = await buildWriteItems(
       offloadingContext(),
       't',
@@ -157,39 +187,46 @@ describe('buildWriteItems', () => {
         ['regular', 'v'],
         ['__interrupt__', { value: 'paused' }],
       ],
-      'nonce-1',
+      'group-1',
     );
     const regular = items.find((item) => item.channel === 'regular')!;
     const interrupt = items.find((item) => item.channel === '__interrupt__')!;
-    expect(s3Key(regular)).toBe('t//ckpt-1/task-7/write-0/regular/nonce-1');
-    expect(s3Key(interrupt)).toBe(
-      `t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}/__interrupt__/nonce-1`,
+    expect(s3Key(regular)).toMatch(/^t\/\/ckpt-1\/task-7\/write-0\/regular\/[\w-]{43}$/);
+    expect(s3Key(interrupt)).toMatch(
+      new RegExp(
+        `^t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}/__interrupt__/[\\w-]{43}$`,
+      ),
     );
   });
 
-  it('gives a repeated special write a fresh S3 key per call, matching a regular write', async () => {
+  /**
+   * Two calls writing the same value for the same write share one object, and
+   * that is safe precisely because the row is above the hash: nothing else
+   * references it, so whichever call's row survives still points at live bytes.
+   */
+  it('gives a repeated special write the same S3 key, matching a regular write', async () => {
     const ctx = offloadingContext();
     const writes: PendingWrite[] = [['__interrupt__', { value: 'paused' }]];
-    const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'nonce-1');
-    const second = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'nonce-2');
-    // Nonce'd now like every other write; Task 2 is what keeps this safe from
-    // leaking the first call's now-superseded upload.
-    expect(s3Key(second[0])).not.toBe(s3Key(first[0]));
+    const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'group-1');
+    const second = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'group-2');
+    expect(s3Key(second[0])).toBe(s3Key(first[0]));
   });
 
-  it('gives a repeated regular write a fresh S3 key per call', async () => {
+  it('gives a repeated regular write the same S3 key, and a changed value a different one', async () => {
     const ctx = offloadingContext();
-    const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [['ch', 'v']], 'nonce-1');
-    const second = await buildWriteItems(
+    const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [['ch', 'v']], 'group-1');
+    const same = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [['ch', 'v']], 'group-2');
+    const changed = await buildWriteItems(
       ctx,
       't',
       '',
       'ckpt-1',
       'task-7',
-      [['ch', 'v']],
-      'nonce-2',
+      [['ch', 'w']],
+      'group-3',
     );
-    expect(s3Key(second[0])).not.toBe(s3Key(first[0]));
+    expect(s3Key(same[0])).toBe(s3Key(first[0]));
+    expect(s3Key(changed[0])).not.toBe(s3Key(first[0]));
   });
 });
 
@@ -265,7 +302,7 @@ describe('channel validation (SEC-09)', () => {
     const upload = jest.fn(async (key: string) => key);
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
+      buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
       upload,
       deleteBatch: async () => [],
     };
@@ -307,5 +344,27 @@ describe('channel validation (SEC-09)', () => {
     await expect(
       buildWriteItems(context(), 't', '', 'ckpt-1', 'task-7', writes, 'n'),
     ).resolves.toHaveLength(3);
+  });
+});
+
+describe('codecDeps', () => {
+  it('hands the codec exactly the three collaborators it uses', () => {
+    const serde = {} as never;
+    const compression = { enabled: true } as never;
+    const offloader = {} as never;
+    expect(codecDeps({ serde, compression, offloader, tableName: 'x' } as never)).toEqual({
+      serde,
+      compression,
+      offloader,
+    });
+  });
+
+  it('carries absent optional collaborators through as absent', () => {
+    const serde = {} as never;
+    expect(codecDeps({ serde } as never)).toEqual({
+      serde,
+      compression: undefined,
+      offloader: undefined,
+    });
   });
 });

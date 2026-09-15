@@ -30,9 +30,20 @@ export interface CompressionResult {
 }
 
 /**
- * Gzip `data` when it is at least `minSizeBytes` and compression actually saves
- * space. Returns the bytes to store and a `compressed` flag the caller records
- * in the payload descriptor; compression is never inferred from the bytes.
+ * The bytes to store for `data`, gzipped when that is worth doing.
+ *
+ * Accepts: `data` — any length, including empty. `config.enabled` — `false`
+ * returns the input untouched. `config.minSizeBytes` — the size below which
+ * gzip is not attempted, default {@link DEFAULT_COMPRESSION_MIN_BYTES}.
+ * `config.level` — zlib level 0–9, default {@link DEFAULT_COMPRESSION_LEVEL}.
+ * `config.maxDecompressedBytes` is read on the way back, not here.
+ *
+ * Returns: `compressed: true` only when gzip beat the input by at least 10%;
+ * otherwise the input bytes and `compressed: false`. The flag is recorded in
+ * the payload descriptor, so compression is never inferred from the bytes on
+ * read.
+ *
+ * Throws: whatever `zlib.gzip` rejects with.
  */
 export async function compress(
   data: Uint8Array,
@@ -48,10 +59,31 @@ export async function compress(
   return { bytes: gzipped, compressed: true };
 }
 
+/** The error a payload raises when its bytes are not the form its row declares. */
+function corruptPayload(cause: Error): DynamoDBLangGraphError {
+  return new DynamoDBLangGraphError(
+    'the stored payload is marked compressed but is not valid gzip, so it cannot be decoded',
+    ErrorCode.PAYLOAD_CORRUPT,
+    {},
+    cause,
+  );
+}
+
 /**
- * Gunzip `data` when `compressed` is true; otherwise return it unchanged. Throws
- * a {@link DynamoDBLangGraphError} with code `COMPRESSION_LIMIT` if the output
- * would exceed `maxBytes` (bomb guard).
+ * The payload bytes `data` stands for, gunzipped when the row says so.
+ *
+ * Accepts: `data` — the bytes as stored. `compressed` — the descriptor's own
+ * flag; `false` returns `data` unchanged and inspects nothing. `maxBytes` — the
+ * decompressed-output cap, default {@link DEFAULT_MAX_DECOMPRESSED_BYTES}; a
+ * reader that configures no compression uses that default whatever the writer
+ * used.
+ *
+ * Returns: the decoded bytes.
+ *
+ * Throws: `COMPRESSION_LIMIT` when the output would exceed `maxBytes`, and
+ * `PAYLOAD_CORRUPT` when `compressed` is true but the bytes are not gzip. Both
+ * are permanent for that payload ({@link isPermanentPayloadLoss}), so a caller
+ * reports rather than retries.
  */
 export async function decompress(
   data: Uint8Array,
@@ -71,6 +103,6 @@ export async function decompress(
         error as Error,
       );
     }
-    throw error;
+    throw corruptPayload(error as Error);
   }
 }

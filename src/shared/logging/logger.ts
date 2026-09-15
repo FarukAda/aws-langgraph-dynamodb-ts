@@ -22,7 +22,18 @@ export const SILENT_LOGGER: Logger = {
   debug() {},
 };
 
-/** Return the injected logger, or {@link SILENT_LOGGER} when none is given. */
+/**
+ * Resolve an optional logger to a concrete one.
+ *
+ * Accepts: `logger` — the caller's, or nothing.
+ *
+ * Returns: the caller's logger, or {@link SILENT_LOGGER}. Silent rather than
+ * console by default: a library writing to a host's stdout uninvited is a
+ * nuisance, and every event it would have written is documented so an operator
+ * can opt in.
+ *
+ * Throws: nothing.
+ */
 export function resolveLogger(logger?: Logger): Logger {
   return logger ?? SILENT_LOGGER;
 }

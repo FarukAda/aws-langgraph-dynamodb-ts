@@ -13,7 +13,7 @@ import { buildStoreItem } from '../internal/item-mapper';
 import { partitionKey, sortKey } from '../internal/keys';
 import { persistRecord } from '../internal/persist';
 import { readExisting } from '../internal/read-existing';
-import { embedValue } from '../internal/semantic-search';
+import { embedPassages, embedValue } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
 import { validateStoreKey } from '../internal/validation';
 import { isRetryExhausted, rowIsAbsent } from '../internal/write-verify';
@@ -74,7 +74,21 @@ async function deleteStoreItem(
   }
 }
 
-/** Compute the embedding for a put, honoring `op.index` (false disables it). */
+/**
+ * The vectors a put stores on the row: one per extracted path, scored by best
+ * match on read. Not computed when a `vectorBackend` holds the vectors, which
+ * takes a single vector per item instead (see {@link resolveEmbedding}).
+ */
+async function resolvePassages(
+  context: StoreContext,
+  op: PutOperation,
+  value: Record<string, JsonValue>,
+): Promise<number[][] | undefined> {
+  if (op.index === false) return undefined;
+  return embedPassages(context, value, Array.isArray(op.index) ? op.index : undefined);
+}
+
+/** Compute the single joined embedding a `vectorBackend` indexes, honoring `op.index`. */
 async function resolveEmbedding(
   context: StoreContext,
   op: PutOperation,
@@ -85,11 +99,25 @@ async function resolveEmbedding(
 }
 
 /**
- * Store, update, or delete an item (null deletes). The value is encoded
- * (optional compression/S3 offload, nonced per call so a failed write can never
- * delete the previous payload) and `createdAt` is preserved across updates; a
- * computed embedding is sent to a configured `vectorBackend` instead of being
- * stored on the item — DynamoDB always holds the canonical item.
+ * Store, update or delete an item.
+ *
+ * Accepts: `op.value` — `null` deletes; anything else is stored, encoded with
+ * optional compression and S3 offload addressed by content hash under this
+ * row's own path. `op.index` — `false` stores the item without indexing it and
+ * clears any vector it had, an array overrides the configured fields for this
+ * put, and absent uses the store's configuration.
+ *
+ * Returns: nothing. Deleting an item that is not there is not an error.
+ *
+ * Throws: ValidationError naming `namespace`, `key` or `value` — the last for a
+ * value JSON cannot represent, refused at the write rather than stored as a row
+ * that can never be read back; `S3_OFFLOAD_FAILED`; whatever the write throws.
+ *
+ * Guarantees: DynamoDB holds the canonical item — the vector index is synced
+ * afterwards and best-effort, so a backend outage never fails a put or leaves a
+ * half-written item. `createdAt` survives every update. The superseded payload
+ * is deleted only once the new row is committed, and only when the surviving
+ * row does not point at that same object.
  */
 export async function putItem(context: StoreContext, op: PutOperation): Promise<void> {
   validateStoreKey(op.namespace, op.key);
@@ -102,17 +130,24 @@ export async function putItem(context: StoreContext, op: PutOperation): Promise<
   const value = op.value as Record<string, JsonValue>;
   const timestamp = nowIso();
   const existing = await readExisting(context, pk, sk);
-  const embedding = await resolveEmbedding(context, op, value);
+  /**
+   * The two indexing modes are exclusive, so only one of them embeds: the row
+   * carries a vector per extracted path, while a configured backend takes one
+   * vector per item because that is what its `upsert` contract addresses.
+   */
+  const backend = context.vectorBackend;
+  const embedding = backend ? await resolveEmbedding(context, op, value) : undefined;
+  const embeddings = backend ? undefined : await resolvePassages(context, op, value);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
   const record = await buildStoreItem(context, op.namespace, op.key, value, {
     createdAt: existing.createdAt ?? timestamp,
     updatedAt: timestamp,
-    embedding: context.vectorBackend ? undefined : embedding,
+    embeddings,
     ttlTimestamp,
-    nonce: randomUUID(),
+    rev: randomUUID(),
   });
   await persistRecord(context, record, existing);
-  if (context.vectorBackend) {
-    await syncVectorIndex(context.vectorBackend, op.namespace, op.key, embedding, context.logger);
+  if (backend) {
+    await syncVectorIndex(backend, op.namespace, op.key, embedding, context.logger);
   }
 }
