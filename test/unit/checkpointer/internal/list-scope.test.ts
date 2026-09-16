@@ -91,6 +91,134 @@ describe('readListScope', () => {
     );
     expect(() => readListScope({ configurable: { thread_id: 't' } }, { limit: 0 })).not.toThrow();
   });
+
+  /**
+   * M-10 site 1: `limit` here is *any* integer, unlike the `>= 1` and `>= 0`
+   * sites elsewhere — 0 and negative ask for nothing, which `asksForNothing`
+   * answers before a request is built, so they are not refused here.
+   */
+  it('accepts a negative limit, which asks for nothing rather than being refused', () => {
+    expect(() => readListScope({ configurable: { thread_id: 't' } }, { limit: -5 })).not.toThrow();
+  });
+
+  /**
+   * H-10: an unchecked cast used to let a numeric `checkpoint_id` reach
+   * `ListScope.before` (typed `string | undefined`); `passesKeyFilters` then
+   * compared a stored string against it and every checkpoint failed the
+   * filter, so the listing came back silently empty instead of naming the
+   * bad value.
+   */
+  it('refuses a non-string checkpoint_id in `before` (H-10)', () => {
+    expect(() =>
+      readListScope(
+        { configurable: { thread_id: 't' } },
+        { before: { configurable: { checkpoint_id: 123 } } as never },
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'before' } }),
+    );
+  });
+
+  it('refuses a key this package does not read, naming it under options', () => {
+    expect(() =>
+      readListScope({ configurable: { thread_id: 't' } }, { limit: 1, bogus: true } as never),
+    ).toThrow(
+      expect.objectContaining({
+        code: ErrorCode.VALIDATION,
+        context: { field: 'options.bogus' },
+      }),
+    );
+  });
+
+  it('rejects a non-object config, naming it (fix round 2)', () => {
+    expect(() => readListScope('x' as never, undefined)).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'config' } }),
+    );
+  });
+
+  it('rejects a non-object before, naming it (fix round 2)', () => {
+    expect(() =>
+      readListScope({ configurable: { thread_id: 't' } }, { before: 'x' as never }),
+    ).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'before' } }),
+    );
+  });
+
+  /** `{}` names no id, so it constrains nothing rather than being refused. */
+  it('accepts `before: {}` (fix round 2)', () => {
+    expect(
+      readListScope({ configurable: { thread_id: 't' } }, { before: {} }).before,
+    ).toBeUndefined();
+  });
+
+  /**
+   * Matches `configurable.ts`'s own `rawId ? rawId : undefined` for a
+   * config's id: `undefined`, `null` and `''` are no bound, not a malformed
+   * one. Left as an unchecked cast, an empty string reached `ListScope.before`
+   * and compared `false` against every stored id (H-10's symptom again,
+   * reached with a string instead of a number).
+   */
+  it('treats undefined, null and "" as absent, not malformed (fix round 2)', () => {
+    expect(
+      readListScope(
+        { configurable: { thread_id: 't' } },
+        { before: { configurable: { checkpoint_id: '' } } },
+      ).before,
+    ).toBeUndefined();
+    expect(
+      readListScope(
+        { configurable: { thread_id: 't' } },
+        { before: { configurable: { checkpoint_id: null } as never } },
+      ).before,
+    ).toBeUndefined();
+  });
+
+  /**
+   * `0`, `false` and `NaN` are all falsy in JS but none can be a checkpoint
+   * id; the boundary is exactly `undefined`/`null`/`''`, not JS truthiness,
+   * so each of these must still reach `validateIdentifier` and be refused as
+   * a non-string rather than silently treated as "no bound" (fix round 3).
+   */
+  it('refuses 0, false and NaN rather than treating them as absent (fix round 3)', () => {
+    for (const checkpointId of [0, false, Number.NaN]) {
+      expect(() =>
+        readListScope(
+          { configurable: { thread_id: 't' } },
+          { before: { configurable: { checkpoint_id: checkpointId } } as never },
+        ),
+      ).toThrow(
+        expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'before' } }),
+      );
+    }
+  });
+
+  it('refuses a malformed truthy checkpoint_id, naming `before` (fix round 2)', () => {
+    expect(() =>
+      readListScope(
+        { configurable: { thread_id: 't' } },
+        { before: { configurable: { checkpoint_id: 'a#b' } } },
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'before' } }),
+    );
+  });
+
+  it('rejects a non-object filter, naming it (fix round 2)', () => {
+    for (const value of ['x', [], null]) {
+      expect(() =>
+        readListScope({ configurable: { thread_id: 't' } }, { filter: value as never }),
+      ).toThrow(
+        expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'filter' } }),
+      );
+    }
+  });
+
+  /** `$foo` is not a known operator, so `filter-match.ts` matches it as a literal clause. */
+  it('accepts a filter carrying a non-operator key inside a clause (fix round 2)', () => {
+    expect(() =>
+      readListScope({ configurable: { thread_id: 't' } }, { filter: { a: { $foo: 1 } } }),
+    ).not.toThrow();
+  });
 });
 
 describe('listQuery', () => {

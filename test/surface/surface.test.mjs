@@ -13,7 +13,7 @@ const BASELINE = 'test/surface/baseline.txt';
  * leave this tier red for the whole hardening pass and report nothing useful on
  * any intermediate commit. It becomes 0 when the pass completes.
  */
-const EXPECTED_BARE = 34;
+const EXPECTED_BARE = 33;
 
 test('the public surface matches the committed baseline', async () => {
   assert.ok(

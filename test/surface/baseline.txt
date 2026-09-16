@@ -171,13 +171,13 @@ DynamoDBChatMessageHistory.forSession | window={"limit":"5"} | OK DynamoDBSessio
 DynamoDBChatMessageHistory.forSession | window={"limit":-1} | OK DynamoDBSessionChatMessageHistory
 DynamoDBChatMessageHistory.forSession | window={"limit":0} | OK DynamoDBSessionChatMessageHistory
 DynamoDBChatMessageHistory.forSession | window={"limit":null} | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession(...).getMessages | window={"foo":1} | RESOLVED []
+DynamoDBChatMessageHistory.forSession(...).getMessages | window={"foo":1} | throws ValidationError/VALIDATION field=options.foo
 DynamoDBChatMessageHistory.forSession(...).getMessages | window={"limit":"5"} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession(...).getMessages | window={"limit":0} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession(bad).getMessages | sessionId='a#b' | throws ValidationError/VALIDATION field=sessionId
-DynamoDBChatMessageHistory.getMessages | options="x" | RESOLVED []
-DynamoDBChatMessageHistory.getMessages | options=1 | RESOLVED []
-DynamoDBChatMessageHistory.getMessages | options=null | throws UpstreamError/UPSTREAM
+DynamoDBChatMessageHistory.getMessages | options="x" | throws ValidationError/VALIDATION field=options
+DynamoDBChatMessageHistory.getMessages | options=1 | throws ValidationError/VALIDATION field=options
+DynamoDBChatMessageHistory.getMessages | options=null | throws ValidationError/VALIDATION field=options
 DynamoDBChatMessageHistory.getMessages | options={"before":"+037648-05-06T22:07:22.624Z"} | RESOLVED []
 DynamoDBChatMessageHistory.getMessages | options={"before":"1969-12-31T23:59:59.000Z"} | RESOLVED []
 DynamoDBChatMessageHistory.getMessages | options={"before":"1970-01-01T00:00:00.000Z"} | RESOLVED []
@@ -185,14 +185,14 @@ DynamoDBChatMessageHistory.getMessages | options={"before":"x"} | throws Validat
 DynamoDBChatMessageHistory.getMessages | options={"before":123} | throws ValidationError/VALIDATION field=before
 DynamoDBChatMessageHistory.getMessages | options={"before":null} | throws UpstreamError/UPSTREAM
 DynamoDBChatMessageHistory.getMessages | options={"before":null} | throws ValidationError/VALIDATION field=before
-DynamoDBChatMessageHistory.getMessages | options={"foo":1} | RESOLVED []
+DynamoDBChatMessageHistory.getMessages | options={"foo":1} | throws ValidationError/VALIDATION field=options.foo
 DynamoDBChatMessageHistory.getMessages | options={"limit":"5"} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"limit":-1} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"limit":0} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"limit":1.5} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"limit":1000000000000} | RESOLVED []
 DynamoDBChatMessageHistory.getMessages | options={"limit":null} | throws ValidationError/VALIDATION field=limit
-DynamoDBChatMessageHistory.getMessages | options={"signal":"x"} | RESOLVED []
+DynamoDBChatMessageHistory.getMessages | options={"signal":"x"} | throws ValidationError/VALIDATION field=signal
 DynamoDBChatMessageHistory.getMessages | sessionId=" " | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="a#b" | throws ValidationError/VALIDATION field=sessionId
@@ -207,9 +207,9 @@ DynamoDBChatMessageHistory.getMessages | sessionId=["a"] | throws ValidationErro
 DynamoDBChatMessageHistory.getMessages | sessionId=null | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId=undefined | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId={} | throws ValidationError/VALIDATION field=sessionId
-DynamoDBChatMessageHistory.listSessions | options="x" (no indexName) | RESOLVED {"sessions":[]}
-DynamoDBChatMessageHistory.listSessions | options=1 (no indexName) | RESOLVED {"sessions":[]}
-DynamoDBChatMessageHistory.listSessions | options=null (no indexName) | throws UpstreamError/UPSTREAM
+DynamoDBChatMessageHistory.listSessions | options="x" (no indexName) | throws ValidationError/VALIDATION field=options
+DynamoDBChatMessageHistory.listSessions | options=1 (no indexName) | throws ValidationError/VALIDATION field=options
+DynamoDBChatMessageHistory.listSessions | options=null (no indexName) | throws ValidationError/VALIDATION field=options
 DynamoDBChatMessageHistory.listSessions | options={"cursor":""} (indexName set) | throws ValidationError/VALIDATION field=cursor
 DynamoDBChatMessageHistory.listSessions | options={"cursor":""} (no indexName) | throws ValidationError/VALIDATION field=cursor
 DynamoDBChatMessageHistory.listSessions | options={"cursor":"Iw"} (indexName set) | RESOLVED {"sessions":[]}
@@ -219,7 +219,7 @@ DynamoDBChatMessageHistory.listSessions | options={"cursor":"not base64!"} (inde
 DynamoDBChatMessageHistory.listSessions | options={"cursor":"x"} (no indexName) | throws ValidationError/VALIDATION field=cursor
 DynamoDBChatMessageHistory.listSessions | options={"cursor":123} (indexName set) | throws UpstreamError/UPSTREAM
 DynamoDBChatMessageHistory.listSessions | options={"cursor":123} (no indexName) | throws ValidationError/VALIDATION field=cursor
-DynamoDBChatMessageHistory.listSessions | options={"foo":1} (no indexName) | RESOLVED {"sessions":[]}
+DynamoDBChatMessageHistory.listSessions | options={"foo":1} (no indexName) | throws ValidationError/VALIDATION field=options.foo
 DynamoDBChatMessageHistory.listSessions | options={"limit":"5"} (no indexName) | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.listSessions | options={"limit":-1} (no indexName) | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.listSessions | options={"limit":0} (indexName set) | throws ValidationError/VALIDATION field=limit
@@ -232,8 +232,8 @@ DynamoDBChatMessageHistory.listSessions | options={"maxItems":-1} (no indexName)
 DynamoDBChatMessageHistory.listSessions | options={"maxItems":0} (no indexName) | throws ValidationError/VALIDATION field=maxItems
 DynamoDBChatMessageHistory.listSessions | options={"maxItems":null} (no indexName) | RESOLVED {"sessions":[]}
 DynamoDBChatMessageHistory.listSessions | options={"maxIterations":0} (no indexName) | throws ValidationError/VALIDATION field=maxIterations
-DynamoDBChatMessageHistory.listSessions | options={"maxIterations":1.5} (no indexName) | RESOLVED {"sessions":[]}
-DynamoDBChatMessageHistory.listSessions | options={"signal":"x"} (no indexName) | RESOLVED {"sessions":[]}
+DynamoDBChatMessageHistory.listSessions | options={"maxIterations":1.5} (no indexName) | throws ValidationError/VALIDATION field=maxIterations
+DynamoDBChatMessageHistory.listSessions | options={"signal":"x"} (no indexName) | throws ValidationError/VALIDATION field=signal
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId=" " | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="a#b" | throws ValidationError/VALIDATION field=sessionId
@@ -384,12 +384,12 @@ DynamoDBSaver | ttl={"days":null} | sync throws ValidationError/VALIDATION field
 DynamoDBSaver | ttl={"seconds":0.5} | sync throws ValidationError/VALIDATION field=ttl.seconds
 DynamoDBSaver | ttl={} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBSaver | vectorBackend without index (store only) | sync throws ValidationError/VALIDATION field=options.vectorBackend
-DynamoDBSaver.deleteThread | options="x" | RESOLVED undefined
-DynamoDBSaver.deleteThread | options=null | throws UpstreamError/UPSTREAM
-DynamoDBSaver.deleteThread | options={"foo":1} | RESOLVED undefined
-DynamoDBSaver.deleteThread | options={"signal":"x"} | RESOLVED undefined
-DynamoDBSaver.deleteThread | options={"signal":null} | RESOLVED undefined
-DynamoDBSaver.deleteThread | options={"signal":{}} | RESOLVED undefined
+DynamoDBSaver.deleteThread | options="x" | throws ValidationError/VALIDATION field=options
+DynamoDBSaver.deleteThread | options=null | throws ValidationError/VALIDATION field=options
+DynamoDBSaver.deleteThread | options={"foo":1} | throws ValidationError/VALIDATION field=options.foo
+DynamoDBSaver.deleteThread | options={"signal":"x"} | throws ValidationError/VALIDATION field=signal
+DynamoDBSaver.deleteThread | options={"signal":null} | throws ValidationError/VALIDATION field=signal
+DynamoDBSaver.deleteThread | options={"signal":{}} | throws ValidationError/VALIDATION field=signal
 DynamoDBSaver.deleteThread | threadId=" " | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId="" | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId="a#b" | throws ValidationError/VALIDATION field=thread_id
@@ -448,23 +448,23 @@ DynamoDBSaver.getTuple | thread_id=null | throws ValidationError/VALIDATION fiel
 DynamoDBSaver.getTuple | thread_id=undefined | RESOLVED undefined
 DynamoDBSaver.getTuple | thread_id={} | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.getTuple | thread_ts=123 (legacy alias) | throws ValidationError/VALIDATION field=checkpoint_id
-DynamoDBSaver.list | config="x" | RESOLVED first=undefined done
+DynamoDBSaver.list | config="x" | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.list | config=null | throws UpstreamError/UPSTREAM
 DynamoDBSaver.list | config=undefined | throws UpstreamError/UPSTREAM
 DynamoDBSaver.list | config={"configurable":{"thread_id":"a#b"}} | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.list | config={} | RESOLVED first=undefined done
-DynamoDBSaver.list | options="x" | RESOLVED first=undefined done
-DynamoDBSaver.list | options=1 | RESOLVED first=undefined done
-DynamoDBSaver.list | options=null | RESOLVED first=undefined done
-DynamoDBSaver.list | options={"before":"x"} | RESOLVED first=undefined done
-DynamoDBSaver.list | options={"before":{"configurable":{"checkpoint_id":"a#b"}}} | RESOLVED first=undefined done
-DynamoDBSaver.list | options={"before":{"configurable":{"checkpoint_id":123}}} | RESOLVED first=undefined done
+DynamoDBSaver.list | options="x" | throws ValidationError/VALIDATION field=options
+DynamoDBSaver.list | options=1 | throws ValidationError/VALIDATION field=options
+DynamoDBSaver.list | options=null | throws ValidationError/VALIDATION field=options
+DynamoDBSaver.list | options={"before":"x"} | throws ValidationError/VALIDATION field=before
+DynamoDBSaver.list | options={"before":{"configurable":{"checkpoint_id":"a#b"}}} | throws ValidationError/VALIDATION field=before
+DynamoDBSaver.list | options={"before":{"configurable":{"checkpoint_id":123}}} | throws ValidationError/VALIDATION field=before
 DynamoDBSaver.list | options={"before":{}} | RESOLVED first=undefined done
-DynamoDBSaver.list | options={"filter":"x"} | RESOLVED first=undefined done
-DynamoDBSaver.list | options={"filter":[]} | RESOLVED first=undefined done
-DynamoDBSaver.list | options={"filter":null} | RESOLVED first=undefined done
+DynamoDBSaver.list | options={"filter":"x"} | throws ValidationError/VALIDATION field=filter
+DynamoDBSaver.list | options={"filter":[]} | throws ValidationError/VALIDATION field=filter
+DynamoDBSaver.list | options={"filter":null} | throws ValidationError/VALIDATION field=filter
 DynamoDBSaver.list | options={"filter":{"a":{"$gt":1}}} | RESOLVED first=undefined done
-DynamoDBSaver.list | options={"foo":1} | RESOLVED first=undefined done
+DynamoDBSaver.list | options={"foo":1} | throws ValidationError/VALIDATION field=options.foo
 DynamoDBSaver.list | options={"limit":"5"} | throws ValidationError/VALIDATION field=limit
 DynamoDBSaver.list | options={"limit":-1} | RESOLVED first=undefined done
 DynamoDBSaver.list | options={"limit":0} | RESOLVED first=undefined done
@@ -746,15 +746,15 @@ DynamoDBStore.search | namespacePrefix=[123] | RESOLVED []
 DynamoDBStore.search | namespacePrefix=[null] | RESOLVED []
 DynamoDBStore.search | namespacePrefix=null | throws UpstreamError/UPSTREAM
 DynamoDBStore.search | namespacePrefix=undefined | throws UpstreamError/UPSTREAM
-DynamoDBStore.search | options="x" | RESOLVED []
-DynamoDBStore.search | options=1 | RESOLVED []
-DynamoDBStore.search | options=null | BARE TypeError
-DynamoDBStore.search | options={"filter":"x"} | RESOLVED []
-DynamoDBStore.search | options={"filter":[]} | RESOLVED []
-DynamoDBStore.search | options={"filter":null} | RESOLVED []
+DynamoDBStore.search | options="x" | throws ValidationError/VALIDATION field=options
+DynamoDBStore.search | options=1 | throws ValidationError/VALIDATION field=options
+DynamoDBStore.search | options=null | throws ValidationError/VALIDATION field=options
+DynamoDBStore.search | options={"filter":"x"} | throws ValidationError/VALIDATION field=filter
+DynamoDBStore.search | options={"filter":[]} | throws ValidationError/VALIDATION field=filter
+DynamoDBStore.search | options={"filter":null} | throws ValidationError/VALIDATION field=filter
 DynamoDBStore.search | options={"filter":{"a":{"$foo":1}}} | RESOLVED []
 DynamoDBStore.search | options={"filter":{"a#b":1}} | RESOLVED []
-DynamoDBStore.search | options={"foo":1} | RESOLVED []
+DynamoDBStore.search | options={"foo":1} | throws ValidationError/VALIDATION field=options.foo
 DynamoDBStore.search | options={"limit":"5"} | throws ValidationError/VALIDATION field=limit
 DynamoDBStore.search | options={"limit":-1} | throws ValidationError/VALIDATION field=limit
 DynamoDBStore.search | options={"limit":0} | RESOLVED []
@@ -767,10 +767,10 @@ DynamoDBStore.search | options={"offset":1.5} | throws ValidationError/VALIDATIO
 DynamoDBStore.search | options={"offset":null} | throws ValidationError/VALIDATION field=offset
 DynamoDBStore.search | options={"query":""} | RESOLVED []
 DynamoDBStore.search | options={"query":"text (no index)"} | RESOLVED []
-DynamoDBStore.search | options={"query":123} | RESOLVED []
-DynamoDBStore.search | options={"query":["x"]} | RESOLVED []
-DynamoDBStore.search | options={"query":null} | RESOLVED []
-DynamoDBStore.search | options={"signal":"x"} | RESOLVED []
+DynamoDBStore.search | options={"query":123} | throws ValidationError/VALIDATION field=query
+DynamoDBStore.search | options={"query":["x"]} | throws ValidationError/VALIDATION field=query
+DynamoDBStore.search | options={"query":null} | throws ValidationError/VALIDATION field=query
+DynamoDBStore.search | options={"signal":"x"} | throws ValidationError/VALIDATION field=signal
 ErrorCode | Object.isFrozen(ErrorCode) | OK false
 ErrorCode | mutate ErrorCode.VALIDATION = "x" | OK String
 backfillRecencyIndex | cursor="" | throws ValidationError/VALIDATION field=cursor

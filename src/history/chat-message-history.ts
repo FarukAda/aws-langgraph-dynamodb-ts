@@ -2,6 +2,7 @@ import type { BaseMessage } from '@langchain/core/messages';
 
 import { guardPublic } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
+import { assertCancelOptions } from '../shared/validation/method-keys';
 import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { addMessages as addMessagesAction } from './actions/add-messages';
 import { clearSession } from './actions/clear';
@@ -59,7 +60,8 @@ export class DynamoDBChatMessageHistory {
    * Returns: the messages, oldest first. A session that does not exist and one
    * whose messages have all expired both return nothing.
    *
-   * Throws: ValidationError for a malformed session id or window;
+   * Throws: ValidationError for a malformed session id or window, an invalid
+   * `signal`, or naming `options.<key>` for a key this package does not read;
    * `FORMAT_UNSUPPORTED` for a row a newer release wrote; UpstreamError;
    * AbortError; and, under `onCorruptMessage: 'throw'`, the decode error of a
    * corrupt row.
@@ -84,7 +86,8 @@ export class DynamoDBChatMessageHistory {
    * Returns: nothing, and only once every message has landed.
    *
    * Throws: ValidationError naming `messages` with the offending index, for a
-   * value that is not a message or one that could never be read back;
+   * value that is not a message or one that could never be read back, or
+   * naming `signal` or `options.<key>` for a key this package does not read;
    * CompensationFailedError when a later chunk fails and the rollback fails
    * too; RetryExhaustedError after 18 contended attempts; UpstreamError;
    * AbortError.
@@ -95,9 +98,10 @@ export class DynamoDBChatMessageHistory {
    * when one is configured.
    */
   addMessages(sessionId: string, messages: BaseMessage[], options?: CancelOptions): Promise<void> {
-    return guardPublic('history.addMessages', () =>
-      addMessagesAction(this.context, sessionId, messages, options?.signal),
-    );
+    return guardPublic('history.addMessages', () => {
+      assertCancelOptions(options);
+      return addMessagesAction(this.context, sessionId, messages, options?.signal);
+    });
   }
 
   /**
@@ -110,9 +114,10 @@ export class DynamoDBChatMessageHistory {
    * Throws: as {@link addMessages}.
    */
   addMessage(sessionId: string, message: BaseMessage, options?: CancelOptions): Promise<void> {
-    return guardPublic('history.addMessage', () =>
-      addMessagesAction(this.context, sessionId, [message], options?.signal),
-    );
+    return guardPublic('history.addMessage', () => {
+      assertCancelOptions(options);
+      return addMessagesAction(this.context, sessionId, [message], options?.signal);
+    });
   }
 
   /**
@@ -122,7 +127,8 @@ export class DynamoDBChatMessageHistory {
    *
    * Returns: nothing. Clearing a session that does not exist is not an error.
    *
-   * Throws: ValidationError for a malformed session id;
+   * Throws: ValidationError for a malformed session id, an invalid `signal`,
+   * or an `options.<key>` this package does not read;
    * BatchWriteAllIncompleteError when a delete batch does not fully drain;
    * UpstreamError; AbortError.
    *
@@ -131,7 +137,10 @@ export class DynamoDBChatMessageHistory {
    * appended while it runs may survive it.
    */
   clear(sessionId: string, options?: CancelOptions): Promise<void> {
-    return guardPublic('history.clear', () => clearSession(this.context, sessionId, options));
+    return guardPublic('history.clear', () => {
+      assertCancelOptions(options);
+      return clearSession(this.context, sessionId, options);
+    });
   }
 
   /**
@@ -153,8 +162,10 @@ export class DynamoDBChatMessageHistory {
    * rows are dropped after the read. Stop when `nextCursor` is absent, never
    * when a page looks short.
    *
-   * Throws: ValidationError naming `limit` or `cursor`; ResultTruncatedError
-   * past either cap on the scan path; UpstreamError; AbortError.
+   * Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
+   * `maxIterations`, `signal`, or `options.<key>` for a key this package does
+   * not read; ResultTruncatedError past either cap on the scan path;
+   * UpstreamError; AbortError.
    *
    * Guarantees: with a configured `indexName` the cost is one bounded query per
    * index shard, whatever the table holds.
@@ -173,18 +184,20 @@ export class DynamoDBChatMessageHistory {
    * Returns: the count now stored, which is the number of messages a reader
    * would see.
    *
-   * Throws: ValidationError for a malformed session id; ConflictError when the
-   * session does not exist or stayed busy through every attempt; UpstreamError;
-   * AbortError.
+   * Throws: ValidationError for a malformed session id, an invalid `signal`,
+   * or an `options.<key>` this package does not read; ConflictError when the
+   * session does not exist or stayed busy through every attempt;
+   * UpstreamError; AbortError.
    *
    * Guarantees: safe on a live session — the write is pinned to the value the
    * row held when the count was computed, so a concurrent append makes it
    * recount instead of clobbering the increment.
    */
   reconcileMessageCount(sessionId: string, options?: CancelOptions): Promise<number> {
-    return guardPublic('history.reconcileMessageCount', () =>
-      reconcileMessageCountAction(this.context, sessionId, options?.signal),
-    );
+    return guardPublic('history.reconcileMessageCount', () => {
+      assertCancelOptions(options);
+      return reconcileMessageCountAction(this.context, sessionId, options?.signal);
+    });
   }
 
   /**

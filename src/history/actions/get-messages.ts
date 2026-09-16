@@ -10,6 +10,9 @@ import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { toError } from '../../shared/errors/wrap-error';
 import type { CancelOptions } from '../../shared/options';
+import { assertSignalLike } from '../../shared/validation/collaborators';
+import { GET_MESSAGES_KEYS } from '../../shared/validation/method-keys';
+import { assertShape } from '../../shared/validation/option-shape';
 import { readWindow } from '../internal/message-window';
 import type { HistoryContext } from '../internal/setup';
 import { validateMessageWindow, validateSessionId } from '../internal/validation';
@@ -74,7 +77,8 @@ async function decodeMessage(
  * does not exist and one whose messages have all expired both return nothing:
  * a conversation nobody can read is a conversation that is not there.
  *
- * Throws: ValidationError naming `sessionId`, `limit` or `before`;
+ * Throws: ValidationError naming `sessionId`, `limit`, `before`, `signal`, or
+ * `options.<key>` for a key this package does not read;
  * `FORMAT_UNSUPPORTED` for a row a newer version wrote; the decode error of a
  * corrupt row under `onCorruptMessage: 'throw'`; any infrastructure failure —
  * a throttle, a permission, a transport error — whatever the policy, because
@@ -90,6 +94,8 @@ export async function getMessages(
   sessionId: string,
   options: MessageWindow & CancelOptions = {},
 ): Promise<BaseMessage[]> {
+  assertShape(options, GET_MESSAGES_KEYS, 'options');
+  assertSignalLike(options.signal);
   validateSessionId(sessionId);
   validateMessageWindow(options);
   const items: ChatMessageItem[] = await readWindow(context, sessionId, options);

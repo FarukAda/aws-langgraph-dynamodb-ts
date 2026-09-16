@@ -71,6 +71,123 @@ describe('DynamoDBSaver', () => {
     expect(await drain(saver.list({ configurable: { thread_id: 't' } }))).toEqual([]);
   });
 
+  /**
+   * H-10: `list` is a generator, so nothing runs until the first pull —
+   * asserting on the call itself would pass vacuously.
+   */
+  it('refuses a non-string checkpoint_id in `before`', async () => {
+    const { client } = createStrictDocumentMock();
+    const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+    const iterator = saver.list(
+      { configurable: { thread_id: 't' } },
+      { before: { configurable: { checkpoint_id: 123 } } as never },
+    );
+    await expect(iterator.next()).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'before' },
+    });
+  });
+
+  it('refuses a `list` options key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+    const iterator = saver.list({ configurable: { thread_id: 't' } }, {
+      limit: 1,
+      bogus: true,
+    } as never);
+    await expect(iterator.next()).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'options.bogus' },
+    });
+  });
+
+  describe('list: `before`, `config` and `filter` shape (fix round 2)', () => {
+    it('refuses a non-object `before`, `config` or `filter`', async () => {
+      const { client } = createStrictDocumentMock();
+      const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+      const cfg = { configurable: { thread_id: 't' } };
+      await expect(saver.list(cfg, { before: 'x' as never }).next()).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION,
+        context: { field: 'before' },
+      });
+      await expect(saver.list('x' as never).next()).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION,
+        context: { field: 'config' },
+      });
+      await expect(saver.list(cfg, { filter: 'x' as never }).next()).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION,
+        context: { field: 'filter' },
+      });
+    });
+
+    /**
+     * `config` is required, not optional — a JS caller can still pass `null`
+     * or omit it. Both already fail downstream with a raw `TypeError`, wrapped
+     * as `UpstreamError`; the new shape check deliberately leaves them alone
+     * rather than turning that into a second, differently-scoped change.
+     */
+    it('leaves a null or undefined config to the existing UpstreamError path', async () => {
+      const { client } = createStrictDocumentMock();
+      const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+      await expect(saver.list(null as never).next()).rejects.toMatchObject({
+        code: ErrorCode.UPSTREAM,
+      });
+      await expect(saver.list(undefined as never).next()).rejects.toMatchObject({
+        code: ErrorCode.UPSTREAM,
+      });
+    });
+
+    it('refuses a malformed truthy checkpoint_id in `before`, naming it', async () => {
+      const { client } = createStrictDocumentMock();
+      const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+      await expect(
+        saver
+          .list(
+            { configurable: { thread_id: 't' } },
+            { before: { configurable: { checkpoint_id: 'a#b' } } },
+          )
+          .next(),
+      ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'before' } });
+    });
+
+    it('accepts `before: {}`, an absent checkpoint_id (undefined/null/""), and a non-operator filter clause', async () => {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(QueryCommand).resolves({ Items: [] });
+      const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+      const cfg = { configurable: { thread_id: 't' } };
+      await expect(drain(saver.list(cfg, { before: {} }))).resolves.toEqual([]);
+      await expect(
+        drain(saver.list(cfg, { before: { configurable: { checkpoint_id: '' } } })),
+      ).resolves.toEqual([]);
+      await expect(
+        drain(saver.list(cfg, { before: { configurable: { checkpoint_id: null } as never } })),
+      ).resolves.toEqual([]);
+      await expect(drain(saver.list(cfg, { filter: { a: { $foo: 1 } } }))).resolves.toEqual([]);
+    });
+
+    /**
+     * `0`, `false` and `NaN` are falsy in JS but none can be a checkpoint id;
+     * D1 is deliberately stricter than truthiness, so each must reach
+     * `validateIdentifier` and be refused as a non-string rather than
+     * silently read as "no bound" (fix round 3).
+     */
+    it('refuses 0, false and NaN as a checkpoint_id rather than treating them as absent', async () => {
+      const { client } = createStrictDocumentMock();
+      const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+      const cfg = { configurable: { thread_id: 't' } };
+      for (const checkpointId of [0, false, Number.NaN]) {
+        await expect(
+          saver
+            .list(cfg, { before: { configurable: { checkpoint_id: checkpointId } } as never })
+            .next(),
+        ).rejects.toMatchObject({
+          code: ErrorCode.VALIDATION,
+          context: { field: 'before' },
+        });
+      }
+    });
+  });
+
   it('putWrites delegates to a conditional put for a regular write', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).resolves({});
@@ -89,6 +206,16 @@ describe('DynamoDBSaver', () => {
     const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
     await saver.deleteThread('t');
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
+  });
+
+  it('refuses a deleteThread options key this package does not read', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+    await expect(saver.deleteThread('t', { bogus: true } as never)).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'options.bogus' },
+    });
+    expect(mock.calls()).toHaveLength(0);
   });
 
   it('does not destroy an injected client', () => {

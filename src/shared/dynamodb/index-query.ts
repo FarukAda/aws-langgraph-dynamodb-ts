@@ -2,6 +2,7 @@ import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
 import { mapWithConcurrency } from '../concurrency';
 import { ValidationError } from '../errors/errors';
+import { validateInteger } from '../validation/primitives';
 import { type IndexTag, indexPartitions } from './index-keys';
 import { withDynamoDBRetry } from './retry';
 import type { RetryOptions } from './retry';
@@ -121,9 +122,7 @@ async function queryShard(
  * returned.
  */
 export async function queryRecencyIndex(options: IndexQueryOptions): Promise<IndexPage> {
-  if (!Number.isInteger(options.limit) || options.limit < 1) {
-    throw new ValidationError('limit must be a positive integer', 'limit');
-  }
+  validateInteger(options.limit, 'limit', { min: 1 });
   const before = options.cursor === undefined ? undefined : decodeCursor(options.cursor);
   const partitions = indexPartitions(options.tag, options.shards);
   const perShard = await mapWithConcurrency(partitions, partitions.length, (partition) =>

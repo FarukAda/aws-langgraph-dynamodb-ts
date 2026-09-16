@@ -106,3 +106,22 @@ export function isAbortSignalLike(value: AbortSignal | undefined): boolean {
     typeof value.addEventListener === 'function'
   );
 }
+
+/**
+ * Throw {@link ValidationError} naming `signal` unless `value` is absent or
+ * {@link isAbortSignalLike}.
+ *
+ * Accepts: `value` — a caller's `options.signal`, or `undefined`.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `signal`. Left unchecked, a value that is
+ * not an `AbortSignal` reaches whatever this package hands it to — an
+ * `addEventListener` call, a retry loop reading `.aborted` — and fails there
+ * with a raw, unrelated error instead of naming the option that caused it.
+ */
+export function assertSignalLike(value: AbortSignal | undefined): void {
+  if (value !== undefined && !isAbortSignalLike(value)) {
+    throw new ValidationError('signal must be an AbortSignal', 'signal');
+  }
+}

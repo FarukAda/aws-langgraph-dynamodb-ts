@@ -6,6 +6,9 @@ import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { ValidationError } from '../../shared/errors/errors';
+import { assertSignalLike } from '../../shared/validation/collaborators';
+import { LIST_SESSIONS_KEYS } from '../../shared/validation/method-keys';
+import { assertShape } from '../../shared/validation/option-shape';
 import { validateInteger } from '../../shared/validation/primitives';
 import { SESSION_SORT_KEY } from '../internal/keys';
 import type { HistoryContext } from '../internal/setup';
@@ -106,6 +109,29 @@ async function allByScan(
 }
 
 /**
+ * Reject a scan-path cap `paginatePages` would otherwise accept as its
+ * default (an explicit `undefined` or `null` both reach it through `??`,
+ * which cannot tell "the caller said so" from "the caller said nothing") or
+ * misuse as a page count (a fraction, which passed its own `>= 1` check
+ * without being an integer).
+ *
+ * Accepts: `value` — absent is left to the paginator's own default.
+ * `Infinity` is legal and left alone too: it is the paginator's own documented
+ * way to ask for no cap, not a value this check owns.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `field` for anything else that is not an
+ * integer of at least 1 — the same bound `paginatePages`'s own
+ * `assertPositiveCap` already enforces, just checked before a `null` can be
+ * mistaken for "no value" and silently replaced by the default.
+ */
+function assertScanCap(value: number | undefined, field: string): void {
+  if (value === undefined || value === Infinity) return;
+  validateInteger(value, field, { min: 1 });
+}
+
+/**
  * Reject a page request neither path could honour.
  *
  * `limit` is validated on both paths, not just the index one: the same call
@@ -116,6 +142,8 @@ async function allByScan(
  */
 function assertPageOptions(context: HistoryContext, options: ListSessionsOptions): void {
   if (options.limit !== undefined) validateInteger(options.limit, 'limit', { min: 1 });
+  assertScanCap(options.maxItems, 'maxItems');
+  assertScanCap(options.maxIterations, 'maxIterations');
   if (options.cursor !== undefined && context.indexName === undefined) {
     throw new ValidationError(
       'paging by cursor needs a configured `indexName`: without the recency index a listing is ' +
@@ -133,15 +161,18 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
  * cursor to fetch the rest with. `options.cursor` — from a previous page, and
  * only with a configured `indexName`. `options.maxItems` and
  * `maxIterations` — caps on the scan path; with the index the page size is the
- * bound and they do nothing.
+ * bound and they do nothing. Each must be a positive integer or `Infinity`
+ * (the paginator's own way to ask for no cap); absent keeps its default.
  *
  * Returns: the page, newest-updated first, and a `nextCursor` when more rows
  * remain. A page can come back shorter than `limit` while more remain: expired
  * and foreign rows are dropped after the read, and the cursor is a position in
  * the index rather than a count of what survived filtering.
  *
- * Throws: ValidationError naming `limit` or `cursor`; {@link ResultTruncatedError}
- * past the scan path's caps; `AbortError`.
+ * Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
+ * `maxIterations`, `signal`, or `options.<key>` for a key this package does
+ * not read; {@link ResultTruncatedError} past the scan path's caps;
+ * `AbortError`.
  *
  * Guarantees: with a configured `indexName` the cost is one bounded query per
  * index shard, whatever the table holds. Without one it is a filtered table
@@ -153,6 +184,8 @@ export async function listSessions(
   context: HistoryContext,
   options: ListSessionsOptions = {},
 ): Promise<SessionPage> {
+  assertShape(options, LIST_SESSIONS_KEYS, 'options');
+  assertSignalLike(options.signal);
   assertPageOptions(context, options);
   return context.indexName === undefined
     ? allByScan(context, options)

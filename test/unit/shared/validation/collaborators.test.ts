@@ -2,6 +2,7 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
   assertBaseCollaborators,
   assertMembers,
+  assertSignalLike,
   CLIENT_MEMBERS,
   EMBEDDINGS_MEMBERS,
   isAbortSignalLike,
@@ -103,8 +104,8 @@ describe('the member lists, verified against src/ (see the task brief)', () => {
     expect(EMBEDDINGS_MEMBERS).toEqual(['embedQuery', 'embedDocuments']);
   });
 
-  /** Ruling 13: `listKeys` is optional on the interface and must not be required. */
-  it('does not require vectorBackend.listKeys (Ruling 13)', () => {
+  /** `listKeys` is optional on the interface and reconcile already handles its absence, so it must not be required. */
+  it('does not require vectorBackend.listKeys', () => {
     expect(VECTOR_BACKEND_MEMBERS).toEqual(['upsert', 'query', 'delete']);
   });
 });
@@ -130,5 +131,21 @@ describe('isAbortSignalLike', () => {
   it('is true for a real AbortSignal, and for a structurally equivalent double', () => {
     expect(isAbortSignalLike(new AbortController().signal)).toBe(true);
     expect(isAbortSignalLike({ aborted: false, addEventListener: () => {} } as never)).toBe(true);
+  });
+});
+
+describe('assertSignalLike', () => {
+  it('leaves an absent signal unchecked', () => {
+    expect(() => assertSignalLike(undefined)).not.toThrow();
+  });
+
+  it('accepts a real AbortSignal', () => {
+    expect(() => assertSignalLike(new AbortController().signal)).not.toThrow();
+  });
+
+  it('refuses a value that is not AbortSignal-like, naming `signal`', () => {
+    expect(() => assertSignalLike({} as never)).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'signal' } }),
+    );
   });
 });

@@ -195,6 +195,57 @@ describe('listSessions', () => {
   });
 });
 
+describe('options shape (M-08)', () => {
+  it('refuses a key this package does not read, naming it under options', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      listSessions(context(client), { limit: 1, bogus: true } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'options.bogus' } });
+  });
+
+  it('refuses a signal that is not AbortSignal-like', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(listSessions(context(client), { signal: {} as never })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'signal' },
+    });
+  });
+
+  it('refuses a non-integer maxItems or maxIterations, naming it (fix round 2)', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(listSessions(context(client), { maxItems: 1.5 })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'maxItems' },
+    });
+    await expect(listSessions(context(client), { maxItems: null as never })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'maxItems' },
+    });
+    await expect(listSessions(context(client), { maxIterations: 1.5 })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'maxIterations' },
+    });
+    await expect(
+      listSessions(context(client), { maxIterations: null as never }),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'maxIterations' } });
+  });
+
+  /**
+   * `Infinity` is the paginator's own documented way to ask for no cap
+   * (`paginate-core.ts`'s `assertPositiveCap`) and must stay legal.
+   */
+  it('accepts Infinity for maxItems and maxIterations (fix round 2)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({ Items: [] });
+    await expect(listSessions(context(client), { maxItems: Infinity })).resolves.toEqual({
+      sessions: [],
+    });
+    await expect(listSessions(context(client), { maxIterations: Infinity })).resolves.toEqual({
+      sessions: [],
+    });
+  });
+});
+
 describe('SessionMetadata.expiresAt (HIST-18)', () => {
   it('exposes the stored ttl as an ISO instant and omits it when no ttl is stored', async () => {
     const { client, mock } = createStrictDocumentMock();

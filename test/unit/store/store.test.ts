@@ -185,6 +185,60 @@ describe('BaseStore lifecycle (CORE-22)', () => {
   });
 });
 
+describe('options shape (M-08)', () => {
+  it('search refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { bogus: true } as never)).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'options.bogus' },
+    });
+  });
+
+  it('search refuses a signal that is not AbortSignal-like', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { signal: {} as never })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'signal' },
+    });
+  });
+
+  it('search refuses a non-object filter, naming it (fix round 2)', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { filter: 'x' as never })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'filter' },
+    });
+  });
+
+  it('search refuses a non-string query, naming it (fix round 2)', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { query: 123 as never })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'query' },
+    });
+  });
+
+  it('search accepts an empty query and a non-operator filter clause (fix round 2)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { query: '' })).resolves.toEqual([]);
+    await expect(store.search(['ns'], { filter: { a: { $foo: 1 } } })).resolves.toEqual([]);
+  });
+
+  it('reconcileVectorIndex refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(
+      store.reconcileVectorIndex(['ns'], { bogus: true } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'options.bogus' } });
+  });
+});
+
 describe('collaborator shape (DDB-09)', () => {
   it('refuses a raw DynamoDBClient where a DynamoDBDocument is required', () => {
     const raw = { send: () => undefined };

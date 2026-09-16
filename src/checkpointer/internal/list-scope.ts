@@ -2,7 +2,11 @@ import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb'
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
+import { MAX_KEY_SEGMENT_BYTES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
+import { SAVER_LIST_KEYS } from '../../shared/validation/method-keys';
+import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
+import { validateIdentifier, validateInteger } from '../../shared/validation/primitives';
 import type { CheckpointMetaItem } from '../types';
 import {
   readConfigurable,
@@ -17,6 +21,7 @@ import {
   metaSortKey,
   metaSortKeyPrefix,
   partitionKey,
+  SORT_KEY_SEPARATOR,
 } from './keys';
 import { beginsWithQuery } from './query';
 import type { CheckpointerContext } from './setup';
@@ -45,40 +50,120 @@ function resolveListIds(
 }
 
 /**
- * Refuse a page size DynamoDB would reject after the round trip. A limit of 0
- * or below is not refused: it asks for nothing, which `asksForNothing` answers
- * before a request is built.
+ * Reject a `config` that is not an object, leaving `null`/`undefined` to the
+ * `TypeError` they already raise downstream.
+ *
+ * Accepts: `config` — as the caller gave it.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `config` for a string, number or other
+ * non-object value, which today reads every property off it as `undefined`
+ * and silently scans every thread in the table instead of refusing an
+ * obviously wrong argument. `null` and `undefined` are deliberately left
+ * alone: `resolveListIds` already fails them with a raw `TypeError`, wrapped
+ * as `UpstreamError` by the boundary, and widening this check to cover them
+ * too is a separate, differently-scoped change from the bug this closes.
  */
-function assertIntegerLimit(limit: number | undefined): void {
-  if (limit !== undefined && !Number.isInteger(limit)) {
-    throw new ValidationError('limit must be an integer', 'limit');
+function assertConfigShape(config: RunnableConfig): void {
+  if (config === undefined || config === null) return;
+  if (typeof config !== 'object' || Array.isArray(config)) {
+    throw new ValidationError('config must be an object', 'config');
   }
+}
+
+/**
+ * `options.before`'s `checkpoint_id`, validated the way this package's own
+ * `configurable.ts` reads the same field off `config`: exactly `undefined`,
+ * `null` or `''` means no bound, and anything else — including `0`, `false`
+ * or `NaN`, none of which JS truthiness alone would catch — is validated as
+ * the sort-key segment it becomes. D1 is stricter than upstream's truthiness
+ * on purpose.
+ *
+ * Left as an unchecked cast, a caller-supplied non-string reached
+ * `ListScope.before`, which is typed `string | undefined`, and then
+ * `passesKeyFilters`'s `meta.checkpointId < scope.before` compared a stored
+ * string against it — `'1f0a…' < 123` is `false` for every row, so every
+ * checkpoint failed the filter and the listing came back silently empty
+ * instead of naming the bad value. The same comparison made an *empty*
+ * `checkpoint_id` fail every row too, and a malformed one (`'a#b'`) was
+ * accepted outright — both are the same defect reached differently, and
+ * both are H-10.
+ *
+ * Accepts: `before` — the caller's `options.before`. Absent is no bound.
+ * When given, must be an object — `{}` is legal, since it names no id.
+ * `before.configurable.checkpoint_id` is the only field read; the legacy
+ * `thread_ts` alias `configurable.ts` falls back to for a *thread's*
+ * checkpoint id does not apply here.
+ *
+ * Returns: the checkpoint id to filter on, or `undefined` for no filter.
+ *
+ * Throws: ValidationError naming `before` for a non-object `before`, or for
+ * a `checkpoint_id` — anything but `undefined`, `null` or `''` — that is not
+ * a well-formed identifier (H-10).
+ */
+function beforeCheckpointId(before: RunnableConfig | undefined): string | undefined {
+  if (before === undefined) return undefined;
+  assertObjectShape(before, 'before');
+  const checkpointId = before.configurable?.checkpoint_id;
+  if (checkpointId === undefined || checkpointId === null || checkpointId === '') {
+    return undefined;
+  }
+  validateIdentifier(checkpointId, SORT_KEY_SEPARATOR, 'before', MAX_KEY_SEGMENT_BYTES);
+  return checkpointId;
+}
+
+/**
+ * Reject an `options` bag carrying a key this package does not read, or a
+ * `filter` that is not an object. Split out of {@link readListScope} to keep
+ * its own complexity under the repo's cap.
+ *
+ * Accepts: `options` — absent is left alone.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `options.<key>` for an unknown key, or
+ * `filter` for a non-object one.
+ */
+function assertListOptionsShape(options: CheckpointListOptions | undefined): void {
+  if (options === undefined) return;
+  assertShape(options, SAVER_LIST_KEYS, 'options');
+  if (options.filter !== undefined) assertObjectShape(options.filter, 'filter');
 }
 
 /**
  * What one `list()` call covers, read from its config and options.
  *
- * Accepts: `config.configurable` — `thread_id` omitted lists every thread and
- * `checkpoint_ns` omitted every namespace, as the reference savers do; every
- * identifier that *is* given is validated either way. `options.limit` — a
- * non-negative integer; `0` and below ask for nothing and are answered without
- * a request. `options.before` — read for its `checkpoint_id` only.
- * `options.filter` — metadata equality clauses, applied in process.
+ * Accepts: `config` — must be an object (`null`/`undefined` fail downstream
+ * instead, see {@link assertConfigShape}). `config.configurable` — `thread_id`
+ * omitted lists every thread and `checkpoint_ns` omitted every namespace, as
+ * the reference savers do; every identifier that *is* given is validated
+ * either way. `options.limit` — any integer; `0` and below ask for nothing,
+ * which `asksForNothing` answers before a request is built, so they are not
+ * refused here. `options.before` — an object naming, at most, a
+ * `checkpoint_id`; see {@link beforeCheckpointId}. `options.filter` —
+ * metadata equality clauses, applied in process; must be an object when
+ * given.
  *
  * Returns: the scope every later step reads instead of the raw config.
  *
- * Throws: ValidationError for a malformed identifier, and naming `limit` for a
- * non-integer — which DynamoDB would otherwise refuse with a raw
- * `ValidationException` after the round trip.
+ * Throws: ValidationError for a malformed identifier; naming `config` for a
+ * non-object config; naming `limit` for a non-integer — which DynamoDB would
+ * otherwise refuse with a raw `ValidationException` after the round trip;
+ * naming `before` for a non-object `before` or a malformed `checkpoint_id`
+ * (H-10); naming `filter` for a non-object filter; naming `options.<key>`
+ * for a key this package does not read.
  */
 export function readListScope(config: RunnableConfig, options?: CheckpointListOptions): ListScope {
+  assertConfigShape(config);
+  assertListOptionsShape(options);
   const { threadId, checkpointNs, checkpointId } = resolveListIds(config);
-  assertIntegerLimit(options?.limit);
+  if (options?.limit !== undefined) validateInteger(options.limit, 'limit', {});
   return {
     threadId,
     checkpointNs: config.configurable?.checkpoint_ns === undefined ? undefined : checkpointNs,
     checkpointId,
-    before: options?.before?.configurable?.checkpoint_id as string | undefined,
+    before: beforeCheckpointId(options?.before),
     filter: options?.filter as Record<string, FilterValue> | undefined,
     limit: options?.limit,
     signal: config.signal,

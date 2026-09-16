@@ -339,3 +339,34 @@ describe('searchItems', () => {
     expect(items[0].key).toBe('a');
   });
 });
+
+describe('filter and query shape (fix round 2)', () => {
+  it('refuses a non-object filter, naming it', async () => {
+    const { client } = createStrictDocumentMock();
+    for (const filter of ['x', [], null] as never[]) {
+      await expect(
+        searchItems(context(client), { namespacePrefix: [], filter }),
+      ).rejects.toMatchObject({ code: 'VALIDATION', context: { field: 'filter' } });
+    }
+  });
+
+  it('refuses a non-string query, naming it', async () => {
+    const { client } = createStrictDocumentMock();
+    for (const query of [123, ['x'], null] as never[]) {
+      await expect(
+        searchItems(context(client), { namespacePrefix: [], query }),
+      ).rejects.toMatchObject({ code: 'VALIDATION', context: { field: 'query' } });
+    }
+  });
+
+  it('accepts an empty query and a filter clause carrying a non-operator key', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({ Items: [] });
+    await expect(searchItems(context(client), { namespacePrefix: [], query: '' })).resolves.toEqual(
+      [],
+    );
+    await expect(
+      searchItems(context(client), { namespacePrefix: [], filter: { a: { $foo: 1 } } }),
+    ).resolves.toEqual([]);
+  });
+});

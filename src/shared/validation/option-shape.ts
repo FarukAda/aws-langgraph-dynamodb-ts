@@ -20,6 +20,22 @@ export function allKeysOf<T extends object>(keys: {
 }
 
 /**
+ * Reject a value that is not a plain object: not an object at all, `null`, or
+ * an array.
+ *
+ * Accepts: `value` — as the caller gave it. `field` — what the error names.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `field`.
+ */
+export function assertObjectShape(value: object, field: string): void {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ValidationError(`${field} must be an object`, field);
+  }
+}
+
+/**
  * Reject an option object that is not an object, or that carries a key this
  * package does not read.
  *
@@ -33,9 +49,7 @@ export function allKeysOf<T extends object>(keys: {
  * ignored, and the caller runs on a default they believe they overrode.
  */
 export function assertShape(value: object, allowed: readonly string[], field: string): void {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new ValidationError(`${field} must be an object`, field);
-  }
+  assertObjectShape(value, field);
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) {
       throw new ValidationError(

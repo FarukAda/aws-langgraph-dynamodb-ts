@@ -1,6 +1,7 @@
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
   allKeysOf,
+  assertObjectShape,
   assertShape,
   checkedShape,
 } from '../../../../src/shared/validation/option-shape';
@@ -43,6 +44,21 @@ describe('assertShape', () => {
     for (const value of [null, [], 'x', 7]) {
       expect(() => assertShape(value as never, SAMPLE_KEYS, 'sample')).toThrow(
         /sample must be an object/,
+      );
+    }
+  });
+});
+
+describe('assertObjectShape', () => {
+  it('accepts a plain object, including one with no keys', () => {
+    expect(() => assertObjectShape({}, 'thing')).not.toThrow();
+    expect(() => assertObjectShape({ a: 1 }, 'thing')).not.toThrow();
+  });
+
+  it('refuses a non-object, null and an array, naming the field', () => {
+    for (const value of [null, [], 'x', 7]) {
+      expect(() => assertObjectShape(value as never, 'thing')).toThrow(
+        expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'thing' } }),
       );
     }
   });

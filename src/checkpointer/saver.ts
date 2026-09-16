@@ -12,6 +12,7 @@ import {
 
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
+import { assertCancelOptions } from '../shared/validation/method-keys';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
 import { ensureS3Lifecycle } from './actions/ensure-lifecycle';
 import { getCheckpointTuple } from './actions/get-tuple';
@@ -90,8 +91,11 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * Returns: an async generator over the tuples. Abandoning it stops the read,
    * so a consumer that breaks early pays for no further page.
    *
-   * Throws: ValidationError for a malformed identifier or limit;
-   * `FORMAT_UNSUPPORTED`; UpstreamError; RetryExhaustedError; AbortError.
+   * Throws: ValidationError for a malformed identifier or limit, a
+   * non-string `before.configurable.checkpoint_id`, or an `options.<key>`
+   * this package does not read — raised from the first `.next()`, since a
+   * generator runs none of its body until pulled; `FORMAT_UNSUPPORTED`;
+   * UpstreamError; RetryExhaustedError; AbortError.
    *
    * Guarantees: eventually consistent — a listing tolerates the replica lag
    * `getTuple` does not.
@@ -161,7 +165,8 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    *
    * Returns: nothing. Deleting a thread that does not exist is not an error.
    *
-   * Throws: ValidationError for a malformed `threadId`;
+   * Throws: ValidationError for a malformed `threadId`, an invalid `signal`,
+   * or an `options.<key>` this package does not read;
    * BatchWriteAllIncompleteError when a delete batch does not fully drain,
    * carrying what did succeed; UpstreamError; AbortError.
    *
@@ -170,9 +175,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * written while it runs may survive it.
    */
   async deleteThread(threadId: string, options?: CancelOptions): Promise<void> {
-    return guardPublic('saver.deleteThread', () =>
-      deleteThreadAction(this.context, threadId, options),
-    );
+    return guardPublic('saver.deleteThread', () => {
+      assertCancelOptions(options);
+      return deleteThreadAction(this.context, threadId, options);
+    });
   }
 
   /**

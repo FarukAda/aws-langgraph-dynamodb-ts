@@ -48,6 +48,7 @@ import type {
   S3CommandLike,
   S3OffloadConfig,
   S3RegionLike,
+  SearchOptions,
   SessionBackend,
   SessionMetadata,
   SessionPage,
@@ -122,6 +123,9 @@ describe('public type exports (CORE-12, TEST-10)', () => {
     expectTypeOf<S3CommandLike>().toHaveProperty('input');
     expectTypeOf<S3ClientOptions['region']>().toEqualTypeOf<S3RegionLike | undefined>();
     expectTypeOf<S3ClientOption>().not.toBeNever();
+    expectTypeOf<SearchOptions>().toEqualTypeOf<
+      Pick<SearchOperation, 'filter' | 'limit' | 'offset' | 'query'> & CancelOptions
+    >();
     expectTypeOf<SessionBackend>().toHaveProperty('getMessages');
     expectTypeOf<SessionMetadata['expiresAt']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<TtlOption>().toEqualTypeOf<{ days: number } | { seconds: number }>();

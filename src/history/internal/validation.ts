@@ -7,7 +7,7 @@ import {
 
 import { MAX_PARTITION_ID_BYTES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
-import { validateIdentifier } from '../../shared/validation/primitives';
+import { validateIdentifier, validateInteger } from '../../shared/validation/primitives';
 import type { MessageWindow } from '../types';
 import { SORT_KEY_SEPARATOR } from './keys';
 
@@ -100,9 +100,7 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
  * nothing and read as an empty conversation.
  */
 export function validateMessageWindow(window: MessageWindow): void {
-  if (window.limit !== undefined && (!Number.isInteger(window.limit) || window.limit < 1)) {
-    throw new ValidationError('limit must be a positive integer', 'limit');
-  }
+  if (window.limit !== undefined) validateInteger(window.limit, 'limit', { min: 1 });
   if (window.before !== undefined) {
     const time = typeof window.before.getTime === 'function' ? window.before.getTime() : Number.NaN;
     if (!Number.isFinite(time)) throw new ValidationError('before must be a valid Date', 'before');

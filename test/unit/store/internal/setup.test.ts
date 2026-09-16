@@ -173,7 +173,7 @@ describe('collaborator shape (DDB-09)', () => {
     );
   });
 
-  it('accepts a vectorBackend with no listKeys (Ruling 13)', () => {
+  it('accepts a vectorBackend with no listKeys, which is optional and its absence is already handled', () => {
     expect(() =>
       setUpStore({
         tableName: 'store',

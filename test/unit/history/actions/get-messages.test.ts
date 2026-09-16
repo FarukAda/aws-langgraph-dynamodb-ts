@@ -292,6 +292,22 @@ describe('getMessages', () => {
   });
 });
 
+describe('options shape (M-08)', () => {
+  it('refuses a key this package does not read, naming it under options', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      getMessages(context(client), 's1', { limit: 1, bogus: true } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'options.bogus' } });
+  });
+
+  it('refuses a signal that is not AbortSignal-like', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(getMessages(context(client), 's1', { signal: {} as never })).rejects.toMatchObject(
+      { code: ErrorCode.VALIDATION, context: { field: 'signal' } },
+    );
+  });
+});
+
 describe('S3 key binding (SEC-03)', () => {
   const binding = () => ({
     shouldOffload: () => true,

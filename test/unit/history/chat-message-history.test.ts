@@ -171,6 +171,57 @@ describe('cancellation via { signal } (CORE-04)', () => {
   });
 });
 
+describe('options shape (M-08)', () => {
+  const bogus = { bogus: true } as never;
+  const rejectsUnknownKey = (promise: Promise<unknown>) =>
+    expect(promise).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'options.bogus' },
+    });
+
+  it('getMessages refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).getMessages('s1', bogus));
+  });
+
+  it('listSessions refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).listSessions(bogus));
+  });
+
+  it('listSessions refuses a non-integer maxItems or maxIterations (fix round 2)', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(history(client).listSessions({ maxItems: 1.5 })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'maxItems' },
+    });
+    await expect(history(client).listSessions({ maxIterations: 1.5 })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'maxIterations' },
+    });
+  });
+
+  it('addMessages refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).addMessages('s1', [new HumanMessage('hi')], bogus));
+  });
+
+  it('addMessage refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).addMessage('s1', new HumanMessage('hi'), bogus));
+  });
+
+  it('clear refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).clear('s1', bogus));
+  });
+
+  it('reconcileMessageCount refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).reconcileMessageCount('s1', bogus));
+  });
+});
+
 describe('bounded reads (HIST-06)', () => {
   it('getMessages passes the window through and forSession binds a limit to the adapter', async () => {
     const { client, mock } = createStrictDocumentMock();

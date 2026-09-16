@@ -4,11 +4,13 @@ import {
   type Operation,
   type OperationResults,
   type SearchItem,
-  type SearchOperation,
 } from '@langchain/langgraph-checkpoint';
 
 import { guardPublic } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
+import { assertSignalLike } from '../shared/validation/collaborators';
+import { assertCancelOptions, STORE_SEARCH_KEYS } from '../shared/validation/method-keys';
+import { assertShape } from '../shared/validation/option-shape';
 import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { getItem } from './actions/get';
 import { listNamespaces } from './actions/list-namespaces';
@@ -20,7 +22,7 @@ import {
 import { searchItems } from './actions/search';
 import { runBatch } from './internal/batch-plan';
 import { type StoreContext, setUpStore } from './internal/setup';
-import type { DynamoDBStoreOptions } from './types';
+import type { DynamoDBStoreOptions, SearchOptions } from './types';
 
 type SingleResult = Item | null | SearchItem[] | string[][] | void;
 
@@ -107,8 +109,9 @@ export class DynamoDBStore extends BaseStore {
    * Returns: at most `limit` items from `offset`, each carrying a `score` when
    * a query and an index are configured.
    *
-   * Throws: ValidationError naming `offset`, `limit`, `maxSearchCandidates` or
-   * `index.dims`; AbortError; UpstreamError.
+   * Throws: ValidationError naming `offset`, `limit`, `maxSearchCandidates`,
+   * `index.dims`, `signal`, or `options.<key>` for a key this package does not
+   * read; AbortError; UpstreamError.
    *
    * Guarantees: a plain search stops reading once `offset + limit` matches are
    * in hand; a query ranks in-process up to `maxSearchCandidates`, or through
@@ -116,12 +119,14 @@ export class DynamoDBStore extends BaseStore {
    */
   override async search(
     namespacePrefix: string[],
-    options: Pick<SearchOperation, 'filter' | 'limit' | 'offset' | 'query'> & CancelOptions = {},
+    options: SearchOptions = {},
   ): Promise<SearchItem[]> {
-    const { signal, ...rest } = options;
-    return guardPublic('store.search', () =>
-      searchItems(this.context, { namespacePrefix, ...rest }, signal),
-    );
+    return guardPublic('store.search', () => {
+      assertShape(options, STORE_SEARCH_KEYS, 'options');
+      assertSignalLike(options.signal);
+      const { signal, ...rest } = options;
+      return searchItems(this.context, { namespacePrefix, ...rest }, signal);
+    });
   }
 
   /**
@@ -133,8 +138,9 @@ export class DynamoDBStore extends BaseStore {
    *
    * Returns: how many vectors were upserted and how many pruned.
    *
-   * Throws: ValidationError without both an `index` and a `vectorBackend`, or
-   * for an empty prefix; ResultTruncatedError past `maxScanItems`;
+   * Throws: ValidationError without both an `index` and a `vectorBackend`, for
+   * an empty prefix, for an invalid `signal`, or for `options.<key>` naming a
+   * key this package does not read; ResultTruncatedError past `maxScanItems`;
    * UpstreamError.
    *
    * Guarantees: DynamoDB is never written — only the backend is repaired — and
@@ -144,9 +150,10 @@ export class DynamoDBStore extends BaseStore {
     namespacePrefix: string[],
     options?: CancelOptions,
   ): Promise<VectorReconcileResult> {
-    return guardPublic('store.reconcileVectorIndex', () =>
-      reconcileVectorIndexAction(this.context, namespacePrefix, options),
-    );
+    return guardPublic('store.reconcileVectorIndex', () => {
+      assertCancelOptions(options);
+      return reconcileVectorIndexAction(this.context, namespacePrefix, options);
+    });
   }
 
   /**

@@ -1,7 +1,11 @@
-import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-checkpoint';
+import type {
+  IndexConfig,
+  SearchOperation,
+  SerializerProtocol,
+} from '@langchain/langgraph-checkpoint';
 
 import type { PayloadDescriptor } from '../shared/codec/codec';
-import type { BaseAdapterOptions, CodecOptions } from '../shared/options';
+import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';
 import type { VectorScoreDirection } from './internal/score-direction';
 import type { VectorBackend } from './vector-backend';
 
@@ -46,6 +50,14 @@ export type DynamoDBStoreOptions = BaseAdapterOptions &
      */
     vectorScoreDirection?: VectorScoreDirection;
   };
+
+/**
+ * Options {@link DynamoDBStore.search} accepts: the metadata/paging fields of
+ * `SearchOperation` it exposes as its own parameter (`namespacePrefix` is a
+ * separate positional argument instead), plus cancellation.
+ */
+export type SearchOptions = Pick<SearchOperation, 'filter' | 'limit' | 'offset' | 'query'> &
+  CancelOptions;
 
 /** The DynamoDB item backing a single stored value. */
 export interface StoreItemRecord {
