@@ -6,9 +6,13 @@
 
 # Interface: BackfillOptions
 
-Defined in: [shared/dynamodb/backfill-index.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L28)
+Defined in: [shared/dynamodb/backfill-types.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L27)
 
 What the backfill needs to walk a table.
+
+Split out of `backfill-index.ts` so `backfill-validation.ts` can build a
+compiler-verified key list against it (`allKeysOf<BackfillOptions>`)
+without that module and `backfill-index.ts` importing each other.
 
 ## Properties
 
@@ -16,7 +20,7 @@ What the backfill needs to walk a table.
 
 > **client**: `DynamoDBDocument`
 
-Defined in: [shared/dynamodb/backfill-index.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L29)
+Defined in: [shared/dynamodb/backfill-types.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L28)
 
 ***
 
@@ -24,7 +28,7 @@ Defined in: [shared/dynamodb/backfill-index.ts:29](https://github.com/FarukAda/a
 
 > `optional` **cursor?**: `string`
 
-Defined in: [shared/dynamodb/backfill-index.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L37)
+Defined in: [shared/dynamodb/backfill-types.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L36)
 
 ***
 
@@ -32,7 +36,7 @@ Defined in: [shared/dynamodb/backfill-index.ts:37](https://github.com/FarukAda/a
 
 > `optional` **dryRun?**: `boolean`
 
-Defined in: [shared/dynamodb/backfill-index.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L39)
+Defined in: [shared/dynamodb/backfill-types.ts:38](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L38)
 
 Report what would change without writing.
 
@@ -42,7 +46,7 @@ Report what would change without writing.
 
 > `optional` **indexShards?**: `number`
 
-Defined in: [shared/dynamodb/backfill-index.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L32)
+Defined in: [shared/dynamodb/backfill-types.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L31)
 
 Must equal the adapters' `indexShards`, or rows land on shards no listing queries.
 
@@ -52,7 +56,7 @@ Must equal the adapters' `indexShards`, or rows land on shards no listing querie
 
 > `optional` **maxPages?**: `number`
 
-Defined in: [shared/dynamodb/backfill-index.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L36)
+Defined in: [shared/dynamodb/backfill-types.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L35)
 
 Stop after this many pages and return a cursor. Default: walk the whole table.
 
@@ -62,7 +66,7 @@ Stop after this many pages and return a cursor. Default: walk the whole table.
 
 > `optional` **pageSize?**: `number`
 
-Defined in: [shared/dynamodb/backfill-index.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L34)
+Defined in: [shared/dynamodb/backfill-types.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L33)
 
 Rows per scan page.
 
@@ -72,7 +76,11 @@ Rows per scan page.
 
 > `optional` **retry?**: [`RetryOptions`](RetryOptions.md)
 
-Defined in: [shared/dynamodb/backfill-index.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L40)
+Defined in: [shared/dynamodb/backfill-types.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L44)
+
+The full retry surface, not the adapters' narrower `RetryPolicy`:
+`onRetry` is backfill's only way to observe retries in progress, since it
+takes no `logger`.
 
 ***
 
@@ -80,7 +88,7 @@ Defined in: [shared/dynamodb/backfill-index.ts:40](https://github.com/FarukAda/a
 
 > `optional` **signal?**: `AbortSignal`
 
-Defined in: [shared/dynamodb/backfill-index.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L41)
+Defined in: [shared/dynamodb/backfill-types.ts:45](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L45)
 
 ***
 
@@ -88,4 +96,4 @@ Defined in: [shared/dynamodb/backfill-index.ts:41](https://github.com/FarukAda/a
 
 > **tableName**: `string`
 
-Defined in: [shared/dynamodb/backfill-index.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L30)
+Defined in: [shared/dynamodb/backfill-types.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L29)

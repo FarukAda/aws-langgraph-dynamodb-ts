@@ -43,8 +43,8 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    * `DynamoDBChatMessageHistory.forSession`, which is the supported route.
    *
    * Throws: ValidationError naming `backend`, `backend.<member>` for the first
-   * missing method, `sessionId`, `window.<key>` for a key `AdapterWindow` does
-   * not declare, or `limit`. Checking here reports a caller's mistake at
+   * missing method, `sessionId`, `window` for a window that is not an object,
+   * `window.<key>` for a key `AdapterWindow` does not declare, or `limit`. Checking here reports a caller's mistake at
    * construction instead of rebranding it as an upstream failure on first use.
    */
   constructor(

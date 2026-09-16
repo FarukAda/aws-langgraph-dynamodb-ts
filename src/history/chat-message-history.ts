@@ -212,9 +212,10 @@ export class DynamoDBChatMessageHistory {
    * Returns: an adapter implementing `BaseListChatMessageHistory`, which is
    * what `RunnableWithMessageHistory` takes.
    *
-   * Throws: ValidationError naming `sessionId`, `window.<key>` for a key the
-   * adapter does not declare, or `limit` — raised by the constructed adapter,
-   * so a bad id or window fails here rather than on first use.
+   * Throws: ValidationError naming `sessionId`, `window` for a window that is
+   * not an object, `window.<key>` for a key the adapter does not declare, or
+   * `limit` — raised by the constructed adapter, so a bad id or window fails
+   * here rather than on first use.
    */
   forSession(sessionId: string, window?: AdapterWindow): DynamoDBSessionChatMessageHistory {
     return new DynamoDBSessionChatMessageHistory(this, sessionId, window);

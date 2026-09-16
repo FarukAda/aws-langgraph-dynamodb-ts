@@ -79,21 +79,25 @@ async function backfillPage(
  * `indexShards` must match what the adapters use. A mismatch puts rows on
  * shards no listing queries, which looks exactly like the rows being missing.
  *
- * Accepts: `options` — validated in full before any read, the same as every
- * public method in this package (see {@link validateBackfillOptions}).
- * `options.pageSize` — a positive integer, default 100. `options.cursor` —
- * from a previous run, to resume. `options.maxPages` — how far one run goes,
- * so a large table can be backfilled in bounded slices. `options.indexShards`
- * — must equal the adapters' setting.
+ * Accepts: `options` — validated in full before any read: only the keys
+ * `BackfillOptions` declares; `tableName`, `indexShards` and the numbers in
+ * `retry` by the adapters' rules; `signal` as their methods check it; a
+ * `client` providing `scan` and `update`. `options.pageSize` — a positive integer,
+ * default 100. `options.cursor` — from a previous run, to resume.
+ * `options.maxPages` — how far one run goes, so a large table can be
+ * backfilled in bounded slices. `options.indexShards` — must equal the
+ * adapters' setting, and has their ceiling. `options.dryRun` — a boolean.
  *
  * Returns: how many rows were scanned and how many were given keys, plus a
- * `cursor` when the run stopped short of the end. An absent cursor means the
- * table is fully backfilled.
+ * `nextCursor` when the run stopped short of the end. An absent cursor means
+ * the table is fully backfilled.
  *
  * Throws: ValidationError naming the offending option, before any DynamoDB
- * call; UpstreamError for anything else the scan or the writes throw — this
- * is the function's own error boundary, the same as every adapter's public
- * methods, so a caller's mistake never escapes as a bare exception.
+ * call; RetryExhaustedError once a transient failure has used every attempt;
+ * AbortError when `signal` fires; UpstreamError wrapping any other error the
+ * scan or the writes throw — this is the function's own error boundary, the
+ * same as every adapter's public methods, so a caller's mistake never escapes
+ * as a bare exception.
  *
  * Guarantees: every write is conditional on the row having no keys yet, so
  * re-running is safe, running against a live table is safe, and a row a live

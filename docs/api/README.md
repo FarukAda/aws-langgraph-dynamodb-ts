@@ -71,6 +71,7 @@
 - [S3ClientConfigLike](type-aliases/S3ClientConfigLike.md)
 - [S3ClientOption](type-aliases/S3ClientOption.md)
 - [S3RegionLike](type-aliases/S3RegionLike.md)
+- [SearchOptions](type-aliases/SearchOptions.md)
 - [TtlOption](type-aliases/TtlOption.md)
 - [VectorScoreDirection](type-aliases/VectorScoreDirection.md)
 

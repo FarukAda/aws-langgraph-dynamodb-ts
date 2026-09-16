@@ -6,7 +6,7 @@
 
 # Class: DynamoDBChatMessageHistory
 
-Defined in: [history/chat-message-history.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L28)
+Defined in: [history/chat-message-history.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L29)
 
 DynamoDB-backed multi-session chat history. Each message is its own item
 (ordered by a monotonic ULID, compressed / S3-offloaded as needed) alongside a
@@ -21,7 +21,7 @@ raw AWS SDK error escaping an action surfaces as an `UpstreamError`.
 
 > **new DynamoDBChatMessageHistory**(`options`): `DynamoDBChatMessageHistory`
 
-Defined in: [history/chat-message-history.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L44)
+Defined in: [history/chat-message-history.ts:45](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L45)
 
 Accepts: `options` — validated here, so a misconfiguration surfaces at
 construction rather than on the first request.
@@ -49,7 +49,7 @@ Guarantees: no I/O. Constructing the adapter issues no request.
 
 > **addMessage**(`sessionId`, `message`, `options?`): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:112](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L112)
+Defined in: [history/chat-message-history.ts:117](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L117)
 
 Append one message.
 
@@ -83,7 +83,7 @@ Throws: as [addMessages](#addmessages).
 
 > **addMessages**(`sessionId`, `messages`, `options?`): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:97](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L97)
+Defined in: [history/chat-message-history.ts:101](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L101)
 
 Append messages to a session.
 
@@ -93,8 +93,10 @@ chunks.
 
 Returns: nothing, and only once every message has landed.
 
-Throws: ValidationError naming `messages` with the offending index, for a
-value that is not a message or one that could never be read back;
+Throws: ValidationError naming `messages`, for a value that is not itself
+an array, or, with the offending index, for an element that is not a
+message or one that could never be read back; or naming `signal` or
+`options.<key>` for a key this package does not read;
 CompensationFailedError when a later chunk fails and the rollback fails
 too; RetryExhaustedError after 18 contended attempts; UpstreamError;
 AbortError.
@@ -128,7 +130,7 @@ when one is configured.
 
 > **clear**(`sessionId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:133](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L133)
+Defined in: [history/chat-message-history.ts:140](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L140)
 
 Delete a session's messages, metadata and offloaded objects.
 
@@ -136,7 +138,8 @@ Accepts: `sessionId` — validated. `options.signal` — aborts between pages.
 
 Returns: nothing. Clearing a session that does not exist is not an error.
 
-Throws: ValidationError for a malformed session id;
+Throws: ValidationError for a malformed session id, an invalid `signal`,
+or an `options.<key>` this package does not read;
 BatchWriteAllIncompleteError when a delete batch does not fully drain;
 UpstreamError; AbortError.
 
@@ -164,7 +167,7 @@ appended while it runs may survive it.
 
 > **destroy**(): `void`
 
-Defined in: [history/chat-message-history.ts:217](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L217)
+Defined in: [history/chat-message-history.ts:234](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L234)
 
 Release owned resources.
 
@@ -185,7 +188,7 @@ Throws: nothing this adapter raises.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:238](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L238)
+Defined in: [history/chat-message-history.ts:255](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L255)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -215,19 +218,22 @@ per request.
 
 > **forSession**(`sessionId`, `window?`): [`DynamoDBSessionChatMessageHistory`](DynamoDBSessionChatMessageHistory.md)
 
-Defined in: [history/chat-message-history.ts:203](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L203)
+Defined in: [history/chat-message-history.ts:220](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L220)
 
 Get a single-session LangChain adapter for `sessionId`.
 
-Accepts: `sessionId` — not validated here; the adapter's own calls validate
-it, so a bad id fails at the operation rather than at the handle.
-`window.limit` — bounds what the adapter feeds the chain to the newest that
-many messages.
+Accepts: `sessionId` — validated by the adapter's own constructor, the
+same rule every other method applies. `window.limit` — bounds what the
+adapter feeds the chain to the newest that many messages; validated the
+same way.
 
 Returns: an adapter implementing `BaseListChatMessageHistory`, which is
 what `RunnableWithMessageHistory` takes.
 
-Throws: nothing; it opens nothing and reads nothing.
+Throws: ValidationError naming `sessionId`, `window` for a window that is
+not an object, `window.<key>` for a key the adapter does not declare, or
+`limit` — raised by the constructed adapter, so a bad id or window fails
+here rather than on first use.
 
 #### Parameters
 
@@ -249,7 +255,7 @@ Throws: nothing; it opens nothing and reads nothing.
 
 > **getMessages**(`sessionId`, `options?`): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/chat-message-history.ts:71](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L71)
+Defined in: [history/chat-message-history.ts:73](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L73)
 
 Get a session's messages in chronological order.
 
@@ -261,7 +267,8 @@ session. `options.signal` — aborts the reads.
 Returns: the messages, oldest first. A session that does not exist and one
 whose messages have all expired both return nothing.
 
-Throws: ValidationError for a malformed session id or window;
+Throws: ValidationError for a malformed session id or window, an invalid
+`signal`, or naming `options.<key>` for a key this package does not read;
 `FORMAT_UNSUPPORTED` for a row a newer release wrote; UpstreamError;
 AbortError; and, under `onCorruptMessage: 'throw'`, the decode error of a
 corrupt row.
@@ -293,7 +300,7 @@ One query page plus one S3 download per offloaded message.
 
 > **listSessions**(`options?`): `Promise`\<[`SessionPage`](../interfaces/SessionPage.md)\>
 
-Defined in: [history/chat-message-history.ts:162](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L162)
+Defined in: [history/chat-message-history.ts:174](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L174)
 
 List every session as a metadata summary, most recently updated first.
 With a configured `indexName` this is a bounded query per index shard,
@@ -313,8 +320,10 @@ come back shorter than `limit` while more rows remain: expired and foreign
 rows are dropped after the read. Stop when `nextCursor` is absent, never
 when a page looks short.
 
-Throws: ValidationError naming `limit` or `cursor`; ResultTruncatedError
-past either cap on the scan path; UpstreamError; AbortError.
+Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
+`maxIterations`, `signal`, or `options.<key>` for a key this package does
+not read; ResultTruncatedError past either cap on the scan path;
+UpstreamError; AbortError.
 
 Guarantees: with a configured `indexName` the cost is one bounded query per
 index shard, whatever the table holds.
@@ -335,7 +344,7 @@ index shard, whatever the table holds.
 
 > **reconcileMessageCount**(`sessionId`, `options?`): `Promise`\<`number`\>
 
-Defined in: [history/chat-message-history.ts:184](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L184)
+Defined in: [history/chat-message-history.ts:197](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L197)
 
 Recompute and repair a session's `messageCount` from the stored messages.
 A maintenance tool for external corruption; run it when the session is idle.
@@ -346,9 +355,10 @@ Accepts: `sessionId` — validated, and an existing session.
 Returns: the count now stored, which is the number of messages a reader
 would see.
 
-Throws: ValidationError for a malformed session id; ConflictError when the
-session does not exist or stayed busy through every attempt; UpstreamError;
-AbortError.
+Throws: ValidationError for a malformed session id, an invalid `signal`,
+or an `options.<key>` this package does not read; ConflictError when the
+session does not exist or stayed busy through every attempt;
+UpstreamError; AbortError.
 
 Guarantees: safe on a live session — the write is pinned to the value the
 row held when the count was computed, so a concurrent append makes it

@@ -8,7 +8,7 @@
 
 > **backfillRecencyIndex**(`options`): `Promise`\<[`BackfillResult`](../interfaces/BackfillResult.md)\>
 
-Defined in: [shared/dynamodb/backfill-index.ts:131](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L131)
+Defined in: [shared/dynamodb/backfill-index.ts:106](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L106)
 
 Give rows written before the recency index their index keys.
 
@@ -25,17 +25,25 @@ already indexed is left exactly as it is.
 `indexShards` must match what the adapters use. A mismatch puts rows on
 shards no listing queries, which looks exactly like the rows being missing.
 
-Accepts: `options.pageSize` — a positive integer, default 100.
-`options.cursor` — from a previous run, to resume. `options.maxPages` — how
-far one run goes, so a large table can be backfilled in bounded slices.
-`options.indexShards` — must equal the adapters' setting.
+Accepts: `options` — validated in full before any read: only the keys
+`BackfillOptions` declares; `tableName`, `indexShards` and the numbers in
+`retry` by the adapters' rules; `signal` as their methods check it; a
+`client` providing `scan` and `update`. `options.pageSize` — a positive integer,
+default 100. `options.cursor` — from a previous run, to resume.
+`options.maxPages` — how far one run goes, so a large table can be
+backfilled in bounded slices. `options.indexShards` — must equal the
+adapters' setting, and has their ceiling. `options.dryRun` — a boolean.
 
 Returns: how many rows were scanned and how many were given keys, plus a
-`cursor` when the run stopped short of the end. An absent cursor means the
-table is fully backfilled.
+`nextCursor` when the run stopped short of the end. An absent cursor means
+the table is fully backfilled.
 
-Throws: ValidationError naming `pageSize` or `cursor`; whatever the scan and
-the writes throw.
+Throws: ValidationError naming the offending option, before any DynamoDB
+call; RetryExhaustedError once a transient failure has used every attempt;
+AbortError when `signal` fires; UpstreamError wrapping any other error the
+scan or the writes throw — this is the function's own error boundary, the
+same as every adapter's public methods, so a caller's mistake never escapes
+as a bare exception.
 
 Guarantees: every write is conditional on the row having no keys yet, so
 re-running is safe, running against a live table is safe, and a row a live
