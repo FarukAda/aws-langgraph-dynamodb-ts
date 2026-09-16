@@ -63,18 +63,23 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   /**
    * Read one checkpoint with its metadata and pending writes.
    *
-   * Accepts: `config.configurable.checkpoint_id` — names the checkpoint; its
-   * absence asks for the newest in the namespace. `checkpoint_ns` defaults to
-   * the root namespace. A config naming no `thread_id` is accepted: its other
+   * Accepts: `config` — an object; `config.configurable`, when present, an
+   * object too. `config.configurable.checkpoint_id` — names the checkpoint, and
+   * `thread_ts` is read in its place when it is absent; the absence of both
+   * asks for the newest in the namespace. `checkpoint_ns` defaults to the root
+   * namespace. A config naming no `thread_id` is accepted: its other
    * identifiers are still validated. `config.signal` — aborts the reads.
    *
    * Returns: the tuple, or `undefined` for an unknown thread, an unknown
    * checkpoint, a config naming no thread, or a checkpoint whose payload row is
    * not there yet.
    *
-   * Throws: ValidationError for a malformed identifier; `FORMAT_UNSUPPORTED`
-   * for a row a newer release wrote; UpstreamError; RetryExhaustedError;
-   * AbortError.
+   * Throws: ValidationError, before any read, naming `config` for a config that
+   * is not an object, `configurable` for a `configurable` that is present and
+   * not an object, `signal` for a signal that is not `AbortSignal`-shaped, or
+   * `thread_id`, `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a
+   * malformed identifier; `FORMAT_UNSUPPORTED` for a row a newer release wrote;
+   * UpstreamError; RetryExhaustedError; AbortError.
    *
    * Guarantees: strongly consistent, so a checkpoint just written is always
    * seen.
@@ -95,11 +100,17 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * Returns: an async generator over the tuples. Abandoning it stops the read,
    * so a consumer that breaks early pays for no further page.
    *
-   * Throws: ValidationError for a malformed identifier or limit, a
-   * non-string `before.configurable.checkpoint_id`, or an `options.<key>`
-   * this package does not read — raised from the first `.next()`, since a
-   * generator runs none of its body until pulled; `FORMAT_UNSUPPORTED`;
-   * UpstreamError; RetryExhaustedError; AbortError.
+   * Throws: ValidationError, raised from the first `.next()`, since a
+   * generator runs none of its body until pulled, and before any read: naming
+   * `config`, `configurable` or `signal` for a config of the wrong shape, as
+   * {@link getTuple} does, or `thread_id`, `checkpoint_ns`, `checkpoint_id` or
+   * `thread_ts` for a malformed identifier — all checked before `options`;
+   * then `options` for options that are not an object, `options.<key>` for a
+   * key this package does not read, `filter` for a filter that is not an
+   * object, `limit` for a limit that is not an integer, and `before` for a
+   * `before` that is not an object or whose `configurable.checkpoint_id` is
+   * neither absent (`undefined`, `null` or `''`) nor a well-formed checkpoint
+   * id. `FORMAT_UNSUPPORTED`; UpstreamError; RetryExhaustedError; AbortError.
    *
    * Guarantees: eventually consistent — a listing tolerates the replica lag
    * `getTuple` does not.
@@ -112,16 +123,23 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   /**
    * Store a checkpoint and its metadata in one transaction.
    *
-   * Accepts: `config.configurable.checkpoint_id` — becomes the new
-   * checkpoint's parent. `checkpoint` — every channel value it carries is
-   * stored. `newVersions` — accepted to satisfy `BaseCheckpointSaver.put` and
-   * deliberately ignored; see `putCheckpoint` for why narrowing by it lost
-   * state on a fork.
+   * Accepts: `config` — shaped as {@link getTuple} requires, and naming a
+   * `thread_id`. `config.configurable.checkpoint_id` — becomes the new
+   * checkpoint's parent. `config.signal` — aborts the write. `checkpoint` —
+   * every channel value it carries is stored. `newVersions` — accepted to
+   * satisfy `BaseCheckpointSaver.put` and deliberately ignored; see
+   * `putCheckpoint` for why narrowing by it lost state on a fork.
    *
    * Returns: the config addressing the stored checkpoint, which is what the
    * caller passes back to continue the thread.
    *
-   * Throws: ValidationError; `S3_OFFLOAD_FAILED` when an offloaded payload
+   * Throws: ValidationError naming `config`, `configurable` or `signal` for a
+   * config of the wrong shape, `thread_id` for a missing or malformed thread
+   * id, `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
+   * identifier, `checkpoint` for a `null` or `undefined` checkpoint,
+   * `checkpoint_id` for a malformed `checkpoint.id`, `payload` for a payload
+   * too large to store inline without `s3`, or `s3Key` for an offloaded
+   * object's key over S3's cap; `S3_OFFLOAD_FAILED` when an offloaded payload
    * cannot be uploaded; UpstreamError; RetryExhaustedError; AbortError.
    *
    * Guarantees: both rows land or neither does. Writing the same
@@ -141,16 +159,24 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   /**
    * Store a task's pending writes for the checkpoint `config` names.
    *
-   * Accepts: `config` — must name a `checkpoint_id`, since writes attach to a
-   * checkpoint. `writes` — one row each, written in parallel; an empty list
+   * Accepts: `config` — shaped as {@link getTuple} requires, naming a
+   * `thread_id` and a `checkpoint_id`, since writes attach to a checkpoint.
+   * `config.signal` — aborts the writes. `writes` — an array of
+   * `[channel, value]` arrays, one row each, written in parallel; an empty list
    * writes nothing. `taskId` — validated as the key segment it becomes.
    *
    * Returns: nothing. Losing a first-write-wins race is a normal outcome, not
    * a failure.
    *
-   * Throws: ValidationError when `checkpoint_id` is missing or a channel is
-   * malformed; `S3_OFFLOAD_FAILED`; UpstreamError; RetryExhaustedError;
-   * AbortError.
+   * Throws: ValidationError naming `taskId` for a malformed task id; `config`,
+   * `configurable` or `signal` for a config of the wrong shape; `thread_id`,
+   * `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
+   * identifier, and `checkpoint_id` when the config names none; `writes` for
+   * writes that is not an array, or holds an entry that is not one; `channel`
+   * for a malformed channel; `sortKey` for identifiers composing a sort key
+   * over DynamoDB's cap; `payload` for a value too large to store inline
+   * without `s3`; or `s3Key` for an offloaded object's key over S3's cap.
+   * `S3_OFFLOAD_FAILED`; UpstreamError; RetryExhaustedError; AbortError.
    *
    * Guarantees: regular writes are first-write-wins; special channels
    * (`__interrupt__`, `__resume__`, `__error__`, `__scheduled__`) overwrite,
@@ -169,8 +195,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    *
    * Returns: nothing. Deleting a thread that does not exist is not an error.
    *
-   * Throws: ValidationError for a malformed `threadId`, an invalid `signal`,
-   * or an `options.<key>` this package does not read;
+   * Throws: ValidationError naming `options` for options that are not an
+   * object, `options.<key>` for a key this package does not read, `signal`
+   * for a signal that is not `AbortSignal`-shaped, or `thread_id` for a
+   * malformed `threadId`;
    * BatchWriteAllIncompleteError when a delete batch does not fully drain,
    * carrying what did succeed; UpstreamError; AbortError.
    *
@@ -199,15 +227,20 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * `options.channels` — the delta channels to rebuild, required; an empty
    * array reads nothing rather than being refused, since it is a legitimate
    * "nothing to rebuild" request. `options.config` — the checkpoint to walk
-   * back from.
+   * back from, shaped as {@link getTuple} requires and checked for that shape
+   * even when there is nothing to read; its `signal` aborts the read of that
+   * checkpoint.
    *
    * Returns: per channel, its on-path writes oldest-first and the nearest
    * stored value found.
    *
-   * Throws: ValidationError naming `options.<key>` for an unknown key,
-   * `config` for a non-object config, or `channels` for a value that is not
-   * an array of strings; `ANCESTOR_EXPIRED` when a checkpoint a channel still
-   * needs has expired; UpstreamError; RetryExhaustedError.
+   * Throws: ValidationError naming `options` for options that are not an
+   * object, `options.<key>` for an unknown key, `config`, `configurable` or
+   * `signal` for a config of the wrong shape, or `channels` for a value that
+   * is not an array of strings, and, once a channel is named, `thread_id`,
+   * `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
+   * identifier; `ANCESTOR_EXPIRED` when a checkpoint a channel still needs has
+   * expired; UpstreamError; RetryExhaustedError; AbortError.
    *
    * Guarantees: the walk stops at the first ancestor answering for every
    * channel, so a deep thread costs reads only as far back as the nearest

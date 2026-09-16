@@ -8,7 +8,7 @@
 
 > **backfillRecencyIndex**(`options`): `Promise`\<[`BackfillResult`](../interfaces/BackfillResult.md)\>
 
-Defined in: [shared/dynamodb/backfill-index.ts:106](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L106)
+Defined in: [shared/dynamodb/backfill-index.ts:119](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L119)
 
 Give rows written before the recency index their index keys.
 
@@ -33,6 +33,8 @@ default 100. `options.cursor` — from a previous run, to resume.
 `options.maxPages` — how far one run goes, so a large table can be
 backfilled in bounded slices. `options.indexShards` — must equal the
 adapters' setting, and has their ceiling. `options.dryRun` — a boolean.
+`options.signal` — cancels the run; `retry.signal` does so when there is no
+top-level `signal`, and the top-level one wins when both are given.
 
 Returns: how many rows were scanned and how many were given keys, plus a
 `nextCursor` when the run stopped short of the end. An absent cursor means
@@ -40,10 +42,11 @@ the table is fully backfilled.
 
 Throws: ValidationError naming the offending option, before any DynamoDB
 call; RetryExhaustedError once a transient failure has used every attempt;
-AbortError when `signal` fires; UpstreamError wrapping any other error the
-scan or the writes throw — this is the function's own error boundary, the
-same as every adapter's public methods, so a caller's mistake never escapes
-as a bare exception.
+AbortError when `signal` fires, or `retry.signal` when no top-level `signal`
+is given; UpstreamError wrapping any other error the scan or the writes
+throw — this is the function's own error boundary, the same as every
+adapter's public methods, so a caller's mistake never escapes as a bare
+exception.
 
 Guarantees: every write is conditional on the row having no keys yet, so
 re-running is safe, running against a live table is safe, and a row a live

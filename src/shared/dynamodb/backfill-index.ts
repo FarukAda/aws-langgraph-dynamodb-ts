@@ -97,6 +97,8 @@ async function backfillPage(
  * `options.maxPages` — how far one run goes, so a large table can be
  * backfilled in bounded slices. `options.indexShards` — must equal the
  * adapters' setting, and has their ceiling. `options.dryRun` — a boolean.
+ * `options.signal` — cancels the run; `retry.signal` does so when there is no
+ * top-level `signal`, and the top-level one wins when both are given.
  *
  * Returns: how many rows were scanned and how many were given keys, plus a
  * `nextCursor` when the run stopped short of the end. An absent cursor means
