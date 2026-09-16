@@ -184,3 +184,12 @@ describe('BaseStore lifecycle (CORE-22)', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe('collaborator shape (DDB-09)', () => {
+  it('refuses a raw DynamoDBClient where a DynamoDBDocument is required', () => {
+    const raw = { send: () => undefined };
+    expect(() => new DynamoDBStore({ tableName: 'tbl', client: raw as never })).toThrow(
+      expect.objectContaining({ code: 'VALIDATION', context: { field: 'client.get' } }),
+    );
+  });
+});

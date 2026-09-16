@@ -17,6 +17,11 @@ import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { STORE_KEYS } from '../../shared/validation/adapter-keys';
+import {
+  assertBaseCollaborators,
+  assertMembers,
+  VECTOR_BACKEND_MEMBERS,
+} from '../../shared/validation/collaborators';
 import { assertShape } from '../../shared/validation/option-shape';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions } from '../types';
@@ -78,6 +83,10 @@ export interface StoreSetup {
 export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
   assertShape(options, STORE_KEYS, 'options');
   validateStoreOptions(options);
+  assertBaseCollaborators(options);
+  if (options.vectorBackend !== undefined) {
+    assertMembers(options.vectorBackend, VECTOR_BACKEND_MEMBERS, 'vectorBackend');
+  }
   const logger = resolveLogger(options.logger);
   const resolved = resolveDynamoDBClient(options);
   if (!resolved.ownsClient) void warnOnStackedRetries(resolved.client, logger);

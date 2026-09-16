@@ -1,6 +1,6 @@
 import { setUpHistory } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
+import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 describe('setUpHistory', () => {
   it('rejects an option key this package does not read', () => {
@@ -41,7 +41,7 @@ describe('setUpHistory', () => {
   it('does not own an injected client and builds an offloader + ttl/compression', () => {
     const setup = setUpHistory({
       tableName: 'history',
-      client: { send: jest.fn() } as never,
+      client: fakeClientMethods() as never,
       s3: { bucketName: 'b' },
       compression: { enabled: true },
       ttl: { days: 1 },
@@ -56,17 +56,47 @@ describe('setUpHistory', () => {
   it('defaults the S3 key prefix to an adapter-scoped segment, but honors an explicit override', () => {
     const defaulted = setUpHistory({
       tableName: 'history',
-      client: { send: jest.fn() } as never,
+      client: fakeClientMethods() as never,
       s3: { bucketName: 'b' },
     });
     expect(defaulted.context.offloader?.getKeyPrefix()).toBe('langgraph-checkpoints/history/');
 
     const overridden = setUpHistory({
       tableName: 'history',
-      client: { send: jest.fn() } as never,
+      client: fakeClientMethods() as never,
       s3: { bucketName: 'b', keyPrefix: 'custom/' },
     });
     expect(overridden.context.offloader?.getKeyPrefix()).toBe('custom/');
+  });
+});
+
+describe('collaborator shape (DDB-09)', () => {
+  it('refuses an injected client missing a method this package calls', () => {
+    expect(() =>
+      setUpHistory({ tableName: 'history', client: { send: jest.fn() } as never }),
+    ).toThrow(expect.objectContaining({ code: 'VALIDATION', context: { field: 'client.get' } }));
+  });
+
+  it('refuses a logger missing a level this package calls', () => {
+    expect(() =>
+      setUpHistory({
+        tableName: 'history',
+        client: fakeClientMethods() as never,
+        logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'VALIDATION', context: { field: 'logger.debug' } }));
+  });
+
+  it('refuses a serde missing a method this package calls', () => {
+    expect(() =>
+      setUpHistory({
+        tableName: 'history',
+        client: fakeClientMethods() as never,
+        serde: { dumpsTyped: async () => ['json', new Uint8Array()] } as never,
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'VALIDATION', context: { field: 'serde.loadsTyped' } }),
+    );
   });
 });
 
@@ -105,7 +135,7 @@ describe('S3 region inheritance (CODEC-15)', () => {
 
 describe('retry policy (DDB-03)', () => {
   it('resolves the retry policy onto the context, defaulting to five attempts', () => {
-    const client = { send: jest.fn() } as never;
+    const client = fakeClientMethods() as never;
     expect(setUpHistory({ tableName: 't123', client }).context.retry?.maxAttempts).toBe(5);
     expect(
       setUpHistory({ tableName: 't123', client, retry: { maxAttempts: 2, baseDelayMs: 1 } }).context

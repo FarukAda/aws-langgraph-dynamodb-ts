@@ -1,6 +1,6 @@
 DynamoDBChatMessageHistory | client + clientConfig both | sync throws ValidationError/VALIDATION field=client
-DynamoDBChatMessageHistory | client='x' | OK DynamoDBChatMessageHistory
-DynamoDBChatMessageHistory | client={} (not a DocumentClient) | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | client='x' | sync throws ValidationError/VALIDATION field=client
+DynamoDBChatMessageHistory | client={} (not a DocumentClient) | sync throws ValidationError/VALIDATION field=client.get
 DynamoDBChatMessageHistory | clientConfig='x' | OK DynamoDBChatMessageHistory
 DynamoDBChatMessageHistory | clientConfig=null | OK DynamoDBChatMessageHistory
 DynamoDBChatMessageHistory | compression="x" | sync throws ValidationError/VALIDATION field=compression
@@ -27,11 +27,11 @@ DynamoDBChatMessageHistory | indexShards=1.5 | sync throws ValidationError/VALID
 DynamoDBChatMessageHistory | indexShards=1000000000000 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBChatMessageHistory | indexShards=NaN | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBChatMessageHistory | indexShards=null | sync throws ValidationError/VALIDATION field=indexShards
-DynamoDBChatMessageHistory | logger="x" | OK DynamoDBChatMessageHistory
-DynamoDBChatMessageHistory | logger=null | OK DynamoDBChatMessageHistory
-DynamoDBChatMessageHistory | logger={"info":"fn"} | OK DynamoDBChatMessageHistory
-DynamoDBChatMessageHistory | logger={"info":1,"warn":1,"error":1,"debug":1} | OK DynamoDBChatMessageHistory
-DynamoDBChatMessageHistory | logger={} | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | logger="x" | sync throws ValidationError/VALIDATION field=logger
+DynamoDBChatMessageHistory | logger=null | sync throws ValidationError/VALIDATION field=logger
+DynamoDBChatMessageHistory | logger={"info":"fn"} | sync throws ValidationError/VALIDATION field=logger.debug
+DynamoDBChatMessageHistory | logger={"info":1,"warn":1,"error":1,"debug":1} | sync throws ValidationError/VALIDATION field=logger.debug
+DynamoDBChatMessageHistory | logger={} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBChatMessageHistory | onCorruptMessage="" | sync throws ValidationError/VALIDATION field=onCorruptMessage
 DynamoDBChatMessageHistory | onCorruptMessage="Skip" | sync throws ValidationError/VALIDATION field=onCorruptMessage
 DynamoDBChatMessageHistory | onCorruptMessage="throw" | OK DynamoDBChatMessageHistory
@@ -76,10 +76,10 @@ DynamoDBChatMessageHistory | s3={"bucketName":"b","thresholdBytes":0} | sync thr
 DynamoDBChatMessageHistory | s3={"bucketName":"b","thresholdBytes":1000000000000} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
 DynamoDBChatMessageHistory | s3={"bucketName":123} | sync throws ValidationError/VALIDATION field=s3.bucketName
 DynamoDBChatMessageHistory | s3={} | sync throws ValidationError/VALIDATION field=s3.bucketName
-DynamoDBChatMessageHistory | serde="x" | OK DynamoDBChatMessageHistory
-DynamoDBChatMessageHistory | serde=null | OK DynamoDBChatMessageHistory
-DynamoDBChatMessageHistory | serde={"dumpsTyped":"fn"} | OK DynamoDBChatMessageHistory
-DynamoDBChatMessageHistory | serde={} | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | serde="x" | sync throws ValidationError/VALIDATION field=serde
+DynamoDBChatMessageHistory | serde=null | sync throws ValidationError/VALIDATION field=serde
+DynamoDBChatMessageHistory | serde={"dumpsTyped":"fn"} | sync throws ValidationError/VALIDATION field=serde.loadsTyped
+DynamoDBChatMessageHistory | serde={} | sync throws ValidationError/VALIDATION field=serde.dumpsTyped
 DynamoDBChatMessageHistory | tableName="" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBChatMessageHistory | tableName="aaaaaaaaaaaaaaaaaaaa…(len 256)" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBChatMessageHistory | tableName="ab" | sync throws ValidationError/VALIDATION field=tableName
@@ -269,7 +269,7 @@ DynamoDBFactory.createAll | options=undefined | sync throws ValidationError/VALI
 DynamoDBFactory.createAll | options={"foo":{}} | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBFactory.createAll | options={"saver":"x"} | sync throws ValidationError/VALIDATION field=options.0
 DynamoDBFactory.createAll | options={"saver":null} | OK Object
-DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","client":{}}} | OK Object
+DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","client":{}}} | sync throws ValidationError/VALIDATION field=client.get
 DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","clientConfig":{"region":"x"}}} | sync throws ValidationError/VALIDATION field=client
 DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","foo":1}} | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table"},"store":{"tableName":"bad#"}} | sync throws ValidationError/VALIDATION field=tableName
@@ -279,13 +279,13 @@ DynamoDBFactory.createChatMessageHistory | options='x' | sync throws ValidationE
 DynamoDBFactory.createSaver | options="x" | sync throws ValidationError/VALIDATION field=options.0
 DynamoDBFactory.createSaver | options=null | sync BARE TypeError
 DynamoDBFactory.createSaver | options=undefined | sync BARE TypeError
-DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","client":{}} | OK DynamoDBSaver
+DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","client":{}} | sync throws ValidationError/VALIDATION field=client.get
 DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","foo":1} | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBFactory.createSaver | options={} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBFactory.createStore | options={}  | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBSaver | client + clientConfig both | sync throws ValidationError/VALIDATION field=client
-DynamoDBSaver | client='x' | OK DynamoDBSaver
-DynamoDBSaver | client={} (not a DocumentClient) | OK DynamoDBSaver
+DynamoDBSaver | client='x' | sync throws ValidationError/VALIDATION field=client
+DynamoDBSaver | client={} (not a DocumentClient) | sync throws ValidationError/VALIDATION field=client.get
 DynamoDBSaver | clientConfig='x' | OK DynamoDBSaver
 DynamoDBSaver | clientConfig=null | OK DynamoDBSaver
 DynamoDBSaver | compression="x" | sync throws ValidationError/VALIDATION field=compression
@@ -312,11 +312,11 @@ DynamoDBSaver | indexShards=1.5 | sync throws ValidationError/VALIDATION field=i
 DynamoDBSaver | indexShards=1000000000000 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBSaver | indexShards=NaN | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBSaver | indexShards=null | sync throws ValidationError/VALIDATION field=indexShards
-DynamoDBSaver | logger="x" | OK DynamoDBSaver
-DynamoDBSaver | logger=null | OK DynamoDBSaver
-DynamoDBSaver | logger={"info":"fn"} | OK DynamoDBSaver
-DynamoDBSaver | logger={"info":1,"warn":1,"error":1,"debug":1} | OK DynamoDBSaver
-DynamoDBSaver | logger={} | OK DynamoDBSaver
+DynamoDBSaver | logger="x" | sync throws ValidationError/VALIDATION field=logger
+DynamoDBSaver | logger=null | sync throws ValidationError/VALIDATION field=logger
+DynamoDBSaver | logger={"info":"fn"} | sync throws ValidationError/VALIDATION field=logger.debug
+DynamoDBSaver | logger={"info":1,"warn":1,"error":1,"debug":1} | sync throws ValidationError/VALIDATION field=logger.debug
+DynamoDBSaver | logger={} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBSaver | options="str" | sync throws ValidationError/VALIDATION field=options
 DynamoDBSaver | options=42 | sync throws ValidationError/VALIDATION field=options
 DynamoDBSaver | options=[] | sync throws ValidationError/VALIDATION field=options
@@ -355,10 +355,10 @@ DynamoDBSaver | s3={"bucketName":"b","thresholdBytes":0} | sync throws Validatio
 DynamoDBSaver | s3={"bucketName":"b","thresholdBytes":1000000000000} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
 DynamoDBSaver | s3={"bucketName":123} | sync throws ValidationError/VALIDATION field=s3.bucketName
 DynamoDBSaver | s3={} | sync throws ValidationError/VALIDATION field=s3.bucketName
-DynamoDBSaver | serde="x" | OK DynamoDBSaver
-DynamoDBSaver | serde=null | OK DynamoDBSaver
-DynamoDBSaver | serde={"dumpsTyped":"fn"} | OK DynamoDBSaver
-DynamoDBSaver | serde={} | OK DynamoDBSaver
+DynamoDBSaver | serde="x" | sync throws ValidationError/VALIDATION field=serde
+DynamoDBSaver | serde=null | sync throws ValidationError/VALIDATION field=serde
+DynamoDBSaver | serde={"dumpsTyped":"fn"} | sync throws ValidationError/VALIDATION field=serde.loadsTyped
+DynamoDBSaver | serde={} | sync throws ValidationError/VALIDATION field=serde.dumpsTyped
 DynamoDBSaver | tableName="" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBSaver | tableName="aaaaaaaaaaaaaaaaaaaa…(len 256)" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBSaver | tableName="ab" | sync throws ValidationError/VALIDATION field=tableName
@@ -530,8 +530,8 @@ DynamoDBSessionChatMessageHistory | new (backend=null, sessionId=1) | OK DynamoD
 DynamoDBSessionChatMessageHistory.addMessages | backend={} (no methods) | BARE TypeError
 DynamoDBSessionChatMessageHistory.getMessages | backend=null | BARE TypeError
 DynamoDBStore | client + clientConfig both | sync throws ValidationError/VALIDATION field=client
-DynamoDBStore | client='x' | OK DynamoDBStore
-DynamoDBStore | client={} (not a DocumentClient) | OK DynamoDBStore
+DynamoDBStore | client='x' | sync throws ValidationError/VALIDATION field=client
+DynamoDBStore | client={} (not a DocumentClient) | sync throws ValidationError/VALIDATION field=client.get
 DynamoDBStore | clientConfig='x' | OK DynamoDBStore
 DynamoDBStore | clientConfig=null | OK DynamoDBStore
 DynamoDBStore | compression="x" | sync throws ValidationError/VALIDATION field=compression
@@ -545,18 +545,18 @@ DynamoDBStore | compression={"enabled":true,"maxDecompressedBytes":0} | sync thr
 DynamoDBStore | compression={"enabled":true,"minSizeBytes":-1} | sync throws ValidationError/VALIDATION field=compression.minSizeBytes
 DynamoDBStore | compression={} | sync throws ValidationError/VALIDATION field=compression.enabled
 DynamoDBStore | foo=1 | sync throws ValidationError/VALIDATION field=options.foo
-DynamoDBStore | index="x" | sync throws ValidationError/VALIDATION field=index
+DynamoDBStore | index="x" | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | index=null | OK DynamoDBStore
-DynamoDBStore | index={"dims":"3"} | sync throws ValidationError/VALIDATION field=index
-DynamoDBStore | index={"dims":0} | sync throws ValidationError/VALIDATION field=index
-DynamoDBStore | index={"dims":3,"embed":"x"} | sync throws ValidationError/VALIDATION field=index
-DynamoDBStore | index={"dims":3,"embed":{"embedQuery":"fn","embedDocuments":"fn"},"fields":" | sync throws ValidationError/VALIDATION field=index
-DynamoDBStore | index={"dims":3,"embed":{"embedQuery":"fn","embedDocuments":"fn"},"fields":[ | sync throws ValidationError/VALIDATION field=index
-DynamoDBStore | index={"dims":3,"embed":{"embedQuery":"fn","embedDocuments":"fn"},"foo":1} | sync throws ValidationError/VALIDATION field=index
-DynamoDBStore | index={"dims":3,"embed":{}} | sync throws ValidationError/VALIDATION field=index
-DynamoDBStore | index={"dims":3} | sync throws ValidationError/VALIDATION field=index
-DynamoDBStore | index={"dims":null} | sync throws ValidationError/VALIDATION field=index
-DynamoDBStore | index={} | sync throws ValidationError/VALIDATION field=index
+DynamoDBStore | index={"dims":"3"} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":0} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":3,"embed":"x"} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":3,"embed":{"embedQuery":"fn","embedDocuments":"fn"},"fields":" | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":3,"embed":{"embedQuery":"fn","embedDocuments":"fn"},"fields":[ | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":3,"embed":{"embedQuery":"fn","embedDocuments":"fn"},"foo":1} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":3,"embed":{}} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":3} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":null} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | indexName="" | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBStore | indexName="idx name" | OK DynamoDBStore
 DynamoDBStore | indexName="idx#1" | OK DynamoDBStore
@@ -570,11 +570,11 @@ DynamoDBStore | indexShards=1.5 | sync throws ValidationError/VALIDATION field=i
 DynamoDBStore | indexShards=1000000000000 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBStore | indexShards=NaN | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBStore | indexShards=null | sync throws ValidationError/VALIDATION field=indexShards
-DynamoDBStore | logger="x" | OK DynamoDBStore
-DynamoDBStore | logger=null | OK DynamoDBStore
-DynamoDBStore | logger={"info":"fn"} | OK DynamoDBStore
-DynamoDBStore | logger={"info":1,"warn":1,"error":1,"debug":1} | OK DynamoDBStore
-DynamoDBStore | logger={} | OK DynamoDBStore
+DynamoDBStore | logger="x" | sync throws ValidationError/VALIDATION field=logger
+DynamoDBStore | logger=null | sync throws ValidationError/VALIDATION field=logger
+DynamoDBStore | logger={"info":"fn"} | sync throws ValidationError/VALIDATION field=logger.debug
+DynamoDBStore | logger={"info":1,"warn":1,"error":1,"debug":1} | sync throws ValidationError/VALIDATION field=logger.debug
+DynamoDBStore | logger={} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBStore | maxScanItems="x" | sync throws ValidationError/VALIDATION field=maxScanItems
 DynamoDBStore | maxScanItems=-1 | sync throws ValidationError/VALIDATION field=maxScanItems
 DynamoDBStore | maxScanItems=0 | sync throws ValidationError/VALIDATION field=maxScanItems
@@ -625,10 +625,10 @@ DynamoDBStore | s3={"bucketName":"b","thresholdBytes":0} | sync throws Validatio
 DynamoDBStore | s3={"bucketName":"b","thresholdBytes":1000000000000} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
 DynamoDBStore | s3={"bucketName":123} | sync throws ValidationError/VALIDATION field=s3.bucketName
 DynamoDBStore | s3={} | sync throws ValidationError/VALIDATION field=s3.bucketName
-DynamoDBStore | serde="x" | OK DynamoDBStore
-DynamoDBStore | serde=null | OK DynamoDBStore
-DynamoDBStore | serde={"dumpsTyped":"fn"} | OK DynamoDBStore
-DynamoDBStore | serde={} | OK DynamoDBStore
+DynamoDBStore | serde="x" | sync throws ValidationError/VALIDATION field=serde
+DynamoDBStore | serde=null | sync throws ValidationError/VALIDATION field=serde
+DynamoDBStore | serde={"dumpsTyped":"fn"} | sync throws ValidationError/VALIDATION field=serde.loadsTyped
+DynamoDBStore | serde={} | sync throws ValidationError/VALIDATION field=serde.dumpsTyped
 DynamoDBStore | tableName="" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBStore | tableName="aaaaaaaaaaaaaaaaaaaa…(len 256)" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBStore | tableName="ab" | sync throws ValidationError/VALIDATION field=tableName
@@ -655,8 +655,8 @@ DynamoDBStore | ttl={"seconds":0.5} | sync throws ValidationError/VALIDATION fie
 DynamoDBStore | ttl={} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBStore | vectorBackend without index (store only) | sync throws ValidationError/VALIDATION field=vectorBackend
 DynamoDBStore | vectorBackend="x" | sync throws ValidationError/VALIDATION field=vectorBackend
-DynamoDBStore | vectorBackend=null | OK DynamoDBStore
-DynamoDBStore | vectorBackend={"upsert":"fn","query":"fn","delete":"fn"} | sync throws ValidationError/VALIDATION field=index
+DynamoDBStore | vectorBackend=null | sync throws ValidationError/VALIDATION field=vectorBackend
+DynamoDBStore | vectorBackend={"upsert":"fn","query":"fn","delete":"fn"} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | vectorBackend={} | sync throws ValidationError/VALIDATION field=vectorBackend
 DynamoDBStore | vectorScoreDirection="" | sync throws ValidationError/VALIDATION field=vectorScoreDirection
 DynamoDBStore | vectorScoreDirection="Distance" | sync throws ValidationError/VALIDATION field=vectorScoreDirection

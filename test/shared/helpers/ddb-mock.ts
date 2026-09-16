@@ -17,6 +17,34 @@ export function createStrictDocumentMock(): {
   return { client, mock };
 }
 
+/**
+ * The eight `DynamoDBDocument` methods this package calls, all stubbed. An
+ * injected `client` double needs every one of them since P2.3's collaborator
+ * check refuses one missing any — spread this into a lighter double (e.g.
+ * `{ send: jest.fn() }`) instead of hand-listing them at each call site.
+ */
+export function fakeClientMethods(): {
+  get: jest.Mock;
+  put: jest.Mock;
+  delete: jest.Mock;
+  update: jest.Mock;
+  query: jest.Mock;
+  scan: jest.Mock;
+  batchWrite: jest.Mock;
+  transactWrite: jest.Mock;
+} {
+  return {
+    get: jest.fn(),
+    put: jest.fn(),
+    delete: jest.fn(),
+    update: jest.fn(),
+    query: jest.fn(),
+    scan: jest.fn(),
+    batchWrite: jest.fn(),
+    transactWrite: jest.fn(),
+  };
+}
+
 /** The middleware-stack surface a client double has to present. */
 export interface FakeMiddlewareStack {
   add: jest.Mock;

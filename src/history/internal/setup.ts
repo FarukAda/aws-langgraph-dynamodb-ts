@@ -15,6 +15,7 @@ import { ValidationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
 import { HISTORY_KEYS } from '../../shared/validation/adapter-keys';
+import { assertBaseCollaborators } from '../../shared/validation/collaborators';
 import { assertShape } from '../../shared/validation/option-shape';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
@@ -82,6 +83,7 @@ export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): Histor
       'onCorruptMessage',
     );
   }
+  assertBaseCollaborators(options);
   const logger = resolveLogger(options.logger);
   const resolved = resolveDynamoDBClient(options);
   if (!resolved.ownsClient) void warnOnStackedRetries(resolved.client, logger);

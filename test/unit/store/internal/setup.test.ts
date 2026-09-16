@@ -4,7 +4,7 @@ import {
   MAX_TOTAL_ITEMS_IN_MEMORY,
 } from '../../../../src/shared/constants';
 import { setUpStore } from '../../../../src/store/internal/setup';
-import { fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
+import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 describe('setUpStore', () => {
   it('rejects an option key this package does not read', () => {
@@ -50,7 +50,7 @@ describe('setUpStore', () => {
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     const setup = setUpStore({
       tableName: 'store',
-      client: { send: jest.fn() } as never,
+      client: fakeClientMethods() as never,
       index: {
         dims: 3,
         embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
@@ -85,7 +85,7 @@ describe('setUpStore', () => {
     };
     const setup = setUpStore({
       tableName: 'store',
-      client: { send: jest.fn() } as never,
+      client: fakeClientMethods() as never,
       compression: { enabled: true },
       ttl: { days: 1 },
       index,
@@ -101,29 +101,90 @@ describe('setUpStore', () => {
   it('defaults the S3 key prefix to an adapter-scoped segment, but honors an explicit override', () => {
     const defaulted = setUpStore({
       tableName: 'store',
-      client: { send: jest.fn() } as never,
+      client: fakeClientMethods() as never,
       s3: { bucketName: 'b' },
     });
     expect(defaulted.context.offloader?.getKeyPrefix()).toBe('langgraph-checkpoints/store/');
 
     const overridden = setUpStore({
       tableName: 'store',
-      client: { send: jest.fn() } as never,
+      client: fakeClientMethods() as never,
       s3: { bucketName: 'b', keyPrefix: 'custom/' },
     });
     expect(overridden.context.offloader?.getKeyPrefix()).toBe('custom/');
   });
 
   it('defaults maxScanItems to the shared in-memory cap, but accepts an override', () => {
-    const defaulted = setUpStore({ tableName: 'store', client: { send: jest.fn() } as never });
+    const defaulted = setUpStore({ tableName: 'store', client: fakeClientMethods() as never });
     expect(defaulted.context.maxScanItems).toBe(MAX_TOTAL_ITEMS_IN_MEMORY);
 
     const overridden = setUpStore({
       tableName: 'store',
-      client: { send: jest.fn() } as never,
+      client: fakeClientMethods() as never,
       maxScanItems: 50_000,
     });
     expect(overridden.context.maxScanItems).toBe(50_000);
+  });
+});
+
+describe('collaborator shape (DDB-09)', () => {
+  it('refuses a raw DynamoDBClient where a DynamoDBDocument is required', () => {
+    const raw = { send: () => undefined };
+    expect(() => setUpStore({ tableName: 'store', client: raw as never })).toThrow(
+      expect.objectContaining({ code: 'VALIDATION', context: { field: 'client.get' } }),
+    );
+  });
+
+  it('refuses a logger missing a level this package calls', () => {
+    expect(() =>
+      setUpStore({
+        tableName: 'store',
+        client: fakeClientMethods() as never,
+        logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'VALIDATION', context: { field: 'logger.debug' } }));
+  });
+
+  it('refuses a serde missing a method this package calls', () => {
+    expect(() =>
+      setUpStore({
+        tableName: 'store',
+        client: fakeClientMethods() as never,
+        serde: { dumpsTyped: async () => ['json', new Uint8Array()] } as never,
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'VALIDATION', context: { field: 'serde.loadsTyped' } }),
+    );
+  });
+
+  it('refuses a vectorBackend missing a method this package calls', () => {
+    expect(() =>
+      setUpStore({
+        tableName: 'store',
+        client: fakeClientMethods() as never,
+        index: {
+          dims: 1,
+          embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
+        },
+        vectorBackend: { upsert: jest.fn(), query: jest.fn() } as never,
+      }),
+    ).toThrow(
+      expect.objectContaining({ code: 'VALIDATION', context: { field: 'vectorBackend.delete' } }),
+    );
+  });
+
+  it('accepts a vectorBackend with no listKeys (Ruling 13)', () => {
+    expect(() =>
+      setUpStore({
+        tableName: 'store',
+        client: fakeClientMethods() as never,
+        index: {
+          dims: 1,
+          embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
+        },
+        vectorBackend: { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() } as never,
+      }),
+    ).not.toThrow();
   });
 });
 
@@ -231,7 +292,7 @@ describe('S3 region inheritance (CODEC-15)', () => {
 
 describe('retry policy (DDB-03)', () => {
   it('resolves the retry policy onto the context, defaulting to five attempts', () => {
-    const client = { send: jest.fn() } as never;
+    const client = fakeClientMethods() as never;
     expect(setUpStore({ tableName: 't123', client }).context.retry?.maxAttempts).toBe(5);
     expect(
       setUpStore({ tableName: 't123', client, retry: { maxAttempts: 2, baseDelayMs: 1 } }).context

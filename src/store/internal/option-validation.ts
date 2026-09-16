@@ -1,8 +1,8 @@
-import type { Embeddings } from '@langchain/core/embeddings';
 import type { IndexConfig } from '@langchain/langgraph-checkpoint';
 
 import { MAX_SCAN_ITEMS, MAX_SEARCH_CANDIDATES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
+import { assertMembers, EMBEDDINGS_MEMBERS } from '../../shared/validation/collaborators';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import { validateInteger } from '../../shared/validation/primitives';
 import type { DynamoDBStoreOptions } from '../types';
@@ -15,23 +15,11 @@ import { VECTOR_SCORE_DIRECTIONS, type VectorScoreDirection } from './score-dire
  * `put()`/`search()` rather than this library's typed error at construction.
  *
  * Both methods are required: documents are embedded with `embedDocuments()`
- * on `put()` and queries with `embedQuery()` on `search()`. `dims` is only
- * compared against returned vectors when it is a positive integer, so a
- * configuration that omits it keeps working.
+ * on `put()` and queries with `embedQuery()` on `search()`.
  */
 function assertUsableIndex(index?: IndexConfig): void {
   if (!index) return;
-  const embeddings: Partial<Embeddings> | undefined = index.embeddings;
-  const missing = (['embedQuery', 'embedDocuments'] as const).find(
-    (method) => typeof embeddings?.[method] !== 'function',
-  );
-  if (missing === undefined) return;
-  throw new ValidationError(
-    `\`index.embeddings\` must be an Embeddings implementation exposing ${missing}(); ` +
-      'documents are embedded with embedDocuments() on put() and queries with embedQuery() ' +
-      'on search()',
-    'index',
-  );
+  assertMembers(index.embeddings, EMBEDDINGS_MEMBERS, 'index.embeddings');
 }
 
 /**
