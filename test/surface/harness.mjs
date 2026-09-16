@@ -57,7 +57,7 @@ const CTOR_CASES = {
   indexName: ['', null, 123, 'x'.repeat(300), 'idx#1', 'idx name'],
   readConcurrency: [0, -1, NaN, 1.5, '8', 1e12, null],
   compression: [null, 'x', {}, { enabled: 'true' }, { enabled: true, level: 10 }, { enabled: true, level: -1 }, { enabled: true, level: 1.5 }, { enabled: true, minSizeBytes: -1 }, { enabled: true, maxDecompressedBytes: 0 }, { enabled: true, foo: 1 }],
-  s3: [null, 'x', {}, { bucketName: '' }, { bucketName: 123 }, { bucketName: 'b', keyPrefix: '' }, { bucketName: 'b', keyPrefix: '/' }, { bucketName: 'b', keyPrefix: 'a' }, { bucketName: 'b', thresholdBytes: 0 }, { bucketName: 'b', thresholdBytes: 1e12 }, { bucketName: 'b', thresholdBytes: '1' }, { bucketName: 'b', maxDownloadBytes: 0 }, { bucketName: 'b', foo: 1 }, { bucketName: 'b', clientConfig: 'x' }, { bucketName: 'b', serverSideEncryption: 5 }],
+  s3: [null, 'x', {}, { bucketName: '' }, { bucketName: 123 }, { bucketName: 'b', keyPrefix: '' }, { bucketName: 'b', keyPrefix: '/' }, { bucketName: 'b', keyPrefix: 'a' }, { bucketName: 'b', thresholdBytes: 0 }, { bucketName: 'b', thresholdBytes: 1e12 }, { bucketName: 'b', thresholdBytes: '1' }, { bucketName: 'b', maxDownloadBytes: 0 }, { bucketName: 'b', foo: 1 }, { bucketName: 'b', clientConfig: 'x' }, { bucketName: 'b', serverSideEncryption: 5 }, { bucketName: 'b', keyPrefix: 123 }, { bucketName: 'b', keyPrefix: null }, { bucketName: 'b', sseKmsKeyId: 123 }],
   logger: [null, 'x', {}, { info() {} }, { info: 1, warn: 1, error: 1, debug: 1 }],
   serde: ['x', {}, null, { dumpsTyped() {} }],
   foo: [1],
@@ -103,7 +103,7 @@ const IDS = [undefined, null, '', 123, 'a#b', 'x'.repeat(2000), 'a\u0000b', 'ab\
 async function fuzzSaver() {
   const saver = new lib.DynamoDBSaver(base());
   const E = 'DynamoDBSaver';
-  for (const cfg of [undefined, null, {}, 'x', { configurable: null }, { configurable: 'x' }, { configurable: {} }]) await tryAsync(E + '.getTuple', `config=${describe(cfg)}`, () => saver.getTuple(cfg));
+  for (const cfg of [undefined, null, {}, 'x', { configurable: null }, { configurable: 'x' }, { configurable: {} }, { configurable: { thread_id: 't' }, signal: {} }]) await tryAsync(E + '.getTuple', `config=${describe(cfg)}`, () => saver.getTuple(cfg));
   for (const v of IDS) await tryAsync(E + '.getTuple', `thread_id=${describe(v)}`, () => saver.getTuple({ configurable: { thread_id: v } }));
   for (const v of [null, 123, 'a#b', '', 'ns\u0000', {}]) await tryAsync(E + '.getTuple', `checkpoint_ns=${describe(v)}`, () => saver.getTuple({ configurable: { thread_id: 't', checkpoint_ns: v } }));
   for (const v of [null, 123, 'a#b', '', {}]) await tryAsync(E + '.getTuple', `checkpoint_id=${describe(v)}`, () => saver.getTuple({ configurable: { thread_id: 't', checkpoint_id: v } }));
@@ -121,7 +121,7 @@ async function fuzzSaver() {
   await tryAsync(E + '.putWrites', 'no checkpoint_id', () => saver.putWrites(okCfg, [['ch', 1]], 'task1'));
   await tryAsync(E + '.putWrites', 'writes=[] (empty)', () => saver.putWrites(wcfg, [], 'task1'));
   for (const v of [null, 'x', 1, { limit: 0 }, { limit: -1 }, { limit: 1.5 }, { limit: NaN }, { limit: '5' }, { limit: 1e12 }, { limit: Infinity }, { before: 'x' }, { before: {} }, { before: { configurable: { checkpoint_id: 'a#b' } } }, { before: { configurable: { checkpoint_id: 123 } } }, { filter: 'x' }, { filter: null }, { filter: [] }, { filter: { a: { $gt: 1 } } }, { foo: 1 }]) await tryIter(E + '.list', `options=${describe(v)}`, () => saver.list({ configurable: { thread_id: 't' } }, v));
-  for (const v of [undefined, null, {}, 'x', { configurable: { thread_id: 'a#b' } }]) await tryIter(E + '.list', `config=${describe(v)}`, () => saver.list(v));
+  for (const v of [undefined, null, {}, 'x', { configurable: { thread_id: 'a#b' } }, { configurable: 'thread-1' }]) await tryIter(E + '.list', `config=${describe(v)}`, () => saver.list(v));
   for (const v of IDS) await tryAsync(E + '.deleteThread', `threadId=${describe(v)}`, () => saver.deleteThread(v));
   for (const v of ['x', { signal: 'x' }, { signal: {} }, { signal: null }, { foo: 1 }, null]) await tryAsync(E + '.deleteThread', `options=${describe(v)}`, () => saver.deleteThread('t', v));
   for (const v of [undefined, null, {}, { config: null }, { config: okCfg }, { config: okCfg, channels: 'x' }, { config: okCfg, channels: [] }, { config: okCfg, channels: [1] }, { config: { configurable: { thread_id: 'a#b' } }, channels: ['c'] }]) await tryAsync(E + '.getDeltaChannelHistory', `options=${describe(v)}`, () => saver.getDeltaChannelHistory(v));
@@ -150,7 +150,7 @@ async function fuzzHistory() {
   const history = new lib.DynamoDBChatMessageHistory(base());
   const E = 'DynamoDBChatMessageHistory';
   for (const v of IDS) await tryAsync(E + '.getMessages', `sessionId=${describe(v)}`, () => history.getMessages(v));
-  for (const v of [null, 'x', 1, { limit: 0 }, { limit: -1 }, { limit: NaN }, { limit: '5' }, { limit: 1.5 }, { limit: 1e12 }, { before: 'x' }, { before: new Date('x') }, { before: 123 }, { before: null }, { before: new Date(-1000) }, { before: new Date(2 ** 50) }, { before: new Date(0) }, { signal: 'x' }, { foo: 1 }]) await tryAsync(E + '.getMessages', `options=${describe(v)}`, () => history.getMessages('s1', v));
+  for (const v of [null, 'x', 1, { limit: 0 }, { limit: -1 }, { limit: NaN }, { limit: '5' }, { limit: 1.5 }, { limit: 1e12 }, { before: 'x' }, { before: new Date('x') }, { before: 123 }, { before: null }, { before: new Date(-1000) }, { before: new Date(2 ** 50) }, { before: new Date(0) }, { signal: 'x' }, { signal: { aborted: false, addEventListener() {} } }, { foo: 1 }]) await tryAsync(E + '.getMessages', `options=${describe(v)}`, () => history.getMessages('s1', v));
   for (const v of [undefined, null, 'x', {}, [null], ['x'], [{ type: 'human', content: 'x' }], [{}], [new HumanMessage('hi'), 5], [new HumanMessage('hi'), null], [1]]) await tryAsync(E + '.addMessages', `messages=${describe(v)}`, () => history.addMessages('s1', v));
   await tryAsync(E + '.addMessages', 'messages=[] (empty)', () => history.addMessages('s1', []));
   for (const v of [null, 'x', {}, 5]) await tryAsync(E + '.addMessage', `message=${describe(v)}`, () => history.addMessage('s1', v));
@@ -178,7 +178,7 @@ function fuzzFactory() {
   for (const v of [undefined, null, 'x', 1, [], { foo: 1 }, { client: docMock(), clientConfig: { region: 'x' } }, { ttl: { days: 0 } }, { retry: 'x' }, { s3: 'x' }, { logger: 'x' }, { tableName: 't' }, { clientConfig: 'x' }]) trySync(E, `base=${describe(v)}`, () => new lib.DynamoDBFactory(v));
   const f = new lib.DynamoDBFactory({ client: docMock() });
   for (const v of [undefined, null, 'x', 1, [], {}, { foo: {} }, { saver: null }, { saver: 'x' }, { saver: [] }, { saver: {} }, { saver: { tableName: 'fuzz-table', client: {} } }, { saver: { tableName: 'fuzz-table', clientConfig: { region: 'x' } } }, { saver: { tableName: 'fuzz-table' }, store: { tableName: 'bad#' } }, { saver: { tableName: 'fuzz-table', foo: 1 } }]) trySync(E + '.createAll', `options=${describe(v)}`, () => { const r = f.createAll(v); r.destroy(); return r; });
-  for (const v of [undefined, null, 'x', {}, { tableName: 'fuzz-table', client: {} }, { tableName: 'fuzz-table', foo: 1 }]) trySync(E + '.createSaver', `options=${describe(v)}`, () => f.createSaver(v));
+  for (const v of [undefined, null, 'x', {}, { tableName: 'fuzz-table', client: {} }, { tableName: 'fuzz-table', foo: 1 }, { tableName: 'fuzz-table', s3: { bucketName: 'b', keyPrefix: 123 } }, { tableName: 'fuzz-table', s3: { bucketName: 'b', keyPrefix: null } }]) trySync(E + '.createSaver', `options=${describe(v)}`, () => f.createSaver(v));
   trySync(E + '.createStore', 'options={} ', () => f.createStore({}));
   trySync(E + '.createChatMessageHistory', "options='x'", () => f.createChatMessageHistory('x'));
   trySync(E + '.createStore', 'options=null', () => f.createStore(null));

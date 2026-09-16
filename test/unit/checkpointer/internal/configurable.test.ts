@@ -1,4 +1,6 @@
 import {
+  assertConfigShape,
+  isAbsentId,
   isThreadless,
   readConfigurable,
   readThreadlessConfigurable,
@@ -102,9 +104,9 @@ describe('readConfigurable falsy checkpoint_id (CKPT-06)', () => {
       readConfigurable({ configurable: { thread_id: 't', thread_ts: 'c7', checkpoint_id: 'c9' } })
         .checkpointId,
     ).toBe('c9');
-    expect(() =>
-      readConfigurable({ configurable: { thread_id: 't', thread_ts: 'a#b' } }),
-    ).toThrow();
+    expect(() => readConfigurable({ configurable: { thread_id: 't', thread_ts: 'a#b' } })).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'thread_ts' } }),
+    );
   });
 });
 
@@ -179,5 +181,44 @@ describe('isThreadless', () => {
         expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'config' } }),
       );
     }
+  });
+});
+
+describe('isAbsentId', () => {
+  it('is true for exactly undefined, null and the empty string', () => {
+    expect([undefined, null, ''].map((value) => isAbsentId(value as never))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect([0, false, Number.NaN, ' ', 'c1'].map((value) => isAbsentId(value as never))).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+});
+
+describe('assertConfigShape', () => {
+  const refusal = (field: string) =>
+    expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field } });
+
+  it('accepts a config with or without configurable and signal', () => {
+    expect(() => assertConfigShape({})).not.toThrow();
+    const signal = new AbortController().signal;
+    expect(() => assertConfigShape({ configurable: { thread_id: 't' }, signal })).not.toThrow();
+  });
+
+  it('names config, then configurable, then signal', () => {
+    expect(() => assertConfigShape(null as never)).toThrow(refusal('config'));
+    expect(() => assertConfigShape({ configurable: 'x', signal: {} } as never)).toThrow(
+      refusal('configurable'),
+    );
+    expect(() => assertConfigShape({ configurable: null } as never)).toThrow(
+      refusal('configurable'),
+    );
+    expect(() => assertConfigShape({ signal: {} } as never)).toThrow(refusal('signal'));
   });
 });

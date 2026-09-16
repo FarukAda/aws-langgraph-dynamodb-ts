@@ -2,12 +2,12 @@ import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb'
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
-import { MAX_KEY_SEGMENT_BYTES } from '../../shared/constants';
 import { SAVER_LIST_KEYS } from '../../shared/validation/method-keys';
 import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
-import { validateIdentifier, validateInteger } from '../../shared/validation/primitives';
+import { validateInteger } from '../../shared/validation/primitives';
 import type { CheckpointMetaItem } from '../types';
 import {
+  isAbsentId,
   isThreadless,
   readConfigurable,
   readThreadlessConfigurable,
@@ -21,10 +21,10 @@ import {
   metaSortKey,
   metaSortKeyPrefix,
   partitionKey,
-  SORT_KEY_SEPARATOR,
 } from './keys';
 import { beginsWithQuery } from './query';
 import type { CheckpointerContext } from './setup';
+import { validateCheckpointId } from './validation';
 
 /** What one `list()` call covers, read once from its config and options. */
 export interface ListScope {
@@ -51,10 +51,11 @@ function resolveListIds(
 
 /**
  * `options.before`'s `checkpoint_id`, validated the way this package's own
- * `configurable.ts` reads the same field off `config`: exactly `undefined`,
- * `null` or `''` means no bound, and anything else — including `0`, `false`
- * or `NaN`, none of which JS truthiness alone would catch — is validated as
- * the sort-key segment it becomes. Checking equality against exactly those
+ * `configurable.ts` reads the same field off `config`, with the same two
+ * rules: {@link isAbsentId} — exactly `undefined`, `null` or `''` means no
+ * bound — and anything else, including `0`, `false` or `NaN`, none of which
+ * JS truthiness alone would catch, is validated by {@link validateCheckpointId}
+ * as the sort-key segment it becomes. Checking equality against exactly those
  * three values, rather than truthiness, is deliberately stricter: a bare
  * truthiness check would treat `0`, `false` and `NaN` as absent instead of
  * validating them.
@@ -85,10 +86,8 @@ function beforeCheckpointId(before: RunnableConfig | undefined): string | undefi
   if (before === undefined) return undefined;
   assertObjectShape(before, 'before');
   const checkpointId = before.configurable?.checkpoint_id;
-  if (checkpointId === undefined || checkpointId === null || checkpointId === '') {
-    return undefined;
-  }
-  validateIdentifier(checkpointId, SORT_KEY_SEPARATOR, 'before', MAX_KEY_SEGMENT_BYTES);
+  if (isAbsentId(checkpointId)) return undefined;
+  validateCheckpointId(checkpointId, 'before');
   return checkpointId;
 }
 
@@ -115,25 +114,27 @@ function assertListOptionsShape(options: CheckpointListOptions | undefined): voi
  *
  * Accepts: `config` — must be an object; `null`, `undefined`, an array or any
  * other non-object value is refused naming `config`, before any property is
- * read off it. `config.configurable` — `thread_id` omitted lists every thread
- * and `checkpoint_ns` omitted every namespace, as the reference savers do;
- * every identifier that *is* given is validated either way. `options.limit` —
+ * read off it. `config.configurable` — absent or an object, refused naming
+ * `configurable` otherwise; `thread_id` omitted lists every thread and
+ * `checkpoint_ns` omitted every namespace, as the reference savers do; every
+ * identifier that *is* given is validated either way. `options.limit` —
  * any integer; `0` and below ask for nothing, which `asksForNothing` answers
  * before a request is built, so they are not refused here. `options.before` —
  * an object naming, at most, a `checkpoint_id`; see {@link beforeCheckpointId}.
  * `options.filter` — metadata equality clauses, applied in process; must be an
- * object when given.
+ * object when given. `config.signal` — absent or `AbortSignal`-shaped.
  *
  * Returns: the scope every later step reads instead of the raw config.
  *
  * Throws: ValidationError for a malformed identifier; naming `config` for a
- * non-object config — checked before `options`, so a call with both malformed
- * (e.g. `list('x', { bogus: 1 })`) names `config`, not `options.bogus`;
- * naming `limit` for a non-integer — which DynamoDB would otherwise refuse
- * with a raw `ValidationException` after the round trip; naming `before` for
- * a non-object `before` or a malformed `checkpoint_id` (H-10); naming
- * `filter` for a non-object filter; naming `options.<key>` for a key this
- * package does not read.
+ * non-object config, `configurable` for a non-object `configurable` and
+ * `signal` for a signal that is not `AbortSignal`-shaped — all checked before
+ * `options`, so a call with both malformed (e.g. `list('x', { bogus: 1 })`)
+ * names `config`, not `options.bogus`; naming `limit` for a non-integer —
+ * which DynamoDB would otherwise refuse with a raw `ValidationException` after
+ * the round trip; naming `before` for a non-object `before` or a malformed
+ * `checkpoint_id` (H-10); naming `filter` for a non-object filter; naming
+ * `options.<key>` for a key this package does not read.
  */
 export function readListScope(config: RunnableConfig, options?: CheckpointListOptions): ListScope {
   const { threadId, checkpointNs, checkpointId } = resolveListIds(config);

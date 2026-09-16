@@ -179,4 +179,26 @@ describe('createAll leaves a malformed shared s3 for the adapter to refuse', () 
       expectRefused(() => f.createAll({ saver: { tableName: 'tbl' } }), 's3.clientConfig');
     }
   });
+
+  /** A non-string prefix reached `keyPrefix.endsWith` and escaped as a bare `TypeError`. */
+  it.each([123, null])(
+    'names s3.keyPrefix for a shared prefix of %p, on every route',
+    (keyPrefix) => {
+      const f = new DynamoDBFactory({
+        client: createStrictDocumentMock().client,
+        s3: { bucketName: 'b', keyPrefix } as never,
+      });
+      expectRefused(() => f.createAll({ saver: { tableName: 'tbl' } }), 's3.keyPrefix');
+      expectRefused(() => f.createSaver({ tableName: 'tbl' }), 's3.keyPrefix');
+    },
+  );
+
+  it('builds an adapter from a shared s3 with a scoped key prefix', () => {
+    const f = new DynamoDBFactory({
+      client: createStrictDocumentMock().client,
+      s3: { bucketName: 'b', keyPrefix: 'langgraph/' },
+    });
+    f.createAll({ saver: { tableName: 'tbl' } }).destroy();
+    expect(f.createSaver({ tableName: 'tbl' })).toBeInstanceOf(DynamoDBSaver);
+  });
 });

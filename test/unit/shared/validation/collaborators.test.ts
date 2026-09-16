@@ -1,5 +1,6 @@
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
+  ABORT_SIGNAL_MEMBERS,
   assertBaseCollaborators,
   assertMembers,
   assertSignalLike,
@@ -32,6 +33,13 @@ describe('assertMembers', () => {
   it('refuses null, naming the field alone', () => {
     expect(() => assertMembers(null as never, ['a'], 'thing')).toThrow(
       expect.objectContaining({ context: { field: 'thing' } }),
+    );
+  });
+
+  /** An array is no collaborator: it was reported as missing its first member (`thing.a`). */
+  it('refuses an array, naming the field alone', () => {
+    expect(() => assertMembers([] as never, ['a'], 'thing')).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'thing' } }),
     );
   });
 
@@ -128,9 +136,28 @@ describe('isAbortSignalLike', () => {
     expect(isAbortSignalLike({ aborted: false, addEventListener: 1 } as never)).toBe(false);
   });
 
+  /** The wait between retries removes its listener; a signal that cannot is not usable. */
+  it('is false when removeEventListener is missing or not callable', () => {
+    const add = () => {};
+    expect(isAbortSignalLike({ aborted: false, addEventListener: add } as never)).toBe(false);
+    expect(
+      isAbortSignalLike({ aborted: false, addEventListener: add, removeEventListener: 1 } as never),
+    ).toBe(false);
+  });
+
   it('is true for a real AbortSignal, and for a structurally equivalent double', () => {
     expect(isAbortSignalLike(new AbortController().signal)).toBe(true);
-    expect(isAbortSignalLike({ aborted: false, addEventListener: () => {} } as never)).toBe(true);
+    const double = { aborted: false, addEventListener: () => {}, removeEventListener: () => {} };
+    expect(isAbortSignalLike(double as never)).toBe(true);
+  });
+
+  /** Every member the package touches on a signal, checked against `backoff.ts` and `retry.ts`. */
+  it('checks exactly the members this package uses, by the type each must have', () => {
+    expect(ABORT_SIGNAL_MEMBERS).toEqual({
+      aborted: 'boolean',
+      addEventListener: 'function',
+      removeEventListener: 'function',
+    });
   });
 });
 

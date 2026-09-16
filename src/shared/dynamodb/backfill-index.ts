@@ -5,8 +5,18 @@ import { decodeScanCursor, encodeScanCursor, indexTargetOf } from './backfill-ta
 import type { BackfillOptions, BackfillResult } from './backfill-types';
 import { validateBackfillOptions } from './backfill-validation';
 import { DEFAULT_INDEX_SHARDS, indexKeys } from './index-keys';
-import { withDynamoDBRetry } from './retry';
+import { type RetryOptions, withDynamoDBRetry } from './retry';
 import type { DocItem } from './types';
+
+/**
+ * The retry policy every request of one run uses: the caller's `retry`, with
+ * the signal that cancels the run. That is the top-level `signal` when one is
+ * given and `retry.signal` otherwise — the top-level one is the caller's handle
+ * on the whole operation, so it wins when both are set.
+ */
+function runRetry(options: BackfillOptions): RetryOptions {
+  return { ...options.retry, signal: options.signal ?? options.retry?.signal };
+}
 
 /** Write one row's index keys; false when the row is not one a listing reaches. */
 async function indexRow(options: BackfillOptions, row: DocItem, shards: number): Promise<boolean> {
@@ -29,7 +39,7 @@ async function indexRow(options: BackfillOptions, row: DocItem, shards: number):
          */
         ConditionExpression: 'attribute_not_exists(#gpk)',
       }),
-    { ...options.retry, signal: options.signal },
+    runRetry(options),
   );
   return true;
 }
@@ -50,7 +60,7 @@ async function backfillPage(
         FilterExpression: 'attribute_not_exists(#gpk)',
         ExpressionAttributeNames: { '#gpk': 'gsi1pk' },
       }),
-    { ...options.retry, signal: options.signal },
+    runRetry(options),
   );
   const rows = (result.Items ?? []) as DocItem[];
   const written = await mapWithConcurrency(rows, DEFAULT_READ_CONCURRENCY, (row) =>
@@ -94,10 +104,11 @@ async function backfillPage(
  *
  * Throws: ValidationError naming the offending option, before any DynamoDB
  * call; RetryExhaustedError once a transient failure has used every attempt;
- * AbortError when `signal` fires; UpstreamError wrapping any other error the
- * scan or the writes throw — this is the function's own error boundary, the
- * same as every adapter's public methods, so a caller's mistake never escapes
- * as a bare exception.
+ * AbortError when `signal` fires, or `retry.signal` when no top-level `signal`
+ * is given; UpstreamError wrapping any other error the scan or the writes
+ * throw — this is the function's own error boundary, the same as every
+ * adapter's public methods, so a caller's mistake never escapes as a bare
+ * exception.
  *
  * Guarantees: every write is conditional on the row having no keys yet, so
  * re-running is safe, running against a live table is safe, and a row a live

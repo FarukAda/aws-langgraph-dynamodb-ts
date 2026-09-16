@@ -34,7 +34,7 @@ function assertUpstreamPutNamespace(namespace: string[]): void {
   if (namespace[0] === RESERVED_ROOT) {
     throw new ValidationError(
       `namespace must not start with "${RESERVED_ROOT}", the root label LangGraph reserves`,
-      'namespace element',
+      'namespace',
     );
   }
 }

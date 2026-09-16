@@ -53,9 +53,9 @@ const BACKFILL_RETRY_KEYS = allKeysOf<RetryOptions>({
  * drift apart on what a legal value is. `retryableErrors`, when given, must be
  * an array of strings. `isRetryable`, `onRetry` and `rng`, when given, must
  * each be a function. `signal` is checked the same way the top-level
- * `options.signal` is — which always overrides it at the call site, since the
- * caller's own signal is meant to cancel the whole operation, not just one
- * retry loop's wait.
+ * `options.signal` is. Either one cancels the run; when both are given the
+ * top-level one wins, since the caller's own signal is meant to cancel the
+ * whole operation.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
@@ -106,11 +106,12 @@ function validatePositiveBound(value: number | undefined, field: string, max?: n
  * Accepts: `options` — must be an object naming only the nine keys
  * {@link BackfillOptions} declares. `tableName` and `client` are required, the
  * rest optional; each, when given, follows the same rule an adapter's own
- * option of the same name does — `indexShards` reuses the adapters'
- * `tableName` validator and shard cap outright, and `retry` shares its
- * numeric bounds with the adapters' own `retry` validator while accepting the
- * wider surface backfill's `RetryOptions` needs, so a mismatch between
- * backfill and the adapters it feeds cannot drift in on what a bound means.
+ * option of the same name does. `tableName` reuses the adapters' own
+ * `tableName` validator outright; `indexShards` is held to the adapters'
+ * shard cap, `MAX_INDEX_SHARDS`; and `retry` shares its numeric bounds with
+ * the adapters' own `retry` validator while accepting the wider surface
+ * backfill's `RetryOptions` needs, so a mismatch between backfill and the
+ * adapters it feeds cannot drift in on what a bound means.
  *
  * Returns: nothing; validity is the absence of a throw.
  *

@@ -264,3 +264,32 @@ describe('through AsyncBatchedStore, as a running graph uses the store', () => {
     expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
   });
 });
+
+/**
+ * `null` paging was checked as `0` and then read as its default, so `limit:
+ * null` returned ten items, where every other numeric option refuses `null`.
+ */
+describe('search paging given as null', () => {
+  it.each(['offset', 'limit'])(
+    'refuses %s: null on search and on a batch search',
+    async (field) => {
+      const { store, mock } = storeWithMock();
+      await expect(store.search(['ns'], { [field]: null } as never)).rejects.toMatchObject(
+        refusal(field),
+      );
+      await expect(
+        store.batch([{ namespacePrefix: ['ns'], [field]: null } as never]),
+      ).rejects.toMatchObject(refusal(field));
+      expect(mock.calls()).toHaveLength(0);
+    },
+  );
+
+  it('pages with limit: 5 and offset: 0 on both routes', async () => {
+    const { store, mock } = storeWithMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    await expect(store.search(['ns'], { limit: 5, offset: 0 })).resolves.toEqual([]);
+    await expect(store.batch([{ namespacePrefix: ['ns'], limit: 5, offset: 0 }])).resolves.toEqual([
+      [],
+    ]);
+  });
+});

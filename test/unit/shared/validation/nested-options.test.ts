@@ -104,6 +104,39 @@ describe.each(ADAPTERS)('%s nested options', (_name, Adapter) => {
     const clientConfig = { region: 'eu-west-1', maxAttempts: 2, forcePathStyle: true };
     expect(injected({ s3: { bucketName: 'b', clientConfig } })).not.toThrow();
   });
+
+  /** A non-string prefix reached `keyPrefix.endsWith` and escaped as a bare `TypeError`. */
+  it.each([123, null, true, {}])('refuses s3.keyPrefix %p, naming it', (keyPrefix) => {
+    expectRefused(injected({ s3: { bucketName: 'b', keyPrefix } }), 's3.keyPrefix');
+  });
+
+  /** A non-string id was handed to `PutObject` unchecked at the first offload. */
+  it.each([123, null, '', ' '])('refuses s3.sseKmsKeyId %p, naming it', (sseKmsKeyId) => {
+    expectRefused(injected({ s3: { bucketName: 'b', sseKmsKeyId } }), 's3.sseKmsKeyId');
+  });
+
+  it.each(['x', 1, null])('refuses s3.createS3Client %p, naming it', (createS3Client) => {
+    expectRefused(injected({ s3: { bucketName: 'b', createS3Client } }), 's3.createS3Client');
+  });
+
+  it('accepts a scoped key prefix beside a KMS key id', () => {
+    const s3 = {
+      bucketName: 'b',
+      keyPrefix: 'langgraph/',
+      serverSideEncryption: 'aws:kms',
+      sseKmsKeyId: '1234abcd-12ab-34cd-56ef-1234567890ab',
+    };
+    expect(injected({ s3 })).not.toThrow();
+  });
+
+  it.each([
+    ['client', createStrictDocumentMock().client],
+    ['logger', { debug() {}, info() {}, warn() {}, error() {} }],
+    ['serde', { dumpsTyped() {}, loadsTyped() {} }],
+  ])('refuses an array for %s, naming it rather than its first method', (field, valid) => {
+    expectRefused(built({ [field]: [] }), field);
+    expect(built({ [field]: valid })).not.toThrow();
+  });
 });
 
 describe('DynamoDBStore index option', () => {

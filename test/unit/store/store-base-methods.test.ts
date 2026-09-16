@@ -36,8 +36,8 @@ const row = (namespace: string[]) => ({
  * otherwise hide the removal of the check under test.
  */
 const REFUSED: [string, Call, string][] = [
-  ['put under the reserved root', (s) => s.put(['langgraph'], 'k', {}), 'namespace element'],
-  ['put below the reserved root', (s) => s.put(['langgraph', 'x'], 'k', {}), 'namespace element'],
+  ['put under the reserved root', (s) => s.put(['langgraph'], 'k', {}), 'namespace'],
+  ['put below the reserved root', (s) => s.put(['langgraph', 'x'], 'k', {}), 'namespace'],
   ['put with "." in a label', (s) => s.put(['users', 'a.b'], 'k', {}), 'namespace element'],
   ['put: namespace before value', (s) => s.put(['a#b'], 'k', null as never), 'namespace element'],
   ['put: key before value', (s) => s.put(['ns'], '', 1 as never), 'key'],

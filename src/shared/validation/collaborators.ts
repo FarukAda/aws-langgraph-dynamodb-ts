@@ -1,4 +1,5 @@
 import { ValidationError } from '../errors/errors';
+import { isObjectShape } from './option-shape';
 
 /** The `DynamoDBDocument` methods this package calls on an injected `client`. */
 export const CLIENT_MEMBERS: readonly string[] = [
@@ -31,6 +32,19 @@ export const EMBEDDINGS_MEMBERS: readonly string[] = ['embedQuery', 'embedDocume
 export const VECTOR_BACKEND_MEMBERS: readonly string[] = ['upsert', 'query', 'delete'];
 
 /**
+ * Every `AbortSignal` member this package uses on a caller's `signal`, with
+ * the `typeof` each must have: `aborted` is read before a request and between
+ * pages, and the wait between retries attaches an abort listener and removes
+ * it again from inside its timer. `reason` is only read, which is safe on any
+ * object, so it is not required.
+ */
+export const ABORT_SIGNAL_MEMBERS: Readonly<Record<string, 'boolean' | 'function'>> = {
+  aborted: 'boolean',
+  addEventListener: 'function',
+  removeEventListener: 'function',
+};
+
+/**
  * Refuse a collaborator missing a method this package calls.
  *
  * Checked by shape, never `instanceof`: the rule is banned repo-wide, and a
@@ -42,12 +56,15 @@ export const VECTOR_BACKEND_MEMBERS: readonly string[] = ['upsert', 'query', 'de
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field` for a non-object, and `field.member`
- * for the first missing method — naming which member is missing is what turns
- * a first-request crash into a startup error a caller can act on.
+ * Throws: ValidationError naming `field` for a non-object, `null` or an array,
+ * and `field.member` for the first missing method — naming which member is
+ * missing is what turns a first-request crash into a startup error a caller
+ * can act on. An array is refused as a whole rather than reported as missing
+ * its first method, which would point the caller at a method instead of at
+ * the value.
  */
 export function assertMembers(value: object, members: readonly string[], field: string): void {
-  if (typeof value !== 'object' || value === null) {
+  if (!isObjectShape(value)) {
     throw new ValidationError(`${field} must be an object`, field);
   }
   for (const member of members) {
@@ -92,18 +109,16 @@ export function assertBaseCollaborators(options: {
  *
  * Accepts: `value` — the caller's `signal`, or `undefined`.
  *
- * Returns: `true` when `value` is a non-null object exposing a boolean
- * `aborted` and a callable `addEventListener` — `false` otherwise, including
- * for `undefined`.
+ * Returns: `true` when `value` is a non-null object whose every member in
+ * {@link ABORT_SIGNAL_MEMBERS} has the type listed there — `false` otherwise,
+ * including for `undefined`.
  *
  * Throws: nothing.
  */
 export function isAbortSignalLike(value: AbortSignal | undefined): boolean {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof value.aborted === 'boolean' &&
-    typeof value.addEventListener === 'function'
+  if (typeof value !== 'object' || value === null) return false;
+  return Object.entries(ABORT_SIGNAL_MEMBERS).every(
+    ([member, type]) => typeof Reflect.get(value, member) === type,
   );
 }
 
@@ -120,8 +135,10 @@ export function isAbortSignalLike(value: AbortSignal | undefined): boolean {
  *
  * Throws: ValidationError naming `field`. Left unchecked, a value that is not
  * an `AbortSignal` reaches whatever this package hands it to — an
- * `addEventListener` call, a retry loop reading `.aborted` — and fails there
- * with a raw, unrelated error instead of naming the option that caused it.
+ * `addEventListener` call, a retry loop reading `.aborted`, a
+ * `removeEventListener` call from inside a timer, where nothing can catch it —
+ * and fails there with a raw, unrelated error instead of naming the option
+ * that caused it.
  */
 export function assertSignalLike(value: AbortSignal | undefined, field = 'signal'): void {
   if (value !== undefined && !isAbortSignalLike(value)) {

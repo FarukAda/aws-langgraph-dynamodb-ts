@@ -169,6 +169,28 @@ describe('cancellation via { signal } (CORE-04)', () => {
     await expectAborted(h.reconcileMessageCount('s1', options));
     expect(mock.calls()).toHaveLength(0);
   });
+
+  /**
+   * The wait between retries calls `removeEventListener` from inside its
+   * timer. A signal lacking it passed the old shape check, so one throttled
+   * read threw from that timer, an uncaught exception, and the call never
+   * settled.
+   */
+  it('refuses a signal without removeEventListener before any request, naming signal', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.rejects(Object.assign(new Error('throttled'), { name: 'ThrottlingException' }));
+    const h = new DynamoDBChatMessageHistory({
+      tableName: 'history',
+      client,
+      retry: { maxAttempts: 2 },
+    });
+    const signal = { aborted: false, addEventListener: () => {} } as never;
+    await expect(h.getMessages('s1', { signal })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'signal' },
+    });
+    expect(mock.calls()).toHaveLength(0);
+  });
 });
 
 describe('options shape (M-08)', () => {

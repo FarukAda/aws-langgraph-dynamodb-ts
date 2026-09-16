@@ -70,11 +70,40 @@ export function validateCompression(config: CompressionConfig): void {
 }
 
 /**
+ * Validate the two `s3` options `PutObject` receives as they were given.
+ *
+ * Accepts: `config.serverSideEncryption` — absent, or an algorithm S3 accepts.
+ * `config.sseKmsKeyId` — absent, or a non-empty string. Only its type is
+ * checked; whether it names a real key, by id or by ARN, is for S3 to answer.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `s3.serverSideEncryption` or
+ * `s3.sseKmsKeyId`. A key id that is not a string was handed to `PutObject`
+ * unchecked, at the first offload.
+ */
+function validateS3Encryption(config: S3OffloadConfig): void {
+  if (
+    config.serverSideEncryption !== undefined &&
+    !SSE_ALGORITHMS.includes(config.serverSideEncryption)
+  ) {
+    throw new ValidationError(
+      `s3.serverSideEncryption must be one of ${SSE_ALGORITHMS.join(', ')}`,
+      's3.serverSideEncryption',
+    );
+  }
+  if (config.sseKmsKeyId !== undefined) {
+    validateNonEmptyString(config.sseKmsKeyId, 's3.sseKmsKeyId');
+  }
+}
+
+/**
  * Validate an `s3` offload config, honoring its allowed key set.
  *
  * Accepts: `config` — an object naming only {@link S3OffloadConfig}'s keys.
  * `config.clientConfig`, when given, must be an object that is neither `null`
- * nor an array; its own keys are not checked.
+ * nor an array; its own keys are not checked. `config.createS3Client`, when
+ * given, must be a function.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
@@ -103,13 +132,12 @@ export function validateS3(config: S3OffloadConfig): void {
       max: MAX_PAYLOAD_BUFFER_BYTES,
     });
   }
-  if (
-    config.serverSideEncryption !== undefined &&
-    !SSE_ALGORITHMS.includes(config.serverSideEncryption)
-  ) {
-    throw new ValidationError(
-      `s3.serverSideEncryption must be one of ${SSE_ALGORITHMS.join(', ')}`,
-      's3.serverSideEncryption',
-    );
+  validateS3Encryption(config);
+  /**
+   * Called to build the S3 client at the first offload, where a value that is
+   * not a function threw a bare `TypeError`.
+   */
+  if (config.createS3Client !== undefined && typeof config.createS3Client !== 'function') {
+    throw new ValidationError('s3.createS3Client must be a function', 's3.createS3Client');
   }
 }

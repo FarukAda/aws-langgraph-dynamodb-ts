@@ -42,6 +42,8 @@ export function assertSearchPrefix(namespacePrefix: string[]): void {
  * Accepts: `op.namespacePrefix` — as {@link assertSearchPrefix}. `op.filter` —
  * absent or an object. `op.query` — absent or a string. `op.offset` and
  * `op.limit` — absent, which takes a valid default, or non-negative integers.
+ * `null` is not absent: it was checked as `0` and then read as the default,
+ * so `limit: null` returned a default page instead of naming the value.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
@@ -54,7 +56,7 @@ export function assertSearchOperation(op: SearchOperation): void {
   if (op.query !== undefined && typeof op.query !== 'string') {
     throw new ValidationError('query must be a string', 'query');
   }
-  validatePaging(op.offset ?? 0, op.limit ?? 0);
+  validatePaging(op.offset === undefined ? 0 : op.offset, op.limit === undefined ? 0 : op.limit);
 }
 
 /** One condition: an object of a known match type, whose path names the field after that type. */

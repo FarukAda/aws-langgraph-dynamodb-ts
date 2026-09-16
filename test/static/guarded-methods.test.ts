@@ -123,12 +123,13 @@ describe('unguardedMethodsIn: wrapped guard calls', () => {
 });
 
 describe('unguardedMethodsIn: guard identity, not name alone', () => {
+  /** The decoy is reported too: a function with no declared return type cannot be proven synchronous. */
   it('refuses a local decoy function named guardPublic, imported from nowhere', () => {
     const source = `function guardPublic(op: string, fn: () => Promise<void>) { return fn(); }
     export class A {
       async run(): Promise<void> { return guardPublic('A.run', async () => {}); }
     }`;
-    expect(unguardedMethodsIn(source).map((g) => g.name)).toEqual(['A.run']);
+    expect(unguardedMethodsIn(source).map((g) => g.name)).toEqual(['guardPublic', 'A.run']);
   });
 
   it('accepts an aliased import of guardPublic', () => {
@@ -231,5 +232,65 @@ describe('unguardedMethodsIn: getters', () => {
   it('exempts a private getter regardless of its body', () => {
     const source = `${IMPORT}export class A { private get value(): Promise<number> { return this.load(); } }`;
     expect(unguardedMethodsIn(source)).toEqual([]);
+  });
+});
+
+describe('unguardedMethodsIn: asynchronous return types', () => {
+  it.each(['PromiseLike<void>', 'AsyncIterable<string>', 'AsyncIterableIterator<string>'])(
+    'rejects an unguarded non-async method returning %s',
+    (type) => {
+      const source = `${IMPORT}export class A { list(): ${type} { return source(); } }`;
+      expect(unguardedMethodsIn(source).map((g) => g.name)).toEqual(['A.list']);
+    },
+  );
+
+  it.each(['PromiseLike<number>', 'AsyncIterable<number>'])(
+    'rejects an unguarded getter returning %s',
+    (type) => {
+      const source = `${IMPORT}export class A { get value(): ${type} { return this.load(); } }`;
+      expect(unguardedMethodsIn(source).map((g) => g.name)).toEqual(['A.value']);
+    },
+  );
+
+  /** The documented limit: the annotation's text is read, never the type an alias resolves to. */
+  it('does not see through a type alias of a promise on a method that is not async', () => {
+    const source = `${IMPORT}type Pending = Promise<void>;
+    export class A { run(): Pending { return doWork(); } }`;
+    expect(unguardedMethodsIn(source)).toEqual([]);
+  });
+});
+
+describe('unguardedMethodsIn: top-level functions', () => {
+  it('accepts a function declaration whose body is a single guarded return', () => {
+    const source = `${IMPORT}export async function run(): Promise<void> {
+      return guardPublic('run', async () => {});
+    }`;
+    expect(unguardedMethodsIn(source)).toEqual([]);
+  });
+
+  it('rejects an async function declaration with a statement before the guard', () => {
+    const source = `${IMPORT}export async function run(): Promise<void> {
+      check();
+      return guardPublic('run', async () => {});
+    }`;
+    expect(unguardedMethodsIn(source).map((g) => g.name)).toEqual(['run']);
+  });
+
+  it('rejects a function with no return type, and skips its bodyless overloads', () => {
+    const source = `${IMPORT}export function run(x: string): Promise<void>;
+    export function run(x: string) { return doWork(x); }`;
+    expect(unguardedMethodsIn(source).map((g) => g.name)).toEqual(['run']);
+  });
+
+  it('does not require a guard from a synchronous function', () => {
+    const source = `${IMPORT}export function count(): number { return 1; }`;
+    expect(unguardedMethodsIn(source)).toEqual([]);
+  });
+
+  it('holds a variable initialised with a function to the same rule, and ignores other values', () => {
+    const source = `${IMPORT}export const load = async () => doWork(),
+      safe = async () => guardPublic('safe', async () => {}),
+      limit = 3;`;
+    expect(unguardedMethodsIn(source).map((g) => g.name)).toEqual(['load']);
   });
 });

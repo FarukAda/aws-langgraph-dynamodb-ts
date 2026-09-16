@@ -1,4 +1,4 @@
-import { planReferences, planReferencesIn } from './guards/plan-references';
+import { handEditedDocFiles, planReferences, planReferencesIn } from './guards/plan-references';
 
 describe('planReferencesIn', () => {
   it('flags a Ruling followed by a number', () => {
@@ -111,5 +111,23 @@ describe('planReferencesIn', () => {
 describe('planReferences', () => {
   it('finds no plan-process reference across the real tree', () => {
     expect(planReferences()).toEqual([]);
+  });
+});
+
+describe('handEditedDocFiles', () => {
+  it('lists the hand-edited docs, the root configs and .github, never the generated docs', () => {
+    const files = handEditedDocFiles();
+    expect(files).toEqual(
+      expect.arrayContaining([
+        'README.md',
+        'CHANGELOG.md',
+        'CONTRIBUTING.md',
+        'jest.config.ts',
+        'eslint.config.ts',
+        '.github/CODEOWNERS',
+        '.github/workflows/ci.yml',
+      ]),
+    );
+    expect(files.filter((file) => file.startsWith('docs/'))).toEqual([]);
   });
 });

@@ -2,7 +2,11 @@ import { posix } from 'node:path';
 
 import ts from 'typescript';
 
-/** One public member whose body does not take the required guard shape. */
+/**
+ * One public member, or one function, whose body does not take the required
+ * guard shape. `name` is `Class.member` for a class member and the function's
+ * own name for a function.
+ */
 export interface UnguardedMethod {
   file: string;
   name: string;
@@ -15,6 +19,19 @@ export interface UnguardedMethod {
  */
 const BOUNDARY_MODULE = 'shared/errors/boundary';
 
+/**
+ * The declared return types that mark a member or a function as asynchronous:
+ * a promise, or any of the async iterations a caller consumes with
+ * `for await`. Matched as a prefix of the annotation's text.
+ */
+const ASYNC_RETURN_PREFIXES: readonly string[] = [
+  'Promise<',
+  'PromiseLike<',
+  'AsyncGenerator<',
+  'AsyncIterable<',
+  'AsyncIterableIterator<',
+];
+
 /** True when any modifier in `modifiers` is `kind`. */
 function hasModifier(
   modifiers: readonly ts.ModifierLike[] | undefined,
@@ -26,6 +43,12 @@ function hasModifier(
 /** True for a `private` member. */
 function isPrivate(modifiers: readonly ts.ModifierLike[] | undefined): boolean {
   return hasModifier(modifiers, ts.SyntaxKind.PrivateKeyword);
+}
+
+/** True when the annotation `type` begins with one of {@link ASYNC_RETURN_PREFIXES}. */
+function declaresAsyncReturn(type: ts.TypeNode): boolean {
+  const typeText = type.getText();
+  return ASYNC_RETURN_PREFIXES.some((prefix) => typeText.startsWith(prefix));
 }
 
 /**
@@ -104,11 +127,19 @@ function isGuardedBlock(block: ts.Block, guardNames: ReadonlySet<string>): boole
 }
 
 /**
- * True when a member carrying `modifiers` and declared return type `type`
- * must take the guard shape: it is `async`, its return type begins
- * `Promise<` or `AsyncGenerator<`, or it declares no return type at all while
- * not being `async` — a shape this syntactic check cannot otherwise prove
- * synchronous, so it is held to the same standard rather than let through.
+ * True when a member or a function carrying `modifiers` and declared return
+ * type `type` must take the guard shape: it is `async`, its return type begins
+ * with one of {@link ASYNC_RETURN_PREFIXES}, or it declares no return type at
+ * all while not being `async` — a shape this syntactic check cannot otherwise
+ * prove synchronous, so it is held to the same standard rather than let
+ * through.
+ *
+ * Known limit: the check reads the annotation's text, not the type it
+ * resolves to. A return type written through an alias of a promise
+ * (`type Pending = Promise<void>`, then `run(): Pending`) is not recognised,
+ * so a member or function declared that way is held to the rule only when it
+ * is also `async`. Seeing through the alias needs the type checker, which this
+ * guard does not run.
  */
 function needsGuardShape(
   modifiers: readonly ts.ModifierLike[] | undefined,
@@ -116,8 +147,7 @@ function needsGuardShape(
 ): boolean {
   if (hasModifier(modifiers, ts.SyntaxKind.AsyncKeyword)) return true;
   if (type === undefined) return true;
-  const typeText = type.getText();
-  return typeText.startsWith('Promise<') || typeText.startsWith('AsyncGenerator<');
+  return declaresAsyncReturn(type);
 }
 
 /** The gap a method leaves, or `undefined`. A bodyless overload signature is skipped. */
@@ -132,31 +162,39 @@ function methodGap(
 }
 
 /**
- * The gap a class field leaves, or `undefined`. Only a field initialised with
- * an arrow function or a function expression is in scope, and the trigger is
- * that function's own modifiers and return type, never the field's. A
- * concise arrow body must *be* the guard call; a block body follows the same
- * single-return rule as a method.
+ * True when a function held in a value — a class field's or a variable's
+ * initialiser — leaves a gap. Only an arrow function or a function expression
+ * is in scope, and the trigger is that function's own modifiers and return
+ * type, never the holder's. A concise arrow body must *be* the guard call; a
+ * block body follows the same single-return rule as a method.
  */
+function initializerGap(
+  initializer: ts.Expression | undefined,
+  guardNames: ReadonlySet<string>,
+): boolean {
+  if (initializer === undefined) return false;
+  if (!ts.isArrowFunction(initializer) && !ts.isFunctionExpression(initializer)) return false;
+  if (!needsGuardShape(ts.getModifiers(initializer), initializer.type)) return false;
+  const guarded = ts.isBlock(initializer.body)
+    ? isGuardedBlock(initializer.body, guardNames)
+    : isGuardCall(initializer.body, guardNames);
+  return !guarded;
+}
+
+/** The gap a class field leaves, or `undefined`; see {@link initializerGap}. */
 function propertyGap(
   member: ts.PropertyDeclaration,
   guardNames: ReadonlySet<string>,
 ): string | undefined {
-  if (member.name === undefined || member.initializer === undefined) return undefined;
-  if (isPrivate(ts.getModifiers(member))) return undefined;
-  const fn = member.initializer;
-  if (!ts.isArrowFunction(fn) && !ts.isFunctionExpression(fn)) return undefined;
-  if (!needsGuardShape(ts.getModifiers(fn), fn.type)) return undefined;
-  const guarded = ts.isBlock(fn.body)
-    ? isGuardedBlock(fn.body, guardNames)
-    : isGuardCall(fn.body, guardNames);
-  return guarded ? undefined : member.name.getText();
+  if (member.name === undefined || isPrivate(ts.getModifiers(member))) return undefined;
+  return initializerGap(member.initializer, guardNames) ? member.name.getText() : undefined;
 }
 
 /**
  * The gap a getter leaves, or `undefined`. A getter cannot carry `async`, so
- * it is swept into scope only when it declares a `Promise`/`AsyncGenerator`
- * return type itself — an ordinary getter with no such type is left alone.
+ * it is swept into scope only when it declares one of the
+ * {@link ASYNC_RETURN_PREFIXES} return types itself — an ordinary getter with
+ * no such type is left alone.
  */
 function getterGap(
   member: ts.GetAccessorDeclaration,
@@ -165,8 +203,7 @@ function getterGap(
   if (member.name === undefined || member.body === undefined || member.type === undefined)
     return undefined;
   if (isPrivate(ts.getModifiers(member))) return undefined;
-  const typeText = member.type.getText();
-  if (!typeText.startsWith('Promise<') && !typeText.startsWith('AsyncGenerator<')) return undefined;
+  if (!declaresAsyncReturn(member.type)) return undefined;
   return isGuardedBlock(member.body, guardNames) ? undefined : member.name.getText();
 }
 
@@ -179,16 +216,36 @@ function memberGap(member: ts.ClassElement, guardNames: ReadonlySet<string>): st
 }
 
 /**
- * The members of every class declared in `source` that must take the guard
- * shape and do not. `source` is treated as already in scope — deciding which
- * classes belong on the public API happens before a file reaches here; see
- * `public-classes.ts`.
+ * The top-level functions one statement declares that must take the guard
+ * shape and do not: a function declaration with a body — an overload
+ * signature has none — or each variable the statement initialises with a
+ * function, held to the rule {@link initializerGap} states.
+ */
+function functionGaps(node: ts.Statement, guardNames: ReadonlySet<string>): string[] {
+  if (ts.isFunctionDeclaration(node)) {
+    if (node.name === undefined || node.body === undefined) return [];
+    if (!needsGuardShape(ts.getModifiers(node), node.type)) return [];
+    return isGuardedBlock(node.body, guardNames) ? [] : [node.name.text];
+  }
+  if (!ts.isVariableStatement(node)) return [];
+  return node.declarationList.declarations
+    .filter((declaration) => initializerGap(declaration.initializer, guardNames))
+    .map((declaration) => declaration.name.getText());
+}
+
+/**
+ * The members of every class, and every top-level function, declared in
+ * `source` that must take the guard shape and do not. `source` is treated as
+ * already in scope — deciding which classes and functions belong on the
+ * public API happens before a file reaches here; see
+ * `public-declarations.ts`.
  */
 export function unguardedMethodsIn(source: string, file = 'source.ts'): UnguardedMethod[] {
   const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
   const guardNames = guardBindings(parsed, file);
   const gaps: UnguardedMethod[] = [];
   for (const node of parsed.statements) {
+    for (const name of functionGaps(node, guardNames)) gaps.push({ file, name });
     if (!ts.isClassDeclaration(node)) continue;
     const className = node.name?.text ?? 'default';
     for (const member of node.members) {

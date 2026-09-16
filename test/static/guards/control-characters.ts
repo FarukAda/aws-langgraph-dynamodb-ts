@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { allScannableFiles } from './plan-references';
+import { allScannableFiles, handEditedDocFiles } from './plan-references';
 import { SRC_ROOT } from './source-files';
 
 /**
@@ -98,14 +98,14 @@ export function controlCharactersIn(source: string, file: string): ControlCharac
 }
 
 /**
- * Every file this guard's real-tree assertion reads: {@link allScannableFiles}
- * plus {@link EXTRA_FILE}. Nothing is excluded — unlike the plan-vocabulary
+ * Every file this guard's real-tree assertion reads: {@link allScannableFiles},
+ * {@link handEditedDocFiles} and {@link EXTRA_FILE}. Nothing is excluded — unlike the plan-vocabulary
  * guard this file borrows its enumeration from, this guard's own two files
  * build every control character they test with at runtime, so they hold none
  * of the raw bytes they look for and need no exclusion.
  */
 function scannedFilePaths(): string[] {
-  return [...allScannableFiles(), EXTRA_FILE];
+  return [...allScannableFiles(), ...handEditedDocFiles(), EXTRA_FILE];
 }
 
 /** Every raw control character found across the real tree's scanned files. */

@@ -101,7 +101,7 @@ describe('backfillRecencyIndex', () => {
     expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
   });
 
-  it('accepts every option at its default and a cursor this tool issued', async () => {
+  it('accepts a valid value for every option, with the cursor left undefined', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [] });
     await expect(
@@ -140,13 +140,19 @@ describe('backfillRecencyIndex', () => {
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'cursor' } });
   });
 
-  it('a valid retry: { maxAttempts: 2 } produces exactly 2 attempts on a retryable error', async () => {
+  /**
+   * A scan that always throttles, so the count is the attempt budget itself:
+   * the default budget of 5 would scan five times, where a scan that fails
+   * only once would give 2 scans under any budget of 2 or more.
+   */
+  it('a valid retry: { maxAttempts: 2 } stops after exactly 2 attempts on a retryable error', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(ScanCommand)
-      .rejectsOnce(Object.assign(new Error('throttled'), { name: 'ThrottlingException' }))
-      .resolves({ Items: [] });
-    await backfillRecencyIndex({ client, tableName: TABLE, retry: { maxAttempts: 2 } });
+      .rejects(Object.assign(new Error('throttled'), { name: 'ThrottlingException' }));
+    await expect(
+      backfillRecencyIndex({ client, tableName: TABLE, retry: { maxAttempts: 2, rng: () => 0 } }),
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(mock.commandCalls(ScanCommand)).toHaveLength(2);
   });
 
@@ -323,6 +329,7 @@ describe('backfillRecencyIndex input validation', () => {
     });
   });
 
+  /** `retry.signal` is left out here: `backfill-signal.test.ts` shows it cancelling the run. */
   it('accepts a retry policy using the full RetryOptions surface', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [] });
@@ -336,7 +343,6 @@ describe('backfillRecencyIndex input validation', () => {
           isRetryable: () => false,
           onRetry: () => undefined,
           rng: () => 0.5,
-          signal: new AbortController().signal,
         },
       }),
     ).resolves.toMatchObject({ scanned: 0 });

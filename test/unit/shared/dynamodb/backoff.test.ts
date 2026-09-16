@@ -102,6 +102,44 @@ describe('sleep', () => {
   });
 });
 
+/**
+ * The listener is attached before the timer is armed. Armed first, a throwing
+ * `addEventListener` rejected the wait but left the timer behind, and that
+ * timer later called `removeEventListener` outside any promise: an uncaught
+ * exception.
+ */
+describe('sleep leaves nothing pending when attaching the listener fails', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('rejects with the error and arms no timer', async () => {
+    jest.useFakeTimers();
+    const signal = {
+      aborted: false,
+      addEventListener: () => {
+        throw new Error('listener refused');
+      },
+      removeEventListener: () => {
+        throw new Error('removed a listener that was never added');
+      },
+    } as unknown as AbortSignal;
+    await expect(sleep(1000, signal)).rejects.toThrow('listener refused');
+    expect(jest.getTimerCount()).toBe(0);
+    expect(() => jest.advanceTimersByTime(2000)).not.toThrow();
+  });
+
+  it('arms no timer when the listener runs while it is being attached', async () => {
+    jest.useFakeTimers();
+    const signal = {
+      aborted: false,
+      reason: new AbortError('aborted on attach'),
+      addEventListener: (_event: string, listener: () => void) => listener(),
+      removeEventListener: () => {},
+    } as unknown as AbortSignal;
+    await expect(sleep(1000, signal)).rejects.toBeInstanceOf(AbortError);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
 describe('sleep abort normalisation (DDB-05)', () => {
   it('rejects with the library AbortError while pending, keeping the raw reason as cause', async () => {
     const controller = new AbortController();

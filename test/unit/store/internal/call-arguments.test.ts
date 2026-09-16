@@ -16,9 +16,7 @@ describe('assertPutArguments', () => {
     expect(() => assertPutArguments(['ns', 'a.b'], 'k', null as never)).toThrow(
       refusal('namespace element'),
     );
-    expect(() => assertPutArguments(['langgraph', 'x'], 'k', {})).toThrow(
-      refusal('namespace element'),
-    );
+    expect(() => assertPutArguments(['langgraph', 'x'], 'k', {})).toThrow(refusal('namespace'));
     expect(() => assertPutArguments(['ns'], 'k', null as never)).toThrow(refusal('value'));
   });
 

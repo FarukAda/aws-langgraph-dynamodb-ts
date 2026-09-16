@@ -84,7 +84,10 @@ export function buildS3Key(prefix: string, parts: readonly string[], hash: strin
 /**
  * Refuse a key prefix that does not scope what it is used for.
  *
- * Accepts: `keyPrefix` — must be non-empty, not `/`, and end in `/`.
+ * Accepts: `keyPrefix` — must be a string, non-empty, not `/`, and end in `/`.
+ * The type is checked here, before any string method is called, so every
+ * caller gets it: a number or `null` escaped as a bare `TypeError` from
+ * `keyPrefix.endsWith`.
  *
  * Returns: nothing; acceptance is the absence of a throw.
  *
@@ -96,7 +99,12 @@ export function buildS3Key(prefix: string, parts: readonly string[], hash: strin
  * every sibling starting with the same characters (`app/langgraph-other/`).
  */
 export function assertScopedKeyPrefix(keyPrefix: string): void {
-  if (keyPrefix === '' || keyPrefix === '/' || !keyPrefix.endsWith('/')) {
+  if (
+    typeof keyPrefix !== 'string' ||
+    keyPrefix === '' ||
+    keyPrefix === '/' ||
+    !keyPrefix.endsWith('/')
+  ) {
     throw new ValidationError(
       's3.keyPrefix must be a non-empty path that ends with "/" (for example "langgraph/"): ' +
         'it scopes both the offloaded objects and the S3 lifecycle rule',

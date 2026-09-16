@@ -71,8 +71,11 @@ DynamoDBChatMessageHistory | s3={"bucketName":"b","foo":1} | sync throws Validat
 DynamoDBChatMessageHistory | s3={"bucketName":"b","keyPrefix":""} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBChatMessageHistory | s3={"bucketName":"b","keyPrefix":"/"} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBChatMessageHistory | s3={"bucketName":"b","keyPrefix":"a"} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
+DynamoDBChatMessageHistory | s3={"bucketName":"b","keyPrefix":123} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
+DynamoDBChatMessageHistory | s3={"bucketName":"b","keyPrefix":null} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBChatMessageHistory | s3={"bucketName":"b","maxDownloadBytes":0} | sync throws ValidationError/VALIDATION field=s3.maxDownloadBytes
 DynamoDBChatMessageHistory | s3={"bucketName":"b","serverSideEncryption":5} | sync throws ValidationError/VALIDATION field=s3.serverSideEncryption
+DynamoDBChatMessageHistory | s3={"bucketName":"b","sseKmsKeyId":123} | sync throws ValidationError/VALIDATION field=s3.sseKmsKeyId
 DynamoDBChatMessageHistory | s3={"bucketName":"b","thresholdBytes":"1"} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
 DynamoDBChatMessageHistory | s3={"bucketName":"b","thresholdBytes":0} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
 DynamoDBChatMessageHistory | s3={"bucketName":"b","thresholdBytes":1000000000000} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
@@ -196,6 +199,7 @@ DynamoDBChatMessageHistory.getMessages | options={"limit":1.5} | throws Validati
 DynamoDBChatMessageHistory.getMessages | options={"limit":1000000000000} | RESOLVED []
 DynamoDBChatMessageHistory.getMessages | options={"limit":NaN} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"signal":"x"} | throws ValidationError/VALIDATION field=signal
+DynamoDBChatMessageHistory.getMessages | options={"signal":{"aborted":false,"addEventListener":fn}} | throws ValidationError/VALIDATION field=signal
 DynamoDBChatMessageHistory.getMessages | sessionId=" " | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="a#b" | throws ValidationError/VALIDATION field=sessionId
@@ -288,6 +292,8 @@ DynamoDBFactory.createSaver | options=null | sync throws ValidationError/VALIDAT
 DynamoDBFactory.createSaver | options=undefined | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","client":{}} | sync throws ValidationError/VALIDATION field=client.get
 DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","foo":1} | sync throws ValidationError/VALIDATION field=options.foo
+DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","s3":{"bucketName":"b","keyPrefix":123}} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
+DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","s3":{"bucketName":"b","keyPrefix":null}} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBFactory.createSaver | options={} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBFactory.createStore | options=null | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory.createStore | options={}  | sync throws ValidationError/VALIDATION field=tableName
@@ -358,8 +364,11 @@ DynamoDBSaver | s3={"bucketName":"b","foo":1} | sync throws ValidationError/VALI
 DynamoDBSaver | s3={"bucketName":"b","keyPrefix":""} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBSaver | s3={"bucketName":"b","keyPrefix":"/"} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBSaver | s3={"bucketName":"b","keyPrefix":"a"} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
+DynamoDBSaver | s3={"bucketName":"b","keyPrefix":123} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
+DynamoDBSaver | s3={"bucketName":"b","keyPrefix":null} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBSaver | s3={"bucketName":"b","maxDownloadBytes":0} | sync throws ValidationError/VALIDATION field=s3.maxDownloadBytes
 DynamoDBSaver | s3={"bucketName":"b","serverSideEncryption":5} | sync throws ValidationError/VALIDATION field=s3.serverSideEncryption
+DynamoDBSaver | s3={"bucketName":"b","sseKmsKeyId":123} | sync throws ValidationError/VALIDATION field=s3.sseKmsKeyId
 DynamoDBSaver | s3={"bucketName":"b","thresholdBytes":"1"} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
 DynamoDBSaver | s3={"bucketName":"b","thresholdBytes":0} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
 DynamoDBSaver | s3={"bucketName":"b","thresholdBytes":1000000000000} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
@@ -439,8 +448,9 @@ DynamoDBSaver.getTuple | checkpoint_ns={} | throws ValidationError/VALIDATION fi
 DynamoDBSaver.getTuple | config="x" | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.getTuple | config=null | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.getTuple | config=undefined | throws ValidationError/VALIDATION field=config
-DynamoDBSaver.getTuple | config={"configurable":"x"} | RESOLVED undefined
-DynamoDBSaver.getTuple | config={"configurable":null} | RESOLVED undefined
+DynamoDBSaver.getTuple | config={"configurable":"x"} | throws ValidationError/VALIDATION field=configurable
+DynamoDBSaver.getTuple | config={"configurable":null} | throws ValidationError/VALIDATION field=configurable
+DynamoDBSaver.getTuple | config={"configurable":{"thread_id":"t"},"signal":{}} | throws ValidationError/VALIDATION field=signal
 DynamoDBSaver.getTuple | config={"configurable":{}} | RESOLVED undefined
 DynamoDBSaver.getTuple | config={} | RESOLVED undefined
 DynamoDBSaver.getTuple | extra configurable keys | RESOLVED undefined
@@ -462,6 +472,7 @@ DynamoDBSaver.getTuple | thread_ts=123 (legacy alias) | throws ValidationError/V
 DynamoDBSaver.list | config="x" | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.list | config=null | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.list | config=undefined | throws ValidationError/VALIDATION field=config
+DynamoDBSaver.list | config={"configurable":"thread-1"} | throws ValidationError/VALIDATION field=configurable
 DynamoDBSaver.list | config={"configurable":{"thread_id":"a#b"}} | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.list | config={} | RESOLVED first=undefined done
 DynamoDBSaver.list | options="x" | throws ValidationError/VALIDATION field=options
@@ -635,8 +646,11 @@ DynamoDBStore | s3={"bucketName":"b","foo":1} | sync throws ValidationError/VALI
 DynamoDBStore | s3={"bucketName":"b","keyPrefix":""} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBStore | s3={"bucketName":"b","keyPrefix":"/"} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBStore | s3={"bucketName":"b","keyPrefix":"a"} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
+DynamoDBStore | s3={"bucketName":"b","keyPrefix":123} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
+DynamoDBStore | s3={"bucketName":"b","keyPrefix":null} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBStore | s3={"bucketName":"b","maxDownloadBytes":0} | sync throws ValidationError/VALIDATION field=s3.maxDownloadBytes
 DynamoDBStore | s3={"bucketName":"b","serverSideEncryption":5} | sync throws ValidationError/VALIDATION field=s3.serverSideEncryption
+DynamoDBStore | s3={"bucketName":"b","sseKmsKeyId":123} | sync throws ValidationError/VALIDATION field=s3.sseKmsKeyId
 DynamoDBStore | s3={"bucketName":"b","thresholdBytes":"1"} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
 DynamoDBStore | s3={"bucketName":"b","thresholdBytes":0} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes
 DynamoDBStore | s3={"bucketName":"b","thresholdBytes":1000000000000} | sync throws ValidationError/VALIDATION field=s3.thresholdBytes

@@ -111,6 +111,14 @@ function listRecursive(dir: string, extensions: readonly string[]): string[] {
   return out;
 }
 
+/** Every file under `dir`, recursively, whatever its extension — or none, as `CODEOWNERS` has. */
+function listEveryFile(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    return entry.isDirectory() ? listEveryFile(full) : [full];
+  });
+}
+
 /** Every file directly inside `dir` (not recursive) whose extension is in `extensions`. */
 function listShallow(dir: string, extensions: readonly string[]): string[] {
   return readdirSync(dir, { withFileTypes: true })
@@ -136,12 +144,34 @@ export function allScannableFiles(): string[] {
 }
 
 /**
- * {@link allScannableFiles}, excluding {@link GUARD_OWN_FILES}: this guard's
- * own real-tree scan must skip the two files that necessarily contain every
- * pattern it looks for.
+ * The hand-edited files a reader meets beside the code, relative to
+ * {@link REPO_ROOT} with forward slashes: `README.md`, `CHANGELOG.md` and
+ * `CONTRIBUTING.md`, every `*.config.ts` directly in the repository root, and
+ * every file under `.github`. The generated `docs/api` is not among them: it is
+ * rebuilt from the `src` comments, which are scanned already, and a hit there
+ * could only be fixed at its source.
+ */
+export function handEditedDocFiles(): string[] {
+  const rootConfigs = readdirSync(REPO_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.config.ts'))
+    .map((entry) => join(REPO_ROOT, entry.name));
+  const absolute = [
+    ...['README.md', 'CHANGELOG.md', 'CONTRIBUTING.md'].map((name) => resolve(REPO_ROOT, name)),
+    ...rootConfigs,
+    ...listEveryFile(resolve(REPO_ROOT, '.github')),
+  ];
+  return absolute.map((path) => relative(REPO_ROOT, path).split(sep).join('/'));
+}
+
+/**
+ * {@link allScannableFiles} and {@link handEditedDocFiles}, excluding
+ * {@link GUARD_OWN_FILES}: this guard's own real-tree scan must skip the two
+ * files that necessarily contain every pattern it looks for.
  */
 function scannedFilePaths(): string[] {
-  return allScannableFiles().filter((path) => !GUARD_OWN_FILES.has(path));
+  return [...allScannableFiles(), ...handEditedDocFiles()].filter(
+    (path) => !GUARD_OWN_FILES.has(path),
+  );
 }
 
 /** Every plan-process reference found across the real tree's scanned files. */

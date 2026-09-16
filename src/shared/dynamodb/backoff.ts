@@ -15,27 +15,36 @@ import { abortErrorFrom } from './abort';
  * {@link abortErrorFrom}).
  *
  * Guarantees: exactly one of resolve and reject runs, and neither the timer nor
- * the abort listener outlives the call.
+ * the abort listener outlives the call. The listener is attached before the
+ * timer is armed, so a signal whose `addEventListener` throws rejects the wait
+ * with nothing left behind — armed first, the timer outlived that rejection
+ * and later called `removeEventListener` outside any promise. A listener that
+ * runs while it is being attached settles the wait before any timer exists.
  */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) {
     return Promise.reject(abortErrorFrom(signal));
   }
   return new Promise((resolve, reject) => {
-    let settled = false;
+    /**
+     * One holder for both flags, declared before `onAbort` reads the timer:
+     * the timer is assigned only once armed, after the listener is attached.
+     */
+    const wait: { settled: boolean; timer?: ReturnType<typeof setTimeout> } = { settled: false };
     const onAbort = (): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
+      if (wait.settled) return;
+      wait.settled = true;
+      clearTimeout(wait.timer);
       reject(abortErrorFrom(signal as AbortSignal));
     };
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (wait.settled) return;
+    wait.timer = setTimeout(() => {
+      if (wait.settled) return;
+      wait.settled = true;
       signal?.removeEventListener('abort', onAbort);
       resolve();
     }, ms);
-    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
