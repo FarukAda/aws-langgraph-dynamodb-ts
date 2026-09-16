@@ -30,6 +30,24 @@ export function validateSessionId(sessionId: string): void {
 }
 
 /**
+ * Refuse a `messages` argument that is not an array, before any per-message
+ * check runs.
+ *
+ * Accepts: `messages` — declared `BaseMessage[]` for a caller whose types
+ * hold; anything else is rejected here rather than reaching `.length` or
+ * `.map` downstream, both of which raise a raw `TypeError` on a non-array.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `messages`.
+ */
+export function validateMessageList(messages: BaseMessage[]): void {
+  if (!Array.isArray(messages)) {
+    throw new ValidationError('messages must be an array', 'messages');
+  }
+}
+
+/**
  * Serialize the caller's messages, reporting a value that is not a message.
  *
  * Accepts: `messages` — LangChain messages. The type says so; this runs for the

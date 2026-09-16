@@ -138,18 +138,25 @@ function assertScanCap(value: number | undefined, field: string): void {
  * must not be checked on one table and silently accepted on another. A `cursor`
  * without the index names a position in an index that is not there — answering
  * it with the first page would hand back page one while the caller waits for
- * page two.
+ * page two. A `cursor` that is present but not a string is refused here too,
+ * before it reaches the cursor decoder: `Buffer.from` raises a raw `TypeError`
+ * on anything but a string, one property access into the index query this
+ * check runs ahead of.
  */
 function assertPageOptions(context: HistoryContext, options: ListSessionsOptions): void {
   if (options.limit !== undefined) validateInteger(options.limit, 'limit', { min: 1 });
   assertScanCap(options.maxItems, 'maxItems');
   assertScanCap(options.maxIterations, 'maxIterations');
-  if (options.cursor !== undefined && context.indexName === undefined) {
+  if (options.cursor === undefined) return;
+  if (context.indexName === undefined) {
     throw new ValidationError(
       'paging by cursor needs a configured `indexName`: without the recency index a listing is ' +
         'one table scan, which has no position to resume from',
       'cursor',
     );
+  }
+  if (typeof options.cursor !== 'string') {
+    throw new ValidationError('cursor must be a string', 'cursor');
   }
 }
 

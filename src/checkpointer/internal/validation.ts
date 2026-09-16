@@ -1,4 +1,7 @@
+import type { PendingWrite } from '@langchain/langgraph-checkpoint';
+
 import { MAX_KEY_SEGMENT_BYTES, MAX_PARTITION_ID_BYTES } from '../../shared/constants';
+import { ValidationError } from '../../shared/errors/errors';
 import {
   assertMaxBytes,
   assertNoControlChars,
@@ -91,4 +94,38 @@ export function validateTaskId(taskId: string): void {
  */
 export function validateChannel(channel: string): void {
   validateIdentifier(channel, SORT_KEY_SEPARATOR, 'channel', MAX_KEY_SEGMENT_BYTES);
+}
+
+/**
+ * Refuse a `writes` argument that cannot be read as the tuples it is typed to
+ * hold.
+ *
+ * Accepts: `writes` — declared `PendingWrite[]`
+ * (`@langchain/langgraph-checkpoint`: `[channel: string, value: unknown]`) for
+ * a caller whose types hold. Only what that type rules out is checked here: a
+ * non-array `writes`, and an entry that is not itself an array. An entry's
+ * first element — whether it is a string — is left to {@link validateChannel},
+ * which the write-item builder already calls on every entry once this check
+ * has let it be read; duplicating that rule here would either repeat it or,
+ * for an entry whose element is present but wrongly typed, report it under
+ * this function's field name instead of `validateChannel`'s more specific
+ * one. The value, and any element beyond the first two, are unconstrained:
+ * upstream's type places no rule on them.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `writes`, with the offending index for an
+ * entry that is not an array — before either reaches `writes.length` or a
+ * destructuring `for...of` over an entry, both of which raise a raw
+ * `TypeError` rather than this package's own error.
+ */
+export function validateWrites(writes: PendingWrite[]): void {
+  if (!Array.isArray(writes)) {
+    throw new ValidationError('writes must be an array', 'writes');
+  }
+  writes.forEach((entry, index) => {
+    if (!Array.isArray(entry)) {
+      throw new ValidationError(`writes[${index}] must be a [channel, value] tuple`, 'writes');
+    }
+  });
 }

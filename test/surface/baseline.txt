@@ -109,7 +109,7 @@ DynamoDBChatMessageHistory.addMessage | message="x" | throws ValidationError/VAL
 DynamoDBChatMessageHistory.addMessage | message=5 | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessage | message=null | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessage | message={} | throws ValidationError/VALIDATION field=messages
-DynamoDBChatMessageHistory.addMessages | messages="x" | throws UpstreamError/UPSTREAM
+DynamoDBChatMessageHistory.addMessages | messages="x" | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | messages=["x"] | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | messages=[1] | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | messages=[HumanMessage({"lc":1,"type":"constructor","id":["langchain_core","messages","Hu…#4e6fee9c | throws ValidationError/VALIDATION field=messages
@@ -118,9 +118,9 @@ DynamoDBChatMessageHistory.addMessages | messages=[] (empty) | RESOLVED undefine
 DynamoDBChatMessageHistory.addMessages | messages=[null] | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | messages=[{"type":"human","content":"x"}] | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | messages=[{}] | throws ValidationError/VALIDATION field=messages
-DynamoDBChatMessageHistory.addMessages | messages=null | throws UpstreamError/UPSTREAM
-DynamoDBChatMessageHistory.addMessages | messages=undefined | throws UpstreamError/UPSTREAM
-DynamoDBChatMessageHistory.addMessages | messages={} | throws UpstreamError/UPSTREAM
+DynamoDBChatMessageHistory.addMessages | messages=null | throws ValidationError/VALIDATION field=messages
+DynamoDBChatMessageHistory.addMessages | messages=undefined | throws ValidationError/VALIDATION field=messages
+DynamoDBChatMessageHistory.addMessages | messages={} | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | sessionId=" " | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.addMessages | sessionId="" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.addMessages | sessionId="a#b" | throws ValidationError/VALIDATION field=sessionId
@@ -217,7 +217,7 @@ DynamoDBChatMessageHistory.listSessions | options={"cursor":"YSNi"} (indexName s
 DynamoDBChatMessageHistory.listSessions | options={"cursor":"bm9oYXNo"} (indexName set) | throws ValidationError/VALIDATION field=cursor
 DynamoDBChatMessageHistory.listSessions | options={"cursor":"not base64!"} (indexName set) | throws ValidationError/VALIDATION field=cursor
 DynamoDBChatMessageHistory.listSessions | options={"cursor":"x"} (no indexName) | throws ValidationError/VALIDATION field=cursor
-DynamoDBChatMessageHistory.listSessions | options={"cursor":123} (indexName set) | throws UpstreamError/UPSTREAM
+DynamoDBChatMessageHistory.listSessions | options={"cursor":123} (indexName set) | throws ValidationError/VALIDATION field=cursor
 DynamoDBChatMessageHistory.listSessions | options={"cursor":123} (no indexName) | throws ValidationError/VALIDATION field=cursor
 DynamoDBChatMessageHistory.listSessions | options={"foo":1} (no indexName) | throws ValidationError/VALIDATION field=options.foo
 DynamoDBChatMessageHistory.listSessions | options={"limit":"5"} (no indexName) | throws ValidationError/VALIDATION field=limit
@@ -475,8 +475,8 @@ DynamoDBSaver.list | options={"limit":NaN} | throws ValidationError/VALIDATION f
 DynamoDBSaver.put | checkpoint="x" | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.put | checkpoint=1 | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.put | checkpoint=[] | throws ValidationError/VALIDATION field=checkpoint_id
-DynamoDBSaver.put | checkpoint=null | throws UpstreamError/UPSTREAM
-DynamoDBSaver.put | checkpoint=undefined | throws UpstreamError/UPSTREAM
+DynamoDBSaver.put | checkpoint=null | throws ValidationError/VALIDATION field=checkpoint
+DynamoDBSaver.put | checkpoint=undefined | throws ValidationError/VALIDATION field=checkpoint
 DynamoDBSaver.put | checkpoint={"id":""} | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.put | checkpoint={"id":"a#b"} | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.put | checkpoint={"id":"c1"} | REACHED-WRITE (input accepted, write attempted)
@@ -511,7 +511,7 @@ DynamoDBSaver.putWrites | taskId=["a"] | throws ValidationError/VALIDATION field
 DynamoDBSaver.putWrites | taskId=null | throws ValidationError/VALIDATION field=taskId
 DynamoDBSaver.putWrites | taskId=undefined | throws ValidationError/VALIDATION field=taskId
 DynamoDBSaver.putWrites | taskId={} | throws ValidationError/VALIDATION field=taskId
-DynamoDBSaver.putWrites | writes="x" | throws UpstreamError/UPSTREAM
+DynamoDBSaver.putWrites | writes="x" | throws ValidationError/VALIDATION field=writes
 DynamoDBSaver.putWrites | writes=[["",1]] | throws ValidationError/VALIDATION field=channel
 DynamoDBSaver.putWrites | writes=[["a#b",1]] | throws ValidationError/VALIDATION field=channel
 DynamoDBSaver.putWrites | writes=[["ch",1,"extra"]] | REACHED-WRITE (input accepted, write attempted)
@@ -522,10 +522,10 @@ DynamoDBSaver.putWrites | writes=[[Symbol("s"),1]] | throws ValidationError/VALI
 DynamoDBSaver.putWrites | writes=[[]] | throws ValidationError/VALIDATION field=channel
 DynamoDBSaver.putWrites | writes=[] (empty) | RESOLVED undefined
 DynamoDBSaver.putWrites | writes=[] | RESOLVED undefined
-DynamoDBSaver.putWrites | writes=[null] | throws UpstreamError/UPSTREAM
-DynamoDBSaver.putWrites | writes=null | throws UpstreamError/UPSTREAM
-DynamoDBSaver.putWrites | writes=undefined | throws UpstreamError/UPSTREAM
-DynamoDBSaver.putWrites | writes={} | throws UpstreamError/UPSTREAM
+DynamoDBSaver.putWrites | writes=[null] | throws ValidationError/VALIDATION field=writes
+DynamoDBSaver.putWrites | writes=null | throws ValidationError/VALIDATION field=writes
+DynamoDBSaver.putWrites | writes=undefined | throws ValidationError/VALIDATION field=writes
+DynamoDBSaver.putWrites | writes={} | throws ValidationError/VALIDATION field=writes
 DynamoDBSessionChatMessageHistory | new (backend=null, sessionId=1) | sync throws ValidationError/VALIDATION field=backend
 DynamoDBSessionChatMessageHistory.addMessages | backend={} (no methods) | throws ValidationError/VALIDATION field=backend.getMessages
 DynamoDBSessionChatMessageHistory.getMessages | backend=null | throws ValidationError/VALIDATION field=backend

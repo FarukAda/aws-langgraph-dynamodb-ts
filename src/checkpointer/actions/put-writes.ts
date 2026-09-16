@@ -11,7 +11,7 @@ import { buildWriteItems } from '../internal/item-writer';
 import { type DeadUpload, writeRegularItems } from '../internal/regular-write';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
-import { validateTaskId } from '../internal/validation';
+import { validateTaskId, validateWrites } from '../internal/validation';
 
 /**
  * Stamps each `putWrites` call, identifying its rows as one group.
@@ -51,9 +51,9 @@ async function cleanUpItems(context: CheckpointerContext, dead: DeadUpload[]): P
  * Returns: nothing. Every write is attempted; a regular write that loses its
  * first-write-wins race is a normal outcome, not a failure.
  *
- * Throws: ValidationError naming `checkpoint_id`, `taskId`, `channel` or
- * `value`; the first genuine write failure, after every write has settled and
- * the cleanup has run.
+ * Throws: ValidationError naming `checkpoint_id`, `taskId`, `writes`,
+ * `channel` or `value`; the first genuine write failure, after every write has
+ * settled and the cleanup has run.
  *
  * Guarantees: regular writes are first-write-wins, matching the reference
  * checkpointer; special negative-index writes always overwrite (see
@@ -76,6 +76,7 @@ export async function putWrites(
   if (checkpointId === undefined) {
     throw new ValidationError('checkpoint_id is required to store writes', 'checkpoint_id');
   }
+  validateWrites(writes);
   if (writes.length === 0) return;
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
   const items = await buildWriteItems(

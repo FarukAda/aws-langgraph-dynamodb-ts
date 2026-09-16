@@ -1,4 +1,4 @@
-import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
@@ -138,5 +138,90 @@ describe('getDeltaChannelHistory input validation', () => {
         channels: ['a'],
       }),
     ).resolves.toEqual({ a: { writes: [] } });
+  });
+});
+
+/**
+ * `put` used to read `checkpoint.id` with no shape check of its own: a `null`
+ * or `undefined` checkpoint reached that property access directly and raised
+ * a bare `TypeError`, which the error boundary branded `UpstreamError`
+ * instead of naming the caller's mistake.
+ */
+describe('put checkpoint validation', () => {
+  const metadata = { source: 'loop' as const, step: 0, parents: {} };
+
+  it('refuses a null or undefined checkpoint, naming it', async () => {
+    const { saver } = newSaver();
+    for (const checkpoint of [null, undefined]) {
+      await expect(
+        saver.put({ configurable: { thread_id: 't' } }, checkpoint as never, metadata),
+      ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'checkpoint' } });
+    }
+  });
+
+  it('accepts a well-formed checkpoint and stores it', async () => {
+    const { saver, mock } = newSaver();
+    mock.on(TransactWriteCommand).resolves({});
+    const checkpoint = {
+      v: 4,
+      id: 'ckpt-1',
+      ts: '',
+      channel_values: {},
+      channel_versions: {},
+      versions_seen: {},
+    };
+    const result = await saver.put({ configurable: { thread_id: 't' } }, checkpoint, metadata);
+    expect(result.configurable?.checkpoint_id).toBe('ckpt-1');
+  });
+});
+
+/**
+ * `putWrites` validated `taskId` but never `writes` itself: a `writes` that
+ * was not an array, or an entry that was not itself an array, reached
+ * `writes.length` or a destructuring `for...of` directly and raised a bare
+ * `TypeError`, branded `UpstreamError` instead of naming the caller's
+ * mistake.
+ */
+describe('putWrites writes validation', () => {
+  const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
+
+  it('refuses a writes that is not an array, naming it', async () => {
+    const { saver } = newSaver();
+    for (const writes of ['x', null, undefined, {}]) {
+      await expect(saver.putWrites(config, writes as never, 'task-1')).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION,
+        context: { field: 'writes' },
+      });
+    }
+  });
+
+  it('refuses a writes entry that is not itself an array, naming writes', async () => {
+    const { saver } = newSaver();
+    await expect(saver.putWrites(config, [null] as never, 'task-1')).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'writes' },
+    });
+  });
+
+  it('writes nothing when a valid entry precedes a malformed one', async () => {
+    const { saver, mock } = newSaver();
+    mock.on(PutCommand).resolves({});
+    await expect(
+      saver.putWrites(config, [['ch', 'a'], null] as never, 'task-1'),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'writes' } });
+    expect(mock.commandCalls(PutCommand)).toHaveLength(0);
+  });
+
+  it('accepts writes: [], a no-op that writes nothing', async () => {
+    const { saver, mock } = newSaver();
+    await expect(saver.putWrites(config, [], 'task-1')).resolves.toBeUndefined();
+    expect(mock.commandCalls(PutCommand)).toHaveLength(0);
+  });
+
+  it('accepts a valid [channel, value] tuple list and writes it', async () => {
+    const { saver, mock } = newSaver();
+    mock.on(PutCommand).resolves({});
+    await saver.putWrites(config, [['ch', 'v']], 'task-1');
+    expect(mock.commandCalls(PutCommand)).toHaveLength(1);
   });
 });

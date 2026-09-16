@@ -12,6 +12,7 @@ import { deriveTitle } from '../internal/title-generator';
 import { resolveTtlAnchor } from '../internal/ttl-anchor';
 import {
   toStoredMessages,
+  validateMessageList,
   validateSessionId,
   validateStorableMessages,
 } from '../internal/validation';
@@ -99,6 +100,7 @@ export async function addMessages(
   signal?: AbortSignal,
 ): Promise<void> {
   validateSessionId(sessionId);
+  validateMessageList(messages);
   if (messages.length === 0) return;
   const stored = toStoredMessages(messages);
   validateStorableMessages(stored);

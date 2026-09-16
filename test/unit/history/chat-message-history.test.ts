@@ -234,6 +234,72 @@ describe('options shape (M-08)', () => {
   });
 });
 
+/**
+ * `addMessages` validated each message once `messages` was known to be an
+ * array, but never that it was one: a non-array reached `.length` directly
+ * and raised a bare `TypeError`, branded `UpstreamError` instead of naming
+ * the caller's mistake.
+ */
+describe('addMessages messages validation', () => {
+  it('refuses a messages that is not an array, naming it', async () => {
+    const { client } = createStrictDocumentMock();
+    for (const messages of ['x', null, undefined, {}]) {
+      await expect(history(client).addMessages('s1', messages as never)).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION,
+        context: { field: 'messages' },
+      });
+    }
+  });
+
+  it('accepts messages: [], a no-op that writes nothing', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    await expect(history(client).addMessages('s1', [])).resolves.toBeUndefined();
+    expect(mock.calls()).toHaveLength(0);
+  });
+
+  it('accepts a valid message list and writes it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    await expect(
+      history(client).addMessages('s1', [new HumanMessage('hi')]),
+    ).resolves.toBeUndefined();
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(1);
+  });
+});
+
+/**
+ * `listSessions` refused a `cursor` given without a configured `indexName`,
+ * but with one set a non-string `cursor` reached the cursor decoder's
+ * `Buffer.from` directly and raised a bare `TypeError`, branded
+ * `UpstreamError` instead of naming the caller's mistake.
+ */
+describe('listSessions cursor validation on the indexed path', () => {
+  function indexedHistory(client: DynamoDBDocument) {
+    return new DynamoDBChatMessageHistory({
+      tableName: 'history',
+      client,
+      serde: JSON_SERDE,
+      indexName: 'gsi1',
+    });
+  }
+
+  it('refuses a cursor that is present and not a string, naming it', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      indexedHistory(client).listSessions({ cursor: 123 as never }),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'cursor' } });
+  });
+
+  it('accepts a valid string cursor and pages from it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    const cursor = Buffer.from('2026-01-01T00:00:00.000Z#s1', 'utf8').toString('base64url');
+    await expect(indexedHistory(client).listSessions({ cursor })).resolves.toEqual({
+      sessions: [],
+    });
+  });
+});
+
 describe('bounded reads (HIST-06)', () => {
   it('getMessages passes the window through and forSession binds a limit to the adapter', async () => {
     const { client, mock } = createStrictDocumentMock();

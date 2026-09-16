@@ -9,6 +9,7 @@ import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { ValidationError } from '../../shared/errors/errors';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { verifyCheckpointLanded } from '../internal/checkpoint-write-verify';
 import { readConfigurable } from '../internal/configurable';
@@ -39,9 +40,9 @@ import { validateCheckpointId } from '../internal/validation';
  * Returns: the config addressing the stored checkpoint, which is what the
  * caller passes back to continue the thread.
  *
- * Throws: ValidationError naming `thread_id`, `checkpoint_ns`, `checkpoint_id`
- * or `value`; `S3_OFFLOAD_FAILED`; whatever the transaction throws once the
- * outcome is established.
+ * Throws: ValidationError naming `checkpoint`, `thread_id`, `checkpoint_ns`,
+ * `checkpoint_id` or `value`; `S3_OFFLOAD_FAILED`; whatever the transaction
+ * throws once the outcome is established.
  *
  * Guarantees: both rows land or neither does — they are one transaction, so a
  * META row never names a payload that is not there. Writing the same
@@ -61,6 +62,9 @@ export async function putCheckpoint(
 ): Promise<RunnableConfig> {
   const { threadId, checkpointNs, checkpointId: parentCheckpointId } = readConfigurable(config);
   const signal = config.signal;
+  if (checkpoint === null || checkpoint === undefined) {
+    throw new ValidationError('checkpoint must be an object', 'checkpoint');
+  }
   validateCheckpointId(checkpoint.id);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
   const { meta, payload } = await buildCheckpointItems(

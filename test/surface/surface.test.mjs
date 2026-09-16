@@ -24,7 +24,7 @@ const EXPECTED_BARE = 22;
  * REACHED-WRITE instead, so a row counted here failed somewhere other than the
  * AWS call the harness fakes.
  */
-const EXPECTED_UPSTREAM = 12;
+const EXPECTED_UPSTREAM = 0;
 
 test('the public surface matches the committed baseline', async () => {
   assert.ok(

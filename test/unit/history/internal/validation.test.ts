@@ -2,6 +2,7 @@ import { type StoredMessage, HumanMessage } from '@langchain/core/messages';
 
 import {
   toStoredMessages,
+  validateMessageList,
   validateMessageWindow,
   validateSessionId,
   validateStorableMessages,
@@ -39,6 +40,19 @@ describe('validateSessionId', () => {
 
   it('rejects control characters (M7)', () => {
     expectValidationError(() => validateSessionId('s[31m'));
+  });
+});
+
+describe('validateMessageList', () => {
+  it('accepts an array, empty or not', () => {
+    expect(() => validateMessageList([])).not.toThrow();
+    expect(() => validateMessageList([new HumanMessage('hi')])).not.toThrow();
+  });
+
+  it('rejects anything that is not an array, naming messages', () => {
+    for (const messages of ['x', null, undefined, {}]) {
+      expectValidationError(() => validateMessageList(messages as never));
+    }
   });
 });
 

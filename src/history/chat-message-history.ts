@@ -85,9 +85,10 @@ export class DynamoDBChatMessageHistory {
    *
    * Returns: nothing, and only once every message has landed.
    *
-   * Throws: ValidationError naming `messages` with the offending index, for a
-   * value that is not a message or one that could never be read back, or
-   * naming `signal` or `options.<key>` for a key this package does not read;
+   * Throws: ValidationError naming `messages`, for a value that is not itself
+   * an array, or, with the offending index, for an element that is not a
+   * message or one that could never be read back; or naming `signal` or
+   * `options.<key>` for a key this package does not read;
    * CompensationFailedError when a later chunk fails and the rollback fails
    * too; RetryExhaustedError after 18 contended attempts; UpstreamError;
    * AbortError.
