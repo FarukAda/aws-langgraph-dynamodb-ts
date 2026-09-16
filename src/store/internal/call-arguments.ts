@@ -7,6 +7,7 @@ import type {
 import { ValidationError } from '../../shared/errors/errors';
 import { STORE_LIST_NAMESPACES_KEYS } from '../../shared/validation/method-keys';
 import { assertShape } from '../../shared/validation/option-shape';
+import type { ListNamespacesOptions } from '../types';
 import { validateStoreKey } from './validation';
 
 /**
@@ -87,9 +88,7 @@ export function assertPutArguments(
  *
  * Throws: ValidationError naming `options` or `options.<key>`.
  */
-export function listNamespacesOperation(
-  options: NonNullable<Parameters<BaseStore['listNamespaces']>[0]>,
-): ListNamespacesOperation {
+export function listNamespacesOperation(options: ListNamespacesOptions): ListNamespacesOperation {
   assertShape(options, STORE_LIST_NAMESPACES_KEYS, 'options');
   const { prefix, suffix, maxDepth, limit = 100, offset = 0 } = options;
   const matchConditions: MatchCondition[] = [];

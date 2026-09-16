@@ -8,7 +8,7 @@ import type { RetryPolicy } from '../dynamodb/retry-policy';
 import { ValidationError } from '../errors/errors';
 import type { BaseAdapterOptions, CodecOptions } from '../options';
 import { validateCompression, validateS3 } from './codec-options';
-import { allKeysOf, assertShape } from './option-shape';
+import { allKeysOf, assertObjectShape, assertShape } from './option-shape';
 import { validateInteger, validateNonEmptyString } from './primitives';
 import { resolveTtlSeconds } from './ttl';
 
@@ -40,16 +40,20 @@ export function validateTableName(tableName: string): void {
 }
 
 /**
- * Reject a client choice that names two ways of getting one.
+ * Reject a client choice that names two ways of getting one, or a
+ * `clientConfig` that is not an object.
  *
  * Accepts: the three client options, from an adapter or from the factory that
  * defaults them. An injected `client` is used as-is, so a `clientConfig` or
  * `createClient` given alongside it would be silently ignored — including a
- * `region` the caller believes is in effect.
+ * `region` the caller believes is in effect. `clientConfig`, when given, must
+ * be an object that is neither `null` nor an array; what it holds is the AWS
+ * SDK's to judge.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `client`.
+ * Throws: ValidationError naming `client` for both ways at once, then
+ * `clientConfig` for one that is not an object.
  */
 export function validateClientChoice(
   options: Pick<BaseAdapterOptions, 'client' | 'clientConfig' | 'createClient'>,
@@ -64,6 +68,14 @@ export function validateClientChoice(
       'client',
     );
   }
+  /**
+   * The shape only, never the keys, and on purpose: they are the AWS SDK's
+   * `DynamoDBClientConfig`, which gains keys between SDK releases, and an
+   * application may install a newer SDK than the one this package was
+   * compiled against, so a key list compiled in here would refuse valid
+   * configuration. The SDK reads each key itself.
+   */
+  if (options.clientConfig !== undefined) assertObjectShape(options.clientConfig, 'clientConfig');
 }
 
 /**
@@ -128,11 +140,12 @@ function validateRecencyIndex(options: BaseAdapterOptions): void {
  *
  * Accepts: `options` — must be an object. `tableName` is required; every other
  * option is optional, and `undefined` means "not configured" for each. A
- * nested `retry`, `compression` or `s3` must be an object whose keys this
- * package reads: a misspelt key is rejected rather than ignored, because the
- * caller would otherwise run on a default they believe they overrode. Keys of
- * `options` itself are not checked here — the adapter types differ and this
- * validator sees only the shared ones.
+ * nested `ttl`, `retry`, `compression` or `s3` must be an object whose keys
+ * this package reads: a misspelt key is rejected rather than ignored, because
+ * the caller would otherwise run on a default they believe they overrode.
+ * `clientConfig` and `s3.clientConfig` must be objects, but their keys belong
+ * to the AWS SDK and are not checked. Keys of `options` itself are not checked
+ * here — the adapter types differ and this validator sees only the shared ones.
  *
  * Returns: nothing; validity is the absence of a throw.
  *

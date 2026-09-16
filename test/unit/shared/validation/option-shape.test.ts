@@ -4,6 +4,7 @@ import {
   assertObjectShape,
   assertShape,
   checkedShape,
+  isObjectShape,
 } from '../../../../src/shared/validation/option-shape';
 import { validateClientChoice } from '../../../../src/shared/validation/options';
 
@@ -64,6 +65,15 @@ describe('assertObjectShape', () => {
   });
 });
 
+describe('isObjectShape', () => {
+  it('is true for exactly the values assertObjectShape accepts', () => {
+    for (const value of [{}, { a: 1 }]) expect(isObjectShape(value)).toBe(true);
+    for (const value of [undefined, null, [], 'x', 7]) {
+      expect(isObjectShape(value as never)).toBe(false);
+    }
+  });
+});
+
 describe('checkedShape', () => {
   it('returns the value unchanged when every key is known', () => {
     const value = { alpha: 1 };
@@ -93,6 +103,21 @@ describe('validateClientChoice', () => {
     expect(() =>
       validateClientChoice({ client: {} as never, createClient: (() => ({})) as never }),
     ).toThrow(/either `client` or `clientConfig`/);
+  });
+
+  /**
+   * The keys are the AWS SDK's, so only the shape is checked: a key this
+   * package was not compiled with must still reach the SDK.
+   */
+  it('refuses a clientConfig that is not an object, naming it, and never checks its keys', () => {
+    for (const clientConfig of [null, [], 'x', 7]) {
+      expect(() => validateClientChoice({ clientConfig: clientConfig as never })).toThrow(
+        expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'clientConfig' } }),
+      );
+    }
+    expect(() =>
+      validateClientChoice({ clientConfig: { newerSdkOption: true } as never }),
+    ).not.toThrow();
   });
 
   it('names `client` on the error it raises', () => {

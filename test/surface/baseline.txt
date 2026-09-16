@@ -1,8 +1,10 @@
 DynamoDBChatMessageHistory | client + clientConfig both | sync throws ValidationError/VALIDATION field=client
 DynamoDBChatMessageHistory | client='x' | sync throws ValidationError/VALIDATION field=client
 DynamoDBChatMessageHistory | client={} (not a DocumentClient) | sync throws ValidationError/VALIDATION field=client.get
-DynamoDBChatMessageHistory | clientConfig='x' | OK DynamoDBChatMessageHistory
-DynamoDBChatMessageHistory | clientConfig=null | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | clientConfig='x' | sync throws ValidationError/VALIDATION field=clientConfig
+DynamoDBChatMessageHistory | clientConfig=[] | sync throws ValidationError/VALIDATION field=clientConfig
+DynamoDBChatMessageHistory | clientConfig=null | sync throws ValidationError/VALIDATION field=clientConfig
+DynamoDBChatMessageHistory | clientConfig={region,endpoint,credentials,maxAttempts} | OK DynamoDBChatMessageHistory
 DynamoDBChatMessageHistory | compression="x" | sync throws ValidationError/VALIDATION field=compression
 DynamoDBChatMessageHistory | compression=null | sync throws ValidationError/VALIDATION field=compression
 DynamoDBChatMessageHistory | compression={"enabled":"true"} | sync throws ValidationError/VALIDATION field=compression.enabled
@@ -64,7 +66,7 @@ DynamoDBChatMessageHistory | retry={"maxAttempts":NaN} | sync throws ValidationE
 DynamoDBChatMessageHistory | s3="x" | sync throws ValidationError/VALIDATION field=s3
 DynamoDBChatMessageHistory | s3=null | sync throws ValidationError/VALIDATION field=s3
 DynamoDBChatMessageHistory | s3={"bucketName":""} | sync throws ValidationError/VALIDATION field=s3.bucketName
-DynamoDBChatMessageHistory | s3={"bucketName":"b","clientConfig":"x"} | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | s3={"bucketName":"b","clientConfig":"x"} | sync throws ValidationError/VALIDATION field=s3.clientConfig
 DynamoDBChatMessageHistory | s3={"bucketName":"b","foo":1} | sync throws ValidationError/VALIDATION field=s3.foo
 DynamoDBChatMessageHistory | s3={"bucketName":"b","keyPrefix":""} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBChatMessageHistory | s3={"bucketName":"b","keyPrefix":"/"} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
@@ -93,17 +95,18 @@ DynamoDBChatMessageHistory | tableName=undefined | sync throws ValidationError/V
 DynamoDBChatMessageHistory | tableName={} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBChatMessageHistory | ttl="x" | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBChatMessageHistory | ttl=null | sync throws ValidationError/VALIDATION field=ttl
-DynamoDBChatMessageHistory | ttl={"day":1} | sync throws ValidationError/VALIDATION field=ttl
+DynamoDBChatMessageHistory | ttl={"day":1} | sync throws ValidationError/VALIDATION field=ttl.day
 DynamoDBChatMessageHistory | ttl={"days":"1"} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBChatMessageHistory | ttl={"days":-1} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBChatMessageHistory | ttl={"days":0} | sync throws ValidationError/VALIDATION field=ttl.days
-DynamoDBChatMessageHistory | ttl={"days":1,"foo":1} | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | ttl={"days":1,"foo":1} | sync throws ValidationError/VALIDATION field=ttl.foo
 DynamoDBChatMessageHistory | ttl={"days":1,"seconds":1} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBChatMessageHistory | ttl={"days":1.5} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBChatMessageHistory | ttl={"days":1000000000000} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBChatMessageHistory | ttl={"days":NaN} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBChatMessageHistory | ttl={"seconds":0.5} | sync throws ValidationError/VALIDATION field=ttl.seconds
 DynamoDBChatMessageHistory | ttl={} | sync throws ValidationError/VALIDATION field=ttl
+DynamoDBChatMessageHistory | vectorBackend with a usable index (store only) | sync throws ValidationError/VALIDATION field=options.index
 DynamoDBChatMessageHistory | vectorBackend without index (store only) | sync throws ValidationError/VALIDATION field=options.vectorBackend
 DynamoDBChatMessageHistory.addMessage | message="x" | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessage | message=5 | throws ValidationError/VALIDATION field=messages
@@ -254,12 +257,14 @@ DynamoDBFactory | base=[] | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory | base=null | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory | base=undefined | OK DynamoDBFactory
 DynamoDBFactory | base={"client":DynamoDBDocument(…),"clientConfig":{"region":"x"}} | sync throws ValidationError/VALIDATION field=client
+DynamoDBFactory | base={"clientConfig":"x"} | sync throws ValidationError/VALIDATION field=clientConfig
 DynamoDBFactory | base={"foo":1} | sync throws ValidationError/VALIDATION field=options.foo
-DynamoDBFactory | base={"logger":"x"} | OK DynamoDBFactory
+DynamoDBFactory | base={"logger":"x"} | sync throws ValidationError/VALIDATION field=logger
 DynamoDBFactory | base={"retry":"x"} | OK DynamoDBFactory
 DynamoDBFactory | base={"s3":"x"} | OK DynamoDBFactory
 DynamoDBFactory | base={"tableName":"t"} | sync throws ValidationError/VALIDATION field=options.tableName
 DynamoDBFactory | base={"ttl":{"days":0}} | OK DynamoDBFactory
+DynamoDBFactory(base s3=null).createAll | saver with tableName only | sync throws ValidationError/VALIDATION field=s3
 DynamoDBFactory(no base).createAll | saver with tableName only (builds a real client from env) | OK Object
 DynamoDBFactory.createAll | options="x" | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory.createAll | options=1 | sync throws ValidationError/VALIDATION field=options
@@ -267,27 +272,32 @@ DynamoDBFactory.createAll | options=[] | sync throws ValidationError/VALIDATION 
 DynamoDBFactory.createAll | options=null | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory.createAll | options=undefined | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory.createAll | options={"foo":{}} | sync throws ValidationError/VALIDATION field=options.foo
-DynamoDBFactory.createAll | options={"saver":"x"} | sync throws ValidationError/VALIDATION field=options.0
-DynamoDBFactory.createAll | options={"saver":null} | OK Object
+DynamoDBFactory.createAll | options={"saver":"x"} | sync throws ValidationError/VALIDATION field=options
+DynamoDBFactory.createAll | options={"saver":[]} | sync throws ValidationError/VALIDATION field=options
+DynamoDBFactory.createAll | options={"saver":null} | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","client":{}}} | sync throws ValidationError/VALIDATION field=client.get
 DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","clientConfig":{"region":"x"}}} | sync throws ValidationError/VALIDATION field=client
 DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table","foo":1}} | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBFactory.createAll | options={"saver":{"tableName":"fuzz-table"},"store":{"tableName":"bad#"}} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBFactory.createAll | options={"saver":{}} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBFactory.createAll | options={} | OK Object
-DynamoDBFactory.createChatMessageHistory | options='x' | sync throws ValidationError/VALIDATION field=options.0
-DynamoDBFactory.createSaver | options="x" | sync throws ValidationError/VALIDATION field=options.0
-DynamoDBFactory.createSaver | options=null | sync BARE TypeError
-DynamoDBFactory.createSaver | options=undefined | sync BARE TypeError
+DynamoDBFactory.createChatMessageHistory | options='x' | sync throws ValidationError/VALIDATION field=options
+DynamoDBFactory.createChatMessageHistory | options=null | sync throws ValidationError/VALIDATION field=options
+DynamoDBFactory.createSaver | options="x" | sync throws ValidationError/VALIDATION field=options
+DynamoDBFactory.createSaver | options=null | sync throws ValidationError/VALIDATION field=options
+DynamoDBFactory.createSaver | options=undefined | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","client":{}} | sync throws ValidationError/VALIDATION field=client.get
 DynamoDBFactory.createSaver | options={"tableName":"fuzz-table","foo":1} | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBFactory.createSaver | options={} | sync throws ValidationError/VALIDATION field=tableName
+DynamoDBFactory.createStore | options=null | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory.createStore | options={}  | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBSaver | client + clientConfig both | sync throws ValidationError/VALIDATION field=client
 DynamoDBSaver | client='x' | sync throws ValidationError/VALIDATION field=client
 DynamoDBSaver | client={} (not a DocumentClient) | sync throws ValidationError/VALIDATION field=client.get
-DynamoDBSaver | clientConfig='x' | OK DynamoDBSaver
-DynamoDBSaver | clientConfig=null | OK DynamoDBSaver
+DynamoDBSaver | clientConfig='x' | sync throws ValidationError/VALIDATION field=clientConfig
+DynamoDBSaver | clientConfig=[] | sync throws ValidationError/VALIDATION field=clientConfig
+DynamoDBSaver | clientConfig=null | sync throws ValidationError/VALIDATION field=clientConfig
+DynamoDBSaver | clientConfig={region,endpoint,credentials,maxAttempts} | OK DynamoDBSaver
 DynamoDBSaver | compression="x" | sync throws ValidationError/VALIDATION field=compression
 DynamoDBSaver | compression=null | sync throws ValidationError/VALIDATION field=compression
 DynamoDBSaver | compression={"enabled":"true"} | sync throws ValidationError/VALIDATION field=compression.enabled
@@ -343,7 +353,7 @@ DynamoDBSaver | retry={"maxAttempts":NaN} | sync throws ValidationError/VALIDATI
 DynamoDBSaver | s3="x" | sync throws ValidationError/VALIDATION field=s3
 DynamoDBSaver | s3=null | sync throws ValidationError/VALIDATION field=s3
 DynamoDBSaver | s3={"bucketName":""} | sync throws ValidationError/VALIDATION field=s3.bucketName
-DynamoDBSaver | s3={"bucketName":"b","clientConfig":"x"} | OK DynamoDBSaver
+DynamoDBSaver | s3={"bucketName":"b","clientConfig":"x"} | sync throws ValidationError/VALIDATION field=s3.clientConfig
 DynamoDBSaver | s3={"bucketName":"b","foo":1} | sync throws ValidationError/VALIDATION field=s3.foo
 DynamoDBSaver | s3={"bucketName":"b","keyPrefix":""} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBSaver | s3={"bucketName":"b","keyPrefix":"/"} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
@@ -372,17 +382,18 @@ DynamoDBSaver | tableName=undefined | sync throws ValidationError/VALIDATION fie
 DynamoDBSaver | tableName={} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBSaver | ttl="x" | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBSaver | ttl=null | sync throws ValidationError/VALIDATION field=ttl
-DynamoDBSaver | ttl={"day":1} | sync throws ValidationError/VALIDATION field=ttl
+DynamoDBSaver | ttl={"day":1} | sync throws ValidationError/VALIDATION field=ttl.day
 DynamoDBSaver | ttl={"days":"1"} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBSaver | ttl={"days":-1} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBSaver | ttl={"days":0} | sync throws ValidationError/VALIDATION field=ttl.days
-DynamoDBSaver | ttl={"days":1,"foo":1} | OK DynamoDBSaver
+DynamoDBSaver | ttl={"days":1,"foo":1} | sync throws ValidationError/VALIDATION field=ttl.foo
 DynamoDBSaver | ttl={"days":1,"seconds":1} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBSaver | ttl={"days":1.5} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBSaver | ttl={"days":1000000000000} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBSaver | ttl={"days":NaN} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBSaver | ttl={"seconds":0.5} | sync throws ValidationError/VALIDATION field=ttl.seconds
 DynamoDBSaver | ttl={} | sync throws ValidationError/VALIDATION field=ttl
+DynamoDBSaver | vectorBackend with a usable index (store only) | sync throws ValidationError/VALIDATION field=options.index
 DynamoDBSaver | vectorBackend without index (store only) | sync throws ValidationError/VALIDATION field=options.vectorBackend
 DynamoDBSaver.deleteThread | options="x" | throws ValidationError/VALIDATION field=options
 DynamoDBSaver.deleteThread | options=null | throws ValidationError/VALIDATION field=options
@@ -532,8 +543,10 @@ DynamoDBSessionChatMessageHistory.getMessages | backend=null | throws Validation
 DynamoDBStore | client + clientConfig both | sync throws ValidationError/VALIDATION field=client
 DynamoDBStore | client='x' | sync throws ValidationError/VALIDATION field=client
 DynamoDBStore | client={} (not a DocumentClient) | sync throws ValidationError/VALIDATION field=client.get
-DynamoDBStore | clientConfig='x' | OK DynamoDBStore
-DynamoDBStore | clientConfig=null | OK DynamoDBStore
+DynamoDBStore | clientConfig='x' | sync throws ValidationError/VALIDATION field=clientConfig
+DynamoDBStore | clientConfig=[] | sync throws ValidationError/VALIDATION field=clientConfig
+DynamoDBStore | clientConfig=null | sync throws ValidationError/VALIDATION field=clientConfig
+DynamoDBStore | clientConfig={region,endpoint,credentials,maxAttempts} | OK DynamoDBStore
 DynamoDBStore | compression="x" | sync throws ValidationError/VALIDATION field=compression
 DynamoDBStore | compression=null | sync throws ValidationError/VALIDATION field=compression
 DynamoDBStore | compression={"enabled":"true"} | sync throws ValidationError/VALIDATION field=compression.enabled
@@ -545,15 +558,19 @@ DynamoDBStore | compression={"enabled":true,"maxDecompressedBytes":0} | sync thr
 DynamoDBStore | compression={"enabled":true,"minSizeBytes":-1} | sync throws ValidationError/VALIDATION field=compression.minSizeBytes
 DynamoDBStore | compression={} | sync throws ValidationError/VALIDATION field=compression.enabled
 DynamoDBStore | foo=1 | sync throws ValidationError/VALIDATION field=options.foo
-DynamoDBStore | index="x" | sync throws ValidationError/VALIDATION field=index.embeddings
-DynamoDBStore | index=null | OK DynamoDBStore
+DynamoDBStore | index="x" | sync throws ValidationError/VALIDATION field=index
+DynamoDBStore | index=null | sync throws ValidationError/VALIDATION field=index
 DynamoDBStore | index={"dims":"3"} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | index={"dims":0} | sync throws ValidationError/VALIDATION field=index.embeddings
-DynamoDBStore | index={"dims":3,"embed":"x"} | sync throws ValidationError/VALIDATION field=index.embeddings
-DynamoDBStore | index={"dims":3,"embed":{"embedQuery":fn,"embedDocuments":fn},"fields":"x"} | sync throws ValidationError/VALIDATION field=index.embeddings
-DynamoDBStore | index={"dims":3,"embed":{"embedQuery":fn,"embedDocuments":fn},"fields":[1]} | sync throws ValidationError/VALIDATION field=index.embeddings
-DynamoDBStore | index={"dims":3,"embed":{"embedQuery":fn,"embedDocuments":fn},"foo":1} | sync throws ValidationError/VALIDATION field=index.embeddings
-DynamoDBStore | index={"dims":3,"embed":{}} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":3,"embed":"x"} | sync throws ValidationError/VALIDATION field=index.embed
+DynamoDBStore | index={"dims":3,"embed":{"embedQuery":fn,"embedDocuments":fn},"fields":"x"} | sync throws ValidationError/VALIDATION field=index.embed
+DynamoDBStore | index={"dims":3,"embed":{"embedQuery":fn,"embedDocuments":fn},"fields":[1]} | sync throws ValidationError/VALIDATION field=index.embed
+DynamoDBStore | index={"dims":3,"embed":{"embedQuery":fn,"embedDocuments":fn},"foo":1} | sync throws ValidationError/VALIDATION field=index.embed
+DynamoDBStore | index={"dims":3,"embed":{}} | sync throws ValidationError/VALIDATION field=index.embed
+DynamoDBStore | index={"dims":3,"embeddings":{"embedQuery":fn,"embedDocuments":fn},"fields":"x"} | sync throws ValidationError/VALIDATION field=index.fields
+DynamoDBStore | index={"dims":3,"embeddings":{"embedQuery":fn,"embedDocuments":fn},"fields":["a"]} | OK DynamoDBStore
+DynamoDBStore | index={"dims":3,"embeddings":{"embedQuery":fn,"embedDocuments":fn},"fields":[1]} | sync throws ValidationError/VALIDATION field=index.fields
+DynamoDBStore | index={"dims":3,"embeddings":{"embedQuery":fn,"embedDocuments":fn},"foo":1} | sync throws ValidationError/VALIDATION field=index.foo
 DynamoDBStore | index={"dims":3} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | index={"dims":NaN} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | index={} | sync throws ValidationError/VALIDATION field=index.embeddings
@@ -613,7 +630,7 @@ DynamoDBStore | retry={"maxAttempts":NaN} | sync throws ValidationError/VALIDATI
 DynamoDBStore | s3="x" | sync throws ValidationError/VALIDATION field=s3
 DynamoDBStore | s3=null | sync throws ValidationError/VALIDATION field=s3
 DynamoDBStore | s3={"bucketName":""} | sync throws ValidationError/VALIDATION field=s3.bucketName
-DynamoDBStore | s3={"bucketName":"b","clientConfig":"x"} | OK DynamoDBStore
+DynamoDBStore | s3={"bucketName":"b","clientConfig":"x"} | sync throws ValidationError/VALIDATION field=s3.clientConfig
 DynamoDBStore | s3={"bucketName":"b","foo":1} | sync throws ValidationError/VALIDATION field=s3.foo
 DynamoDBStore | s3={"bucketName":"b","keyPrefix":""} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
 DynamoDBStore | s3={"bucketName":"b","keyPrefix":"/"} | sync throws ValidationError/VALIDATION field=s3.keyPrefix
@@ -642,21 +659,22 @@ DynamoDBStore | tableName=undefined | sync throws ValidationError/VALIDATION fie
 DynamoDBStore | tableName={} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBStore | ttl="x" | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBStore | ttl=null | sync throws ValidationError/VALIDATION field=ttl
-DynamoDBStore | ttl={"day":1} | sync throws ValidationError/VALIDATION field=ttl
+DynamoDBStore | ttl={"day":1} | sync throws ValidationError/VALIDATION field=ttl.day
 DynamoDBStore | ttl={"days":"1"} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBStore | ttl={"days":-1} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBStore | ttl={"days":0} | sync throws ValidationError/VALIDATION field=ttl.days
-DynamoDBStore | ttl={"days":1,"foo":1} | OK DynamoDBStore
+DynamoDBStore | ttl={"days":1,"foo":1} | sync throws ValidationError/VALIDATION field=ttl.foo
 DynamoDBStore | ttl={"days":1,"seconds":1} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBStore | ttl={"days":1.5} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBStore | ttl={"days":1000000000000} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBStore | ttl={"days":NaN} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBStore | ttl={"seconds":0.5} | sync throws ValidationError/VALIDATION field=ttl.seconds
 DynamoDBStore | ttl={} | sync throws ValidationError/VALIDATION field=ttl
+DynamoDBStore | vectorBackend with a usable index (store only) | OK DynamoDBStore
 DynamoDBStore | vectorBackend without index (store only) | sync throws ValidationError/VALIDATION field=vectorBackend
 DynamoDBStore | vectorBackend="x" | sync throws ValidationError/VALIDATION field=vectorBackend
 DynamoDBStore | vectorBackend=null | sync throws ValidationError/VALIDATION field=vectorBackend
-DynamoDBStore | vectorBackend={"upsert":fn,"query":fn,"delete":fn} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | vectorBackend={"upsert":fn,"query":fn,"delete":fn} | sync throws ValidationError/VALIDATION field=index.embed
 DynamoDBStore | vectorBackend={} | sync throws ValidationError/VALIDATION field=vectorBackend
 DynamoDBStore | vectorScoreDirection="" | sync throws ValidationError/VALIDATION field=vectorScoreDirection
 DynamoDBStore | vectorScoreDirection="Distance" | sync throws ValidationError/VALIDATION field=vectorScoreDirection

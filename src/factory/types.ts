@@ -50,7 +50,9 @@ export type AdapterSection<Options> = Omit<Options, 'client' | 'clientConfig' | 
 /**
  * Per-adapter options for `DynamoDBFactory.createAll`; omit a section to skip
  * that adapter, and pass none to build none. A key that is not one of these
- * three is refused: it would otherwise skip every adapter silently.
+ * three is refused: it would otherwise skip every adapter silently. So is a
+ * section that is not an object, `null` included, naming `options` as that
+ * adapter's constructor would.
  */
 export interface CreateAllOptions {
   saver?: AdapterSection<DynamoDBSaverOptions>;

@@ -30,9 +30,18 @@ describe('resolveTtlSeconds shape', () => {
     expectValidationError(() => resolveTtlSeconds({} as never), 'ttl');
   });
 
-  /** A typo reaches this cell, and a message naming `ttl.seconds` would misdirect. */
-  it('rejects a misspelt unit by naming ttl, not the unit it guessed', () => {
-    expectValidationError(() => resolveTtlSeconds({ day: 1 } as never), 'ttl');
+  /**
+   * A typo reaches this cell, and a message naming `ttl.seconds` would
+   * misdirect; the key the caller actually wrote is the one to name.
+   */
+  it('rejects a misspelt unit by naming the key written, not the unit it guessed', () => {
+    expectValidationError(() => resolveTtlSeconds({ day: 1 } as never), 'ttl.day');
+  });
+
+  /** Checked before the unit, so a valid unit beside it does not hide the stray key. */
+  it('rejects a key beside a valid unit, naming that key', () => {
+    expectValidationError(() => resolveTtlSeconds({ days: 1, foo: 1 } as never), 'ttl.foo');
+    expectValidationError(() => resolveTtlSeconds({ seconds: 60, foo: 1 } as never), 'ttl.foo');
   });
 
   it('rejects an object carrying both days and seconds instead of preferring one (CORE-14)', () => {

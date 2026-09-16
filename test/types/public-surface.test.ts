@@ -22,6 +22,7 @@ import type {
   CorruptMessagePolicy,
   CreateAllOptions,
   CreatedAdapters,
+  DeltaChannelHistoryOptions,
   DynamoDBChatMessageHistory,
   DynamoDBChatMessageHistoryOptions,
   DynamoDBFactory,
@@ -33,6 +34,7 @@ import type {
   ErrorContext,
   FactoryBaseOptions,
   GetMessagesOptions,
+  ListNamespacesOptions,
   ListSessionsOptions,
   LogArgument,
   Logger,
@@ -119,9 +121,19 @@ describe('public type exports (CORE-12, TEST-10)', () => {
     expectTypeOf<CorruptMessagePolicy>().toEqualTypeOf<'skip' | 'throw'>();
     expectTypeOf<CreateAllOptions>().toHaveProperty('saver');
     expectTypeOf<CreatedAdapters['destroy']>().toEqualTypeOf<() => void>();
+    /**
+     * Named for the reference and for callers, not redefined: each must stay
+     * exactly the parameter type upstream's method declares inline.
+     */
+    expectTypeOf<DeltaChannelHistoryOptions>().toEqualTypeOf<
+      Parameters<BaseCheckpointSaver['getDeltaChannelHistory']>[0]
+    >();
     expectTypeOf<ErrorContext>().toHaveProperty('operation');
     expectTypeOf<FactoryBaseOptions>().toHaveProperty('logger');
     expectTypeOf<GetMessagesOptions>().toEqualTypeOf<MessageWindow & CancelOptions>();
+    expectTypeOf<ListNamespacesOptions>().toEqualTypeOf<
+      NonNullable<Parameters<BaseStore['listNamespaces']>[0]>
+    >();
     expectTypeOf<ListSessionsOptions>().toHaveProperty('maxItems');
     expectTypeOf<Logger['warn']>().parameters.toEqualTypeOf<[string, ...LogArgument[]]>();
     expectTypeOf<Redactable>().not.toBeNever();
@@ -164,6 +176,9 @@ describe('adapter signatures (TEST-10)', () => {
     expectTypeOf<DynamoDBSaver['getDeltaChannelHistory']>().toEqualTypeOf<
       BaseCheckpointSaver['getDeltaChannelHistory']
     >();
+    expectTypeOf<DynamoDBSaver['getDeltaChannelHistory']>().parameters.toEqualTypeOf<
+      [DeltaChannelHistoryOptions]
+    >();
     expectTypeOf<DynamoDBSaver['ensureS3LifecycleRule']>().returns.resolves.toBeVoid();
     expectTypeOf<DynamoDBSaver['destroy']>().returns.toBeVoid();
   });
@@ -174,6 +189,9 @@ describe('adapter signatures (TEST-10)', () => {
     expectTypeOf<DynamoDBStore['put']>().toEqualTypeOf<BaseStore['put']>();
     expectTypeOf<DynamoDBStore['delete']>().toEqualTypeOf<BaseStore['delete']>();
     expectTypeOf<DynamoDBStore['listNamespaces']>().toEqualTypeOf<BaseStore['listNamespaces']>();
+    expectTypeOf<DynamoDBStore['listNamespaces']>().parameters.toEqualTypeOf<
+      [ListNamespacesOptions?]
+    >();
     expectTypeOf<DynamoDBStore['search']>().parameters.toEqualTypeOf<
       [string[], (Pick<SearchOperation, 'filter' | 'limit' | 'offset' | 'query'> & CancelOptions)?]
     >();

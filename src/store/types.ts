@@ -59,6 +59,28 @@ export type DynamoDBStoreOptions = BaseAdapterOptions &
 export type SearchOptions = Pick<SearchOperation, 'filter' | 'limit' | 'offset' | 'query'> &
   CancelOptions;
 
+/**
+ * Options {@link DynamoDBStore.listNamespaces} accepts: the object
+ * `BaseStore.listNamespaces` declares inline, with the same five optional
+ * fields, named so a caller can type the options it builds. A test pins it
+ * equal to upstream's parameter type.
+ */
+export interface ListNamespacesOptions {
+  /** Only namespaces starting with these labels; `'*'` matches any one label. */
+  prefix?: string[];
+  /** Only namespaces ending with these labels; `'*'` matches any one label. */
+  suffix?: string[];
+  /**
+   * Truncate each namespace to at most this many labels, at least 1; the
+   * namespaces that truncation makes equal are listed once.
+   */
+  maxDepth?: number;
+  /** How many namespaces to return, a non-negative integer; default 100. */
+  limit?: number;
+  /** How many namespaces to skip first, a non-negative integer; default 0. */
+  offset?: number;
+}
+
 /** The DynamoDB item backing a single stored value. */
 export interface StoreItemRecord {
   PK: string;

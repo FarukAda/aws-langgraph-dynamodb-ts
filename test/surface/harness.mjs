@@ -64,7 +64,7 @@ const CTOR_CASES = {
 };
 const PER_ADAPTER = {
   DynamoDBStore: {
-    index: [null, 'x', {}, { dims: 0 }, { dims: NaN }, { dims: '3' }, { dims: 3 }, { dims: 3, embed: 'x' }, { dims: 3, embed: {} }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, fields: 'x' }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, fields: [1] }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, foo: 1 }],
+    index: [null, 'x', {}, { dims: 0 }, { dims: NaN }, { dims: '3' }, { dims: 3 }, { dims: 3, embed: 'x' }, { dims: 3, embed: {} }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, fields: 'x' }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, fields: [1] }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, foo: 1 }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, fields: 'x' }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, fields: [1] }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, foo: 1 }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, fields: ['a'] }],
     maxSearchCandidates: [0, -1, NaN, 'x', 1.5, 1e12],
     maxScanItems: [0, -1, NaN, 'x', 1.5, Infinity],
     vectorScoreDirection: ['Distance', '', null, 1, 'relevance'],
@@ -92,6 +92,9 @@ function fuzzConstructors() {
     trySync(cls, "client='x'", () => new Ctor({ tableName: 'fuzz-table', client: 'x' }));
     trySync(cls, 'clientConfig=null', () => new Ctor({ tableName: 'fuzz-table', clientConfig: null }));
     trySync(cls, "clientConfig='x'", () => new Ctor({ tableName: 'fuzz-table', clientConfig: 'x' }));
+    trySync(cls, 'clientConfig=[]', () => new Ctor({ tableName: 'fuzz-table', clientConfig: [] }));
+    trySync(cls, 'clientConfig={region,endpoint,credentials,maxAttempts}', () => { const a = new Ctor({ tableName: 'fuzz-table', clientConfig: { region: 'us-east-1', endpoint: 'http://localhost:8000', credentials: { accessKeyId: 'x', secretAccessKey: 'y' }, maxAttempts: 3 } }); a.destroy(); return a; });
+    trySync(cls, 'vectorBackend with a usable index (store only)', () => { const a = new Ctor({ ...base(), index: { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} } }, vectorBackend: { upsert() {}, query() {}, delete() {}, extra: 1 } }); a.destroy(); return a; });
     trySync(cls, 'vectorBackend without index (store only)', () => new Ctor({ ...base(), vectorBackend: { upsert() {}, query() {}, delete() {} } }));
   }
 }
@@ -172,12 +175,16 @@ async function fuzzHistory() {
 
 function fuzzFactory() {
   const E = 'DynamoDBFactory';
-  for (const v of [undefined, null, 'x', 1, [], { foo: 1 }, { client: docMock(), clientConfig: { region: 'x' } }, { ttl: { days: 0 } }, { retry: 'x' }, { s3: 'x' }, { logger: 'x' }, { tableName: 't' }]) trySync(E, `base=${describe(v)}`, () => new lib.DynamoDBFactory(v));
+  for (const v of [undefined, null, 'x', 1, [], { foo: 1 }, { client: docMock(), clientConfig: { region: 'x' } }, { ttl: { days: 0 } }, { retry: 'x' }, { s3: 'x' }, { logger: 'x' }, { tableName: 't' }, { clientConfig: 'x' }]) trySync(E, `base=${describe(v)}`, () => new lib.DynamoDBFactory(v));
   const f = new lib.DynamoDBFactory({ client: docMock() });
-  for (const v of [undefined, null, 'x', 1, [], {}, { foo: {} }, { saver: null }, { saver: 'x' }, { saver: {} }, { saver: { tableName: 'fuzz-table', client: {} } }, { saver: { tableName: 'fuzz-table', clientConfig: { region: 'x' } } }, { saver: { tableName: 'fuzz-table' }, store: { tableName: 'bad#' } }, { saver: { tableName: 'fuzz-table', foo: 1 } }]) trySync(E + '.createAll', `options=${describe(v)}`, () => { const r = f.createAll(v); r.destroy(); return r; });
+  for (const v of [undefined, null, 'x', 1, [], {}, { foo: {} }, { saver: null }, { saver: 'x' }, { saver: [] }, { saver: {} }, { saver: { tableName: 'fuzz-table', client: {} } }, { saver: { tableName: 'fuzz-table', clientConfig: { region: 'x' } } }, { saver: { tableName: 'fuzz-table' }, store: { tableName: 'bad#' } }, { saver: { tableName: 'fuzz-table', foo: 1 } }]) trySync(E + '.createAll', `options=${describe(v)}`, () => { const r = f.createAll(v); r.destroy(); return r; });
   for (const v of [undefined, null, 'x', {}, { tableName: 'fuzz-table', client: {} }, { tableName: 'fuzz-table', foo: 1 }]) trySync(E + '.createSaver', `options=${describe(v)}`, () => f.createSaver(v));
   trySync(E + '.createStore', 'options={} ', () => f.createStore({}));
   trySync(E + '.createChatMessageHistory', "options='x'", () => f.createChatMessageHistory('x'));
+  trySync(E + '.createStore', 'options=null', () => f.createStore(null));
+  trySync(E + '.createChatMessageHistory', 'options=null', () => f.createChatMessageHistory(null));
+  const s3Null = new lib.DynamoDBFactory({ client: docMock(), s3: null });
+  trySync(E + '(base s3=null).createAll', 'saver with tableName only', () => { const r = s3Null.createAll({ saver: { tableName: 'fuzz-table' } }); r.destroy(); return r; });
   const nb = new lib.DynamoDBFactory();
   trySync(E + '(no base).createAll', 'saver with tableName only (builds a real client from env)', () => { const r = nb.createAll({ saver: { tableName: 'fuzz-table' } }); r.destroy(); return r; });
 }

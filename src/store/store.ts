@@ -24,7 +24,7 @@ import { runBatch } from './internal/batch-plan';
 import { assertPutArguments, listNamespacesOperation } from './internal/call-arguments';
 import { assertOperations, assertSearchPrefix } from './internal/operation-validation';
 import { type StoreContext, setUpStore } from './internal/setup';
-import type { DynamoDBStoreOptions, SearchOptions } from './types';
+import type { DynamoDBStoreOptions, ListNamespacesOptions, SearchOptions } from './types';
 
 type SingleResult = Item | null | SearchItem[] | string[][] | void;
 
@@ -196,9 +196,7 @@ export class DynamoDBStore extends BaseStore {
    * `prefix element`, `suffix`, `suffix element`, `maxDepth`, `limit` or
    * `offset`; ResultTruncatedError past `maxScanItems`; UpstreamError.
    */
-  override async listNamespaces(
-    options: Parameters<BaseStore['listNamespaces']>[0] = {},
-  ): Promise<string[][]> {
+  override async listNamespaces(options: ListNamespacesOptions = {}): Promise<string[][]> {
     return guardPublic(
       'store.listNamespaces',
       async () => (await this.batch([listNamespacesOperation(options)]))[0],

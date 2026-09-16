@@ -1,11 +1,8 @@
-import type {
-  BaseCheckpointSaver,
-  BaseStore,
-  CheckpointListOptions,
-} from '@langchain/langgraph-checkpoint';
+import type { CheckpointListOptions } from '@langchain/langgraph-checkpoint';
 
+import type { DeltaChannelHistoryOptions } from '../../checkpointer/types';
 import type { GetMessagesOptions, ListSessionsOptions } from '../../history/types';
-import type { SearchOptions } from '../../store/types';
+import type { ListNamespacesOptions, SearchOptions } from '../../store/types';
 import type { CancelOptions } from '../options';
 import { assertSignalLike } from './collaborators';
 import { allKeysOf, assertShape } from './option-shape';
@@ -54,22 +51,27 @@ export const SAVER_LIST_KEYS = allKeysOf<CheckpointListOptions>({
 });
 
 /**
- * See {@link CANCEL_KEYS}. Named from `BaseStore`'s own signature, since
- * `DynamoDBStore.listNamespaces` takes upstream's options unchanged.
+ * See {@link CANCEL_KEYS}. `ListNamespacesOptions` is pinned equal to
+ * `BaseStore.listNamespaces`' own parameter type, so this list is checked
+ * against upstream's options through it.
  */
-export const STORE_LIST_NAMESPACES_KEYS = allKeysOf<
-  NonNullable<Parameters<BaseStore['listNamespaces']>[0]>
->({ prefix: 'prefix', suffix: 'suffix', maxDepth: 'maxDepth', limit: 'limit', offset: 'offset' });
+export const STORE_LIST_NAMESPACES_KEYS = allKeysOf<ListNamespacesOptions>({
+  prefix: 'prefix',
+  suffix: 'suffix',
+  maxDepth: 'maxDepth',
+  limit: 'limit',
+  offset: 'offset',
+});
 
 /**
- * See {@link CANCEL_KEYS}. Named from `BaseCheckpointSaver`'s own signature
- * rather than a type this package declares, since the upstream interface
- * (`@langchain/langgraph-checkpoint` `base.d.ts:107-110`) is the contract
- * `getDeltaChannelHistory` implements.
+ * See {@link CANCEL_KEYS}. `DeltaChannelHistoryOptions` is pinned equal to
+ * `BaseCheckpointSaver.getDeltaChannelHistory`'s own parameter type, the
+ * contract that method implements, so this list is checked against it.
  */
-export const DELTA_CHANNEL_HISTORY_KEYS = allKeysOf<
-  Parameters<BaseCheckpointSaver['getDeltaChannelHistory']>[0]
->({ config: 'config', channels: 'channels' });
+export const DELTA_CHANNEL_HISTORY_KEYS = allKeysOf<DeltaChannelHistoryOptions>({
+  config: 'config',
+  channels: 'channels',
+});
 
 /**
  * Reject a `{ signal }` bag carrying a key this package does not read.

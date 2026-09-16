@@ -6,7 +6,13 @@ import { s3ClientOptions } from '../shared/codec/s3/client-types';
 import type { S3OffloadConfig } from '../shared/codec/s3/config';
 import { resolveDynamoDBClient } from '../shared/dynamodb/client';
 import { type Logger, resolveLogger } from '../shared/logging/logger';
-import { allKeysOf, assertShape } from '../shared/validation/option-shape';
+import { assertMembers, LOGGER_MEMBERS } from '../shared/validation/collaborators';
+import {
+  allKeysOf,
+  assertObjectShape,
+  assertShape,
+  isObjectShape,
+} from '../shared/validation/option-shape';
 import { validateClientChoice } from '../shared/validation/options';
 import { DynamoDBStore } from '../store/store';
 import type { DynamoDBStoreOptions } from '../store/types';
@@ -78,27 +84,40 @@ function overridesClient(options: FactoryBaseOptions): boolean {
  *
  * Individual `create*` methods each build their own client; {@link createAll}
  * builds one shared client used by all three and returns a combined `destroy`
- * that tears everything down once. The factory validates nothing itself: each
- * adapter validates the options it ends up with, so the same mistake is caught
- * the same way however the adapter was built.
+ * that tears everything down once. Each adapter validates the options it ends
+ * up with, so the same mistake is caught the same way however the adapter was
+ * built. The factory checks only what it reads itself before an adapter can:
+ * its own base options, client choice and logger, the keys of `createAll`'s
+ * argument, and that each adapter's options are an object at all.
+ *
+ * Every `create*` argument and every `createAll` section is one adapter's
+ * options, and a mistake in one is named the way that adapter's constructor
+ * names it: `options` for a value that is not an object, and the adapter's own
+ * field names (`options.<key>`, `tableName`, …) for anything inside one.
  */
 export class DynamoDBFactory {
   /**
    * Accepts: `base` — the defaults every adapter inherits. Checked here, where
    * the caller wrote them: an unknown key would otherwise be ignored, and a
    * `client` next to a `clientConfig` was refused by the first `create*` call
-   * and accepted by `createAll`, for the same base.
+   * and accepted by `createAll`, for the same base. So is the shape of
+   * `clientConfig`: `createAll` hands its adapters the client built from it,
+   * never the config, so no adapter would see a malformed one. And so is
+   * `logger`, which `createAll` logs its own teardown failures through: a
+   * malformed one threw from inside that teardown, replacing a failed build's
+   * own error with a bare `TypeError`.
    *
    * Returns: a factory holding those defaults. It opens nothing: every client
    * is built by the `create*` call that needs one.
    *
-   * Throws: ValidationError naming the offending option. Everything else each
-   * adapter validates for itself, since a per-adapter value may still replace
-   * it.
+   * Throws: ValidationError naming `options.<key>`, `client`, `clientConfig`,
+   * `logger` or `logger.<method>`. Everything else each adapter validates for
+   * itself, since a per-adapter value may still replace it.
    */
   constructor(private readonly base: FactoryBaseOptions = {}) {
     assertShape(base, FACTORY_BASE_KEYS, 'options');
     validateClientChoice(base);
+    if (base.logger !== undefined) assertMembers(base.logger, LOGGER_MEMBERS, 'logger');
   }
 
   /** The base options every adapter inherits regardless of which client it uses. */
@@ -119,10 +138,16 @@ export class DynamoDBFactory {
    * bucket reachable only through that region otherwise failed with an opaque
    * `PermanentRedirect` on the first offload, while the identical configuration
    * through `createStore` worked.
+   *
+   * A base `s3`, or its `clientConfig`, that is not an object is handed on
+   * unchanged, for each adapter to refuse by its own name. Reading a region off
+   * a `null` one crashed here, and filling a region into a malformed
+   * `clientConfig` turned it into an object the adapter then accepted.
    */
   private sharedS3(): S3OffloadConfig | undefined {
     const s3 = this.base.s3;
-    if (s3 === undefined) return undefined;
+    if (!isObjectShape(s3)) return s3;
+    if (s3.clientConfig !== undefined && !isObjectShape(s3.clientConfig)) return s3;
     const region = s3ClientOptions(s3.clientConfig).region ?? this.base.clientConfig?.region;
     if (region === undefined) return s3;
     return { ...s3, clientConfig: { ...s3.clientConfig, region } };
@@ -149,9 +174,13 @@ export class DynamoDBFactory {
    * Returns: the saver, which owns the client it built and releases it on
    * `destroy()`.
    *
-   * Throws: ValidationError for any invalid option, naming it.
+   * Throws: ValidationError for any invalid option, naming it as the saver's
+   * constructor does — `options` for a value that is not an object, checked
+   * before the defaults are laid under it: `null` crashed reading `client`
+   * off it, and a string was spread into its characters.
    */
   createSaver(options: DynamoDBSaverOptions): DynamoDBSaver {
+    assertObjectShape(options, 'options');
     return new DynamoDBSaver({ ...this.defaultsFor(options), ...options });
   }
 
@@ -165,6 +194,7 @@ export class DynamoDBFactory {
    * Throws: as {@link createSaver}.
    */
   createStore(options: DynamoDBStoreOptions): DynamoDBStore {
+    assertObjectShape(options, 'options');
     return new DynamoDBStore({ ...this.defaultsFor(options), ...options });
   }
 
@@ -178,6 +208,7 @@ export class DynamoDBFactory {
    * Throws: as {@link createSaver}.
    */
   createChatMessageHistory(options: DynamoDBChatMessageHistoryOptions): DynamoDBChatMessageHistory {
+    assertObjectShape(options, 'options');
     return new DynamoDBChatMessageHistory({ ...this.defaultsFor(options), ...options });
   }
 
@@ -185,15 +216,19 @@ export class DynamoDBFactory {
    * Build the adapters whose sections are given, all on one shared client.
    *
    * Accepts: `options` — a section per adapter, laid over the factory's shared
-   * defaults; omitting one skips that adapter, and `{}` builds none. A key that
-   * is not a section name is refused rather than ignored: a misspelt one
-   * silently built nothing and handed back three `undefined`s.
+   * defaults; omitting one, or giving it as `undefined`, skips that adapter,
+   * and `{}` builds none. A key that is not a section name is refused rather
+   * than ignored: a misspelt one silently built nothing and handed back three
+   * `undefined`s. Each section is that adapter's options, so one that is not
+   * an object — `null` included, which used to build nothing and hand back
+   * `null` — is refused before any client is built.
    *
    * Returns: the adapters, typed by the sections asked for, and one `destroy`
    * that releases all of them and the shared client. A client the factory was
    * given rather than built is never destroyed.
    *
-   * Throws: ValidationError naming the offending option or section key.
+   * Throws: ValidationError naming `options` for an argument or a section that
+   * is not an object, or `options.<key>` for a key that is not a section name.
    * Whatever an adapter's constructor throws — after the adapters already
    * built and the freshly created client have been released, so a failed call
    * leaks nothing and the constructor's own error is the one that propagates.
@@ -205,6 +240,10 @@ export class DynamoDBFactory {
    */
   createAll<O extends CreateAllOptions>(options: O): CreatedAdapters<O> {
     assertShape(options, CREATE_ALL_KEYS, 'options');
+    const { saver, store, history } = options;
+    for (const section of [saver, store, history]) {
+      if (section !== undefined) assertObjectShape(section, 'options');
+    }
     const logger = resolveLogger(this.base.logger);
     const resolved = resolveDynamoDBClient(this.base);
     const shared = { ...this.sharedDefaults(), s3: this.sharedS3(), client: resolved.client };
@@ -218,7 +257,6 @@ export class DynamoDBFactory {
       for (const adapter of built) release(logger, () => adapter.destroy());
       release(logger, () => resolved.ddbClient?.destroy());
     };
-    const { saver, store, history } = options;
     try {
       const adapters: BuiltAdapters = {
         saver: saver && track(new DynamoDBSaver({ ...shared, ...saver })),

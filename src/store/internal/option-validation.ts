@@ -3,10 +3,23 @@ import type { IndexConfig } from '@langchain/langgraph-checkpoint';
 import { MAX_SCAN_ITEMS, MAX_SEARCH_CANDIDATES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
 import { assertMembers, EMBEDDINGS_MEMBERS } from '../../shared/validation/collaborators';
+import { allKeysOf, assertShape } from '../../shared/validation/option-shape';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
-import { validateInteger } from '../../shared/validation/primitives';
+import { validateInteger, validateStringArray } from '../../shared/validation/primitives';
 import type { DynamoDBStoreOptions } from '../types';
 import { VECTOR_SCORE_DIRECTIONS, type VectorScoreDirection } from './score-direction';
+
+/**
+ * The keys `IndexConfig` declares. The type is upstream's, but this package is
+ * what reads `index`, so a key missing from this list — a misspelling, or one
+ * a later upstream release adds — is one it would silently ignore; refusing it
+ * is what tells the caller their setting is not in effect.
+ */
+const INDEX_KEYS = allKeysOf<IndexConfig>({
+  dims: 'dims',
+  embeddings: 'embeddings',
+  fields: 'fields',
+});
 
 /**
  * Reject an `index` that cannot actually embed. `IndexConfig` mandates
@@ -16,10 +29,19 @@ import { VECTOR_SCORE_DIRECTIONS, type VectorScoreDirection } from './score-dire
  *
  * Both methods are required: documents are embedded with `embedDocuments()`
  * on `put()` and queries with `embedQuery()` on `search()`.
+ *
+ * The keys are checked first, so `{ dims, embed }` names the misspelt `embed`
+ * rather than the `embeddings` it displaced. `null` is refused like any other
+ * value that is not an object, where it used to mean no index; only
+ * `undefined` does. `fields`, when given, must be an array of strings, the
+ * rule a put's own `index` argument follows: a string reached the first put
+ * and failed there as an upstream error.
  */
-function assertUsableIndex(index?: IndexConfig): void {
-  if (!index) return;
+function assertUsableIndex(index: IndexConfig | undefined): void {
+  if (index === undefined) return;
+  assertShape(index, INDEX_KEYS, 'index');
   assertMembers(index.embeddings, EMBEDDINGS_MEMBERS, 'index.embeddings');
+  if (index.fields !== undefined) validateStringArray(index.fields, 'index.fields');
 }
 
 /**
@@ -68,8 +90,9 @@ function validateLimits(options: DynamoDBStoreOptions): void {
  *
  * Accepts: every option the store takes. The types describe the intended
  * shapes; this runs for the JavaScript caller the types never see, and for the
- * combinations no type can express — a backend without an index, an
- * `embeddings` object missing a method, a direction outside its union.
+ * combinations no type can express — a backend without an index, an `index`
+ * key `IndexConfig` does not declare, an `embeddings` object missing a method,
+ * a direction outside its union.
  *
  * Returns: nothing; validity is the absence of a throw.
  *

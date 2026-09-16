@@ -1,3 +1,4 @@
+import type { RunnableConfig } from '@langchain/core/runnables';
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { PayloadDescriptor } from '../shared/codec/codec';
@@ -9,6 +10,22 @@ export type DynamoDBSaverOptions = BaseAdapterOptions &
     /** Optional serializer override (defaults to LangGraph's JSON serializer). */
     serde?: SerializerProtocol;
   };
+
+/**
+ * Options {@link DynamoDBSaver.getDeltaChannelHistory} accepts: the object
+ * `BaseCheckpointSaver.getDeltaChannelHistory` declares inline, named so a
+ * caller can type the options it builds. A test pins it equal to upstream's
+ * parameter type.
+ */
+export interface DeltaChannelHistoryOptions {
+  /** The checkpoint to walk back from; must be an object. */
+  config: RunnableConfig;
+  /**
+   * The delta channels to rebuild, as an array of strings; `[]` reads nothing
+   * and returns `{}`.
+   */
+  channels: string[];
+}
 
 /** Narrowed shape of `RunnableConfig.configurable` the saver relies on. */
 export interface CheckpointConfigurable {

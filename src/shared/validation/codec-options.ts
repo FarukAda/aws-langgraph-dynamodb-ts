@@ -2,7 +2,7 @@ import type { CompressionConfig } from '../codec/compression';
 import { assertScopedKeyPrefix, type S3OffloadConfig } from '../codec/s3/config';
 import { MAX_INLINE_PAYLOAD_BYTES, MAX_PAYLOAD_BUFFER_BYTES } from '../constants';
 import { ValidationError } from '../errors/errors';
-import { allKeysOf, assertShape } from './option-shape';
+import { allKeysOf, assertObjectShape, assertShape } from './option-shape';
 import { validateInteger, validateNonEmptyString } from './primitives';
 
 /** Server-side encryption algorithms S3 accepts for `PutObject`. */
@@ -73,6 +73,8 @@ export function validateCompression(config: CompressionConfig): void {
  * Validate an `s3` offload config, honoring its allowed key set.
  *
  * Accepts: `config` — an object naming only {@link S3OffloadConfig}'s keys.
+ * `config.clientConfig`, when given, must be an object that is neither `null`
+ * nor an array; its own keys are not checked.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
@@ -81,6 +83,13 @@ export function validateCompression(config: CompressionConfig): void {
 export function validateS3(config: S3OffloadConfig): void {
   assertShape(config, S3_KEYS, 's3');
   validateNonEmptyString(config.bucketName, 's3.bucketName');
+  /**
+   * The shape only, never the keys: they are the AWS SDK's `S3ClientConfig`,
+   * which gains keys between SDK releases, and an application may install a
+   * newer SDK than the one this package was compiled against, so a key list
+   * compiled in here would refuse valid configuration.
+   */
+  if (config.clientConfig !== undefined) assertObjectShape(config.clientConfig, 's3.clientConfig');
   if (config.thresholdBytes !== undefined) {
     validateInteger(config.thresholdBytes, 's3.thresholdBytes', {
       min: 1,

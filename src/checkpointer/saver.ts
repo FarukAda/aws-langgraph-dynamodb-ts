@@ -24,7 +24,7 @@ import { putCheckpoint } from './actions/put';
 import { putWrites as putWritesAction } from './actions/put-writes';
 import { deltaChannelHistory } from './internal/delta-history';
 import { type CheckpointerContext, setUpCheckpointer } from './internal/setup';
-import type { DynamoDBSaverOptions } from './types';
+import type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './types';
 
 /**
  * DynamoDB-backed LangGraph checkpoint saver. A thin orchestrator: it resolves
@@ -213,7 +213,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * snapshot.
    */
   getDeltaChannelHistory(
-    options: Parameters<BaseCheckpointSaver['getDeltaChannelHistory']>[0],
+    options: DeltaChannelHistoryOptions,
   ): Promise<Record<string, DeltaChannelHistory>> {
     return guardPublic('saver.getDeltaChannelHistory', () => {
       assertShape(options, DELTA_CHANNEL_HISTORY_KEYS, 'options');

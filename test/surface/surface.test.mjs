@@ -13,7 +13,7 @@ const BASELINE = 'test/surface/baseline.txt';
  * leave this tier red for the whole hardening pass and report nothing useful on
  * any intermediate commit. It becomes 0 when the pass completes.
  */
-const EXPECTED_BARE = 22;
+const EXPECTED_BARE = 20;
 
 /**
  * The count of cases ending in `UpstreamError/UPSTREAM` or

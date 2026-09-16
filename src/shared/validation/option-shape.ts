@@ -20,6 +20,22 @@ export function allKeysOf<T extends object>(keys: {
 }
 
 /**
+ * Whether a value is a plain object: an object at all, not `null`, and not an
+ * array.
+ *
+ * Accepts: `value` — as the caller gave it, `undefined` included.
+ *
+ * Returns: true exactly when {@link assertObjectShape} would accept `value`.
+ * For code that must decide what to do with a malformed value rather than
+ * refuse it on the spot.
+ *
+ * Throws: nothing.
+ */
+export function isObjectShape(value: object | undefined): value is object {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
  * Reject a value that is not a plain object: not an object at all, `null`, or
  * an array.
  *
@@ -30,7 +46,7 @@ export function allKeysOf<T extends object>(keys: {
  * Throws: ValidationError naming `field`.
  */
 export function assertObjectShape(value: object, field: string): void {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isObjectShape(value)) {
     throw new ValidationError(`${field} must be an object`, field);
   }
 }

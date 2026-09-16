@@ -300,6 +300,29 @@ describe('listSessions cursor validation on the indexed path', () => {
   });
 });
 
+describe('forSession checks its arguments when it is called', () => {
+  const refusal = (field: string) =>
+    expect.objectContaining({
+      code: ErrorCode.VALIDATION,
+      context: expect.objectContaining({ field }),
+    });
+
+  /** A synchronous throw, not a rejection: `forSession` returns an adapter, not a promise. */
+  it('throws ValidationError synchronously for a malformed sessionId', () => {
+    const h = history(createStrictDocumentMock().client);
+    expect(() => h.forSession('a#b')).toThrow(refusal('sessionId'));
+    expect(() => h.forSession('')).toThrow(refusal('sessionId'));
+    expect(() => h.forSession(42 as never)).toThrow(refusal('sessionId'));
+  });
+
+  it('throws ValidationError synchronously for a malformed window', () => {
+    const h = history(createStrictDocumentMock().client);
+    expect(() => h.forSession('s1', 'x' as never)).toThrow(refusal('window'));
+    expect(() => h.forSession('s1', { limt: 5 } as never)).toThrow(refusal('window.limt'));
+    expect(() => h.forSession('s1', { limit: 0 })).toThrow(refusal('limit'));
+  });
+});
+
 describe('bounded reads (HIST-06)', () => {
   it('getMessages passes the window through and forSession binds a limit to the adapter', async () => {
     const { client, mock } = createStrictDocumentMock();
