@@ -6,15 +6,22 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory/factory.ts:85](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L85)
+Defined in: [factory/factory.ts:98](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L98)
 
 Convenience constructors for the adapters.
 
 Individual `create*` methods each build their own client; [createAll](#createall)
 builds one shared client used by all three and returns a combined `destroy`
-that tears everything down once. The factory validates nothing itself: each
-adapter validates the options it ends up with, so the same mistake is caught
-the same way however the adapter was built.
+that tears everything down once. Each adapter validates the options it ends
+up with, so the same mistake is caught the same way however the adapter was
+built. The factory checks only what it reads itself before an adapter can:
+its own base options, client choice and logger, the keys of `createAll`'s
+argument, and that each adapter's options are an object at all.
+
+Every `create*` argument and every `createAll` section is one adapter's
+options, and a mistake in one is named the way that adapter's constructor
+names it: `options` for a value that is not an object, and the adapter's own
+field names (`options.<key>`, `tableName`, …) for anything inside one.
 
 ## Constructors
 
@@ -22,19 +29,24 @@ the same way however the adapter was built.
 
 > **new DynamoDBFactory**(`base?`): `DynamoDBFactory`
 
-Defined in: [factory/factory.ts:99](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L99)
+Defined in: [factory/factory.ts:117](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L117)
 
 Accepts: `base` — the defaults every adapter inherits. Checked here, where
 the caller wrote them: an unknown key would otherwise be ignored, and a
 `client` next to a `clientConfig` was refused by the first `create*` call
-and accepted by `createAll`, for the same base.
+and accepted by `createAll`, for the same base. So is the shape of
+`clientConfig`: `createAll` hands its adapters the client built from it,
+never the config, so no adapter would see a malformed one. And so is
+`logger`, which `createAll` logs its own teardown failures through: a
+malformed one threw from inside that teardown, replacing a failed build's
+own error with a bare `TypeError`.
 
 Returns: a factory holding those defaults. It opens nothing: every client
 is built by the `create*` call that needs one.
 
-Throws: ValidationError naming the offending option. Everything else each
-adapter validates for itself, since a per-adapter value may still replace
-it.
+Throws: ValidationError naming `options.<key>`, `client`, `clientConfig`,
+`logger` or `logger.<method>`. Everything else each adapter validates for
+itself, since a per-adapter value may still replace it.
 
 #### Parameters
 
@@ -52,20 +64,24 @@ it.
 
 > **createAll**\<`O`\>(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
-Defined in: [factory/factory.ts:206](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L206)
+Defined in: [factory/factory.ts:241](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L241)
 
 Build the adapters whose sections are given, all on one shared client.
 
 Accepts: `options` — a section per adapter, laid over the factory's shared
-defaults; omitting one skips that adapter, and `{}` builds none. A key that
-is not a section name is refused rather than ignored: a misspelt one
-silently built nothing and handed back three `undefined`s.
+defaults; omitting one, or giving it as `undefined`, skips that adapter,
+and `{}` builds none. A key that is not a section name is refused rather
+than ignored: a misspelt one silently built nothing and handed back three
+`undefined`s. Each section is that adapter's options, so one that is not
+an object — `null` included, which used to build nothing and hand back
+`null` — is refused before any client is built.
 
 Returns: the adapters, typed by the sections asked for, and one `destroy`
 that releases all of them and the shared client. A client the factory was
 given rather than built is never destroyed.
 
-Throws: ValidationError naming the offending option or section key.
+Throws: ValidationError naming `options` for an argument or a section that
+is not an object, or `options.<key>` for a key that is not a section name.
 Whatever an adapter's constructor throws — after the adapters already
 built and the freshly created client have been released, so a failed call
 leaks nothing and the constructor's own error is the one that propagates.
@@ -97,7 +113,7 @@ others.
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:180](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L180)
+Defined in: [factory/factory.ts:210](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L210)
 
 A chat history on its own client.
 
@@ -123,7 +139,7 @@ Throws: as [createSaver](#createsaver).
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:154](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L154)
+Defined in: [factory/factory.ts:182](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L182)
 
 A saver on its own client.
 
@@ -134,7 +150,10 @@ replaces the factory's as a unit.
 Returns: the saver, which owns the client it built and releases it on
 `destroy()`.
 
-Throws: ValidationError for any invalid option, naming it.
+Throws: ValidationError for any invalid option, naming it as the saver's
+constructor does — `options` for a value that is not an object, checked
+before the defaults are laid under it: `null` crashed reading `client`
+off it, and a string was spread into its characters.
 
 #### Parameters
 
@@ -152,7 +171,7 @@ Throws: ValidationError for any invalid option, naming it.
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:167](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L167)
+Defined in: [factory/factory.ts:196](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L196)
 
 A store on its own client.
 

@@ -185,6 +185,8 @@ snapshot.
 
 ##### options
 
+[`DeltaChannelHistoryOptions`](../interfaces/DeltaChannelHistoryOptions.md)
+
 #### Returns
 
 `Promise`\<`Record`\<`string`, `DeltaChannelHistory`\>\>
