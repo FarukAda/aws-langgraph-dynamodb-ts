@@ -138,11 +138,11 @@ describe('assertNoControlChars', () => {
   });
 
   it.each([
-    ['a C0 control', 'ab'],
-    ['ESC, which opens a terminal escape sequence', 'ab'],
-    ['DEL', 'ab'],
-    ['a C1 control', 'ab'],
-    ['single-byte CSI', 'ab'],
+    ['a C0 control', 'a\u0001b'],
+    ['ESC, which opens a terminal escape sequence', 'a\u001bb'],
+    ['DEL', 'a\u007fb'],
+    ['a C1 control', 'a\u0085b'],
+    ['single-byte CSI', 'a\u009bb'],
   ])('rejects %s', (_name, value) => {
     expectValidationError(() => assertNoControlChars(value, 'key'), 'key');
   });
@@ -209,8 +209,8 @@ describe('validateIdentifier', () => {
     ['string before non-blank', 42 as never, 1024, /must be a string/],
     ['non-blank before length', '', 1, /non-empty string/],
     ['length before separator', `${'x'.repeat(64)}#`, 8, /bytes of UTF-8/],
-    ['separator before control chars', 'a#', 1024, /separator/],
-    ['control chars before well-formedness', `${HIGH}`, 1024, /control characters/],
+    ['separator before control chars', 'a#\u0001', 1024, /separator/],
+    ['control chars before well-formedness', `\u0001${HIGH}`, 1024, /control characters/],
   ])('reports %s', (_name, value, maxBytes, message) => {
     expect(() => validateIdentifier(value, '#', 'thread_id', maxBytes)).toThrow(message);
   });

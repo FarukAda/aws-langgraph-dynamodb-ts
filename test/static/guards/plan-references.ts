@@ -119,21 +119,29 @@ function listShallow(dir: string, extensions: readonly string[]): string[] {
 }
 
 /**
- * Every file the real-tree scan covers, relative to {@link REPO_ROOT} with
- * forward slashes: every `.ts` file under `src`, every `.ts` or `.mjs` file
- * under `test`, and every `.mjs` file directly inside `scripts` and
- * `examples`, excluding {@link GUARD_OWN_FILES}.
+ * Every file under the repository's scanned trees, relative to
+ * {@link REPO_ROOT} with forward slashes: every `.ts` file under `src`, every
+ * `.ts` or `.mjs` file under `test`, and every `.mjs` file directly inside
+ * `scripts` and `examples`. Shared by every guard that walks the same file
+ * set; each applies its own exclusions on top.
  */
-function scannedFilePaths(): string[] {
+export function allScannableFiles(): string[] {
   const absolute = [
     ...listRecursive(SRC_ROOT, ['.ts']),
     ...listRecursive(resolve(REPO_ROOT, 'test'), ['.ts', '.mjs']),
     ...listShallow(resolve(REPO_ROOT, 'scripts'), ['.mjs']),
     ...listShallow(resolve(REPO_ROOT, 'examples'), ['.mjs']),
   ];
-  return absolute
-    .map((path) => relative(REPO_ROOT, path).split(sep).join('/'))
-    .filter((path) => !GUARD_OWN_FILES.has(path));
+  return absolute.map((path) => relative(REPO_ROOT, path).split(sep).join('/'));
+}
+
+/**
+ * {@link allScannableFiles}, excluding {@link GUARD_OWN_FILES}: this guard's
+ * own real-tree scan must skip the two files that necessarily contain every
+ * pattern it looks for.
+ */
+function scannedFilePaths(): string[] {
+  return allScannableFiles().filter((path) => !GUARD_OWN_FILES.has(path));
 }
 
 /** Every plan-process reference found across the real tree's scanned files. */

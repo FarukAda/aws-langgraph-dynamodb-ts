@@ -39,7 +39,7 @@ describe('validateSessionId', () => {
   });
 
   it('rejects control characters (M7)', () => {
-    expectValidationError(() => validateSessionId('s[31m'));
+    expectValidationError(() => validateSessionId('s\u001b[31m'));
   });
 });
 
