@@ -17,7 +17,7 @@ DynamoDBChatMessageHistory | foo=1 | sync throws ValidationError/VALIDATION fiel
 DynamoDBChatMessageHistory | indexName="" | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBChatMessageHistory | indexName="idx name" | OK DynamoDBChatMessageHistory
 DynamoDBChatMessageHistory | indexName="idx#1" | OK DynamoDBChatMessageHistory
-DynamoDBChatMessageHistory | indexName="xxxxxxxxxxxxxxxxxxxx…(len 300)" | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | indexName="xxxxxxxxxxxxxxxxxxxx…(len 300 #d2492384)" | OK DynamoDBChatMessageHistory
 DynamoDBChatMessageHistory | indexName=123 | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBChatMessageHistory | indexName=null | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBChatMessageHistory | indexShards="8" | sync throws ValidationError/VALIDATION field=indexShards
@@ -29,8 +29,8 @@ DynamoDBChatMessageHistory | indexShards=NaN | sync throws ValidationError/VALID
 DynamoDBChatMessageHistory | indexShards=null | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBChatMessageHistory | logger="x" | sync throws ValidationError/VALIDATION field=logger
 DynamoDBChatMessageHistory | logger=null | sync throws ValidationError/VALIDATION field=logger
-DynamoDBChatMessageHistory | logger={"info":"fn"} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBChatMessageHistory | logger={"info":1,"warn":1,"error":1,"debug":1} | sync throws ValidationError/VALIDATION field=logger.debug
+DynamoDBChatMessageHistory | logger={"info":fn} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBChatMessageHistory | logger={} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBChatMessageHistory | onCorruptMessage="" | sync throws ValidationError/VALIDATION field=onCorruptMessage
 DynamoDBChatMessageHistory | onCorruptMessage="Skip" | sync throws ValidationError/VALIDATION field=onCorruptMessage
@@ -60,7 +60,7 @@ DynamoDBChatMessageHistory | retry={"maxAttempts":"3"} | sync throws ValidationE
 DynamoDBChatMessageHistory | retry={"maxAttempts":0} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
 DynamoDBChatMessageHistory | retry={"maxAttempts":1.5} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
 DynamoDBChatMessageHistory | retry={"maxAttempts":1000000000000} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
-DynamoDBChatMessageHistory | retry={"maxAttempts":null} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
+DynamoDBChatMessageHistory | retry={"maxAttempts":NaN} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
 DynamoDBChatMessageHistory | s3="x" | sync throws ValidationError/VALIDATION field=s3
 DynamoDBChatMessageHistory | s3=null | sync throws ValidationError/VALIDATION field=s3
 DynamoDBChatMessageHistory | s3={"bucketName":""} | sync throws ValidationError/VALIDATION field=s3.bucketName
@@ -78,10 +78,10 @@ DynamoDBChatMessageHistory | s3={"bucketName":123} | sync throws ValidationError
 DynamoDBChatMessageHistory | s3={} | sync throws ValidationError/VALIDATION field=s3.bucketName
 DynamoDBChatMessageHistory | serde="x" | sync throws ValidationError/VALIDATION field=serde
 DynamoDBChatMessageHistory | serde=null | sync throws ValidationError/VALIDATION field=serde
-DynamoDBChatMessageHistory | serde={"dumpsTyped":"fn"} | sync throws ValidationError/VALIDATION field=serde.loadsTyped
+DynamoDBChatMessageHistory | serde={"dumpsTyped":fn} | sync throws ValidationError/VALIDATION field=serde.loadsTyped
 DynamoDBChatMessageHistory | serde={} | sync throws ValidationError/VALIDATION field=serde.dumpsTyped
 DynamoDBChatMessageHistory | tableName="" | sync throws ValidationError/VALIDATION field=tableName
-DynamoDBChatMessageHistory | tableName="aaaaaaaaaaaaaaaaaaaa…(len 256)" | sync throws ValidationError/VALIDATION field=tableName
+DynamoDBChatMessageHistory | tableName="aaaaaaaaaaaaaaaaaaaa…(len 256 #b836e815)" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBChatMessageHistory | tableName="ab" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBChatMessageHistory | tableName="ok_table.name-1" | OK DynamoDBChatMessageHistory
 DynamoDBChatMessageHistory | tableName="tbl#x" | sync throws ValidationError/VALIDATION field=tableName
@@ -101,7 +101,7 @@ DynamoDBChatMessageHistory | ttl={"days":1,"foo":1} | OK DynamoDBChatMessageHist
 DynamoDBChatMessageHistory | ttl={"days":1,"seconds":1} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBChatMessageHistory | ttl={"days":1.5} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBChatMessageHistory | ttl={"days":1000000000000} | sync throws ValidationError/VALIDATION field=ttl.days
-DynamoDBChatMessageHistory | ttl={"days":null} | sync throws ValidationError/VALIDATION field=ttl.days
+DynamoDBChatMessageHistory | ttl={"days":NaN} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBChatMessageHistory | ttl={"seconds":0.5} | sync throws ValidationError/VALIDATION field=ttl.seconds
 DynamoDBChatMessageHistory | ttl={} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBChatMessageHistory | vectorBackend without index (store only) | sync throws ValidationError/VALIDATION field=options.vectorBackend
@@ -112,10 +112,10 @@ DynamoDBChatMessageHistory.addMessage | message={} | throws ValidationError/VALI
 DynamoDBChatMessageHistory.addMessages | messages="x" | throws UpstreamError/UPSTREAM
 DynamoDBChatMessageHistory.addMessages | messages=["x"] | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | messages=[1] | throws ValidationError/VALIDATION field=messages
+DynamoDBChatMessageHistory.addMessages | messages=[HumanMessage({"lc":1,"type":"constructor","id":["langchain_core","messages","Hu…#4e6fee9c | throws ValidationError/VALIDATION field=messages
+DynamoDBChatMessageHistory.addMessages | messages=[HumanMessage({"lc":1,"type":"constructor","id":["langchain_core","messages","Hu…#c9b2a07e | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | messages=[] (empty) | RESOLVED undefined
 DynamoDBChatMessageHistory.addMessages | messages=[null] | throws ValidationError/VALIDATION field=messages
-DynamoDBChatMessageHistory.addMessages | messages=[{"lc":1,"type":"constructor","id":["langchain_core","messag | throws ValidationError/VALIDATION field=messages
-DynamoDBChatMessageHistory.addMessages | messages=[{"lc":1,"type":"constructor","id":["langchain_core","messag | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | messages=[{"type":"human","content":"x"}] | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | messages=[{}] | throws ValidationError/VALIDATION field=messages
 DynamoDBChatMessageHistory.addMessages | messages=null | throws UpstreamError/UPSTREAM
@@ -126,9 +126,9 @@ DynamoDBChatMessageHistory.addMessages | sessionId="" | throws ValidationError/V
 DynamoDBChatMessageHistory.addMessages | sessionId="a#b" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.addMessages | sessionId="a\u0000b" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.addMessages | sessionId="a\ud800b" | throws ValidationError/VALIDATION field=sessionId
-DynamoDBChatMessageHistory.addMessages | sessionId="abc" | throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.addMessages | sessionId="ab\u009bc" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.addMessages | sessionId="ok-id" | REACHED-WRITE (input accepted, write attempted)
-DynamoDBChatMessageHistory.addMessages | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000)" | throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.addMessages | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000 #94bfe6f3)" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.addMessages | sessionId="😀" | REACHED-WRITE (input accepted, write attempted)
 DynamoDBChatMessageHistory.addMessages | sessionId=123 | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.addMessages | sessionId=["a"] | throws ValidationError/VALIDATION field=sessionId
@@ -140,9 +140,9 @@ DynamoDBChatMessageHistory.clear | sessionId="" | throws ValidationError/VALIDAT
 DynamoDBChatMessageHistory.clear | sessionId="a#b" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.clear | sessionId="a\u0000b" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.clear | sessionId="a\ud800b" | throws ValidationError/VALIDATION field=sessionId
-DynamoDBChatMessageHistory.clear | sessionId="abc" | throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.clear | sessionId="ab\u009bc" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.clear | sessionId="ok-id" | RESOLVED undefined
-DynamoDBChatMessageHistory.clear | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000)" | throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.clear | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000 #94bfe6f3)" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.clear | sessionId="😀" | RESOLVED undefined
 DynamoDBChatMessageHistory.clear | sessionId=123 | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.clear | sessionId=["a"] | throws ValidationError/VALIDATION field=sessionId
@@ -155,9 +155,9 @@ DynamoDBChatMessageHistory.forSession | sessionId="" | sync throws ValidationErr
 DynamoDBChatMessageHistory.forSession | sessionId="a#b" | sync throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.forSession | sessionId="a\u0000b" | sync throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.forSession | sessionId="a\ud800b" | sync throws ValidationError/VALIDATION field=sessionId
-DynamoDBChatMessageHistory.forSession | sessionId="abc" | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId="ab\u009bc" | sync throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.forSession | sessionId="ok-id" | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000)" | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000 #94bfe6f3)" | sync throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.forSession | sessionId="😀" | OK DynamoDBSessionChatMessageHistory
 DynamoDBChatMessageHistory.forSession | sessionId=123 | sync throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.forSession | sessionId=["a"] | sync throws ValidationError/VALIDATION field=sessionId
@@ -170,7 +170,7 @@ DynamoDBChatMessageHistory.forSession | window={"foo":1} | sync throws Validatio
 DynamoDBChatMessageHistory.forSession | window={"limit":"5"} | sync throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession | window={"limit":-1} | sync throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession | window={"limit":0} | sync throws ValidationError/VALIDATION field=limit
-DynamoDBChatMessageHistory.forSession | window={"limit":null} | sync throws ValidationError/VALIDATION field=limit
+DynamoDBChatMessageHistory.forSession | window={"limit":NaN} | sync throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession(...).getMessages | window={"foo":1} | throws ValidationError/VALIDATION field=window.foo
 DynamoDBChatMessageHistory.forSession(...).getMessages | window={"limit":"5"} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession(...).getMessages | window={"limit":0} | throws ValidationError/VALIDATION field=limit
@@ -178,12 +178,12 @@ DynamoDBChatMessageHistory.forSession(bad).getMessages | sessionId='a#b' | throw
 DynamoDBChatMessageHistory.getMessages | options="x" | throws ValidationError/VALIDATION field=options
 DynamoDBChatMessageHistory.getMessages | options=1 | throws ValidationError/VALIDATION field=options
 DynamoDBChatMessageHistory.getMessages | options=null | throws ValidationError/VALIDATION field=options
-DynamoDBChatMessageHistory.getMessages | options={"before":"+037648-05-06T22:07:22.624Z"} | RESOLVED []
-DynamoDBChatMessageHistory.getMessages | options={"before":"1969-12-31T23:59:59.000Z"} | RESOLVED []
-DynamoDBChatMessageHistory.getMessages | options={"before":"1970-01-01T00:00:00.000Z"} | RESOLVED []
 DynamoDBChatMessageHistory.getMessages | options={"before":"x"} | throws ValidationError/VALIDATION field=before
 DynamoDBChatMessageHistory.getMessages | options={"before":123} | throws ValidationError/VALIDATION field=before
-DynamoDBChatMessageHistory.getMessages | options={"before":null} | throws ValidationError/VALIDATION field=before
+DynamoDBChatMessageHistory.getMessages | options={"before":Date(+037648-05-06T22:07:22.624Z)} | RESOLVED []
+DynamoDBChatMessageHistory.getMessages | options={"before":Date(1969-12-31T23:59:59.000Z)} | RESOLVED []
+DynamoDBChatMessageHistory.getMessages | options={"before":Date(1970-01-01)} | RESOLVED []
+DynamoDBChatMessageHistory.getMessages | options={"before":Date(Invalid)} | throws ValidationError/VALIDATION field=before
 DynamoDBChatMessageHistory.getMessages | options={"before":null} | throws ValidationError/VALIDATION field=before
 DynamoDBChatMessageHistory.getMessages | options={"foo":1} | throws ValidationError/VALIDATION field=options.foo
 DynamoDBChatMessageHistory.getMessages | options={"limit":"5"} | throws ValidationError/VALIDATION field=limit
@@ -191,16 +191,16 @@ DynamoDBChatMessageHistory.getMessages | options={"limit":-1} | throws Validatio
 DynamoDBChatMessageHistory.getMessages | options={"limit":0} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"limit":1.5} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"limit":1000000000000} | RESOLVED []
-DynamoDBChatMessageHistory.getMessages | options={"limit":null} | throws ValidationError/VALIDATION field=limit
+DynamoDBChatMessageHistory.getMessages | options={"limit":NaN} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"signal":"x"} | throws ValidationError/VALIDATION field=signal
 DynamoDBChatMessageHistory.getMessages | sessionId=" " | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="a#b" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="a\u0000b" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="a\ud800b" | throws ValidationError/VALIDATION field=sessionId
-DynamoDBChatMessageHistory.getMessages | sessionId="abc" | throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.getMessages | sessionId="ab\u009bc" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="ok-id" | RESOLVED []
-DynamoDBChatMessageHistory.getMessages | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000)" | throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.getMessages | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000 #94bfe6f3)" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="😀" | RESOLVED []
 DynamoDBChatMessageHistory.getMessages | sessionId=123 | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId=["a"] | throws ValidationError/VALIDATION field=sessionId
@@ -226,11 +226,11 @@ DynamoDBChatMessageHistory.listSessions | options={"limit":0} (indexName set) | 
 DynamoDBChatMessageHistory.listSessions | options={"limit":0} (no indexName) | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.listSessions | options={"limit":1.5} (no indexName) | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.listSessions | options={"limit":1000000000000} (no indexName) | RESOLVED {"sessions":[]}
-DynamoDBChatMessageHistory.listSessions | options={"limit":null} (no indexName) | throws ValidationError/VALIDATION field=limit
+DynamoDBChatMessageHistory.listSessions | options={"limit":NaN} (no indexName) | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.listSessions | options={"maxItems":"x"} (no indexName) | throws ValidationError/VALIDATION field=maxItems
 DynamoDBChatMessageHistory.listSessions | options={"maxItems":-1} (no indexName) | throws ValidationError/VALIDATION field=maxItems
 DynamoDBChatMessageHistory.listSessions | options={"maxItems":0} (no indexName) | throws ValidationError/VALIDATION field=maxItems
-DynamoDBChatMessageHistory.listSessions | options={"maxItems":null} (no indexName) | RESOLVED {"sessions":[]}
+DynamoDBChatMessageHistory.listSessions | options={"maxItems":Infinity} (no indexName) | RESOLVED {"sessions":[]}
 DynamoDBChatMessageHistory.listSessions | options={"maxIterations":0} (no indexName) | throws ValidationError/VALIDATION field=maxIterations
 DynamoDBChatMessageHistory.listSessions | options={"maxIterations":1.5} (no indexName) | throws ValidationError/VALIDATION field=maxIterations
 DynamoDBChatMessageHistory.listSessions | options={"signal":"x"} (no indexName) | throws ValidationError/VALIDATION field=signal
@@ -239,9 +239,9 @@ DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="" | throws Validat
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="a#b" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="a\u0000b" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="a\ud800b" | throws ValidationError/VALIDATION field=sessionId
-DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="abc" | throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="ab\u009bc" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="ok-id" | throws ConflictError/CONDITION_CONFLICT
-DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000)" | throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000 #94bfe6f3)" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId="😀" | throws ConflictError/CONDITION_CONFLICT
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId=123 | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId=["a"] | throws ValidationError/VALIDATION field=sessionId
@@ -250,10 +250,10 @@ DynamoDBChatMessageHistory.reconcileMessageCount | sessionId=undefined | throws 
 DynamoDBChatMessageHistory.reconcileMessageCount | sessionId={} | throws ValidationError/VALIDATION field=sessionId
 DynamoDBFactory | base="x" | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory | base=1 | sync throws ValidationError/VALIDATION field=options
-DynamoDBFactory | base=<obj> | sync throws ValidationError/VALIDATION field=client
 DynamoDBFactory | base=[] | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory | base=null | sync throws ValidationError/VALIDATION field=options
 DynamoDBFactory | base=undefined | OK DynamoDBFactory
+DynamoDBFactory | base={"client":DynamoDBDocument(…),"clientConfig":{"region":"x"}} | sync throws ValidationError/VALIDATION field=client
 DynamoDBFactory | base={"foo":1} | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBFactory | base={"logger":"x"} | OK DynamoDBFactory
 DynamoDBFactory | base={"retry":"x"} | OK DynamoDBFactory
@@ -302,7 +302,7 @@ DynamoDBSaver | foo=1 | sync throws ValidationError/VALIDATION field=options.foo
 DynamoDBSaver | indexName="" | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBSaver | indexName="idx name" | OK DynamoDBSaver
 DynamoDBSaver | indexName="idx#1" | OK DynamoDBSaver
-DynamoDBSaver | indexName="xxxxxxxxxxxxxxxxxxxx…(len 300)" | OK DynamoDBSaver
+DynamoDBSaver | indexName="xxxxxxxxxxxxxxxxxxxx…(len 300 #d2492384)" | OK DynamoDBSaver
 DynamoDBSaver | indexName=123 | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBSaver | indexName=null | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBSaver | indexShards="8" | sync throws ValidationError/VALIDATION field=indexShards
@@ -314,8 +314,8 @@ DynamoDBSaver | indexShards=NaN | sync throws ValidationError/VALIDATION field=i
 DynamoDBSaver | indexShards=null | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBSaver | logger="x" | sync throws ValidationError/VALIDATION field=logger
 DynamoDBSaver | logger=null | sync throws ValidationError/VALIDATION field=logger
-DynamoDBSaver | logger={"info":"fn"} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBSaver | logger={"info":1,"warn":1,"error":1,"debug":1} | sync throws ValidationError/VALIDATION field=logger.debug
+DynamoDBSaver | logger={"info":fn} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBSaver | logger={} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBSaver | options="str" | sync throws ValidationError/VALIDATION field=options
 DynamoDBSaver | options=42 | sync throws ValidationError/VALIDATION field=options
@@ -339,7 +339,7 @@ DynamoDBSaver | retry={"maxAttempts":"3"} | sync throws ValidationError/VALIDATI
 DynamoDBSaver | retry={"maxAttempts":0} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
 DynamoDBSaver | retry={"maxAttempts":1.5} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
 DynamoDBSaver | retry={"maxAttempts":1000000000000} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
-DynamoDBSaver | retry={"maxAttempts":null} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
+DynamoDBSaver | retry={"maxAttempts":NaN} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
 DynamoDBSaver | s3="x" | sync throws ValidationError/VALIDATION field=s3
 DynamoDBSaver | s3=null | sync throws ValidationError/VALIDATION field=s3
 DynamoDBSaver | s3={"bucketName":""} | sync throws ValidationError/VALIDATION field=s3.bucketName
@@ -357,10 +357,10 @@ DynamoDBSaver | s3={"bucketName":123} | sync throws ValidationError/VALIDATION f
 DynamoDBSaver | s3={} | sync throws ValidationError/VALIDATION field=s3.bucketName
 DynamoDBSaver | serde="x" | sync throws ValidationError/VALIDATION field=serde
 DynamoDBSaver | serde=null | sync throws ValidationError/VALIDATION field=serde
-DynamoDBSaver | serde={"dumpsTyped":"fn"} | sync throws ValidationError/VALIDATION field=serde.loadsTyped
+DynamoDBSaver | serde={"dumpsTyped":fn} | sync throws ValidationError/VALIDATION field=serde.loadsTyped
 DynamoDBSaver | serde={} | sync throws ValidationError/VALIDATION field=serde.dumpsTyped
 DynamoDBSaver | tableName="" | sync throws ValidationError/VALIDATION field=tableName
-DynamoDBSaver | tableName="aaaaaaaaaaaaaaaaaaaa…(len 256)" | sync throws ValidationError/VALIDATION field=tableName
+DynamoDBSaver | tableName="aaaaaaaaaaaaaaaaaaaa…(len 256 #b836e815)" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBSaver | tableName="ab" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBSaver | tableName="ok_table.name-1" | OK DynamoDBSaver
 DynamoDBSaver | tableName="tbl#x" | sync throws ValidationError/VALIDATION field=tableName
@@ -380,7 +380,7 @@ DynamoDBSaver | ttl={"days":1,"foo":1} | OK DynamoDBSaver
 DynamoDBSaver | ttl={"days":1,"seconds":1} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBSaver | ttl={"days":1.5} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBSaver | ttl={"days":1000000000000} | sync throws ValidationError/VALIDATION field=ttl.days
-DynamoDBSaver | ttl={"days":null} | sync throws ValidationError/VALIDATION field=ttl.days
+DynamoDBSaver | ttl={"days":NaN} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBSaver | ttl={"seconds":0.5} | sync throws ValidationError/VALIDATION field=ttl.seconds
 DynamoDBSaver | ttl={} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBSaver | vectorBackend without index (store only) | sync throws ValidationError/VALIDATION field=options.vectorBackend
@@ -395,9 +395,9 @@ DynamoDBSaver.deleteThread | threadId="" | throws ValidationError/VALIDATION fie
 DynamoDBSaver.deleteThread | threadId="a#b" | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId="a\u0000b" | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId="a\ud800b" | throws ValidationError/VALIDATION field=thread_id
-DynamoDBSaver.deleteThread | threadId="abc" | throws ValidationError/VALIDATION field=thread_id
+DynamoDBSaver.deleteThread | threadId="ab\u009bc" | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId="ok-id" | RESOLVED undefined
-DynamoDBSaver.deleteThread | threadId="xxxxxxxxxxxxxxxxxxxx…(len 2000)" | throws ValidationError/VALIDATION field=thread_id
+DynamoDBSaver.deleteThread | threadId="xxxxxxxxxxxxxxxxxxxx…(len 2000 #94bfe6f3)" | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId="😀" | RESOLVED undefined
 DynamoDBSaver.deleteThread | threadId=123 | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId=["a"] | throws ValidationError/VALIDATION field=thread_id
@@ -409,9 +409,9 @@ DynamoDBSaver.getDeltaChannelHistory | options=null | throws ValidationError/VAL
 DynamoDBSaver.getDeltaChannelHistory | options=undefined | throws ValidationError/VALIDATION field=options
 DynamoDBSaver.getDeltaChannelHistory | options={"config":null} | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"a#b"}},"channels":["c"]} | throws ValidationError/VALIDATION field=thread_id
-DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"chann | RESOLVED {}
-DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"chann | throws ValidationError/VALIDATION field=channels
-DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"chann | throws ValidationError/VALIDATION field=channels
+DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"channels":"x"} | throws ValidationError/VALIDATION field=channels
+DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"channels":[1]} | throws ValidationError/VALIDATION field=channels
+DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"channels":[]} | RESOLVED {}
 DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}}} | throws ValidationError/VALIDATION field=channels
 DynamoDBSaver.getDeltaChannelHistory | options={} | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.getTuple | checkpoint_id="" | RESOLVED undefined
@@ -438,9 +438,9 @@ DynamoDBSaver.getTuple | thread_id="" | throws ValidationError/VALIDATION field=
 DynamoDBSaver.getTuple | thread_id="a#b" | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.getTuple | thread_id="a\u0000b" | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.getTuple | thread_id="a\ud800b" | throws ValidationError/VALIDATION field=thread_id
-DynamoDBSaver.getTuple | thread_id="abc" | throws ValidationError/VALIDATION field=thread_id
+DynamoDBSaver.getTuple | thread_id="ab\u009bc" | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.getTuple | thread_id="ok-id" | RESOLVED undefined
-DynamoDBSaver.getTuple | thread_id="xxxxxxxxxxxxxxxxxxxx…(len 2000)" | throws ValidationError/VALIDATION field=thread_id
+DynamoDBSaver.getTuple | thread_id="xxxxxxxxxxxxxxxxxxxx…(len 2000 #94bfe6f3)" | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.getTuple | thread_id="😀" | RESOLVED undefined
 DynamoDBSaver.getTuple | thread_id=123 | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.getTuple | thread_id=["a"] | throws ValidationError/VALIDATION field=thread_id
@@ -470,8 +470,8 @@ DynamoDBSaver.list | options={"limit":-1} | RESOLVED first=undefined done
 DynamoDBSaver.list | options={"limit":0} | RESOLVED first=undefined done
 DynamoDBSaver.list | options={"limit":1.5} | throws ValidationError/VALIDATION field=limit
 DynamoDBSaver.list | options={"limit":1000000000000} | RESOLVED first=undefined done
-DynamoDBSaver.list | options={"limit":null} | throws ValidationError/VALIDATION field=limit
-DynamoDBSaver.list | options={"limit":null} | throws ValidationError/VALIDATION field=limit
+DynamoDBSaver.list | options={"limit":Infinity} | throws ValidationError/VALIDATION field=limit
+DynamoDBSaver.list | options={"limit":NaN} | throws ValidationError/VALIDATION field=limit
 DynamoDBSaver.put | checkpoint="x" | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.put | checkpoint=1 | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.put | checkpoint=[] | throws ValidationError/VALIDATION field=checkpoint_id
@@ -481,8 +481,8 @@ DynamoDBSaver.put | checkpoint={"id":""} | throws ValidationError/VALIDATION fie
 DynamoDBSaver.put | checkpoint={"id":"a#b"} | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.put | checkpoint={"id":"c1"} | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.put | checkpoint={"id":123} | throws ValidationError/VALIDATION field=checkpoint_id
-DynamoDBSaver.put | checkpoint={"v":1,"id":"cp1","ts":"2024-01-01T00:00:00.000Z","channel_values":nul | REACHED-WRITE (input accepted, write attempted)
-DynamoDBSaver.put | checkpoint={"v":1,"id":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | throws ValidationError/VALIDATION field=checkpoint_id
+DynamoDBSaver.put | checkpoint={"v":1,"id":"cp1","ts":"2024-01-01T00:00:00.000Z","channel_values":null,"channel…#fb8884d4 | REACHED-WRITE (input accepted, write attempted)
+DynamoDBSaver.put | checkpoint={"v":1,"id":"xxxxxxxxxxxxxxxxxxxx…(len 2000 #94bfe6f3)","ts":"2024-01-01T00:00:0…#f594589f | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.put | checkpoint={} | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.put | config="x" | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.put | config=1 | throws ValidationError/VALIDATION field=config
@@ -494,7 +494,7 @@ DynamoDBSaver.put | metadata=1 | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.put | metadata=[] | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.put | metadata=null | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.put | metadata=undefined | REACHED-WRITE (input accepted, write attempted)
-DynamoDBSaver.put | metadata={"source":"input","step":null} | REACHED-WRITE (input accepted, write attempted)
+DynamoDBSaver.put | metadata={"source":"input","step":NaN} | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.put | newVersions='x' | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.putWrites | no checkpoint_id | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.putWrites | taskId=" " | throws ValidationError/VALIDATION field=taskId
@@ -502,9 +502,9 @@ DynamoDBSaver.putWrites | taskId="" | throws ValidationError/VALIDATION field=ta
 DynamoDBSaver.putWrites | taskId="a#b" | throws ValidationError/VALIDATION field=taskId
 DynamoDBSaver.putWrites | taskId="a\u0000b" | throws ValidationError/VALIDATION field=taskId
 DynamoDBSaver.putWrites | taskId="a\ud800b" | throws ValidationError/VALIDATION field=taskId
-DynamoDBSaver.putWrites | taskId="abc" | throws ValidationError/VALIDATION field=taskId
+DynamoDBSaver.putWrites | taskId="ab\u009bc" | throws ValidationError/VALIDATION field=taskId
 DynamoDBSaver.putWrites | taskId="ok-id" | REACHED-WRITE (input accepted, write attempted)
-DynamoDBSaver.putWrites | taskId="xxxxxxxxxxxxxxxxxxxx…(len 2000)" | throws ValidationError/VALIDATION field=taskId
+DynamoDBSaver.putWrites | taskId="xxxxxxxxxxxxxxxxxxxx…(len 2000 #94bfe6f3)" | throws ValidationError/VALIDATION field=taskId
 DynamoDBSaver.putWrites | taskId="😀" | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.putWrites | taskId=123 | throws ValidationError/VALIDATION field=taskId
 DynamoDBSaver.putWrites | taskId=["a"] | throws ValidationError/VALIDATION field=taskId
@@ -518,7 +518,7 @@ DynamoDBSaver.putWrites | writes=[["ch",1,"extra"]] | REACHED-WRITE (input accep
 DynamoDBSaver.putWrites | writes=[["ch",undefined]] | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.putWrites | writes=[["ch"]] | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.putWrites | writes=[[123,1]] | throws ValidationError/VALIDATION field=channel
-DynamoDBSaver.putWrites | writes=[[Symbol(),1]] | throws ValidationError/VALIDATION field=channel
+DynamoDBSaver.putWrites | writes=[[Symbol("s"),1]] | throws ValidationError/VALIDATION field=channel
 DynamoDBSaver.putWrites | writes=[[]] | throws ValidationError/VALIDATION field=channel
 DynamoDBSaver.putWrites | writes=[] (empty) | RESOLVED undefined
 DynamoDBSaver.putWrites | writes=[] | RESOLVED undefined
@@ -550,17 +550,17 @@ DynamoDBStore | index=null | OK DynamoDBStore
 DynamoDBStore | index={"dims":"3"} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | index={"dims":0} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | index={"dims":3,"embed":"x"} | sync throws ValidationError/VALIDATION field=index.embeddings
-DynamoDBStore | index={"dims":3,"embed":{"embedQuery":"fn","embedDocuments":"fn"},"fields":" | sync throws ValidationError/VALIDATION field=index.embeddings
-DynamoDBStore | index={"dims":3,"embed":{"embedQuery":"fn","embedDocuments":"fn"},"fields":[ | sync throws ValidationError/VALIDATION field=index.embeddings
-DynamoDBStore | index={"dims":3,"embed":{"embedQuery":"fn","embedDocuments":"fn"},"foo":1} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":3,"embed":{"embedQuery":fn,"embedDocuments":fn},"fields":"x"} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":3,"embed":{"embedQuery":fn,"embedDocuments":fn},"fields":[1]} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":3,"embed":{"embedQuery":fn,"embedDocuments":fn},"foo":1} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | index={"dims":3,"embed":{}} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | index={"dims":3} | sync throws ValidationError/VALIDATION field=index.embeddings
-DynamoDBStore | index={"dims":null} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | index={"dims":NaN} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | index={} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | indexName="" | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBStore | indexName="idx name" | OK DynamoDBStore
 DynamoDBStore | indexName="idx#1" | OK DynamoDBStore
-DynamoDBStore | indexName="xxxxxxxxxxxxxxxxxxxx…(len 300)" | OK DynamoDBStore
+DynamoDBStore | indexName="xxxxxxxxxxxxxxxxxxxx…(len 300 #d2492384)" | OK DynamoDBStore
 DynamoDBStore | indexName=123 | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBStore | indexName=null | sync throws ValidationError/VALIDATION field=indexName
 DynamoDBStore | indexShards="8" | sync throws ValidationError/VALIDATION field=indexShards
@@ -572,8 +572,8 @@ DynamoDBStore | indexShards=NaN | sync throws ValidationError/VALIDATION field=i
 DynamoDBStore | indexShards=null | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBStore | logger="x" | sync throws ValidationError/VALIDATION field=logger
 DynamoDBStore | logger=null | sync throws ValidationError/VALIDATION field=logger
-DynamoDBStore | logger={"info":"fn"} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBStore | logger={"info":1,"warn":1,"error":1,"debug":1} | sync throws ValidationError/VALIDATION field=logger.debug
+DynamoDBStore | logger={"info":fn} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBStore | logger={} | sync throws ValidationError/VALIDATION field=logger.debug
 DynamoDBStore | maxScanItems="x" | sync throws ValidationError/VALIDATION field=maxScanItems
 DynamoDBStore | maxScanItems=-1 | sync throws ValidationError/VALIDATION field=maxScanItems
@@ -609,7 +609,7 @@ DynamoDBStore | retry={"maxAttempts":"3"} | sync throws ValidationError/VALIDATI
 DynamoDBStore | retry={"maxAttempts":0} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
 DynamoDBStore | retry={"maxAttempts":1.5} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
 DynamoDBStore | retry={"maxAttempts":1000000000000} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
-DynamoDBStore | retry={"maxAttempts":null} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
+DynamoDBStore | retry={"maxAttempts":NaN} | sync throws ValidationError/VALIDATION field=retry.maxAttempts
 DynamoDBStore | s3="x" | sync throws ValidationError/VALIDATION field=s3
 DynamoDBStore | s3=null | sync throws ValidationError/VALIDATION field=s3
 DynamoDBStore | s3={"bucketName":""} | sync throws ValidationError/VALIDATION field=s3.bucketName
@@ -627,10 +627,10 @@ DynamoDBStore | s3={"bucketName":123} | sync throws ValidationError/VALIDATION f
 DynamoDBStore | s3={} | sync throws ValidationError/VALIDATION field=s3.bucketName
 DynamoDBStore | serde="x" | sync throws ValidationError/VALIDATION field=serde
 DynamoDBStore | serde=null | sync throws ValidationError/VALIDATION field=serde
-DynamoDBStore | serde={"dumpsTyped":"fn"} | sync throws ValidationError/VALIDATION field=serde.loadsTyped
+DynamoDBStore | serde={"dumpsTyped":fn} | sync throws ValidationError/VALIDATION field=serde.loadsTyped
 DynamoDBStore | serde={} | sync throws ValidationError/VALIDATION field=serde.dumpsTyped
 DynamoDBStore | tableName="" | sync throws ValidationError/VALIDATION field=tableName
-DynamoDBStore | tableName="aaaaaaaaaaaaaaaaaaaa…(len 256)" | sync throws ValidationError/VALIDATION field=tableName
+DynamoDBStore | tableName="aaaaaaaaaaaaaaaaaaaa…(len 256 #b836e815)" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBStore | tableName="ab" | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBStore | tableName="ok_table.name-1" | OK DynamoDBStore
 DynamoDBStore | tableName="tbl#x" | sync throws ValidationError/VALIDATION field=tableName
@@ -650,13 +650,13 @@ DynamoDBStore | ttl={"days":1,"foo":1} | OK DynamoDBStore
 DynamoDBStore | ttl={"days":1,"seconds":1} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBStore | ttl={"days":1.5} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBStore | ttl={"days":1000000000000} | sync throws ValidationError/VALIDATION field=ttl.days
-DynamoDBStore | ttl={"days":null} | sync throws ValidationError/VALIDATION field=ttl.days
+DynamoDBStore | ttl={"days":NaN} | sync throws ValidationError/VALIDATION field=ttl.days
 DynamoDBStore | ttl={"seconds":0.5} | sync throws ValidationError/VALIDATION field=ttl.seconds
 DynamoDBStore | ttl={} | sync throws ValidationError/VALIDATION field=ttl
 DynamoDBStore | vectorBackend without index (store only) | sync throws ValidationError/VALIDATION field=vectorBackend
 DynamoDBStore | vectorBackend="x" | sync throws ValidationError/VALIDATION field=vectorBackend
 DynamoDBStore | vectorBackend=null | sync throws ValidationError/VALIDATION field=vectorBackend
-DynamoDBStore | vectorBackend={"upsert":"fn","query":"fn","delete":"fn"} | sync throws ValidationError/VALIDATION field=index.embeddings
+DynamoDBStore | vectorBackend={"upsert":fn,"query":fn,"delete":fn} | sync throws ValidationError/VALIDATION field=index.embeddings
 DynamoDBStore | vectorBackend={} | sync throws ValidationError/VALIDATION field=vectorBackend
 DynamoDBStore | vectorScoreDirection="" | sync throws ValidationError/VALIDATION field=vectorScoreDirection
 DynamoDBStore | vectorScoreDirection="Distance" | sync throws ValidationError/VALIDATION field=vectorScoreDirection
@@ -681,17 +681,17 @@ DynamoDBStore.get | key="" | throws ValidationError/VALIDATION field=key
 DynamoDBStore.get | key="a#b" | throws ValidationError/VALIDATION field=key
 DynamoDBStore.get | key="k\u0000" | throws ValidationError/VALIDATION field=key
 DynamoDBStore.get | key="ok" | RESOLVED null
-DynamoDBStore.get | key="xxxxxxxxxxxxxxxxxxxx…(len 3000)" | throws ValidationError/VALIDATION field=key
+DynamoDBStore.get | key="xxxxxxxxxxxxxxxxxxxx…(len 3000 #46b03106)" | throws ValidationError/VALIDATION field=key
 DynamoDBStore.get | key=123 | throws ValidationError/VALIDATION field=key
 DynamoDBStore.get | key=null | throws ValidationError/VALIDATION field=key
 DynamoDBStore.get | key=undefined | throws ValidationError/VALIDATION field=key
 DynamoDBStore.get | key={} | throws ValidationError/VALIDATION field=key
 DynamoDBStore.get | namespace="x" | throws ValidationError/VALIDATION field=namespace
 DynamoDBStore.get | namespace=[""] | throws ValidationError/VALIDATION field=namespace element
-DynamoDBStore.get | namespace=["a","bbbbbbbbbbbbbbbbbbbb…(len 2000)"] | throws ValidationError/VALIDATION field=namespace element
+DynamoDBStore.get | namespace=["a","bbbbbbbbbbbbbbbbbbbb…(len 2000 #4ca396f7)"] | throws ValidationError/VALIDATION field=namespace element
 DynamoDBStore.get | namespace=["a#b"] | throws ValidationError/VALIDATION field=namespace element
 DynamoDBStore.get | namespace=["a\u0000"] | throws ValidationError/VALIDATION field=namespace element
-DynamoDBStore.get | namespace=["n","n","n","n","n","n","n","n","n","n","n","n","n","n","n" | RESOLVED null
+DynamoDBStore.get | namespace=["n","n","n","n","n","n","n","n","n","n","n","n","n","n","n","n","n","n","n","n"…#e05f5b24 | RESOLVED null
 DynamoDBStore.get | namespace=["ok"] | RESOLVED null
 DynamoDBStore.get | namespace=[123] | throws ValidationError/VALIDATION field=namespace element
 DynamoDBStore.get | namespace=[[]] | throws ValidationError/VALIDATION field=namespace element
@@ -707,7 +707,7 @@ DynamoDBStore.listNamespaces | options={"limit":0} | RESOLVED []
 DynamoDBStore.listNamespaces | options={"maxDepth":"1"} | throws ValidationError/VALIDATION field=maxDepth
 DynamoDBStore.listNamespaces | options={"maxDepth":-1} | throws ValidationError/VALIDATION field=maxDepth
 DynamoDBStore.listNamespaces | options={"maxDepth":0} | throws ValidationError/VALIDATION field=maxDepth
-DynamoDBStore.listNamespaces | options={"maxDepth":null} | throws ValidationError/VALIDATION field=maxDepth
+DynamoDBStore.listNamespaces | options={"maxDepth":NaN} | throws ValidationError/VALIDATION field=maxDepth
 DynamoDBStore.listNamespaces | options={"offset":-1} | throws ValidationError/VALIDATION field=offset
 DynamoDBStore.listNamespaces | options={"prefix":"x"} | throws ValidationError/VALIDATION field=prefix
 DynamoDBStore.listNamespaces | options={"prefix":["a"],"suffix":["b"]} | RESOLVED []
@@ -723,16 +723,16 @@ DynamoDBStore.put | index={} | throws ValidationError/VALIDATION field=index
 DynamoDBStore.put | value="x" | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=1 | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=10n | throws ValidationError/VALIDATION field=value
-DynamoDBStore.put | value=<obj> | throws ValidationError/VALIDATION field=value
-DynamoDBStore.put | value=Symbol() | throws ValidationError/VALIDATION field=value
+DynamoDBStore.put | value=Symbol("s") | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=[] | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=fn | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=null | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=undefined | throws ValidationError/VALIDATION field=value
-DynamoDBStore.put | value={"a":"10n"} | throws ValidationError/VALIDATION field=value
-DynamoDBStore.put | value={"a":"<undef>"} | REACHED-WRITE (input accepted, write attempted)
-DynamoDBStore.put | value={"a":"fn"} | REACHED-WRITE (input accepted, write attempted)
+DynamoDBStore.put | value={"a":10n} | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value={"a":1} | REACHED-WRITE (input accepted, write attempted)
+DynamoDBStore.put | value={"a":<undef>} | REACHED-WRITE (input accepted, write attempted)
+DynamoDBStore.put | value={"a":fn} | REACHED-WRITE (input accepted, write attempted)
+DynamoDBStore.put | value={"self":<cycle^1>} | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value={} | REACHED-WRITE (input accepted, write attempted)
 DynamoDBStore.reconcileVectorIndex | prefix="x" (no index) | throws ValidationError/VALIDATION field=namespacePrefix
 DynamoDBStore.reconcileVectorIndex | prefix=["a#b"] (no index) | throws ValidationError/VALIDATION field=namespacePrefix element
@@ -760,11 +760,11 @@ DynamoDBStore.search | options={"limit":-1} | throws ValidationError/VALIDATION 
 DynamoDBStore.search | options={"limit":0} | RESOLVED []
 DynamoDBStore.search | options={"limit":1.5} | throws ValidationError/VALIDATION field=limit
 DynamoDBStore.search | options={"limit":1000000000000} | RESOLVED []
-DynamoDBStore.search | options={"limit":null} | throws ValidationError/VALIDATION field=limit
+DynamoDBStore.search | options={"limit":NaN} | throws ValidationError/VALIDATION field=limit
 DynamoDBStore.search | options={"offset":"0"} | throws ValidationError/VALIDATION field=offset
 DynamoDBStore.search | options={"offset":-1} | throws ValidationError/VALIDATION field=offset
 DynamoDBStore.search | options={"offset":1.5} | throws ValidationError/VALIDATION field=offset
-DynamoDBStore.search | options={"offset":null} | throws ValidationError/VALIDATION field=offset
+DynamoDBStore.search | options={"offset":NaN} | throws ValidationError/VALIDATION field=offset
 DynamoDBStore.search | options={"query":""} | RESOLVED []
 DynamoDBStore.search | options={"query":"text (no index)"} | RESOLVED []
 DynamoDBStore.search | options={"query":123} | throws ValidationError/VALIDATION field=query
@@ -800,11 +800,11 @@ backfillRecencyIndex | maxPages=1.5 | throws ValidationError/VALIDATION field=ma
 backfillRecencyIndex | maxPages=NaN | throws ValidationError/VALIDATION field=maxPages
 backfillRecencyIndex | maxPages=null | throws ValidationError/VALIDATION field=maxPages
 backfillRecencyIndex | options="x" | throws ValidationError/VALIDATION field=options
-backfillRecencyIndex | options=<obj> | throws ValidationError/VALIDATION field=tableName
-backfillRecencyIndex | options=<obj> | throws ValidationError/VALIDATION field=tableName
-backfillRecencyIndex | options=<obj> | throws ValidationError/VALIDATION field=tableName
 backfillRecencyIndex | options=null | throws ValidationError/VALIDATION field=options
 backfillRecencyIndex | options=undefined | throws ValidationError/VALIDATION field=options
+backfillRecencyIndex | options={"client":DynamoDBDocument(…),"tableName":""} | throws ValidationError/VALIDATION field=tableName
+backfillRecencyIndex | options={"client":DynamoDBDocument(…),"tableName":"bad#"} | throws ValidationError/VALIDATION field=tableName
+backfillRecencyIndex | options={"client":DynamoDBDocument(…),"tableName":123} | throws ValidationError/VALIDATION field=tableName
 backfillRecencyIndex | options={"client":null,"tableName":"fuzz-table"} | throws ValidationError/VALIDATION field=client
 backfillRecencyIndex | options={"client":{},"tableName":"t"} | throws ValidationError/VALIDATION field=tableName
 backfillRecencyIndex | options={} | throws ValidationError/VALIDATION field=tableName
@@ -844,17 +844,17 @@ errors | new ValidationError(1, 2, 3) | OK String
 isDynamoDBLangGraphError | foreign object carrying the brand symbol | OK Boolean
 isDynamoDBLangGraphError | value="x" | sync BARE TypeError
 isDynamoDBLangGraphError | value=1 | sync BARE TypeError
+isDynamoDBLangGraphError | value=Error("e") | OK false
+isDynamoDBLangGraphError | value=ValidationError("v") | OK Boolean
 isDynamoDBLangGraphError | value=null | sync BARE TypeError
 isDynamoDBLangGraphError | value=undefined | sync BARE TypeError
-isDynamoDBLangGraphError | value={"code":"VALIDATION","context":{},"name":"ValidationError"} | OK Boolean
-isDynamoDBLangGraphError | value={} | OK false
 isDynamoDBLangGraphError | value={} | OK false
 prototype-safety | Object.prototype.polluted after redactSecrets | undefined
 prototype-safety | Object.prototype.x after backfillRecencyIndex cursor | undefined
 redactLogger | inner="x" | OK Object
 redactLogger | inner=null | OK Object
 redactLogger | inner=undefined | OK Object
-redactLogger | inner={"info":"fn"} | OK Object
+redactLogger | inner={"info":fn} | OK Object
 redactLogger | inner={} | OK Object
 redactLogger | options="x" | OK Object
 redactLogger | options=1 | OK Object
@@ -864,39 +864,39 @@ redactLogger | options={"extraKeys":[1]} | sync throws ValidationError/VALIDATIO
 redactLogger | options={"extraKeys":null} | OK Object
 redactLogger | options={"extraValuePatterns":"x"} | sync throws ValidationError/VALIDATION field=extraValuePatterns
 redactLogger | options={"extraValuePatterns":["x"]} | sync throws ValidationError/VALIDATION field=extraValuePatterns
-redactLogger | options={"extraValuePatterns":[{}]} | OK Object
+redactLogger | options={"extraValuePatterns":[RegExp(/x/)]} | OK Object
 redactLogger | options={"foo":1} | OK Object
 redactLogger(...).info | inner.info throws | sync BARE Error
 redactLogger(...).info | inner={} (missing methods) then .info | sync BARE TypeError
 redactSecrets | patterns="x" | sync BARE TypeError
 redactSecrets | patterns=[1] | OK Object
-redactSecrets | patterns=[{}] | sync BARE TypeError
+redactSecrets | patterns=[RegExp(/x/)] | sync BARE TypeError
 redactSecrets | patterns=null | sync BARE TypeError
 redactSecrets | value="AKIAIOSFODNN7EXAMPLE" | OK String
 redactSecrets | value="Bearer abc.def.ghi" | OK String
 redactSecrets | value=1 | OK Number
 redactSecrets | value=10n | OK BigInt
-redactSecrets | value=<obj> | OK Object
-redactSecrets | value=<obj> | OK String
-redactSecrets | value=<obj> | sync BARE Error
+redactSecrets | value=<null-proto>{} | OK Object
+redactSecrets | value=Custom({"password":"p","keep":1}) | OK Object
 redactSecrets | value=Date(1970-01-01) | OK Date
+redactSecrets | value=Error("Credential=AKIAIOSFODNN7EXAMPLE") | OK Object
+redactSecrets | value=Map("token"=>"x") | OK Object
 redactSecrets | value=NaN | OK NaN
-redactSecrets | value=Symbol() | OK Symbol
+redactSecrets | value=RegExp(/re/g) | OK RegExp
+redactSecrets | value=Set("secret") | OK Array
+redactSecrets | value=Symbol("s") | OK Symbol
+redactSecrets | value=Uint8Array([0,0,0]) | OK String
 redactSecrets | value=["AKIAIOSFODNN7EXAMPLE"] | OK Array
 redactSecrets | value=[] | OK Array
 redactSecrets | value=fn | OK Function
 redactSecrets | value=null | OK null
 redactSecrets | value=true | OK Boolean
 redactSecrets | value=undefined | OK undefined
-redactSecrets | value={"0":0,"1":0,"2":0} | OK String
 redactSecrets | value={"__proto__":{"polluted":1}} | OK Object
+redactSecrets | value={"boom":<throws>} | sync BARE Error
 redactSecrets | value={"constructor":{"prototype":{"polluted":1}}} | OK undefined
-redactSecrets | value={"password":"p","keep":1} | OK Object
-redactSecrets | value={} | OK Array
-redactSecrets | value={} | OK Object
-redactSecrets | value={} | OK Object
-redactSecrets | value={} | OK Object
-redactSecrets | value={} | OK RegExp
+redactSecrets | value={"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":…#0f666204 | OK String
+redactSecrets | value={"self":<cycle^1>} | OK Object
 redactSecrets | valuePatterns="x" | sync BARE TypeError
 redactSecrets | valuePatterns=["x"] | OK Object
 redactSecrets | valuePatterns=[1] | OK Object

@@ -4,6 +4,8 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
+import { describe } from './describe.mjs';
+
 const require = createRequire(import.meta.url);
 const root = process.cwd();
 const req = (m) => require(require.resolve(m, { paths: [root] }));
@@ -21,18 +23,6 @@ function docMock() {
   return client;
 }
 const rows = [];
-function describe(v) {
-  if (typeof v === 'string') return JSON.stringify(v.length > 40 ? v.slice(0, 20) + `…(len ${v.length})` : v);
-  if (typeof v === 'bigint') return `${v}n`;
-  if (typeof v === 'symbol') return 'Symbol()';
-  if (typeof v === 'function') return 'fn';
-  if (v instanceof Date) {
-    return Number.isNaN(v.getTime()) ? 'Date(Invalid)' : `Date(${v.toISOString().slice(0, 10)})`;
-  }
-  if (Array.isArray(v)) return `[${v.map(describe).join(',')}]`.slice(0, 60);
-  if (v && typeof v === 'object') { try { return JSON.stringify(v, (k, x) => typeof x === 'function' ? 'fn' : x === undefined ? '<undef>' : typeof x === 'bigint' ? `${x}n` : x).slice(0, 70); } catch { return '<obj>'; } }
-  return String(v);
-}
 function outcome(e) {
   if (e === undefined) return 'RESOLVED';
   const name = e && e.name; const code = e && e.code; const field = e && e.context && e.context.field;
@@ -215,7 +205,7 @@ function fuzzRedaction() {
   class Custom { constructor() { this.password = 'p'; this.keep = 1; } }
   const deep = {}; let cur = deep; for (let i = 0; i < 20000; i++) { cur.n = {}; cur = cur.n; }
   const cases = [undefined, null, 1, NaN, true, 'AKIAIOSFODNN7EXAMPLE', 'Bearer abc.def.ghi', () => 1, Symbol('s'), 10n, [], ['AKIAIOSFODNN7EXAMPLE'], new Map([['token', 'x']]), new Set(['secret']), new Custom(), cyc, JSON.parse('{"__proto__":{"polluted":1}}'), { constructor: { prototype: { polluted: 1 } } }, new Date(0), /re/g, new Uint8Array(3), Object.create(null), { get boom() { throw new Error('getter'); } }, new Error('Credential=AKIAIOSFODNN7EXAMPLE'), deep];
-  for (const v of cases) trySync(E, `value=${describe(v).slice(0, 50)}`, () => { const r = lib.redactSecrets(v); return r; });
+  for (const v of cases) trySync(E, `value=${describe(v)}`, () => { const r = lib.redactSecrets(v); return r; });
   for (const v of ['x', null, [1], [/x/]]) trySync(E, `patterns=${describe(v)}`, () => lib.redactSecrets({ a: 1 }, v));
   for (const v of ['x', null, ['x'], [1]]) trySync(E, `valuePatterns=${describe(v)}`, () => lib.redactSecrets({ a: 'b' }, undefined, v));
   const E2 = 'redactLogger';
