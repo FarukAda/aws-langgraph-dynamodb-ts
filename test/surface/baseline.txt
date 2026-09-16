@@ -663,18 +663,18 @@ DynamoDBStore | vectorScoreDirection="Distance" | sync throws ValidationError/VA
 DynamoDBStore | vectorScoreDirection="relevance" | OK DynamoDBStore
 DynamoDBStore | vectorScoreDirection=1 | sync throws ValidationError/VALIDATION field=vectorScoreDirection
 DynamoDBStore | vectorScoreDirection=null | sync throws ValidationError/VALIDATION field=vectorScoreDirection
-DynamoDBStore.batch | operations="x" | throws UpstreamError/UPSTREAM
-DynamoDBStore.batch | operations=["x"] | throws UpstreamError/UPSTREAM
-DynamoDBStore.batch | operations=[null] | throws UpstreamError/UPSTREAM
+DynamoDBStore.batch | operations="x" | throws ValidationError/VALIDATION field=operations
+DynamoDBStore.batch | operations=["x"] | throws ValidationError/VALIDATION field=operations
+DynamoDBStore.batch | operations=[null] | throws ValidationError/VALIDATION field=operations
 DynamoDBStore.batch | operations=[{"matchConditions":"x"}] | throws ValidationError/VALIDATION field=offset
 DynamoDBStore.batch | operations=[{"namespace":"x","key":"k"}] | throws ValidationError/VALIDATION field=namespace
-DynamoDBStore.batch | operations=[{"namespace":["a"],"key":"k","value":1}] | REACHED-WRITE (input accepted, write attempted)
+DynamoDBStore.batch | operations=[{"namespace":["a"],"key":"k","value":1}] | throws ValidationError/VALIDATION field=value
 DynamoDBStore.batch | operations=[{"namespace":["a#b"],"key":"k"}] | throws ValidationError/VALIDATION field=namespace element
-DynamoDBStore.batch | operations=[{"namespacePrefix":"x"}] | RESOLVED [[]]
+DynamoDBStore.batch | operations=[{"namespacePrefix":"x"}] | throws ValidationError/VALIDATION field=namespacePrefix
 DynamoDBStore.batch | operations=[{}] | throws ValidationError/VALIDATION field=offset
-DynamoDBStore.batch | operations=null | throws UpstreamError/UPSTREAM
-DynamoDBStore.batch | operations=undefined | throws UpstreamError/UPSTREAM
-DynamoDBStore.batch | operations={} | throws UpstreamError/UPSTREAM
+DynamoDBStore.batch | operations=null | throws ValidationError/VALIDATION field=operations
+DynamoDBStore.batch | operations=undefined | throws ValidationError/VALIDATION field=operations
+DynamoDBStore.batch | operations={} | throws ValidationError/VALIDATION field=operations
 DynamoDBStore.delete | namespace/key bad | throws ValidationError/VALIDATION field=namespace element
 DynamoDBStore.ensureS3LifecycleRule | no s3/ttl configured | RESOLVED undefined
 DynamoDBStore.get | key="" | throws ValidationError/VALIDATION field=key
@@ -699,9 +699,9 @@ DynamoDBStore.get | namespace=[] | throws ValidationError/VALIDATION field=names
 DynamoDBStore.get | namespace=[null] | throws ValidationError/VALIDATION field=namespace element
 DynamoDBStore.get | namespace=null | throws ValidationError/VALIDATION field=namespace
 DynamoDBStore.get | namespace=undefined | throws ValidationError/VALIDATION field=namespace
-DynamoDBStore.listNamespaces | options="x" | RESOLVED []
-DynamoDBStore.listNamespaces | options=null | BARE TypeError
-DynamoDBStore.listNamespaces | options={"foo":1} | RESOLVED []
+DynamoDBStore.listNamespaces | options="x" | throws ValidationError/VALIDATION field=options
+DynamoDBStore.listNamespaces | options=null | throws ValidationError/VALIDATION field=options
+DynamoDBStore.listNamespaces | options={"foo":1} | throws ValidationError/VALIDATION field=options.foo
 DynamoDBStore.listNamespaces | options={"limit":-1} | throws ValidationError/VALIDATION field=limit
 DynamoDBStore.listNamespaces | options={"limit":0} | RESOLVED []
 DynamoDBStore.listNamespaces | options={"maxDepth":"1"} | throws ValidationError/VALIDATION field=maxDepth
@@ -709,43 +709,43 @@ DynamoDBStore.listNamespaces | options={"maxDepth":-1} | throws ValidationError/
 DynamoDBStore.listNamespaces | options={"maxDepth":0} | throws ValidationError/VALIDATION field=maxDepth
 DynamoDBStore.listNamespaces | options={"maxDepth":null} | throws ValidationError/VALIDATION field=maxDepth
 DynamoDBStore.listNamespaces | options={"offset":-1} | throws ValidationError/VALIDATION field=offset
-DynamoDBStore.listNamespaces | options={"prefix":"x"} | RESOLVED []
+DynamoDBStore.listNamespaces | options={"prefix":"x"} | throws ValidationError/VALIDATION field=prefix
 DynamoDBStore.listNamespaces | options={"prefix":["a"],"suffix":["b"]} | RESOLVED []
-DynamoDBStore.listNamespaces | options={"prefix":["a#b"]} | RESOLVED []
-DynamoDBStore.listNamespaces | options={"prefix":[123]} | RESOLVED []
-DynamoDBStore.listNamespaces | options={"suffix":"x"} | RESOLVED []
-DynamoDBStore.put | index="x" | REACHED-WRITE (input accepted, write attempted)
-DynamoDBStore.put | index=1 | REACHED-WRITE (input accepted, write attempted)
+DynamoDBStore.listNamespaces | options={"prefix":["a#b"]} | throws ValidationError/VALIDATION field=prefix element
+DynamoDBStore.listNamespaces | options={"prefix":[123]} | throws ValidationError/VALIDATION field=prefix element
+DynamoDBStore.listNamespaces | options={"suffix":"x"} | throws ValidationError/VALIDATION field=suffix
+DynamoDBStore.put | index="x" | throws ValidationError/VALIDATION field=index
+DynamoDBStore.put | index=1 | throws ValidationError/VALIDATION field=index
 DynamoDBStore.put | index=["nonexistent"] | REACHED-WRITE (input accepted, write attempted)
-DynamoDBStore.put | index=[123] | REACHED-WRITE (input accepted, write attempted)
-DynamoDBStore.put | index=null | REACHED-WRITE (input accepted, write attempted)
-DynamoDBStore.put | index={} | REACHED-WRITE (input accepted, write attempted)
-DynamoDBStore.put | value="x" | REACHED-WRITE (input accepted, write attempted)
-DynamoDBStore.put | value=1 | REACHED-WRITE (input accepted, write attempted)
+DynamoDBStore.put | index=[123] | throws ValidationError/VALIDATION field=index
+DynamoDBStore.put | index=null | throws ValidationError/VALIDATION field=index
+DynamoDBStore.put | index={} | throws ValidationError/VALIDATION field=index
+DynamoDBStore.put | value="x" | throws ValidationError/VALIDATION field=value
+DynamoDBStore.put | value=1 | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=10n | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=<obj> | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=Symbol() | throws ValidationError/VALIDATION field=value
-DynamoDBStore.put | value=[] | REACHED-WRITE (input accepted, write attempted)
+DynamoDBStore.put | value=[] | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=fn | throws ValidationError/VALIDATION field=value
-DynamoDBStore.put | value=null | REACHED-WRITE (input accepted, write attempted)
+DynamoDBStore.put | value=null | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value=undefined | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value={"a":"10n"} | throws ValidationError/VALIDATION field=value
 DynamoDBStore.put | value={"a":"<undef>"} | REACHED-WRITE (input accepted, write attempted)
 DynamoDBStore.put | value={"a":"fn"} | REACHED-WRITE (input accepted, write attempted)
 DynamoDBStore.put | value={"a":1} | REACHED-WRITE (input accepted, write attempted)
 DynamoDBStore.put | value={} | REACHED-WRITE (input accepted, write attempted)
-DynamoDBStore.reconcileVectorIndex | prefix="x" (no index) | throws ValidationError/VALIDATION field=namespace
-DynamoDBStore.reconcileVectorIndex | prefix=["a#b"] (no index) | throws ValidationError/VALIDATION field=namespace element
-DynamoDBStore.reconcileVectorIndex | prefix=[1] (no index) | throws ValidationError/VALIDATION field=namespace element
-DynamoDBStore.reconcileVectorIndex | prefix=[] (no index) | throws ValidationError/VALIDATION field=namespace
-DynamoDBStore.reconcileVectorIndex | prefix=null (no index) | throws ValidationError/VALIDATION field=namespace
-DynamoDBStore.reconcileVectorIndex | prefix=undefined (no index) | throws ValidationError/VALIDATION field=namespace
-DynamoDBStore.search | namespacePrefix="x" | RESOLVED []
-DynamoDBStore.search | namespacePrefix=["a#b"] | RESOLVED []
-DynamoDBStore.search | namespacePrefix=[123] | RESOLVED []
-DynamoDBStore.search | namespacePrefix=[null] | RESOLVED []
-DynamoDBStore.search | namespacePrefix=null | throws UpstreamError/UPSTREAM
-DynamoDBStore.search | namespacePrefix=undefined | throws UpstreamError/UPSTREAM
+DynamoDBStore.reconcileVectorIndex | prefix="x" (no index) | throws ValidationError/VALIDATION field=namespacePrefix
+DynamoDBStore.reconcileVectorIndex | prefix=["a#b"] (no index) | throws ValidationError/VALIDATION field=namespacePrefix element
+DynamoDBStore.reconcileVectorIndex | prefix=[1] (no index) | throws ValidationError/VALIDATION field=namespacePrefix element
+DynamoDBStore.reconcileVectorIndex | prefix=[] (no index) | throws ValidationError/VALIDATION field=namespacePrefix
+DynamoDBStore.reconcileVectorIndex | prefix=null (no index) | throws ValidationError/VALIDATION field=namespacePrefix
+DynamoDBStore.reconcileVectorIndex | prefix=undefined (no index) | throws ValidationError/VALIDATION field=namespacePrefix
+DynamoDBStore.search | namespacePrefix="x" | throws ValidationError/VALIDATION field=namespacePrefix
+DynamoDBStore.search | namespacePrefix=["a#b"] | throws ValidationError/VALIDATION field=namespacePrefix element
+DynamoDBStore.search | namespacePrefix=[123] | throws ValidationError/VALIDATION field=namespacePrefix element
+DynamoDBStore.search | namespacePrefix=[null] | throws ValidationError/VALIDATION field=namespacePrefix element
+DynamoDBStore.search | namespacePrefix=null | throws ValidationError/VALIDATION field=namespacePrefix
+DynamoDBStore.search | namespacePrefix=undefined | throws ValidationError/VALIDATION field=namespacePrefix
 DynamoDBStore.search | options="x" | throws ValidationError/VALIDATION field=options
 DynamoDBStore.search | options=1 | throws ValidationError/VALIDATION field=options
 DynamoDBStore.search | options=null | throws ValidationError/VALIDATION field=options

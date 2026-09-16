@@ -1,4 +1,5 @@
 import {
+  assertMatchType,
   matchNamespace,
   prefixRoot,
   truncateDepth,
@@ -70,5 +71,13 @@ describe('matchNamespace refuses a match type it does not define', () => {
   it('accepts the two it does define', () => {
     expect(matchNamespace(['users', 'u1'], { matchType: 'prefix', path: ['users'] })).toBe(true);
     expect(matchNamespace(['users', 'u1'], { matchType: 'suffix', path: ['u1'] })).toBe(true);
+  });
+
+  it('assertMatchType echoes a string and describes anything else by type, a bigint included', () => {
+    expect(() => assertMatchType('contains' as never)).toThrow(/received "contains"/);
+    expect(() => assertMatchType(10n as never)).toThrow(
+      expect.objectContaining({ message: expect.stringMatching(/received bigint/) }),
+    );
+    expect(() => assertMatchType('suffix')).not.toThrow();
   });
 });

@@ -9,15 +9,34 @@ function segmentMatches(actual: string[], path: (string | '*')[]): boolean {
 }
 
 /**
+ * Refuse a match type the contract does not define.
+ *
+ * Accepts: `matchType` — `'prefix'` or `'suffix'`, the only two the contract
+ * defines (`@langchain/langgraph-checkpoint@1.1.5` `dist/store/base.d.ts:211`).
+ * Anything else is refused rather than resolved: an unrecognised type took the
+ * suffix branch and answered as if the caller had asked for a suffix match.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `matchConditions`. A string is echoed in the
+ * message and anything else is described by its type, since `JSON.stringify`
+ * itself throws on a bigint.
+ */
+export function assertMatchType(matchType: MatchCondition['matchType']): void {
+  if (matchType === 'prefix' || matchType === 'suffix') return;
+  const received = typeof matchType === 'string' ? JSON.stringify(matchType) : typeof matchType;
+  throw new ValidationError(
+    `matchType must be "prefix" or "suffix" (received ${received})`,
+    'matchConditions',
+  );
+}
+
+/**
  * Whether `namespace` satisfies one match condition.
  *
- * Accepts: `condition.matchType` — `'prefix'` or `'suffix'`, the only two the
- * contract defines (`@langchain/langgraph-checkpoint@1.1.5`
- * `dist/store/base.d.ts:211`). Anything else is refused rather than resolved:
- * an unrecognised type took the suffix branch and answered as if the caller had
- * asked for a suffix match. `condition.path` — elements, where `'*'` matches
- * any one element; longer than the namespace never matches, and empty matches
- * every namespace.
+ * Accepts: `condition.matchType` — as {@link assertMatchType}.
+ * `condition.path` — elements, where `'*'` matches any one element; longer than
+ * the namespace never matches, and empty matches every namespace.
  *
  * Returns: whether the condition holds.
  *
@@ -25,12 +44,7 @@ function segmentMatches(actual: string[], path: (string | '*')[]): boolean {
  */
 export function matchNamespace(namespace: string[], condition: MatchCondition): boolean {
   const { matchType, path } = condition;
-  if (matchType !== 'prefix' && matchType !== 'suffix') {
-    throw new ValidationError(
-      `matchType must be "prefix" or "suffix" (received ${JSON.stringify(matchType)})`,
-      'matchConditions',
-    );
-  }
+  assertMatchType(matchType);
   if (path.length > namespace.length) return false;
   const slice =
     matchType === 'prefix'

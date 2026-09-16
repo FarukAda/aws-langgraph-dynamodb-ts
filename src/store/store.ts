@@ -21,6 +21,8 @@ import {
 } from './actions/reconcile-vector-index';
 import { searchItems } from './actions/search';
 import { runBatch } from './internal/batch-plan';
+import { assertPutArguments, listNamespacesOperation } from './internal/call-arguments';
+import { assertOperations, assertSearchPrefix } from './internal/operation-validation';
 import { type StoreContext, setUpStore } from './internal/setup';
 import type { DynamoDBStoreOptions, SearchOptions } from './types';
 
@@ -28,8 +30,11 @@ type SingleResult = Item | null | SearchItem[] | string[][] | void;
 
 /**
  * DynamoDB-backed LangGraph store for long-term memory with optional semantic
- * search. A thin orchestrator: the base class's get/put/search/delete/
- * listNamespaces all funnel into {@link batch}, which dispatches each operation.
+ * search. A thin orchestrator: get/put/delete/listNamespaces build the same
+ * operations the base class builds and funnel them into {@link batch}, which
+ * validates every operation and then dispatches each one; they are overridden
+ * so each call is guarded in this package, and so `put` keeps upstream's own
+ * namespace rules.
  */
 export class DynamoDBStore extends BaseStore {
   private readonly context: StoreContext;
@@ -68,17 +73,29 @@ export class DynamoDBStore extends BaseStore {
    * Execute a batch of operations and return their results in operation
    * order.
    *
-   * Accepts: `operations` — in the order they are to be observed; an empty
-   * batch does nothing. Every `BaseStore` method (`get`/`put`/`delete`/
-   * `search`/`listNamespaces`) funnels through here, so this is the library's
-   * error boundary for all of them.
+   * Accepts: `operations` — an array of operation objects, in the order they
+   * are to be observed; an empty batch does nothing and returns `[]`. `get`,
+   * `put`, `delete` and `listNamespaces` build their operation and send it
+   * here, as upstream's implementations do: `get` and
+   * `delete` check nothing first, `listNamespaces` checks only its options
+   * object, and `put` checks only what is about the method (upstream's `.` and
+   * `"langgraph"` namespace rules, and a `null` value). Every other rule is
+   * checked here, where LangGraph's own calls arrive too.
    *
    * Returns: the results in operation order — an item or `null` for a get,
    * matches for a search, namespaces for a listing, nothing for a put.
    *
-   * Throws: ValidationError for a malformed namespace, key or value;
-   * UpstreamError; RetryExhaustedError; ResultTruncatedError from a listing
-   * over its cap. One failing operation rejects the whole batch.
+   * Throws: ValidationError, raised for every operation before any operation
+   * runs, naming `operations` for a value that is not an array or an entry that
+   * is not an object; `namespace`, `namespace element`, `key` or `sortKey` for an
+   * item address; `value` or `index` for a put; `namespacePrefix`,
+   * `namespacePrefix element`, `filter`, `query`, `offset` or `limit` for a
+   * search; `offset`, `limit`, `maxDepth`, `matchConditions`, `prefix`,
+   * `prefix element`, `suffix` or `suffix element` for a listing; and later,
+   * from a running operation, `value` for one JSON cannot represent,
+   * `maxSearchCandidates` or `index.dims`. UpstreamError; RetryExhaustedError;
+   * ResultTruncatedError from a search or a listing that reads past
+   * `maxScanItems`. One failing operation rejects the whole batch.
    *
    * Guarantees: the order the caller wrote is the order the caller observes — a
    * get after a put of the same item sees it, a get before one does not, and a
@@ -88,6 +105,7 @@ export class DynamoDBStore extends BaseStore {
    */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
     return guardPublic('store.batch', async () => {
+      assertOperations(operations);
       const results = await runBatch(
         operations,
         (operation) => this.dispatch(operation),
@@ -98,10 +116,101 @@ export class DynamoDBStore extends BaseStore {
   }
 
   /**
+   * Retrieve one item. Overrides the base implementation so the call is
+   * guarded here; the operation is the one upstream builds.
+   *
+   * Accepts: `namespace` — at least one label, each a non-blank identifier of
+   * at most 256 bytes, free of `#` and control characters and well-formed
+   * UTF-16. A `.` and a `"langgraph"` root are accepted, as the reference store
+   * accepts them. `key` — an identifier by the same rules. Together they may
+   * compose a sort key of at most 1024 bytes.
+   *
+   * Returns: the item, or `null` for one that does not exist or has expired.
+   *
+   * Throws: ValidationError naming `namespace`, `namespace element`, `key` or
+   * `sortKey`; `FORMAT_UNSUPPORTED` for an item written by a newer version,
+   * which is reported rather than hidden as absent; `PAYLOAD_CORRUPT` for a
+   * payload that cannot be read; AbortError; UpstreamError;
+   * RetryExhaustedError.
+   */
+  override async get(namespace: string[], key: string): Promise<Item | null> {
+    return guardPublic('store.get', async () => (await this.batch([{ namespace, key }]))[0]);
+  }
+
+  /**
+   * Store or replace one item. Overrides the base implementation, whose own
+   * namespace check threw an error this package does not brand. The value and
+   * index are checked by {@link batch}, so LangGraph's own puts hold them too.
+   *
+   * Accepts: `namespace` and `key` — as {@link get}, plus upstream
+   * `BaseStore.put`'s own two rules, which only this method applies: no label
+   * holding `.`, and a root other than `"langgraph"`. `value` — an object; `null`
+   * is refused, since {@link delete} is how an item is removed. `index` —
+   * absent uses the store's configuration, `false` indexes nothing, and field
+   * paths override it for this put.
+   *
+   * Returns: nothing.
+   *
+   * Throws: ValidationError naming `namespace`, `namespace element`, `key`,
+   * `sortKey`, `value` or `index`; UpstreamError; RetryExhaustedError.
+   */
+  override async put(
+    namespace: string[],
+    key: string,
+    value: Parameters<BaseStore['put']>[2],
+    index?: Parameters<BaseStore['put']>[3],
+  ): Promise<void> {
+    return guardPublic('store.put', async () => {
+      assertPutArguments(namespace, key, value);
+      await this.batch([{ namespace, key, value, index }]);
+    });
+  }
+
+  /**
+   * Remove one item, as upstream does: a put operation carrying `null`.
+   *
+   * Accepts: `namespace` and `key` — as {@link get}.
+   *
+   * Returns: nothing. Deleting an item that is not there is not an error.
+   *
+   * Throws: ValidationError naming `namespace`, `namespace element`, `key` or
+   * `sortKey`; UpstreamError; RetryExhaustedError.
+   */
+  override async delete(namespace: string[], key: string): Promise<void> {
+    return guardPublic('store.delete', async () => {
+      await this.batch([{ namespace, key, value: null }]);
+    });
+  }
+
+  /**
+   * List the distinct namespaces, sorted, optionally filtered and truncated.
+   *
+   * Accepts: `options.prefix`/`suffix` — labels a namespace can hold, where
+   * `'*'` matches any one label. `options.maxDepth` — at least 1.
+   * `options.limit`/`offset` —
+   * non-negative integers, defaulting to 100 and 0.
+   *
+   * Returns: at most `limit` namespaces from `offset`.
+   *
+   * Throws: ValidationError naming `options`, `options.<key>`, `prefix`,
+   * `prefix element`, `suffix`, `suffix element`, `maxDepth`, `limit` or
+   * `offset`; ResultTruncatedError past `maxScanItems`; UpstreamError.
+   */
+  override async listNamespaces(
+    options: Parameters<BaseStore['listNamespaces']>[0] = {},
+  ): Promise<string[][]> {
+    return guardPublic(
+      'store.listNamespaces',
+      async () => (await this.batch([listNamespacesOperation(options)]))[0],
+    );
+  }
+
+  /**
    * Search with optional cancellation. Overrides the base implementation, which
    * routes through {@link batch} and therefore cannot carry a signal.
    *
-   * Accepts: `namespacePrefix` — empty spans the whole table. `options.query` —
+   * Accepts: `namespacePrefix` — labels a namespace can hold; empty spans the
+   * whole table. `options.query` —
    * absent or empty ranks nothing. `options.filter` — metadata equality on the
    * item's value. `options.offset`/`limit` — non-negative integers, defaulting
    * to 0 and 10. `options.signal` — aborts the reads.
@@ -109,9 +218,11 @@ export class DynamoDBStore extends BaseStore {
    * Returns: at most `limit` items from `offset`, each carrying a `score` when
    * a query and an index are configured.
    *
-   * Throws: ValidationError naming `offset`, `limit`, `maxSearchCandidates`,
-   * `index.dims`, `signal`, or `options.<key>` for a key this package does not
-   * read; AbortError; UpstreamError.
+   * Throws: ValidationError naming `namespacePrefix`, `namespacePrefix element`,
+   * `filter`, `query`, `offset`, `limit`, `maxSearchCandidates`, `index.dims`,
+   * `signal`, or
+   * `options.<key>` for a key this package does not read; AbortError;
+   * UpstreamError.
    *
    * Guarantees: a plain search stops reading once `offset + limit` matches are
    * in hand; a query ranks in-process up to `maxSearchCandidates`, or through
@@ -122,6 +233,8 @@ export class DynamoDBStore extends BaseStore {
     options: SearchOptions = {},
   ): Promise<SearchItem[]> {
     return guardPublic('store.search', () => {
+      /** The search action checks the prefix too; this call names it before `options`. */
+      assertSearchPrefix(namespacePrefix);
       assertShape(options, STORE_SEARCH_KEYS, 'options');
       assertSignalLike(options.signal);
       const { signal, ...rest } = options;

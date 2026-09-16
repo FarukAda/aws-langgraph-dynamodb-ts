@@ -21,8 +21,9 @@ export interface VectorReconcileResult {
  *
  * Returns: how many vectors were upserted and how many pruned.
  *
- * Throws: ValidationError naming `namespace` for an empty or malformed prefix
- * and `vectorBackend` when the store has no index or backend to reconcile;
+ * Throws: ValidationError naming `namespacePrefix` or `namespacePrefix element`
+ * for an empty or malformed prefix, as `search` names it, and `vectorBackend`
+ * when the store has no index or backend to reconcile;
  * {@link ResultTruncatedError} past `maxScanItems`, since repairing from a
  * partial view would prune live vectors; whatever the reads, the embeddings
  * model and the backend throw.
@@ -37,7 +38,7 @@ export async function reconcileVectorIndex(
   namespacePrefix: string[],
   options: { signal?: AbortSignal } = {},
 ): Promise<VectorReconcileResult> {
-  validateNamespace(namespacePrefix);
+  validateNamespace(namespacePrefix, 'namespacePrefix');
   if (!context.index || !context.vectorBackend) {
     throw new ValidationError(
       'reconcileVectorIndex requires a configured index and vectorBackend',

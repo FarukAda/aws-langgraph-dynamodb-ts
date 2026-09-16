@@ -7,9 +7,9 @@ import { paginateScan } from '../../shared/dynamodb/scan';
 import { narrowStoreRecord } from '../internal/item-mapper';
 import { NAMESPACE_SEPARATOR } from '../internal/keys';
 import { matchNamespace, prefixRoot, truncateDepth } from '../internal/namespace-match';
+import { assertListOperation } from '../internal/operation-validation';
 import { projectKeys, scopedQuery, storeScan } from '../internal/query';
 import type { StoreContext } from '../internal/setup';
-import { validateMaxDepth, validatePaging } from '../internal/validation';
 
 function namespaceSource(context: StoreContext, op: ListNamespacesOperation, now: number) {
   const root = prefixRoot(op.matchConditions);
@@ -54,7 +54,8 @@ function compareNamespaces(a: string[], b: string[]): number {
  * The distinct namespaces satisfying every match condition.
  *
  * Accepts: `op.matchConditions` — every one must hold; absent or empty matches
- * every namespace. A concrete prefix root scopes the read to one partition's
+ * every namespace; each path holds labels a namespace can hold, checked before
+ * any read. A concrete prefix root scopes the read to one partition's
  * Query, and anything else — a suffix condition, a leading `*`, no conditions —
  * spans the table and is one of the four reads allowed to Scan
  * (`test/static/guards/scan-sites.ts`).
@@ -65,9 +66,10 @@ function compareNamespaces(a: string[], b: string[]): number {
  *
  * Returns: the namespaces, sorted, then `limit` of them from `offset`.
  *
- * Throws: ValidationError naming `offset`, `limit`, `maxDepth` or
- * `matchConditions`; {@link ResultTruncatedError} when `maxScanItems` is reached
- * while rows remain, so a partial listing is never returned as a complete one.
+ * Throws: ValidationError naming `offset`, `limit`, `maxDepth`,
+ * `matchConditions`, `prefix`, `prefix element`, `suffix` or `suffix element`;
+ * {@link ResultTruncatedError} when `maxScanItems` is reached while rows
+ * remain, so a partial listing is never returned as a complete one.
  *
  * Guarantees: every live row is read — the answer is about which namespaces
  * exist, and paging over it must not depend on which rows were read first. That
@@ -77,8 +79,7 @@ export async function listNamespaces(
   context: StoreContext,
   op: ListNamespacesOperation,
 ): Promise<string[][]> {
-  validatePaging(op.offset, op.limit);
-  validateMaxDepth(op.maxDepth);
+  assertListOperation(op);
   const now = nowSeconds();
   const seen = new Set<string>();
   const namespaces: string[][] = [];

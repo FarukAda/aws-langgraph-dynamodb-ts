@@ -1,4 +1,8 @@
-import type { BaseCheckpointSaver, CheckpointListOptions } from '@langchain/langgraph-checkpoint';
+import type {
+  BaseCheckpointSaver,
+  BaseStore,
+  CheckpointListOptions,
+} from '@langchain/langgraph-checkpoint';
 
 import type { GetMessagesOptions, ListSessionsOptions } from '../../history/types';
 import type { SearchOptions } from '../../store/types';
@@ -48,6 +52,14 @@ export const SAVER_LIST_KEYS = allKeysOf<CheckpointListOptions>({
   before: 'before',
   filter: 'filter',
 });
+
+/**
+ * See {@link CANCEL_KEYS}. Named from `BaseStore`'s own signature, since
+ * `DynamoDBStore.listNamespaces` takes upstream's options unchanged.
+ */
+export const STORE_LIST_NAMESPACES_KEYS = allKeysOf<
+  NonNullable<Parameters<BaseStore['listNamespaces']>[0]>
+>({ prefix: 'prefix', suffix: 'suffix', maxDepth: 'maxDepth', limit: 'limit', offset: 'offset' });
 
 /**
  * See {@link CANCEL_KEYS}. Named from `BaseCheckpointSaver`'s own signature

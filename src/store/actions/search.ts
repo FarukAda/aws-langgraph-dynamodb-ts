@@ -1,41 +1,20 @@
 import type { SearchItem, SearchOperation } from '@langchain/langgraph-checkpoint';
 
-import { ValidationError } from '../../shared/errors/errors';
-import { assertObjectShape } from '../../shared/validation/option-shape';
 import { searchViaBackend } from '../internal/backend-search';
 import { collectCandidates } from '../internal/candidates';
+import { assertSearchOperation } from '../internal/operation-validation';
 import { rankInMemory } from '../internal/ranker';
 import { assertVectorDims } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
-import { validatePaging } from '../internal/validation';
 
 const DEFAULT_LIMIT = 10;
-
-/**
- * Reject a `filter` that is not an object, or a `query` that is not a string.
- * Neither rule looks inside the value: an operator clause (`{ $gt: 4 }`) and
- * a non-operator one (`{ $foo: 4 }`, matched as a literal per
- * `isOperatorObject`) are both legal filter shapes this does not distinguish
- * between.
- *
- * Accepts: `op.filter`, `op.query` — both optional; absent is left alone.
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: ValidationError naming `filter` or `query`.
- */
-function assertSearchOptionsShape(op: SearchOperation): void {
-  if (op.filter !== undefined) assertObjectShape(op.filter, 'filter');
-  if (op.query !== undefined && typeof op.query !== 'string') {
-    throw new ValidationError('query must be a string', 'query');
-  }
-}
 
 /**
  * Search items under a namespace prefix: metadata filtering plus optional
  * semantic ranking.
  *
- * Accepts: `op.namespacePrefix` — empty spans the whole table. `op.query` —
+ * Accepts: `op.namespacePrefix` — labels a namespace can hold; empty spans the
+ * whole table. `op.filter` — absent or an object. `op.query` —
  * absent, or empty (which is absent: there is no query to embed), ranks
  * nothing and returns the page as read, which is what the reference store does
  * (`@langchain/langgraph-checkpoint@1.1.5` `dist/store/memory.js:70-80`, where a
@@ -48,9 +27,9 @@ function assertSearchOptionsShape(op: SearchOperation): void {
  * item carries a `score`; without one none does. Scores rank best-first; an item
  * that cannot be scored ranks last rather than being dropped.
  *
- * Throws: ValidationError naming `offset`, `limit`, `maxSearchCandidates`,
- * `index.dims`, `filter` or `query`; whatever the reads, decodes and the
- * embeddings model throw.
+ * Throws: ValidationError naming `namespacePrefix`, `namespacePrefix element`,
+ * `offset`, `limit`, `maxSearchCandidates`, `index.dims`, `filter` or `query`;
+ * whatever the reads, decodes and the embeddings model throw.
  *
  * Guarantees: only the page's own items are decoded on the unranked path — the
  * read stops as soon as it is full. A semantic search must read every candidate
@@ -62,10 +41,9 @@ export async function searchItems(
   op: SearchOperation,
   signal?: AbortSignal,
 ): Promise<SearchItem[]> {
-  assertSearchOptionsShape(op);
+  assertSearchOperation(op);
   const offset = op.offset ?? 0;
   const limit = op.limit ?? DEFAULT_LIMIT;
-  validatePaging(offset, limit);
   if (op.query && context.index && context.vectorBackend) {
     const ranked = await searchViaBackend(
       context,

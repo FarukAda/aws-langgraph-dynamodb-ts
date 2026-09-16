@@ -11,11 +11,11 @@ import type { JsonValue } from '../internal/filter';
 import { syncVectorIndex } from '../internal/index-sync';
 import { buildStoreItem } from '../internal/item-mapper';
 import { partitionKey, sortKey } from '../internal/keys';
+import { assertPutOperation } from '../internal/operation-validation';
 import { persistRecord } from '../internal/persist';
 import { readExisting } from '../internal/read-existing';
 import { embedPassages, embedValue } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
-import { validateStoreKey } from '../internal/validation';
 import { isRetryExhausted, rowIsAbsent } from '../internal/write-verify';
 
 /**
@@ -109,9 +109,10 @@ async function resolveEmbedding(
  *
  * Returns: nothing. Deleting an item that is not there is not an error.
  *
- * Throws: ValidationError naming `namespace`, `key` or `value` — the last for a
- * value JSON cannot represent, refused at the write rather than stored as a row
- * that can never be read back; `S3_OFFLOAD_FAILED`; whatever the write throws.
+ * Throws: ValidationError naming `namespace`, `key`, `index`, or `value` for a
+ * value that is neither an object nor `null`, or that JSON cannot represent —
+ * refused at the write rather than stored as a row that can never be read back;
+ * `S3_OFFLOAD_FAILED`; whatever the write throws.
  *
  * Guarantees: DynamoDB holds the canonical item — the vector index is synced
  * afterwards and best-effort, so a backend outage never fails a put or leaves a
@@ -120,7 +121,7 @@ async function resolveEmbedding(
  * row does not point at that same object.
  */
 export async function putItem(context: StoreContext, op: PutOperation): Promise<void> {
-  validateStoreKey(op.namespace, op.key);
+  assertPutOperation(op);
   const pk = partitionKey(op.namespace);
   const sk = sortKey(op.namespace, op.key);
   if (op.value === null) {

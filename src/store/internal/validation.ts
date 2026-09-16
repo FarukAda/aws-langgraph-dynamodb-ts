@@ -23,22 +23,52 @@ export function validatePaging(offset: number, limit: number): void {
 }
 
 /**
- * Validate a namespace as the partition and sort key it becomes.
+ * Validate the labels of a namespace, or of a path matched against namespaces,
+ * as the key segments they become.
  *
- * Accepts: `namespace` — at least one element, since the first becomes the
- * partition key; every element an identifier of at most
- * {@link MAX_KEY_SEGMENT_BYTES}.
+ * These are this backend's rules, and only those. Upstream `BaseStore.put` also
+ * refuses a `.` in a label and a `"langgraph"` root, but only in that one
+ * method: the reference `InMemoryStore.batch`, and LangGraph's runtime, which
+ * reaches a store only through `batch()`, accept both. So does this store
+ * everywhere but `put()` itself (see `call-arguments.ts`); `#` is this
+ * backend's separator, so a `.` costs nothing here.
+ *
+ * Accepts: `labels` — an array, possibly empty; each label a non-blank
+ * identifier of at most {@link MAX_KEY_SEGMENT_BYTES} with no `#`, no control
+ * character and no unpaired surrogate. A listing's `'*'` wildcard satisfies
+ * every one of these rules, so it needs no exemption. `field` — the argument
+ * the errors name.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `namespace` for an empty or non-array value,
- * and `namespace element` for an element that is not a usable key segment.
+ * Throws: ValidationError naming `field` for a value that is not an array, and
+ * `<field> element` for a label that is not a usable key segment.
  */
-export function validateNamespace(namespace: string[]): void {
-  validateNonEmptyArray(namespace, 'namespace');
-  for (const element of namespace) {
-    validateIdentifier(element, NAMESPACE_SEPARATOR, 'namespace element', MAX_KEY_SEGMENT_BYTES);
+export function validateNamespaceLabels(labels: string[], field: string): void {
+  if (!Array.isArray(labels)) {
+    throw new ValidationError(`${field} must be an array of labels`, field);
   }
+  for (const label of labels) {
+    validateIdentifier(label, NAMESPACE_SEPARATOR, `${field} element`, MAX_KEY_SEGMENT_BYTES);
+  }
+}
+
+/**
+ * Validate a namespace as the partition and sort key it becomes.
+ *
+ * Accepts: `namespace` — at least one element, since the first becomes the
+ * partition key; every element a label {@link validateNamespaceLabels} accepts.
+ * `field` — the argument the errors name, `namespace` unless the caller calls
+ * it something else.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `field` for an empty or non-array value, and
+ * `<field> element` for an element that is not a usable key segment.
+ */
+export function validateNamespace(namespace: string[], field = 'namespace'): void {
+  validateNonEmptyArray(namespace, field);
+  validateNamespaceLabels(namespace, field);
 }
 
 /**

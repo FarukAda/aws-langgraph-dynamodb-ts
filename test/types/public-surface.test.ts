@@ -170,6 +170,10 @@ describe('adapter signatures (TEST-10)', () => {
 
   it('the store implements BaseStore with cancellable search and reconcile, stop and destroy', () => {
     expectTypeOf<DynamoDBStore>().toMatchTypeOf<BaseStore>();
+    expectTypeOf<DynamoDBStore['get']>().toEqualTypeOf<BaseStore['get']>();
+    expectTypeOf<DynamoDBStore['put']>().toEqualTypeOf<BaseStore['put']>();
+    expectTypeOf<DynamoDBStore['delete']>().toEqualTypeOf<BaseStore['delete']>();
+    expectTypeOf<DynamoDBStore['listNamespaces']>().toEqualTypeOf<BaseStore['listNamespaces']>();
     expectTypeOf<DynamoDBStore['search']>().parameters.toEqualTypeOf<
       [string[], (Pick<SearchOperation, 'filter' | 'limit' | 'offset' | 'query'> & CancelOptions)?]
     >();
