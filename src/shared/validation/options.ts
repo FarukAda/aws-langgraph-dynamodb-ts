@@ -1,9 +1,13 @@
-import type { CompressionConfig } from '../codec/compression';
-import { assertScopedKeyPrefix, type S3OffloadConfig } from '../codec/s3/config';
-import { MAX_INLINE_PAYLOAD_BYTES, MAX_RETRY_ATTEMPTS } from '../constants';
+import {
+  MAX_INDEX_SHARDS,
+  MAX_READ_CONCURRENCY,
+  MAX_RETRY_ATTEMPTS,
+  MAX_RETRY_DELAY_MS,
+} from '../constants';
 import type { RetryPolicy } from '../dynamodb/retry-policy';
 import { ValidationError } from '../errors/errors';
 import type { BaseAdapterOptions, CodecOptions } from '../options';
+import { validateCompression, validateS3 } from './codec-options';
 import { allKeysOf, assertShape } from './option-shape';
 import { validateInteger, validateNonEmptyString } from './primitives';
 import { resolveTtlSeconds } from './ttl';
@@ -11,29 +15,10 @@ import { resolveTtlSeconds } from './ttl';
 /** DynamoDB's table-name rule: 3–255 characters from `[A-Za-z0-9_.-]`. */
 const TABLE_NAME_PATTERN = /^[A-Za-z0-9_.-]{3,255}$/;
 
-/** Server-side encryption algorithms S3 accepts for `PutObject`. */
-const SSE_ALGORITHMS: readonly string[] = ['AES256', 'aws:kms', 'aws:kms:dsse'];
-
 const RETRY_KEYS = allKeysOf<RetryPolicy>({
   maxAttempts: 'maxAttempts',
   baseDelayMs: 'baseDelayMs',
   maxDelayMs: 'maxDelayMs',
-});
-const COMPRESSION_KEYS = allKeysOf<CompressionConfig>({
-  enabled: 'enabled',
-  level: 'level',
-  minSizeBytes: 'minSizeBytes',
-  maxDecompressedBytes: 'maxDecompressedBytes',
-});
-const S3_KEYS = allKeysOf<S3OffloadConfig>({
-  bucketName: 'bucketName',
-  keyPrefix: 'keyPrefix',
-  thresholdBytes: 'thresholdBytes',
-  serverSideEncryption: 'serverSideEncryption',
-  sseKmsKeyId: 'sseKmsKeyId',
-  maxDownloadBytes: 'maxDownloadBytes',
-  clientConfig: 'clientConfig',
-  createS3Client: 'createS3Client',
 });
 
 function validateTableName(tableName: string): void {
@@ -78,57 +63,20 @@ function validateRetryPolicy(policy: RetryPolicy): void {
     validateInteger(policy.maxAttempts, 'retry.maxAttempts', { min: 1, max: MAX_RETRY_ATTEMPTS });
   }
   if (policy.baseDelayMs !== undefined) {
-    validateInteger(policy.baseDelayMs, 'retry.baseDelayMs', { min: 1 });
+    validateInteger(policy.baseDelayMs, 'retry.baseDelayMs', { min: 1, max: MAX_RETRY_DELAY_MS });
   }
   if (policy.maxDelayMs !== undefined) {
-    validateInteger(policy.maxDelayMs, 'retry.maxDelayMs', { min: policy.baseDelayMs ?? 1 });
-  }
-}
-
-function validateCompression(config: CompressionConfig): void {
-  assertShape(config, COMPRESSION_KEYS, 'compression');
-  if (typeof config.enabled !== 'boolean') {
-    throw new ValidationError('compression.enabled must be a boolean', 'compression.enabled');
-  }
-  if (config.level !== undefined) {
-    validateInteger(config.level, 'compression.level', { min: 0, max: 9 });
-  }
-  if (config.minSizeBytes !== undefined) {
-    validateInteger(config.minSizeBytes, 'compression.minSizeBytes', { min: 0 });
-  }
-  if (config.maxDecompressedBytes !== undefined) {
-    validateInteger(config.maxDecompressedBytes, 'compression.maxDecompressedBytes', { min: 1 });
-  }
-}
-
-function validateS3(config: S3OffloadConfig): void {
-  assertShape(config, S3_KEYS, 's3');
-  validateNonEmptyString(config.bucketName, 's3.bucketName');
-  if (config.thresholdBytes !== undefined) {
-    validateInteger(config.thresholdBytes, 's3.thresholdBytes', {
-      min: 1,
-      max: MAX_INLINE_PAYLOAD_BYTES,
+    validateInteger(policy.maxDelayMs, 'retry.maxDelayMs', {
+      min: policy.baseDelayMs ?? 1,
+      max: MAX_RETRY_DELAY_MS,
     });
-  }
-  if (config.keyPrefix !== undefined) assertScopedKeyPrefix(config.keyPrefix);
-  if (config.maxDownloadBytes !== undefined) {
-    validateInteger(config.maxDownloadBytes, 's3.maxDownloadBytes', { min: 1 });
-  }
-  if (
-    config.serverSideEncryption !== undefined &&
-    !SSE_ALGORITHMS.includes(config.serverSideEncryption)
-  ) {
-    throw new ValidationError(
-      `s3.serverSideEncryption must be one of ${SSE_ALGORITHMS.join(', ')}`,
-      's3.serverSideEncryption',
-    );
   }
 }
 
 /** The recency index: a named GSI, and the partition count rows are sharded across. */
 function validateRecencyIndex(options: BaseAdapterOptions): void {
   if (options.indexShards !== undefined) {
-    validateInteger(options.indexShards, 'indexShards', { min: 1 });
+    validateInteger(options.indexShards, 'indexShards', { min: 1, max: MAX_INDEX_SHARDS });
   }
   if (options.indexName !== undefined) validateNonEmptyString(options.indexName, 'indexName');
 }
@@ -165,7 +113,10 @@ export function validateBaseAdapterOptions(options: BaseAdapterOptions & CodecOp
   if (options.compression !== undefined) validateCompression(options.compression);
   if (options.s3 !== undefined) validateS3(options.s3);
   if (options.readConcurrency !== undefined) {
-    validateInteger(options.readConcurrency, 'readConcurrency', { min: 1 });
+    validateInteger(options.readConcurrency, 'readConcurrency', {
+      min: 1,
+      max: MAX_READ_CONCURRENCY,
+    });
   }
   validateRecencyIndex(options);
 }

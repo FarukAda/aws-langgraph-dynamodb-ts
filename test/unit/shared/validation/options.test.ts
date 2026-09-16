@@ -1,4 +1,10 @@
-import { MAX_INLINE_PAYLOAD_BYTES } from '../../../../src/shared/constants';
+import {
+  MAX_INDEX_SHARDS,
+  MAX_INLINE_PAYLOAD_BYTES,
+  MAX_PAYLOAD_BUFFER_BYTES,
+  MAX_READ_CONCURRENCY,
+  MAX_RETRY_DELAY_MS,
+} from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import type { BaseAdapterOptions, CodecOptions } from '../../../../src/shared/options';
 import { validateBaseAdapterOptions } from '../../../../src/shared/validation/options';
@@ -17,6 +23,12 @@ function expectValidationError(fn: () => void, field: string): void {
     expect(coded.code).toBe(ErrorCode.VALIDATION);
     expect(coded.context?.field).toBe(field);
   }
+}
+
+/** Rejects `ceiling + 1` naming `field`, accepts `ceiling`: proves a named `max:` bound is live. */
+function expectCeiling(build: (value: number) => Options, field: string, ceiling: number): void {
+  expectValidationError(() => validateBaseAdapterOptions(build(ceiling + 1)), field);
+  expect(() => validateBaseAdapterOptions(build(ceiling))).not.toThrow();
 }
 
 describe('validateBaseAdapterOptions', () => {
@@ -98,6 +110,20 @@ describe('validateBaseAdapterOptions', () => {
       ).not.toThrow();
     });
 
+    /** An unbounded delay turns a retry loop into a de facto hang. */
+    it('bounds baseDelayMs and maxDelayMs at MAX_RETRY_DELAY_MS', () => {
+      expectCeiling(
+        (v) => ({ ...base, retry: { baseDelayMs: v } }),
+        'retry.baseDelayMs',
+        MAX_RETRY_DELAY_MS,
+      );
+      expectCeiling(
+        (v) => ({ ...base, retry: { maxDelayMs: v } }),
+        'retry.maxDelayMs',
+        MAX_RETRY_DELAY_MS,
+      );
+    });
+
     it('accepts a complete valid policy', () => {
       expect(() =>
         validateBaseAdapterOptions({
@@ -141,6 +167,40 @@ describe('validateBaseAdapterOptions', () => {
         }),
       ).not.toThrow();
     });
+
+    /**
+     * Both bound at MAX_PAYLOAD_BUFFER_BYTES, not MAX_INLINE_PAYLOAD_BYTES:
+     * compression runs before the inline/offload decision, so a threshold
+     * above the inline cap is still meaningful with `s3` configured (below).
+     */
+    it('bounds minSizeBytes and maxDecompressedBytes at MAX_PAYLOAD_BUFFER_BYTES', () => {
+      expectCeiling(
+        (v) => ({ ...base, compression: { enabled: true, minSizeBytes: v } }),
+        'compression.minSizeBytes',
+        MAX_PAYLOAD_BUFFER_BYTES,
+      );
+      expectCeiling(
+        (v) => ({ ...base, compression: { enabled: true, maxDecompressedBytes: v } }),
+        'compression.maxDecompressedBytes',
+        MAX_PAYLOAD_BUFFER_BYTES,
+      );
+    });
+
+    /**
+     * Regression: `minSizeBytes` above the inline cap ("compress only what
+     * will be offloaded anyway") must stay valid once `s3` is configured —
+     * caught by review after P2.2 first shipped this bound at
+     * MAX_INLINE_PAYLOAD_BYTES, which broke it.
+     */
+    it('accepts a minSizeBytes above the inline cap when s3 offload is configured', () => {
+      expect(() =>
+        validateBaseAdapterOptions({
+          ...base,
+          compression: { enabled: true, minSizeBytes: 500_000 },
+          s3: { bucketName: 'b' },
+        }),
+      ).not.toThrow();
+    });
   });
 
   describe('s3', () => {
@@ -176,6 +236,15 @@ describe('validateBaseAdapterOptions', () => {
           's3.maxDownloadBytes',
         );
       }
+    });
+
+    /** A single buffered download above the named ceiling risks an OOM on a modest process. */
+    it('bounds maxDownloadBytes at MAX_PAYLOAD_BUFFER_BYTES', () => {
+      expectCeiling(
+        (v) => ({ ...base, s3: { bucketName: 'b', maxDownloadBytes: v } }),
+        's3.maxDownloadBytes',
+        MAX_PAYLOAD_BUFFER_BYTES,
+      );
     });
 
     it('rejects an unknown server-side encryption algorithm', () => {
@@ -274,6 +343,15 @@ describe('validateBaseAdapterOptions', () => {
     it('accepts a positive integer', () => {
       expect(() => validateBaseAdapterOptions({ ...base, readConcurrency: 2 })).not.toThrow();
     });
+
+    /** Unbounded concurrency multiplies the memory ceiling and floods the backend with requests. */
+    it('bounds readConcurrency at MAX_READ_CONCURRENCY', () => {
+      expectCeiling(
+        (v) => ({ ...base, readConcurrency: v }),
+        'readConcurrency',
+        MAX_READ_CONCURRENCY,
+      );
+    });
   });
 
   /**
@@ -300,6 +378,18 @@ describe('validateBaseAdapterOptions', () => {
       expect(() =>
         validateBaseAdapterOptions({ ...base, indexName: 'gsi1', indexShards: 4 }),
       ).not.toThrow();
+    });
+
+    /**
+     * The read fans out one query per shard (audit H-08), so an unbounded
+     * shard count turns a config typo into an unbounded request storm.
+     */
+    it('refuses an indexShards value that would fan out unboundedly, bounded at MAX_INDEX_SHARDS', () => {
+      expectCeiling((v) => ({ ...base, indexShards: v }), 'indexShards', MAX_INDEX_SHARDS);
+      expectValidationError(
+        () => validateBaseAdapterOptions({ tableName: 'tbl', client, indexShards: 1e12 }),
+        'indexShards',
+      );
     });
   });
 });

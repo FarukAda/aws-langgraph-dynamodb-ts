@@ -39,4 +39,13 @@ describe('shared constants', () => {
   it('pins the list() scan warning threshold to its own value, independent of the in-memory cap', () => {
     expect(C.LIST_SCAN_WARN_THRESHOLD).toBe(10000);
   });
+
+  it('pins the ceilings bounding every previously-unbounded numeric option (H-08, M-08)', () => {
+    expect(C.MAX_INDEX_SHARDS).toBe(1024);
+    expect(C.MAX_READ_CONCURRENCY).toBe(128);
+    expect(C.MAX_RETRY_DELAY_MS).toBe(60_000);
+    expect(C.MAX_PAYLOAD_BUFFER_BYTES).toBe(512 * 1024 * 1024);
+    expect(C.MAX_SCAN_ITEMS).toBe(1_000_000);
+    expect(C.MAX_SEARCH_CANDIDATES).toBe(100_000);
+  });
 });

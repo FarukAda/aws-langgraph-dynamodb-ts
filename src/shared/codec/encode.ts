@@ -70,8 +70,8 @@ function assertInlinePayloadFits(bytes: Uint8Array, deps: CodecDeps): void {
  * upload; and ValidationError naming `payload` when there is **no** offloader
  * and the bytes exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that cell
  * cannot arise: `s3.thresholdBytes` is itself capped at that limit
- * (`src/shared/validation/options.ts`, `validateS3`), so bytes too large to
- * store inline are always at or above the threshold and offload instead.
+ * (`src/shared/validation/codec-options.ts`, `validateS3`), so bytes too large
+ * to store inline are always at or above the threshold and offload instead.
  */
 export async function encodePayload<T>(
   value: T,

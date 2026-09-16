@@ -1,6 +1,7 @@
 import type { Embeddings } from '@langchain/core/embeddings';
 import type { IndexConfig } from '@langchain/langgraph-checkpoint';
 
+import { MAX_SCAN_ITEMS, MAX_SEARCH_CANDIDATES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import { validateInteger } from '../../shared/validation/primitives';
@@ -56,10 +57,13 @@ function assertScoreDirection(direction?: VectorScoreDirection): void {
 /** Both in-memory caps must be positive integers; 0 would silently return nothing. */
 function validateLimits(options: DynamoDBStoreOptions): void {
   if (options.maxScanItems !== undefined) {
-    validateInteger(options.maxScanItems, 'maxScanItems', { min: 1 });
+    validateInteger(options.maxScanItems, 'maxScanItems', { min: 1, max: MAX_SCAN_ITEMS });
   }
   if (options.maxSearchCandidates !== undefined) {
-    validateInteger(options.maxSearchCandidates, 'maxSearchCandidates', { min: 1 });
+    validateInteger(options.maxSearchCandidates, 'maxSearchCandidates', {
+      min: 1,
+      max: MAX_SEARCH_CANDIDATES,
+    });
   }
 }
 

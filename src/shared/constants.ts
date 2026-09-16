@@ -62,11 +62,34 @@ export const DEFAULT_MAX_DECOMPRESSED_BYTES = 50 * 1024 * 1024;
  */
 export const DEFAULT_MAX_S3_DOWNLOAD_BYTES = 50 * 1024 * 1024;
 
+/**
+ * Largest `s3.maxDownloadBytes`/`compression.maxDecompressedBytes` an adapter
+ * accepts (512 MiB): both hold one buffer fully resident while it is read or
+ * inflated, and `BaseAdapterOptions.readConcurrency`'s doc multiplies the two
+ * together into the package's memory ceiling, so an unbounded value here is an
+ * unbounded process, not just an unbounded object.
+ */
+export const MAX_PAYLOAD_BUFFER_BYTES = 512 * 1024 * 1024;
+
 /** Default maximum attempts for transient-error retries. */
 export const DEFAULT_RETRY_MAX_ATTEMPTS = 5;
 
 /** Largest `retry.maxAttempts` an adapter accepts; beyond it a retry loop is a hang, not a policy. */
 export const MAX_RETRY_ATTEMPTS = 100;
+
+/**
+ * Largest `retry.baseDelayMs`/`retry.maxDelayMs` an adapter accepts (one
+ * minute): combined with {@link MAX_RETRY_ATTEMPTS}, an unbounded per-attempt
+ * delay turns a bounded attempt count back into an effectively unbounded wait.
+ */
+export const MAX_RETRY_DELAY_MS = 60_000;
+
+/**
+ * The most shards a recency index may have. The indexed read issues one query
+ * per shard, so this is also the fan-out ceiling: an unbounded value turns a
+ * config typo into a request storm and an out-of-memory crash.
+ */
+export const MAX_INDEX_SHARDS = 1024;
 
 /**
  * Max attempts for the message-append transaction. It shares one session's
@@ -90,8 +113,31 @@ export const MESSAGE_APPEND_RETRY_MAX_ATTEMPTS = 18;
  */
 export const DEFAULT_READ_CONCURRENCY = 8;
 
+/**
+ * Largest `readConcurrency` an adapter accepts: it is a multiplier on the
+ * memory-ceiling formula (see the option's own doc) and on requests fired at
+ * once, so an unbounded value turns a typo into an out-of-memory crash or a
+ * request storm against the table/bucket.
+ */
+export const MAX_READ_CONCURRENCY = 128;
+
 /** Default cap on candidates the in-DB semantic ranker will score. */
 export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;
+
+/**
+ * Largest `maxSearchCandidates` an adapter accepts: this many decoded
+ * candidates are held and re-ranked in memory by one `search()` call, so an
+ * unbounded value lets a typo or hostile config hold an unbounded working set.
+ */
+export const MAX_SEARCH_CANDIDATES = 100_000;
+
+/**
+ * Largest `maxScanItems` an adapter accepts: this many raw rows are collected
+ * into memory across one paginated scan/query before it errors, so — like
+ * {@link MAX_SEARCH_CANDIDATES} — an unbounded value lets a typo or hostile
+ * config hold an unbounded working set.
+ */
+export const MAX_SCAN_ITEMS = 1_000_000;
 
 /**
  * Raw rows a single `listCheckpoints` call may pull before it warns. The read

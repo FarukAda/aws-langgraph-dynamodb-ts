@@ -24,7 +24,7 @@ DynamoDBChatMessageHistory | indexShards="8" | sync throws ValidationError/VALID
 DynamoDBChatMessageHistory | indexShards=-1 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBChatMessageHistory | indexShards=0 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBChatMessageHistory | indexShards=1.5 | sync throws ValidationError/VALIDATION field=indexShards
-DynamoDBChatMessageHistory | indexShards=1000000000000 | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | indexShards=1000000000000 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBChatMessageHistory | indexShards=NaN | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBChatMessageHistory | indexShards=null | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBChatMessageHistory | logger="x" | OK DynamoDBChatMessageHistory
@@ -48,7 +48,7 @@ DynamoDBChatMessageHistory | readConcurrency="8" | sync throws ValidationError/V
 DynamoDBChatMessageHistory | readConcurrency=-1 | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBChatMessageHistory | readConcurrency=0 | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBChatMessageHistory | readConcurrency=1.5 | sync throws ValidationError/VALIDATION field=readConcurrency
-DynamoDBChatMessageHistory | readConcurrency=1000000000000 | OK DynamoDBChatMessageHistory
+DynamoDBChatMessageHistory | readConcurrency=1000000000000 | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBChatMessageHistory | readConcurrency=NaN | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBChatMessageHistory | readConcurrency=null | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBChatMessageHistory | retry="x" | sync throws ValidationError/VALIDATION field=retry
@@ -309,7 +309,7 @@ DynamoDBSaver | indexShards="8" | sync throws ValidationError/VALIDATION field=i
 DynamoDBSaver | indexShards=-1 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBSaver | indexShards=0 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBSaver | indexShards=1.5 | sync throws ValidationError/VALIDATION field=indexShards
-DynamoDBSaver | indexShards=1000000000000 | OK DynamoDBSaver
+DynamoDBSaver | indexShards=1000000000000 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBSaver | indexShards=NaN | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBSaver | indexShards=null | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBSaver | logger="x" | OK DynamoDBSaver
@@ -327,7 +327,7 @@ DynamoDBSaver | readConcurrency="8" | sync throws ValidationError/VALIDATION fie
 DynamoDBSaver | readConcurrency=-1 | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBSaver | readConcurrency=0 | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBSaver | readConcurrency=1.5 | sync throws ValidationError/VALIDATION field=readConcurrency
-DynamoDBSaver | readConcurrency=1000000000000 | OK DynamoDBSaver
+DynamoDBSaver | readConcurrency=1000000000000 | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBSaver | readConcurrency=NaN | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBSaver | readConcurrency=null | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBSaver | retry="x" | sync throws ValidationError/VALIDATION field=retry
@@ -567,7 +567,7 @@ DynamoDBStore | indexShards="8" | sync throws ValidationError/VALIDATION field=i
 DynamoDBStore | indexShards=-1 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBStore | indexShards=0 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBStore | indexShards=1.5 | sync throws ValidationError/VALIDATION field=indexShards
-DynamoDBStore | indexShards=1000000000000 | OK DynamoDBStore
+DynamoDBStore | indexShards=1000000000000 | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBStore | indexShards=NaN | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBStore | indexShards=null | sync throws ValidationError/VALIDATION field=indexShards
 DynamoDBStore | logger="x" | OK DynamoDBStore
@@ -585,7 +585,7 @@ DynamoDBStore | maxSearchCandidates="x" | sync throws ValidationError/VALIDATION
 DynamoDBStore | maxSearchCandidates=-1 | sync throws ValidationError/VALIDATION field=maxSearchCandidates
 DynamoDBStore | maxSearchCandidates=0 | sync throws ValidationError/VALIDATION field=maxSearchCandidates
 DynamoDBStore | maxSearchCandidates=1.5 | sync throws ValidationError/VALIDATION field=maxSearchCandidates
-DynamoDBStore | maxSearchCandidates=1000000000000 | OK DynamoDBStore
+DynamoDBStore | maxSearchCandidates=1000000000000 | sync throws ValidationError/VALIDATION field=maxSearchCandidates
 DynamoDBStore | maxSearchCandidates=NaN | sync throws ValidationError/VALIDATION field=maxSearchCandidates
 DynamoDBStore | options="str" | sync throws ValidationError/VALIDATION field=options
 DynamoDBStore | options=42 | sync throws ValidationError/VALIDATION field=options
@@ -597,7 +597,7 @@ DynamoDBStore | readConcurrency="8" | sync throws ValidationError/VALIDATION fie
 DynamoDBStore | readConcurrency=-1 | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBStore | readConcurrency=0 | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBStore | readConcurrency=1.5 | sync throws ValidationError/VALIDATION field=readConcurrency
-DynamoDBStore | readConcurrency=1000000000000 | OK DynamoDBStore
+DynamoDBStore | readConcurrency=1000000000000 | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBStore | readConcurrency=NaN | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBStore | readConcurrency=null | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBStore | retry="x" | sync throws ValidationError/VALIDATION field=retry

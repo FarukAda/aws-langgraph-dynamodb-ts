@@ -1,3 +1,4 @@
+import { MAX_SCAN_ITEMS, MAX_SEARCH_CANDIDATES } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { validateStoreOptions } from '../../../../src/store/internal/option-validation';
 import { projectKeys, scopedQuery } from '../../../../src/store/internal/query';
@@ -153,5 +154,25 @@ describe('validateStoreOptions', () => {
     expect(() => validateStoreOptions({ tableName: 'store', maxSearchCandidates: 0 })).toThrow(
       /maxSearchCandidates/,
     );
+  });
+
+  /**
+   * Both caps hold decoded rows in memory; unbounded, a typo or hostile value
+   * exhausts it. Rejected one above the named ceiling, accepted at it.
+   */
+  it('refuses an in-memory cap above its named ceiling, accepts it at the ceiling', () => {
+    expect(() =>
+      validateStoreOptions({ tableName: 'store', maxScanItems: MAX_SCAN_ITEMS + 1 }),
+    ).toThrow(/maxScanItems/);
+    expect(() =>
+      validateStoreOptions({ tableName: 'store', maxScanItems: MAX_SCAN_ITEMS }),
+    ).not.toThrow();
+
+    expect(() =>
+      validateStoreOptions({ tableName: 'store', maxSearchCandidates: MAX_SEARCH_CANDIDATES + 1 }),
+    ).toThrow(/maxSearchCandidates/);
+    expect(() =>
+      validateStoreOptions({ tableName: 'store', maxSearchCandidates: MAX_SEARCH_CANDIDATES }),
+    ).not.toThrow();
   });
 });
