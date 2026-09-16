@@ -189,7 +189,7 @@ describe('options shape (M-08)', () => {
     await rejectsUnknownKey(history(client).listSessions(bogus));
   });
 
-  it('listSessions refuses a non-integer maxItems or maxIterations (fix round 2)', async () => {
+  it('listSessions refuses a non-integer maxItems or maxIterations', async () => {
     const { client } = createStrictDocumentMock();
     await expect(history(client).listSessions({ maxItems: 1.5 })).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,

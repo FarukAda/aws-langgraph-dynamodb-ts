@@ -8,7 +8,7 @@ import {
   STORE_SEARCH_KEYS,
 } from '../../../../src/shared/validation/method-keys';
 
-describe('the method-bag key lists (compiler-verified against the brief)', () => {
+describe('the method-bag key lists (compiler-verified against the types)', () => {
   it('lists exactly what each public method reads from its options bag', () => {
     expect(CANCEL_KEYS).toEqual(['signal']);
     expect(GET_MESSAGES_KEYS).toEqual(['limit', 'before', 'signal']);

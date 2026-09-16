@@ -19,9 +19,10 @@ export function createStrictDocumentMock(): {
 
 /**
  * The eight `DynamoDBDocument` methods this package calls, all stubbed. An
- * injected `client` double needs every one of them since P2.3's collaborator
- * check refuses one missing any — spread this into a lighter double (e.g.
- * `{ send: jest.fn() }`) instead of hand-listing them at each call site.
+ * injected `client` double needs every one of them since
+ * `assertBaseCollaborators` refuses one missing any — spread this into a
+ * lighter double (e.g. `{ send: jest.fn() }`) instead of hand-listing them at
+ * each call site.
  */
 export function fakeClientMethods(): {
   get: jest.Mock;

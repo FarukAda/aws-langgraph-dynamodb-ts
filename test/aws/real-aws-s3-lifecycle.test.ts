@@ -169,7 +169,7 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     expect(rule?.Status).toBe('Enabled');
   });
 
-  it('each adapter provisions its own lifecycle rule under its default adapter-scoped prefix without colliding (the Task-3 fix)', async () => {
+  it('each adapter provisions its own lifecycle rule under its default adapter-scoped prefix without colliding', async () => {
     const s3Config = { bucketName, clientConfig };
     const defaultSaver = new DynamoDBSaver({
       tableName,

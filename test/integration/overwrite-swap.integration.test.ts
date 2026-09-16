@@ -75,10 +75,9 @@ describe('overwrite compare-and-swap (F5)', () => {
   // only runs DynamoDB Local (checked), and test/integration/helpers has no
   // S3/offloader fake (checked). Driving this case through DynamoDBStore.put()
   // with a real offloader is therefore impossible without inventing a
-  // parallel harness, which the task brief forbids. Per the brief's
-  // implementer note, this instead calls putWithRevisionSwap -- the actual
-  // Task 9 compare-and-swap primitive that persist.ts hands the offloader
-  // path to -- directly against real DynamoDB, and pins the DynamoDB half of
+  // parallel harness. This instead calls putWithRevisionSwap -- the actual
+  // compare-and-swap primitive that persist.ts hands the offloader path to
+  // -- directly against real DynamoDB, and pins the DynamoDB half of
   // the no-orphan invariant: whichever writer loses the immediate race
   // re-reads and reports having superseded the *other* writer's committed
   // descriptor, never the stale value it first observed and never its own.

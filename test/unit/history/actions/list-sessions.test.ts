@@ -211,7 +211,7 @@ describe('options shape (M-08)', () => {
     });
   });
 
-  it('refuses a non-integer maxItems or maxIterations, naming it (fix round 2)', async () => {
+  it('refuses a non-integer maxItems or maxIterations, naming it', async () => {
     const { client } = createStrictDocumentMock();
     await expect(listSessions(context(client), { maxItems: 1.5 })).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
@@ -234,7 +234,7 @@ describe('options shape (M-08)', () => {
    * `Infinity` is the paginator's own documented way to ask for no cap
    * (`paginate-core.ts`'s `assertPositiveCap`) and must stay legal.
    */
-  it('accepts Infinity for maxItems and maxIterations (fix round 2)', async () => {
+  it('accepts Infinity for maxItems and maxIterations', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [] });
     await expect(listSessions(context(client), { maxItems: Infinity })).resolves.toEqual({

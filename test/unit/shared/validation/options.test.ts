@@ -189,8 +189,8 @@ describe('validateBaseAdapterOptions', () => {
     /**
      * Regression: `minSizeBytes` above the inline cap ("compress only what
      * will be offloaded anyway") must stay valid once `s3` is configured —
-     * caught by review after P2.2 first shipped this bound at
-     * MAX_INLINE_PAYLOAD_BYTES, which broke it.
+     * bounding it at `MAX_INLINE_PAYLOAD_BYTES` instead of
+     * `MAX_PAYLOAD_BUFFER_BYTES` would wrongly reject it.
      */
     it('accepts a minSizeBytes above the inline cap when s3 offload is configured', () => {
       expect(() =>

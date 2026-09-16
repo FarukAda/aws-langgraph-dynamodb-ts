@@ -87,7 +87,7 @@ describe('assertBaseCollaborators', () => {
   });
 });
 
-describe('the member lists, verified against src/ (see the task brief)', () => {
+describe('the member lists, verified against the call sites in src/', () => {
   it('lists exactly what each collaborator is called with', () => {
     expect(CLIENT_MEMBERS).toEqual([
       'get',

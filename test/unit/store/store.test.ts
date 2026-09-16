@@ -204,7 +204,7 @@ describe('options shape (M-08)', () => {
     });
   });
 
-  it('search refuses a non-object filter, naming it (fix round 2)', async () => {
+  it('search refuses a non-object filter, naming it', async () => {
     const { client } = createStrictDocumentMock();
     const store = new DynamoDBStore({ tableName: 'store', client });
     await expect(store.search(['ns'], { filter: 'x' as never })).rejects.toMatchObject({
@@ -213,7 +213,7 @@ describe('options shape (M-08)', () => {
     });
   });
 
-  it('search refuses a non-string query, naming it (fix round 2)', async () => {
+  it('search refuses a non-string query, naming it', async () => {
     const { client } = createStrictDocumentMock();
     const store = new DynamoDBStore({ tableName: 'store', client });
     await expect(store.search(['ns'], { query: 123 as never })).rejects.toMatchObject({
@@ -222,7 +222,7 @@ describe('options shape (M-08)', () => {
     });
   });
 
-  it('search accepts an empty query and a non-operator filter clause (fix round 2)', async () => {
+  it('search accepts an empty query and a non-operator filter clause', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });
     const store = new DynamoDBStore({ tableName: 'store', client });

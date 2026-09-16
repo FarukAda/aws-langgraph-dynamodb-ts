@@ -130,13 +130,13 @@ describe('readListScope', () => {
     );
   });
 
-  it('rejects a non-object config, naming it (fix round 2)', () => {
+  it('rejects a non-object config, naming it', () => {
     expect(() => readListScope('x' as never, undefined)).toThrow(
       expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'config' } }),
     );
   });
 
-  it('rejects a non-object before, naming it (fix round 2)', () => {
+  it('rejects a non-object before, naming it', () => {
     expect(() =>
       readListScope({ configurable: { thread_id: 't' } }, { before: 'x' as never }),
     ).toThrow(
@@ -145,7 +145,7 @@ describe('readListScope', () => {
   });
 
   /** `{}` names no id, so it constrains nothing rather than being refused. */
-  it('accepts `before: {}` (fix round 2)', () => {
+  it('accepts `before: {}`', () => {
     expect(
       readListScope({ configurable: { thread_id: 't' } }, { before: {} }).before,
     ).toBeUndefined();
@@ -158,7 +158,7 @@ describe('readListScope', () => {
    * and compared `false` against every stored id (H-10's symptom again,
    * reached with a string instead of a number).
    */
-  it('treats undefined, null and "" as absent, not malformed (fix round 2)', () => {
+  it('treats undefined, null and "" as absent, not malformed', () => {
     expect(
       readListScope(
         { configurable: { thread_id: 't' } },
@@ -177,9 +177,9 @@ describe('readListScope', () => {
    * `0`, `false` and `NaN` are all falsy in JS but none can be a checkpoint
    * id; the boundary is exactly `undefined`/`null`/`''`, not JS truthiness,
    * so each of these must still reach `validateIdentifier` and be refused as
-   * a non-string rather than silently treated as "no bound" (fix round 3).
+   * a non-string rather than silently treated as "no bound".
    */
-  it('refuses 0, false and NaN rather than treating them as absent (fix round 3)', () => {
+  it('refuses 0, false and NaN rather than treating them as absent', () => {
     for (const checkpointId of [0, false, Number.NaN]) {
       expect(() =>
         readListScope(
@@ -192,7 +192,7 @@ describe('readListScope', () => {
     }
   });
 
-  it('refuses a malformed truthy checkpoint_id, naming `before` (fix round 2)', () => {
+  it('refuses a malformed truthy checkpoint_id, naming `before`', () => {
     expect(() =>
       readListScope(
         { configurable: { thread_id: 't' } },
@@ -203,7 +203,7 @@ describe('readListScope', () => {
     );
   });
 
-  it('rejects a non-object filter, naming it (fix round 2)', () => {
+  it('rejects a non-object filter, naming it', () => {
     for (const value of ['x', [], null]) {
       expect(() =>
         readListScope({ configurable: { thread_id: 't' } }, { filter: value as never }),
@@ -214,7 +214,7 @@ describe('readListScope', () => {
   });
 
   /** `$foo` is not a known operator, so `filter-match.ts` matches it as a literal clause. */
-  it('accepts a filter carrying a non-operator key inside a clause (fix round 2)', () => {
+  it('accepts a filter carrying a non-operator key inside a clause', () => {
     expect(() =>
       readListScope({ configurable: { thread_id: 't' } }, { filter: { a: { $foo: 1 } } }),
     ).not.toThrow();

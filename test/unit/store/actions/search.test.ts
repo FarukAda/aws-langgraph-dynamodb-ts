@@ -340,7 +340,7 @@ describe('searchItems', () => {
   });
 });
 
-describe('filter and query shape (fix round 2)', () => {
+describe('filter and query shape', () => {
   it('refuses a non-object filter, naming it', async () => {
     const { client } = createStrictDocumentMock();
     for (const filter of ['x', [], null] as never[]) {

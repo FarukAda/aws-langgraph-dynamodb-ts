@@ -101,7 +101,7 @@ describe('DynamoDBSaver', () => {
     });
   });
 
-  describe('list: `before`, `config` and `filter` shape (fix round 2)', () => {
+  describe('list: `before`, `config` and `filter` shape', () => {
     it('refuses a non-object `before`, `config` or `filter`', async () => {
       const { client } = createStrictDocumentMock();
       const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
@@ -167,9 +167,9 @@ describe('DynamoDBSaver', () => {
 
     /**
      * `0`, `false` and `NaN` are falsy in JS but none can be a checkpoint id;
-     * D1 is deliberately stricter than truthiness, so each must reach
-     * `validateIdentifier` and be refused as a non-string rather than
-     * silently read as "no bound" (fix round 3).
+     * the boundary is exactly `undefined`/`null`/`''`, not JS truthiness, so
+     * each must reach `validateIdentifier` and be refused as a non-string
+     * rather than silently read as "no bound".
      */
     it('refuses 0, false and NaN as a checkpoint_id rather than treating them as absent', async () => {
       const { client } = createStrictDocumentMock();

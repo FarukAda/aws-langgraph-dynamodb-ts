@@ -77,8 +77,10 @@ function assertConfigShape(config: RunnableConfig): void {
  * `configurable.ts` reads the same field off `config`: exactly `undefined`,
  * `null` or `''` means no bound, and anything else — including `0`, `false`
  * or `NaN`, none of which JS truthiness alone would catch — is validated as
- * the sort-key segment it becomes. D1 is stricter than upstream's truthiness
- * on purpose.
+ * the sort-key segment it becomes. Checking equality against exactly those
+ * three values, rather than truthiness, is deliberately stricter: a bare
+ * truthiness check would treat `0`, `false` and `NaN` as absent instead of
+ * validating them.
  *
  * Left as an unchecked cast, a caller-supplied non-string reached
  * `ListScope.before`, which is typed `string | undefined`, and then
