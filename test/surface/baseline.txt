@@ -150,28 +150,28 @@ DynamoDBChatMessageHistory.clear | sessionId=null | throws ValidationError/VALID
 DynamoDBChatMessageHistory.clear | sessionId=undefined | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.clear | sessionId={} | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.ensureS3LifecycleRule | no s3/ttl configured | RESOLVED undefined
-DynamoDBChatMessageHistory.forSession | sessionId=" " | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId="" | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId="a#b" | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId="a\u0000b" | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId="a\ud800b" | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId="abc" | OK DynamoDBSessionChatMessageHistory
+DynamoDBChatMessageHistory.forSession | sessionId=" " | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId="" | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId="a#b" | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId="a\u0000b" | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId="a\ud800b" | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId="abc" | sync throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.forSession | sessionId="ok-id" | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000)" | OK DynamoDBSessionChatMessageHistory
+DynamoDBChatMessageHistory.forSession | sessionId="xxxxxxxxxxxxxxxxxxxx…(len 2000)" | sync throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.forSession | sessionId="😀" | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId=123 | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId=["a"] | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId=null | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId=undefined | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | sessionId={} | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | window="x" | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | window=null | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | window={"foo":1} | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | window={"limit":"5"} | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | window={"limit":-1} | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | window={"limit":0} | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession | window={"limit":null} | OK DynamoDBSessionChatMessageHistory
-DynamoDBChatMessageHistory.forSession(...).getMessages | window={"foo":1} | throws ValidationError/VALIDATION field=options.foo
+DynamoDBChatMessageHistory.forSession | sessionId=123 | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId=["a"] | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId=null | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId=undefined | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | sessionId={} | sync throws ValidationError/VALIDATION field=sessionId
+DynamoDBChatMessageHistory.forSession | window="x" | sync throws ValidationError/VALIDATION field=window
+DynamoDBChatMessageHistory.forSession | window=null | sync throws ValidationError/VALIDATION field=window
+DynamoDBChatMessageHistory.forSession | window={"foo":1} | sync throws ValidationError/VALIDATION field=window.foo
+DynamoDBChatMessageHistory.forSession | window={"limit":"5"} | sync throws ValidationError/VALIDATION field=limit
+DynamoDBChatMessageHistory.forSession | window={"limit":-1} | sync throws ValidationError/VALIDATION field=limit
+DynamoDBChatMessageHistory.forSession | window={"limit":0} | sync throws ValidationError/VALIDATION field=limit
+DynamoDBChatMessageHistory.forSession | window={"limit":null} | sync throws ValidationError/VALIDATION field=limit
+DynamoDBChatMessageHistory.forSession(...).getMessages | window={"foo":1} | throws ValidationError/VALIDATION field=window.foo
 DynamoDBChatMessageHistory.forSession(...).getMessages | window={"limit":"5"} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession(...).getMessages | window={"limit":0} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession(bad).getMessages | sessionId='a#b' | throws ValidationError/VALIDATION field=sessionId
@@ -526,9 +526,9 @@ DynamoDBSaver.putWrites | writes=[null] | throws UpstreamError/UPSTREAM
 DynamoDBSaver.putWrites | writes=null | throws UpstreamError/UPSTREAM
 DynamoDBSaver.putWrites | writes=undefined | throws UpstreamError/UPSTREAM
 DynamoDBSaver.putWrites | writes={} | throws UpstreamError/UPSTREAM
-DynamoDBSessionChatMessageHistory | new (backend=null, sessionId=1) | OK DynamoDBSessionChatMessageHistory
-DynamoDBSessionChatMessageHistory.addMessages | backend={} (no methods) | BARE TypeError
-DynamoDBSessionChatMessageHistory.getMessages | backend=null | BARE TypeError
+DynamoDBSessionChatMessageHistory | new (backend=null, sessionId=1) | sync throws ValidationError/VALIDATION field=backend
+DynamoDBSessionChatMessageHistory.addMessages | backend={} (no methods) | throws ValidationError/VALIDATION field=backend.getMessages
+DynamoDBSessionChatMessageHistory.getMessages | backend=null | throws ValidationError/VALIDATION field=backend
 DynamoDBStore | client + clientConfig both | sync throws ValidationError/VALIDATION field=client
 DynamoDBStore | client='x' | sync throws ValidationError/VALIDATION field=client
 DynamoDBStore | client={} (not a DocumentClient) | sync throws ValidationError/VALIDATION field=client.get

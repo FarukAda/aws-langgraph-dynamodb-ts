@@ -203,15 +203,17 @@ export class DynamoDBChatMessageHistory {
   /**
    * Get a single-session LangChain adapter for `sessionId`.
    *
-   * Accepts: `sessionId` — not validated here; the adapter's own calls validate
-   * it, so a bad id fails at the operation rather than at the handle.
-   * `window.limit` — bounds what the adapter feeds the chain to the newest that
-   * many messages.
+   * Accepts: `sessionId` — validated by the adapter's own constructor, the
+   * same rule every other method applies. `window.limit` — bounds what the
+   * adapter feeds the chain to the newest that many messages; validated the
+   * same way.
    *
    * Returns: an adapter implementing `BaseListChatMessageHistory`, which is
    * what `RunnableWithMessageHistory` takes.
    *
-   * Throws: nothing; it opens nothing and reads nothing.
+   * Throws: ValidationError naming `sessionId`, `window.<key>` for a key the
+   * adapter does not declare, or `limit` — raised by the constructed adapter,
+   * so a bad id or window fails here rather than on first use.
    */
   forSession(sessionId: string, window?: AdapterWindow): DynamoDBSessionChatMessageHistory {
     return new DynamoDBSessionChatMessageHistory(this, sessionId, window);
