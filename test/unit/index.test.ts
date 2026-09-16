@@ -36,8 +36,9 @@ describe('public entry point', () => {
    */
   it('exports the recency-index backfill tool', async () => {
     expect(typeof backfillRecencyIndex).toBe('function');
+    const client = { scan: jest.fn(), update: jest.fn() } as never;
     await expect(
-      backfillRecencyIndex({ client: {} as never, tableName: 't', pageSize: 0 }),
+      backfillRecencyIndex({ client, tableName: 'tbl', pageSize: 0 }),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'pageSize' } });
   });
 

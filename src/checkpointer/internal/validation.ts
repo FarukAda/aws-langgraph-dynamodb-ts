@@ -50,14 +50,17 @@ export function validateCheckpointNs(checkpointNs: string): void {
  * Validate a checkpoint id as the sort-key segment it becomes.
  *
  * Accepts: `checkpointId` — non-blank, free of the separator and of control
- * characters, at most {@link MAX_KEY_SEGMENT_BYTES}.
+ * characters, at most {@link MAX_KEY_SEGMENT_BYTES}. `field` — defaults to
+ * `checkpoint_id`; `configurable.ts` passes `thread_ts` when the value being
+ * checked was read from that field instead, so the error names the field the
+ * caller actually set rather than the one the value happened to end up in.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `checkpoint_id`.
+ * Throws: ValidationError naming `field`.
  */
-export function validateCheckpointId(checkpointId: string): void {
-  validateIdentifier(checkpointId, SORT_KEY_SEPARATOR, 'checkpoint_id', MAX_KEY_SEGMENT_BYTES);
+export function validateCheckpointId(checkpointId: string, field = 'checkpoint_id'): void {
+  validateIdentifier(checkpointId, SORT_KEY_SEPARATOR, field, MAX_KEY_SEGMENT_BYTES);
 }
 
 /**

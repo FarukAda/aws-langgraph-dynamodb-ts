@@ -2,7 +2,11 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
 import { assembleTuple } from '../internal/assemble';
-import { readConfigurable, readThreadlessConfigurable } from '../internal/configurable';
+import {
+  isThreadless,
+  readConfigurable,
+  readThreadlessConfigurable,
+} from '../internal/configurable';
 import { fetchTargetMeta } from '../internal/fetch';
 import type { CheckpointerContext } from '../internal/setup';
 
@@ -28,7 +32,7 @@ export async function getCheckpointTuple(
   context: CheckpointerContext,
   config: RunnableConfig,
 ): Promise<CheckpointTuple | undefined> {
-  if (config.configurable?.thread_id === undefined) {
+  if (isThreadless(config)) {
     readThreadlessConfigurable(config);
     return undefined;
   }

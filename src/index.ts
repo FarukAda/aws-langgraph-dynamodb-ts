@@ -23,7 +23,7 @@ export type {
  * for why enabling the index first hides pre-existing rows from the listings.
  */
 export { backfillRecencyIndex } from './shared/dynamodb/backfill-index';
-export type { BackfillOptions, BackfillResult } from './shared/dynamodb/backfill-index';
+export type { BackfillOptions, BackfillResult } from './shared/dynamodb/backfill-types';
 
 export { DynamoDBFactory } from './factory/factory';
 export type {

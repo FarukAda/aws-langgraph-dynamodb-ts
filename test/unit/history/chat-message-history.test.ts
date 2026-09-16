@@ -184,6 +184,18 @@ describe('options shape (M-08)', () => {
     await rejectsUnknownKey(history(client).getMessages('s1', bogus));
   });
 
+  /**
+   * `before: null` passes the `!== undefined` guard and then used to reach
+   * `null.getTime`, a bare `TypeError` the boundary branded `UpstreamError`
+   * instead of naming the caller's mistake.
+   */
+  it('getMessages refuses before: null rather than crashing on it', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      history(client).getMessages('s1', { before: null } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'before' } });
+  });
+
   it('listSessions refuses a key this package does not read', async () => {
     const { client } = createStrictDocumentMock();
     await rejectsUnknownKey(history(client).listSessions(bogus));

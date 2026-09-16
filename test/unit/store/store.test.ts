@@ -186,6 +186,22 @@ describe('BaseStore lifecycle (CORE-22)', () => {
 });
 
 describe('options shape (M-08)', () => {
+  /**
+   * The `= {}` default parameter only fires for `undefined`, not `null`, so a
+   * caller passing `null` used to reach the destructure before `guardPublic`
+   * could normalise the resulting `TypeError`. The destructure now runs
+   * inside the guarded callback, after `assertShape` has already refused a
+   * non-object `options`.
+   */
+  it('search names the field rather than crashing when options is null', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], null as never)).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'options' },
+    });
+  });
+
   it('search refuses a key this package does not read', async () => {
     const { client } = createStrictDocumentMock();
     const store = new DynamoDBStore({ tableName: 'store', client });

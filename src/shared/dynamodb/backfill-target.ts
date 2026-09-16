@@ -75,23 +75,34 @@ export function encodeScanCursor(key: DocItem): string {
   return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
 }
 
+/** Whether `value` is exactly the base table's primary key: `PK` and `SK`, both strings, nothing else. */
+function isTableKeyShape(value: DocItem): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === 2 && typeof value.PK === 'string' && typeof value.SK === 'string';
+}
+
 /**
  * The scan position a cursor encodes.
  *
  * Accepts: `cursor` — as a previous page returned it.
  *
- * Returns: the `ExclusiveStartKey` to resume from.
+ * Returns: the `ExclusiveStartKey` to resume from — always exactly `{ PK,
+ * SK }`, both strings, since a plain table `Scan` (no `IndexName`) never
+ * returns a `LastEvaluatedKey` shaped any other way.
  *
- * Throws: ValidationError naming `cursor` for anything this tool did not issue
- * — text that is not base64url, that does not decode to JSON, or that decodes
- * to something other than an object. A cursor is fed straight back to DynamoDB,
- * so a value of the wrong shape is refused here rather than surfacing as a raw
- * `ValidationException` from the service.
+ * Throws: ValidationError naming `cursor` for anything this tool did not
+ * issue — text that is not base64url, that does not decode to JSON, or that
+ * decodes to anything but `{ PK: string, SK: string }`: an array, an object
+ * missing either key, carrying an extra one, or carrying a non-string value
+ * for either. A cursor is fed straight back to DynamoDB as
+ * `ExclusiveStartKey`, so a value of the wrong shape is refused here rather
+ * than surfacing as a raw `ValidationException` from the service.
  */
 export function decodeScanCursor(cursor: string): DocItem {
   try {
     const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as DocItem;
-    if (typeof decoded !== 'object' || decoded === null) throw new Error('not an object');
+    if (!isTableKeyShape(decoded)) throw new Error('not a scan position');
     return decoded;
   } catch {
     throw new ValidationError('cursor is not one this tool issued', 'cursor');

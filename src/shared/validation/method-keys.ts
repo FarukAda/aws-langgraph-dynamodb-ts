@@ -1,4 +1,4 @@
-import type { CheckpointListOptions } from '@langchain/langgraph-checkpoint';
+import type { BaseCheckpointSaver, CheckpointListOptions } from '@langchain/langgraph-checkpoint';
 
 import type { GetMessagesOptions, ListSessionsOptions } from '../../history/types';
 import type { SearchOptions } from '../../store/types';
@@ -48,6 +48,16 @@ export const SAVER_LIST_KEYS = allKeysOf<CheckpointListOptions>({
   before: 'before',
   filter: 'filter',
 });
+
+/**
+ * See {@link CANCEL_KEYS}. Named from `BaseCheckpointSaver`'s own signature
+ * rather than a type this package declares, since the upstream interface
+ * (`@langchain/langgraph-checkpoint` `base.d.ts:107-110`) is the contract
+ * `getDeltaChannelHistory` implements.
+ */
+export const DELTA_CHANNEL_HISTORY_KEYS = allKeysOf<
+  Parameters<BaseCheckpointSaver['getDeltaChannelHistory']>[0]
+>({ config: 'config', channels: 'channels' });
 
 /**
  * Reject a `{ signal }` bag carrying a key this package does not read.

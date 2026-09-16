@@ -21,7 +21,16 @@ const RETRY_KEYS = allKeysOf<RetryPolicy>({
   maxDelayMs: 'maxDelayMs',
 });
 
-function validateTableName(tableName: string): void {
+/**
+ * Validate a table name against DynamoDB's own naming rule.
+ *
+ * Accepts: `tableName` — as the caller gave it.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `tableName`.
+ */
+export function validateTableName(tableName: string): void {
   if (typeof tableName !== 'string' || !TABLE_NAME_PATTERN.test(tableName)) {
     throw new ValidationError(
       'tableName must be 3-255 characters from [A-Za-z0-9_.-], as DynamoDB requires',
@@ -57,8 +66,26 @@ export function validateClientChoice(
   }
 }
 
-function validateRetryPolicy(policy: RetryPolicy): void {
-  assertShape(policy, RETRY_KEYS, 'retry');
+/**
+ * The three numeric bounds every retry policy shares, regardless of which
+ * other keys the caller's own type allows beyond them. Split out so a caller
+ * with a wider surface than {@link RetryPolicy} (`backfillRecencyIndex`'s
+ * `RetryOptions`, which also exposes `onRetry`, `isRetryable` and friends)
+ * can reuse the identical bounds without going through {@link
+ * validateRetryPolicy}'s narrower `assertShape`, which would refuse those
+ * extra keys outright.
+ *
+ * Accepts: `policy` — its `maxAttempts`, `baseDelayMs` and `maxDelayMs`, each
+ * optional.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `retry.maxAttempts`, `retry.baseDelayMs` or
+ * `retry.maxDelayMs`.
+ */
+export function validateRetryBounds(
+  policy: Pick<RetryPolicy, 'maxAttempts' | 'baseDelayMs' | 'maxDelayMs'>,
+): void {
   if (policy.maxAttempts !== undefined) {
     validateInteger(policy.maxAttempts, 'retry.maxAttempts', { min: 1, max: MAX_RETRY_ATTEMPTS });
   }
@@ -71,6 +98,21 @@ function validateRetryPolicy(policy: RetryPolicy): void {
       max: MAX_RETRY_DELAY_MS,
     });
   }
+}
+
+/**
+ * Validate a retry policy: shape, then each bound.
+ *
+ * Accepts: `policy` — must be an object naming only `maxAttempts`,
+ * `baseDelayMs` and `maxDelayMs`; each, if given, is a bounded integer.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `retry` or `retry.<key>`.
+ */
+export function validateRetryPolicy(policy: RetryPolicy): void {
+  assertShape(policy, RETRY_KEYS, 'retry');
+  validateRetryBounds(policy);
 }
 
 /** The recency index: a named GSI, and the partition count rows are sharded across. */

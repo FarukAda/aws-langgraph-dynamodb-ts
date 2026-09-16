@@ -1,45 +1,12 @@
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-
 import { mapWithConcurrency } from '../concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../constants';
-import { ValidationError } from '../errors/errors';
+import { guardPublic } from '../errors/boundary';
 import { decodeScanCursor, encodeScanCursor, indexTargetOf } from './backfill-target';
+import type { BackfillOptions, BackfillResult } from './backfill-types';
+import { validateBackfillOptions } from './backfill-validation';
 import { DEFAULT_INDEX_SHARDS, indexKeys } from './index-keys';
 import { withDynamoDBRetry } from './retry';
-import type { RetryOptions } from './retry';
 import type { DocItem } from './types';
-
-/** What one pass of the backfill did, and where to resume. */
-export interface BackfillResult {
-  /** Rows the scan evaluated. */
-  scanned: number;
-  /** Rows given index keys. */
-  indexed: number;
-  /** Rows no listing reaches, so no keys were written. */
-  skipped: number;
-  /**
-   * Opaque; absent when the table is fully walked. Pass it back to continue —
-   * the pass is resumable, so a large table can be backfilled in bounded runs.
-   */
-  nextCursor?: string;
-}
-
-/** What the backfill needs to walk a table. */
-export interface BackfillOptions {
-  client: DynamoDBDocument;
-  tableName: string;
-  /** Must equal the adapters' `indexShards`, or rows land on shards no listing queries. */
-  indexShards?: number;
-  /** Rows per scan page. */
-  pageSize?: number;
-  /** Stop after this many pages and return a cursor. Default: walk the whole table. */
-  maxPages?: number;
-  cursor?: string;
-  /** Report what would change without writing. */
-  dryRun?: boolean;
-  retry?: RetryOptions;
-  signal?: AbortSignal;
-}
 
 /** Write one row's index keys; false when the row is not one a listing reaches. */
 async function indexRow(options: BackfillOptions, row: DocItem, shards: number): Promise<boolean> {
@@ -112,45 +79,48 @@ async function backfillPage(
  * `indexShards` must match what the adapters use. A mismatch puts rows on
  * shards no listing queries, which looks exactly like the rows being missing.
  *
- * Accepts: `options.pageSize` — a positive integer, default 100.
- * `options.cursor` — from a previous run, to resume. `options.maxPages` — how
- * far one run goes, so a large table can be backfilled in bounded slices.
- * `options.indexShards` — must equal the adapters' setting.
+ * Accepts: `options` — validated in full before any read, the same as every
+ * public method in this package (see {@link validateBackfillOptions}).
+ * `options.pageSize` — a positive integer, default 100. `options.cursor` —
+ * from a previous run, to resume. `options.maxPages` — how far one run goes,
+ * so a large table can be backfilled in bounded slices. `options.indexShards`
+ * — must equal the adapters' setting.
  *
  * Returns: how many rows were scanned and how many were given keys, plus a
  * `cursor` when the run stopped short of the end. An absent cursor means the
  * table is fully backfilled.
  *
- * Throws: ValidationError naming `pageSize` or `cursor`; whatever the scan and
- * the writes throw.
+ * Throws: ValidationError naming the offending option, before any DynamoDB
+ * call; UpstreamError for anything else the scan or the writes throw — this
+ * is the function's own error boundary, the same as every adapter's public
+ * methods, so a caller's mistake never escapes as a bare exception.
  *
  * Guarantees: every write is conditional on the row having no keys yet, so
  * re-running is safe, running against a live table is safe, and a row a live
  * adapter has already indexed is left exactly as it is.
  */
 export async function backfillRecencyIndex(options: BackfillOptions): Promise<BackfillResult> {
-  const pageSize = options.pageSize ?? 100;
-  if (!Number.isInteger(pageSize) || pageSize < 1) {
-    throw new ValidationError('pageSize must be a positive integer', 'pageSize');
-  }
-  const shards = options.indexShards ?? DEFAULT_INDEX_SHARDS;
-  let startKey = options.cursor === undefined ? undefined : decodeScanCursor(options.cursor);
-  let scanned = 0;
-  let indexed = 0;
-  for (let page = 1; ; page++) {
-    const result = await backfillPage(options, shards, startKey);
-    scanned += result.rows;
-    indexed += result.indexed;
-    startKey = result.nextKey;
-    if (startKey === undefined) break;
-    if (options.maxPages !== undefined && page >= options.maxPages) {
-      return {
-        scanned,
-        indexed,
-        skipped: scanned - indexed,
-        nextCursor: encodeScanCursor(startKey),
-      };
+  return guardPublic('backfillRecencyIndex', async () => {
+    validateBackfillOptions(options);
+    const shards = options.indexShards ?? DEFAULT_INDEX_SHARDS;
+    let startKey = options.cursor === undefined ? undefined : decodeScanCursor(options.cursor);
+    let scanned = 0;
+    let indexed = 0;
+    for (let page = 1; ; page++) {
+      const result = await backfillPage(options, shards, startKey);
+      scanned += result.rows;
+      indexed += result.indexed;
+      startKey = result.nextKey;
+      if (startKey === undefined) break;
+      if (options.maxPages !== undefined && page >= options.maxPages) {
+        return {
+          scanned,
+          indexed,
+          skipped: scanned - indexed,
+          nextCursor: encodeScanCursor(startKey),
+        };
+      }
     }
-  }
-  return { scanned, indexed, skipped: scanned - indexed };
+    return { scanned, indexed, skipped: scanned - indexed };
+  });
 }

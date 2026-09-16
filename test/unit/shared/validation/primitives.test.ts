@@ -8,6 +8,7 @@ import {
   validateInteger,
   validateNonEmptyArray,
   validateNonEmptyString,
+  validateStringArray,
 } from '../../../../src/shared/validation/primitives';
 
 /** The states a caller can reach that the declared `string` type rules out. */
@@ -113,6 +114,21 @@ describe('validateNonEmptyArray', () => {
 
   it('accepts a non-empty array without inspecting its elements', () => {
     expect(() => validateNonEmptyArray([''], 'namespace')).not.toThrow();
+  });
+});
+
+describe('validateStringArray', () => {
+  it.each([undefined, null, 'abc', 42, {}] as never[])('rejects the non-array %p', (value) => {
+    expectValidationError(() => validateStringArray(value, 'channels'), 'channels');
+  });
+
+  it('rejects an array holding a non-string element', () => {
+    expectValidationError(() => validateStringArray(['a', 1 as never], 'channels'), 'channels');
+  });
+
+  it('accepts an empty array and an array of strings', () => {
+    expect(() => validateStringArray([], 'channels')).not.toThrow();
+    expect(() => validateStringArray(['a', 'b'], 'channels')).not.toThrow();
   });
 });
 

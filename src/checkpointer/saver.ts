@@ -12,7 +12,10 @@ import {
 
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
-import { assertCancelOptions } from '../shared/validation/method-keys';
+import { SAVER_KEYS } from '../shared/validation/adapter-keys';
+import { assertCancelOptions, DELTA_CHANNEL_HISTORY_KEYS } from '../shared/validation/method-keys';
+import { assertObjectShape, assertShape, checkedShape } from '../shared/validation/option-shape';
+import { validateStringArray } from '../shared/validation/primitives';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
 import { ensureS3Lifecycle } from './actions/ensure-lifecycle';
 import { getCheckpointTuple } from './actions/get-tuple';
@@ -49,7 +52,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * at module scope and in a Lambda's init phase.
    */
   constructor(options: DynamoDBSaverOptions) {
-    super(options.serde);
+    super(checkedShape(options, SAVER_KEYS, 'options').serde);
     const setup = setUpCheckpointer(options, this.serde);
     this.context = setup.context;
     this.ownsClient = setup.ownsClient;
@@ -190,14 +193,20 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * per put puts that within reach here, so an ancestor a channel still needs
    * that has expired is reported instead of dropped; see `deltaChannelHistory`.
    *
-   * Accepts: `options.channels` — the delta channels to rebuild; none reads
-   * nothing. `options.config` — the checkpoint to walk back from.
+   * Accepts: `options` — must be an object naming exactly `config` and
+   * `channels`, the shape `BaseCheckpointSaver`'s own signature declares.
+   * `options.channels` — the delta channels to rebuild, required; an empty
+   * array reads nothing rather than being refused, since it is a legitimate
+   * "nothing to rebuild" request. `options.config` — the checkpoint to walk
+   * back from.
    *
    * Returns: per channel, its on-path writes oldest-first and the nearest
    * stored value found.
    *
-   * Throws: `ANCESTOR_EXPIRED` when a checkpoint a channel still needs has
-   * expired; UpstreamError; RetryExhaustedError.
+   * Throws: ValidationError naming `options.<key>` for an unknown key,
+   * `config` for a non-object config, or `channels` for a value that is not
+   * an array of strings; `ANCESTOR_EXPIRED` when a checkpoint a channel still
+   * needs has expired; UpstreamError; RetryExhaustedError.
    *
    * Guarantees: the walk stops at the first ancestor answering for every
    * channel, so a deep thread costs reads only as far back as the nearest
@@ -206,9 +215,17 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   getDeltaChannelHistory(
     options: Parameters<BaseCheckpointSaver['getDeltaChannelHistory']>[0],
   ): Promise<Record<string, DeltaChannelHistory>> {
-    return guardPublic('saver.getDeltaChannelHistory', () =>
-      deltaChannelHistory(this.context, (c) => this.getTuple(c), options.config, options.channels),
-    );
+    return guardPublic('saver.getDeltaChannelHistory', () => {
+      assertShape(options, DELTA_CHANNEL_HISTORY_KEYS, 'options');
+      assertObjectShape(options.config, 'config');
+      validateStringArray(options.channels, 'channels');
+      return deltaChannelHistory(
+        this.context,
+        (c) => this.getTuple(c),
+        options.config,
+        options.channels,
+      );
+    });
   }
 
   /**

@@ -49,6 +49,12 @@ async function drain(gen: AsyncGenerator<CheckpointTuple>): Promise<CheckpointTu
 }
 
 describe('DynamoDBSaver', () => {
+  it('names the field rather than crashing when the constructor options are null', () => {
+    expect(() => new DynamoDBSaver(null as never)).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'options' } }),
+    );
+  });
+
   it('put delegates to a transactional write and returns the new config', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
@@ -122,18 +128,20 @@ describe('DynamoDBSaver', () => {
 
     /**
      * `config` is required, not optional — a JS caller can still pass `null`
-     * or omit it. Both already fail downstream with a raw `TypeError`, wrapped
-     * as `UpstreamError`; the new shape check deliberately leaves them alone
-     * rather than turning that into a second, differently-scoped change.
+     * or omit it. Both used to fail downstream with a raw `TypeError`, wrapped
+     * as `UpstreamError`; the shared config reader now refuses them the same
+     * way as any other non-object config, naming `config` instead.
      */
-    it('leaves a null or undefined config to the existing UpstreamError path', async () => {
+    it('refuses a null or undefined config, naming it', async () => {
       const { client } = createStrictDocumentMock();
       const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
       await expect(saver.list(null as never).next()).rejects.toMatchObject({
-        code: ErrorCode.UPSTREAM,
+        code: ErrorCode.VALIDATION,
+        context: { field: 'config' },
       });
       await expect(saver.list(undefined as never).next()).rejects.toMatchObject({
-        code: ErrorCode.UPSTREAM,
+        code: ErrorCode.VALIDATION,
+        context: { field: 'config' },
       });
     });
 
@@ -186,6 +194,71 @@ describe('DynamoDBSaver', () => {
         });
       }
     });
+  });
+
+  describe('a non-object config on every method that reads one', () => {
+    /**
+     * `config.configurable` used to be read straight off the argument, so a
+     * `null` or `undefined` config reached a bare `TypeError` from that
+     * property access — caught by the error boundary and reported as an
+     * `UpstreamError`, an AWS-side failure, instead of naming the caller's
+     * mistake. The shared config reader now refuses any non-object config
+     * before any property is read off it.
+     */
+    it('getTuple refuses a null, undefined or non-object config, naming it', async () => {
+      const { client } = createStrictDocumentMock();
+      const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+      for (const cfg of [null, undefined, 'x', 1]) {
+        await expect(saver.getTuple(cfg as never)).rejects.toMatchObject({
+          code: ErrorCode.VALIDATION,
+          context: { field: 'config' },
+        });
+      }
+    });
+
+    it('put refuses a null, undefined or non-object config, naming it', async () => {
+      const { client } = createStrictDocumentMock();
+      const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+      for (const cfg of [null, undefined, 'x', 1]) {
+        await expect(saver.put(cfg as never, checkpoint, metadata)).rejects.toMatchObject({
+          code: ErrorCode.VALIDATION,
+          context: { field: 'config' },
+        });
+      }
+    });
+
+    it('putWrites refuses a null, undefined or non-object config, naming it', async () => {
+      const { client } = createStrictDocumentMock();
+      const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+      for (const cfg of [null, undefined, 'x', 1]) {
+        await expect(saver.putWrites(cfg as never, [['ch', 1]], 'task-1')).rejects.toMatchObject({
+          code: ErrorCode.VALIDATION,
+          context: { field: 'config' },
+        });
+      }
+    });
+  });
+
+  /**
+   * `0`, `false` and `NaN` are falsy in JS but none can be a checkpoint id;
+   * "no id" is exactly `undefined`, `null` or `''`, so each of these must
+   * reach `validateCheckpointId` and be refused as a non-string rather than
+   * silently read as "the latest".
+   */
+  it('getTuple refuses 0, false and NaN as a checkpoint_id, and still accepts "" and null', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+    for (const checkpointId of [0, false, Number.NaN]) {
+      await expect(
+        saver.getTuple({ configurable: { thread_id: 't', checkpoint_id: checkpointId as never } }),
+      ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'checkpoint_id' } });
+    }
+    for (const checkpointId of ['', null]) {
+      await expect(
+        saver.getTuple({ configurable: { thread_id: 't', checkpoint_id: checkpointId as never } }),
+      ).resolves.toBeUndefined();
+    }
   });
 
   it('putWrites delegates to a conditional put for a regular write', async () => {

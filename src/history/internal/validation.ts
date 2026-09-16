@@ -89,20 +89,24 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
  *
  * Accepts: `limit` — absent asks for the whole session; otherwise a positive
  * integer. `0` is refused rather than answered with nothing: for a window into
- * a conversation it is far more likely a bug than a request. `before` — absent
- * means up to now; otherwise a `Date` whose time is finite. Duck-typed, since
- * a `Date` from another realm is still a date.
+ * a conversation it is far more likely a bug than a request. `before` —
+ * absent means up to now; otherwise a `Date` whose time is finite. `null` is
+ * refused, naming `before`, rather than read as "up to now". A `Date` is
+ * duck-typed, since one from another realm is still a date.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `limit` or `before`, before any DynamoDB call
- * — an invalid `Date` would otherwise derive a NaN sort key that matches
- * nothing and read as an empty conversation.
+ * Throws: ValidationError naming `limit` or `before`, before any DynamoDB
+ * call. `before: null` used to reach `null.getTime`, a property access the
+ * boundary branded `UpstreamError` instead of naming the caller's mistake; an
+ * invalid `Date` would otherwise derive a NaN sort key that matches nothing
+ * and read as an empty conversation.
  */
 export function validateMessageWindow(window: MessageWindow): void {
   if (window.limit !== undefined) validateInteger(window.limit, 'limit', { min: 1 });
   if (window.before !== undefined) {
-    const time = typeof window.before.getTime === 'function' ? window.before.getTime() : Number.NaN;
+    const hasGetTime = window.before !== null && typeof window.before.getTime === 'function';
+    const time = hasGetTime ? window.before.getTime() : Number.NaN;
     if (!Number.isFinite(time)) throw new ValidationError('before must be a valid Date', 'before');
   }
 }

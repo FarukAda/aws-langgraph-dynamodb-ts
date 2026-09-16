@@ -1,0 +1,142 @@
+import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+
+import { DynamoDBSaver } from '../../../src/checkpointer/saver';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
+import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+
+const serde = {
+  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
+    'json',
+    new TextEncoder().encode(JSON.stringify(value)),
+  ],
+  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+};
+
+function newSaver() {
+  const { client, mock } = createStrictDocumentMock();
+  return { saver: new DynamoDBSaver({ tableName: 'ckpt', client, serde }), mock };
+}
+
+/**
+ * The checkpoint-id resolution mirrors the reference's `getCheckpointId`
+ * (`checkpoint_id || thread_ts || ''`), but checks each candidate against
+ * exactly the three values that fallthrough treats as absent, not full JS
+ * truthiness.
+ */
+describe('checkpoint id resolution follows the reference, strictly', () => {
+  it('falls through to thread_ts when checkpoint_id is "", matching the reference', async () => {
+    const { saver, mock } = newSaver();
+    mock.on(GetCommand).resolves({});
+    await saver.getTuple({
+      configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: '', thread_ts: 'abc' },
+    });
+    const key = mock.commandCalls(GetCommand)[0].args[0].input.Key as { SK: string };
+    expect(key.SK).toBe('META##abc');
+  });
+
+  it('refuses thread_ts: 0, naming thread_ts rather than checkpoint_id', async () => {
+    const { saver } = newSaver();
+    await expect(
+      saver.getTuple({
+        configurable: { thread_id: 't', thread_ts: 0 as never },
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'thread_ts' } });
+  });
+});
+
+describe('list validates the positional config before options', () => {
+  it('names config, not options.bogus, when both are malformed', async () => {
+    const { saver } = newSaver();
+    await expect(saver.list('x' as never, { bogus: 1 } as never).next()).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'config' },
+    });
+  });
+});
+
+describe('getDeltaChannelHistory input validation', () => {
+  it('refuses a null, undefined or non-object options bag, naming it', async () => {
+    const { saver } = newSaver();
+    for (const options of [null, undefined, 'x', 1]) {
+      await expect(saver.getDeltaChannelHistory(options as never)).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION,
+        context: { field: 'options' },
+      });
+    }
+  });
+
+  it('refuses an options key this package does not read', async () => {
+    const { saver } = newSaver();
+    await expect(
+      saver.getDeltaChannelHistory({
+        config: { configurable: { thread_id: 't' } },
+        channels: ['c'],
+        foo: 1,
+      } as never),
+    ).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'options.foo' },
+    });
+  });
+
+  /**
+   * `channels: []` is deliberate here, not `['c']`: `deltaChannelHistory`
+   * returns early for an empty channel list without ever calling `getTuple`,
+   * so only an explicit, eager `config` check — not `getTuple`'s own,
+   * downstream one — catches a malformed `config` paired with no channels to
+   * walk.
+   */
+  it('refuses a non-object config even when channels is empty, naming it', async () => {
+    const { saver } = newSaver();
+    await expect(
+      saver.getDeltaChannelHistory({ config: null, channels: [] } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'config' } });
+  });
+
+  /**
+   * `channels` is required: LangGraph's only caller always passes it
+   * (`@langchain/langgraph` `dist/channels/base.js:178`), and a config
+   * without it used to reach `channels.length` on `undefined`, a bare
+   * `TypeError` the boundary branded `UpstreamError`.
+   */
+  it('refuses a missing channels, naming it', async () => {
+    const { saver } = newSaver();
+    await expect(
+      saver.getDeltaChannelHistory({
+        config: { configurable: { thread_id: 't' } },
+      } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'channels' } });
+  });
+
+  it('refuses channels that is not an array of strings, naming it', async () => {
+    const { saver } = newSaver();
+    const config = { configurable: { thread_id: 't' } };
+    for (const channels of ['x', [1], [null]]) {
+      await expect(
+        saver.getDeltaChannelHistory({ config, channels } as never),
+      ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'channels' } });
+    }
+  });
+
+  it('accepts channels: [], which reads nothing rather than being refused', async () => {
+    const { saver } = newSaver();
+    await expect(
+      saver.getDeltaChannelHistory({
+        config: { configurable: { thread_id: 't' } },
+        channels: [],
+      }),
+    ).resolves.toEqual({});
+  });
+
+  it('accepts a well-formed options bag and walks from the named checkpoint', async () => {
+    const { saver, mock } = newSaver();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    await expect(
+      saver.getDeltaChannelHistory({
+        config: { configurable: { thread_id: 't', checkpoint_ns: '' } },
+        channels: ['a'],
+      }),
+    ).resolves.toEqual({ a: { writes: [] } });
+  });
+});

@@ -108,20 +108,23 @@ export function isAbortSignalLike(value: AbortSignal | undefined): boolean {
 }
 
 /**
- * Throw {@link ValidationError} naming `signal` unless `value` is absent or
+ * Throw {@link ValidationError} naming `field` unless `value` is absent or
  * {@link isAbortSignalLike}.
  *
- * Accepts: `value` — a caller's `options.signal`, or `undefined`.
+ * Accepts: `value` — a caller's signal, or `undefined`. `field` — what the
+ * error names; `signal` by default, and the full path for a signal nested in
+ * another option (`retry.signal`), so a caller whose top-level `signal` is
+ * valid is not pointed at it.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `signal`. Left unchecked, a value that is
- * not an `AbortSignal` reaches whatever this package hands it to — an
+ * Throws: ValidationError naming `field`. Left unchecked, a value that is not
+ * an `AbortSignal` reaches whatever this package hands it to — an
  * `addEventListener` call, a retry loop reading `.aborted` — and fails there
  * with a raw, unrelated error instead of naming the option that caused it.
  */
-export function assertSignalLike(value: AbortSignal | undefined): void {
+export function assertSignalLike(value: AbortSignal | undefined, field = 'signal'): void {
   if (value !== undefined && !isAbortSignalLike(value)) {
-    throw new ValidationError('signal must be an AbortSignal', 'signal');
+    throw new ValidationError(`${field} must be an AbortSignal`, field);
   }
 }

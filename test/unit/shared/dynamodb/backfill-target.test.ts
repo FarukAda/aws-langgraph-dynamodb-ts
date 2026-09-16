@@ -66,6 +66,20 @@ describe('scan cursors', () => {
     ['a JSON scalar', Buffer.from('5', 'utf8').toString('base64url')],
     ['a JSON null', Buffer.from('null', 'utf8').toString('base64url')],
     ['an empty string', ''],
+    ['a JSON array', Buffer.from('[]', 'utf8').toString('base64url')],
+    ['an object missing PK and SK', Buffer.from('{}', 'utf8').toString('base64url')],
+    [
+      'an object with a non-string PK',
+      Buffer.from(JSON.stringify({ PK: 1, SK: 'b' }), 'utf8').toString('base64url'),
+    ],
+    [
+      'an object with a non-string SK',
+      Buffer.from(JSON.stringify({ PK: 'a', SK: 1 }), 'utf8').toString('base64url'),
+    ],
+    [
+      'an object carrying a key beyond PK and SK',
+      Buffer.from(JSON.stringify({ PK: 'a', SK: 'b', extra: 1 }), 'utf8').toString('base64url'),
+    ],
   ])('refuses %s', (_name, cursor) => {
     expect(() => decodeScanCursor(cursor)).toThrow(
       expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'cursor' } }),

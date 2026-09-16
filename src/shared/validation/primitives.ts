@@ -107,6 +107,23 @@ export function validateNonEmptyArray<T>(value: T[], field: string): void {
   }
 }
 
+/**
+ * Throw {@link ValidationError} unless `value` is an array of strings.
+ *
+ * Accepts: `value` — declared `readonly string[]` for a caller whose types
+ * hold; a non-array is rejected, as is an array holding anything but a
+ * string. An empty array is valid.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `field`.
+ */
+export function validateStringArray(value: readonly string[], field: string): void {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new ValidationError(`${field} must be an array of strings`, field);
+  }
+}
+
 /** True when `value` holds a C0 control character, DEL, or a C1 control character. */
 function hasControlChar(value: string): boolean {
   for (let i = 0; i < value.length; i++) {

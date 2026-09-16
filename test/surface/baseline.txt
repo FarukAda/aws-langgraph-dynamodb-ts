@@ -183,7 +183,7 @@ DynamoDBChatMessageHistory.getMessages | options={"before":"1969-12-31T23:59:59.
 DynamoDBChatMessageHistory.getMessages | options={"before":"1970-01-01T00:00:00.000Z"} | RESOLVED []
 DynamoDBChatMessageHistory.getMessages | options={"before":"x"} | throws ValidationError/VALIDATION field=before
 DynamoDBChatMessageHistory.getMessages | options={"before":123} | throws ValidationError/VALIDATION field=before
-DynamoDBChatMessageHistory.getMessages | options={"before":null} | throws UpstreamError/UPSTREAM
+DynamoDBChatMessageHistory.getMessages | options={"before":null} | throws ValidationError/VALIDATION field=before
 DynamoDBChatMessageHistory.getMessages | options={"before":null} | throws ValidationError/VALIDATION field=before
 DynamoDBChatMessageHistory.getMessages | options={"foo":1} | throws ValidationError/VALIDATION field=options.foo
 DynamoDBChatMessageHistory.getMessages | options={"limit":"5"} | throws ValidationError/VALIDATION field=limit
@@ -320,8 +320,8 @@ DynamoDBSaver | logger={} | sync throws ValidationError/VALIDATION field=logger.
 DynamoDBSaver | options="str" | sync throws ValidationError/VALIDATION field=options
 DynamoDBSaver | options=42 | sync throws ValidationError/VALIDATION field=options
 DynamoDBSaver | options=[] | sync throws ValidationError/VALIDATION field=options
-DynamoDBSaver | options=null | sync BARE TypeError
-DynamoDBSaver | options=undefined | sync BARE TypeError
+DynamoDBSaver | options=null | sync throws ValidationError/VALIDATION field=options
+DynamoDBSaver | options=undefined | sync throws ValidationError/VALIDATION field=options
 DynamoDBSaver | options={} | sync throws ValidationError/VALIDATION field=tableName
 DynamoDBSaver | readConcurrency="8" | sync throws ValidationError/VALIDATION field=readConcurrency
 DynamoDBSaver | readConcurrency=-1 | sync throws ValidationError/VALIDATION field=readConcurrency
@@ -405,15 +405,15 @@ DynamoDBSaver.deleteThread | threadId=null | throws ValidationError/VALIDATION f
 DynamoDBSaver.deleteThread | threadId=undefined | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId={} | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.ensureS3LifecycleRule | no s3/ttl configured | RESOLVED undefined
-DynamoDBSaver.getDeltaChannelHistory | options=null | throws UpstreamError/UPSTREAM
-DynamoDBSaver.getDeltaChannelHistory | options=undefined | throws UpstreamError/UPSTREAM
-DynamoDBSaver.getDeltaChannelHistory | options={"config":null} | throws UpstreamError/UPSTREAM
+DynamoDBSaver.getDeltaChannelHistory | options=null | throws ValidationError/VALIDATION field=options
+DynamoDBSaver.getDeltaChannelHistory | options=undefined | throws ValidationError/VALIDATION field=options
+DynamoDBSaver.getDeltaChannelHistory | options={"config":null} | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"a#b"}},"channels":["c"]} | throws ValidationError/VALIDATION field=thread_id
-DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"chann | RESOLVED {"1":{"writes":[]}}
-DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"chann | RESOLVED {"x":{"writes":[]}}
 DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"chann | RESOLVED {}
-DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}}} | throws UpstreamError/UPSTREAM
-DynamoDBSaver.getDeltaChannelHistory | options={} | throws UpstreamError/UPSTREAM
+DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"chann | throws ValidationError/VALIDATION field=channels
+DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}},"chann | throws ValidationError/VALIDATION field=channels
+DynamoDBSaver.getDeltaChannelHistory | options={"config":{"configurable":{"thread_id":"t","checkpoint_ns":""}}} | throws ValidationError/VALIDATION field=channels
+DynamoDBSaver.getDeltaChannelHistory | options={} | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.getTuple | checkpoint_id="" | RESOLVED undefined
 DynamoDBSaver.getTuple | checkpoint_id="a#b" | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.getTuple | checkpoint_id=123 | throws ValidationError/VALIDATION field=checkpoint_id
@@ -425,9 +425,9 @@ DynamoDBSaver.getTuple | checkpoint_ns="ns\u0000" | throws ValidationError/VALID
 DynamoDBSaver.getTuple | checkpoint_ns=123 | throws ValidationError/VALIDATION field=checkpoint_ns
 DynamoDBSaver.getTuple | checkpoint_ns=null | RESOLVED undefined
 DynamoDBSaver.getTuple | checkpoint_ns={} | throws ValidationError/VALIDATION field=checkpoint_ns
-DynamoDBSaver.getTuple | config="x" | RESOLVED undefined
-DynamoDBSaver.getTuple | config=null | throws UpstreamError/UPSTREAM
-DynamoDBSaver.getTuple | config=undefined | throws UpstreamError/UPSTREAM
+DynamoDBSaver.getTuple | config="x" | throws ValidationError/VALIDATION field=config
+DynamoDBSaver.getTuple | config=null | throws ValidationError/VALIDATION field=config
+DynamoDBSaver.getTuple | config=undefined | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.getTuple | config={"configurable":"x"} | RESOLVED undefined
 DynamoDBSaver.getTuple | config={"configurable":null} | RESOLVED undefined
 DynamoDBSaver.getTuple | config={"configurable":{}} | RESOLVED undefined
@@ -447,10 +447,10 @@ DynamoDBSaver.getTuple | thread_id=["a"] | throws ValidationError/VALIDATION fie
 DynamoDBSaver.getTuple | thread_id=null | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.getTuple | thread_id=undefined | RESOLVED undefined
 DynamoDBSaver.getTuple | thread_id={} | throws ValidationError/VALIDATION field=thread_id
-DynamoDBSaver.getTuple | thread_ts=123 (legacy alias) | throws ValidationError/VALIDATION field=checkpoint_id
+DynamoDBSaver.getTuple | thread_ts=123 (legacy alias) | throws ValidationError/VALIDATION field=thread_ts
 DynamoDBSaver.list | config="x" | throws ValidationError/VALIDATION field=config
-DynamoDBSaver.list | config=null | throws UpstreamError/UPSTREAM
-DynamoDBSaver.list | config=undefined | throws UpstreamError/UPSTREAM
+DynamoDBSaver.list | config=null | throws ValidationError/VALIDATION field=config
+DynamoDBSaver.list | config=undefined | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.list | config={"configurable":{"thread_id":"a#b"}} | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.list | config={} | RESOLVED first=undefined done
 DynamoDBSaver.list | options="x" | throws ValidationError/VALIDATION field=options
@@ -484,10 +484,10 @@ DynamoDBSaver.put | checkpoint={"id":123} | throws ValidationError/VALIDATION fi
 DynamoDBSaver.put | checkpoint={"v":1,"id":"cp1","ts":"2024-01-01T00:00:00.000Z","channel_values":nul | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.put | checkpoint={"v":1,"id":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | throws ValidationError/VALIDATION field=checkpoint_id
 DynamoDBSaver.put | checkpoint={} | throws ValidationError/VALIDATION field=checkpoint_id
-DynamoDBSaver.put | config="x" | throws ValidationError/VALIDATION field=thread_id
-DynamoDBSaver.put | config=1 | throws ValidationError/VALIDATION field=thread_id
-DynamoDBSaver.put | config=null | throws UpstreamError/UPSTREAM
-DynamoDBSaver.put | config=undefined | throws UpstreamError/UPSTREAM
+DynamoDBSaver.put | config="x" | throws ValidationError/VALIDATION field=config
+DynamoDBSaver.put | config=1 | throws ValidationError/VALIDATION field=config
+DynamoDBSaver.put | config=null | throws ValidationError/VALIDATION field=config
+DynamoDBSaver.put | config=undefined | throws ValidationError/VALIDATION field=config
 DynamoDBSaver.put | config={} | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.put | metadata="x" | REACHED-WRITE (input accepted, write attempted)
 DynamoDBSaver.put | metadata=1 | REACHED-WRITE (input accepted, write attempted)
@@ -774,54 +774,54 @@ DynamoDBStore.search | options={"signal":"x"} | throws ValidationError/VALIDATIO
 ErrorCode | Object.isFrozen(ErrorCode) | OK false
 ErrorCode | mutate ErrorCode.VALIDATION = "x" | OK String
 backfillRecencyIndex | cursor="" | throws ValidationError/VALIDATION field=cursor
-backfillRecencyIndex | cursor="W10" | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
+backfillRecencyIndex | cursor="W10" | throws ValidationError/VALIDATION field=cursor
 backfillRecencyIndex | cursor="bnVsbA" | throws ValidationError/VALIDATION field=cursor
-backfillRecencyIndex | cursor="e30" | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
+backfillRecencyIndex | cursor="e30" | throws ValidationError/VALIDATION field=cursor
 backfillRecencyIndex | cursor="eyJQSyI6ImEiLCJTSyI6ImIifQ" | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | cursor="eyJQSyI6MX0" | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | cursor="eyJfX3Byb3RvX18iOnsieCI6MX19" | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
+backfillRecencyIndex | cursor="eyJQSyI6MX0" | throws ValidationError/VALIDATION field=cursor
+backfillRecencyIndex | cursor="eyJfX3Byb3RvX18iOnsieCI6MX19" | throws ValidationError/VALIDATION field=cursor
 backfillRecencyIndex | cursor="x" | throws ValidationError/VALIDATION field=cursor
 backfillRecencyIndex | cursor=123 | throws ValidationError/VALIDATION field=cursor
 backfillRecencyIndex | cursor=null | throws ValidationError/VALIDATION field=cursor
-backfillRecencyIndex | dryRun="false" | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | dryRun=1 | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | dryRun=null | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | extra key foo=1 | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | indexShards="8" | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | indexShards=-1 | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | indexShards=0 | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | indexShards=1.5 | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | indexShards=NaN | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | indexShards=null | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | maxPages="1" | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | maxPages=-1 | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | maxPages=0 | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | maxPages=1.5 | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | maxPages=NaN | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | maxPages=null | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | options="x" | BARE TypeError
-backfillRecencyIndex | options=<obj> | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | options=<obj> | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | options=<obj> | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | options=null | BARE TypeError
-backfillRecencyIndex | options=undefined | BARE TypeError
-backfillRecencyIndex | options={"client":null,"tableName":"fuzz-table"} | BARE TypeError
-backfillRecencyIndex | options={"client":{},"tableName":"t"} | BARE TypeError
-backfillRecencyIndex | options={} | BARE TypeError
+backfillRecencyIndex | dryRun="false" | throws ValidationError/VALIDATION field=dryRun
+backfillRecencyIndex | dryRun=1 | throws ValidationError/VALIDATION field=dryRun
+backfillRecencyIndex | dryRun=null | throws ValidationError/VALIDATION field=dryRun
+backfillRecencyIndex | extra key foo=1 | throws ValidationError/VALIDATION field=options.foo
+backfillRecencyIndex | indexShards="8" | throws ValidationError/VALIDATION field=indexShards
+backfillRecencyIndex | indexShards=-1 | throws ValidationError/VALIDATION field=indexShards
+backfillRecencyIndex | indexShards=0 | throws ValidationError/VALIDATION field=indexShards
+backfillRecencyIndex | indexShards=1.5 | throws ValidationError/VALIDATION field=indexShards
+backfillRecencyIndex | indexShards=NaN | throws ValidationError/VALIDATION field=indexShards
+backfillRecencyIndex | indexShards=null | throws ValidationError/VALIDATION field=indexShards
+backfillRecencyIndex | maxPages="1" | throws ValidationError/VALIDATION field=maxPages
+backfillRecencyIndex | maxPages=-1 | throws ValidationError/VALIDATION field=maxPages
+backfillRecencyIndex | maxPages=0 | throws ValidationError/VALIDATION field=maxPages
+backfillRecencyIndex | maxPages=1.5 | throws ValidationError/VALIDATION field=maxPages
+backfillRecencyIndex | maxPages=NaN | throws ValidationError/VALIDATION field=maxPages
+backfillRecencyIndex | maxPages=null | throws ValidationError/VALIDATION field=maxPages
+backfillRecencyIndex | options="x" | throws ValidationError/VALIDATION field=options
+backfillRecencyIndex | options=<obj> | throws ValidationError/VALIDATION field=tableName
+backfillRecencyIndex | options=<obj> | throws ValidationError/VALIDATION field=tableName
+backfillRecencyIndex | options=<obj> | throws ValidationError/VALIDATION field=tableName
+backfillRecencyIndex | options=null | throws ValidationError/VALIDATION field=options
+backfillRecencyIndex | options=undefined | throws ValidationError/VALIDATION field=options
+backfillRecencyIndex | options={"client":null,"tableName":"fuzz-table"} | throws ValidationError/VALIDATION field=client
+backfillRecencyIndex | options={"client":{},"tableName":"t"} | throws ValidationError/VALIDATION field=tableName
+backfillRecencyIndex | options={} | throws ValidationError/VALIDATION field=tableName
 backfillRecencyIndex | pageSize="10" | throws ValidationError/VALIDATION field=pageSize
 backfillRecencyIndex | pageSize=-1 | throws ValidationError/VALIDATION field=pageSize
 backfillRecencyIndex | pageSize=0 | throws ValidationError/VALIDATION field=pageSize
 backfillRecencyIndex | pageSize=1.5 | throws ValidationError/VALIDATION field=pageSize
 backfillRecencyIndex | pageSize=1000000000000 | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
 backfillRecencyIndex | pageSize=NaN | throws ValidationError/VALIDATION field=pageSize
-backfillRecencyIndex | pageSize=null | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | retry="x" | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | retry=null | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | retry={"maxAttempts":"x"} | throws RetryExhaustedError/RETRY_EXHAUSTED
-backfillRecencyIndex | retry={"maxAttempts":0} | throws RetryExhaustedError/RETRY_EXHAUSTED
-backfillRecencyIndex | signal="x" | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | signal=null | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
-backfillRecencyIndex | signal={} | RESOLVED {"scanned":0,"indexed":0,"skipped":0}
+backfillRecencyIndex | pageSize=null | throws ValidationError/VALIDATION field=pageSize
+backfillRecencyIndex | retry="x" | throws ValidationError/VALIDATION field=retry
+backfillRecencyIndex | retry=null | throws ValidationError/VALIDATION field=retry
+backfillRecencyIndex | retry={"maxAttempts":"x"} | throws ValidationError/VALIDATION field=retry.maxAttempts
+backfillRecencyIndex | retry={"maxAttempts":0} | throws ValidationError/VALIDATION field=retry.maxAttempts
+backfillRecencyIndex | signal="x" | throws ValidationError/VALIDATION field=signal
+backfillRecencyIndex | signal=null | throws ValidationError/VALIDATION field=signal
+backfillRecencyIndex | signal={} | throws ValidationError/VALIDATION field=signal
 errors | BatchWriteIncompleteError.unprocessed by reference? | OK Number
 errors | ValidationError JSON.stringify exposes? | OK String
 errors | error.context returned by reference? (mutate then re-read) | OK String

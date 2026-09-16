@@ -14,6 +14,7 @@ import * as api from '../../src/index';
 import type {
   AdapterSection,
   AdapterWindow,
+  BackfillOptions,
   BaseAdapterOptions,
   CancelOptions,
   CodecOptions,
@@ -100,6 +101,16 @@ describe('public type exports (CORE-12, TEST-10)', () => {
   it('each resolve to a real type (the import list above is the lock)', () => {
     expectTypeOf<AdapterSection<DynamoDBSaverOptions>>().not.toHaveProperty('client');
     expectTypeOf<AdapterWindow>().toEqualTypeOf<{ limit?: number }>();
+    /**
+     * `RetryOptions` is exported and pinned above, but nothing previously
+     * pinned what `BackfillOptions['retry']` resolves to, which is how a
+     * silent narrowing to the adapters' `RetryPolicy` passed unnoticed: it
+     * compiled, since `RetryPolicy` is structurally assignable wherever a
+     * plain `{ maxAttempts }` literal is used, and only broke a caller who
+     * passed `onRetry` — backfill's only way to observe retries, since it
+     * takes no `logger`.
+     */
+    expectTypeOf<BackfillOptions['retry']>().toEqualTypeOf<RetryOptions | undefined>();
     expectTypeOf<BaseAdapterOptions['tableName']>().toEqualTypeOf<string>();
     expectTypeOf<CancelOptions['signal']>().toEqualTypeOf<AbortSignal | undefined>();
     expectTypeOf<CodecOptions>().toHaveProperty('compression');

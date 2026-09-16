@@ -152,11 +152,12 @@ describe('readListScope', () => {
   });
 
   /**
-   * Matches `configurable.ts`'s own `rawId ? rawId : undefined` for a
-   * config's id: `undefined`, `null` and `''` are no bound, not a malformed
-   * one. Left as an unchecked cast, an empty string reached `ListScope.before`
-   * and compared `false` against every stored id (H-10's symptom again,
-   * reached with a string instead of a number).
+   * Matches `configurable.ts`'s own id resolution for a config's id:
+   * `undefined`, `null` and `''` are no bound, not a malformed one — an equal
+   * comparison against those three exact values, not JS truthiness. Left as
+   * an unchecked cast, an empty string reached `ListScope.before` and
+   * compared `false` against every stored id (H-10's symptom again, reached
+   * with a string instead of a number).
    */
   it('treats undefined, null and "" as absent, not malformed', () => {
     expect(
