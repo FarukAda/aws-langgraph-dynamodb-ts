@@ -167,7 +167,7 @@ appended while it runs may survive it.
 
 > **destroy**(): `void`
 
-Defined in: [history/chat-message-history.ts:234](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L234)
+Defined in: [history/chat-message-history.ts:236](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L236)
 
 Release owned resources.
 
@@ -188,7 +188,7 @@ Throws: nothing this adapter raises.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:255](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L255)
+Defined in: [history/chat-message-history.ts:257](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L257)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -218,7 +218,7 @@ per request.
 
 > **forSession**(`sessionId`, `window?`): [`DynamoDBSessionChatMessageHistory`](DynamoDBSessionChatMessageHistory.md)
 
-Defined in: [history/chat-message-history.ts:220](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L220)
+Defined in: [history/chat-message-history.ts:222](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L222)
 
 Get a single-session LangChain adapter for `sessionId`.
 
@@ -300,11 +300,11 @@ One query page plus one S3 download per offloaded message.
 
 > **listSessions**(`options?`): `Promise`\<[`SessionPage`](../interfaces/SessionPage.md)\>
 
-Defined in: [history/chat-message-history.ts:174](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L174)
+Defined in: [history/chat-message-history.ts:176](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L176)
 
 List every session as a metadata summary, most recently updated first.
-With a configured `indexName` this is a bounded query per index shard,
-merged newest-first and paged by the opaque `nextCursor`. Without one it
+With a configured `indexName` this reads each index shard newest-first,
+merges the shards and pages by the opaque `nextCursor`. Without one it
 falls back to a filtered table scan — cross-tenant by construction,
 bounded by `maxItems` / `maxIterations`, and returning the newest `limit`
 sessions, or every session when no limit is given, with no cursor.
@@ -322,11 +322,13 @@ when a page looks short.
 
 Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
 `maxIterations`, `signal`, or `options.<key>` for a key this package does
-not read; ResultTruncatedError past either cap on the scan path;
-UpstreamError; AbortError.
+not read; ResultTruncatedError past either cap on the scan path, or for an
+index shard whose pages do not end; UpstreamError; AbortError.
 
-Guarantees: with a configured `indexName` the cost is one bounded query per
-index shard, whatever the table holds.
+Guarantees: with a configured `indexName` each shard is read for at most
+`limit` rows, following DynamoDB's 1 MB page boundary until it has
+supplied them or run out, and at most `readConcurrency` shards are read at
+once, whatever the table holds.
 
 #### Parameters
 
@@ -344,7 +346,7 @@ index shard, whatever the table holds.
 
 > **reconcileMessageCount**(`sessionId`, `options?`): `Promise`\<`number`\>
 
-Defined in: [history/chat-message-history.ts:197](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L197)
+Defined in: [history/chat-message-history.ts:199](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L199)
 
 Recompute and repair a session's `messageCount` from the stored messages.
 A maintenance tool for external corruption; run it when the session is idle.

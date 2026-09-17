@@ -111,7 +111,8 @@ export const MESSAGE_APPEND_RETRY_MAX_ATTEMPTS = 18;
  * Offloaded payloads decoded at once by one read (`getTuple` pending writes,
  * `search` candidates, `getMessages`). Each offloaded row costs one S3 GET, so
  * a serial loop scaled latency linearly with the row count; eight in flight
- * keeps the win without bursting a bucket.
+ * keeps the win without bursting a bucket. Also the recency-index shards one
+ * listing queries at once when the adapter names no `readConcurrency`.
  */
 export const DEFAULT_READ_CONCURRENCY = 8;
 

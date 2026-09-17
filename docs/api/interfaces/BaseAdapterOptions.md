@@ -82,7 +82,7 @@ Optional per-instance logger (defaults to a silent logger).
 
 > `optional` **readConcurrency?**: `number`
 
-Defined in: [shared/options.ts:66](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L66)
+Defined in: [shared/options.ts:68](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L68)
 
 How many payloads a single call decodes at once, default 8.
 
@@ -92,6 +92,8 @@ It is the multiplier on this package's memory ceiling, which is
 payload is decoded, and that much can be in flight for each concurrent
 decode. Lower it on a small container; raising it trades memory for
 latency on reads that fetch many offloaded payloads.
+
+It also bounds how many recency-index shards one listing queries at once.
 
 ***
 

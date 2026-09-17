@@ -67,7 +67,7 @@ Cap on scan pages before `ResultTruncatedError` (default 1000). Scan path only.
 
 > `optional` **signal?**: `AbortSignal`
 
-Defined in: [shared/options.ts:80](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L80)
+Defined in: [shared/options.ts:82](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L82)
 
 Aborting it rejects the call with `AbortError` (`ABORTED`) at the next wait.
 

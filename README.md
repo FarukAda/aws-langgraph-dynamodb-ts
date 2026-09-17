@@ -249,9 +249,9 @@ Options are checked at construction, and a mistake raises `ValidationError` nami
 | `compression` | `CompressionConfig` | all | `{ enabled, minSizeBytes?, level?, maxDecompressedBytes? }`; `level` is 0–9, and `minSizeBytes` and `maxDecompressedBytes` have a ceiling of 512 MiB each |
 | `s3` | `S3OffloadConfig` | all | offload large payloads to S3 (see below) |
 | `serde` | `SerializerProtocol` | all | serializer override (checkpointer defaults to LangGraph's; store/history to JSON); must provide `dumpsTyped` and `loadsTyped` |
-| `indexName` | `string` | all | the name of the recency index (a GSI on `gsi1pk`/`gsi1sk`) on this table. Naming it turns `history.listSessions()` and a thread-less `saver.list()` from a table scan into a bounded query per index shard. Opt-in: whether the table has the index is your deployment fact, not something this package probes for. **Run `backfillRecencyIndex()` before setting it** — a row written before the index carries no keys, so the listings that read it would not find rows that are still there |
+| `indexName` | `string` | all | the name of the recency index (a GSI on `gsi1pk`/`gsi1sk`) on this table. Naming it turns `history.listSessions()` and a thread-less `saver.list()` from a table scan into a read of the index: each shard is read newest-first, following DynamoDB's 1 MB page boundary until it has supplied a page of rows or run out, with at most `readConcurrency` shards queried at once. Opt-in: whether the table has the index is your deployment fact, not something this package probes for. **Run `backfillRecencyIndex()` before setting it** — a row written before the index carries no keys, so the listings that read it would not find rows that are still there |
 | `indexShards` | `number` | all | index partitions per adapter (default 8, ceiling 1024). Fixed when the table is created: changing it changes every row's shard and requires another backfill. One partition per adapter would concentrate every listing on one key, which is worse than the scan it replaces |
-| `readConcurrency` | `number` | all | payloads decoded at once by a single call (default 8, ceiling 128). It is the multiplier on this package's memory ceiling — `readConcurrency × (s3.maxDownloadBytes + compression.maxDecompressedBytes)`, 800 MiB at the defaults — so lower it on a small container |
+| `readConcurrency` | `number` | all | payloads decoded at once by a single call (default 8, ceiling 128). It is the multiplier on this package's memory ceiling — `readConcurrency × (s3.maxDownloadBytes + compression.maxDecompressedBytes)`, 800 MiB at the defaults — so lower it on a small container. It also bounds how many recency-index shards one listing queries at once |
 | `onCorruptMessage` | `'skip' \| 'throw'` | history only | what `getMessages` does with an item it cannot decode (default `skip`: drop it, log at `error`, return the rest) |
 | `index` | `IndexConfig` | store only | `{ dims, embeddings, fields? }` for semantic search; `embeddings` must provide `embedQuery` and `embedDocuments`, and `fields`, when given, is an array of strings. Any other key is refused, and so is a value that is not an object, `null` included, rather than read as no index |
 | `vectorBackend` | `VectorBackend` | store only | delegate similarity search to an external index; DynamoDB keeps the canonical item. It must provide `upsert`, `query` and `delete`; `listKeys` is optional (see [Vector index consistency](#features)). **Requires `index`** — constructing a store with a `vectorBackend` and no `index` throws |
@@ -739,8 +739,8 @@ Also not covered: the wording of error messages and log lines, the order of rows
 | Smallest payload compressed (`compression.minSizeBytes`) | 1 KB | 512 MiB | a smaller payload is stored uncompressed; not an error |
 | Retries per DynamoDB call (`retry.maxAttempts`) | 5 (about 1.5 s worst case); message appends 18 (about 61 s) | 100 | `RetryExhaustedError` |
 | Backoff delay (`retry.baseDelayMs`, `retry.maxDelayMs`) | 100 ms base, 5 s cap | 60 s each | latency, not an error |
-| Offloaded payloads decoded concurrently by one read (`readConcurrency`) | 8 | 128 | latency and memory, not an error |
-| Index shards per adapter (`indexShards`) | 8 | 1024 | an indexed listing issues one `Query` per shard; `backfillRecencyIndex` takes the same ceiling and must be given the same value |
+| Offloaded payloads decoded concurrently by one read, and recency-index shards queried at once by one listing (`readConcurrency`) | 8 | 128 | latency and memory, not an error |
+| Index shards per adapter (`indexShards`) | 8 | 1024 | an indexed listing issues at least one `Query` per shard, `readConcurrency` at a time; `backfillRecencyIndex` takes the same ceiling and must be given the same value |
 
 ### What each operation costs
 
@@ -751,7 +751,7 @@ Requests per call, before retries. "Consistent" reads are `ConsistentRead: true`
 | `saver.getTuple` | 1 consistent `GetItem` (by id) or `Query` (newest) for the META row, 1 consistent `GetItem` for the payload, 1 consistent `Query` for the pending writes; a pre-v4 checkpoint adds a `Query` of its parent's writes | 1 `GET` per offloaded payload, 8 at a time |
 | `saver.put` | 1 `TransactWriteItems` (META + PAYLOAD); 1 consistent `GetItem` of the parent META when `newVersions` leaves channels to carry over; verification reads only after a failure | 1 `PUT` per offloaded payload |
 | `saver.putWrites` | 1 guarded `PutItem` per write, all in parallel; with `s3` each special write adds 1 consistent `GetItem` and up to 3 compare-and-swap attempts | 1 `PUT` per offloaded write, `DELETE` of a superseded special write |
-| `saver.list` | 1 eventually consistent `Query` per page; without a `thread_id` a `Scan`, or — with `indexName` — 1 `Query` per index shard; per yielded tuple 1 `GetItem` and 1 `Query` for its writes | `GET` per offloaded payload and metadata |
+| `saver.list` | 1 eventually consistent `Query` per page; without a `thread_id` a `Scan`, or — with `indexName` — per page of 100 rows at least 1 `Query` per index shard, `readConcurrency` at a time, and 1 more each time a shard's rows cross DynamoDB's 1 MB page limit; per yielded tuple 1 `GetItem` and 1 `Query` for its writes | `GET` per offloaded payload and metadata |
 | `saver.deleteThread`, `history.clear` | 1 consistent `Query` per page, 1 `BatchWriteItem` per 25 rows | 1 `DeleteObjects` per 1000 keys |
 | `store.get` | 1 consistent `GetItem` | 1 `GET` |
 | `store.put` | 1 consistent `GetItem` (previous descriptor and revision), 1 guarded `PutItem` (up to 3 attempts under contention, each re-reading from the rejection), plus the `vectorBackend` upsert | 1 `PUT`, then `DELETE` of the superseded object |
@@ -760,7 +760,7 @@ Requests per call, before retries. "Consistent" reads are `ConsistentRead: true`
 | `store.listNamespaces` | key-only `Query` (`Scan` without a prefix root) per page | none |
 | `history.addMessages` | 1 consistent `GetItem` of the session row when `ttl` is set, then 1 `TransactWriteItems` per chunk (up to 99 messages plus the session update); a rollback costs 1 `BatchWriteItem` per 25 rows plus a session update | 1 `PUT` per offloaded message |
 | `history.getMessages` | 1 consistent `Query` per page (newest-first with a page cap under `limit`) | 1 `GET` per offloaded message, 8 at a time |
-| `history.listSessions` | 1 `Scan` per page, or — with `indexName` — 1 `Query` per index shard (8 by default), bounded by `limit` and pageable by cursor | none |
+| `history.listSessions` | 1 `Scan` per page, or — with `indexName` — at least 1 `Query` per index shard (8 by default), `readConcurrency` at a time, and 1 more each time a shard's rows cross DynamoDB's 1 MB page limit; at most `limit` rows from each shard, pageable by cursor | none |
 | `history.reconcileMessageCount` | `Query` (`Select: COUNT`) per page, 1 guarded `UpdateItem` | none |
 | `store.reconcileVectorIndex` | 1 `Query` per page, embedding calls in batches, backend upserts and deletes | `GET` per offloaded item |
 

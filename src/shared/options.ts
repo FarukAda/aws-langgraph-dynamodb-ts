@@ -62,6 +62,8 @@ export interface BaseAdapterOptions {
    * payload is decoded, and that much can be in flight for each concurrent
    * decode. Lower it on a small container; raising it trades memory for
    * latency on reads that fetch many offloaded payloads.
+   *
+   * It also bounds how many recency-index shards one listing queries at once.
    */
   readConcurrency?: number;
 }

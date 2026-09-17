@@ -146,8 +146,8 @@ export class DynamoDBChatMessageHistory {
 
   /**
    * List every session as a metadata summary, most recently updated first.
-   * With a configured `indexName` this is a bounded query per index shard,
-   * merged newest-first and paged by the opaque `nextCursor`. Without one it
+   * With a configured `indexName` this reads each index shard newest-first,
+   * merges the shards and pages by the opaque `nextCursor`. Without one it
    * falls back to a filtered table scan — cross-tenant by construction,
    * bounded by `maxItems` / `maxIterations`, and returning the newest `limit`
    * sessions, or every session when no limit is given, with no cursor.
@@ -165,11 +165,13 @@ export class DynamoDBChatMessageHistory {
    *
    * Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
    * `maxIterations`, `signal`, or `options.<key>` for a key this package does
-   * not read; ResultTruncatedError past either cap on the scan path;
-   * UpstreamError; AbortError.
+   * not read; ResultTruncatedError past either cap on the scan path, or for an
+   * index shard whose pages do not end; UpstreamError; AbortError.
    *
-   * Guarantees: with a configured `indexName` the cost is one bounded query per
-   * index shard, whatever the table holds.
+   * Guarantees: with a configured `indexName` each shard is read for at most
+   * `limit` rows, following DynamoDB's 1 MB page boundary until it has
+   * supplied them or run out, and at most `readConcurrency` shards are read at
+   * once, whatever the table holds.
    */
   listSessions(options?: ListSessionsOptions): Promise<SessionPage> {
     return guardPublic('history.listSessions', () => listSessionsAction(this.context, options));
