@@ -268,20 +268,27 @@ describe('writeSpecialItemsWithCleanup keeps the object a live row names (C-02b)
  *    path, `superseded`.
  * 3. This call releases the payload it superseded.
  *
- * `after` is the answer to every read following the first.
+ * The answers follow time, not the order of the reads. Every read issued
+ * before the put sees the superseded row, and `after` answers every read issued
+ * once the put has been, so a cleanup that took its row from a read before the
+ * commit would see `superseded` named and keep it.
  */
 async function commitThenRead(superseded: string, after: object | 'fails') {
   let reads = 0;
+  let committed = false;
   const client: ClientStub = {
     get: async () => {
       reads += 1;
-      if (reads === 1) return { Item: { value: descriptor(superseded), writeGroup: 'g0' } };
+      if (!committed) return { Item: { value: descriptor(superseded), writeGroup: 'g0' } };
       if (after === 'fails') {
         throw Object.assign(new Error('read down'), { name: 'ValidationException' });
       }
       return after;
     },
-    put: async () => ({}),
+    put: async () => {
+      committed = true;
+      return {};
+    },
   };
   const offloader = trackingOffloader();
   const debug = jest.fn();

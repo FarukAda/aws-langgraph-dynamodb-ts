@@ -110,25 +110,30 @@ type ReadAnswer = { Item?: Record<string, unknown> } | 'fails';
  *    key is the hash of the bytes under the row's path, K1.
  * 3. This call releases the payload it superseded, K1.
  *
- * `after` is the answer to every read following `readExisting`, given this
- * call's own upload and K1.
+ * The answers follow time, not the shape of the request. Every read issued
+ * before the put sees row E. `after` answers every read issued once the put
+ * has been, given this call's own upload and K1. A cleanup that read the row
+ * before its swap would therefore see K1 named and keep it, which is what pins
+ * the read after the commit.
  */
 async function overwriteThenRead(after: (own: string, k1: string) => ReadAnswer) {
   const k1 = await offloadedKeyOf(C1);
   const { client, mock } = createStrictDocumentMock();
   const offloader = trackingOffloader();
   const debug = jest.fn();
-  mock.on(GetCommand).callsFake(async (input: { ProjectionExpression: string }) => {
-    if (input.ProjectionExpression.startsWith('#c')) {
-      return { Item: { createdAt: 'c', rev: 'REV-E', value: s3(k1) } };
-    }
+  let committed = false;
+  mock.on(GetCommand).callsFake(async () => {
+    if (!committed) return { Item: { createdAt: 'c', rev: 'REV-E', value: s3(k1) } };
     const answer = after(offloader.upload.mock.calls[0][0], k1);
     if (answer === 'fails') {
       throw Object.assign(new Error('read down'), { name: 'ValidationException' });
     }
     return answer;
   });
-  mock.on(PutCommand).resolves({});
+  mock.on(PutCommand).callsFake(async () => {
+    committed = true;
+    return {};
+  });
 
   const ctx = { ...context(client, offloader), logger: { ...SILENT_LOGGER, debug } };
   await expect(putItem(ctx, { ...OP, value: C2 })).resolves.toBeUndefined();
