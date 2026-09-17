@@ -68,10 +68,9 @@ async function cleanUpItems(context: CheckpointerContext, dead: DeadUpload[]): P
  * same object. A special write's superseded payload is released only when a
  * read of the row after the commit does not name it. An upload can leak. An
  * object is released only when the row last read, or returned with a rejected
- * write, before the release does not name it. A byte-identical write whose
- * upload found the object already stored before the delete, and whose row
- * commits after that row was seen, can still lose its object; closing that
- * needs an out-of-band sweeper.
+ * write, before the release does not name it. A write of the same bytes whose
+ * upload lands before the delete, and whose row commits after that row was
+ * seen, can still lose its object; closing that needs an out-of-band sweeper.
  */
 export async function putWrites(
   context: CheckpointerContext,

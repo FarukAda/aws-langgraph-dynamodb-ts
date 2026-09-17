@@ -55,7 +55,8 @@ function threadlessRows(
  * thread, and {@link threadlessRows} when it does not.
  *
  * Accepts: `scope` — a thread, or none, in which case every thread in the table
- * is scanned. `now` — the instant expiry is judged against, taken once so one
+ * is read, through the recency index when the table has one and a scan
+ * otherwise. `now` — the instant expiry is judged against, taken once so one
  * listing cannot disagree with itself.
  *
  * Returns: an async generator over the raw rows, newest-first within a

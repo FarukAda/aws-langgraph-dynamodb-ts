@@ -183,7 +183,8 @@ export function listQuery(
 }
 
 /**
- * The table `Scan` a thread-less `list()` runs.
+ * The table `Scan` a thread-less `list()` runs when no recency index is
+ * configured.
  *
  * Accepts: `scope.checkpointNs` — narrows the filter to one namespace when the
  * caller gave one.

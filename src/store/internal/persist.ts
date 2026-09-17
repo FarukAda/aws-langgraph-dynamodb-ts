@@ -110,12 +110,12 @@ async function releaseSuperseded(
  *
  * Guarantees: an object is released only when the row read immediately before
  * the release does not name it, after a commit and after a failure alike. A
- * byte-identical write whose upload found the object already stored before the
- * delete, and whose row commits after that read, can still lose its object;
- * closing that needs an out-of-band sweeper. The failure modes are ordered by
- * which is worse: a leaked object costs storage until the lifecycle rule
- * reclaims it, while a row pointing at a deleted object is unreadable data, so
- * every ambiguous case leaks instead of deletes.
+ * write of the same bytes whose upload lands before the delete, and whose row
+ * commits after that read, can still lose its object; closing that needs an
+ * out-of-band sweeper. The failure modes are ordered by which is worse: a
+ * leaked object costs storage until the lifecycle rule reclaims it, while a row
+ * pointing at a deleted object is unreadable data, so every ambiguous case
+ * leaks instead of deletes.
  */
 export async function persistRecord(
   context: StoreContext,

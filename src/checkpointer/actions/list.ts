@@ -86,16 +86,17 @@ function addressesOneRow(scope: ListScope): scope is OneRowScope {
  * Yield checkpoint tuples for a thread, newest first: every namespace when the
  * config names none (grouped by namespace, newest first within each), else the
  * one namespace given. Without a `thread_id` every thread in the table is
- * listed through a table scan, as the reference savers do; that read is
- * unordered across threads and cross-tenant by construction. Honors
- * `options.before` (only checkpoints older than the given id),
- * `options.filter` (metadata equality), and `options.limit` (max tuples
- * yielded; the read stops right after the yield that reaches it).
+ * listed: through a table scan, as the reference savers do, which is unordered
+ * across threads, or through the recency index when `indexName` is set. Either
+ * read is cross-tenant by construction. Honors `options.before` (only
+ * checkpoints older than the given id), `options.filter` (metadata equality),
+ * and `options.limit` (max tuples yielded; the read stops right after the
+ * yield that reaches it).
  *
  * Accepts: `config` — `thread_id` scopes the read to one thread and its absence
- * lists every thread in the table through a scan, as the reference savers do;
- * `checkpoint_ns` scopes to one namespace and its absence spans every namespace
- * of the thread. `options.before` — only checkpoints older than that id.
+ * lists every thread in the table, through a scan as the reference savers do or
+ * through the recency index when `indexName` is set; `checkpoint_ns` scopes to
+ * one namespace and its absence spans every namespace of the thread. `options.before` — only checkpoints older than that id.
  * `options.filter` — metadata equality. `options.limit` — at most this many
  * tuples; `0` or less yields nothing, which is what the reference returns.
  *

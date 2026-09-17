@@ -106,9 +106,9 @@ async function committedPair(
  * the release does not point at it — identical bytes produce an identical key,
  * so the loser's "dead" upload is the winner's live object when the two wrote
  * the same value, and a superseded payload is the live object of a racer that
- * put that value back. A byte-identical write whose upload found the object
- * already stored before the delete, and whose row commits after that read, can
- * still lose its object; closing that needs an out-of-band sweeper.
+ * put that value back. A write of the same bytes whose upload lands before the
+ * delete, and whose row commits after that read, can still lose its object;
+ * closing that needs an out-of-band sweeper.
  */
 export async function writeSpecialItemsWithCleanup(
   context: CheckpointerContext,

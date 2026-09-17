@@ -93,7 +93,8 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    *
    * Accepts: `config` — one namespace, every namespace of a thread when
    * `checkpoint_ns` is omitted, or every thread in the table when `thread_id`
-   * is omitted, which is a table scan. `options.before`, `options.filter` and
+   * is omitted, which is a table scan, or a read of the recency index when
+   * `indexName` is set. `options.before`, `options.filter` and
    * `options.limit` follow the reference savers; a limit of 0 or less yields
    * nothing.
    *
