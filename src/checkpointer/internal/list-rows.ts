@@ -15,13 +15,14 @@ import type { CheckpointerContext } from './setup';
  * Every checkpoint META row of the table, newest first, without a thread to
  * scope the read.
  *
- * From the recency index when `indexName` is set: each shard is read one
- * DynamoDB page at a time, and its next page only when the stream needs its
- * next row, with at most `readConcurrency` shards queried at once, so memory is
- * about one page per shard. Without `indexName` it is a table `Scan`: read
- * capacity for every row evaluated, not every row returned. The index path
- * needs `backfillRecencyIndex` to have run, or rows written before the index
- * are not in it.
+ * From the recency index when `indexName` is set, 100 rows a page: each shard
+ * is read one DynamoDB page at a time, and its next page whenever it has no row
+ * buffered and the page still needs one, with at most `readConcurrency` shards
+ * queried at once, so memory is the page being built plus at most one DynamoDB
+ * page per shard. Without `indexName` it is a table `Scan`: read capacity for
+ * every row evaluated, not every row returned. The index path needs
+ * `backfillRecencyIndex` to have run, or rows written before the index are not
+ * in it.
  */
 function threadlessRows(
   context: CheckpointerContext,

@@ -97,10 +97,13 @@ function takeNewest(readers: ShardReader[]): DocItem | undefined {
  * runs dry reads its next page before another row is chosen. That is correct
  * because each shard is already sorted and no row is chosen while a shard that
  * may hold a newer one is unread. It is also what bounds memory: a listing
- * holds about one page per shard, and a shard whose rows the page does not need
- * is never followed. The alternative — one query over an unsharded index —
- * would make every listing hit one partition, which is what the sharding exists
- * to avoid.
+ * holds the page it is building, up to `limit` rows, plus at most one DynamoDB
+ * page per shard, and a shard none of whose buffered rows the page takes is
+ * never followed. The price is that a dry shard is read again whenever the page
+ * still needs a row, even when every row still to come is another shard's,
+ * which can cost a query per shard per page whose rows the page never takes.
+ * The alternative — one query over an unsharded index — would make every
+ * listing hit one partition, which is what the sharding exists to avoid.
  *
  * This replaces a full-table `Scan` with a `FilterExpression`, which consumed
  * read capacity for every row *evaluated*, collected the whole table in memory
@@ -123,8 +126,9 @@ function takeNewest(readers: ShardReader[]): DocItem | undefined {
  *
  * Guarantees: at most `concurrency` shards are queried at once; each shard is
  * followed across DynamoDB's 1 MB page boundary, but its next page is read only
- * when the page needs its next row, so no more than one DynamoDB page per shard
- * is held at a time.
+ * when its buffer is empty and the page still needs a row, so besides the page
+ * being built, up to `limit` rows, no more than one DynamoDB page per shard is
+ * held at a time.
  */
 export async function queryRecencyIndex(options: IndexQueryOptions): Promise<IndexPage> {
   validateInteger(options.limit, 'limit', { min: 1 });

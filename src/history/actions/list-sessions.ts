@@ -182,10 +182,12 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
  * bound and they do nothing. Each must be a positive integer or `Infinity`
  * (the paginator's own way to ask for no cap); absent keeps its default.
  *
- * Returns: the page, newest-updated first, and a `nextCursor` when more rows
+ * Returns: the page, newest-updated first, and a `nextCursor` while rows may
  * remain. A page can come back shorter than `limit` while more remain: expired
  * and foreign rows are dropped after the read, and the cursor is a position in
- * the index rather than a count of what survived filtering.
+ * the index rather than a count of what survived filtering. A cursor does not
+ * promise more rows: the page after it can come back empty (see
+ * `queryRecencyIndex`).
  *
  * Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
  * `maxIterations`, `signal`, or `options.<key>` for a key this package does
@@ -195,13 +197,13 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
  * path; `AbortError`.
  *
  * Guarantees: with a configured `indexName` each index shard is read
- * newest-first one DynamoDB page at a time, and its next page only when the
- * page needs its next row, with at most `readConcurrency` shards queried at
- * once, so memory is about one DynamoDB page per shard whatever the table
- * holds. Without one
- * it is a filtered table scan that returns every session at once and no cursor
- * — the behaviour of earlier releases, kept so that upgrading changes nothing
- * until the index exists.
+ * newest-first one DynamoDB page at a time, and its next page whenever it has
+ * no row buffered and the page still needs one, which can cost a query per
+ * shard per page whose rows the page never takes; at most `readConcurrency`
+ * shards are queried at once. Memory is the page being built, up to `limit`
+ * rows with no ceiling on `limit`, plus at most one DynamoDB page per shard,
+ * whatever the table holds. Without one it is a filtered table scan that holds
+ * every session at once and returns no cursor, as earlier releases did.
  */
 export async function listSessions(
   context: HistoryContext,

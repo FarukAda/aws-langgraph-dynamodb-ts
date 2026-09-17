@@ -37,16 +37,18 @@ Config used to build a client when `client` is not provided.
 
 > `optional` **indexName?**: `string`
 
-Defined in: [shared/options.ts:55](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L55)
+Defined in: [shared/options.ts:57](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L57)
 
 Name of the recency index (a GSI on `gsi1pk`/`gsi1sk`) on this table.
 
 Opt-in on purpose: whether the table carries the index is deployment
 configuration the operator knows, and probing for it would spend a failed
-request per process to find out. Naming it switches the listings that would
-otherwise scan the whole table — `history.listSessions` today — onto a
-bounded, pageable query. Leaving it unset keeps the current behaviour, so
-upgrading changes nothing until the index exists.
+request per process to find out. Naming it switches two listings that
+would otherwise scan the whole table onto a read of the index, newest
+first: `history.listSessions`, which pages it by cursor, and a
+`saver.list` without a `thread_id`, which streams it and takes no cursor.
+Leaving it unset keeps both on the table scan, so the index can be created
+and backfilled before any adapter reads it.
 
 ***
 
@@ -82,7 +84,7 @@ Optional per-instance logger (defaults to a silent logger).
 
 > `optional` **readConcurrency?**: `number`
 
-Defined in: [shared/options.ts:68](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L68)
+Defined in: [shared/options.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L70)
 
 How many payloads a single call decodes at once, default 8.
 

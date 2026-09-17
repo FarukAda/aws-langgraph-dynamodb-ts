@@ -73,8 +73,9 @@ export async function buildCheckpointItems(
     row: { pk, sk: metaSortKey(checkpointNs, checkpoint.id) },
   });
   /**
-   * The META row takes part in the recency index, so that listing checkpoints
-   * across threads is a bounded, pageable query instead of a table scan. The
+   * The META row takes part in the recency index, so that a `saver.list`
+   * without a `thread_id` can stream checkpoints across threads from the index,
+   * newest first, instead of scanning the table, when `indexName` is set. The
    * PAYLOAD and WRITE rows do not: nothing lists them across partitions, and
    * indexing them would pay an extra write for an access pattern that does not
    * exist.

@@ -27,8 +27,11 @@ type SettledRow = PromiseSettledResult<DocItem | undefined>;
 
 /**
  * Pick the row carrying an offloaded descriptor. The META and PAYLOAD rows
- * commit in one transaction, so one of them is enough to decide the verdict;
- * with neither offloaded there is nothing to protect and no read to spend.
+ * commit in one transaction, so the probed row alone is enough to decide that
+ * the transaction landed. It is not enough to decide that it did not: that
+ * verdict licenses a release, and the other row may name the object being
+ * released, so it needs both rows (see {@link verificationOf}). With neither
+ * offloaded there is nothing to protect and no read to spend.
  */
 function chooseProbe(meta: CheckpointMetaItem, payload: CheckpointPayloadItem): RowProbe {
   const metaKey = offloadedKey(meta.metadata);

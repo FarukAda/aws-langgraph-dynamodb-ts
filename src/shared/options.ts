@@ -47,10 +47,12 @@ export interface BaseAdapterOptions {
    *
    * Opt-in on purpose: whether the table carries the index is deployment
    * configuration the operator knows, and probing for it would spend a failed
-   * request per process to find out. Naming it switches the listings that would
-   * otherwise scan the whole table — `history.listSessions` today — onto a
-   * bounded, pageable query. Leaving it unset keeps the current behaviour, so
-   * upgrading changes nothing until the index exists.
+   * request per process to find out. Naming it switches two listings that
+   * would otherwise scan the whole table onto a read of the index, newest
+   * first: `history.listSessions`, which pages it by cursor, and a
+   * `saver.list` without a `thread_id`, which streams it and takes no cursor.
+   * Leaving it unset keeps both on the table scan, so the index can be created
+   * and backfilled before any adapter reads it.
    */
   indexName?: string;
   /**

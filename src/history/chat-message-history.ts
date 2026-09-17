@@ -158,10 +158,12 @@ export class DynamoDBChatMessageHistory {
    * `maxIterations` — caps on the scan path. `options.signal` — aborts the
    * reads.
    *
-   * Returns: the page and, when more rows remain, a `nextCursor`. A page may
+   * Returns: the page and, while rows may remain, a `nextCursor`. A page may
    * come back shorter than `limit` while more rows remain: expired and foreign
-   * rows are dropped after the read. Stop when `nextCursor` is absent, never
-   * when a page looks short.
+   * rows are dropped after the read. A cursor does not promise more rows:
+   * DynamoDB can end a shard's page at its last row and still return a key to
+   * continue from, and the page after such a cursor can come back empty. Stop
+   * when `nextCursor` is absent, never when a page looks short.
    *
    * Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
    * `maxIterations`, `signal`, or `options.<key>` for a key this package does
@@ -170,9 +172,11 @@ export class DynamoDBChatMessageHistory {
    * a newer release wrote; UpstreamError; AbortError.
    *
    * Guarantees: with a configured `indexName` each shard is read one DynamoDB
-   * page at a time, and its next page only when the listing needs its next
-   * row; at most `readConcurrency` shards are queried at once, and memory is
-   * about one DynamoDB page per shard, whatever the table holds.
+   * page at a time, and its next page whenever it has no row buffered and the
+   * page still needs one, so a shard can cost a query whose rows the page never
+   * takes; at most `readConcurrency` shards are queried at once. Memory is the
+   * page being built, up to `limit` rows with no ceiling on `limit`, plus at
+   * most one DynamoDB page per shard, whatever the table holds.
    */
   listSessions(options?: ListSessionsOptions): Promise<SessionPage> {
     return guardPublic('history.listSessions', () => listSessionsAction(this.context, options));

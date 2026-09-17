@@ -81,7 +81,7 @@ async function committedPair(
  * cannot make both callers delete the same superseded object and orphan one
  * upload. A committed item cleans up the payload it actually superseded, and an
  * item confirmed never to have committed cleans up its own new upload. Either
- * way the row is read first and whatever it names is kept: a racer that
+ * way the row is checked first and whatever it names is kept: a racer that
  * re-committed the superseded value after the swap holds that key, and a racer
  * that wrote the same value holds this item's key (C-02b). A read that fails
  * releases nothing.
@@ -102,13 +102,17 @@ async function committedPair(
  * whose own cleanup depends on every branch resolving rather than
  * short-circuiting.
  *
- * Guarantees: an object is released only when the row read immediately before
- * the release does not point at it — identical bytes produce an identical key,
- * so the loser's "dead" upload is the winner's live object when the two wrote
- * the same value, and a superseded payload is the live object of a racer that
- * put that value back. A write of the same bytes whose upload lands before the
- * delete, and whose row commits after that read, can still lose its object;
- * closing that needs an out-of-band sweeper.
+ * Guarantees: an object is released only when the row last read for its item,
+ * or returned with that item's rejected write, does not point at it —
+ * identical bytes produce an identical key, so the loser's "dead" upload is the
+ * winner's live object when the two wrote the same value, and a superseded
+ * payload is the live object of a racer that put that value back. For a
+ * committed item that row is read after every special write has settled; for
+ * an item that did not commit it is the row its failed write was checked
+ * against, and the delete waits for every other special write, the committed
+ * items' reads and their deletes. A write of the same bytes whose upload lands
+ * before the delete, and whose row commits after that row was seen, can still
+ * lose its object; closing that needs an out-of-band sweeper.
  */
 export async function writeSpecialItemsWithCleanup(
   context: CheckpointerContext,
