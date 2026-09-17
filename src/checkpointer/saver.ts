@@ -190,9 +190,8 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * call already replaced. An offloaded object can still be orphaned and left
    * to the lifecycle rule: when the compare-and-swap is exhausted and the write
    * overwrites unconditionally, when a delete fails, when the row cannot be read
-   * before the write or back before a delete, when a failed write cannot be
-   * verified, or in one double-fault interleaving (see the README's S3
-   * offloading notes).
+   * before the write, when a failed write cannot be verified, or in one
+   * double-fault interleaving (see the README's S3 offloading notes).
    */
   async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
     return guardPublic('saver.putWrites', () =>
@@ -216,9 +215,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    *
    * Guarantees: a row this adapter did not write is left in place and logged.
    * Single pass: call it when the thread is quiescent, since a checkpoint
-   * written while it runs may survive it, and a write that recreates a row with
-   * the same bytes can be left pointing at an offloaded object the delete
-   * removed.
+   * written while it runs may survive it.
    */
   async deleteThread(threadId: string, options?: CancelOptions): Promise<void> {
     return guardPublic('saver.deleteThread', () => {

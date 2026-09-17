@@ -32,9 +32,7 @@ function descriptorsOf(row: DocItem): (PayloadDescriptor | undefined)[] {
  * Guarantees: a row this adapter did not write is left in place and logged, so
  * a shared-table partition is never collaterally wiped. One pass over a
  * quiescent thread, deleting rows and then the objects they named with no read
- * in between: a checkpoint written while this runs may survive it, and a write
- * that recreates a row with the same bytes addresses the same object, so it can
- * be left pointing at an object this delete removed.
+ * in between: a checkpoint written while this runs may survive it.
  */
 export async function deleteThread(
   context: CheckpointerContext,

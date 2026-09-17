@@ -107,8 +107,8 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
 
   /**
    * An offloader whose downloads are answered per S3 key. `downloads` is filled
-   * after the records are built, because a key now ends in the content hash of
-   * the bytes it holds and is only known once the record exists.
+   * after the records are built, because a key ends in the id of the put that
+   * uploaded it and is only known once the record exists.
    */
   function offloaderFor(downloads: Record<string, () => Promise<Uint8Array>>) {
     return {
