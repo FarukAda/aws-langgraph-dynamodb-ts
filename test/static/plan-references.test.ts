@@ -115,13 +115,22 @@ describe('planReferences', () => {
 });
 
 describe('handEditedDocFiles', () => {
-  it('lists the hand-edited docs, the root configs and .github, never the generated docs', () => {
+  it('lists the hand-edited root files and .github, never the generated docs', () => {
     const files = handEditedDocFiles();
     expect(files).toEqual(
       expect.arrayContaining([
         'README.md',
         'CHANGELOG.md',
         'CONTRIBUTING.md',
+        'SECURITY.md',
+        'SUPPORT.md',
+        'CODE_OF_CONDUCT.md',
+        'docker-compose.yml',
+        'knip.json',
+        'typedoc.json',
+        'package.json',
+        'tsconfig.json',
+        'tsconfig.build.json',
         'jest.config.ts',
         'eslint.config.ts',
         '.github/CODEOWNERS',
@@ -129,5 +138,12 @@ describe('handEditedDocFiles', () => {
       ]),
     );
     expect(files.filter((file) => file.startsWith('docs/'))).toEqual([]);
+  });
+
+  it('skips the npm lockfile and root files of other kinds', () => {
+    const files = handEditedDocFiles();
+    expect(files).not.toContain('package-lock.json');
+    expect(files).not.toContain('LICENSE');
+    expect(files).not.toContain('.gitignore');
   });
 });

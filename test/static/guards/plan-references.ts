@@ -143,23 +143,36 @@ export function allScannableFiles(): string[] {
   return absolute.map((path) => relative(REPO_ROOT, path).split(sep).join('/'));
 }
 
+/** Extensions of the hand-edited files directly in the repository root. */
+const ROOT_DOC_EXTENSIONS: readonly string[] = ['.md', '.json', '.yml', '.yaml'];
+
+/**
+ * Root files a person does not edit: npm writes the lockfile, and a hit in it
+ * could only be fixed by regenerating it.
+ */
+const GENERATED_ROOT_FILES: ReadonlySet<string> = new Set(['package-lock.json']);
+
+/** Whether a file directly in the repository root is one a person edits. */
+function isHandEditedRootFile(name: string): boolean {
+  if (GENERATED_ROOT_FILES.has(name)) return false;
+  return name.endsWith('.config.ts') || ROOT_DOC_EXTENSIONS.includes(extname(name));
+}
+
 /**
  * The hand-edited files a reader meets beside the code, relative to
- * {@link REPO_ROOT} with forward slashes: `README.md`, `CHANGELOG.md` and
- * `CONTRIBUTING.md`, every `*.config.ts` directly in the repository root, and
- * every file under `.github`. The generated `docs/api` is not among them: it is
- * rebuilt from the `src` comments, which are scanned already, and a hit there
- * could only be fixed at its source.
+ * {@link REPO_ROOT} with forward slashes: every `.md`, `.json`, `.yml` or
+ * `.yaml` file and every `*.config.ts` directly in the repository root —
+ * derived from the directory, so a new root document is covered without being
+ * listed — except the npm lockfile, and every file under `.github`. The
+ * generated `docs/api` is not among them: it is rebuilt from the `src`
+ * comments, which are scanned already, and a hit there could only be fixed at
+ * its source.
  */
 export function handEditedDocFiles(): string[] {
-  const rootConfigs = readdirSync(REPO_ROOT, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.config.ts'))
+  const rootFiles = readdirSync(REPO_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && isHandEditedRootFile(entry.name))
     .map((entry) => join(REPO_ROOT, entry.name));
-  const absolute = [
-    ...['README.md', 'CHANGELOG.md', 'CONTRIBUTING.md'].map((name) => resolve(REPO_ROOT, name)),
-    ...rootConfigs,
-    ...listEveryFile(resolve(REPO_ROOT, '.github')),
-  ];
+  const absolute = [...rootFiles, ...listEveryFile(resolve(REPO_ROOT, '.github'))];
   return absolute.map((path) => relative(REPO_ROOT, path).split(sep).join('/'));
 }
 
