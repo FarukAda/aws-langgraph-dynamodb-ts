@@ -25,9 +25,12 @@ import { isRetryExhausted, rowIsAbsent } from '../internal/write-verify';
  * so S3 cleanup targets the descriptor that was actually removed rather than
  * one read a moment earlier — a concurrent put between a pre-read and the
  * delete used to leave its just-written object orphaned — and the delete costs
- * one request. The removed object is released without reading the row again:
- * every put uploads under an id of its own, so another put that recreates the
- * item names an object of its own, never the removed one.
+ * one request. The removed object is released without reading the row again: it
+ * was uploaded under the id of the put that wrote the row this delete removed,
+ * and a put that runs after this one draws an id of its own. One case escapes
+ * that rule: a put whose own earlier attempt wrote the removed row, and whose
+ * retry lands after this delete, puts back a row naming the object this delete
+ * released.
  *
  * A retry-exhausted failure is *ambiguous*: the delete may have landed
  * server-side with only its acknowledgement lost. Mirroring `persistRecord`,

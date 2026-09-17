@@ -148,7 +148,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * cannot be uploaded; UpstreamError; RetryExhaustedError; AbortError.
    *
    * Guarantees: both rows land or neither does. Writing the same
-   * `checkpoint.id` again replaces both, so a retry is safe.
+   * `checkpoint.id` again replaces both, so a retry is safe. Each put uploads
+   * its offloaded payloads under an id of its own, so the objects the replaced
+   * rows named are not deleted with them: they are left to the lifecycle rule
+   * `ensureS3LifecycleRule()` provisions.
    */
   async put(
     config: RunnableConfig,
@@ -215,7 +218,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    *
    * Guarantees: a row this adapter did not write is left in place and logged.
    * Single pass: call it when the thread is quiescent, since a checkpoint
-   * written while it runs may survive it.
+   * written while it runs may survive it, and a write whose own attempt
+   * committed before this call read the partition can, when its retry lands
+   * afterwards, put its row back naming an object this call released.
    */
   async deleteThread(threadId: string, options?: CancelOptions): Promise<void> {
     return guardPublic('saver.deleteThread', () => {
