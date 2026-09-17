@@ -194,7 +194,8 @@ export class DynamoDBStore extends BaseStore {
    *
    * Throws: ValidationError naming `options`, `options.<key>`, `prefix`,
    * `prefix element`, `suffix`, `suffix element`, `maxDepth`, `limit` or
-   * `offset`; ResultTruncatedError past `maxScanItems`; UpstreamError.
+   * `offset`; ResultTruncatedError past `maxScanItems`; `FORMAT_UNSUPPORTED`
+   * for an item written by a newer version; UpstreamError.
    */
   override async listNamespaces(options: ListNamespacesOptions = {}): Promise<string[][]> {
     return guardPublic(

@@ -69,7 +69,8 @@ function compareNamespaces(a: string[], b: string[]): number {
  * Throws: ValidationError naming `offset`, `limit`, `maxDepth`,
  * `matchConditions`, `prefix`, `prefix element`, `suffix` or `suffix element`;
  * {@link ResultTruncatedError} when `maxScanItems` is reached while rows
- * remain, so a partial listing is never returned as a complete one.
+ * remain, so a partial listing is never returned as a complete one;
+ * `FORMAT_UNSUPPORTED` for a store item a newer release wrote.
  *
  * Guarantees: every live row is read — the answer is about which namespaces
  * exist, and paging over it must not depend on which rows were read first. That

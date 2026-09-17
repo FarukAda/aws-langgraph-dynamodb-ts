@@ -97,8 +97,9 @@ async function writeCount(
  * Throws: ValidationError naming `sessionId`; {@link ConflictError} when the
  * session does not exist — rather than creating a permanent, TTL-less
  * metadata-only row — and when it stays too busy to settle within
- * {@link OVERWRITE_CAS_MAX_ATTEMPTS} attempts; whatever the reads and the write
- * throw.
+ * {@link OVERWRITE_CAS_MAX_ATTEMPTS} attempts; `FORMAT_UNSUPPORTED` for a
+ * message row a newer release wrote, which `getMessages` refuses too; whatever
+ * the reads and the write throw.
  *
  * Guarantees: safe on a live session. The write is pinned to the value the row
  * held when the count was computed, so an append landing in between fails the

@@ -166,7 +166,8 @@ export class DynamoDBChatMessageHistory {
    * Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
    * `maxIterations`, `signal`, or `options.<key>` for a key this package does
    * not read; ResultTruncatedError past either cap on the scan path, or for an
-   * index shard whose pages do not end; UpstreamError; AbortError.
+   * index shard whose pages do not end; `FORMAT_UNSUPPORTED` for a session row
+   * a newer release wrote; UpstreamError; AbortError.
    *
    * Guarantees: with a configured `indexName` each shard is read one DynamoDB
    * page at a time, and its next page only when the listing needs its next
@@ -190,7 +191,8 @@ export class DynamoDBChatMessageHistory {
    * Throws: ValidationError for a malformed session id, an invalid `signal`,
    * or an `options.<key>` this package does not read; ConflictError when the
    * session does not exist or stayed busy through every attempt;
-   * UpstreamError; AbortError.
+   * `FORMAT_UNSUPPORTED` for a message row a newer release wrote, which
+   * `getMessages` refuses too; UpstreamError; AbortError.
    *
    * Guarantees: safe on a live session — the write is pinned to the value the
    * row held when the count was computed, so a concurrent append makes it

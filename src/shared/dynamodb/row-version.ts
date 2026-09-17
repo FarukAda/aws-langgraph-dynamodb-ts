@@ -62,20 +62,6 @@ export function assertReadableRow(row: VersionedRow, what: string): void {
 }
 
 /**
- * Whether {@link assertReadableRow} would accept `row`.
- *
- * Accepts: `row` — any row.
- *
- * Returns: the same verdict without throwing, for the listings that skip a row
- * they cannot read rather than failing the whole page.
- *
- * Throws: nothing.
- */
-export function isReadableRow(row: VersionedRow): boolean {
-  return rowVersionOf(row) <= SUPPORTED_ROW_FORMAT_VERSION;
-}
-
-/**
  * The item with this release's format version stamped on it.
  *
  * Accepts: `item` — any item about to be written; an existing `v` is replaced.

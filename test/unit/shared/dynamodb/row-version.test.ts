@@ -1,6 +1,5 @@
 import {
   assertReadableRow,
-  isReadableRow,
   ROW_FORMAT_VERSION,
   rowVersionOf,
   SUPPORTED_ROW_FORMAT_VERSION,
@@ -49,12 +48,6 @@ describe('assertReadableRow', () => {
       expect((error as Error).message).toMatch(/store item/);
       expect((error as Error).message).toMatch(/upgrade/);
     }
-  });
-
-  it('isReadableRow answers the same question without throwing', () => {
-    expect(isReadableRow({})).toBe(true);
-    expect(isReadableRow({ v: SUPPORTED_ROW_FORMAT_VERSION })).toBe(true);
-    expect(isReadableRow({ v: SUPPORTED_ROW_FORMAT_VERSION + 1 })).toBe(false);
   });
 });
 

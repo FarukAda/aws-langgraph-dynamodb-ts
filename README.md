@@ -644,7 +644,7 @@ Offloaded objects live at `<keyPrefix><base64url(part)/...>/<sha256 base64url>.b
 
 ### Errors, logs and row versions
 
-Every row this release writes carries `v`, its format version. A reader treats a row without `v` as version 0 and reads it under the rules that applied when it was written; a row whose `v` is higher than the reader understands fails with `FORMAT_UNSUPPORTED` rather than being read as though its unknown attributes did not matter. A minor may raise the version it writes only in a way older `1.x` readers still accept.
+Every row this release writes carries `v`, its format version. A reader treats a row without `v` as version 0 and reads it under the rules that applied when it was written; a row whose `v` is higher than the reader understands fails with `FORMAT_UNSUPPORTED`, on every read that returns a row's content, rather than being read as though its unknown attributes did not matter. A minor may raise the version it writes only in a way older `1.x` readers still accept.
 
 `ErrorCode` values are append-only in `1.x`; error class names and the `code` each carries are stable, and `ErrorContext` only gains fields. Error *messages* and log *messages* are not covered — branch on `code`, `name` and the structured fields, never on text.
 
@@ -757,11 +757,11 @@ Requests per call, before retries. "Consistent" reads are `ConsistentRead: true`
 | `store.put` | 1 consistent `GetItem` (previous descriptor and revision), 1 guarded `PutItem` (up to 3 attempts under contention, each re-reading from the rejection), 1 more consistent `GetItem` before it deletes a superseded object, plus the `vectorBackend` upsert | 1 `PUT`, then `DELETE` of the superseded object |
 | `store.delete` | 1 `DeleteItem` returning the old row, 1 consistent `GetItem` when that row's value was offloaded, plus the `vectorBackend` delete | `DELETE` of the removed object |
 | `store.search` | 1 eventually consistent `Query` per page (`Scan` for `[]`), reading rows in batches of 8 until the page is full; a `query` adds one embedding call | 1 `GET` per offloaded candidate |
-| `store.listNamespaces` | key-only `Query` (`Scan` without a prefix root) per page | none |
+| `store.listNamespaces` | `Query` (`Scan` without a prefix root) per page, projected to each item's key and format version | none |
 | `history.addMessages` | 1 consistent `GetItem` of the session row when `ttl` is set, then 1 `TransactWriteItems` per chunk (up to 99 messages plus the session update); a rollback costs 1 `BatchWriteItem` per 25 rows plus a session update | 1 `PUT` per offloaded message |
 | `history.getMessages` | 1 consistent `Query` per page (newest-first with a page cap under `limit`) | 1 `GET` per offloaded message, 8 at a time |
 | `history.listSessions` | 1 `Scan` per page, or — with `indexName` — 1 `Query` per index shard (8 by default), `readConcurrency` at a time, and 1 more for a shard each time the page needs a row past its last DynamoDB page (1 MB), holding about one page per shard; pageable by cursor | none |
-| `history.reconcileMessageCount` | `Query` (`Select: COUNT`) per page, 1 guarded `UpdateItem` | none |
+| `history.reconcileMessageCount` | 1 consistent `GetItem` of the stored count, 1 eventually consistent `Query` per page returning only each message's `v` and `ttl`, 1 guarded `UpdateItem`; all three again, up to 3 attempts in all, when the stored count changes while it counts | none |
 | `store.reconcileVectorIndex` | 1 `Query` per page, embedding calls in batches, backend upserts and deletes | `GET` per offloaded item |
 
 ### Monitoring

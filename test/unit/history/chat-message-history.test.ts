@@ -82,7 +82,7 @@ describe('DynamoDBChatMessageHistory', () => {
     const { client, mock } = createStrictDocumentMock();
     /** The repair pins its write to the count the row held, so it reads that first. */
     mock.on(GetCommand).resolves({ Item: { messageCount: 0 } });
-    mock.on(QueryCommand).resolves({ Count: 2 });
+    mock.on(QueryCommand).resolves({ Items: [{ v: 1 }, {}] });
     mock.on(UpdateCommand).resolves({});
     await expect(history(client).reconcileMessageCount('sess-1')).resolves.toBe(2);
   });

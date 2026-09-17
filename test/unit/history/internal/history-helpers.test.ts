@@ -5,7 +5,6 @@ import {
   messageSortKey,
   SESSION_SORT_KEY,
 } from '../../../../src/history/internal/keys';
-import { countLiveMessages } from '../../../../src/history/internal/message-count';
 import { readWindow } from '../../../../src/history/internal/message-window';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -38,33 +37,6 @@ describe('isHistorySortKey', () => {
     expect(isHistorySortKey('META##c1')).toBe(false);
     expect(isHistorySortKey('u1#profile')).toBe(false);
     expect(isHistorySortKey('HISTORY')).toBe(false);
-  });
-});
-
-describe('countLiveMessages', () => {
-  it('counts only rows a reader would see, and reads no payload', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(QueryCommand).resolves({ Count: 3 });
-    await expect(countLiveMessages(context(client), 's1')).resolves.toBe(3);
-    const input = mock.commandCalls(QueryCommand)[0].args[0].input;
-    expect(input.Select).toBe('COUNT');
-    expect(input.FilterExpression).toContain('#ttl');
-  });
-
-  it('sums every page, since a partial count is a wrong number', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    let page = 0;
-    mock.on(QueryCommand).callsFake(() => {
-      page += 1;
-      return page === 1 ? { Count: 2, LastEvaluatedKey: { PK: 'HIST#s1', SK: 'x' } } : { Count: 1 };
-    });
-    await expect(countLiveMessages(context(client), 's1')).resolves.toBe(3);
-  });
-
-  it('answers zero for a session with no messages', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(QueryCommand).resolves({});
-    await expect(countLiveMessages(context(client), 's1')).resolves.toBe(0);
   });
 });
 

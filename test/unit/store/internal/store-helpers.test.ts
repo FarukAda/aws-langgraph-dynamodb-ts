@@ -7,14 +7,15 @@ import { passesFilter } from '../../../../src/store/internal/search-filter';
 import { validateMaxDepth } from '../../../../src/store/internal/validation';
 
 describe('projectKeys', () => {
-  it('projects a row s identity and keeps the input s own attribute names', () => {
+  it('projects a row s identity and version and keeps the input s own attribute names', () => {
     const projected = projectKeys(scopedQuery('store', ['users', 'u1']));
-    expect(projected.ProjectionExpression).toBe('PK, SK, #ns, #key');
+    expect(projected.ProjectionExpression).toBe('PK, SK, #ns, #key, #v');
     expect(projected.ExpressionAttributeNames).toMatchObject({
       '#pk': 'PK',
       '#sk': 'SK',
       '#ns': 'namespace',
       '#key': 'key',
+      '#v': 'v',
     });
   });
 

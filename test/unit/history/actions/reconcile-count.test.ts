@@ -11,26 +11,38 @@ function context(client: HistoryContext['client']): HistoryContext {
   return { client, tableName: 'history', logger: SILENT_LOGGER } as never;
 }
 
+/** A page of `count` message rows as the count's projection returns them: format version only. */
+const messages = (count: number) => ({ Items: Array.from({ length: count }, () => ({ v: 1 })) });
+
 describe('reconcileMessageCount', () => {
-  it('sums a server-side COUNT across pages and writes the authoritative count', async () => {
+  it('counts the live messages across pages and writes the authoritative count', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { messageCount: 99 } });
+    /**
+     * Expired-but-unswept rows are invisible to getMessages, so counting them
+     * would "repair" the count to a number the read path never returns (HIST-08).
+     */
+    const now = Math.floor(FROZEN_NOW_MS / 1000);
     mock
       .on(QueryCommand)
-      .resolvesOnce({ Count: 2, LastEvaluatedKey: { PK: 's1', SK: 'MSG#x' } })
-      .resolves({ Count: 1 });
+      .resolvesOnce({
+        Items: [{ v: 1 }, { v: 1, ttl: now }],
+        LastEvaluatedKey: { PK: 's1', SK: 'MSG#x' },
+      })
+      .resolves({ Items: [{ ttl: now + 1 }, {}] });
     mock.on(UpdateCommand).resolves({});
 
     const result = await reconcileMessageCount(context(client), 's1');
 
     expect(result).toBe(3);
     const query = mock.commandCalls(QueryCommand)[0].args[0].input;
-    expect(query.Select).toBe('COUNT');
-    // Expired-but-unswept rows are invisible to getMessages, so counting them
-    // would "repair" the count to a number the read path never returns (HIST-08).
-    expect(query.FilterExpression).toBe('attribute_not_exists(#ttl) OR #ttl > :now');
-    expect(query.ExpressionAttributeNames).toEqual({ '#pk': 'PK', '#sk': 'SK', '#ttl': 'ttl' });
-    expect(query.ExpressionAttributeValues?.[':now']).toBe(Math.floor(FROZEN_NOW_MS / 1000));
+    expect(query.ProjectionExpression).toBe('#v, #ttl');
+    expect(query.ExpressionAttributeNames).toEqual({
+      '#pk': 'PK',
+      '#sk': 'SK',
+      '#v': 'v',
+      '#ttl': 'ttl',
+    });
     expect(query.ExpressionAttributeValues?.[':pk']).toBe('HIST#s1');
     const update = mock.commandCalls(UpdateCommand)[0].args[0].input;
     expect(update.UpdateExpression).toBe('SET #count = :count');
@@ -41,7 +53,7 @@ describe('reconcileMessageCount', () => {
     expect(update.ExpressionAttributeValues?.[':expected']).toBe(99);
   });
 
-  it('treats a missing Count as zero', async () => {
+  it('treats a page without Items as empty', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { messageCount: 0 } });
     mock.on(QueryCommand).resolves({});
@@ -69,7 +81,7 @@ describe('reconcileMessageCount', () => {
   it('rethrows a non-conditional-check error unchanged', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { messageCount: 0 } });
-    mock.on(QueryCommand).resolves({ Count: 0 });
+    mock.on(QueryCommand).resolves(messages(0));
     mock
       .on(UpdateCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
@@ -95,7 +107,7 @@ describe('reconcileMessageCount is safe on a live session (HIST-09)', () => {
       .on(GetCommand)
       .resolvesOnce({ Item: { messageCount: 5 } })
       .resolves({ Item: { messageCount: 6 } });
-    mock.on(QueryCommand).resolvesOnce({ Count: 5 }).resolves({ Count: 6 });
+    mock.on(QueryCommand).resolvesOnce(messages(5)).resolves(messages(6));
     mock.on(UpdateCommand).rejectsOnce(rejected()).resolves({});
 
     await expect(reconcileMessageCount(context(client), 's1')).resolves.toBe(6);
@@ -107,7 +119,7 @@ describe('reconcileMessageCount is safe on a live session (HIST-09)', () => {
   it('gives up with a ConflictError when the session never settles', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { messageCount: 1 } });
-    mock.on(QueryCommand).resolves({ Count: 1 });
+    mock.on(QueryCommand).resolves(messages(1));
     mock.on(UpdateCommand).rejects(rejected());
     await expect(reconcileMessageCount(context(client), 'busy')).rejects.toMatchObject({
       name: 'ConflictError',
@@ -118,7 +130,7 @@ describe('reconcileMessageCount is safe on a live session (HIST-09)', () => {
   it('pins the absence of the attribute on a row written before it existed', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: {} });
-    mock.on(QueryCommand).resolves({ Count: 4 });
+    mock.on(QueryCommand).resolves(messages(4));
     mock.on(UpdateCommand).resolves({});
     await expect(reconcileMessageCount(context(client), 'old')).resolves.toBe(4);
     const update = mock.commandCalls(UpdateCommand)[0].args[0].input;

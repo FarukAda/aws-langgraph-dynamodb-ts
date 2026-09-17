@@ -4,6 +4,7 @@ import { isExpiredRow } from '../../shared/dynamodb/expiry';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import { queryRecencyIndex } from '../../shared/dynamodb/index-query';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { assertReadableRow } from '../../shared/dynamodb/row-version';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { ValidationError } from '../../shared/errors/errors';
@@ -18,10 +19,18 @@ import type { ChatSessionItem, ListSessionsOptions, SessionMetadata, SessionPage
 /** Rows per page when the caller names none. */
 const DEFAULT_PAGE_SIZE = 100;
 
-/** The session a row describes, or undefined for a foreign or expired row. */
+/**
+ * The session a row describes, or undefined for a foreign or expired row.
+ *
+ * Throws: `FORMAT_UNSUPPORTED` for a SESSION row a newer release wrote. It is
+ * not a foreign row to skip, and summarising it under this release's rules
+ * could return its attributes with a meaning they no longer have. Checked
+ * before the ttl, so the answer does not depend on the reading machine's clock.
+ */
 function summarise(raw: DocItem, nowSeconds: number): SessionMetadata | undefined {
   const item = raw as ChatSessionItem;
   if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') return undefined;
+  assertReadableRow(item, 'session');
   if (isExpiredRow(item, nowSeconds)) return undefined;
   return {
     sessionId: item.sessionId,
@@ -182,7 +191,8 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
  * `maxIterations`, `signal`, or `options.<key>` for a key this package does
  * not read; {@link ResultTruncatedError} past the scan path's caps, or for an
  * index shard whose pages do not end within `MAX_LOOP_ITERATIONS`;
- * `AbortError`.
+ * `FORMAT_UNSUPPORTED` for a SESSION row a newer release wrote, on either
+ * path; `AbortError`.
  *
  * Guarantees: with a configured `indexName` each index shard is read
  * newest-first one DynamoDB page at a time, and its next page only when the

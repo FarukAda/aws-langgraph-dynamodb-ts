@@ -60,9 +60,11 @@ export function storeScan(tableName: string): ScanCommandInput {
  * Accepts: any Query or Scan input; its own attribute names are preserved and
  * the projection's are added.
  *
- * Returns: the same input, projected onto the row's identity. A row read this
- * way can be narrowed but not decoded — {@link readStoreItem} needs the whole
- * row.
+ * Returns: the same input, projected onto the row's identity and its format
+ * version `v`. The version is what lets `narrowStoreRecord` refuse a row a
+ * newer release wrote; without it every projected row reads as version 0. A
+ * row read this way can be narrowed but not decoded — {@link readStoreItem}
+ * needs the whole row.
  *
  * Throws: nothing.
  *
@@ -72,11 +74,12 @@ export function storeScan(tableName: string): ScanCommandInput {
 export function projectKeys<T extends QueryCommandInput | ScanCommandInput>(params: T): T {
   return {
     ...params,
-    ProjectionExpression: 'PK, SK, #ns, #key',
+    ProjectionExpression: 'PK, SK, #ns, #key, #v',
     ExpressionAttributeNames: {
       ...params.ExpressionAttributeNames,
       '#ns': 'namespace',
       '#key': 'key',
+      '#v': 'v',
     },
   };
 }

@@ -146,21 +146,25 @@ describe('backend refill hitting the cap (STORE-05)', () => {
 });
 
 describe('listNamespaces projects only the key attributes (STORE-02)', () => {
-  it('asks for PK, SK, namespace and key, not the payload', async () => {
+  it('asks for PK, SK, namespace, key and the format version, not the payload', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [] });
     mock.on(QueryCommand).resolves({ Items: [] });
     await listNamespaces(context(client), { limit: 10, offset: 0 });
     const scan = mock.commandCalls(ScanCommand)[0].args[0].input;
-    expect(scan.ProjectionExpression).toBe('PK, SK, #ns, #key');
-    expect(scan.ExpressionAttributeNames).toMatchObject({ '#ns': 'namespace', '#key': 'key' });
+    expect(scan.ProjectionExpression).toBe('PK, SK, #ns, #key, #v');
+    expect(scan.ExpressionAttributeNames).toMatchObject({
+      '#ns': 'namespace',
+      '#key': 'key',
+      '#v': 'v',
+    });
     await listNamespaces(context(client), {
       limit: 10,
       offset: 0,
       matchConditions: [{ matchType: 'prefix', path: ['users'] }],
     });
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.ProjectionExpression).toBe(
-      'PK, SK, #ns, #key',
+      'PK, SK, #ns, #key, #v',
     );
   });
 });

@@ -19,8 +19,10 @@ import type { StoreContext } from './setup';
  * partition can then never make a row speak for another tenant's objects.
  *
  * Accepts: `raw` — any row, whole or projected. The identity test reads only
- * `PK`, `SK`, `namespace` and `key`, which is what lets a namespace listing
- * narrow rows it deliberately read without their payload.
+ * `PK`, `SK`, `namespace` and `key`, and the version check reads only `v`,
+ * which is what lets a namespace listing narrow rows it deliberately read
+ * without their payload. A projection that leaves out `v` reads every row as
+ * version 0, so the check cannot refuse one.
  *
  * Returns: the record, or undefined for a row that is not this adapter's item.
  *
