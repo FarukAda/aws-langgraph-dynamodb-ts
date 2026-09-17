@@ -26,7 +26,7 @@ import { assertOperations, assertSearchPrefix } from './internal/operation-valid
 import { type StoreContext, setUpStore } from './internal/setup';
 import type { DynamoDBStoreOptions, ListNamespacesOptions, SearchOptions } from './types';
 
-type SingleResult = Item | null | SearchItem[] | string[][] | void;
+type SingleResult = Item | null | SearchItem[] | string[][];
 
 /**
  * DynamoDB-backed LangGraph store for long-term memory with optional semantic
@@ -62,9 +62,17 @@ export class DynamoDBStore extends BaseStore {
     this.ddbClient = setup.ddbClient;
   }
 
-  private dispatch(operation: Operation): Promise<SingleResult> {
+  /**
+   * One operation's result: the item for a get, the page for a search, the
+   * namespaces for a listing, and `null` for a put or a delete — the value the
+   * reference store's `batch` answers a put or a delete with.
+   */
+  private async dispatch(operation: Operation): Promise<SingleResult> {
     if ('namespacePrefix' in operation) return searchItems(this.context, operation);
-    if ('value' in operation) return putItem(this.context, operation);
+    if ('value' in operation) {
+      await putItem(this.context, operation);
+      return null;
+    }
     if ('key' in operation) return getItem(this.context, operation.namespace, operation.key);
     return listNamespaces(this.context, operation);
   }
@@ -83,7 +91,8 @@ export class DynamoDBStore extends BaseStore {
    * checked here, where LangGraph's own calls arrive too.
    *
    * Returns: the results in operation order — an item or `null` for a get,
-   * matches for a search, namespaces for a listing, nothing for a put.
+   * matches for a search, namespaces for a listing, `null` for a put or a
+   * delete, as the reference store answers them.
    *
    * Throws: ValidationError, raised for every operation before any operation
    * runs, naming `operations` for a value that is not an array or an entry that

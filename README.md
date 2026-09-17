@@ -673,7 +673,7 @@ Also not covered: the wording of error messages and log lines, the order of rows
 
 ### Differences from the reference implementations
 
-`MemorySaver` and `InMemoryStore` are the behaviour this package matches. Every observable difference is listed here; anything not in this table is a defect, not a choice, and the differential tests are what enforce that. Adding a row is a **minor** at most, and only when the reference itself is the defect or this backend's storage and key rules require the difference; changing one a caller may already rely on is a **major**.
+`MemorySaver` and `InMemoryStore` are the behaviour this package matches. Every observable difference is listed here; anything not in this table is a defect, not a choice, and the differential tests are what enforce that. From `1.0.0`, adding a row is a **minor** at most, and only when the reference itself is the defect or this backend's storage and key rules require the difference; changing one a caller may already rely on is a **major**.
 
 | # | Difference | Kept because |
 | --- | --- | --- |
@@ -683,7 +683,6 @@ Also not covered: the wording of error messages and log lines, the order of rows
 | V-4 | A namespace whose items are all deleted stops being listed | the reference retains an empty namespace with no row behind it |
 | V-5 | `search` / `listNamespaces` raise `RESULT_TRUNCATED` past `maxScanItems` | silently truncating a result set is worse than refusing it |
 | V-6 | Re-putting with `index: false` clears the stored vector | the reference keeps a stale vector for a changed value |
-| V-7 | `batch` returns `undefined` for a put, the reference returns `null` | cosmetic; recorded so it is not mistaken for a bug |
 | V-8 | A value JSON refuses (circular, `BigInt`) yields no index text instead of throwing from inside text extraction | the put is refused a moment later by the codec, with a `ValidationError` naming `value` rather than a raw `TypeError` from the embedding step |
 | V-9 | Namespaces the collation calls equal are ordered by code unit | the reference leaves that pair to insertion order, which here is DynamoDB's read order, so a page boundary could fall between them differently on two calls |
 | V-10 | `put` stores every channel value, never only the ones `newVersions` names | narrowing stored *nothing* when LangGraph forks a checkpoint or writes an empty update, both of which pass an empty `newVersions`. `MemorySaver.put` takes no `newVersions` either, and LangChain's validation suite exempts its own `MemorySaver`, MongoDB and SQLite savers from the delta test on the same grounds; the exemption is keyed on a module-name list, so `test/conformance/validation.conformance.test.ts` applies it by name |

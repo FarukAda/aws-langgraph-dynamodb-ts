@@ -1,4 +1,10 @@
-import { GetCommand, PutCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  ScanCommand,
+} from '@aws-sdk/lib-dynamodb';
 
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
@@ -71,10 +77,12 @@ describe('DynamoDBStore.batch dispatches independent operations concurrently (ST
     expect(item?.value).toEqual({ v: 1 });
   });
 
+  /** A put and a delete answer `null`, as the reference store's `batch` does. */
   it('returns a mixed batch in operation order', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
+    mock.on(DeleteCommand).resolves({});
     mock.on(QueryCommand).resolves({ Items: [] });
     mock
       .on(ScanCommand)
@@ -84,9 +92,10 @@ describe('DynamoDBStore.batch dispatches independent operations concurrently (ST
       { namespace: ['n'], key: 'k' },
       { namespacePrefix: ['n'] },
       { namespace: ['n'], key: 'k', value: { v: 1 } },
+      { namespace: ['n'], key: 'gone', value: null },
       { matchConditions: [], maxDepth: undefined, limit: 10, offset: 0 },
     ]);
-    expect(results).toEqual([null, [], undefined, [['a']]]);
+    expect(results).toStrictEqual([null, [], null, null, [['a']]]);
   });
 
   it('rejects the whole batch when one operation fails', async () => {
