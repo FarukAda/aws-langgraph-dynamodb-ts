@@ -67,7 +67,7 @@ describe('writeRegularItems', () => {
     mock.on(PutCommand).rejects(timeout());
     mock.on(GetCommand).resolves({});
     const outcome = await writeRegularItems(context(client), [item('G1')]);
-    expect(outcome.deadUploads).toHaveLength(1);
+    expect(outcome.deadUploads).toEqual([item('G1')]);
     expect(outcome.error).toMatchObject({ name: 'RetryExhaustedError' });
   });
 
@@ -76,7 +76,7 @@ describe('writeRegularItems', () => {
     mock.on(PutCommand).rejects(timeout());
     mock.on(GetCommand).resolves({ Item: { writeGroup: 'OTHER' } });
     const outcome = await writeRegularItems(context(client), [item('G1')]);
-    expect(outcome.deadUploads).toHaveLength(1);
+    expect(outcome.deadUploads).toEqual([item('G1')]);
   });
 
   it('keeps the error but leaks the upload when the verification read fails', async () => {
@@ -114,7 +114,7 @@ describe('writeRegularItems', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).rejects(ccf({ channel: { S: 'ch' }, writeGroup: { S: 'OTHER' } }));
     const outcome = await writeRegularItems(context(client), [item('G1')]);
-    expect(outcome).toEqual({ deadUploads: [{ item: item('G1'), live: undefined }] });
+    expect(outcome).toEqual({ deadUploads: [item('G1')] });
   });
 
   it('never marks a guard-rejected write dead when the returned row is its own (lost-response re-hit)', async () => {

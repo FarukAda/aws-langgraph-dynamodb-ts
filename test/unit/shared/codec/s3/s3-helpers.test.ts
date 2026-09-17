@@ -1,4 +1,3 @@
-import { contentHash } from '../../../../../src/shared/codec/content-hash';
 import { oversizedObjectError } from '../../../../../src/shared/codec/s3/bounded-body';
 import { s3ClientOptions } from '../../../../../src/shared/codec/s3/client-types';
 import {
@@ -7,25 +6,6 @@ import {
 } from '../../../../../src/shared/codec/s3/config';
 import { encodeKeyPart } from '../../../../../src/shared/codec/s3/key-scope';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
-
-describe('contentHash', () => {
-  const bytes = new TextEncoder().encode('hello');
-
-  it('is stable for the same bytes and different for different bytes', () => {
-    expect(contentHash(bytes)).toBe(contentHash(new TextEncoder().encode('hello')));
-    expect(contentHash(bytes)).not.toBe(contentHash(new TextEncoder().encode('hellp')));
-  });
-
-  /** 43 base64url characters, every one of them safe in an object key. */
-  it('is 43 characters from the key-safe alphabet', () => {
-    expect(contentHash(bytes)).toHaveLength(43);
-    expect(contentHash(bytes)).toMatch(/^[A-Za-z0-9_-]{43}$/);
-  });
-
-  it('hashes empty bytes rather than refusing them', () => {
-    expect(contentHash(new Uint8Array())).toMatch(/^[A-Za-z0-9_-]{43}$/);
-  });
-});
 
 describe('oversizedObjectError', () => {
   const error = oversizedObjectError('ckpt/t/x.bin', 2_000, 1_000);

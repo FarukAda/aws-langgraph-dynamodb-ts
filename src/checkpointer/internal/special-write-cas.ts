@@ -130,18 +130,17 @@ async function writeWithoutOffloader(
  * orphan, so a plain unconditional put stays correct and costs no extra
  * ConsistentRead or write capacity (see {@link writeWithoutOffloader}).
  *
- * A failure of the first read, before any put, establishes nothing about the
- * row, and a racer that wrote the same value may already hold it under this
- * item's key. It is therefore reported the way every unverified outcome is:
- * `committed: true` with the error, so the caller keeps the upload.
+ * A failure of the first read, before any put, is no verdict read from the row,
+ * and this call releases its own upload only on one. It is therefore reported
+ * the way every unverified outcome is: `committed: true` with the error, so the
+ * caller keeps the upload and leaves it to the lifecycle rule.
  *
  * Accepts: `item` — one special-channel row, carrying this call's `writeGroup`.
  * `signal` — aborts the attempts.
  *
  * Returns: whether this item's upload must be kept (see
  * {@link SpecialWriteOutcome}), the descriptor it superseded when the write
- * committed, the failure when there was one, and the live row's descriptor when
- * the write is confirmed not to have committed.
+ * committed, and the failure when there was one.
  *
  * Throws: nothing. The caller runs this concurrently with the regular writes
  * under `Promise.all`, whose own cleanup depends on every branch resolving
@@ -170,9 +169,9 @@ export async function writeSpecialItem(
   } catch (error) {
     /**
      * The attempts settle every put they issue, so what reaches here is the
-     * initial read, before any put, or the warning. Neither establishes what the
-     * row holds, and this call's upload may be the object a racer's live row
-     * names, so it is reported the way every unverified outcome is: kept.
+     * initial read, before any put, or the warning. Neither is a verdict read
+     * from the row, and this call releases its own upload only on one, so it is
+     * reported the way every unverified outcome is: kept, for the lifecycle rule.
      */
     return { committed: true, error: error as Error };
   }

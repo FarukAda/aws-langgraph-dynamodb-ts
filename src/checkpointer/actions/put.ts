@@ -5,7 +5,7 @@ import type {
   CheckpointMetadata,
 } from '@langchain/langgraph-checkpoint';
 
-import { releasableS3Keys } from '../../shared/codec/descriptor-keys';
+import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
@@ -53,18 +53,14 @@ import { validateCheckpointId } from '../internal/validation';
  * Guarantees: both rows land or neither does — they are one transaction, so a
  * META row never names a payload that is not there. Writing the same
  * `checkpoint.id` again replaces both, which is what a retry and a repair tool
- * both need. On failure with S3 offload configured both rows are read back
- * before any upload is deleted (see {@link verifyCheckpointLanded}). A
- * transaction that committed and lost its response is reported as success: the
- * row carrying an offloaded descriptor proves that on its own, even when the
- * other row cannot be read, because a landing deletes nothing. A confirmed
- * non-commit cleans up the objects this call uploaded except any either row
- * names when read back — another writer's committed checkpoint can hold the
- * same checkpoint object — so it needs both rows read. An unverifiable outcome,
- * which includes a non-commit whose other row could not be read, leaks them
- * rather than risk stranding a live row. A write of the same bytes whose upload
- * lands before the delete, and whose rows commit after those reads, can still
- * lose its object; closing that needs an out-of-band sweeper.
+ * both need; the objects the replaced rows named are not deleted by the put,
+ * and are left to the lifecycle rule. On failure with S3 offload configured the
+ * row carrying an offloaded descriptor is read back before any upload is
+ * deleted (see {@link verifyCheckpointLanded}): a transaction that committed
+ * and lost its response is reported as success, a confirmed non-commit cleans
+ * up the objects this call uploaded, and an unverifiable outcome leaks them
+ * rather than risk stranding a live row. Each put uploads under an object id
+ * of its own, so no row another put commits names this call's uploads.
  */
 export async function putCheckpoint(
   context: CheckpointerContext,
@@ -109,7 +105,7 @@ export async function putCheckpoint(
     );
   } catch (error) {
     if (!context.offloader) throw error;
-    const { verdict, live } = await verifyCheckpointLanded(context, meta, payload);
+    const verdict = await verifyCheckpointLanded(context, meta, payload);
     if (verdict === 'landed') {
       context.logger.debug('put: transaction committed although its response was lost', {
         threadId,
@@ -120,7 +116,7 @@ export async function putCheckpoint(
     if (verdict === 'not-landed') {
       await cleanUpS3Orphans(
         context.offloader,
-        releasableS3Keys([meta.metadata, payload.checkpoint], live),
+        collectS3Keys([meta.metadata, payload.checkpoint]),
         'put',
         context.logger,
       );

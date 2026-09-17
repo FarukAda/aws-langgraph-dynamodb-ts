@@ -39,7 +39,7 @@ const op = (over: Partial<PutOperation>): PutOperation => ({
 function trackingOffloader() {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: string[], hash: string) => [...parts, hash].join('/'),
+    buildKey: (parts: string[], objectId: string) => [...parts, objectId].join('/'),
     upload: async (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: () => true,
@@ -155,80 +155,57 @@ describe('persistRecord ambiguous-failure verification', () => {
   });
 });
 
-/** What the read after a delete answers: a row, no row, or a failure. */
-type ReadAnswer = { Item?: Record<string, unknown> } | 'fails';
-
-const K1 = 'users/u1/profile/K1.bin';
-
-/**
- * The timeline of a delete racing a re-put:
- *
- * 1. This call deletes the row, and DynamoDB hands back the removed value, at K1.
- * 2. A racer then puts the same value again. No row exists, so it uploads to K1,
- *    because a key is the hash of the bytes under the row's path, and commits a
- *    row pointing at it.
- * 3. This call releases the removed object, K1.
- *
- * `after` is the answer to the read that follows the delete.
- */
-async function deleteThenRead(removed: object, after: ReadAnswer) {
+/** The offloaded value a put of `value` commits, captured by letting it land on an empty item. */
+async function valueCommittedBy(value: PutOperation['value']): Promise<{ s3Key: string }> {
   const { client, mock } = createStrictDocumentMock();
-  mock.on(DeleteCommand).resolves({ Attributes: { value: removed } });
-  if (after === 'fails') {
-    mock
-      .on(GetCommand)
-      .rejects(Object.assign(new Error('read down'), { name: 'ValidationException' }));
-  } else {
-    mock.on(GetCommand).resolves(after);
-  }
-  const offloader = trackingOffloader();
-  const debug = jest.fn();
-  const ctx = context(client, {
-    offloader: offloader as never,
-    logger: { ...SILENT_LOGGER, debug },
+  let committed: { s3Key: string } | undefined;
+  mock.on(GetCommand).resolves({});
+  mock.on(PutCommand).callsFake(async (input: { Item: { value: { s3Key: string } } }) => {
+    committed = input.Item.value;
+    return {};
   });
-  await expect(putItem(ctx, op({ value: null }))).resolves.toBeUndefined();
-  const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
-  return { deleted, reads: mock.commandCalls(GetCommand), debug };
+  await putItem(context(client, { offloader: trackingOffloader() as never }), op({ value }));
+  return committed!;
 }
 
-describe('deleteStoreItem reads the row before releasing the removed object', () => {
-  it("keeps the removed object when a racer's re-put names it", async () => {
-    const { deleted } = await deleteThenRead(
-      { location: PayloadLocation.S3, s3Key: K1 },
-      { Item: { rev: 'REV-R', value: { location: PayloadLocation.S3, s3Key: K1 } } },
-    );
-    expect(deleted).toEqual([]);
+/** Delete the item, whose row DynamoDB hands back holding `removed`, and report what was released. */
+async function deleteReturning(removed: object) {
+  const { client, mock } = createStrictDocumentMock();
+  mock.on(DeleteCommand).resolves({ Attributes: { value: removed } });
+  const offloader = trackingOffloader();
+  await expect(
+    putItem(context(client, { offloader: offloader as never }), op({ value: null })),
+  ).resolves.toBeUndefined();
+  const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
+  return { deleted, reads: mock.commandCalls(GetCommand) };
+}
+
+/**
+ * The timeline of a delete racing a re-put, with every put uploading under its
+ * own `rev`:
+ *
+ * 1. This call deletes the row, and DynamoDB hands back the removed value, which
+ *    the put that wrote it uploaded under that put's own `rev`.
+ * 2. A racer then puts the same value again. It uploads under its own `rev`
+ *    and commits a row naming that object.
+ * 3. This call releases the removed object without reading the row.
+ *
+ * The invariant is that the racer's committed object is never released.
+ */
+describe('deleteStoreItem releases the removed object without reading the row again', () => {
+  it("releases exactly the removed object, which a racer's re-put of the same value does not name", async () => {
+    const removed = await valueCommittedBy({ name: 'Faruk' });
+    const racer = await valueCommittedBy({ name: 'Faruk' });
+
+    const { deleted, reads } = await deleteReturning(removed);
+
+    expect(racer.s3Key).not.toBe(removed.s3Key);
+    expect(deleted).toEqual([removed.s3Key]);
+    expect(reads).toHaveLength(0);
   });
 
-  it('deletes the removed object when no row exists after the delete', async () => {
-    const { deleted, reads } = await deleteThenRead(
-      { location: PayloadLocation.S3, s3Key: K1 },
-      {},
-    );
-    expect(deleted).toEqual([K1]);
-    expect(reads).toHaveLength(1);
-    expect(reads[0].args[0].input).toMatchObject({
-      Key: { PK: 'STORE#users', SK: 'u1#profile' },
-      ConsistentRead: true,
-    });
-  });
-
-  /** A read that establishes nothing licenses nothing: the object is left to the lifecycle rule. */
-  it('deletes nothing, and logs at debug, when that read fails', async () => {
-    const { deleted, debug } = await deleteThenRead(
-      { location: PayloadLocation.S3, s3Key: K1 },
-      'fails',
-    );
-    expect(deleted).toEqual([]);
-    expect(debug).toHaveBeenCalledWith(
-      'store.delete: the row could not be read back; the removed object is left to the lifecycle rule',
-      { namespace: ['users', 'u1'], key: 'profile' },
-    );
-  });
-
-  it('issues no read when the removed value was inline', async () => {
-    const { deleted, reads } = await deleteThenRead({ location: PayloadLocation.INLINE }, 'fails');
+  it('releases nothing, and reads nothing, when the removed value was inline', async () => {
+    const { deleted, reads } = await deleteReturning({ location: PayloadLocation.INLINE });
     expect(reads).toHaveLength(0);
     expect(deleted).toEqual([]);
   });

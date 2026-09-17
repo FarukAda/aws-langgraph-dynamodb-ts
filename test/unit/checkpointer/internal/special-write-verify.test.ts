@@ -159,22 +159,21 @@ describe('verifyAfterFailure', () => {
   });
 
   /**
-   * A racer that wrote the same value holds this item's key, so the cleanup
-   * needs the descriptor the live row holds, not only the fact that it lost
-   * (C-02b). Both doors carry it: the row a rejection returned, and a read.
+   * Another writer holds the row, so this item's upload is dead: its key ends in
+   * this call's own group, which that writer's row does not name. The outcome
+   * carries nothing about the live row's value; the row comes back only as the
+   * state a compare-and-swap re-pins to. Both doors agree: the row a rejection
+   * returned, and a read.
    */
-  it('hands back the descriptor the live row holds when another writer holds it', async () => {
+  it('reports a confirmed non-commit, and the row to re-pin to, when another writer holds it', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { writeGroup: 'group-b', value: descriptor } });
     const trigger = new Error('timeout');
+    const rejection = conditionFailure('group-b');
     const read = await verifyAfterFailure(context(client), item(), attempted, trigger);
-    const rejected = await verifyAfterFailure(
-      context(client),
-      item(),
-      attempted,
-      conditionFailure('group-b'),
-    );
-    expect(read.outcome).toEqual({ committed: false, error: trigger, live: descriptor });
-    expect(rejected.outcome).toMatchObject({ committed: false, live: descriptor });
+    const rejected = await verifyAfterFailure(context(client), item(), attempted, rejection);
+    const holder = { exists: true, value: descriptor, revision: 'group-b' };
+    expect(read).toEqual({ outcome: { committed: false, error: trigger }, observed: holder });
+    expect(rejected).toEqual({ outcome: { committed: false, error: rejection }, observed: holder });
   });
 });

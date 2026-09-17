@@ -10,6 +10,7 @@ const KEY_PARTS = ['t', 'ns', 'cp', 'payload'];
 async function roundTrip(value: unknown, deps: CodecDeps): Promise<unknown> {
   const descriptor = await encodePayload(value, deps, {
     keyParts: KEY_PARTS,
+    objectId: 'ID',
     row: { pk: 'PK', sk: 'SK' },
   });
   return decodePayload(descriptor, deps, []);

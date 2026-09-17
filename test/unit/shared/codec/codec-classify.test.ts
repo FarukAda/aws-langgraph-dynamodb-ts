@@ -55,7 +55,7 @@ describe('readPayloadBytes', () => {
     const descriptor = await encodePayload(
       { a: 1 },
       { serde },
-      { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } },
+      { keyParts: ['k'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
     );
     const bytes = await readPayloadBytes(descriptor, { serde }, []);
     expect(new TextDecoder().decode(bytes)).toBe('{"a":1}');
@@ -64,7 +64,7 @@ describe('readPayloadBytes', () => {
   it('downloads the bytes of an offloaded descriptor', async () => {
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
+      buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
       upload: jest.fn(async (key: string) => key),
       download: jest.fn(async () => new TextEncoder().encode('{"b":2}')),
       assertOwnedKey: () => undefined,
@@ -72,6 +72,7 @@ describe('readPayloadBytes', () => {
     const deps = { serde, offloader: offloader as never };
     const descriptor = await encodePayload({ b: 2 }, deps, {
       keyParts: ['k'],
+      objectId: 'ID',
       row: { pk: 'PK', sk: 'SK' },
     });
     const bytes = await readPayloadBytes(descriptor, deps, []);
@@ -101,7 +102,11 @@ describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', ()
 
   it('rejects a payload that cannot fit a DynamoDB item when no offloader is configured', async () => {
     await expect(
-      encodePayload(big, { serde }, { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } }),
+      encodePayload(
+        big,
+        { serde },
+        { keyParts: ['k'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
+      ),
     ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 'payload' },
@@ -112,7 +117,7 @@ describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', ()
   it('offloads the same payload when an offloader is configured', async () => {
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
+      buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
       upload: jest.fn(async (key: string) => key),
     };
     const descriptor = await encodePayload(
@@ -120,6 +125,7 @@ describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', ()
       { serde, offloader: offloader as never },
       {
         keyParts: ['k'],
+        objectId: 'ID',
         row: { pk: 'PK', sk: 'SK' },
       },
     );
@@ -130,14 +136,18 @@ describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', ()
     const descriptor = await encodePayload(
       nearlyBig,
       { serde },
-      { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } },
+      { keyParts: ['k'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
     );
     expect(descriptor.location).toBe(PayloadLocation.INLINE);
   });
 
   it('suggests enabling compression when it is not on, and only s3 when it is', async () => {
     await expect(
-      encodePayload(big, { serde }, { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } }),
+      encodePayload(
+        big,
+        { serde },
+        { keyParts: ['k'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
+      ),
     ).rejects.toMatchObject({
       message: expect.stringMatching(/compression/),
     });
@@ -147,7 +157,7 @@ describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', ()
       encodePayload(
         incompressible,
         { serde, compression: { enabled: true } },
-        { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } },
+        { keyParts: ['k'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
       ),
     ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,

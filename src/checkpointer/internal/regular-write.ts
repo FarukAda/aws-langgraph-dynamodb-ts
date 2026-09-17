@@ -1,5 +1,4 @@
-import type { PayloadDescriptor } from '../../shared/codec/codec';
-import { isConditionalCheckFailed, rejectedItem } from '../../shared/dynamodb/conditional-put';
+import { isConditionalCheckFailed } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
@@ -9,37 +8,19 @@ import { specialRowProbe } from './special-write-verify';
 import { rejectionProvesForeignRow, reportGuardRejection } from './write-guard';
 
 /**
- * One upload this call made that its own row does not reference, together with
- * the descriptor held by the row that *does* exist.
- *
- * Both halves are needed. A payload is addressed by the hash of its bytes under
- * its row's path, so two calls writing the same value for the same write upload
- * to one object — and the loser's "dead" upload is then the winner's live one.
- * `live` is what lets the cleanup tell those apart; it is undefined when no row
- * exists at all, and the upload is then dead beyond doubt.
- */
-export interface DeadUpload {
-  item: CheckpointWriteItem;
-  live?: PayloadDescriptor;
-}
-
-/**
  * Outcome of {@link writeRegularItems}: never rejects. `deadUploads` holds
  * exactly the items whose own S3 upload is confirmed unreferenced by this
  * call's row — a verified non-commit, or a guard rejection whose returned row
  * provably belongs to another call. Everything else either committed, was
  * turned away by a row this call may have written itself, or could not be
  * verified; none of those may be cleaned up.
+ *
+ * No other row is consulted before an upload in `deadUploads` is released: its
+ * key ends in this call's own `writeGroup`, which no row of another call names.
  */
 export interface RegularWriteOutcome {
-  deadUploads: DeadUpload[];
+  deadUploads: CheckpointWriteItem[];
   error?: Error;
-}
-
-/** What a post-failure read established about one regular write. */
-interface FailureVerdict {
-  verdict: WriteVerdict;
-  live?: PayloadDescriptor;
 }
 
 /**
@@ -51,15 +32,10 @@ interface FailureVerdict {
 async function verifyFailure(
   context: CheckpointerContext,
   item: CheckpointWriteItem,
-): Promise<FailureVerdict> {
-  if (!context.offloader) return { verdict: 'not-landed' };
-  const { verdict, row } = await verifyRow(context, specialRowProbe(item));
-  return { verdict, live: row?.value as PayloadDescriptor | undefined };
-}
-
-/** The descriptor on the row that turned a guarded write away, when it carried one. */
-function rejectedDescriptor(error: Error): PayloadDescriptor | undefined {
-  return rejectedItem(error)?.value as PayloadDescriptor | undefined;
+): Promise<WriteVerdict> {
+  if (!context.offloader) return 'not-landed';
+  const { verdict } = await verifyRow(context, specialRowProbe(item));
+  return verdict;
 }
 
 /**
@@ -114,14 +90,12 @@ export async function writeRegularItems(
     const reason = result.reason as Error;
     if (isConditionalCheckFailed(reason)) {
       reportGuardRejection(context, item, reason);
-      if (rejectionProvesForeignRow(item, reason)) {
-        outcome.deadUploads.push({ item, live: rejectedDescriptor(reason) });
-      }
+      if (rejectionProvesForeignRow(item, reason)) outcome.deadUploads.push(item);
       continue;
     }
-    const { verdict, live } = await verifyFailure(context, item);
+    const verdict = await verifyFailure(context, item);
     if (verdict === 'landed') continue;
-    if (verdict === 'not-landed') outcome.deadUploads.push({ item, live });
+    if (verdict === 'not-landed') outcome.deadUploads.push(item);
     outcome.error = outcome.error ?? reason;
   }
   return outcome;

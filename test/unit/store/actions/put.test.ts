@@ -33,37 +33,28 @@ const op = (over: Partial<PutOperation>): PutOperation => ({
 function trackingOffloader(
   overrides: {
     shouldOffload?: boolean;
-    buildKey?: (parts: string[], hash: string) => string;
+    buildKey?: (parts: string[], objectId: string) => string;
     upload?: (key: string) => Promise<string>;
   } = {},
 ) {
   return {
     shouldOffload: () => overrides.shouldOffload ?? true,
-    buildKey: overrides.buildKey ?? ((parts: string[], hash: string) => [...parts, hash].join('/')),
+    buildKey:
+      overrides.buildKey ?? ((parts: string[], objectId: string) => [...parts, objectId].join('/')),
     upload: overrides.upload ?? (async (key: string) => key),
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: () => true,
   };
 }
-const binKey = (parts: string[], hash: string): string => [...parts, hash].join('/') + '.bin';
+const binKey = (parts: string[], objectId: string): string =>
+  [...parts, objectId].join('/') + '.bin';
 
-/**
- * Answer `readExisting` with a row whose value is offloaded at `old-key.bin`,
- * and the read that follows a committed overwrite with a row holding `live`:
- * the previous object is released only when that row names another.
- */
-function answerExistingThenLive(
-  mock: ReturnType<typeof createStrictDocumentMock>['mock'],
-  live: { location: PayloadLocation; s3Key?: string },
-): void {
+/** Answer `readExisting` with a row whose value is offloaded at `old-key.bin`. */
+function answerExisting(mock: ReturnType<typeof createStrictDocumentMock>['mock']): void {
   const previous = { location: PayloadLocation.S3, serdeType: 'json', s3Key: 'old-key.bin' };
   mock
     .on(GetCommand)
-    .callsFake(async (input: { ProjectionExpression: string }) =>
-      input.ProjectionExpression.startsWith('#c')
-        ? { Item: { createdAt: '2000-01-01T00:00:00.000Z', value: previous } }
-        : { Item: { rev: 'r1', value: live } },
-    );
+    .resolves({ Item: { createdAt: '2000-01-01T00:00:00.000Z', rev: 'r0', value: previous } });
 }
 
 describe('putItem', () => {
@@ -223,11 +214,10 @@ describe('putItem', () => {
   });
 
   /**
-   * Re-putting the same value addresses the same object, so a retry adds
-   * nothing to the bucket. A changed value addresses a different one, which is
-   * what lets the overwrite delete exactly the payload it superseded.
+   * Every put uploads under its own `rev`, identical value or not, so no two
+   * puts ever address one object and each row names only its own put's.
    */
-  it('offloads identical values to one key and a changed value to another', async () => {
+  it("offloads every put to a key of its own, ending in that put's rev", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
@@ -242,8 +232,9 @@ describe('putItem', () => {
     await putItem(ctx, op({}));
     await putItem(ctx, op({}));
     await putItem(ctx, op({ value: { name: 'someone else' } }));
-    expect(uploaded[1]).toBe(uploaded[0]);
-    expect(uploaded[2]).not.toBe(uploaded[0]);
+    const revs = mock.commandCalls(PutCommand).map((call) => call.args[0].input.Item!.rev);
+    expect(uploaded).toEqual(revs.map((rev) => `users/u1/profile/${rev}`));
+    expect(new Set(uploaded).size).toBe(3);
   });
 
   it('does NOT delete the previous S3 object when an overwrite put fails (regression: this was the data-loss bug)', async () => {
@@ -270,11 +261,11 @@ describe('putItem', () => {
   });
 
   /**
-   * Re-putting the same value lands on the same content-addressed key, so the
-   * "previous" object and the new one are one object. Deleting it after the
-   * overwrite would leave the live row pointing at nothing.
+   * Re-putting the same value uploads under the new put's own `rev`, so the
+   * superseded object and the one the surviving row names are two objects, and
+   * releasing the first never touches the second.
    */
-  it('never deletes the object the surviving row still points at (identical re-put)', async () => {
+  it('releases the superseded object, never the one the surviving row names (identical re-put)', async () => {
     const { client, mock } = createStrictDocumentMock();
     const offloader = trackingOffloader({ buildKey: binKey });
     const ctx = context(client, { offloader: offloader as never });
@@ -288,15 +279,20 @@ describe('putItem', () => {
 
     await putItem(ctx, op({}));
 
-    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    const surviving = mock.commandCalls(PutCommand)[0].args[0].input.Item!.value as {
+      s3Key: string;
+    };
+    expect(surviving.s3Key).not.toBe((first.value as { s3Key: string }).s3Key);
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith([(first.value as { s3Key: string }).s3Key]);
   });
 
   /**
-   * The same hazard from the other side: a confirmed non-commit deletes its own
-   * upload, which is the object the row that survived is still using when the
+   * The other side: a confirmed non-commit releases its own upload, and the row
+   * that survived names the earlier put's object, a different one even when the
    * bytes are unchanged.
    */
-  it('never deletes its own upload when the surviving previous row shares it', async () => {
+  it("releases only its own upload, never the surviving previous row's object (identical re-put)", async () => {
     const { client, mock } = createStrictDocumentMock();
     const offloader = trackingOffloader({ buildKey: binKey });
     const ctx = context(client, { offloader: offloader as never });
@@ -310,21 +306,25 @@ describe('putItem', () => {
 
     await expect(putItem(ctx, op({}))).rejects.toThrow('boom');
 
-    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    const own = mock.commandCalls(PutCommand)[0].args[0].input.Item!.value as { s3Key: string };
+    expect(own.s3Key).not.toBe((first.value as { s3Key: string }).s3Key);
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith([own.s3Key]);
   });
 
   it('cleans up the previous S3 object after a successful overwrite', async () => {
     const { client, mock } = createStrictDocumentMock();
-    answerExistingThenLive(mock, { location: PayloadLocation.S3, s3Key: 'new-key.bin' });
+    answerExisting(mock);
     mock.on(PutCommand).resolves({});
     const offloader = trackingOffloader({ buildKey: binKey });
     await putItem(context(client, { offloader: offloader as never }), op({}));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
   });
 
   it('cleans up the previous S3 object when a large value is overwritten by a small inline one', async () => {
     const { client, mock } = createStrictDocumentMock();
-    answerExistingThenLive(mock, { location: PayloadLocation.INLINE });
+    answerExisting(mock);
     mock.on(PutCommand).resolves({});
     const offloader = trackingOffloader({ shouldOffload: false, buildKey: binKey });
     await putItem(context(client, { offloader: offloader as never }), op({}));
@@ -332,8 +332,9 @@ describe('putItem', () => {
   });
 
   /**
-   * The row is read once, after the delete and never before it: what was removed
-   * comes back with the delete, and the read only asks whether a re-put names it.
+   * The row is never read: what was removed comes back with the delete, and its
+   * object was uploaded under the removed row's own put, which no other put's row
+   * names.
    */
   it('cleans up the offloaded object DynamoDB reports as removed, without a pre-read (STORE-08)', async () => {
     const { client, mock } = createStrictDocumentMock();
@@ -347,8 +348,8 @@ describe('putItem', () => {
     await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['users/u1/profile.bin']);
     expect(mock.commandCalls(DeleteCommand)[0].args[0].input.ReturnValues).toBe('ALL_OLD');
-    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
-    expect(mock.calls()[0].args[0]).toBe(mock.commandCalls(DeleteCommand)[0].args[0]);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+    expect(mock.calls()).toHaveLength(1);
   });
 
   it('does not attempt S3 cleanup on delete when no offloader is configured', async () => {

@@ -67,6 +67,37 @@ describe('uploadObject', () => {
     expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(2);
   });
 
+  /**
+   * The first request stored the object and its response was lost. The retry
+   * of that same upload, to that same key, is refused with `412` because the
+   * key is taken — by this upload's own earlier request, the only one that
+   * writes this key.
+   */
+  it('resolves a retried upload that S3 refuses with 412 because its own first attempt stored it', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejectsOnce(Object.assign(new Error('internal'), { name: 'InternalError' }))
+      .rejects(
+        Object.assign(new Error('At least one of the pre-conditions you specified did not hold'), {
+          name: 'PreconditionFailed',
+          $metadata: { httpStatusCode: 412 },
+        }),
+      );
+    await expect(
+      uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        data: new Uint8Array([1]),
+      }),
+    ).resolves.toBeUndefined();
+    const calls = s3Mock.commandCalls(PutObjectCommand).map((call) => call.args[0].input);
+    expect(calls).toHaveLength(2);
+    expect(calls.map((input) => [input.Key, input.IfNoneMatch])).toEqual([
+      ['k.bin', '*'],
+      ['k.bin', '*'],
+    ]);
+  });
+
   it('does not retry a permanent S3 error on upload', async () => {
     s3Mock
       .on(PutObjectCommand)

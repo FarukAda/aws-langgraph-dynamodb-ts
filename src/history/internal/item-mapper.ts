@@ -14,13 +14,14 @@ function codecDeps(context: HistoryContext): CodecDeps {
 /**
  * Encode a single stored message into its DynamoDB item.
  *
- * Accepts: `ulid` — the message's own id, which orders it; the caller allocates
- * one per message from a monotonic factory. `ttlTimestamp` — the uniform
- * whole-conversation expiry every message in the session shares, so a
- * conversation expires as one thing rather than losing its oldest turns first.
+ * Accepts: `ulid` — the message's own id, which orders it and names its
+ * offloaded object; the caller allocates one per message from a monotonic
+ * factory. `ttlTimestamp` — the uniform whole-conversation expiry every
+ * message in the session shares, so a conversation expires as one thing rather
+ * than losing its oldest turns first.
  *
  * Returns: the row, keyed by the session partition and a `MSG#<ulid>` sort key,
- * its payload inline or offloaded under this row's own path.
+ * its payload inline or offloaded to `<keyPrefix><sessionId, base64url>/<ulid>.bin`.
  *
  * Throws: ValidationError naming `value` for a message the serializer cannot
  * represent; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded.
@@ -37,7 +38,8 @@ export async function buildMessageItem(
   const pk = sessionPartition(sessionId);
   const sk = messageSortKey(ulid);
   const descriptor = await encodePayload(message, codecDeps(context), {
-    keyParts: [sessionId, ulid],
+    keyParts: [sessionId],
+    objectId: ulid,
     row: { pk, sk },
   });
   const item: ChatMessageItem = {

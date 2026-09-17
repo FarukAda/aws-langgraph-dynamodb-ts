@@ -40,7 +40,8 @@ describe('backlinkMetadata', () => {
  * accepted at all has identifiers far below the metadata budget.
  */
 describe('the backlink against S3’s 2 KB metadata cap', () => {
-  const HASH = 'A'.repeat(43);
+  /** The shortest object id this package draws, a ULID, leaves the most room for identifiers. */
+  const OBJECT_ID = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';
 
   it('fits for the largest identifiers that still produce a usable object key', () => {
     /** Grown until one byte more would overflow the 1024-byte key cap. */
@@ -48,7 +49,7 @@ describe('the backlink against S3’s 2 KB metadata cap', () => {
     for (;;) {
       const next = `${part}x`;
       try {
-        buildS3Key('langgraph-checkpoints/', [next], HASH);
+        buildS3Key('langgraph-checkpoints/', [next], OBJECT_ID);
         part = next;
       } catch {
         break;

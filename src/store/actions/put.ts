@@ -3,11 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { nowIso } from '../../shared/clock';
-import {
-  collectS3Keys,
-  type DescriptorRef,
-  releasableS3Keys,
-} from '../../shared/codec/descriptor-keys';
+import { collectS3Keys, type DescriptorRef } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
@@ -20,38 +16,7 @@ import { persistRecord } from '../internal/persist';
 import { readExisting } from '../internal/read-existing';
 import { embedPassages, embedValue } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
-import { isRetryExhausted, readLiveValue, rowIsAbsent } from '../internal/write-verify';
-
-/**
- * Release the object the deleted row named, unless the row read just before the
- * release names it. A racer that puts the same value again after this delete
- * uploads to the same key and commits a row pointing at it, so the row is read
- * before anything goes. The read is spent only when the removed value was
- * offloaded, and a read that fails releases nothing.
- */
-async function releaseRemoved(
-  context: StoreContext,
-  op: PutOperation,
-  key: { PK: string; SK: string },
-  removed: DescriptorRef | undefined,
-): Promise<void> {
-  if (!context.offloader || !removed || collectS3Keys([removed]).length === 0) return;
-  const live = await readLiveValue(context, key);
-  if (live === undefined) {
-    context.logger.debug(
-      'store.delete: the row could not be read back; the removed object is left to the lifecycle rule',
-      { namespace: op.namespace, key: op.key },
-    );
-    return;
-  }
-  await cleanUpS3Orphans(
-    context.offloader,
-    releasableS3Keys([removed], live.value ? [live.value] : []),
-    'store.delete',
-    context.logger,
-    { scope: [...op.namespace, op.key] },
-  );
-}
+import { isRetryExhausted, rowIsAbsent } from '../internal/write-verify';
 
 /**
  * Delete the item and, when a vector backend is configured, drop its vector.
@@ -59,10 +24,10 @@ async function releaseRemoved(
  * The delete asks DynamoDB for the row it removed (`ReturnValues: 'ALL_OLD'`),
  * so S3 cleanup targets the descriptor that was actually removed rather than
  * one read a moment earlier — a concurrent put between a pre-read and the
- * delete used to leave its just-written object orphaned. Deleting an inline item
- * costs one request. An offloaded one is followed by a read of the row, because
- * a racer that puts the same value after the delete holds the removed key (see
- * {@link releaseRemoved}).
+ * delete used to leave its just-written object orphaned — and the delete costs
+ * one request. The removed object is released without reading the row again:
+ * every put uploads under an id of its own, so another put that recreates the
+ * item names an object of its own, never the removed one.
  *
  * A retry-exhausted failure is *ambiguous*: the delete may have landed
  * server-side with only its acknowledgement lost. Mirroring `persistRecord`,
@@ -95,7 +60,15 @@ async function deleteStoreItem(
       isRetryExhausted(error as Error) && (await rowIsAbsent(context, { PK: pk, SK: sk }));
     if (!landed) throw error;
   }
-  await releaseRemoved(context, op, { PK: pk, SK: sk }, removed);
+  if (context.offloader && removed) {
+    await cleanUpS3Orphans(
+      context.offloader,
+      collectS3Keys([removed]),
+      'store.delete',
+      context.logger,
+      { scope: [...op.namespace, op.key] },
+    );
+  }
   if (context.vectorBackend) {
     await syncVectorIndex(context.vectorBackend, op.namespace, op.key, undefined, context.logger);
   }
@@ -129,8 +102,8 @@ async function resolveEmbedding(
  * Store, update or delete an item.
  *
  * Accepts: `op.value` — `null` deletes; anything else is stored, encoded with
- * optional compression and S3 offload addressed by content hash under this
- * row's own path. `op.index` — `false` stores the item without indexing it and
+ * optional compression and S3 offload under this row's own path, in an object
+ * named by this put's own id. `op.index` — `false` stores the item without indexing it and
  * clears any vector it had, an array overrides the configured fields for this
  * put, and absent uses the store's configuration.
  *
@@ -144,11 +117,10 @@ async function resolveEmbedding(
  * Guarantees: DynamoDB holds the canonical item — the vector index is synced
  * afterwards and best-effort, so a backend outage never fails a put or leaves a
  * half-written item. `createdAt` survives every update. The superseded payload
- * is deleted only once the new row is committed, and a removed or superseded
- * object only when a read of the row just before the release does not name it.
- * A write of the same bytes whose upload lands before the delete, and whose row
- * commits after that read, can still lose its object; closing that needs an
- * out-of-band sweeper.
+ * is deleted only once the new row is committed, and this put's own upload
+ * only once a read proves its write did not land. Neither release reads the
+ * row first: each put uploads under a key ending in an id of its own, so the
+ * object a put uploads is named only by that put's own rows.
  */
 export async function putItem(context: StoreContext, op: PutOperation): Promise<void> {
   assertPutOperation(op);

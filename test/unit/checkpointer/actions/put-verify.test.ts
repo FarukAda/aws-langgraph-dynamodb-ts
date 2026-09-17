@@ -37,7 +37,7 @@ function contextWith(client: CheckpointerContext['client']): CheckpointerContext
 function trackingOffloader(offloadMetadata = true) {
   return {
     shouldOffload: (bytes: Uint8Array) => offloadMetadata || bytes.length > 64,
-    buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
+    buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
     upload: async (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
   };
@@ -48,6 +48,15 @@ function transientTimeout(): Error {
 }
 
 type DocumentMock = ReturnType<typeof createStrictDocumentMock>['mock'];
+
+/** The descriptors another put of this checkpoint commits, captured by letting it land. */
+async function committedRows(withMetadata: CheckpointMetadata) {
+  const { client, mock } = createStrictDocumentMock();
+  mock.on(TransactWriteCommand).resolves({});
+  const context = { ...contextWith(client), offloader: trackingOffloader() as never };
+  await putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, withMetadata);
+  return attempted(mock);
+}
 
 /** The descriptors the failed transaction carried, one per row. */
 function attempted(mock: DocumentMock) {
@@ -113,9 +122,9 @@ async function failedPut(
 
 /**
  * What a failed transaction does to this call's uploads when S3 offload is
- * configured: the META and PAYLOAD rows are read back, and what they hold
- * decides whether the put succeeded after all, what may be deleted, and
- * whether anything may be deleted at all.
+ * configured: the row carrying an offloaded descriptor is read back, and what
+ * it holds decides whether the put succeeded after all and whether this call's
+ * uploads may be deleted.
  */
 describe('putCheckpoint after a failed transaction, with S3 offload', () => {
   it('cleans up the objects it uploaded when the write is confirmed not to have landed', async () => {
@@ -129,9 +138,12 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
     await expect(
       putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
     ).rejects.toThrow('boom');
+    const own = attempted(mock);
+    const objectId = own.metadata.s3Key.slice('t1//ckpt-1/metadata/'.length);
+    expect(objectId).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
     expect(offloader.deleteBatch).toHaveBeenCalledWith([
-      expect.stringMatching(/^t1\/\/ckpt-1\/metadata\/[\w-]{43}$/),
-      expect.stringMatching(/^t1\/\/ckpt-1\/checkpoint\/[\w-]{43}$/),
+      `t1//ckpt-1/metadata/${objectId}`,
+      `t1//ckpt-1/checkpoint/${objectId}`,
     ]);
   });
 
@@ -174,46 +186,42 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
   });
 
   /**
-   * The timeline of C-02c: another writer committed this checkpoint id with the
-   * same checkpoint bytes and different metadata, so its PAYLOAD row names this
-   * call's checkpoint key while its META row names a metadata key of its own.
-   * This call's transaction spends its retries, and the META row proves it did
-   * not land.
+   * The timeline of C-02c, with every put uploading under its own object id:
+   *
+   * 1. Another put committed this checkpoint id with the same checkpoint bytes
+   *    and different metadata. Its rows name objects under its own id.
+   * 2. This call's transaction spends its retries.
+   * 3. The META row it reads back holds the other put's key, so this call did
+   *    not land, and it releases both of its uploads.
+   *
+   * The invariant is that the other put's committed objects are never released,
+   * and the PAYLOAD row is not read to learn that.
    */
-  it("keeps the checkpoint object another writer's live PAYLOAD row names, releasing only its own metadata", async () => {
+  it("releases both of its own uploads, never the objects another put's committed rows name", async () => {
+    const other = await committedRows({ ...metadata, source: 'update' });
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(transientTimeout());
-    answerBySortKey(
-      mock,
-      () => ({ Item: { metadata: otherS3('t1//ckpt-1/metadata/KMB') } }),
-      () => ({ Item: { checkpoint: attempted(mock).checkpoint } }),
-    );
+    answerBySortKey(mock, () => ({ Item: { metadata: other.metadata } }), 'fails');
     const offloader = trackingOffloader();
     const context = { ...contextWith(client), offloader: offloader as never, retry: fastRetry };
     await expect(
       putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
-    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED, name: 'RetryExhaustedError' });
     const own = attempted(mock);
     const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
-    expect(deleted).toEqual([own.metadata.s3Key]);
-    expect(deleted).not.toContain(own.checkpoint.s3Key);
+    expect(deleted).toEqual([own.metadata.s3Key, own.checkpoint.s3Key]);
+    expect(deleted).not.toContain(other.metadata.s3Key);
+    expect(deleted).not.toContain(other.checkpoint.s3Key);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
   });
 
   /**
-   * A failed probed read establishes nothing, and a row that shows another
-   * writer licenses a release only once the other row is known too: it may
-   * name the very object that release would delete. Either way the
-   * transaction's own error is thrown and nothing is deleted.
+   * A failed read of the row carrying an offloaded descriptor establishes
+   * nothing: the transaction's own error is thrown and nothing is deleted.
    */
   it.each<[string, boolean, (mock: DocumentMock) => [Answer, Answer]]>([
     ['the probed META read fails', true, () => ['fails', theirCheckpoint]],
     ['the probed PAYLOAD read fails', false, () => [theirMetadata, 'fails']],
-    ['META shows another writer and the PAYLOAD read fails', true, () => [theirMetadata, 'fails']],
-    [
-      'PAYLOAD shows another writer and the META read fails',
-      false,
-      () => ['fails', theirCheckpoint],
-    ],
   ])('leaks rather than deletes when %s', async (_case, offloadMetadata, answers) => {
     const { mock, offloader, settled } = await failedPut(offloadMetadata, answers);
     expect(settled.error).toMatchObject({
@@ -225,18 +233,18 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
   });
 
   /**
-   * The row carrying an offloaded descriptor proves a landing on its own, and a
-   * landing releases nothing, so the other row's failed read cannot turn a
-   * committed transaction into a reported failure.
+   * The row carrying an offloaded descriptor proves a landing on its own: the
+   * other row commits with it, so it is not read, and a read of it that would
+   * fail cannot turn a committed transaction into a reported failure.
    */
   it.each<[string, boolean, (mock: DocumentMock) => [Answer, Answer]]>([
     [
-      'META proves the landing and the PAYLOAD read fails',
+      'META proves the landing, reading no PAYLOAD row',
       true,
       (mock) => [ownMetadata(mock), 'fails'],
     ],
     [
-      'PAYLOAD proves the landing and the META read fails',
+      'PAYLOAD proves the landing, reading no META row',
       false,
       (mock) => ['fails', ownCheckpoint(mock)],
     ],
@@ -254,5 +262,46 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
       },
     );
     expect(attempted(mock).metadata.location).toBe(offloadMetadata ? 'S3' : 'INLINE');
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+  });
+});
+
+/**
+ * An earlier put committed this checkpoint id. A second put of the same
+ * checkpoint bytes with different metadata is refused permanently, and the row
+ * read back is the earlier put's. It names the earlier put's object, not this
+ * call's, so the refusal is reported and only this call's upload is released.
+ */
+describe('putCheckpoint re-putting a committed checkpoint id', () => {
+  it('reports a permanent failure although the PAYLOAD row holds the same bytes', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const table = new Map<string, Record<string, unknown>>();
+    mock
+      .on(TransactWriteCommand)
+      .callsFakeOnce(async (input: { TransactItems: { Put: { Item: { SK: string } } }[] }) => {
+        for (const { Put } of input.TransactItems) table.set(Put.Item.SK, Put.Item);
+        return {};
+      })
+      .rejects(Object.assign(new Error('refused'), { name: 'ValidationException' }));
+    mock.on(GetCommand).callsFake(async (input: { Key: { SK: string } }) => ({
+      Item: table.get(input.Key.SK),
+    }));
+    const offloader = trackingOffloader(false);
+    const context = { ...contextWith(client), offloader: offloader as never };
+    const config = { configurable: { thread_id: 't1' } };
+    await putCheckpoint(context, config, checkpoint, metadata);
+    const earlier = table.get('PAYLOAD##ckpt-1')?.checkpoint as { s3Key: string };
+
+    const settled = await putCheckpoint(context, config, checkpoint, {
+      ...metadata,
+      source: 'update',
+    }).catch((error: Error) => error);
+
+    expect(settled).toMatchObject({ name: 'ValidationException', message: 'refused' });
+    const own = mock.commandCalls(TransactWriteCommand)[1].args[0].input.TransactItems ?? [];
+    const ownKey = (own[1].Put?.Item?.checkpoint as { s3Key: string }).s3Key;
+    expect(ownKey).not.toBe(earlier.s3Key);
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith([ownKey]);
   });
 });

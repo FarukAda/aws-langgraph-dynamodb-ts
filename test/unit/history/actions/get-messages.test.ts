@@ -33,7 +33,7 @@ function context(
 function offloaderStub(download: () => Promise<Uint8Array>) {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
+    buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
     upload: async (key: string) => key,
     download: jest.fn(download),
     deleteBatch: jest.fn(),
@@ -311,7 +311,7 @@ describe('options shape (M-08)', () => {
 describe('S3 key binding (SEC-03)', () => {
   const binding = () => ({
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[], hash: string) => buildS3Key('p/', parts, hash),
+    buildKey: (parts: readonly string[], objectId: string) => buildS3Key('p/', parts, objectId),
     upload: async (key: string) => key,
     download: jest.fn(async () => new Uint8Array()),
     deleteBatch: jest.fn(),
@@ -333,7 +333,7 @@ describe('S3 key binding (SEC-03)', () => {
       location: PayloadLocation.S3,
       serdeType: 'json',
       compressed: false,
-      s3Key: buildS3Key('p/', ['victim', '01A'], 'A'.repeat(43)),
+      s3Key: buildS3Key('p/', ['victim'], '01A'),
     };
     return item;
   }

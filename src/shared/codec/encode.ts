@@ -7,7 +7,6 @@ import {
   PayloadLocation,
 } from './codec';
 import { type CompressionResult, compress } from './compression';
-import { contentHash } from './content-hash';
 
 /** The DynamoDB key of the row that will hold the descriptor being built. */
 interface RowKey {
@@ -19,10 +18,19 @@ interface RowKey {
 export interface EncodeOptions {
   /**
    * The identity of the row this payload belongs to, as the path segments
-   * above the content hash. Two rows never share an object, so the row that
-   * owns the key is the only one that may delete it.
+   * above {@link EncodeOptions.objectId}. A reader refuses an object that lies
+   * outside the path its row's leading identifiers produce.
    */
   keyParts: readonly string[];
+  /**
+   * The id of the write this payload belongs to, and the key's last segment.
+   * The caller draws a fresh UUID or ULID for each write — each store put, each
+   * checkpoint put, each `putWrites` call, each history message — and passes the
+   * same one for every payload of that write, whose `keyParts` already differ.
+   * No other write uses that id, so no row another write commits names the
+   * object.
+   */
+  objectId: string;
   /**
    * The row's DynamoDB key, stored on the object as the backlink AWS
    * recommends for exactly this layout: "Store the primary key value of the
@@ -58,8 +66,8 @@ function assertInlinePayloadFits(bytes: Uint8Array, deps: CodecDeps): void {
  * Accepts: `value` — anything the serde can represent; what it cannot is its
  * own error. `deps.compression` — absent or `enabled: false` stores the
  * serialized bytes as they are. `deps.offloader` — absent stores every payload
- * inline. `options` — the row's identity and DynamoDB key (see
- * {@link EncodeOptions}).
+ * inline. `options` — the row's identity, the write's object id and the row's
+ * DynamoDB key (see {@link EncodeOptions}).
  *
  * Returns: an `S3` descriptor when an offloader is configured and
  * `shouldOffload` accepts the compressed size, otherwise an `INLINE`
@@ -84,7 +92,7 @@ export async function encodePayload<T>(
     : { bytes: raw, compressed: false };
   const base = { schemaVersion: DESCRIPTOR_SCHEMA_VERSION, serdeType, compressed };
   if (deps.offloader && deps.offloader.shouldOffload(bytes)) {
-    const s3Key = deps.offloader.buildKey(options.keyParts, contentHash(bytes));
+    const s3Key = deps.offloader.buildKey(options.keyParts, options.objectId);
     await deps.offloader.upload(s3Key, bytes, options.row);
     return { ...base, location: PayloadLocation.S3, s3Key };
   }

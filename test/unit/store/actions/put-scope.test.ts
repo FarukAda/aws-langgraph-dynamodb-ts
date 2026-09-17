@@ -23,7 +23,7 @@ const previous = {
 
 const offloader = {
   shouldOffload: () => false,
-  buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
+  buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
   upload: async (key: string) => key,
   deleteBatch: jest.fn(),
   ownsKey: () => true,

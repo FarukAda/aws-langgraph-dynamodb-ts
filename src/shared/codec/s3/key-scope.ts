@@ -38,9 +38,9 @@ export function s3KeyScope(prefix: string, parts: readonly string[]): string {
  * check.
  *
  * Returns: true when the key continues below the scope (`<scope>/…`, which is
- * every key this release writes, since the content hash is one segment deeper)
- * or equals it (`<scope>.bin`, as releases before content addressing wrote a
- * store item with no nonce).
+ * every key this release writes, since the write's object id is one segment
+ * deeper) or equals it (`<scope>.bin`, the key of a store item offloaded by a
+ * release that gave the key no per-write segment).
  *
  * Throws: nothing.
  *

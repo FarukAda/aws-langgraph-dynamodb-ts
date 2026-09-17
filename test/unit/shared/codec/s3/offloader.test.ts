@@ -58,12 +58,12 @@ describe('S3Offloader', () => {
     expect(offloader.shouldOffload(new Uint8Array(99))).toBe(false);
   });
 
-  it('buildKey base64url-encodes parts under the default prefix and getKeyPrefix returns it', () => {
+  it('buildKey ends in the object id under the default prefix, and getKeyPrefix returns it', () => {
     const { offloader } = makeOffloader();
     const encode = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
-    const hash = 'A'.repeat(43);
-    expect(offloader.buildKey(['t', 'c', 'checkpoint'], hash)).toBe(
-      `langgraph-checkpoints/${encode('t')}/${encode('c')}/${encode('checkpoint')}/${hash}.bin`,
+    const objectId = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';
+    expect(offloader.buildKey(['t', 'c', 'checkpoint'], objectId)).toBe(
+      `langgraph-checkpoints/${encode('t')}/${encode('c')}/${encode('checkpoint')}/${objectId}.bin`,
     );
     expect(offloader.getKeyPrefix()).toBe('langgraph-checkpoints/');
   });
@@ -102,9 +102,10 @@ describe('S3Offloader', () => {
   });
 
   /**
-   * The key is the content hash of the bytes, so an object already at that key
-   * holds exactly these bytes. A `412` therefore means the upload has nothing
-   * left to do — it is the success case, not a failure to report.
+   * A key names one write's upload, and only that upload's own requests write
+   * it, so a `412` means an earlier attempt of this upload already stored the
+   * object. The upload has nothing left to do — it is the success case, not a
+   * failure to report.
    */
   it('upload treats a 412 as already stored and reports success', async () => {
     s3Mock.on(PutObjectCommand).rejects(
@@ -357,7 +358,7 @@ describe('download cap (CODEC-17)', () => {
 describe('row-sourced key binding (SEC-03)', () => {
   it('ownsKey/assertOwnedKey bind a key to the prefix and the scope parts', () => {
     const { offloader } = makeOffloader();
-    const own = offloader.buildKey(['t', 'ns', 'c', 'checkpoint'], 'A'.repeat(43));
+    const own = offloader.buildKey(['t', 'ns', 'c', 'checkpoint'], '01J9ZQ5X3N8VQ4M6C2T7R0K1HD');
     expect(offloader.ownsKey(own, ['t'])).toBe(true);
     expect(offloader.ownsKey(own, ['other'])).toBe(false);
     expect(() => offloader.assertOwnedKey(own, ['t'])).not.toThrow();

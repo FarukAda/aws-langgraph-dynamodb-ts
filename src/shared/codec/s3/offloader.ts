@@ -102,18 +102,20 @@ export class S3Offloader {
   }
 
   /**
-   * Build the S3 key addressing `hash` under the row `parts` identify.
+   * Build the S3 key of the object write `objectId` uploads for the row `parts`
+   * identify.
    *
-   * Accepts: `parts` — at least one; the row's identity. `hash` — the content
-   * address of the bytes.
+   * Accepts: `parts` — at least one; the row's identity. `objectId` — the
+   * uploading write's id, appended as it is: key-safe, with no `/` (see
+   * {@link buildS3Key}).
    *
    * Returns: the key, under this offloader's prefix.
    *
    * Throws: ValidationError naming `s3Key` for empty `parts` or a key over
    * S3's 1024-byte cap.
    */
-  buildKey(parts: readonly string[], hash: string): string {
-    return buildS3Key(this.keyPrefix, parts, hash);
+  buildKey(parts: readonly string[], objectId: string): string {
+    return buildS3Key(this.keyPrefix, parts, objectId);
   }
 
   /**
@@ -162,14 +164,15 @@ export class S3Offloader {
   }
 
   /**
-   * Upload `data` under `key` unless it is already there.
+   * Upload `data` under `key`, writing only while the key is free.
    *
-   * Accepts: `key` — the content address of `data`, so an object already there
-   * holds these exact bytes. `row` — written to the object as the DynamoDB
-   * backlink, for an out-of-band sweeper.
+   * Accepts: `key` — built by {@link buildKey} for the write uploading `data`,
+   * so no other write uploads to it. `row` — written to the object as the
+   * DynamoDB backlink, for an out-of-band sweeper.
    *
-   * Returns: the key, whether this call uploaded or found the bytes already
-   * stored; the caller's obligation is the same either way.
+   * Returns: the key, whether this request stored the object or an earlier
+   * attempt of this upload did (see `uploadObject`); the caller's obligation is
+   * the same either way.
    *
    * Throws: `S3_OFFLOAD_FAILED` carrying the key.
    */

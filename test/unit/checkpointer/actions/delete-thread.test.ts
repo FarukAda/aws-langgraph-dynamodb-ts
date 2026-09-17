@@ -160,8 +160,12 @@ describe('deleteThread', () => {
 describe('deleteThread S3 key binding (SEC-03)', () => {
   it("never deletes an offloaded object outside the thread's own path, and warns", async () => {
     const { client, mock } = createStrictDocumentMock();
-    const own = buildS3Key('p/', ['t', '', 'c1', 'checkpoint'], 'A'.repeat(43));
-    const foreign = buildS3Key('p/', ['victim', '', 'c9', 'checkpoint'], 'A'.repeat(43));
+    const own = buildS3Key('p/', ['t', '', 'c1', 'checkpoint'], '01J9ZQ5X3N8VQ4M6C2T7R0K1HD');
+    const foreign = buildS3Key(
+      'p/',
+      ['victim', '', 'c9', 'checkpoint'],
+      '01J9ZQ5X3N8VQ4M6C2T7R0K1HD',
+    );
     const s3 = (s3Key: string) => ({
       location: PayloadLocation.S3,
       serdeType: 'json',

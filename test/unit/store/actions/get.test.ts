@@ -113,7 +113,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
   function offloaderFor(downloads: Record<string, () => Promise<Uint8Array>>) {
     return {
       shouldOffload: () => true,
-      buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
+      buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
       upload: async (key: string) => key,
       download: jest.fn(async (key: string) => downloads[key]()),
       assertOwnedKey: () => undefined,
@@ -223,7 +223,7 @@ describe('getItem S3 key binding (SEC-03)', () => {
           location: PayloadLocation.S3,
           serdeType: 'json',
           compressed: false,
-          s3Key: buildS3Key('p/', ['victims', 'v1', 'secret'], 'A'.repeat(43)),
+          s3Key: buildS3Key('p/', ['victims', 'v1', 'secret'], '01J9ZQ5X3N8VQ4M6C2T7R0K1HD'),
         },
       },
     });

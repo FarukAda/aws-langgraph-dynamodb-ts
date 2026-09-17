@@ -22,10 +22,10 @@ export interface UploadParams {
  * True when S3 refused a conditional write because the key is already taken.
  *
  * With `If-None-Match: *` that is a `412 Precondition Failed` (S3 User Guide,
- * *How to prevent object overwrites with conditional writes*). Since the key is
- * the content hash of the bytes being written, an object already at that key
- * holds these exact bytes — so the upload has nothing left to do and the 412 is
- * the success case, not a failure.
+ * *How to prevent object overwrites with conditional writes*). A key names one
+ * write's upload, and only that upload's own requests write it, so the object
+ * already there was stored by an earlier attempt of this upload. The upload
+ * has nothing left to do, and the 412 is the success case, not a failure.
  */
 function alreadyStored(error: Error): boolean {
   const failure = error as Error & { $metadata?: { httpStatusCode?: number } };
@@ -38,18 +38,20 @@ function alreadyStored(error: Error): boolean {
  *
  * The write is conditional (`If-None-Match: *`), which costs nothing extra: it
  * needs only `s3:PutObject`, the permission this package already requires, and
- * it turns a retried or duplicated upload into a no-op instead of a rewrite. A
- * `409 Conflict` — S3's answer when a delete lands between the check and the
- * write — is classified as transient and retried like any other conflict.
+ * a retried request writes nothing new: it can never overwrite the object an
+ * earlier attempt stored. A `409 Conflict` — S3's answer when a delete lands
+ * between the check and the write — is classified as transient and retried
+ * like any other conflict.
  *
- * Accepts: `params.key` — the content address of `params.data`, so an object
- * already there holds these exact bytes. `params.metadata` — the backlink,
- * written only on a real upload; an object that was already stored keeps the
- * metadata of whoever wrote it, which names a row pointing at the same bytes.
+ * Accepts: `params.key` — the key of one write's upload of `params.data`,
+ * written by no other write. `params.metadata` — the backlink, sent with every
+ * attempt; an object an earlier attempt stored keeps that attempt's metadata,
+ * which is the same.
  *
- * Returns: nothing, both when the upload happened and when it was unnecessary.
- * The two are not distinguished because the caller's obligation is identical:
- * the bytes are at that key.
+ * Returns: nothing, both when this request stored the object and when S3
+ * answered `412` because an earlier attempt of this upload already had. The
+ * two are not distinguished because the caller's obligation is identical: the
+ * bytes are at that key.
  *
  * Throws: `S3_OFFLOAD_FAILED` carrying the key and the underlying error, after
  * three attempts on a transient failure.

@@ -132,7 +132,11 @@ describe('getCheckpointTuple S3 key binding (SEC-03)', () => {
         location: PayloadLocation.S3,
         serdeType: 'json',
         compressed: false,
-        s3Key: buildS3Key('p/', ['victim', '', 'ckpt-1', 'checkpoint'], 'A'.repeat(43)),
+        s3Key: buildS3Key(
+          'p/',
+          ['victim', '', 'ckpt-1', 'checkpoint'],
+          '01J9ZQ5X3N8VQ4M6C2T7R0K1HD',
+        ),
       },
     };
     mock.on(QueryCommand).callsFake((input) => {

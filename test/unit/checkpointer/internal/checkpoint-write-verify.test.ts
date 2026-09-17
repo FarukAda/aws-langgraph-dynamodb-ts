@@ -71,139 +71,83 @@ function answerBySortKey(
   });
 }
 
+/** The reads a verification issued, as their inputs. */
+function readInputs(mock: ReturnType<typeof createStrictDocumentMock>['mock']) {
+  return mock.commandCalls(GetCommand).map((call) => call.args[0].input);
+}
+
 describe('verifyCheckpointLanded', () => {
-  /** A landing releases nothing, so it hands back nothing live. */
-  it("reports landed when the META row holds this attempt's metadata key, reading both rows' descriptors", async () => {
+  /**
+   * The rows commit together, so the row carrying an offloaded descriptor
+   * decides the landing alone, and only its descriptor's location and key are
+   * read.
+   */
+  it("reports landed when the META row holds this attempt's metadata key, reading that row alone", async () => {
     const { client, mock } = createStrictDocumentMock();
-    answerBySortKey(mock, metaAt('k/meta/A'), ckptAt('k/ckpt/A'));
+    answerBySortKey(mock, metaAt('k/meta/A'), 'fails');
     const { meta, payload } = rows(s3('k/meta/A'), s3('k/ckpt/A'));
-    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toEqual({
-      verdict: 'landed',
-      live: [],
+    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toBe('landed');
+    const inputs = readInputs(mock);
+    expect(inputs.map((input) => input.Key)).toEqual([{ PK: 'CHKPT#t', SK: 'META##c1' }]);
+    expect(inputs[0].ConsistentRead).toBe(true);
+    expect(inputs[0].ProjectionExpression).toBe('#d0.#loc, #d0.#s3k');
+    expect(inputs[0].ExpressionAttributeNames).toEqual({
+      '#d0': 'metadata',
+      '#loc': 'location',
+      '#s3k': 's3Key',
     });
-    const inputs = mock.commandCalls(GetCommand).map((call) => call.args[0].input);
-    expect(inputs.map((input) => input.Key)).toEqual([
-      { PK: 'CHKPT#t', SK: 'META##c1' },
-      { PK: 'CHKPT#t', SK: 'PAYLOAD##c1' },
-    ]);
-    expect(inputs.every((input) => input.ConsistentRead === true)).toBe(true);
-    expect(inputs.map((input) => input.ProjectionExpression)).toEqual([
-      '#d0.#loc, #d0.#s3k',
-      '#d0.#loc, #d0.#s3k',
-    ]);
-    expect(inputs.map((input) => input.ExpressionAttributeNames!['#d0'])).toEqual([
-      'metadata',
-      'checkpoint',
-    ]);
   });
 
-  it('probes the PAYLOAD row when only the checkpoint is offloaded', async () => {
+  it('probes the PAYLOAD row alone when only the checkpoint is offloaded', async () => {
     const { client, mock } = createStrictDocumentMock();
-    answerBySortKey(mock, metaAt(), ckptAt('k/ckpt/A'));
+    answerBySortKey(mock, 'fails', ckptAt('k/ckpt/A'));
     const { meta, payload } = rows(inline, s3('k/ckpt/A'));
-    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toEqual({
-      verdict: 'landed',
-      live: [],
-    });
-  });
-
-  it('reports not-landed, with nothing live, when both rows are absent', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    answerBySortKey(mock, {}, {});
-    const { meta, payload } = rows(s3('k/meta/A'), inline);
-    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toEqual({
-      verdict: 'not-landed',
-      live: [],
-    });
+    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toBe('landed');
+    const inputs = readInputs(mock);
+    expect(inputs.map((input) => input.Key)).toEqual([{ PK: 'CHKPT#t', SK: 'PAYLOAD##c1' }]);
+    expect(inputs[0].ExpressionAttributeNames!['#d0']).toBe('checkpoint');
   });
 
   /**
-   * Another writer's rows decide the verdict, and every descriptor they hold is
-   * handed back: identical checkpoint bytes under the same id share this
-   * attempt's checkpoint key even when the metadata differs (C-02c).
+   * Every put draws its own object id, so a row holding another key, or an
+   * inline value, or no row at all, was not written by this attempt, and names
+   * none of its uploads. The other row is not read: whatever it holds was
+   * committed with the probed one.
    */
-  it("reports not-landed when the row holds another attempt's key, with what both rows hold", async () => {
+  it.each([
+    ['is absent', {}],
+    ["holds another put's key", metaAt('k/meta/OTHER')],
+    ['holds an inline descriptor', metaAt()],
+  ] as const)('reports not-landed, reading one row, when the probed row %s', async (_c, answer) => {
     const { client, mock } = createStrictDocumentMock();
-    answerBySortKey(
-      mock,
-      { Item: { metadata: ref('k/meta/OTHER') } },
-      { Item: { checkpoint: ref('k/ckpt/A') } },
-    );
+    answerBySortKey(mock, answer, 'fails');
     const { meta, payload } = rows(s3('k/meta/A'), s3('k/ckpt/A'));
-    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toEqual({
-      verdict: 'not-landed',
-      live: [ref('k/meta/OTHER'), ref('k/ckpt/A')],
-    });
-  });
-
-  it('reports not-landed when the row holds an inline descriptor', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    answerBySortKey(mock, { Item: { metadata: ref() } }, {});
-    const { meta, payload } = rows(s3('k/meta/A'), inline);
-    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toEqual({
-      verdict: 'not-landed',
-      live: [ref()],
-    });
+    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toBe(
+      'not-landed',
+    );
+    expect(readInputs(mock)).toHaveLength(1);
   });
 
   it('reports not-landed without reading when nothing was offloaded (nothing to clean up)', async () => {
     const { client, mock } = createStrictDocumentMock();
     const { meta, payload } = rows(inline, inline);
-    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toEqual({
-      verdict: 'not-landed',
-      live: [],
-    });
+    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toBe(
+      'not-landed',
+    );
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
 
-  /**
-   * Only a release needs both rows. The probed row alone proves a landing,
-   * which releases nothing. A non-commit licenses a release, and the row that
-   * was not read may name the very object it would release. A failed probed
-   * read establishes nothing at all.
-   */
+  /** A failed read establishes nothing, so nothing may be released on its strength. */
   it.each([
-    ['the probed META read fails', 'unverified', s3('k/meta/A'), 'fails', ckptAt('k/ckpt/A')],
-    ['the probed PAYLOAD read fails', 'unverified', inline, metaAt(), 'fails'],
-    [
-      'META proves the landing and the PAYLOAD read fails',
-      'landed',
-      s3('k/meta/A'),
-      metaAt('k/meta/A'),
-      'fails',
-    ],
-    [
-      'PAYLOAD proves the landing and the META read fails',
-      'landed',
-      inline,
-      'fails',
-      ckptAt('k/ckpt/A'),
-    ],
-    [
-      'META shows another writer and the PAYLOAD read fails',
+    ['META', s3('k/meta/A')],
+    ['PAYLOAD', inline],
+  ] as const)('reports unverified when the probed %s read fails', async (_row, metadata) => {
+    const { client, mock } = createStrictDocumentMock();
+    answerBySortKey(mock, 'fails', 'fails');
+    const { meta, payload } = rows(metadata, s3('k/ckpt/A'));
+    await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toBe(
       'unverified',
-      s3('k/meta/A'),
-      metaAt('k/meta/OTHER'),
-      'fails',
-    ],
-    [
-      'PAYLOAD shows another writer and the META read fails',
-      'unverified',
-      inline,
-      'fails',
-      ckptAt('k/ckpt/OTHER'),
-    ],
-  ] as const)(
-    'when %s, reports %s with nothing live',
-    async (_case, verdict, metadata, metaAnswer, payloadAnswer) => {
-      const { client, mock } = createStrictDocumentMock();
-      answerBySortKey(mock, metaAnswer, payloadAnswer);
-      const { meta, payload } = rows(metadata, s3('k/ckpt/A'));
-      await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toEqual({
-        verdict,
-        live: [],
-      });
-      expect(mock.commandCalls(GetCommand)).toHaveLength(2);
-    },
-  );
+    );
+    expect(readInputs(mock)).toHaveLength(1);
+  });
 });

@@ -5,6 +5,7 @@ import { type CodecDeps } from '../../shared/codec/codec';
 import { encodePayload } from '../../shared/codec/encode';
 import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
 import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
+import { createUlidFactory } from '../../shared/ulid';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { metaSortKey, partitionKey, payloadSortKey, writeSortKey } from './keys';
 import type { CheckpointerContext } from './setup';
@@ -32,12 +33,21 @@ function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T 
 }
 
 /**
+ * Names the objects of one `saver.put`. A ULID rather than a UUID because it
+ * sorts by time, which keeps a bucket listing of one checkpoint's objects
+ * readable.
+ */
+const nextPutObjectId = createUlidFactory();
+
+/**
  * Encode a checkpoint + metadata into its META and PAYLOAD items.
  *
- * Each offloaded payload is addressed by its own content hash under the row
- * that points at it, so a second put of the same checkpoint id — a retry after
- * a lost response, or a repair tool re-writing a checkpoint — writes the same
- * bytes to the same key instead of creating a second object.
+ * Each call draws one object id and uploads both offloaded payloads under it,
+ * below the row that points at each. A second put of the same checkpoint id — a
+ * put the caller re-issues after a lost response, or a repair tool re-writing a
+ * checkpoint — draws another, so it never names an object the first put
+ * uploaded, and the verification after a failed transaction can tell the two
+ * puts' rows apart by the key alone.
  *
  * Accepts: `checkpoint` — every channel value it carries is stored; see
  * `putCheckpoint` for why nothing is narrowed away. `parentCheckpointId` — the
@@ -64,12 +74,15 @@ export async function buildCheckpointItems(
 ): Promise<{ meta: CheckpointMetaItem; payload: CheckpointPayloadItem }> {
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
+  const objectId = nextPutObjectId();
   const checkpointDescriptor = await encodePayload(checkpoint, deps, {
     keyParts: [threadId, checkpointNs, checkpoint.id, 'checkpoint'],
+    objectId,
     row: { pk, sk: payloadSortKey(checkpointNs, checkpoint.id) },
   });
   const metadataDescriptor = await encodePayload(metadata, deps, {
     keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata'],
+    objectId,
     row: { pk, sk: metaSortKey(checkpointNs, checkpoint.id) },
   });
   /**
@@ -113,10 +126,10 @@ export async function buildCheckpointItems(
  * before any payload is encoded or uploaded, so a bad channel costs no S3
  * object. `writeGroup` — unique per `putWrites` *call*, not per write, and
  * stored on every row the call produces: it is what tells one call's writes
- * apart from another's when `dropSupersededWrites` resolves first-write-wins.
- * It identifies a DynamoDB write rather than an S3 object — offloaded payloads
- * are addressed by content hash under their own row, so two calls writing the
- * same bytes for the same row share one object by design.
+ * apart from another's when `dropSupersededWrites` resolves first-write-wins,
+ * and it is the object id every offloaded write of the call is uploaded under.
+ * Two calls writing the same bytes for the same row therefore upload two
+ * objects, and each row names only its own call's.
  *
  * Returns: one row per write, special channels first, each carrying its
  * `occurrence` so a channel emitted twice by one call keeps both values.
@@ -147,6 +160,7 @@ export async function buildWriteItems(
     const sk = writeSortKey(checkpointNs, checkpointId, taskId, index, channel);
     const descriptor = await encodePayload(value, deps, {
       keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`, channel],
+      objectId: writeGroup,
       row: { pk, sk },
     });
     const item: CheckpointWriteItem = {

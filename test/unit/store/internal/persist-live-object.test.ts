@@ -9,13 +9,10 @@ import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
-/** An offloaded descriptor as the verification read projects it: location and key only. */
-const s3 = (s3Key: string) => ({ location: PayloadLocation.S3, s3Key });
-
 function trackingOffloader() {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: string[], hash: string) => `${[...parts, hash].join('/')}.bin`,
+    buildKey: (parts: string[], objectId: string) => `${[...parts, objectId].join('/')}.bin`,
     upload: jest.fn(async (key: string) => key),
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: () => true,
@@ -41,153 +38,115 @@ function context(
 
 const OP: PutOperation = { namespace: ['users', 'u1'], key: 'profile', value: { name: 'Faruk' } };
 
-/**
- * The timeline of C-02a:
- *
- * 1. This call reads row E, which points at `E.bin`, and uploads its value to K.
- * 2. Every attempt at its put times out, so the retry budget is spent.
- * 3. Meanwhile a racer commits the same value: its row carries its own `rev`,
- *    and, because a key is the hash of the bytes under the row's path, K.
- * 4. The verification read finds the racer's `rev`, so this write did not land,
- *    and the cleanup releases this call's own upload.
- *
- * `racerKey` names the object the racer's row points at, given this call's K.
- */
-async function raceWithRacerAt(racerKey: (uploaded: string) => string) {
-  const { client, mock } = createStrictDocumentMock();
-  const offloader = trackingOffloader();
-  const uploaded = (): string => offloader.upload.mock.calls[0][0];
-  mock.on(GetCommand).callsFake(async (input: { ProjectionExpression: string }) => {
-    if (input.ProjectionExpression.startsWith('#c')) {
-      return { Item: { createdAt: 'c', rev: 'REV-E', value: s3('users/u1/profile/E.bin') } };
-    }
-    return { Item: { rev: 'REV-R', value: s3(racerKey(uploaded())) } };
-  });
-  mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
-
-  await expect(putItem(context(client, offloader), OP)).rejects.toMatchObject({
-    code: ErrorCode.RETRY_EXHAUSTED,
-  });
-
-  const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
-  return { uploaded: uploaded(), deleted };
+/** A committed row as a store put writes it: its revision, and its value's location and key. */
+interface CommittedRow {
+  rev: string;
+  value: { location: PayloadLocation; s3Key: string };
 }
 
-describe('store.put keeps the object a live row names when its write fails ambiguously (C-02a)', () => {
-  it("never deletes its own upload when the racer's live row holds the same key", async () => {
-    const { uploaded, deleted } = await raceWithRacerAt((own) => own);
-    expect(deleted).not.toContain(uploaded);
+/** The row another put of `value` commits, captured by letting that put land on an empty item. */
+async function rowCommittedBy(value: PutOperation['value']): Promise<CommittedRow> {
+  const { client, mock } = createStrictDocumentMock();
+  let row: CommittedRow | undefined;
+  mock.on(GetCommand).resolves({});
+  mock.on(PutCommand).callsFake(async (input: { Item: CommittedRow }) => {
+    row = { rev: input.Item.rev, value: input.Item.value };
+    return {};
   });
+  await putItem(context(client, trackingOffloader()), { ...OP, value });
+  return row!;
+}
 
-  it("still deletes its own upload when the racer's live row holds another key", async () => {
-    const { uploaded, deleted } = await raceWithRacerAt(() => 'users/u1/profile/R.bin');
-    expect(deleted).toEqual([uploaded]);
+const deletedBy = (offloader: ReturnType<typeof trackingOffloader>): string[] =>
+  offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
+
+/**
+ * The timeline of C-02a, with every put uploading under its own `rev`:
+ *
+ * 1. This call reads row E and uploads its value under its own `rev`.
+ * 2. Every attempt at its put times out, so the retry budget is spent.
+ * 3. Meanwhile a racer commits a value — the same one, or another — under the
+ *    racer's own `rev`, so its row names an object of the racer's own.
+ * 4. The verification read finds the racer's `rev`, so this write did not land,
+ *    and the cleanup releases this call's upload.
+ *
+ * The invariant is that the racer's committed object is never released.
+ */
+describe("store.put never releases a racer's committed object when its own write fails ambiguously (C-02a)", () => {
+  it.each([
+    ['the same value', OP.value],
+    ['another value', { name: 'someone else' }],
+  ])('releases exactly its own upload when the racer committed %s', async (_label, value) => {
+    const racer = await rowCommittedBy(value);
+    const earlier = await rowCommittedBy({ name: 'the value row E holds' });
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = trackingOffloader();
+    mock
+      .on(GetCommand)
+      .callsFake(async (input: { ProjectionExpression: string }) =>
+        input.ProjectionExpression.startsWith('#c')
+          ? { Item: { createdAt: 'c', ...earlier } }
+          : { Item: racer },
+      );
+    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+
+    await expect(putItem(context(client, offloader), OP)).rejects.toMatchObject({
+      code: ErrorCode.RETRY_EXHAUSTED,
+      name: 'RetryExhaustedError',
+    });
+
+    const own: string = offloader.upload.mock.calls[0][0];
+    expect(own).not.toBe(racer.value.s3Key);
+    expect(deletedBy(offloader)).toEqual([own]);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(2);
   });
 });
 
-const C1 = { note: 'the original value' };
-const C2 = { note: 'the value that overwrites it' };
-
-/** The key `value` is offloaded to, captured by putting it where no row exists. */
-async function offloadedKeyOf(value: PutOperation['value']): Promise<string> {
-  const { client, mock } = createStrictDocumentMock();
-  const offloader = trackingOffloader();
-  mock.on(GetCommand).resolves({});
-  mock.on(PutCommand).resolves({});
-  await putItem(context(client, offloader), { ...OP, value });
-  return offloader.upload.mock.calls[0][0];
-}
-
-/** What a read answers: a row, no row, or a failure. */
-type ReadAnswer = { Item?: Record<string, unknown> } | 'fails';
-
 /**
- * The timeline of a successful overwrite racing a revert:
+ * The timeline of a successful overwrite racing a revert, with every put
+ * uploading under its own `rev`:
  *
- * 1. The row holds C1 at K1. This call reads it, uploads C2, and its
- *    compare-and-swap commits.
- * 2. A racer then commits C1 again. Its row carries its own `rev` and, because a
- *    key is the hash of the bytes under the row's path, K1.
- * 3. This call releases the payload it superseded, K1.
+ * 1. The row holds C1, committed by an earlier put under that put's `rev`. This
+ *    call reads it, uploads C2 under its own, and its compare-and-swap commits.
+ * 2. A racer then commits C1 again, under the racer's own `rev`, so its row
+ *    names an object of its own, not the one the earlier put uploaded.
+ * 3. This call releases the payload it superseded without reading the row again.
  *
- * The answers follow time, not the shape of the request. Every read issued
- * before the put sees row E. `after` answers every read issued once the put
- * has been, given this call's own upload and K1. A cleanup that read the row
- * before its swap would therefore see K1 named and keep it, which is what pins
- * the read after the commit.
+ * The invariant is that the racer's committed object is never released.
  */
-async function overwriteThenRead(after: (own: string, k1: string) => ReadAnswer) {
-  const k1 = await offloadedKeyOf(C1);
-  const { client, mock } = createStrictDocumentMock();
-  const offloader = trackingOffloader();
-  const debug = jest.fn();
-  let committed = false;
-  mock.on(GetCommand).callsFake(async () => {
-    if (!committed) return { Item: { createdAt: 'c', rev: 'REV-E', value: s3(k1) } };
-    const answer = after(offloader.upload.mock.calls[0][0], k1);
-    if (answer === 'fails') {
-      throw Object.assign(new Error('read down'), { name: 'ValidationException' });
-    }
-    return answer;
-  });
-  mock.on(PutCommand).callsFake(async () => {
-    committed = true;
-    return {};
-  });
-
-  const ctx = { ...context(client, offloader), logger: { ...SILENT_LOGGER, debug } };
-  await expect(putItem(ctx, { ...OP, value: C2 })).resolves.toBeUndefined();
-
-  const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
-  return { k1, deleted, debug };
-}
-
-describe('store.put reads the row before releasing the payload a successful overwrite superseded', () => {
-  it("never deletes the superseded object when a racer's row committed after the swap names it", async () => {
-    const { k1, deleted } = await overwriteThenRead((_own, key) => ({
-      Item: { rev: 'REV-R', value: s3(key) },
-    }));
-    expect(deleted).not.toContain(k1);
-  });
-
-  it('still deletes the superseded object when the row after the swap holds this write', async () => {
-    const { k1, deleted } = await overwriteThenRead((own) => ({
-      Item: { rev: 'REV-A', value: s3(own) },
-    }));
-    expect(deleted).toEqual([k1]);
-  });
-
-  /** A read that establishes nothing licenses nothing: the object is left to the lifecycle rule. */
-  it('deletes nothing, still resolves, and logs at debug when that read fails', async () => {
-    const { deleted, debug } = await overwriteThenRead(() => 'fails');
-    expect(deleted).toEqual([]);
-    expect(debug).toHaveBeenCalledWith(
-      'store.put: the row could not be read back; the superseded object is left to the lifecycle rule',
-      { namespace: OP.namespace, key: OP.key },
-    );
-  });
-
-  /** The read is spent only when the superseded value names an object this write does not. */
-  it.each<[string, (own: string) => ReadAnswer]>([
-    [
-      'is inline',
-      () => ({ Item: { createdAt: 'c', rev: 'REV-E', value: { location: 'INLINE' } } }),
-    ],
-    ['is absent', () => ({})],
-    [
-      'has the key of this write',
-      (own) => ({ Item: { createdAt: 'c', rev: 'REV-E', value: s3(own) } }),
-    ],
-  ])('reads nothing past readExisting when the superseded value %s', async (_label, existing) => {
-    const own = await offloadedKeyOf(C2);
+describe('store.put releases the payload a successful overwrite superseded without reading the row again', () => {
+  it("releases exactly the superseded object, which the racer's committed row does not name", async () => {
+    const superseded = await rowCommittedBy({ note: 'C1' });
+    const racer = await rowCommittedBy({ note: 'C1' });
     const { client, mock } = createStrictDocumentMock();
     const offloader = trackingOffloader();
-    mock.on(GetCommand).resolves(existing(own) as never);
+    mock.on(GetCommand).resolves({ Item: { createdAt: 'c', ...superseded } });
     mock.on(PutCommand).resolves({});
 
-    await putItem(context(client, offloader), { ...OP, value: C2 });
+    await expect(
+      putItem(context(client, offloader), { ...OP, value: { note: 'C2' } }),
+    ).resolves.toBeUndefined();
 
+    expect(racer.value.s3Key).not.toBe(superseded.value.s3Key);
+    expect(deletedBy(offloader)).toEqual([superseded.value.s3Key]);
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
-    expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['is inline', { Item: { createdAt: 'c', rev: 'REV-E', value: { location: 'INLINE' } } }],
+    ['is absent', {}],
+  ])(
+    'releases nothing and reads nothing past readExisting when the superseded value %s',
+    async (_label, existing) => {
+      const { client, mock } = createStrictDocumentMock();
+      const offloader = trackingOffloader();
+      mock.on(GetCommand).resolves(existing as never);
+      mock.on(PutCommand).resolves({});
+
+      await putItem(context(client, offloader), { ...OP, value: { note: 'C2' } });
+
+      expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+      expect(deletedBy(offloader)).toEqual([]);
+    },
+  );
 });

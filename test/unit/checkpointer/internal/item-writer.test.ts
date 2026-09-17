@@ -28,7 +28,7 @@ function context(): CheckpointerContext {
 function offloadingContext(): CheckpointerContext {
   const offloader = {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
+    buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
     upload: async (key: string) => key,
     deleteBatch: async () => [],
   };
@@ -88,29 +88,31 @@ describe('buildCheckpointItems', () => {
 
   /**
    * The checkpoint and its metadata live on different rows, so they are
-   * addressed under different paths even when they hold identical bytes.
+   * addressed under different paths, below which sits the one object id the
+   * call drew for both.
    */
-  it('addresses each payload under its own row, below which the content hash sits', async () => {
+  it("addresses each payload under its own row, below which the call's one object id sits", async () => {
     const ctx = offloadingContext();
     const { meta, payload } = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
-    expect(s3Key({ value: payload.checkpoint })).toMatch(/^t1\/\/ckpt-1\/checkpoint\/[\w-]{43}$/);
-    expect(s3Key({ value: meta.metadata })).toMatch(/^t1\/\/ckpt-1\/metadata\/[\w-]{43}$/);
+    const checkpointKey = s3Key({ value: payload.checkpoint });
+    expect(checkpointKey).toMatch(new RegExp('^t1//ckpt-1/checkpoint/[0-9A-HJKMNP-TV-Z]{26}$'));
+    const objectId = checkpointKey.slice('t1//ckpt-1/checkpoint/'.length);
+    expect(s3Key({ value: meta.metadata })).toBe(`t1//ckpt-1/metadata/${objectId}`);
   });
 
   /**
-   * A re-put of the same checkpoint — a retry after a lost response, or a
-   * repair tool — writes the same bytes to the same key instead of creating a
-   * second object, so there is nothing left over to clean up or to confuse a
-   * later cleanup about which object a given attempt owned.
+   * A re-put of the same checkpoint — a put the caller re-issues after a lost
+   * response, or a repair tool — draws an object id of its own, so it never
+   * names an object an earlier put uploaded, identical bytes or not.
    */
-  it('gives a re-put of identical content the identical key', async () => {
+  it('gives a re-put of identical content keys of its own', async () => {
     const ctx = offloadingContext();
     const first = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
     const second = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
-    expect(s3Key({ value: second.payload.checkpoint })).toBe(
+    expect(s3Key({ value: second.payload.checkpoint })).not.toBe(
       s3Key({ value: first.payload.checkpoint }),
     );
-    expect(s3Key({ value: second.meta.metadata })).toBe(s3Key({ value: first.meta.metadata }));
+    expect(s3Key({ value: second.meta.metadata })).not.toBe(s3Key({ value: first.meta.metadata }));
   });
 
   it('gives a re-put of changed content a different key', async () => {
@@ -172,9 +174,8 @@ describe('buildWriteItems', () => {
 
   /**
    * A write's row is thread, namespace, checkpoint, task, index and channel —
-   * every segment that makes it a distinct row — with the content hash below.
-   * The `writeGroup` is not part of it: it identifies the DynamoDB write, not
-   * the object.
+   * every segment that makes it a distinct row — with the call's `writeGroup`
+   * below it as the object id.
    */
   it('addresses every write S3 key under its own row, regular or special', async () => {
     const items = await buildWriteItems(
@@ -191,42 +192,26 @@ describe('buildWriteItems', () => {
     );
     const regular = items.find((item) => item.channel === 'regular')!;
     const interrupt = items.find((item) => item.channel === '__interrupt__')!;
-    expect(s3Key(regular)).toMatch(/^t\/\/ckpt-1\/task-7\/write-0\/regular\/[\w-]{43}$/);
-    expect(s3Key(interrupt)).toMatch(
-      new RegExp(
-        `^t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}/__interrupt__/[\\w-]{43}$`,
-      ),
+    expect(s3Key(regular)).toBe('t//ckpt-1/task-7/write-0/regular/group-1');
+    expect(s3Key(interrupt)).toBe(
+      `t//ckpt-1/task-7/write-${WRITES_IDX_MAP['__interrupt__']}/__interrupt__/group-1`,
     );
   });
 
   /**
-   * Two calls writing the same value for the same write share one object, and
-   * that is safe precisely because the row is above the hash: nothing else
-   * references it, so whichever call's row survives still points at live bytes.
+   * Two calls writing the same value for the same write upload two objects, one
+   * under each call's `writeGroup`, so whichever call's row survives names only
+   * its own object and the other call's cleanup never touches it.
    */
-  it('gives a repeated special write the same S3 key, matching a regular write', async () => {
+  it.each<[string, PendingWrite]>([
+    ['special', ['__interrupt__', { value: 'paused' }]],
+    ['regular', ['ch', 'v']],
+  ])('gives a repeated %s write of the same value a key per call', async (_kind, write) => {
     const ctx = offloadingContext();
-    const writes: PendingWrite[] = [['__interrupt__', { value: 'paused' }]];
-    const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'group-1');
-    const second = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [...writes], 'group-2');
-    expect(s3Key(second[0])).toBe(s3Key(first[0]));
-  });
-
-  it('gives a repeated regular write the same S3 key, and a changed value a different one', async () => {
-    const ctx = offloadingContext();
-    const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [['ch', 'v']], 'group-1');
-    const same = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [['ch', 'v']], 'group-2');
-    const changed = await buildWriteItems(
-      ctx,
-      't',
-      '',
-      'ckpt-1',
-      'task-7',
-      [['ch', 'w']],
-      'group-3',
-    );
-    expect(s3Key(same[0])).toBe(s3Key(first[0]));
-    expect(s3Key(changed[0])).not.toBe(s3Key(first[0]));
+    const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [write], 'group-1');
+    const second = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [write], 'group-2');
+    expect(s3Key(first[0]).endsWith('/group-1')).toBe(true);
+    expect(s3Key(second[0])).toBe(s3Key(first[0]).replace(/group-1$/, 'group-2'));
   });
 });
 
@@ -302,7 +287,7 @@ describe('channel validation (SEC-09)', () => {
     const upload = jest.fn(async (key: string) => key);
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
+      buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
       upload,
       deleteBatch: async () => [],
     };

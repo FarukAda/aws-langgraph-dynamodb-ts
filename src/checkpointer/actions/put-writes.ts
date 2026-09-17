@@ -1,23 +1,25 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
-import { releasableS3Keys } from '../../shared/codec/descriptor-keys';
+import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { ValidationError } from '../../shared/errors/errors';
 import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
 import { buildWriteItems } from '../internal/item-writer';
-import { type DeadUpload, writeRegularItems } from '../internal/regular-write';
+import { writeRegularItems } from '../internal/regular-write';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
 import { validateTaskId, validateWrites } from '../internal/validation';
+import type { CheckpointWriteItem } from '../types';
 
 /**
  * Stamps each `putWrites` call, identifying its rows as one group.
  *
  * It is what a guard rejection is compared against to tell "another call holds
- * this row" from "my own retry does", and — because ULIDs are lexicographically
+ * this row" from "my own retry does", it is the object id every offloaded write
+ * of the call is uploaded under, and — because ULIDs are lexicographically
  * time-ordered, and this factory is strictly monotonic even within a single
  * millisecond — it lets the read side identify the *earliest* call that wrote a
  * given channel (see `dropSupersededWrites`). A random UUID would identify a
@@ -28,16 +30,20 @@ const nextWriteGroup = createUlidFactory();
 
 /**
  * Best-effort delete the offloaded objects of uploads this call's rows do not
- * reference, if an offloader is configured. A key the row that actually exists
- * still points at is held back: two calls writing the same value for one write
- * address one object, so the loser's "dead" upload can be the winner's live one
- * (see {@link releasableS3Keys}).
+ * reference, if an offloader is configured. Each key ends in this call's own
+ * `writeGroup`, so a row another call wrote in its place never names it.
  */
-async function cleanUpItems(context: CheckpointerContext, dead: DeadUpload[]): Promise<void> {
+async function cleanUpItems(
+  context: CheckpointerContext,
+  dead: CheckpointWriteItem[],
+): Promise<void> {
   if (!context.offloader) return;
-  const keys = dead.flatMap(({ item, live }) => releasableS3Keys([item.value], live ? [live] : []));
-  if (keys.length === 0) return;
-  await cleanUpS3Orphans(context.offloader, keys, 'putWrites', context.logger);
+  await cleanUpS3Orphans(
+    context.offloader,
+    collectS3Keys(dead.map((item) => item.value)),
+    'putWrites',
+    context.logger,
+  );
 }
 
 /**
@@ -61,16 +67,14 @@ async function cleanUpItems(context: CheckpointerContext, dead: DeadUpload[]): P
  *
  * Guarantees: regular writes are first-write-wins, matching the reference
  * checkpointer; special negative-index writes always overwrite (see
- * {@link writeSpecialItemsWithCleanup}). Cleanup only ever targets uploads
- * confirmed unreferenced (see {@link writeRegularItems}): a verified
- * non-commit, or a guard rejection whose returned row provably belongs to
- * another call — and in both cases only when that row does not point at the
- * same object. A special write's superseded payload is released only when a
- * read of the row after the commit does not name it. An upload can leak. An
- * object is released only when the row last read, or returned with a rejected
- * write, before the release does not name it. A write of the same bytes whose
- * upload lands before the delete, and whose row commits after that row was
- * seen, can still lose its object; closing that needs an out-of-band sweeper.
+ * {@link writeSpecialItemsWithCleanup}). Cleanup of this call's own uploads
+ * only ever targets uploads confirmed unreferenced (see
+ * {@link writeRegularItems}): a verified non-commit, or a guard rejection whose
+ * returned row provably belongs to another call. A special write's superseded
+ * payload is released only once the write that superseded it committed. An
+ * upload can leak. Every offloaded write of this call is uploaded under the
+ * call's own `writeGroup`, so no row another call writes names one of this
+ * call's uploads, and no release reads the row again first.
  */
 export async function putWrites(
   context: CheckpointerContext,

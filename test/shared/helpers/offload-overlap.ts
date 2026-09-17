@@ -1,7 +1,7 @@
 /** The offloader surface the codec and cleanup paths call, backed by memory. */
 export interface OverlapOffloader {
   shouldOffload: (data: Uint8Array) => boolean;
-  buildKey: (parts: readonly string[], hash: string) => string;
+  buildKey: (parts: readonly string[], objectId: string) => string;
   upload: (key: string, data: Uint8Array, row: { pk: string; sk: string }) => Promise<string>;
   download: (key: string) => Promise<Uint8Array>;
   deleteBatch: (keys: string[]) => Promise<string[]>;
@@ -21,7 +21,7 @@ export function overlapOffloader(): { offloader: OverlapOffloader; maxInFlight: 
   let max = 0;
   const offloader: OverlapOffloader = {
     shouldOffload: () => true,
-    buildKey: (parts, hash) => [...parts, hash].join('/'),
+    buildKey: (parts, objectId) => [...parts, objectId].join('/'),
     upload: async (key, data) => {
       objects.set(key, data);
       return key;

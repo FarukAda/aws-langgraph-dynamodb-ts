@@ -25,7 +25,7 @@ function conditionalCheckFailed(): Error {
 function trackingOffloader(upload: (key: string) => Promise<string> = async (key) => key) {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[], hash: string) => [...parts, hash].join('/'),
+    buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
     upload,
     deleteBatch: jest.fn().mockResolvedValue([]),
   };
@@ -195,12 +195,12 @@ describe('putWrites', () => {
   });
 
   /**
-   * Two calls writing the same value for the same write address one object, so
-   * a retry after a lost response cannot leave a second one behind. The key is
-   * the content hash under the write's own row, and both parts matter: the hash
-   * is why a retry converges, the row is why no other write shares the object.
+   * Two calls writing the same value for the same write address two objects:
+   * the key is the write's own row with the call's `writeGroup` below it, so no
+   * other call's row ever names this call's object, and each row's key ends in
+   * the group that row carries.
    */
-  it('gives two putWrites calls one S3 key for the same logical write and value', async () => {
+  it("gives two putWrites calls two S3 keys for the same logical write and value, each ending in the call's writeGroup", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).resolves({});
     const upload = jest.fn(async (key: string) => key);
@@ -209,9 +209,10 @@ describe('putWrites', () => {
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
     expect(upload).toHaveBeenCalledTimes(2);
-    const [firstKey] = upload.mock.calls[0] as [string];
-    const [secondKey] = upload.mock.calls[1] as [string];
-    expect(secondKey).toBe(firstKey);
+    const keys = upload.mock.calls.map(([key]) => key);
+    const groups = mock.commandCalls(PutCommand).map((call) => call.args[0].input.Item!.writeGroup);
+    expect(keys).toEqual(groups.map((group) => `t//c1/task-1/write-0/ch/${group}`));
+    expect(keys[1]).not.toBe(keys[0]);
   });
 
   it('gives a changed value its own S3 key', async () => {

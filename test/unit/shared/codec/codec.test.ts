@@ -18,7 +18,7 @@ describe('encodePayload / decodePayload', () => {
     const descriptor = await encodePayload(
       { a: 1 },
       { serde },
-      { keyParts: ['t', 'c', 'f'], row: { pk: 'PK', sk: 'SK' } },
+      { keyParts: ['t', 'c', 'f'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
     );
     expect(descriptor.location).toBe(PayloadLocation.INLINE);
     expect(descriptor.serdeType).toBe('json');
@@ -38,7 +38,7 @@ describe('encodePayload / decodePayload', () => {
     const descriptor = await encodePayload(
       'ignored',
       { serde: lgcSerde },
-      { keyParts: ['t'], row: { pk: 'PK', sk: 'SK' } },
+      { keyParts: ['t'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
     );
     expect(descriptor.compressed).toBe(false);
     expect(await decodePayload(descriptor, { serde: lgcSerde }, [])).toEqual([
@@ -50,7 +50,8 @@ describe('encodePayload / decodePayload', () => {
     let stored: Uint8Array = new Uint8Array();
     const offloader = {
       shouldOffload: () => true,
-      buildKey: (parts: readonly string[], hash: string) => `pfx/${[...parts, hash].join('/')}.bin`,
+      buildKey: (parts: readonly string[], objectId: string) =>
+        `pfx/${[...parts, objectId].join('/')}.bin`,
       upload: jest.fn(async (key: string, data: Uint8Array) => {
         stored = data;
         return key;
@@ -61,16 +62,48 @@ describe('encodePayload / decodePayload', () => {
     const descriptor = await encodePayload(
       { a: 1 },
       { serde, offloader: offloader as never },
-      { keyParts: ['t', 'c', 'f'], row: { pk: 'PK', sk: 'SK' } },
+      { keyParts: ['t', 'c', 'f'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
     );
     expect(descriptor.location).toBe(PayloadLocation.S3);
     if (descriptor.location === PayloadLocation.S3) {
-      expect(descriptor.s3Key).toMatch(/^pfx\/t\/c\/f\/[\w-]{43}\.bin$/);
+      expect(descriptor.s3Key).toBe('pfx/t/c/f/ID.bin');
     }
     expect(offloader.upload).toHaveBeenCalled();
     expect(await decodePayload(descriptor, { serde, offloader: offloader as never }, [])).toEqual({
       a: 1,
     });
+  });
+
+  /**
+   * The key names the write, not the bytes: two writes of one value for one
+   * row get two objects, and one write's key is the same however its bytes
+   * compare with another's.
+   */
+  it('keys an offloaded payload by the object id it is given, never by its bytes', async () => {
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[], objectId: string) => buildS3Key('p/', parts, objectId),
+      upload: jest.fn(async (key: string) => key),
+    };
+    const deps = { serde, offloader: offloader as never };
+    const keyOf = async (value: object, objectId: string) =>
+      (
+        (await encodePayload(value, deps, {
+          keyParts: ['row'],
+          objectId,
+          row: { pk: 'PK', sk: 'SK' },
+        })) as { s3Key: string }
+      ).s3Key;
+
+    expect(await keyOf({ a: 1 }, '01J0000000000000000000000A')).toBe(
+      'p/cm93/01J0000000000000000000000A.bin',
+    );
+    expect(await keyOf({ a: 1 }, '01J0000000000000000000000B')).toBe(
+      'p/cm93/01J0000000000000000000000B.bin',
+    );
+    expect(await keyOf({ b: 2 }, '01J0000000000000000000000A')).toBe(
+      'p/cm93/01J0000000000000000000000A.bin',
+    );
   });
 
   it('stores inline when an offloader is present but the payload is below threshold', async () => {
@@ -83,7 +116,7 @@ describe('encodePayload / decodePayload', () => {
     const descriptor = await encodePayload(
       { a: 1 },
       { serde, offloader: offloader as never },
-      { keyParts: ['t'], row: { pk: 'PK', sk: 'SK' } },
+      { keyParts: ['t'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
     );
     expect(descriptor.location).toBe(PayloadLocation.INLINE);
     expect(offloader.upload).not.toHaveBeenCalled();
@@ -94,7 +127,7 @@ describe('encodePayload / decodePayload', () => {
     const descriptor = await encodePayload(
       big,
       { serde, compression: { enabled: true } },
-      { keyParts: ['t'], row: { pk: 'PK', sk: 'SK' } },
+      { keyParts: ['t'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
     );
     expect(descriptor.location).toBe(PayloadLocation.INLINE);
     expect(descriptor.compressed).toBe(true);
@@ -120,7 +153,7 @@ describe('encodePayload / decodePayload', () => {
 describe('row-sourced key binding (SEC-03)', () => {
   const scoped = (prefix: string) => ({
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[], hash: string) => buildS3Key(prefix, parts, hash),
+    buildKey: (parts: readonly string[], objectId: string) => buildS3Key(prefix, parts, objectId),
     upload: jest.fn(async (key: string) => key),
     download: jest.fn(async () => new TextEncoder().encode('{"a":1}')),
     assertOwnedKey: (key: string, scope: readonly string[]) => assertKeyInScope(key, prefix, scope),
@@ -132,7 +165,7 @@ describe('row-sourced key binding (SEC-03)', () => {
       location: PayloadLocation.S3,
       serdeType: 'json',
       compressed: false,
-      s3Key: buildS3Key('p/', ['other-thread', 'c'], 'A'.repeat(43)),
+      s3Key: buildS3Key('p/', ['other-thread', 'c'], 'ID'),
     } as const;
     await expect(
       decodePayload(descriptor, { serde, offloader: offloader as never }, ['my-thread']),
@@ -145,6 +178,7 @@ describe('row-sourced key binding (SEC-03)', () => {
     const deps = { serde, offloader: offloader as never };
     const descriptor = await encodePayload({ a: 1 }, deps, {
       keyParts: ['my-thread', 'c', 'n'],
+      objectId: 'ID',
       row: { pk: 'PK', sk: 'SK' },
     });
     await expect(decodePayload(descriptor, deps, ['my-thread'])).resolves.toEqual({ a: 1 });
@@ -157,7 +191,7 @@ describe('persisted descriptor shape (CODEC-16)', () => {
     const descriptor = await encodePayload(
       { a: 1 },
       { serde },
-      { keyParts: ['k'], row: { pk: 'PK', sk: 'SK' } },
+      { keyParts: ['k'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } },
     );
     expect(descriptor.schemaVersion).toBe(1);
   });

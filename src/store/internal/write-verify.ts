@@ -1,6 +1,5 @@
-import type { DescriptorRef } from '../../shared/codec/descriptor-keys';
 import { REVISION_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
-import { readRow, type VerifiedWrite, verifyRow } from '../../shared/dynamodb/write-verify';
+import { readRow, verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
 import type { StoreContext } from './setup';
 
 /**
@@ -46,57 +45,20 @@ export async function rowIsAbsent(
 }
 
 /**
- * The descriptor an item's row holds right now, for a cleanup about to release
- * an object.
- *
- * A key is the hash of the bytes under the row's path, so a racer that commits
- * the content this call is discarding holds the very key about to be released.
- * Asking the row, rather than trusting what was read before the write, is what
- * keeps that object.
- *
- * Accepts: the row's key.
- *
- * Returns: `{ value }`, where `value` is undefined for no row; or `undefined`
- * when the read itself failed, in which case nothing may be released.
- *
- * Throws: nothing.
- *
- * Guarantees: strongly consistent, and projected to the descriptor's location
- * and key.
- */
-export async function readLiveValue(
-  context: StoreContext,
-  key: { PK: string; SK: string },
-): Promise<{ value?: DescriptorRef } | undefined> {
-  try {
-    const row = await readRow(context, {
-      key,
-      attribute: REVISION_ATTRIBUTE,
-      descriptors: ['value'],
-    });
-    return { value: row?.value as DescriptorRef | undefined };
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Read `record`'s row back to establish what an ambiguous write actually did,
  * comparing the row's revision with the one this write carried. Every put
  * stamps a fresh per-call `rev`, so the comparison works for inline and
- * offloaded records alike; a record carrying no `rev` has nothing to compare
- * and is reported `'not-landed'` without spending a read.
+ * offloaded records alike.
  *
  * Accepts: `record` — the row this call wrote, carrying the `rev` it stamped.
  * A record with no `rev` has nothing to compare and is reported `'not-landed'`
  * without spending a read.
  *
- * Returns: the verdict — `'landed'`, `'not-landed'` or `'unverified'`, see
- * {@link WriteVerdict} for what each answer licenses the caller to do — and,
- * when one was read, the row that exists, projected to its `rev` and its value
- * descriptor's `location` and `s3Key`. The row is what a cleanup keeps: a
- * racer that stored identical bytes holds this write's very key, which the
- * snapshot read before the write cannot know.
+ * Returns: `'landed'`, `'not-landed'` or `'unverified'`; see
+ * {@link WriteVerdict} for what each answer licenses the caller to do. Only the
+ * `rev` is read: an offloaded record's key ends in that same `rev`, so the row
+ * holding a different one never names this write's object, and a cleanup
+ * needs nothing more from it.
  *
  * Throws: nothing — a failed verification is `'unverified'`, which is an
  * answer, not an error.
@@ -104,12 +66,12 @@ export async function readLiveValue(
 export async function verifyWriteLanded(
   context: StoreContext,
   record: { PK: string; SK: string; rev?: string },
-): Promise<VerifiedWrite> {
-  return verifyRow(context, {
+): Promise<WriteVerdict> {
+  const { verdict } = await verifyRow(context, {
     key: { PK: record.PK, SK: record.SK },
     kind: 'attribute',
     attribute: REVISION_ATTRIBUTE,
     expected: record.rev,
-    descriptors: ['value'],
   });
+  return verdict;
 }

@@ -35,7 +35,7 @@ export interface S3OffloadConfig {
 
 /**
  * Build a fully-qualified S3 key: `${prefix}${parts, each base64url-encoded,
- * joined with '/'}/${hash}.bin`.
+ * joined with '/'}/${objectId}.bin`.
  *
  * `parts` are the identity of the DynamoDB row that will point at the object,
  * and they are encoded rather than rejected: a namespace element or key may
@@ -43,17 +43,18 @@ export interface S3OffloadConfig {
  * layer), and base64url's output alphabet never contains '/', so two distinct
  * `parts` arrays can never compose one key.
  *
- * `hash` is the content address of the bytes and is appended verbatim — it is
- * already base64url. Putting the row above the hash means an object belongs to
- * exactly one row, which is what lets that row delete it without consulting
- * anything else.
+ * `objectId` names the write that uploads the object and is appended as it
+ * is, not encoded, so it must be safe in an S3 key and hold no `/`, or its
+ * segments would read as parts. The ids this package passes are both: a UUID
+ * (hex digits and `-`) and a ULID (Crockford base-32 digits).
  *
  * Accepts: `prefix` — the offloader's, already validated and separator-
  * terminated. `parts` — at least one; the identity of the row that will point
- * at the object. `hash` — a content address from `contentHash`.
+ * at the object. `objectId` — the uploading write's id: key-safe, with no `/`.
  *
- * Returns: the key. Two distinct `(prefix, parts, hash)` triples never compose
- * one key, and the same triple always composes the same one.
+ * Returns: the key. Under one prefix, two distinct `(parts, objectId)` pairs
+ * never compose one key, and the same prefix, parts and id always compose the
+ * same one.
  *
  * Throws: ValidationError naming `s3Key` for an empty `parts` — an object with
  * no row above it is outside every row's scope and could never be read back —
@@ -61,14 +62,14 @@ export interface S3OffloadConfig {
  * third, so identifiers that each pass their own length rule can still compose
  * a key S3 would reject with a raw error.
  */
-export function buildS3Key(prefix: string, parts: readonly string[], hash: string): string {
+export function buildS3Key(prefix: string, parts: readonly string[], objectId: string): string {
   if (parts.length === 0) {
     throw new ValidationError(
       'an offloaded object needs the identity of the row that points at it; parts was empty',
       's3Key',
     );
   }
-  const encoded = [...parts.map(encodeKeyPart), hash];
+  const encoded = [...parts.map(encodeKeyPart), objectId];
   const key = `${prefix}${encoded.join('/')}.bin`;
   const bytes = Buffer.byteLength(key, 'utf8');
   if (bytes > MAX_S3_KEY_BYTES) {

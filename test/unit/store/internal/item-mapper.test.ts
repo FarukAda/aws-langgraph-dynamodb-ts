@@ -70,49 +70,36 @@ describe('store item-mapper', () => {
   });
 
   /**
-   * `rev` is the row's revision token for the compare-and-swap, and nothing
-   * else. It used to double as the S3 key's uniquifier, which tied a DynamoDB
-   * write identity to an object identity; the object is addressed by its
-   * content hash under the row's own path instead.
+   * `rev` is the row's revision token for the compare-and-swap and the id its
+   * offloaded value is uploaded under, below the row's own path. A record built
+   * without one draws a fresh UUID before the value is encoded, so it still has
+   * an object of its own.
    */
-  it('keeps rev off the S3 key path and carries it onto the record', async () => {
-    const seenParts: string[][] = [];
+  it('uploads the value under the rev it carries onto the record, drawing one when absent', async () => {
     const ctx: StoreContext = {
       ...context(),
       offloader: {
         shouldOffload: () => true,
-        buildKey(parts: readonly string[], hash: string) {
-          seenParts.push([...parts]);
-          return [...parts, hash].join('/');
-        },
+        buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
         upload: async (key: string) => key,
       } as never,
     };
+    const build = (rev?: string) =>
+      buildStoreItem(ctx, ['n'], 'k', { a: 1 }, { createdAt: 'c', updatedAt: 'u', rev });
+    const keyOf = (record: { value: object }) => (record.value as { s3Key: string }).s3Key;
 
-    const withRev = await buildStoreItem(
-      ctx,
-      ['n'],
-      'k',
-      { a: 1 },
-      { createdAt: 'c', updatedAt: 'u', rev: 'abc' },
-    );
-    const withoutRev = await buildStoreItem(
-      ctx,
-      ['n'],
-      'k',
-      { a: 1 },
-      { createdAt: 'c', updatedAt: 'u' },
-    );
+    const withRev = await build('abc');
+    const first = await build();
+    const second = await build();
 
-    expect(seenParts).toEqual([
-      ['n', 'k'],
-      ['n', 'k'],
-    ]);
     expect(withRev.rev).toBe('abc');
-    expect(withoutRev.rev).toBeUndefined();
-    expect((withoutRev.value as { s3Key: string }).s3Key).toBe(
-      (withRev.value as { s3Key: string }).s3Key,
+    expect(keyOf(withRev)).toBe('n/k/abc');
+    expect(first.rev).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+    expect(keyOf(first)).toBe(`n/k/${first.rev}`);
+    expect(second.rev).not.toBe(first.rev);
+    expect(keyOf(second)).toBe(`n/k/${second.rev}`);
   });
 });
 

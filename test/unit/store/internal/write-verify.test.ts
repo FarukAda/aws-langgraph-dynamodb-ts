@@ -5,7 +5,6 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import {
   isRetryExhausted,
-  readLiveValue,
   rowIsAbsent,
   verifyWriteLanded,
 } from '../../../../src/store/internal/write-verify';
@@ -26,47 +25,36 @@ function context(client: StoreContext['client']): StoreContext {
 const record = { PK: 'p', SK: 's', rev: 'r1' };
 
 describe('verifyWriteLanded (STORE-13)', () => {
-  it("reports 'landed' when the row holds this write's own rev, projecting the rev and the descriptor's location and key", async () => {
+  /**
+   * Only the `rev` is read. An offloaded record's key ends in its own `rev`, so
+   * the row that holds a different one never names this write's object, and a
+   * cleanup needs nothing else from it.
+   */
+  it("reports 'landed' when the row holds this write's own rev, projecting the rev alone", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { rev: 'r1' } });
-    await expect(verifyWriteLanded(context(client), record)).resolves.toEqual({
-      verdict: 'landed',
-      row: { rev: 'r1' },
-    });
+    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('landed');
     const input = mock.commandCalls(GetCommand)[0].args[0].input;
-    expect(input.ProjectionExpression).toBe('#a0, #d0.#loc, #d0.#s3k');
-    expect(Object.values(input.ExpressionAttributeNames!)).toEqual([
-      'rev',
-      'value',
-      'location',
-      's3Key',
-    ]);
+    expect(input.ProjectionExpression).toBe('#a0');
+    expect(input.ExpressionAttributeNames).toEqual({ '#a0': 'rev' });
     expect(input.ConsistentRead).toBe(true);
   });
 
-  /**
-   * The row that exists is handed back, because it decides what a cleanup may
-   * release: a racer that stored identical bytes holds this write's key (C-02a).
-   */
-  it("reports 'not-landed' when the row holds another rev or does not exist, with the row it read", async () => {
+  it("reports 'not-landed' when the row holds another rev or does not exist", async () => {
     const { client, mock } = createStrictDocumentMock();
-    const live = { rev: 'other', value: { location: 'S3', s3Key: 'theirs.bin' } };
-    mock.on(GetCommand).resolvesOnce({ Item: live }).resolves({});
-    await expect(verifyWriteLanded(context(client), record)).resolves.toEqual({
-      verdict: 'not-landed',
-      row: live,
-    });
-    await expect(verifyWriteLanded(context(client), record)).resolves.toEqual({
-      verdict: 'not-landed',
-      row: undefined,
-    });
+    mock
+      .on(GetCommand)
+      .resolvesOnce({ Item: { rev: 'other' } })
+      .resolves({});
+    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('not-landed');
+    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('not-landed');
   });
 
   it("reports 'not-landed' without a read for a record that carries no rev", async () => {
     const { client, mock } = createStrictDocumentMock();
-    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' })).resolves.toEqual({
-      verdict: 'not-landed',
-    });
+    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' })).resolves.toBe(
+      'not-landed',
+    );
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
 
@@ -76,9 +64,7 @@ describe('verifyWriteLanded (STORE-13)', () => {
     // a live row points at.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
-    await expect(verifyWriteLanded(context(client), record)).resolves.toEqual({
-      verdict: 'unverified',
-    });
+    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('unverified');
   });
 });
 
@@ -110,42 +96,5 @@ describe('rowIsAbsent (I4, STORE-07)', () => {
       true,
     );
     expect(isRetryExhausted(new Error('x'))).toBe(false);
-  });
-});
-
-/**
- * What a cleanup keeps is decided by the row that exists when it runs: a racer
- * that commits the content being released holds the very key about to go.
- */
-describe('readLiveValue', () => {
-  it('returns the descriptor the row holds, reading strongly consistently and projecting only its location and key', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    const value = { location: 'S3', s3Key: 'live.bin' };
-    mock.on(GetCommand).resolves({ Item: { rev: 'r2', value } });
-    await expect(readLiveValue(context(client), { PK: 'p', SK: 's' })).resolves.toEqual({ value });
-    const input = mock.commandCalls(GetCommand)[0].args[0].input;
-    expect(input.Key).toEqual({ PK: 'p', SK: 's' });
-    expect(input.ConsistentRead).toBe(true);
-    expect(input.ProjectionExpression).toBe('#a0, #d0.#loc, #d0.#s3k');
-    expect(Object.values(input.ExpressionAttributeNames!)).toEqual([
-      'rev',
-      'value',
-      'location',
-      's3Key',
-    ]);
-  });
-
-  it('returns no value when no row exists', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    await expect(readLiveValue(context(client), { PK: 'p', SK: 's' })).resolves.toEqual({
-      value: undefined,
-    });
-  });
-
-  it('returns undefined, never an empty answer, when the read itself fails', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
-    await expect(readLiveValue(context(client), { PK: 'p', SK: 's' })).resolves.toBeUndefined();
   });
 });

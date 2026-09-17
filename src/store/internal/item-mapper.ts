@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type { Item } from '@langchain/langgraph-checkpoint';
 
 import { type CodecDeps, decodePayload } from '../../shared/codec/codec';
@@ -60,8 +62,9 @@ export interface BuildItemOptions {
   /**
    * The row's revision token, unique per `put` call. It is the value a
    * concurrent overwrite pins with a compare-and-swap, so each writer can tell
-   * whether the row it read is still the row it is replacing. It never reaches
-   * an S3 key: offloaded payloads are addressed by content hash.
+   * whether the row it read is still the row it is replacing, and it is the
+   * object id an offloaded value is uploaded under. A fresh UUID is drawn when
+   * it is absent.
    */
   rev?: string;
 }
@@ -72,7 +75,9 @@ export interface BuildItemOptions {
  * Accepts: `namespace` and `key` — already validated; they become the row's key
  * and, with it, the S3 path any offloaded payload may occupy. `value` — a value
  * the serializer can represent. `options.rev` — this put's own revision token,
- * which the compare-and-swap pins and the write verification reads back.
+ * which the compare-and-swap pins, the write verification reads back, and an
+ * offloaded value's key ends in; absent, a fresh UUID is drawn, before the
+ * value is encoded.
  *
  * Returns: the complete row, including the recency-index attributes: a store
  * item is listed across partitions by a rootless search, so it is indexed.
@@ -91,8 +96,10 @@ export async function buildStoreItem(
 ): Promise<StoreItemRecord> {
   const pk = partitionKey(namespace);
   const sk = sortKey(namespace, key);
+  const rev = options.rev ?? randomUUID();
   const descriptor = await encodePayload(value, storeCodecDeps(context), {
     keyParts: [...namespace, key],
+    objectId: rev,
     row: { pk, sk },
   });
   /** Store items are listed across partitions by a rootless search, so they are indexed. */
@@ -112,10 +119,10 @@ export async function buildStoreItem(
     value: descriptor,
     createdAt: options.createdAt,
     updatedAt: options.updatedAt,
+    rev,
   };
   if (options.embeddings) record.embeddings = options.embeddings;
   if (options.ttlTimestamp !== undefined) record.ttl = options.ttlTimestamp;
-  if (options.rev !== undefined) record.rev = options.rev;
   return record;
 }
 

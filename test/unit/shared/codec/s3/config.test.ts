@@ -1,46 +1,49 @@
 import { buildLifecycleRuleId, buildS3Key } from '../../../../../src/shared/codec/s3/config';
+import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import { ValidationError } from '../../../../../src/shared/errors/errors';
 
-/** A stand-in content address: 43 base64url characters, like a real SHA-256. */
-const HASH = 'A'.repeat(43);
+/** A write's object id, shaped like the ULIDs this package draws. */
+const ID = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';
+const UUID = '3f1c0f9e-6a2b-4c1d-9e8f-7a6b5c4d3e2f';
 const encode = (value: string): string => Buffer.from(value, 'utf8').toString('base64url');
 
 describe('buildS3Key', () => {
-  it('base64url-encodes each part before joining under the prefix', () => {
-    expect(buildS3Key('langgraph/', ['thread1', 'ckpt1', 'checkpoint'], HASH)).toBe(
-      `langgraph/${encode('thread1')}/${encode('ckpt1')}/${encode('checkpoint')}/${HASH}.bin`,
+  it('base64url-encodes each part and ends in the object id, under the prefix', () => {
+    expect(buildS3Key('langgraph/', ['thread1', 'ckpt1', 'checkpoint'], ID)).toBe(
+      `langgraph/${encode('thread1')}/${encode('ckpt1')}/${encode('checkpoint')}/${ID}.bin`,
     );
   });
 
   /**
-   * The hash is already base64url, so it is appended verbatim. Encoding it
-   * again would cost 15 characters of the 1024-byte key budget and make the
-   * key unreadable against the digest it names.
+   * The id is appended as it is. The ids this package draws, a ULID for the
+   * checkpointer and history and a UUID for the store, are already key-safe
+   * and hold no `/`, so they cannot be read as a part.
    */
-  it('appends the content hash as the final segment without re-encoding it', () => {
-    const key = buildS3Key('p/', ['row'], HASH);
-    expect(key.endsWith(`/${HASH}.bin`)).toBe(true);
+  it('appends a ULID or a UUID object id as the final segment without encoding it', () => {
+    expect(buildS3Key('p/', ['row'], ID)).toBe(`p/${encode('row')}/${ID}.bin`);
+    expect(buildS3Key('p/', ['row'], UUID)).toBe(`p/${encode('row')}/${UUID}.bin`);
   });
 
-  /**
-   * Row identity sits above the hash, so two rows holding identical bytes get
-   * two objects — which is what lets a row delete its own object without
-   * consulting any other row.
-   */
-  it('gives two rows their own object for identical content', () => {
-    expect(buildS3Key('p/', ['rowA'], HASH)).not.toBe(buildS3Key('p/', ['rowB'], HASH));
+  /** Row identity sits above the id, so two rows written by one call get two objects. */
+  it('gives two rows their own object under one object id', () => {
+    expect(buildS3Key('p/', ['rowA'], ID)).not.toBe(buildS3Key('p/', ['rowB'], ID));
   });
 
-  it('gives one row one object for identical content, however often it is written', () => {
-    expect(buildS3Key('p/', ['row'], HASH)).toBe(buildS3Key('p/', ['row'], HASH));
+  /** Two calls writing one row draw two ids, so they never address one object. */
+  it('gives one row a different object for every object id', () => {
+    expect(buildS3Key('p/', ['row'], ID)).not.toBe(buildS3Key('p/', ['row'], UUID));
+  });
+
+  it('composes the same key for the same prefix, parts and object id', () => {
+    expect(buildS3Key('p/', ['row'], ID)).toBe(buildS3Key('p/', ['row'], ID));
   });
 
   it('never collides two different part arrays that would join to the same raw string', () => {
-    expect(buildS3Key('p/', ['a/b', 'c'], HASH)).not.toBe(buildS3Key('p/', ['a', 'b/c'], HASH));
+    expect(buildS3Key('p/', ['a/b', 'c'], ID)).not.toBe(buildS3Key('p/', ['a', 'b/c'], ID));
   });
 
   it('never collides on separator characters other than "/" either', () => {
-    expect(buildS3Key('p/', ['a#b', 'c'], HASH)).not.toBe(buildS3Key('p/', ['a', 'b', 'c'], HASH));
+    expect(buildS3Key('p/', ['a#b', 'c'], ID)).not.toBe(buildS3Key('p/', ['a', 'b', 'c'], ID));
   });
 });
 
@@ -50,7 +53,13 @@ describe('buildS3Key row identity', () => {
    * reader would accept it — so it could be written and never read back.
    */
   it('refuses to build a key with no row identity', () => {
-    expect(() => buildS3Key('p/', [], HASH)).toThrow(/row that points at it/);
+    expect(() => buildS3Key('p/', [], ID)).toThrow(
+      expect.objectContaining({
+        code: ErrorCode.VALIDATION,
+        context: { field: 's3Key' },
+        message: expect.stringContaining('row that points at it'),
+      }),
+    );
   });
 });
 
@@ -59,12 +68,18 @@ describe('buildS3Key length cap (CODEC-11)', () => {
   const part = 'x'.repeat(600);
 
   it('accepts a produced key within the 1024-byte S3 limit', () => {
-    expect(() => buildS3Key('p/', [part], HASH)).not.toThrow();
+    expect(() => buildS3Key('p/', [part], ID)).not.toThrow();
   });
 
   it('rejects a produced key over the 1024-byte S3 limit with a typed error', () => {
-    expect(() => buildS3Key('p/', [part, part], HASH)).toThrow(ValidationError);
-    expect(() => buildS3Key('p/', [part, part], HASH)).toThrow(/1651 bytes.*1024/);
+    expect(() => buildS3Key('p/', [part, part], ID)).toThrow(ValidationError);
+    expect(() => buildS3Key('p/', [part, part], ID)).toThrow(
+      expect.objectContaining({
+        code: ErrorCode.VALIDATION,
+        context: { field: 's3Key' },
+        message: expect.stringMatching(/1634 bytes.*1024/),
+      }),
+    );
   });
 });
 
