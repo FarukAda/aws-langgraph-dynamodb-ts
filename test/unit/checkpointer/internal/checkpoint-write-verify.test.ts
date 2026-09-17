@@ -50,6 +50,12 @@ function rows(metadata: PayloadDescriptor, checkpoint: PayloadDescriptor) {
 /** What one verification read answers: a result, or a failure. */
 type Answer = { Item?: Record<string, object> } | 'fails';
 
+/** A META row holding metadata at `s3Key`, or inline metadata without one. */
+const metaAt = (s3Key?: string) => ({ Item: { metadata: ref(s3Key) } });
+
+/** A PAYLOAD row holding a checkpoint at `s3Key`. */
+const ckptAt = (s3Key: string) => ({ Item: { checkpoint: ref(s3Key) } });
+
 /** Answer the META and PAYLOAD reads separately, by the sort key each one names. */
 function answerBySortKey(
   mock: ReturnType<typeof createStrictDocumentMock>['mock'],
@@ -66,17 +72,14 @@ function answerBySortKey(
 }
 
 describe('verifyCheckpointLanded', () => {
+  /** A landing releases nothing, so it hands back nothing live. */
   it("reports landed when the META row holds this attempt's metadata key, reading both rows' descriptors", async () => {
     const { client, mock } = createStrictDocumentMock();
-    answerBySortKey(
-      mock,
-      { Item: { metadata: ref('k/meta/A') } },
-      { Item: { checkpoint: ref('k/ckpt/A') } },
-    );
+    answerBySortKey(mock, metaAt('k/meta/A'), ckptAt('k/ckpt/A'));
     const { meta, payload } = rows(s3('k/meta/A'), s3('k/ckpt/A'));
     await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toEqual({
       verdict: 'landed',
-      live: [ref('k/meta/A'), ref('k/ckpt/A')],
+      live: [],
     });
     const inputs = mock.commandCalls(GetCommand).map((call) => call.args[0].input);
     expect(inputs.map((input) => input.Key)).toEqual([
@@ -96,11 +99,11 @@ describe('verifyCheckpointLanded', () => {
 
   it('probes the PAYLOAD row when only the checkpoint is offloaded', async () => {
     const { client, mock } = createStrictDocumentMock();
-    answerBySortKey(mock, { Item: { metadata: ref() } }, { Item: { checkpoint: ref('k/ckpt/A') } });
+    answerBySortKey(mock, metaAt(), ckptAt('k/ckpt/A'));
     const { meta, payload } = rows(inline, s3('k/ckpt/A'));
     await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toEqual({
       verdict: 'landed',
-      live: [ref(), ref('k/ckpt/A')],
+      live: [],
     });
   });
 
@@ -153,20 +156,54 @@ describe('verifyCheckpointLanded', () => {
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
 
-  /** One row read is not enough to release anything: the other may name the same object. */
+  /**
+   * Only a release needs both rows. The probed row alone proves a landing,
+   * which releases nothing. A non-commit licenses a release, and the row that
+   * was not read may name the very object it would release. A failed probed
+   * read establishes nothing at all.
+   */
   it.each([
-    ['META', 'fails', { Item: { checkpoint: ref('k/ckpt/A') } }],
-    ['PAYLOAD', { Item: { metadata: ref('k/meta/OTHER') } }, 'fails'],
+    ['the probed META read fails', 'unverified', s3('k/meta/A'), 'fails', ckptAt('k/ckpt/A')],
+    ['the probed PAYLOAD read fails', 'unverified', inline, metaAt(), 'fails'],
+    [
+      'META proves the landing and the PAYLOAD read fails',
+      'landed',
+      s3('k/meta/A'),
+      metaAt('k/meta/A'),
+      'fails',
+    ],
+    [
+      'PAYLOAD proves the landing and the META read fails',
+      'landed',
+      inline,
+      'fails',
+      ckptAt('k/ckpt/A'),
+    ],
+    [
+      'META shows another writer and the PAYLOAD read fails',
+      'unverified',
+      s3('k/meta/A'),
+      metaAt('k/meta/OTHER'),
+      'fails',
+    ],
+    [
+      'PAYLOAD shows another writer and the META read fails',
+      'unverified',
+      inline,
+      'fails',
+      ckptAt('k/ckpt/OTHER'),
+    ],
   ] as const)(
-    'reports unverified, with nothing live, when the %s read fails',
-    async (_row, metaAnswer, payloadAnswer) => {
+    'when %s, reports %s with nothing live',
+    async (_case, verdict, metadata, metaAnswer, payloadAnswer) => {
       const { client, mock } = createStrictDocumentMock();
       answerBySortKey(mock, metaAnswer, payloadAnswer);
-      const { meta, payload } = rows(s3('k/meta/A'), s3('k/ckpt/A'));
+      const { meta, payload } = rows(metadata, s3('k/ckpt/A'));
       await expect(verifyCheckpointLanded(context(client), meta, payload)).resolves.toEqual({
-        verdict: 'unverified',
+        verdict,
         live: [],
       });
+      expect(mock.commandCalls(GetCommand)).toHaveLength(2);
     },
   );
 });

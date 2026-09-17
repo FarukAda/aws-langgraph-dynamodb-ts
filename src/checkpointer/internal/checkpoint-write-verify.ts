@@ -1,4 +1,5 @@
 import type { DescriptorRef } from '../../shared/codec/descriptor-keys';
+import type { DocItem } from '../../shared/dynamodb/types';
 import {
   offloadedKey,
   readRow,
@@ -9,15 +10,20 @@ import {
 import type { CheckpointMetaItem, CheckpointPayloadItem } from '../types';
 import type { CheckpointerContext } from './setup';
 
-/** What reading both rows back established. */
+/** What reading the rows back established. */
 export interface CheckpointVerification {
   verdict: WriteVerdict;
   /**
    * The descriptors the two rows hold now, projected to `location` and `s3Key`;
-   * only an offloaded one names an object. Empty unless both rows were read.
+   * only an offloaded one names an object. Filled only for a `'not-landed'`
+   * verdict that read both rows, the one answer that licenses a release, and
+   * empty otherwise.
    */
   live: DescriptorRef[];
 }
+
+/** How one of the two row reads settled. */
+type SettledRow = PromiseSettledResult<DocItem | undefined>;
 
 /**
  * Pick the row carrying an offloaded descriptor. The META and PAYLOAD rows
@@ -43,27 +49,58 @@ function chooseProbe(meta: CheckpointMetaItem, payload: CheckpointPayloadItem): 
 }
 
 /**
+ * What the two settled reads support.
+ *
+ * The probed row alone decides a landing, and a landing releases nothing, so
+ * the other read is not needed for it. A non-commit licenses a release, and the
+ * other row may name the very object being released, so that verdict needs both
+ * rows; without the other one the answer is `'unverified'`. A failed probed read
+ * establishes nothing at all.
+ */
+function verificationOf(
+  probe: RowProbe,
+  metaRead: SettledRow,
+  payloadRead: SettledRow,
+): CheckpointVerification {
+  const probed = probe.attribute === 'metadata' ? metaRead : payloadRead;
+  if (probed.status === 'rejected') return { verdict: 'unverified', live: [] };
+  if (verdictFor(probe, probed.value) === 'landed') return { verdict: 'landed', live: [] };
+  if (metaRead.status === 'rejected' || payloadRead.status === 'rejected') {
+    return { verdict: 'unverified', live: [] };
+  }
+  const live = [metaRead.value?.metadata, payloadRead.value?.checkpoint].filter(
+    (ref): ref is DescriptorRef => Boolean(ref),
+  );
+  return { verdict: 'not-landed', live };
+}
+
+/**
  * Read both rows back after the META+PAYLOAD transaction failed and report what
  * that failure actually did — never assuming it did nothing.
  *
- * Two reads, not one. The rows commit together, so the row carrying an
- * offloaded descriptor decides the verdict alone; but what a cleanup may
- * release is decided by both. Another writer that committed the same
- * checkpoint id with identical checkpoint bytes and different metadata holds
- * this attempt's checkpoint key on its PAYLOAD row while its META row proves
- * this attempt did not land, and deleting that key would strand its row
- * (C-02c). The reads are issued only when something was offloaded, because
- * only then is there an object to protect.
+ * Two reads, issued together, and each needed for a different answer. The rows
+ * commit together, so the row carrying an offloaded descriptor proves a landing
+ * on its own, even when the other row's read fails: a landing releases nothing.
+ * A non-commit is different, because what a cleanup may release is decided by
+ * both rows. Another writer that committed the same checkpoint id with identical
+ * checkpoint bytes and different metadata holds this attempt's checkpoint key on
+ * its PAYLOAD row while its META row proves this attempt did not land, and
+ * deleting that key would strand its row (C-02c). A non-commit whose other row
+ * could not be read is therefore `'unverified'`. The reads are issued only when
+ * something was offloaded, because only then is there an object to protect.
  *
  * Accepts: `meta` and `payload` — the two rows the failed transaction carried.
  * A fully inline write has no object at stake and spends no read.
  *
  * Returns: the verdict — see {@link WriteVerdict} for what each answer licenses
- * the caller to do — and `live`, every descriptor the two rows hold now, each
- * projected to its `location` and `s3Key`. `live` is empty when nothing was
- * read, and when either read failed, which is the `'unverified'` answer.
+ * the caller to do. `'landed'` when the probed row holds this attempt's key,
+ * whatever the other read did; `'not-landed'` when it does not and both reads
+ * succeeded, with `live` holding every descriptor the two rows hold now, each
+ * projected to its `location` and `s3Key`; `'unverified'` when the probed read
+ * failed, or when it disproved the landing and the other read failed. `live` is
+ * empty for every answer but `'not-landed'` after two reads.
  *
- * Throws: nothing — a failed read is the `'unverified'` answer.
+ * Throws: nothing — a failed read is part of the answer.
  *
  * Guarantees: a key is the content hash of the payload under its row's path, so
  * "the row holds this attempt's key" means the row holds exactly the bytes this
@@ -77,25 +114,17 @@ export async function verifyCheckpointLanded(
 ): Promise<CheckpointVerification> {
   const probe = chooseProbe(meta, payload);
   if (probe.expected === undefined) return { verdict: 'not-landed', live: [] };
-  try {
-    const [metaRow, payloadRow] = await Promise.all([
-      readRow(context, {
-        key: { PK: meta.PK, SK: meta.SK },
-        attribute: 'metadata',
-        descriptors: ['metadata'],
-      }),
-      readRow(context, {
-        key: { PK: payload.PK, SK: payload.SK },
-        attribute: 'checkpoint',
-        descriptors: ['checkpoint'],
-      }),
-    ]);
-    const row = probe.attribute === 'metadata' ? metaRow : payloadRow;
-    const live = [metaRow?.metadata, payloadRow?.checkpoint].filter((ref): ref is DescriptorRef =>
-      Boolean(ref),
-    );
-    return { verdict: verdictFor(probe, row), live };
-  } catch {
-    return { verdict: 'unverified', live: [] };
-  }
+  const [metaRead, payloadRead] = await Promise.allSettled([
+    readRow(context, {
+      key: { PK: meta.PK, SK: meta.SK },
+      attribute: 'metadata',
+      descriptors: ['metadata'],
+    }),
+    readRow(context, {
+      key: { PK: payload.PK, SK: payload.SK },
+      attribute: 'checkpoint',
+      descriptors: ['checkpoint'],
+    }),
+  ]);
+  return verificationOf(probe, metaRead, payloadRead);
 }

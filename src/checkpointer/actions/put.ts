@@ -54,12 +54,15 @@ import { validateCheckpointId } from '../internal/validation';
  * META row never names a payload that is not there. Writing the same
  * `checkpoint.id` again replaces both, which is what a retry and a repair tool
  * both need. On failure with S3 offload configured both rows are read back
- * before any upload is deleted (see {@link verifyCheckpointLanded}): a
- * transaction that committed and lost its response is reported as success, a
- * confirmed non-commit cleans up the objects this call uploaded except any
- * either row names now — another writer's committed checkpoint can hold the
- * same checkpoint object — and an unverifiable outcome leaks them rather than
- * risk stranding a live row.
+ * before any upload is deleted (see {@link verifyCheckpointLanded}). A
+ * transaction that committed and lost its response is reported as success: the
+ * row carrying an offloaded descriptor proves that on its own, even when the
+ * other row cannot be read, because a landing deletes nothing. A confirmed
+ * non-commit cleans up the objects this call uploaded except any either row
+ * names now — another writer's committed checkpoint can hold the same
+ * checkpoint object — so it needs both rows read. An unverifiable outcome,
+ * which includes a non-commit whose other row could not be read, leaks them
+ * rather than risk stranding a live row.
  */
 export async function putCheckpoint(
   context: CheckpointerContext,
