@@ -96,9 +96,10 @@ function addressesOneRow(scope: ListScope): scope is OneRowScope {
  * Accepts: `config` — `thread_id` scopes the read to one thread and its absence
  * lists every thread in the table, through a scan as the reference savers do or
  * through the recency index when `indexName` is set; `checkpoint_ns` scopes to
- * one namespace and its absence spans every namespace of the thread. `options.before` — only checkpoints older than that id.
- * `options.filter` — metadata equality. `options.limit` — at most this many
- * tuples; `0` or less yields nothing, which is what the reference returns.
+ * one namespace and its absence spans every namespace of the thread.
+ * `options.before` — only checkpoints older than that id. `options.filter` —
+ * metadata equality. `options.limit` — at most this many tuples; `0` or less
+ * yields nothing, which is what the reference returns.
  *
  * Returns: an async generator over the tuples, newest first within a namespace,
  * unordered across threads on the scan path. The read stops right after the

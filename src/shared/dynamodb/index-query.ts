@@ -37,11 +37,11 @@ function encodeCursor(sortKey: string): string {
  *
  * Returns: the `gsi1sk` to resume below.
  *
- * Throws: ValidationError naming `cursor` for anything that does not decode to
- * a sort key of this index. `gsi1sk` is `<timestamp>#<id>`, so a value carrying
- * no `#` was issued by something else — a scan cursor, a page token from
- * another API — and using it as a bound would quietly return the wrong page
- * rather than say so.
+ * Throws: ValidationError naming `cursor` when the decoded value carries no
+ * `#`. `gsi1sk` is `<timestamp>#<id>`, so such a value was issued by something
+ * else — a scan cursor, a page token from another API — and using it as a bound
+ * would quietly return the wrong page rather than say so. A value that carries
+ * a `#` is not checked further.
  */
 function decodeCursor(cursor: string): string {
   const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
