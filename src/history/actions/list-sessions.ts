@@ -1,4 +1,5 @@
 import { nowSeconds as currentSeconds } from '../../shared/clock';
+import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { isExpiredRow } from '../../shared/dynamodb/expiry';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import { queryRecencyIndex } from '../../shared/dynamodb/index-query';
@@ -52,6 +53,7 @@ async function pageFromIndex(
     indexName,
     tag: 'SESS',
     shards: context.indexShards ?? DEFAULT_INDEX_SHARDS,
+    concurrency: context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
     limit: options.limit ?? DEFAULT_PAGE_SIZE,
     cursor: options.cursor,
     retry: retryFor(context, options.signal),
@@ -178,14 +180,17 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
  *
  * Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
  * `maxIterations`, `signal`, or `options.<key>` for a key this package does
- * not read; {@link ResultTruncatedError} past the scan path's caps;
+ * not read; {@link ResultTruncatedError} past the scan path's caps, or for an
+ * index shard whose pages do not end within `MAX_LOOP_ITERATIONS`;
  * `AbortError`.
  *
- * Guarantees: with a configured `indexName` the cost is one bounded query per
- * index shard, whatever the table holds. Without one it is a filtered table
- * scan that returns every session at once and no cursor — the behaviour of
- * earlier releases, kept so that upgrading changes nothing until the index
- * exists.
+ * Guarantees: with a configured `indexName` each index shard is read
+ * newest-first for at most `limit` rows, following DynamoDB's 1 MB page
+ * boundary until it has supplied them or run out, with at most
+ * `readConcurrency` shards read at once, whatever the table holds. Without one
+ * it is a filtered table scan that returns every session at once and no cursor
+ * — the behaviour of earlier releases, kept so that upgrading changes nothing
+ * until the index exists.
  */
 export async function listSessions(
   context: HistoryContext,

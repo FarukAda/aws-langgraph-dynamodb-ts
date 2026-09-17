@@ -381,8 +381,8 @@ describe('validateBaseAdapterOptions', () => {
     });
 
     /**
-     * The read fans out one query per shard (audit H-08), so an unbounded
-     * shard count turns a config typo into an unbounded request storm.
+     * The read issues at least one query per shard (audit H-08), so an
+     * unbounded shard count turns a config typo into an unbounded request storm.
      */
     it('refuses an indexShards value that would fan out unboundedly, bounded at MAX_INDEX_SHARDS', () => {
       expectCeiling((v) => ({ ...base, indexShards: v }), 'indexShards', MAX_INDEX_SHARDS);

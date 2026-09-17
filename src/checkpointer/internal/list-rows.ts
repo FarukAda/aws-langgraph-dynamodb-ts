@@ -1,3 +1,4 @@
+import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { withoutExpired } from '../../shared/dynamodb/expiry';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import { iterateRecencyIndex } from '../../shared/dynamodb/index-query';
@@ -14,11 +15,12 @@ import type { CheckpointerContext } from './setup';
  * Every checkpoint META row of the table, newest first, without a thread to
  * scope the read.
  *
- * From the recency index when the table has one, which is a bounded query per
- * index shard. Without one it is a table `Scan`: read capacity for every row
- * evaluated, not every row returned. The index path needs
- * `backfillRecencyIndex` to have run, or rows written before the index are not
- * in it.
+ * From the recency index when the table has one, read a page at a time with at
+ * most `readConcurrency` shards queried at once, each followed across
+ * DynamoDB's 1 MB page boundary. Without one it is a table `Scan`: read
+ * capacity for every row evaluated, not every row returned. The index path
+ * needs `backfillRecencyIndex` to have run, or rows written before the index
+ * are not in it.
  */
 function threadlessRows(
   context: CheckpointerContext,
@@ -41,6 +43,7 @@ function threadlessRows(
     indexName: context.indexName,
     tag: 'CHKPT',
     shards: context.indexShards ?? DEFAULT_INDEX_SHARDS,
+    concurrency: context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
     retry: retryFor(context, scope.signal),
     signal: scope.signal,
   });

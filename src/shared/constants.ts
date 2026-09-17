@@ -85,9 +85,11 @@ export const MAX_RETRY_ATTEMPTS = 100;
 export const MAX_RETRY_DELAY_MS = 60_000;
 
 /**
- * The most shards a recency index may have. The indexed read issues one query
- * per shard, so this is also the fan-out ceiling: an unbounded value turns a
- * config typo into a request storm and an out-of-memory crash.
+ * The most shards a recency index may have. The indexed read builds every
+ * shard's partition key and issues at least one query per shard, so an
+ * unbounded value turns a config typo into an unbounded stream of requests and
+ * an out-of-memory crash. How many of those queries run at once is
+ * `readConcurrency`.
  */
 export const MAX_INDEX_SHARDS = 1024;
 

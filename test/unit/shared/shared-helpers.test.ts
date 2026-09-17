@@ -81,28 +81,35 @@ describe('iterateRecencyIndex', () => {
     indexName: 'gsi1',
     tag: 'CHKPT' as const,
     shards: 1,
+    concurrency: 1,
   });
 
+  /** A first page that fills up and reports a `LastEvaluatedKey` is followed by a second. */
   it('yields every row of the index, page after page', async () => {
     const { client, mock } = createStrictDocumentMock();
     let page = 0;
     mock.on(QueryCommand).callsFake(() => {
       page += 1;
       return page === 1
-        ? { Items: Array.from({ length: 100 }, (_, i) => ({ gsi1sk: `2026#${100 - i}` })) }
+        ? {
+            Items: Array.from({ length: 100 }, (_, i) => ({ gsi1sk: `2026#${100 - i}` })),
+            LastEvaluatedKey: { gsi1sk: '2026#1' },
+          }
         : { Items: [] };
     });
     const rows = [];
     for await (const row of iterateRecencyIndex(options(client))) rows.push(row);
     expect(rows).toHaveLength(100);
+    expect(page).toBe(2);
   });
 
   /** An early break fetches no further page: that is the whole point of streaming it. */
   it('fetches no further page when the consumer stops', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock
-      .on(QueryCommand)
-      .resolves({ Items: Array.from({ length: 100 }, (_, i) => ({ gsi1sk: `2026#${100 - i}` })) });
+    mock.on(QueryCommand).resolves({
+      Items: Array.from({ length: 100 }, (_, i) => ({ gsi1sk: `2026#${100 - i}` })),
+      LastEvaluatedKey: { gsi1sk: '2026#1' },
+    });
     for await (const _ of iterateRecencyIndex(options(client))) break;
     expect(mock.commandCalls(QueryCommand)).toHaveLength(1);
   });

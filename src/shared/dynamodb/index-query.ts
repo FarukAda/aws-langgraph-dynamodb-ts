@@ -1,11 +1,8 @@
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-
 import { mapWithConcurrency } from '../concurrency';
 import { ValidationError } from '../errors/errors';
 import { validateInteger } from '../validation/primitives';
-import { type IndexTag, indexPartitions } from './index-keys';
-import { withDynamoDBRetry } from './retry';
-import type { RetryOptions } from './retry';
+import { indexPartitions } from './index-keys';
+import { type IndexQueryOptions, queryShard } from './index-shard';
 import type { DocItem } from './types';
 
 /** One page of a recency listing, and where the next one resumes. */
@@ -13,21 +10,6 @@ export interface IndexPage {
   items: DocItem[];
   /** Absent when the page is the last one. */
   nextCursor?: string;
-}
-
-/** What a recency listing needs to read one page. */
-export interface IndexQueryOptions {
-  client: DynamoDBDocument;
-  tableName: string;
-  indexName: string;
-  tag: IndexTag;
-  shards: number;
-  /** Rows per page. */
-  limit: number;
-  /** Opaque, from a previous page. */
-  cursor?: string;
-  retry?: RetryOptions;
-  signal?: AbortSignal;
 }
 
 /**
@@ -64,42 +46,15 @@ function decodeCursor(cursor: string): string {
   return decoded;
 }
 
-/** One shard's newest rows below the cursor. */
-async function queryShard(
-  options: IndexQueryOptions,
-  partition: string,
-  before: string | undefined,
-): Promise<DocItem[]> {
-  const result = await withDynamoDBRetry(
-    () =>
-      options.client.query({
-        TableName: options.tableName,
-        IndexName: options.indexName,
-        KeyConditionExpression: before === undefined ? '#pk = :pk' : '#pk = :pk AND #sk < :before',
-        ExpressionAttributeNames: {
-          '#pk': 'gsi1pk',
-          ...(before === undefined ? {} : { '#sk': 'gsi1sk' }),
-        },
-        ExpressionAttributeValues: {
-          ':pk': partition,
-          ...(before === undefined ? {} : { ':before': before }),
-        },
-        ScanIndexForward: false,
-        Limit: options.limit,
-      }),
-    { ...options.retry, signal: options.signal },
-  );
-  return (result.Items ?? []) as DocItem[];
-}
-
 /**
  * Read one page of a recency listing from the index, newest first.
  *
- * Every shard is queried for its own newest `limit` rows and the results are
- * merged; taking `limit` from the merge is correct because each shard is
- * already sorted and no shard can contribute a row newer than the ones it
- * returned. The alternative — one query over an unsharded index — would make
- * every listing hit one partition, which is what the sharding exists to avoid.
+ * Every shard is read for its own newest `limit` rows and the results are
+ * merged. Taking `limit` from the merge is correct because each shard is
+ * already sorted and supplied either `limit` rows or every row it had, so no
+ * shard holds a row newer than the page's last that it did not return. The
+ * alternative — one query over an unsharded index — would make every listing
+ * hit one partition, which is what the sharding exists to avoid.
  *
  * This replaces a full-table `Scan` with a `FilterExpression`, which consumed
  * read capacity for every row *evaluated*, collected the whole table in memory
@@ -107,40 +62,43 @@ async function queryShard(
  *
  * Accepts: `limit` — a positive integer; rows per page. `cursor` — from a
  * previous page, or none to start at the newest. `shards` — must match what the
- * writers used.
+ * writers used. `concurrency` — how many shards are read at once.
  *
- * Returns: the page, newest first, and a `nextCursor` only when the page filled
- * up: a short page means every shard was exhausted, so handing one back would
- * cost an empty round of queries to discover that.
+ * Returns: the page, newest first, and a `nextCursor` exactly while rows may
+ * remain: the merge held more than `limit` rows, or some shard did not report
+ * its end. A cursor is never withheld while rows remain, and none is issued
+ * once every shard has reported its end, even for a page filled exactly.
+ * DynamoDB can still report a `LastEvaluatedKey` for a shard whose `limit`th
+ * row was its last, so the page after such a cursor may come back empty.
  *
- * Throws: ValidationError naming `limit` or `cursor`; whatever the queries
- * throw.
+ * Throws: ValidationError naming `limit` or `cursor`; `ResultTruncatedError`
+ * for a shard whose pages do not end within `MAX_LOOP_ITERATIONS`; whatever
+ * the queries throw, including `AbortError`.
  *
- * Guarantees: one bounded query per shard, issued concurrently, whatever the
- * table holds. Taking `limit` from the merge is correct because each shard is
- * already sorted and no shard can contribute a row newer than the ones it
- * returned.
+ * Guarantees: at most `concurrency` shard reads at once, and each shard is
+ * followed across DynamoDB's 1 MB page boundary until it has supplied `limit`
+ * rows or run out, so no shard contributes more than `limit` rows to a page.
  */
 export async function queryRecencyIndex(options: IndexQueryOptions): Promise<IndexPage> {
   validateInteger(options.limit, 'limit', { min: 1 });
   const before = options.cursor === undefined ? undefined : decodeCursor(options.cursor);
   const partitions = indexPartitions(options.tag, options.shards);
-  const perShard = await mapWithConcurrency(partitions, partitions.length, (partition) =>
+  const shards = await mapWithConcurrency(partitions, options.concurrency, (partition) =>
     queryShard(options, partition, before),
   );
-  const merged = perShard
-    .flat()
+  const merged = shards
+    .flatMap((shard) => shard.items)
     .sort((a, b) => ((a.gsi1sk as string) < (b.gsi1sk as string) ? 1 : -1));
   const page = merged.slice(0, options.limit);
   /**
-   * More rows remain only when this page filled up; a short page means every
-   * shard was exhausted, so handing back a cursor would cost an empty round of
-   * queries to discover that.
+   * Rows remain when the merge overflowed the page or a shard still holds
+   * some. Every shard supplied either `limit` rows or all it had, so either
+   * way the page is non-empty and its last row is the right place to resume.
    */
-  const last = page.length === options.limit ? page[page.length - 1] : undefined;
+  const remain = merged.length > options.limit || shards.some((shard) => !shard.exhausted);
   return {
     items: page,
-    ...(last === undefined ? {} : { nextCursor: encodeCursor(last.gsi1sk as string) }),
+    ...(remain ? { nextCursor: encodeCursor(page[page.length - 1].gsi1sk as string) } : {}),
   };
 }
 

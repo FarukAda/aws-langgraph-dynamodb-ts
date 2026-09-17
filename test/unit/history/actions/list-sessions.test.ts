@@ -321,10 +321,10 @@ describe('listSessions uses the recency index when the table has one (HIST-10)',
   });
 
   /**
-   * The cursor is the position in the index, so it advances whenever the page
-   * filled up — even if expiry and foreign rows left fewer sessions behind.
+   * The cursor is the position in the index, so it advances whenever rows
+   * remain — even if expiry and foreign rows left fewer sessions behind.
    */
-  it('hands back a cursor when the page filled up', async () => {
+  it('hands back a cursor while rows remain', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({
       Items: [sessionRow('b', '2026-01-02T00:00:00Z'), sessionRow('a', '2026-01-01T00:00:00Z')],

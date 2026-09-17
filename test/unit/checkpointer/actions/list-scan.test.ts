@@ -133,8 +133,8 @@ describe('list() without a thread_id uses the recency index when the table has o
 
   /**
    * Listing every thread was a full-table Scan: read capacity for every row
-   * evaluated, not every row returned. With the index it is a bounded query
-   * per index shard, and an early `break` fetches no further page.
+   * evaluated, not every row returned. With the index it reads each shard a
+   * page at a time, and an early `break` fetches no further page.
    */
   it('queries the index instead of scanning', async () => {
     const { client, mock } = createStrictDocumentMock();
