@@ -46,14 +46,18 @@ async function cleanUpItems(context: CheckpointerContext, dead: DeadUpload[]): P
  * Accepts: `config` — must name a `checkpoint_id`, since writes always attach
  * to a checkpoint. `writes` — one task's, in order; their channels are
  * validated before anything is encoded or uploaded. `taskId` — validated as the
- * sort-key segment it becomes.
+ * sort-key segment it becomes. `config.signal` — cancels the writes' retries;
+ * checked before anything is encoded.
  *
  * Returns: nothing. Every write is attempted; a regular write that loses its
  * first-write-wins race is a normal outcome, not a failure.
  *
- * Throws: ValidationError naming `checkpoint_id`, `taskId`, `writes`,
- * `channel` or `value`; the first genuine write failure, after every write has
- * settled and the cleanup has run.
+ * Throws: ValidationError naming `config`, `configurable` or `signal` for a
+ * config of the wrong shape; `thread_id`, `checkpoint_ns`, `checkpoint_id` or
+ * `thread_ts` for a malformed identifier, and `checkpoint_id` when the config
+ * names none; `taskId`, `writes`, `channel`, `sortKey`, `payload` or `s3Key`;
+ * the first genuine write failure, after every write has settled and the
+ * cleanup has run.
  *
  * Guarantees: regular writes are first-write-wins, matching the reference
  * checkpointer; special negative-index writes always overwrite (see

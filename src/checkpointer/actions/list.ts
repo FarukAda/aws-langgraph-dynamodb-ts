@@ -103,7 +103,10 @@ function addressesOneRow(scope: ListScope): scope is OneRowScope {
  * unordered across threads on the scan path. The read stops right after the
  * yield that reaches `limit`, and abandoning the generator stops it too.
  *
- * Throws: ValidationError for a malformed identifier or limit;
+ * Throws: ValidationError, from the first `.next()` and before any read, for
+ * a config of the wrong shape (`config`, `configurable`, `signal`), a
+ * malformed identifier, or options that fail the checks
+ * {@link readListScope} makes;
  * `FORMAT_UNSUPPORTED` for a row of ours written by a newer version; whatever
  * the reads and decodes throw.
  *

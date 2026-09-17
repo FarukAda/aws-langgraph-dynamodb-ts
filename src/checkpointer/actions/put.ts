@@ -36,13 +36,19 @@ import { validateCheckpointId } from '../internal/validation';
  * Accepts: `config` — its `checkpoint_id`, when present, becomes the new
  * checkpoint's parent. `checkpoint.id` — validated as the sort-key segment it
  * becomes. `metadata` — stored beside it, on the light row a listing reads.
+ * `config.signal` — cancels the writes' retries; checked before anything is
+ * encoded.
  *
  * Returns: the config addressing the stored checkpoint, which is what the
  * caller passes back to continue the thread.
  *
- * Throws: ValidationError naming `checkpoint`, `thread_id`, `checkpoint_ns`,
- * `checkpoint_id` or `value`; `S3_OFFLOAD_FAILED`; whatever the transaction
- * throws once the outcome is established.
+ * Throws: ValidationError naming `config`, `configurable` or `signal` for a
+ * config of the wrong shape, `thread_id`, `checkpoint_ns`, `checkpoint_id` or
+ * `thread_ts` for a malformed identifier, `checkpoint` for a `null` or
+ * `undefined` checkpoint, `checkpoint_id` for a malformed `checkpoint.id`,
+ * `payload` for a payload too large to store inline without `s3`, or `s3Key`
+ * for an offloaded object's key over S3's cap; `S3_OFFLOAD_FAILED`; whatever
+ * the transaction throws once the outcome is established.
  *
  * Guarantees: both rows land or neither does — they are one transaction, so a
  * META row never names a payload that is not there. Writing the same
