@@ -1,4 +1,10 @@
-import { handEditedDocFiles, planReferences, planReferencesIn } from './guards/plan-references';
+import {
+  handEditedDocFiles,
+  isTextFileName,
+  planReferenceScanFiles,
+  planReferences,
+  planReferencesIn,
+} from './guards/plan-references';
 
 describe('planReferencesIn', () => {
   it('flags a Ruling followed by a number', () => {
@@ -112,6 +118,24 @@ describe('planReferences', () => {
   it('finds no plan-process reference across the real tree', () => {
     expect(planReferences()).toEqual([]);
   });
+
+  it('reads the code and the hand-edited docs, skipping only its own two files', () => {
+    const files = planReferenceScanFiles();
+    expect(files).toEqual(
+      expect.arrayContaining([
+        'src/index.ts',
+        'test/surface/harness.mjs',
+        'README.md',
+        'CHANGELOG.md',
+        'CONTRIBUTING.md',
+        'package.json',
+        '.github/workflows/ci.yml',
+      ]),
+    );
+    expect(files).not.toContain('test/static/guards/plan-references.ts');
+    expect(files).not.toContain('test/static/plan-references.test.ts');
+    expect(files.filter((file) => file.startsWith('docs/'))).toEqual([]);
+  });
 });
 
 describe('handEditedDocFiles', () => {
@@ -138,6 +162,16 @@ describe('handEditedDocFiles', () => {
       ]),
     );
     expect(files.filter((file) => file.startsWith('docs/'))).toEqual([]);
+  });
+
+  it('reads a file under .github as text unless its extension is a known binary one', () => {
+    expect(isTextFileName('CODEOWNERS')).toBe(true);
+    expect(isTextFileName('ci.yml')).toBe(true);
+    expect(isTextFileName('annotate-jest.mjs')).toBe(true);
+    expect(isTextFileName('release.sh')).toBe(true);
+    expect(isTextFileName('social-preview.png')).toBe(false);
+    expect(isTextFileName('LOGO.PNG')).toBe(false);
+    expect(isTextFileName('diagram.pdf')).toBe(false);
   });
 
   it('skips the npm lockfile and root files of other kinds', () => {

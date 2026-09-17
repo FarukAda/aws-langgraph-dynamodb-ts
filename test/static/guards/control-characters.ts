@@ -104,13 +104,13 @@ export function controlCharactersIn(source: string, file: string): ControlCharac
  * build every control character they test with at runtime, so they hold none
  * of the raw bytes they look for and need no exclusion.
  */
-function scannedFilePaths(): string[] {
+export function controlCharacterScanFiles(): string[] {
   return [...allScannableFiles(), ...handEditedDocFiles(), EXTRA_FILE];
 }
 
 /** Every raw control character found across the real tree's scanned files. */
 export function controlCharacters(): ControlCharacterHit[] {
-  return scannedFilePaths().flatMap((path) =>
+  return controlCharacterScanFiles().flatMap((path) =>
     controlCharactersIn(readFileSync(resolve(REPO_ROOT, path), 'utf8'), path),
   );
 }

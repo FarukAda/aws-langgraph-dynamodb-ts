@@ -1,4 +1,8 @@
-import { controlCharacters, controlCharactersIn } from './guards/control-characters';
+import {
+  controlCharacterScanFiles,
+  controlCharacters,
+  controlCharactersIn,
+} from './guards/control-characters';
 
 /** The lone high half of the surrogate pair that spells the grinning-face emoji. */
 const HIGH = String.fromCharCode(0xd83d);
@@ -111,5 +115,22 @@ describe('controlCharactersIn', () => {
 describe('controlCharacters', () => {
   it('finds no raw control character across the real tree', () => {
     expect(controlCharacters()).toEqual([]);
+  });
+
+  it('reads the code, the hand-edited docs and the surface baseline, not the generated docs', () => {
+    const files = controlCharacterScanFiles();
+    expect(files).toEqual(
+      expect.arrayContaining([
+        'src/index.ts',
+        'test/surface/harness.mjs',
+        'README.md',
+        'CHANGELOG.md',
+        'CONTRIBUTING.md',
+        'package.json',
+        '.github/workflows/ci.yml',
+        'test/surface/baseline.txt',
+      ]),
+    );
+    expect(files.filter((file) => file.startsWith('docs/'))).toEqual([]);
   });
 });

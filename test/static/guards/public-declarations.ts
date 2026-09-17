@@ -57,6 +57,14 @@ type DeclaredName = Pick<PublicDeclaration, 'name' | 'kind'>;
  * The names `node` declares when it is a declaration this derivation reads,
  * classified — or none for any other statement. An overload signature counts
  * as the function it declares.
+ *
+ * A variable counts as a function only when its initializer is an arrow
+ * function or a function expression written in place. One holding a class
+ * expression or the result of a call — a wrapped function such as
+ * `wrap(async () => …)`, or a frozen object — is classified as a plain value
+ * and no rule checks it: telling a callable result from a constant would need
+ * the type checker, and refusing every call result would refuse ordinary
+ * constants. A limit, like the type-alias one in `guarded-methods.ts`.
  */
 function declaredNames(node: ts.Statement): DeclaredName[] {
   if (ts.isClassDeclaration(node) && node.name !== undefined) {

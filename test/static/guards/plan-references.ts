@@ -111,11 +111,37 @@ function listRecursive(dir: string, extensions: readonly string[]): string[] {
   return out;
 }
 
-/** Every file under `dir`, recursively, whatever its extension — or none, as `CODEOWNERS` has. */
-function listEveryFile(dir: string): string[] {
+/**
+ * Extensions of binary files a repository commonly keeps beside its text: an
+ * image, an archive or a PDF. Read as UTF-8, their bytes hold control
+ * characters by design, so a scan of them could only ever fail.
+ */
+const BINARY_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.ico',
+  '.webp',
+  '.pdf',
+  '.zip',
+]);
+
+/**
+ * Whether `name` is a file the guards read as text: anything but a known
+ * binary extension, so a new text format — or none, as `CODEOWNERS` has — is
+ * read without being listed.
+ */
+export function isTextFileName(name: string): boolean {
+  return !BINARY_EXTENSIONS.has(extname(name).toLowerCase());
+}
+
+/** Every text file under `dir`, recursively, whatever its extension (see {@link isTextFileName}). */
+function listEveryTextFile(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = join(dir, entry.name);
-    return entry.isDirectory() ? listEveryFile(full) : [full];
+    if (entry.isDirectory()) return listEveryTextFile(full);
+    return isTextFileName(entry.name) ? [full] : [];
   });
 }
 
@@ -163,25 +189,26 @@ function isHandEditedRootFile(name: string): boolean {
  * {@link REPO_ROOT} with forward slashes: every `.md`, `.json`, `.yml` or
  * `.yaml` file and every `*.config.ts` directly in the repository root —
  * derived from the directory, so a new root document is covered without being
- * listed — except the npm lockfile, and every file under `.github`. The
+ * listed — except the npm lockfile, and every text file under `.github`. The
  * generated `docs/api` is not among them: it is rebuilt from the `src`
  * comments, which are scanned already, and a hit there could only be fixed at
- * its source.
+ * its source. The set is read from the working tree, not from git, so an
+ * untracked file of those kinds in the root is scanned locally too.
  */
 export function handEditedDocFiles(): string[] {
   const rootFiles = readdirSync(REPO_ROOT, { withFileTypes: true })
     .filter((entry) => entry.isFile() && isHandEditedRootFile(entry.name))
     .map((entry) => join(REPO_ROOT, entry.name));
-  const absolute = [...rootFiles, ...listEveryFile(resolve(REPO_ROOT, '.github'))];
+  const absolute = [...rootFiles, ...listEveryTextFile(resolve(REPO_ROOT, '.github'))];
   return absolute.map((path) => relative(REPO_ROOT, path).split(sep).join('/'));
 }
 
 /**
- * {@link allScannableFiles} and {@link handEditedDocFiles}, excluding
- * {@link GUARD_OWN_FILES}: this guard's own real-tree scan must skip the two
+ * Every file this guard's real-tree assertion reads: {@link allScannableFiles}
+ * and {@link handEditedDocFiles}, excluding {@link GUARD_OWN_FILES}, the two
  * files that necessarily contain every pattern it looks for.
  */
-function scannedFilePaths(): string[] {
+export function planReferenceScanFiles(): string[] {
   return [...allScannableFiles(), ...handEditedDocFiles()].filter(
     (path) => !GUARD_OWN_FILES.has(path),
   );
@@ -189,7 +216,7 @@ function scannedFilePaths(): string[] {
 
 /** Every plan-process reference found across the real tree's scanned files. */
 export function planReferences(): PlanReferenceHit[] {
-  return scannedFilePaths().flatMap((path) =>
+  return planReferenceScanFiles().flatMap((path) =>
     planReferencesIn(readFileSync(resolve(REPO_ROOT, path), 'utf8'), path),
   );
 }
