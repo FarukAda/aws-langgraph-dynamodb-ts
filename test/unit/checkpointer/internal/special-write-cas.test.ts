@@ -159,7 +159,12 @@ describe('writeSpecialItem', () => {
     expect(outcome.error?.message).toBe('boom');
   });
 
-  it('never rejects, so a concurrent Promise.all branch still settles, without attempting a put', async () => {
+  /**
+   * The failed read establishes nothing about the row, which a racer may hold
+   * with this item's key, so the upload is reported kept, like every outcome
+   * nothing confirmed (C-02b).
+   */
+  it('never rejects, and keeps the upload without attempting a put, when the first read fails', async () => {
     let puts = 0;
     const context = {
       tableName: 'c',
@@ -176,10 +181,19 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    await expect(writeSpecialItem(context as never, item())).resolves.toMatchObject({
-      committed: false,
-    });
+    const outcome = await writeSpecialItem(context as never, item());
+
+    expect(outcome).toEqual({ committed: true, error: new Error('read failed') });
     expect(puts).toBe(0);
+  });
+
+  it('reports a failed put as not committed, reading nothing, when no offloader is configured', async () => {
+    const get = jest.fn();
+    const client = { get, put: async () => Promise.reject(new Error('boom')) };
+    const context = { tableName: 'c', logger: SILENT_LOGGER, client };
+    const outcome = await writeSpecialItem(context as never, item());
+    expect(outcome).toEqual({ committed: false, error: new Error('boom') });
+    expect(get).not.toHaveBeenCalled();
   });
 
   it('exhausts the compare-and-swap budget and falls back to an unconditional overwrite', async () => {

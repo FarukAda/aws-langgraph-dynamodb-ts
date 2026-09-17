@@ -36,6 +36,14 @@ export interface RowRead {
   attribute: string;
   /** Further attributes to project, when the caller needs the row itself back. */
   also?: readonly string[];
+  /**
+   * Attributes holding a payload descriptor, projected as its `location` and
+   * `s3Key` only. A cleanup decision needs where the payload lives, never its
+   * inline bytes, which can run to hundreds of kilobytes. An attribute named
+   * here and as `attribute` or in `also` is projected once, as the descriptor,
+   * because DynamoDB refuses two overlapping paths in one projection.
+   */
+  descriptors?: readonly string[];
 }
 
 /**
@@ -110,11 +118,34 @@ export function verdictFor(probe: RowProbe, row: DocItem | undefined): WriteVerd
 }
 
 /**
+ * The projection for `read`, with no attribute name left unused, which DynamoDB
+ * also refuses.
+ */
+function projectionOf(read: RowRead): { expression: string; names: Record<string, string> } {
+  const nested = read.descriptors ?? [];
+  const whole = [read.attribute, ...(read.also ?? [])].filter((name) => !nested.includes(name));
+  const names: Record<string, string> = {};
+  const paths: string[] = [];
+  whole.forEach((name, index) => {
+    names[`#a${index}`] = name;
+    paths.push(`#a${index}`);
+  });
+  nested.forEach((name, index) => {
+    names[`#d${index}`] = name;
+    paths.push(`#d${index}.#loc`, `#d${index}.#s3k`);
+  });
+  if (nested.length > 0) Object.assign(names, { '#loc': 'location', '#s3k': 's3Key' });
+  return { expression: paths.join(', '), names };
+}
+
+/**
  * Read the row a probe names, strongly consistently.
  *
  * Accepts: `read.attribute` — always projected. `read.also` — further
  * attributes, for a caller that needs the row itself back rather than only its
- * identity.
+ * identity. `read.descriptors` — descriptor attributes, projected as their
+ * `location` and `s3Key` only; each still comes back under its own name, as a
+ * map holding those two.
  *
  * Returns: the projected row, or undefined when there is none.
  *
@@ -126,17 +157,15 @@ export function verdictFor(probe: RowProbe, row: DocItem | undefined): WriteVerd
  * about a write that may have landed.
  */
 export async function readRow(deps: VerifyDeps, read: RowRead): Promise<DocItem | undefined> {
-  const names = [read.attribute, ...(read.also ?? [])];
+  const { expression, names } = projectionOf(read);
   const result = await withDynamoDBRetry(
     () =>
       deps.client.get({
         TableName: deps.tableName,
         Key: read.key,
         ConsistentRead: true,
-        ProjectionExpression: names.map((_, index) => `#a${index}`).join(', '),
-        ExpressionAttributeNames: Object.fromEntries(
-          names.map((name, index) => [`#a${index}`, name]),
-        ),
+        ProjectionExpression: expression,
+        ExpressionAttributeNames: names,
       }),
     deps.retry,
   );

@@ -6,18 +6,21 @@ import type { CheckpointerContext } from './setup';
 import { writeSpecialItem } from './special-write-cas';
 import type { SpecialWriteOutcome } from './special-write-verify';
 
-/** A descriptor to release paired with the one the surviving row keeps. */
+/**
+ * A descriptor to release, paired with every descriptor a surviving row may
+ * hold; an absent entry in `keep` is ignored.
+ */
 interface CleanupPair {
   release: PayloadDescriptor | undefined;
-  keep: PayloadDescriptor | undefined;
+  keep: readonly (PayloadDescriptor | undefined)[];
 }
 
 /**
  * Best-effort delete the S3 objects behind the `release` side of each pair,
- * skipping any object the matching `keep` side still points at. A special
- * write that stores the same value twice produces the same content-addressed
- * key on both sides, and deleting it would strand the row that survives (see
- * {@link releasableS3Keys}).
+ * skipping any object the matching `keep` side still points at. Two writes of
+ * the same value produce the same content-addressed key, whether they are one
+ * call overwriting its own value or two racing calls, and deleting it would
+ * strand the row that survives (see {@link releasableS3Keys}).
  *
  * `scope` is given for descriptors read back from rows (the superseded values)
  * and omitted for this call's own uploads.
@@ -30,7 +33,12 @@ async function deleteDescriptors(
 ): Promise<void> {
   if (!context.offloader) return;
   const keys = pairs.flatMap(({ release, keep }) =>
-    release ? releasableS3Keys([release], keep ? [keep] : []) : [],
+    release
+      ? releasableS3Keys(
+          [release],
+          keep.filter((ref): ref is PayloadDescriptor => Boolean(ref)),
+        )
+      : [],
   );
   if (keys.length === 0) return;
   await cleanUpS3Orphans(
@@ -50,12 +58,15 @@ async function deleteDescriptors(
  * {@link writeSpecialItem}) so a concurrent call to the same special channel
  * cannot make both callers delete the same superseded object and orphan one
  * upload. A committed item cleans up the payload it actually superseded; an
- * item confirmed never to have committed cleans up its own new upload.
+ * item confirmed never to have committed cleans up its own new upload, unless
+ * the row that exists names it — a racer that wrote the same value holds this
+ * item's key (C-02b).
  *
  * "Confirmed" is load-bearing, and {@link writeSpecialItem} is what earns it:
- * an ambiguous failure is verified against the row and reported as committed
- * unless the read proves otherwise. Deleting on *unknown* would strand a live
- * row pointing at a deleted object; leaking one object instead is recoverable.
+ * an ambiguous failure, or a first read of the row that failed, is reported as
+ * committed unless a read proves otherwise. Deleting on *unknown* would strand
+ * a live row pointing at a deleted object; leaking one object instead is
+ * recoverable.
  *
  * Accepts: `items` — this call's special-channel rows; empty writes nothing.
  * `threadId` — the caller's, which scopes every object this cleanup may delete.
@@ -88,7 +99,7 @@ export async function writeSpecialItemsWithCleanup(
     context,
     outcomes
       .filter(([, o]) => o.committed)
-      .map(([item, o]) => ({ release: o.superseded, keep: item.value })),
+      .map(([item, o]) => ({ release: o.superseded, keep: [item.value] })),
     'putWrites.special.previous',
     [threadId],
   );
@@ -96,7 +107,7 @@ export async function writeSpecialItemsWithCleanup(
     context,
     outcomes
       .filter(([, o]) => !o.committed)
-      .map(([item, o]) => ({ release: item.value, keep: o.superseded })),
+      .map(([item, o]) => ({ release: item.value, keep: [o.live, o.superseded] })),
     'putWrites.special.newUpload',
   );
   return outcomes.find(([, o]) => o.error)?.[1].error;

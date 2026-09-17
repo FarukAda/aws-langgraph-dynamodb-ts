@@ -5,7 +5,7 @@ import type {
   CheckpointMetadata,
 } from '@langchain/langgraph-checkpoint';
 
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
+import { releasableS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
@@ -53,11 +53,13 @@ import { validateCheckpointId } from '../internal/validation';
  * Guarantees: both rows land or neither does — they are one transaction, so a
  * META row never names a payload that is not there. Writing the same
  * `checkpoint.id` again replaces both, which is what a retry and a repair tool
- * both need. On failure with S3 offload configured the rows are read back
+ * both need. On failure with S3 offload configured both rows are read back
  * before any upload is deleted (see {@link verifyCheckpointLanded}): a
  * transaction that committed and lost its response is reported as success, a
- * confirmed non-commit cleans up the objects this call uploaded, and an
- * unverifiable outcome leaks them rather than risk stranding a live row.
+ * confirmed non-commit cleans up the objects this call uploaded except any
+ * either row names now — another writer's committed checkpoint can hold the
+ * same checkpoint object — and an unverifiable outcome leaks them rather than
+ * risk stranding a live row.
  */
 export async function putCheckpoint(
   context: CheckpointerContext,
@@ -102,7 +104,7 @@ export async function putCheckpoint(
     );
   } catch (error) {
     if (!context.offloader) throw error;
-    const verdict = await verifyCheckpointLanded(context, meta, payload);
+    const { verdict, live } = await verifyCheckpointLanded(context, meta, payload);
     if (verdict === 'landed') {
       context.logger.debug('put: transaction committed although its response was lost', {
         threadId,
@@ -113,7 +115,7 @@ export async function putCheckpoint(
     if (verdict === 'not-landed') {
       await cleanUpS3Orphans(
         context.offloader,
-        collectS3Keys([meta.metadata, payload.checkpoint]),
+        releasableS3Keys([meta.metadata, payload.checkpoint], live),
         'put',
         context.logger,
       );

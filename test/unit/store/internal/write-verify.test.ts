@@ -25,30 +25,47 @@ function context(client: StoreContext['client']): StoreContext {
 const record = { PK: 'p', SK: 's', rev: 'r1' };
 
 describe('verifyWriteLanded (STORE-13)', () => {
-  it("reports 'landed' when the row holds this write's own rev, projecting only the rev", async () => {
+  it("reports 'landed' when the row holds this write's own rev, projecting the rev and the descriptor's location and key", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { rev: 'r1' } });
-    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('landed');
+    await expect(verifyWriteLanded(context(client), record)).resolves.toEqual({
+      verdict: 'landed',
+      row: { rev: 'r1' },
+    });
     const input = mock.commandCalls(GetCommand)[0].args[0].input;
-    expect(Object.values(input.ExpressionAttributeNames!)).toEqual(['rev']);
+    expect(input.ProjectionExpression).toBe('#a0, #d0.#loc, #d0.#s3k');
+    expect(Object.values(input.ExpressionAttributeNames!)).toEqual([
+      'rev',
+      'value',
+      'location',
+      's3Key',
+    ]);
     expect(input.ConsistentRead).toBe(true);
   });
 
-  it("reports 'not-landed' when the row holds another rev or does not exist", async () => {
+  /**
+   * The row that exists is handed back, because it decides what a cleanup may
+   * release: a racer that stored identical bytes holds this write's key (C-02a).
+   */
+  it("reports 'not-landed' when the row holds another rev or does not exist, with the row it read", async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock
-      .on(GetCommand)
-      .resolvesOnce({ Item: { rev: 'other' } })
-      .resolves({});
-    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('not-landed');
-    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('not-landed');
+    const live = { rev: 'other', value: { location: 'S3', s3Key: 'theirs.bin' } };
+    mock.on(GetCommand).resolvesOnce({ Item: live }).resolves({});
+    await expect(verifyWriteLanded(context(client), record)).resolves.toEqual({
+      verdict: 'not-landed',
+      row: live,
+    });
+    await expect(verifyWriteLanded(context(client), record)).resolves.toEqual({
+      verdict: 'not-landed',
+      row: undefined,
+    });
   });
 
   it("reports 'not-landed' without a read for a record that carries no rev", async () => {
     const { client, mock } = createStrictDocumentMock();
-    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' })).resolves.toBe(
-      'not-landed',
-    );
+    await expect(verifyWriteLanded(context(client), { PK: 'p', SK: 's' })).resolves.toEqual({
+      verdict: 'not-landed',
+    });
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });
 
@@ -58,7 +75,9 @@ describe('verifyWriteLanded (STORE-13)', () => {
     // a live row points at.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
-    await expect(verifyWriteLanded(context(client), record)).resolves.toBe('unverified');
+    await expect(verifyWriteLanded(context(client), record)).resolves.toEqual({
+      verdict: 'unverified',
+    });
   });
 });
 

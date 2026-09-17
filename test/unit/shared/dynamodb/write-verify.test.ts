@@ -6,6 +6,7 @@ import {
   offloadedKey,
   readRow,
   type RowProbe,
+  type RowRead,
   verdictFor,
   verifyRow,
 } from '../../../../src/shared/dynamodb/write-verify';
@@ -133,5 +134,65 @@ describe('readRow', () => {
     mock.on(GetCommand).rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
 
     await expect(readRow({ client, tableName: 't' }, attributeProbe('r1'))).rejects.toThrow('down');
+  });
+});
+
+/** The projection `readRow` sends for `read`, and the attribute names it declares. */
+async function projectionFor(read: RowRead) {
+  const { client, mock } = createStrictDocumentMock();
+  mock.on(GetCommand).resolves({});
+  await readRow({ client, tableName: 't' }, read);
+  const input = mock.commandCalls(GetCommand)[0].args[0].input;
+  return { expression: input.ProjectionExpression, names: input.ExpressionAttributeNames };
+}
+
+/**
+ * A cleanup decision needs where a payload lives, never its inline bytes. The
+ * projection must also stay one DynamoDB accepts: it refuses an attribute name
+ * the expression does not use, and two document paths that overlap.
+ */
+describe('readRow descriptor projection', () => {
+  it('projects a descriptor attribute as its location and s3Key only', async () => {
+    await expect(
+      projectionFor({ key: KEY, attribute: 'rev', descriptors: ['value'] }),
+    ).resolves.toEqual({
+      expression: '#a0, #d0.#loc, #d0.#s3k',
+      names: { '#a0': 'rev', '#d0': 'value', '#loc': 'location', '#s3k': 's3Key' },
+    });
+  });
+
+  it('projects an attribute also named as a descriptor once, as the descriptor', async () => {
+    await expect(
+      projectionFor({ key: KEY, attribute: 'metadata', descriptors: ['metadata'] }),
+    ).resolves.toEqual({
+      expression: '#d0.#loc, #d0.#s3k',
+      names: { '#d0': 'metadata', '#loc': 'location', '#s3k': 's3Key' },
+    });
+    await expect(
+      projectionFor({ key: KEY, attribute: 'rev', also: ['value'], descriptors: ['value'] }),
+    ).resolves.toEqual({
+      expression: '#a0, #d0.#loc, #d0.#s3k',
+      names: { '#a0': 'rev', '#d0': 'value', '#loc': 'location', '#s3k': 's3Key' },
+    });
+  });
+
+  it('projects exactly as before when no descriptor is named', async () => {
+    await expect(projectionFor({ key: KEY, attribute: 'rev', also: ['value'] })).resolves.toEqual({
+      expression: '#a0, #a1',
+      names: { '#a0': 'rev', '#a1': 'value' },
+    });
+    await expect(projectionFor({ key: KEY, attribute: 'PK' })).resolves.toEqual({
+      expression: '#a0',
+      names: { '#a0': 'PK' },
+    });
+  });
+
+  /** The nested projection still hands the attribute back as a map, so the probe reads its key. */
+  it('reads the identity of a descriptor projected as its location and s3Key', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({ Item: { value: { location: 'S3', s3Key: 'k' } } });
+    await expect(
+      verifyRow({ client, tableName: 't' }, { ...descriptorProbe('k'), descriptors: ['value'] }),
+    ).resolves.toMatchObject({ verdict: 'landed' });
   });
 });

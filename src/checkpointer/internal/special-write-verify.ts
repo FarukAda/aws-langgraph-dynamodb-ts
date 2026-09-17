@@ -18,11 +18,24 @@ export interface SpecialRowState {
   revision?: string;
 }
 
-/** Outcome of one special item's conditional write. Never thrown, always returned. */
+/**
+ * Outcome of one special item's conditional write. Never thrown, always returned.
+ *
+ * `committed` is true whenever this call's own upload must be kept: a confirmed
+ * commit, or an outcome nothing confirmed, which then also carries `error`. It
+ * is false only when the write is confirmed not to have committed, or when no
+ * offloader is configured and there is no upload to keep.
+ */
 export interface SpecialWriteOutcome {
   committed: boolean;
   superseded?: PayloadDescriptor;
   error?: Error;
+  /**
+   * The descriptor on the row that exists, when this write is confirmed not to
+   * have committed. A racer that wrote the same value holds this call's key, so
+   * the cleanup keeps whatever it names.
+   */
+  live?: PayloadDescriptor;
 }
 
 /** What a post-failure verification read established about the attempt. */
@@ -95,8 +108,10 @@ export async function readSpecialRow(
  * - the row holds this item's own `writeGroup`: the write landed, and the
  *   descriptor this attempt pinned is the dead one.
  * - the row holds some other group: the write is confirmed not to be what is
- *   live, so this item's own upload is the dead one. `observed` is returned so
- *   a rejected compare-and-swap can re-pin and try again.
+ *   live, so this item's own upload is dead unless the live row names the same
+ *   object, which it does when the other writer stored the same value. The
+ *   outcome carries that row's descriptor as `live`, and `observed` is returned
+ *   so a rejected compare-and-swap can re-pin and try again.
  * - the read itself fails: nothing is confirmed, so the outcome still reports a
  *   commit and keeps the originating error. That leaks one S3 object at worst
  *   (reclaimed by `ensureS3LifecycleRule`) where the alternative strands a live
@@ -127,5 +142,8 @@ export async function verifyAfterFailure(
     : await verifyRow(context, probe);
   if (verdict === 'landed') return { outcome: { committed: true, superseded: attempted.value } };
   if (verdict === 'unverified') return { outcome: { committed: true, error } };
-  return { outcome: { committed: false, error }, observed: stateOf(row) };
+  return {
+    outcome: { committed: false, error, live: row?.value as PayloadDescriptor | undefined },
+    observed: stateOf(row),
+  };
 }

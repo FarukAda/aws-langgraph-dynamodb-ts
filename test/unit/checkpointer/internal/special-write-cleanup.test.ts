@@ -171,6 +171,83 @@ describe('writeSpecialItemsWithCleanup', () => {
   });
 });
 
+/**
+ * The timeline of C-02b:
+ *
+ * 1. No row exists when this call reads it, so its put is pinned to "no row".
+ * 2. Every attempt at that put times out, so the retry budget is spent.
+ * 3. Meanwhile a racer writes the same value for the same task and channel. Its
+ *    row carries its own writeGroup and, because a key is the hash of the bytes
+ *    under the row's path, `racerKey`.
+ * 4. The verification read finds the racer's writeGroup, so this write did not
+ *    land, and the cleanup releases the item's own upload.
+ *
+ * `racerValue` is what the racer's row holds under `value`.
+ */
+async function raceOnSpecialRow(racerValue: object | null) {
+  const reads = [{}, { Item: { writeGroup: 'group-racer', value: racerValue } }];
+  const client: ClientStub = {
+    get: async () => reads.shift() ?? {},
+    put: async () => {
+      throw Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
+    },
+  };
+  const offloader = trackingOffloader();
+  const ctx = {
+    ...context(client, offloader),
+    retry: { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
+  } as CheckpointerContext;
+  const error = await writeSpecialItemsWithCleanup(ctx, 't', [specialItem('new.bin')]);
+  const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
+  return { error, deleted };
+}
+
+describe('writeSpecialItemsWithCleanup keeps the object a live row names (C-02b)', () => {
+  it("never deletes the item's upload when the racer's live row holds the same key", async () => {
+    const { error, deleted } = await raceOnSpecialRow(descriptor('new.bin'));
+    expect(error).toMatchObject({ name: 'RetryExhaustedError' });
+    expect(deleted).not.toContain('new.bin');
+  });
+
+  it("still deletes the item's upload when the racer's live row holds another key", async () => {
+    const { error, deleted } = await raceOnSpecialRow(descriptor('racer.bin'));
+    expect(error).toMatchObject({ name: 'RetryExhaustedError' });
+    expect(deleted).toEqual(['new.bin']);
+  });
+
+  /** A row this library did not write can hold anything; it names no object, and must not throw. */
+  it("still deletes the item's upload, and settles, when the live row's value is null", async () => {
+    const { error, deleted } = await raceOnSpecialRow(null);
+    expect(error).toMatchObject({ name: 'RetryExhaustedError' });
+    expect(deleted).toEqual(['new.bin']);
+  });
+
+  /**
+   * A first read that fails establishes nothing about the row, and a racer may
+   * already hold it with this item's key. No put is issued, and the upload is
+   * kept rather than deleted.
+   */
+  it('returns the error, issues no put and deletes nothing when the first read of the row fails', async () => {
+    let puts = 0;
+    const client: ClientStub = {
+      get: async () => {
+        throw Object.assign(new Error('read down'), { name: 'ValidationException' });
+      },
+      put: async () => {
+        puts += 1;
+        return {};
+      },
+    };
+    const offloader = trackingOffloader();
+    const error = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
+      specialItem('new.bin'),
+    ]);
+    expect(error).toMatchObject({ message: 'read down' });
+    expect(puts).toBe(0);
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+});
+
 describe('writeSpecialItemsWithCleanup S3 key binding (SEC-03)', () => {
   it("never deletes a superseded object outside the thread's own path", async () => {
     const client: ClientStub = {

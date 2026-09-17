@@ -47,11 +47,34 @@ function transientTimeout(): Error {
   return Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
 }
 
-/** The metadata descriptor the transaction tried to write, as the row would hold it. */
-function committedMetaRow(mock: ReturnType<typeof createStrictDocumentMock>['mock']) {
+type DocumentMock = ReturnType<typeof createStrictDocumentMock>['mock'];
+
+/** The descriptors the failed transaction carried, one per row. */
+function attempted(mock: DocumentMock) {
   const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
-  return { Item: { metadata: items[0].Put?.Item?.metadata } };
+  return { metadata: items[0].Put?.Item?.metadata, checkpoint: items[1].Put?.Item?.checkpoint };
 }
+
+/** What one verification read answers, computed when it is issued; `'fails'` rejects it. */
+type Answer = (() => { Item?: Record<string, object> }) | 'fails';
+
+/**
+ * Answer the META and PAYLOAD reads by the sort key each names: the two rows
+ * are read separately, and each must be answered with its own row.
+ */
+function answerBySortKey(mock: DocumentMock, meta: Answer, payload: Answer): void {
+  mock.on(GetCommand).callsFake(async (input: { Key: { SK: string } }) => {
+    const answer = input.Key.SK.startsWith('META#') ? meta : payload;
+    if (answer === 'fails') {
+      throw Object.assign(new Error('denied'), { name: 'AccessDeniedException' });
+    }
+    return answer();
+  });
+}
+
+const absent = () => ({});
+const otherS3 = (s3Key: string) => ({ location: 'S3', s3Key });
+const fastRetry = { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 };
 
 describe('putCheckpoint', () => {
   it('transactionally writes the META and PAYLOAD items and returns the new config', async () => {
@@ -106,7 +129,7 @@ describe('putCheckpoint', () => {
     mock
       .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    mock.on(GetCommand).resolves({});
+    answerBySortKey(mock, absent, absent);
     const offloader = trackingOffloader();
     const context = { ...contextWith(client), offloader: offloader as never };
     await expect(
@@ -123,7 +146,11 @@ describe('putCheckpoint', () => {
     // so the budget is spent on RetryExhaustedError although the rows are live.
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(transientTimeout());
-    mock.on(GetCommand).callsFake(async () => committedMetaRow(mock));
+    answerBySortKey(
+      mock,
+      () => ({ Item: { metadata: attempted(mock).metadata } }),
+      () => ({ Item: { checkpoint: attempted(mock).checkpoint } }),
+    );
     const offloader = trackingOffloader();
     const context = { ...contextWith(client), offloader: offloader as never };
     await expect(
@@ -134,33 +161,68 @@ describe('putCheckpoint', () => {
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
-  it("cleans up its own uploads when the row holds another attempt's descriptor after retry exhaustion", async () => {
+  it("cleans up its own uploads when the rows hold another attempt's descriptors after retry exhaustion", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(transientTimeout());
-    mock.on(GetCommand).resolves({
-      Item: { metadata: { location: 'S3', serdeType: 'json', compressed: false, s3Key: 'other' } },
-    });
+    answerBySortKey(
+      mock,
+      () => ({ Item: { metadata: otherS3('other-meta') } }),
+      () => ({ Item: { checkpoint: otherS3('other-ckpt') } }),
+    );
     const offloader = trackingOffloader();
-    const context = { ...contextWith(client), offloader: offloader as never };
+    const context = { ...contextWith(client), offloader: offloader as never, retry: fastRetry };
     await expect(
       putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
     ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
+    const own = attempted(mock);
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith([own.metadata.s3Key, own.checkpoint.s3Key]);
   });
 
-  it('leaks rather than deletes when the verification read itself fails', async () => {
+  /**
+   * The timeline of C-02c: another writer committed this checkpoint id with the
+   * same checkpoint bytes and different metadata, so its PAYLOAD row names this
+   * call's checkpoint key while its META row names a metadata key of its own.
+   * This call's transaction spends its retries, and the META row proves it did
+   * not land.
+   */
+  it("keeps the checkpoint object another writer's live PAYLOAD row names, releasing only its own metadata", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(transientTimeout());
-    mock
-      .on(GetCommand)
-      .rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
+    answerBySortKey(
+      mock,
+      () => ({ Item: { metadata: otherS3('t1//ckpt-1/metadata/KMB') } }),
+      () => ({ Item: { checkpoint: attempted(mock).checkpoint } }),
+    );
     const offloader = trackingOffloader();
-    const context = { ...contextWith(client), offloader: offloader as never };
+    const context = { ...contextWith(client), offloader: offloader as never, retry: fastRetry };
     await expect(
       putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
     ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
-    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    const own = attempted(mock);
+    const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
+    expect(deleted).toEqual([own.metadata.s3Key]);
+    expect(deleted).not.toContain(own.checkpoint.s3Key);
   });
+
+  /** One row read proves nothing about what the other row names, so nothing is released. */
+  it.each([
+    ['META', 'fails', () => ({ Item: { checkpoint: otherS3('other-ckpt') } })],
+    ['PAYLOAD', () => ({ Item: { metadata: otherS3('other-meta') } }), 'fails'],
+  ] as const)(
+    'leaks rather than deletes when the %s verification read fails',
+    async (_row, metaAnswer, payloadAnswer) => {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(TransactWriteCommand).rejects(transientTimeout());
+      answerBySortKey(mock, metaAnswer, payloadAnswer);
+      const offloader = trackingOffloader();
+      const context = { ...contextWith(client), offloader: offloader as never, retry: fastRetry };
+      await expect(
+        putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
+      ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
+      expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    },
+  );
 
   it('does not read back on failure when no offloader is configured', async () => {
     const { client, mock } = createStrictDocumentMock();

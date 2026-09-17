@@ -157,4 +157,24 @@ describe('verifyAfterFailure', () => {
     expect(verified.outcome).toEqual({ committed: false, error: trigger });
     expect(verified.observed).toEqual({ exists: false });
   });
+
+  /**
+   * A racer that wrote the same value holds this item's key, so the cleanup
+   * needs the descriptor the live row holds, not only the fact that it lost
+   * (C-02b). Both doors carry it: the row a rejection returned, and a read.
+   */
+  it('hands back the descriptor the live row holds when another writer holds it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({ Item: { writeGroup: 'group-b', value: descriptor } });
+    const trigger = new Error('timeout');
+    const read = await verifyAfterFailure(context(client), item(), attempted, trigger);
+    const rejected = await verifyAfterFailure(
+      context(client),
+      item(),
+      attempted,
+      conditionFailure('group-b'),
+    );
+    expect(read.outcome).toEqual({ committed: false, error: trigger, live: descriptor });
+    expect(rejected.outcome).toMatchObject({ committed: false, live: descriptor });
+  });
 });

@@ -1,7 +1,6 @@
 import { type DescriptorRef, releasableS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import type { WriteVerdict } from '../../shared/dynamodb/write-verify';
 import type { StoreItemRecord } from '../types';
 import { putWithRevisionSwap } from './overwrite-swap';
 import type { ExistingRecordMeta } from './read-existing';
@@ -9,23 +8,27 @@ import type { StoreContext } from './setup';
 import { verifyWriteLanded } from './write-verify';
 
 /**
- * Best-effort delete of the S3 object behind `release`, unless `keep` — the
- * descriptor of whichever row survives this call — points at the same object.
- * See {@link releasableS3Keys}: identical bytes produce an identical key, so
- * the two sides of an overwrite can name one object.
+ * Best-effort delete of the S3 object behind `release`, unless something in
+ * `keep` points at the same object. See {@link releasableS3Keys}: identical
+ * bytes produce an identical key, so the two sides of an overwrite, or two
+ * racing writers, can name one object.
  *
- * `scope` is passed for a descriptor read back from the row (the superseded
- * value) and omitted for this call's own upload.
+ * `keep` lists every descriptor a surviving row may hold; an absent entry is
+ * ignored. `scope` is passed for a descriptor read back from the row (the
+ * superseded value) and omitted for this call's own upload.
  */
 async function cleanUp(
   context: StoreContext,
   release: DescriptorRef | undefined,
-  keep: DescriptorRef | undefined,
+  keep: readonly (DescriptorRef | undefined)[],
   label: string,
   scope?: readonly string[],
 ): Promise<void> {
   if (!context.offloader || !release) return;
-  const keys = releasableS3Keys([release], keep ? [keep] : []);
+  const keys = releasableS3Keys(
+    [release],
+    keep.filter((ref): ref is DescriptorRef => Boolean(ref)),
+  );
   if (keys.length === 0) return;
   await cleanUpS3Orphans(
     context.offloader,
@@ -52,13 +55,16 @@ async function cleanUp(
  * its response, and a `ConditionalCheckFailedException` is as consistent with
  * hitting the row this call just wrote as with a competitor's win. The row is
  * therefore read back (`verifyWriteLanded`) before anything is deleted. Only a
- * confirmed `'not-landed'` deletes this record's own object; a confirmed
- * `'landed'` cleans up the previous object like the success path and swallows
- * the error, and an `'unverified'` read deletes nothing and rethrows — leaking
- * one object at worst rather than stranding a live row pointing at a deleted
- * one. The verification compares the per-call `rev`, so an inline record is
- * verified too: a lost acknowledgement of an inline overwrite used to be
- * reported as a failure while the previous offloaded object was never cleaned.
+ * confirmed `'not-landed'` deletes this record's own object, and only when
+ * neither the row that exists now nor the one read before the write names it:
+ * a racer that stored identical bytes holds this call's very key, which the
+ * pre-write snapshot cannot know (C-02a). A confirmed `'landed'` cleans up the
+ * previous object like the success path and swallows the error, and an
+ * `'unverified'` read deletes nothing and rethrows — leaking one object at
+ * worst rather than stranding a live row pointing at a deleted one. The
+ * verification compares the per-call `rev`, so an inline record is verified
+ * too: a lost acknowledgement of an inline overwrite used to be reported as a
+ * failure while the previous offloaded object was never cleaned.
  *
  * Accepts: `record` — the fully encoded row, its payload already uploaded if it
  * was offloaded. `existing` — what the caller read before encoding.
@@ -91,11 +97,22 @@ export async function persistRecord(
       );
     }
   } catch (error) {
-    const verdict: WriteVerdict = await verifyWriteLanded(context, record);
-    if (verdict === 'not-landed') await cleanUp(context, record.value, existing.value, 'store.put');
+    const { verdict, row } = await verifyWriteLanded(context, record);
+    /**
+     * The row that exists now decides what may go: a racer that stored identical
+     * bytes holds this call's key, and the pre-write snapshot cannot know it.
+     */
+    if (verdict === 'not-landed') {
+      await cleanUp(
+        context,
+        record.value,
+        [row?.value as DescriptorRef | undefined, existing.value],
+        'store.put',
+      );
+    }
     if (verdict !== 'landed') throw error;
   }
-  await cleanUp(context, superseded.value, record.value, 'store.put.overwrite', [
+  await cleanUp(context, superseded.value, [record.value], 'store.put.overwrite', [
     ...record.namespace,
     record.key,
   ]);

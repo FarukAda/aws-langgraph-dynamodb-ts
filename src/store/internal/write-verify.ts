@@ -1,5 +1,5 @@
 import { REVISION_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
-import { readRow, verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
+import { readRow, type VerifiedWrite, verifyRow } from '../../shared/dynamodb/write-verify';
 import type { StoreContext } from './setup';
 
 /**
@@ -55,8 +55,12 @@ export async function rowIsAbsent(
  * A record with no `rev` has nothing to compare and is reported `'not-landed'`
  * without spending a read.
  *
- * Returns: `'landed'`, `'not-landed'` or `'unverified'`; see
- * {@link WriteVerdict} for what each answer licenses the caller to do.
+ * Returns: the verdict — `'landed'`, `'not-landed'` or `'unverified'`, see
+ * {@link WriteVerdict} for what each answer licenses the caller to do — and,
+ * when one was read, the row that exists, projected to its `rev` and its value
+ * descriptor's `location` and `s3Key`. The row is what a cleanup keeps: a
+ * racer that stored identical bytes holds this write's very key, which the
+ * snapshot read before the write cannot know.
  *
  * Throws: nothing — a failed verification is `'unverified'`, which is an
  * answer, not an error.
@@ -64,12 +68,12 @@ export async function rowIsAbsent(
 export async function verifyWriteLanded(
   context: StoreContext,
   record: { PK: string; SK: string; rev?: string },
-): Promise<WriteVerdict> {
-  const { verdict } = await verifyRow(context, {
+): Promise<VerifiedWrite> {
+  return verifyRow(context, {
     key: { PK: record.PK, SK: record.SK },
     kind: 'attribute',
     attribute: REVISION_ATTRIBUTE,
     expected: record.rev,
+    descriptors: ['value'],
   });
-  return verdict;
 }

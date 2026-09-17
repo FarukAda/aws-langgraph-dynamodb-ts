@@ -56,14 +56,15 @@ describe('putWrites special (negative-index) writes', () => {
     expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write--1\/__error__\/[^/]+$/);
   });
 
-  it('still cleans up a failed regular write when the special path fails before its own conditional put is attempted', async () => {
+  it('still cleans up a failed regular write, and keeps the special upload, when the special path fails before its own conditional put is attempted', async () => {
     // Regression: a readSpecialRow rejection used to short-circuit
     // Promise.all before this regular write's own failed-upload cleanup ran.
-    // It also cleans up the special write's own never-committed upload: the
-    // read failing means the conditional put was never even attempted, so
-    // that upload is unambiguously never-committed. The regular write's own
-    // post-failure verification read must succeed (row absent) for its upload
-    // to count as confirmed dead, so only the special row's read is failed.
+    // The special write's own upload is kept: its put was never attempted, but
+    // the failed read establishes nothing about the row, which a racer that
+    // wrote the same value may already hold under that very key (C-02b). The
+    // regular write's own post-failure verification read must succeed (row
+    // absent) for its upload to count as confirmed dead, so only the special
+    // row's read is failed.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).callsFake(async (input: { Key: { SK: string } }) => {
       if (input.Key.SK.includes('#0000000007#')) {
@@ -85,14 +86,10 @@ describe('putWrites special (negative-index) writes', () => {
         'task-1',
       ),
     ).rejects.toThrow('get');
-    expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
-    const keysCalled = offloader.deleteBatch.mock.calls.map((call) => (call[0] as string[])[0]);
-    expect(keysCalled).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/^t\/\/c1\/task-1\/write-0\/ch\/[^/]+$/),
-        expect.stringMatching(/^t\/\/c1\/task-1\/write--1\/__error__\/[^/]+$/),
-      ]),
-    );
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith([
+      expect.stringMatching(/^t\/\/c1\/task-1\/write-0\/ch\/[^/]+$/),
+    ]);
   });
 
   it('uses an individual conditional PutCommand for special (negative-index) writes, never BatchWriteItem', async () => {

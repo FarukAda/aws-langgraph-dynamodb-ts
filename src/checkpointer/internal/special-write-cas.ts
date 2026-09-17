@@ -91,6 +91,27 @@ async function overwriteUnconditionally(
 }
 
 /**
+ * The plain put used without an offloader: no object exists to orphan, so no
+ * swap and no read. A failure is reported as not committed without verifying,
+ * which stays truthful because there is no upload for the caller to keep.
+ */
+async function writeWithoutOffloader(
+  context: CheckpointerContext,
+  item: CheckpointWriteItem,
+  signal?: AbortSignal,
+): Promise<SpecialWriteOutcome> {
+  try {
+    await withDynamoDBRetry(
+      () => context.client.put({ TableName: context.tableName, Item: item }),
+      retryFor(context, signal),
+    );
+    return { committed: true };
+  } catch (error) {
+    return { committed: false, error: error as Error };
+  }
+}
+
+/**
  * Overwrite one special row, pinned to the `writeGroup` this call observed, and
  * report the descriptor it superseded.
  *
@@ -107,15 +128,20 @@ async function overwriteUnconditionally(
  * The compare-and-swap runs only when an offloader is configured — matching
  * `store/internal/persist.ts` — because without one there is no S3 object to
  * orphan, so a plain unconditional put stays correct and costs no extra
- * ConsistentRead or write capacity. That shortcut is also why the surviving
- * `catch` may report `committed: false` without verifying: with no offloader
- * there is no object for the caller to delete on the strength of it.
+ * ConsistentRead or write capacity (see {@link writeWithoutOffloader}).
+ *
+ * A failure of the first read, before any put, establishes nothing about the
+ * row, and a racer that wrote the same value may already hold it under this
+ * item's key. It is therefore reported the way every unverified outcome is:
+ * `committed: true` with the error, so the caller keeps the upload.
  *
  * Accepts: `item` — one special-channel row, carrying this call's `writeGroup`.
  * `signal` — aborts the attempts.
  *
- * Returns: whether the write committed, the descriptor it superseded when it
- * did, and the failure when it did not.
+ * Returns: whether this item's upload must be kept (see
+ * {@link SpecialWriteOutcome}), the descriptor it superseded when the write
+ * committed, the failure when there was one, and the live row's descriptor when
+ * the write is confirmed not to have committed.
  *
  * Throws: nothing. The caller runs this concurrently with the regular writes
  * under `Promise.all`, whose own cleanup depends on every branch resolving
@@ -130,14 +156,8 @@ export async function writeSpecialItem(
   item: CheckpointWriteItem,
   signal?: AbortSignal,
 ): Promise<SpecialWriteOutcome> {
+  if (!context.offloader) return writeWithoutOffloader(context, item, signal);
   try {
-    if (!context.offloader) {
-      await withDynamoDBRetry(
-        () => context.client.put({ TableName: context.tableName, Item: item }),
-        retryFor(context, signal),
-      );
-      return { committed: true };
-    }
     const initial = await readSpecialRow(context, item);
     const attempt = await attemptCasWrites(context, item, initial, signal);
     if (attempt.done) return attempt.outcome;
@@ -148,6 +168,12 @@ export async function writeSpecialItem(
     );
     return await overwriteUnconditionally(context, item, attempt.observed, signal);
   } catch (error) {
-    return { committed: false, error: error as Error };
+    /**
+     * The attempts settle every put they issue, so what reaches here is the
+     * initial read, before any put, or the warning. Neither establishes what the
+     * row holds, and this call's upload may be the object a racer's live row
+     * names, so it is reported the way every unverified outcome is: kept.
+     */
+    return { committed: true, error: error as Error };
   }
 }
