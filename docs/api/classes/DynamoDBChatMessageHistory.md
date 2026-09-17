@@ -325,10 +325,10 @@ Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
 not read; ResultTruncatedError past either cap on the scan path, or for an
 index shard whose pages do not end; UpstreamError; AbortError.
 
-Guarantees: with a configured `indexName` each shard is read for at most
-`limit` rows, following DynamoDB's 1 MB page boundary until it has
-supplied them or run out, and at most `readConcurrency` shards are read at
-once, whatever the table holds.
+Guarantees: with a configured `indexName` each shard is read one DynamoDB
+page at a time, and its next page only when the listing needs its next
+row; at most `readConcurrency` shards are queried at once, and memory is
+about one DynamoDB page per shard, whatever the table holds.
 
 #### Parameters
 
