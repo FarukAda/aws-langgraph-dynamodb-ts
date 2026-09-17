@@ -79,8 +79,9 @@ export function validateCompression(config: CompressionConfig): void {
  * Returns: nothing; validity is the absence of a throw.
  *
  * Throws: ValidationError naming `s3.serverSideEncryption` or
- * `s3.sseKmsKeyId`. A key id that is not a string was handed to `PutObject`
- * unchecked, at the first offload.
+ * `s3.sseKmsKeyId`. Unchecked, a truthy key id that is not a string was
+ * handed to `PutObject` at the first offload, and a falsy one (`''`, `null`,
+ * `0`) was dropped, uploading without the key the caller named.
  */
 function validateS3Encryption(config: S3OffloadConfig): void {
   if (
