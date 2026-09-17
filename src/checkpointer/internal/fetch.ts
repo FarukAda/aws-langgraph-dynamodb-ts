@@ -6,6 +6,7 @@ import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { assertReadableRow } from '../../shared/dynamodb/row-version';
 import type { DocItem } from '../../shared/dynamodb/types';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { narrowHead, toPendingWrites } from './item-reader';
@@ -101,7 +102,8 @@ export async function fetchTargetMeta(
  * Returns: the row, or undefined when it is not there — the window the ordered
  * PAYLOAD→META write leaves open, which the caller answers as "no checkpoint".
  *
- * Throws: whatever the read throws.
+ * Throws: `FORMAT_UNSUPPORTED` for a row a newer release wrote; whatever the
+ * read throws.
  */
 export async function fetchPayload(
   context: CheckpointerContext,
@@ -119,7 +121,14 @@ export async function fetchPayload(
       }),
     retryFor(context, read.signal),
   );
-  return result.Item as CheckpointPayloadItem | undefined;
+  const item = result.Item as CheckpointPayloadItem | undefined;
+  /**
+   * A payload of ours written by a newer release fails loudly, as its META row
+   * would: decoding it under today's rules is how a checkpoint comes back with
+   * state silently missing.
+   */
+  if (item !== undefined) assertReadableRow(item, 'checkpoint payload');
+  return item;
 }
 
 /**
@@ -131,7 +140,8 @@ export async function fetchPayload(
  * Returns: the writes after `dropSupersededWrites` has resolved
  * first-write-wins; a checkpoint with none returns an empty array.
  *
- * Throws: whatever the query or the payload decode throws.
+ * Throws: `FORMAT_UNSUPPORTED` for a row a newer release wrote; whatever the
+ * query or the payload decode throws.
  *
  * Guarantees: the read is deliberately uncapped. It must be complete to be
  * correct — a `Send` fan-out retried with a changed write order leaves
@@ -167,6 +177,12 @@ export async function fetchPendingWrites(
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
+    /**
+     * Checked before `dropSupersededWrites` reads `writeGroup`: that dedup runs
+     * on every row regardless of format, and a newer format may give the
+     * attribute a different meaning.
+     */
+    assertReadableRow(item, 'pending write');
     items.push(item as CheckpointWriteItem);
   }
   if (items.length >= LIST_SCAN_WARN_THRESHOLD) {

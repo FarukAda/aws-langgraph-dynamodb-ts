@@ -312,3 +312,85 @@ describe('getTuple on a config that names no thread', () => {
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'checkpoint_id' } });
   });
 });
+
+/**
+ * The META check alone let a checkpoint back out with a PAYLOAD or a pending
+ * write a newer release had written, silently missing whatever that release
+ * changed (C-03). These pin the check on both other row kinds and confirm the
+ * META check itself is unaffected.
+ */
+describe('getCheckpointTuple refuses a PAYLOAD or WRITE row a newer release wrote (C-03)', () => {
+  it("rejects a PAYLOAD row above this release's format version, even though its META is readable", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).resolves({ Item: { ...payload, v: 2 } });
+    await expect(
+      getCheckpointTuple(ctx, { configurable: { thread_id: 't' } }),
+    ).rejects.toMatchObject({ code: ErrorCode.FORMAT_UNSUPPORTED, context: { field: 'v' } });
+  });
+
+  it('resolves when the PAYLOAD row carries the supported version, and when it carries none', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    await expect(
+      getCheckpointTuple(ctx, { configurable: { thread_id: 't' } }),
+    ).resolves.toBeDefined();
+    const { v: _v, ...withoutV } = payload;
+    mock.on(GetCommand).resolves({ Item: withoutV });
+    await expect(
+      getCheckpointTuple(ctx, { configurable: { thread_id: 't' } }),
+    ).resolves.toBeDefined();
+  });
+
+  it("rejects a WRITE row above this release's format version, among otherwise readable pending writes", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const writeItems = await buildWriteItems(
+      ctx,
+      't',
+      '',
+      'ckpt-1',
+      'task-1',
+      [
+        ['messages', 'x'],
+        ['messages', 'y'],
+      ],
+      'nonce-1',
+    );
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      if (prefix.startsWith('META')) return { Items: [meta] };
+      return { Items: [writeItems[0], { ...writeItems[1], v: 2 }] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    await expect(
+      getCheckpointTuple(ctx, { configurable: { thread_id: 't' } }),
+    ).rejects.toMatchObject({ code: ErrorCode.FORMAT_UNSUPPORTED, context: { field: 'v' } });
+  });
+
+  it('a META row above the format version still rejects, whatever version its PAYLOAD carries (control)', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [{ ...meta, v: 2 }] } : { Items: [] };
+    });
+    mock.on(GetCommand).resolves({ Item: payload });
+    await expect(
+      getCheckpointTuple(ctx, { configurable: { thread_id: 't' } }),
+    ).rejects.toMatchObject({ code: ErrorCode.FORMAT_UNSUPPORTED, context: { field: 'v' } });
+  });
+});

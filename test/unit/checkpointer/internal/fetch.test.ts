@@ -8,6 +8,7 @@ import {
 import { buildWriteItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../../../src/shared/constants';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
@@ -108,6 +109,81 @@ describe('fetchPendingWrites', () => {
       ['task-1', 'ch', 'v1'],
     ]);
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.ConsistentRead).toBe(true);
+  });
+});
+
+describe('fetchPayload refuses a row a newer release wrote (C-03)', () => {
+  const payloadItem = (v?: number) => ({
+    SK: 'PAYLOAD##c1',
+    ...(v === undefined ? {} : { v }),
+    checkpoint: {
+      location: 'INLINE',
+      serdeType: 'json',
+      compressed: false,
+      bytes: new TextEncoder().encode('{}'),
+    },
+  });
+
+  it('resolves a payload row carrying no v, and one at the supported version', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({ Item: payloadItem() });
+    await expect(fetchPayload(context(client), 't', '', 'c1')).resolves.toBeDefined();
+    mock.on(GetCommand).resolves({ Item: payloadItem(1) });
+    await expect(fetchPayload(context(client), 't', '', 'c1')).resolves.toBeDefined();
+  });
+
+  it('rejects a payload row written by a newer release', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({ Item: payloadItem(2) });
+    await expect(fetchPayload(context(client), 't', '', 'c1')).rejects.toMatchObject({
+      code: ErrorCode.FORMAT_UNSUPPORTED,
+      context: { field: 'v' },
+    });
+  });
+
+  it('still returns undefined for a missing payload row, before any version is checked', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    await expect(fetchPayload(context(client), 't', '', 'c1')).resolves.toBeUndefined();
+  });
+});
+
+describe('fetchPendingWrites refuses a row a newer release wrote (C-03)', () => {
+  const writeItem = (channel: string, v?: number) => ({
+    PK: 'CHKPT#t',
+    SK: `WRITE##c1#task-1#0000000000#${channel}`,
+    ...(v === undefined ? {} : { v }),
+    taskId: 'task-1',
+    index: 0,
+    channel,
+    writeGroup: 'g1',
+    value: {
+      location: 'INLINE',
+      serdeType: 'json',
+      compressed: false,
+      bytes: new TextEncoder().encode('"ok"'),
+    },
+  });
+
+  it('resolves pending writes carrying no v, and ones at the supported version', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [writeItem('ch')] });
+    await expect(fetchPendingWrites(context(client), 't', '', 'c1')).resolves.toEqual([
+      ['task-1', 'ch', 'ok'],
+    ]);
+    mock.on(QueryCommand).resolves({ Items: [writeItem('ch', 1)] });
+    await expect(fetchPendingWrites(context(client), 't', '', 'c1')).resolves.toEqual([
+      ['task-1', 'ch', 'ok'],
+    ]);
+  });
+
+  it('rejects a pending write above the supported version, even among readable ones', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [writeItem('ch1', 1), writeItem('ch2', 2)] });
+    await expect(fetchPendingWrites(context(client), 't', '', 'c1')).rejects.toMatchObject({
+      code: ErrorCode.FORMAT_UNSUPPORTED,
+      context: { field: 'v' },
+    });
   });
 });
 

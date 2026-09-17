@@ -13,6 +13,7 @@ import {
   LIST_SCAN_WARN_THRESHOLD,
   MAX_TOTAL_ITEMS_IN_MEMORY,
 } from '../../../../src/shared/constants';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -260,5 +261,30 @@ describe('list passes its limit to DynamoDB (DDB-13)', () => {
     );
     expect(tuples.map((tuple) => tuple.checkpoint.id)).toEqual(['c1']);
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.Limit).toBe(1);
+  });
+});
+
+/**
+ * `list` assembles tuples through the same `assembleTuple` as `getTuple` (C-03):
+ * a PAYLOAD row a newer release wrote must fail the scan path too, not only the
+ * addressed read.
+ */
+describe('listCheckpoints refuses a PAYLOAD row a newer release wrote (C-03)', () => {
+  it('rejects a PAYLOAD row above the supported format version', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = context(client);
+    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), {
+      source: 'loop',
+      step: 1,
+      parents: {},
+    } as CheckpointMetadata);
+    mock.on(QueryCommand).callsFake((input) => {
+      const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
+      return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
+    });
+    mock.on(GetCommand).resolves({ Item: { ...payload, v: 2 } });
+    await expect(
+      collect(listCheckpoints(ctx, { configurable: { thread_id: 't' } })),
+    ).rejects.toMatchObject({ code: ErrorCode.FORMAT_UNSUPPORTED, context: { field: 'v' } });
   });
 });
