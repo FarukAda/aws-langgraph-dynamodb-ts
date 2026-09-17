@@ -47,6 +47,25 @@ function trackingOffloader(
 }
 const binKey = (parts: string[], hash: string): string => [...parts, hash].join('/') + '.bin';
 
+/**
+ * Answer `readExisting` with a row whose value is offloaded at `old-key.bin`,
+ * and the read that follows a committed overwrite with a row holding `live`:
+ * the previous object is released only when that row names another.
+ */
+function answerExistingThenLive(
+  mock: ReturnType<typeof createStrictDocumentMock>['mock'],
+  live: { location: PayloadLocation; s3Key?: string },
+): void {
+  const previous = { location: PayloadLocation.S3, serdeType: 'json', s3Key: 'old-key.bin' };
+  mock
+    .on(GetCommand)
+    .callsFake(async (input: { ProjectionExpression: string }) =>
+      input.ProjectionExpression.startsWith('#c')
+        ? { Item: { createdAt: '2000-01-01T00:00:00.000Z', value: previous } }
+        : { Item: { rev: 'r1', value: live } },
+    );
+}
+
 describe('putItem', () => {
   it('writes a new item, defaulting createdAt to now', async () => {
     const { client, mock } = createStrictDocumentMock();
@@ -296,17 +315,7 @@ describe('putItem', () => {
 
   it('cleans up the previous S3 object after a successful overwrite', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({
-      Item: {
-        createdAt: '2000-01-01T00:00:00.000Z',
-        value: {
-          location: PayloadLocation.S3,
-          serdeType: 'json',
-          compressed: false,
-          s3Key: 'old-key.bin',
-        },
-      },
-    });
+    answerExistingThenLive(mock, { location: PayloadLocation.S3, s3Key: 'new-key.bin' });
     mock.on(PutCommand).resolves({});
     const offloader = trackingOffloader({ buildKey: binKey });
     await putItem(context(client, { offloader: offloader as never }), op({}));
@@ -315,23 +324,17 @@ describe('putItem', () => {
 
   it('cleans up the previous S3 object when a large value is overwritten by a small inline one', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({
-      Item: {
-        createdAt: '2000-01-01T00:00:00.000Z',
-        value: {
-          location: PayloadLocation.S3,
-          serdeType: 'json',
-          compressed: false,
-          s3Key: 'old-key.bin',
-        },
-      },
-    });
+    answerExistingThenLive(mock, { location: PayloadLocation.INLINE });
     mock.on(PutCommand).resolves({});
     const offloader = trackingOffloader({ shouldOffload: false, buildKey: binKey });
     await putItem(context(client, { offloader: offloader as never }), op({}));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
   });
 
+  /**
+   * The row is read once, after the delete and never before it: what was removed
+   * comes back with the delete, and the read only asks whether a re-put names it.
+   */
   it('cleans up the offloaded object DynamoDB reports as removed, without a pre-read (STORE-08)', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(DeleteCommand).resolves({
@@ -339,11 +342,13 @@ describe('putItem', () => {
         value: { location: PayloadLocation.S3, serdeType: 'json', s3Key: 'users/u1/profile.bin' },
       },
     });
+    mock.on(GetCommand).resolves({});
     const offloader = trackingOffloader();
     await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['users/u1/profile.bin']);
     expect(mock.commandCalls(DeleteCommand)[0].args[0].input.ReturnValues).toBe('ALL_OLD');
-    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+    expect(mock.calls()[0].args[0]).toBe(mock.commandCalls(DeleteCommand)[0].args[0]);
   });
 
   it('does not attempt S3 cleanup on delete when no offloader is configured', async () => {

@@ -33,6 +33,12 @@ function specialItem(
   };
 }
 
+/**
+ * The row as `specialItem` commits it. A committed item reads its row again
+ * before releasing what it superseded, and this is the answer that lets it.
+ */
+const ownRow = (s3Key: string) => ({ Item: { value: descriptor(s3Key), writeGroup: 'group-1' } });
+
 function trackingOffloader() {
   return {
     shouldOffload: () => true,
@@ -72,8 +78,9 @@ describe('writeSpecialItemsWithCleanup', () => {
   });
 
   it('a committed item deletes the descriptor it superseded', async () => {
+    const reads = [{ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }];
     const client: ClientStub = {
-      get: async () => ({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
+      get: async () => reads.shift() ?? ownRow('new.bin'),
       put: async () => ({}),
     };
     const offloader = trackingOffloader();
@@ -144,10 +151,13 @@ describe('writeSpecialItemsWithCleanup', () => {
   });
 
   it('cleans up each side of a mixed outcome: the previous object for the committed item, the new upload for the failed one', async () => {
+    let committedReads = 0;
     const client: ClientStub = {
       get: async (input) => {
         const key = input.Key as { SK: string };
         if (key.SK.endsWith('committed')) {
+          committedReads += 1;
+          if (committedReads > 1) return ownRow('committed-new.bin');
           return { Item: { value: descriptor('committed-old.bin'), writeGroup: 'g0' } };
         }
         return {};
@@ -248,10 +258,83 @@ describe('writeSpecialItemsWithCleanup keeps the object a live row names (C-02b)
   });
 });
 
+/**
+ * The timeline of a committed special write racing a revert:
+ *
+ * 1. The row holds a descriptor at `superseded`. This call reads it and its
+ *    compare-and-swap commits `new.bin` over it.
+ * 2. A racer then commits the value `superseded` holds. Its row carries its own
+ *    writeGroup and, because a key is the hash of the bytes under the row's
+ *    path, `superseded`.
+ * 3. This call releases the payload it superseded.
+ *
+ * `after` is the answer to every read following the first.
+ */
+async function commitThenRead(superseded: string, after: object | 'fails') {
+  let reads = 0;
+  const client: ClientStub = {
+    get: async () => {
+      reads += 1;
+      if (reads === 1) return { Item: { value: descriptor(superseded), writeGroup: 'g0' } };
+      if (after === 'fails') {
+        throw Object.assign(new Error('read down'), { name: 'ValidationException' });
+      }
+      return after;
+    },
+    put: async () => ({}),
+  };
+  const offloader = trackingOffloader();
+  const debug = jest.fn();
+  const ctx = {
+    ...context(client, offloader),
+    logger: { ...SILENT_LOGGER, debug },
+  } as CheckpointerContext;
+  const error = await writeSpecialItemsWithCleanup(ctx, 't', [specialItem('new.bin')]);
+  const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
+  return { error, deleted, reads, debug };
+}
+
+describe('writeSpecialItemsWithCleanup reads the row before releasing a superseded object', () => {
+  it("keeps the superseded object when a racer's row committed after this write names it", async () => {
+    const { error, deleted } = await commitThenRead('old.bin', {
+      Item: { writeGroup: 'group-racer', value: descriptor('old.bin') },
+    });
+    expect(error).toBeUndefined();
+    expect(deleted).not.toContain('old.bin');
+  });
+
+  it("deletes the superseded object when the row holds this item's own value", async () => {
+    const { error, deleted, reads } = await commitThenRead('old.bin', {
+      Item: { writeGroup: 'group-1', value: descriptor('new.bin') },
+    });
+    expect(error).toBeUndefined();
+    expect(deleted).toEqual(['old.bin']);
+    expect(reads).toBe(2);
+  });
+
+  /** A read that establishes nothing licenses nothing: the object is left to the lifecycle rule. */
+  it('deletes nothing, reports no failure, and logs at debug when that read fails', async () => {
+    const { error, deleted, debug } = await commitThenRead('old.bin', 'fails');
+    expect(error).toBeUndefined();
+    expect(deleted).toEqual([]);
+    expect(debug).toHaveBeenCalledWith(
+      'putWrites: the row could not be read back; the superseded object is left to the lifecycle rule',
+      { sortKey: 'WRITE##c1#task-1#0000000007#__error__' },
+    );
+  });
+
+  it("issues no second read when the superseded key is the item's own", async () => {
+    const { deleted, reads } = await commitThenRead('new.bin', 'fails');
+    expect(reads).toBe(1);
+    expect(deleted).toEqual([]);
+  });
+});
+
 describe('writeSpecialItemsWithCleanup S3 key binding (SEC-03)', () => {
   it("never deletes a superseded object outside the thread's own path", async () => {
+    const reads = [{ Item: { value: descriptor('foreign/old.bin'), writeGroup: 'g0' } }];
     const client: ClientStub = {
-      get: async () => ({ Item: { value: descriptor('foreign/old.bin'), writeGroup: 'g0' } }),
+      get: async () => reads.shift() ?? ownRow('new.bin'),
       put: async () => ({}),
     };
     const offloader = { ...trackingOffloader(), ownsKey: jest.fn(() => false) };

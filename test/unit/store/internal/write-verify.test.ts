@@ -5,6 +5,7 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import {
   isRetryExhausted,
+  readLiveValue,
   rowIsAbsent,
   verifyWriteLanded,
 } from '../../../../src/store/internal/write-verify';
@@ -109,5 +110,42 @@ describe('rowIsAbsent (I4, STORE-07)', () => {
       true,
     );
     expect(isRetryExhausted(new Error('x'))).toBe(false);
+  });
+});
+
+/**
+ * What a cleanup keeps is decided by the row that exists when it runs: a racer
+ * that commits the content being released holds the very key about to go.
+ */
+describe('readLiveValue', () => {
+  it('returns the descriptor the row holds, reading strongly consistently and projecting only its location and key', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const value = { location: 'S3', s3Key: 'live.bin' };
+    mock.on(GetCommand).resolves({ Item: { rev: 'r2', value } });
+    await expect(readLiveValue(context(client), { PK: 'p', SK: 's' })).resolves.toEqual({ value });
+    const input = mock.commandCalls(GetCommand)[0].args[0].input;
+    expect(input.Key).toEqual({ PK: 'p', SK: 's' });
+    expect(input.ConsistentRead).toBe(true);
+    expect(input.ProjectionExpression).toBe('#a0, #d0.#loc, #d0.#s3k');
+    expect(Object.values(input.ExpressionAttributeNames!)).toEqual([
+      'rev',
+      'value',
+      'location',
+      's3Key',
+    ]);
+  });
+
+  it('returns no value when no row exists', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    await expect(readLiveValue(context(client), { PK: 'p', SK: 's' })).resolves.toEqual({
+      value: undefined,
+    });
+  });
+
+  it('returns undefined, never an empty answer, when the read itself fails', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
+    await expect(readLiveValue(context(client), { PK: 'p', SK: 's' })).resolves.toBeUndefined();
   });
 });

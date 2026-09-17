@@ -155,6 +155,85 @@ describe('persistRecord ambiguous-failure verification', () => {
   });
 });
 
+/** What the read after a delete answers: a row, no row, or a failure. */
+type ReadAnswer = { Item?: Record<string, unknown> } | 'fails';
+
+const K1 = 'users/u1/profile/K1.bin';
+
+/**
+ * The timeline of a delete racing a re-put:
+ *
+ * 1. This call deletes the row, and DynamoDB hands back the removed value, at K1.
+ * 2. A racer then puts the same value again. No row exists, so it uploads to K1,
+ *    because a key is the hash of the bytes under the row's path, and commits a
+ *    row pointing at it.
+ * 3. This call releases the removed object, K1.
+ *
+ * `after` is the answer to the read that follows the delete.
+ */
+async function deleteThenRead(removed: object, after: ReadAnswer) {
+  const { client, mock } = createStrictDocumentMock();
+  mock.on(DeleteCommand).resolves({ Attributes: { value: removed } });
+  if (after === 'fails') {
+    mock
+      .on(GetCommand)
+      .rejects(Object.assign(new Error('read down'), { name: 'ValidationException' }));
+  } else {
+    mock.on(GetCommand).resolves(after);
+  }
+  const offloader = trackingOffloader();
+  const debug = jest.fn();
+  const ctx = context(client, {
+    offloader: offloader as never,
+    logger: { ...SILENT_LOGGER, debug },
+  });
+  await expect(putItem(ctx, op({ value: null }))).resolves.toBeUndefined();
+  const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
+  return { deleted, reads: mock.commandCalls(GetCommand), debug };
+}
+
+describe('deleteStoreItem reads the row before releasing the removed object', () => {
+  it("keeps the removed object when a racer's re-put names it", async () => {
+    const { deleted } = await deleteThenRead(
+      { location: PayloadLocation.S3, s3Key: K1 },
+      { Item: { rev: 'REV-R', value: { location: PayloadLocation.S3, s3Key: K1 } } },
+    );
+    expect(deleted).toEqual([]);
+  });
+
+  it('deletes the removed object when no row exists after the delete', async () => {
+    const { deleted, reads } = await deleteThenRead(
+      { location: PayloadLocation.S3, s3Key: K1 },
+      {},
+    );
+    expect(deleted).toEqual([K1]);
+    expect(reads).toHaveLength(1);
+    expect(reads[0].args[0].input).toMatchObject({
+      Key: { PK: 'STORE#users', SK: 'u1#profile' },
+      ConsistentRead: true,
+    });
+  });
+
+  /** A read that establishes nothing licenses nothing: the object is left to the lifecycle rule. */
+  it('deletes nothing, and logs at debug, when that read fails', async () => {
+    const { deleted, debug } = await deleteThenRead(
+      { location: PayloadLocation.S3, s3Key: K1 },
+      'fails',
+    );
+    expect(deleted).toEqual([]);
+    expect(debug).toHaveBeenCalledWith(
+      'store.delete: the row could not be read back; the removed object is left to the lifecycle rule',
+      { namespace: ['users', 'u1'], key: 'profile' },
+    );
+  });
+
+  it('issues no read when the removed value was inline', async () => {
+    const { deleted, reads } = await deleteThenRead({ location: PayloadLocation.INLINE }, 'fails');
+    expect(reads).toHaveLength(0);
+    expect(deleted).toEqual([]);
+  });
+});
+
 describe('persistRecord verifies an ambiguous inline overwrite by rev (STORE-13)', () => {
   it('reports success and cleans up the previous offloaded object when the inline put actually landed', async () => {
     const { client, mock } = createStrictDocumentMock();

@@ -47,7 +47,14 @@ afterEach(() => cleanUpMock.mockClear());
 describe('store put/delete bind row-sourced S3 keys to the item (SEC-03)', () => {
   it('cleans up the superseded object of an overwrite under the namespace/key scope', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({ Item: { createdAt: 'c', value: previous, rev: 'r0' } });
+    /** `readExisting` sees the previous value; the read after the commit sees this put's inline one. */
+    mock
+      .on(GetCommand)
+      .callsFake(async (input: { ProjectionExpression: string }) =>
+        input.ProjectionExpression.startsWith('#c')
+          ? { Item: { createdAt: 'c', value: previous, rev: 'r0' } }
+          : { Item: { rev: 'r1', value: { location: PayloadLocation.INLINE } } },
+      );
     mock.on(PutCommand).resolves({});
     await putItem(context(client), {
       namespace: ['users', 'u1'],
@@ -66,6 +73,8 @@ describe('store put/delete bind row-sourced S3 keys to the item (SEC-03)', () =>
   it("cleans up the deleted item's object under the namespace/key scope", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(DeleteCommand).resolves({ Attributes: { value: previous } });
+    /** The read after the delete finds no row, so nothing names the removed object. */
+    mock.on(GetCommand).resolves({});
     await putItem(context(client), { namespace: ['users', 'u1'], key: 'profile', value: null });
     expect(cleanUpMock).toHaveBeenCalledWith(
       expect.anything(),

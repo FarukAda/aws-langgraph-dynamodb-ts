@@ -1,3 +1,4 @@
+import type { DescriptorRef } from '../../shared/codec/descriptor-keys';
 import { REVISION_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
 import { readRow, type VerifiedWrite, verifyRow } from '../../shared/dynamodb/write-verify';
 import type { StoreContext } from './setup';
@@ -41,6 +42,41 @@ export async function rowIsAbsent(
     return row === undefined;
   } catch {
     return false;
+  }
+}
+
+/**
+ * The descriptor an item's row holds right now, for a cleanup about to release
+ * an object.
+ *
+ * A key is the hash of the bytes under the row's path, so a racer that commits
+ * the content this call is discarding holds the very key about to be released.
+ * Asking the row, rather than trusting what was read before the write, is what
+ * keeps that object.
+ *
+ * Accepts: the row's key.
+ *
+ * Returns: `{ value }`, where `value` is undefined for no row; or `undefined`
+ * when the read itself failed, in which case nothing may be released.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: strongly consistent, and projected to the descriptor's location
+ * and key.
+ */
+export async function readLiveValue(
+  context: StoreContext,
+  key: { PK: string; SK: string },
+): Promise<{ value?: DescriptorRef } | undefined> {
+  try {
+    const row = await readRow(context, {
+      key,
+      attribute: REVISION_ATTRIBUTE,
+      descriptors: ['value'],
+    });
+    return { value: row?.value as DescriptorRef | undefined };
+  } catch {
+    return undefined;
   }
 }
 

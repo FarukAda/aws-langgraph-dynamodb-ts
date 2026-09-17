@@ -64,9 +64,13 @@ async function cleanUpItems(context: CheckpointerContext, dead: DeadUpload[]): P
  * {@link writeSpecialItemsWithCleanup}). Cleanup only ever targets uploads
  * confirmed unreferenced (see {@link writeRegularItems}): a verified
  * non-commit, or a guard rejection whose returned row provably belongs to
- * another call — and in both cases only when the row that exists does not point
- * at the same object. An upload can leak; a live row can never be stranded
- * pointing at a deleted object.
+ * another call — and in both cases only when that row does not point at the
+ * same object. A special write's superseded payload is released only when a
+ * read of the row after the commit does not name it. An upload can leak. An
+ * object is released only when the row last seen before the release does not
+ * name it; S3 has no conditional delete, so a write of byte-identical content
+ * that commits between that read and the delete can still lose its object, and
+ * that gap is the one remaining window.
  */
 export async function putWrites(
   context: CheckpointerContext,

@@ -59,10 +59,12 @@ import { validateCheckpointId } from '../internal/validation';
  * row carrying an offloaded descriptor proves that on its own, even when the
  * other row cannot be read, because a landing deletes nothing. A confirmed
  * non-commit cleans up the objects this call uploaded except any either row
- * names now — another writer's committed checkpoint can hold the same
- * checkpoint object — so it needs both rows read. An unverifiable outcome,
+ * names when read back — another writer's committed checkpoint can hold the
+ * same checkpoint object — so it needs both rows read. An unverifiable outcome,
  * which includes a non-commit whose other row could not be read, leaks them
- * rather than risk stranding a live row.
+ * rather than risk stranding a live row. S3 has no conditional delete, so a
+ * write of byte-identical content that commits between those reads and the
+ * delete can still lose its object; that gap is the one remaining window.
  */
 export async function putCheckpoint(
   context: CheckpointerContext,
