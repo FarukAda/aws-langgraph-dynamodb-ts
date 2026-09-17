@@ -24,21 +24,43 @@ export interface IndexQueryOptions {
   signal?: AbortSignal;
 }
 
-/** One shard's contribution to a page. */
-export interface ShardRows {
-  /** The shard's newest rows below the bound, newest first; never more than `limit`. */
-  items: DocItem[];
-  /** True when DynamoDB reported no data past `items`. */
+/** Where one shard stands while a listing builds a page. */
+export interface ShardReader {
+  partition: string;
+  /**
+   * The rows of the shard's last DynamoDB page that are not on the listing's
+   * page yet, oldest first, so the newest is the last element and leaves with
+   * `pop()`. Never more than one page.
+   */
+  buffer: DocItem[];
+  /** Where the shard's next page starts; absent before its first page. */
+  startKey: DocItem | undefined;
+  /** True once DynamoDB reported no data past the last page read. */
   exhausted: boolean;
+  /** DynamoDB pages read from this shard so far. */
+  pages: number;
+}
+
+/**
+ * A reader placed before a shard's first page.
+ *
+ * Accepts: `partition` — the shard's index partition key.
+ *
+ * Returns: a reader with an empty buffer that is not exhausted, so a listing
+ * reads its first page before choosing any row.
+ *
+ * Throws: nothing.
+ */
+export function shardReader(partition: string): ShardReader {
+  return { partition, buffer: [], startKey: undefined, exhausted: false, pages: 0 };
 }
 
 /** The `Query` for one page of one shard. */
 function shardQuery(
   options: IndexQueryOptions,
-  partition: string,
+  reader: ShardReader,
   before: string | undefined,
   limit: number,
-  startKey: DocItem | undefined,
 ): QueryCommandInput {
   return {
     TableName: options.tableName,
@@ -49,54 +71,53 @@ function shardQuery(
       ...(before === undefined ? {} : { '#sk': 'gsi1sk' }),
     },
     ExpressionAttributeValues: {
-      ':pk': partition,
+      ':pk': reader.partition,
       ...(before === undefined ? {} : { ':before': before }),
     },
     ScanIndexForward: false,
     Limit: limit,
-    ...(startKey === undefined ? {} : { ExclusiveStartKey: startKey }),
+    ...(reader.startKey === undefined ? {} : { ExclusiveStartKey: reader.startKey }),
   };
 }
 
 /**
- * One shard's newest `limit` rows below `before`, however many pages DynamoDB
- * splits them across.
+ * Read a shard's next DynamoDB page into its buffer.
  *
  * `Limit` bounds the items a `Query` *evaluates*, and a page also stops at
  * 1 MB, so a shard of large rows answers with fewer than `limit` items and a
  * `LastEvaluatedKey`. Taking that short page as the whole shard is what made a
- * listing drop rows and report itself complete (C-01), so the key is followed
- * until the shard has supplied `limit` rows or has none left. The merge in
- * `queryRecencyIndex` depends on exactly that: a shard that stopped anywhere
- * else could hold rows newer than ones another shard put on the page.
+ * listing drop rows and report itself complete (C-01). The key is kept here
+ * instead, and the listing reads the next page when it needs the shard's next
+ * row. One page at a time is what bounds a listing's memory to about one
+ * DynamoDB page per shard.
  *
- * Accepts: `before` — the sort key to read below, or none for the newest.
+ * Accepts: `reader` — its buffer empty and the shard not exhausted. `before` —
+ * the sort key to read below, or none for the newest. `limit` — the rows the
+ * listing's page still needs, at least 1; the shard cannot contribute more.
  *
- * Returns: the rows and whether the shard is exhausted.
+ * Returns: nothing. The reader's buffer holds the page's rows, and its key,
+ * `exhausted` and page count describe what is left.
  *
- * Throws: {@link ResultTruncatedError} after {@link MAX_LOOP_ITERATIONS} pages
- * without either outcome, rather than hand back a partial shard; whatever the
- * query throws, including `AbortError` between pages.
+ * Throws: {@link ResultTruncatedError} naming `maxIterations`, without issuing
+ * a query, when the shard has already read {@link MAX_LOOP_ITERATIONS} pages —
+ * a listing fails rather than hand back a partial shard; whatever the query
+ * throws, including `AbortError`.
  */
-export async function queryShard(
+export async function readShardPage(
   options: IndexQueryOptions,
-  partition: string,
+  reader: ShardReader,
   before: string | undefined,
-): Promise<ShardRows> {
-  const items: DocItem[] = [];
-  let startKey: DocItem | undefined;
-  for (let page = 0; page < MAX_LOOP_ITERATIONS; page++) {
-    const result = await withDynamoDBRetry(
-      () =>
-        options.client.query(
-          shardQuery(options, partition, before, options.limit - items.length, startKey),
-        ),
-      { ...options.retry, signal: options.signal },
-    );
-    items.push(...((result.Items ?? []) as DocItem[]));
-    startKey = result.LastEvaluatedKey as DocItem | undefined;
-    if (startKey === undefined) return { items, exhausted: true };
-    if (items.length >= options.limit) return { items, exhausted: false };
+  limit: number,
+): Promise<void> {
+  if (reader.pages >= MAX_LOOP_ITERATIONS) {
+    throw new ResultTruncatedError('maxIterations', MAX_LOOP_ITERATIONS);
   }
-  throw new ResultTruncatedError('maxIterations', MAX_LOOP_ITERATIONS);
+  const result = await withDynamoDBRetry(
+    () => options.client.query(shardQuery(options, reader, before, limit)),
+    { ...options.retry, signal: options.signal },
+  );
+  reader.pages += 1;
+  reader.buffer = ((result.Items ?? []) as DocItem[]).slice().reverse();
+  reader.startKey = result.LastEvaluatedKey as DocItem | undefined;
+  reader.exhausted = reader.startKey === undefined;
 }

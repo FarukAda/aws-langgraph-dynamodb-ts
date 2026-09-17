@@ -2,7 +2,12 @@ import { mapWithConcurrency } from '../concurrency';
 import { ValidationError } from '../errors/errors';
 import { validateInteger } from '../validation/primitives';
 import { indexPartitions } from './index-keys';
-import { type IndexQueryOptions, queryShard } from './index-shard';
+import {
+  type IndexQueryOptions,
+  readShardPage,
+  type ShardReader,
+  shardReader,
+} from './index-shard';
 import type { DocItem } from './types';
 
 /** One page of a recency listing, and where the next one resumes. */
@@ -46,15 +51,56 @@ function decodeCursor(cursor: string): string {
   return decoded;
 }
 
+/** A shard with no row to offer that may still hold one. */
+function isDry(reader: ShardReader): boolean {
+  return reader.buffer.length === 0 && !reader.exhausted;
+}
+
+/**
+ * Read the next page of every dry shard, at most `concurrency` at once, until
+ * no shard is dry. A page can hold no rows and still carry a key, and a shard
+ * in that state may hold the newest row of all, so choosing a row before it is
+ * read again could put an older row on the page first.
+ */
+async function refillDryShards(
+  options: IndexQueryOptions,
+  readers: ShardReader[],
+  before: string | undefined,
+  needed: number,
+): Promise<void> {
+  for (let dry = readers.filter(isDry); dry.length > 0; dry = readers.filter(isDry)) {
+    await mapWithConcurrency(dry, options.concurrency, (reader) =>
+      readShardPage(options, reader, before, needed),
+    );
+  }
+}
+
+/** Move the newest buffered row off its shard; undefined when every buffer is empty. */
+function takeNewest(readers: ShardReader[]): DocItem | undefined {
+  let newest: ShardReader | undefined;
+  let newestKey = '';
+  for (const reader of readers) {
+    const head = reader.buffer[reader.buffer.length - 1];
+    if (head !== undefined && (head.gsi1sk as string) > newestKey) {
+      newest = reader;
+      newestKey = head.gsi1sk as string;
+    }
+  }
+  return newest?.buffer.pop();
+}
+
 /**
  * Read one page of a recency listing from the index, newest first.
  *
- * Every shard is read for its own newest `limit` rows and the results are
- * merged. Taking `limit` from the merge is correct because each shard is
- * already sorted and supplied either `limit` rows or every row it had, so no
- * shard holds a row newer than the page's last that it did not return. The
- * alternative — one query over an unsharded index — would make every listing
- * hit one partition, which is what the sharding exists to avoid.
+ * Each shard is read one DynamoDB page at a time and the pages are merged row
+ * by row: the newest buffered row goes onto the page, and a shard whose buffer
+ * runs dry reads its next page before another row is chosen. That is correct
+ * because each shard is already sorted and no row is chosen while a shard that
+ * may hold a newer one is unread. It is also what bounds memory: a listing
+ * holds about one page per shard, and a shard whose rows the page does not need
+ * is never followed. The alternative — one query over an unsharded index —
+ * would make every listing hit one partition, which is what the sharding exists
+ * to avoid.
  *
  * This replaces a full-table `Scan` with a `FilterExpression`, which consumed
  * read capacity for every row *evaluated*, collected the whole table in memory
@@ -62,43 +108,46 @@ function decodeCursor(cursor: string): string {
  *
  * Accepts: `limit` — a positive integer; rows per page. `cursor` — from a
  * previous page, or none to start at the newest. `shards` — must match what the
- * writers used. `concurrency` — how many shards are read at once.
+ * writers used. `concurrency` — how many shards are queried at once.
  *
  * Returns: the page, newest first, and a `nextCursor` exactly while rows may
- * remain: the merge held more than `limit` rows, or some shard did not report
- * its end. A cursor is never withheld while rows remain, and none is issued
- * once every shard has reported its end, even for a page filled exactly.
- * DynamoDB can still report a `LastEvaluatedKey` for a shard whose `limit`th
- * row was its last, so the page after such a cursor may come back empty.
+ * remain: a shard still buffers a row the page did not take, or has not
+ * reported its end. A cursor is never withheld while rows remain, and none is
+ * issued once every shard has reported its end, even for a page filled
+ * exactly. DynamoDB can still report a `LastEvaluatedKey` on a page that ends
+ * at a shard's last row, so the page after such a cursor may come back empty.
  *
  * Throws: ValidationError naming `limit` or `cursor`; `ResultTruncatedError`
  * for a shard whose pages do not end within `MAX_LOOP_ITERATIONS`; whatever
  * the queries throw, including `AbortError`.
  *
- * Guarantees: at most `concurrency` shard reads at once, and each shard is
- * followed across DynamoDB's 1 MB page boundary until it has supplied `limit`
- * rows or run out, so no shard contributes more than `limit` rows to a page.
+ * Guarantees: at most `concurrency` shards are queried at once; each shard is
+ * followed across DynamoDB's 1 MB page boundary, but its next page is read only
+ * when the page needs its next row, so no more than one DynamoDB page per shard
+ * is held at a time.
  */
 export async function queryRecencyIndex(options: IndexQueryOptions): Promise<IndexPage> {
   validateInteger(options.limit, 'limit', { min: 1 });
   const before = options.cursor === undefined ? undefined : decodeCursor(options.cursor);
-  const partitions = indexPartitions(options.tag, options.shards);
-  const shards = await mapWithConcurrency(partitions, options.concurrency, (partition) =>
-    queryShard(options, partition, before),
+  const readers = indexPartitions(options.tag, options.shards).map((partition) =>
+    shardReader(partition),
   );
-  const merged = shards
-    .flatMap((shard) => shard.items)
-    .sort((a, b) => ((a.gsi1sk as string) < (b.gsi1sk as string) ? 1 : -1));
-  const page = merged.slice(0, options.limit);
+  const items: DocItem[] = [];
+  while (items.length < options.limit) {
+    await refillDryShards(options, readers, before, options.limit - items.length);
+    const row = takeNewest(readers);
+    if (row === undefined) break;
+    items.push(row);
+  }
   /**
-   * Rows remain when the merge overflowed the page or a shard still holds
-   * some. Every shard supplied either `limit` rows or all it had, so either
-   * way the page is non-empty and its last row is the right place to resume.
+   * Rows remain when a shard still buffers a row or has not reported its end.
+   * Either way the loop stopped on a full page, so the page is non-empty and
+   * its last row is the right place to resume.
    */
-  const remain = merged.length > options.limit || shards.some((shard) => !shard.exhausted);
+  const remain = readers.some((reader) => reader.buffer.length > 0 || !reader.exhausted);
   return {
-    items: page,
-    ...(remain ? { nextCursor: encodeCursor(page[page.length - 1].gsi1sk as string) } : {}),
+    items,
+    ...(remain ? { nextCursor: encodeCursor(items[items.length - 1].gsi1sk as string) } : {}),
   };
 }
 

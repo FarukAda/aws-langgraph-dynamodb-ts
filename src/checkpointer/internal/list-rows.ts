@@ -15,9 +15,10 @@ import type { CheckpointerContext } from './setup';
  * Every checkpoint META row of the table, newest first, without a thread to
  * scope the read.
  *
- * From the recency index when the table has one, read a page at a time with at
- * most `readConcurrency` shards queried at once, each followed across
- * DynamoDB's 1 MB page boundary. Without one it is a table `Scan`: read
+ * From the recency index when the table has one: each shard is read one
+ * DynamoDB page at a time, and its next page only when the stream needs its
+ * next row, with at most `readConcurrency` shards queried at once, so memory is
+ * about one page per shard. Without one it is a table `Scan`: read
  * capacity for every row evaluated, not every row returned. The index path
  * needs `backfillRecencyIndex` to have run, or rows written before the index
  * are not in it.

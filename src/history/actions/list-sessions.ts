@@ -185,9 +185,10 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
  * `AbortError`.
  *
  * Guarantees: with a configured `indexName` each index shard is read
- * newest-first for at most `limit` rows, following DynamoDB's 1 MB page
- * boundary until it has supplied them or run out, with at most
- * `readConcurrency` shards read at once, whatever the table holds. Without one
+ * newest-first one DynamoDB page at a time, and its next page only when the
+ * page needs its next row, with at most `readConcurrency` shards queried at
+ * once, so memory is about one DynamoDB page per shard whatever the table
+ * holds. Without one
  * it is a filtered table scan that returns every session at once and no cursor
  * — the behaviour of earlier releases, kept so that upgrading changes nothing
  * until the index exists.

@@ -8,12 +8,17 @@ import type { DocItem } from '../../../src/shared/dynamodb/types';
  *
  * `shards` maps each index partition to its rows, newest first. `cut` stands in
  * for the 1 MB limit: a page holds at most that many rows whatever `Limit` asks
- * for, and it carries a `LastEvaluatedKey` whenever rows past it remain. The
+ * for, and it carries a `LastEvaluatedKey` whenever rows past it remain. One
+ * number cuts every partition alike; a map gives each partition its own. The
  * key is honoured as `ExclusiveStartKey`, and `:before` as the cursor bound.
  */
-export function simulatedIndex(shards: Record<string, DocItem[]>, cut: number) {
+export function simulatedIndex(
+  shards: Record<string, DocItem[]>,
+  cuts: number | Record<string, number>,
+) {
   return (input: QueryCommandInput) => {
     const partition = input.ExpressionAttributeValues?.[':pk'] as string;
+    const cut = typeof cuts === 'number' ? cuts : cuts[partition];
     const before = input.ExpressionAttributeValues?.[':before'] as string | undefined;
     const after = input.ExclusiveStartKey?.gsi1sk as string | undefined;
     const rows = (shards[partition] ?? []).filter(
