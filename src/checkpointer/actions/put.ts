@@ -62,9 +62,10 @@ import { validateCheckpointId } from '../internal/validation';
  * names when read back — another writer's committed checkpoint can hold the
  * same checkpoint object — so it needs both rows read. An unverifiable outcome,
  * which includes a non-commit whose other row could not be read, leaks them
- * rather than risk stranding a live row. S3 has no conditional delete, so a
- * write of byte-identical content that commits between those reads and the
- * delete can still lose its object; that gap is the one remaining window.
+ * rather than risk stranding a live row. A byte-identical write whose upload
+ * found the object already stored before the delete, and whose rows commit
+ * after those reads, can still lose its object; closing that needs an
+ * out-of-band sweeper.
  */
 export async function putCheckpoint(
   context: CheckpointerContext,

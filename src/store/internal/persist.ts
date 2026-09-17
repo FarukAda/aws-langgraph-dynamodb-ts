@@ -109,13 +109,13 @@ async function releaseSuperseded(
  * as on the success path.
  *
  * Guarantees: an object is released only when the row read immediately before
- * the release does not name it, after a commit and after a failure alike. S3
- * has no conditional delete, so a write of byte-identical content that commits
- * between that read and the delete can still lose its object; that gap is the
- * one remaining window. The failure modes are ordered by which is worse: a
- * leaked object costs storage until the lifecycle rule reclaims it, while a row
- * pointing at a deleted object is unreadable data, so every ambiguous case
- * leaks instead of deletes.
+ * the release does not name it, after a commit and after a failure alike. A
+ * byte-identical write whose upload found the object already stored before the
+ * delete, and whose row commits after that read, can still lose its object;
+ * closing that needs an out-of-band sweeper. The failure modes are ordered by
+ * which is worse: a leaked object costs storage until the lifecycle rule
+ * reclaims it, while a row pointing at a deleted object is unreadable data, so
+ * every ambiguous case leaks instead of deletes.
  */
 export async function persistRecord(
   context: StoreContext,
@@ -135,8 +135,8 @@ export async function persistRecord(
   } catch (error) {
     const { verdict, row } = await verifyWriteLanded(context, record);
     /**
-     * The row that exists now decides what may go: a racer that stored identical
-     * bytes holds this call's key, and the pre-write snapshot cannot know it.
+     * The row read back decides what may go: a racer that stored identical bytes
+     * holds this call's key, and the pre-write snapshot cannot know it.
      */
     if (verdict === 'not-landed') {
       await cleanUp(

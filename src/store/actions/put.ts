@@ -146,9 +146,9 @@ async function resolveEmbedding(
  * half-written item. `createdAt` survives every update. The superseded payload
  * is deleted only once the new row is committed, and a removed or superseded
  * object only when a read of the row just before the release does not name it.
- * S3 has no conditional delete, so a write of byte-identical content that
- * commits between that read and the delete can still lose its object; that gap
- * is the one remaining window.
+ * A byte-identical write whose upload found the object already stored before
+ * the delete, and whose row commits after that read, can still lose its object;
+ * closing that needs an out-of-band sweeper.
  */
 export async function putItem(context: StoreContext, op: PutOperation): Promise<void> {
   assertPutOperation(op);

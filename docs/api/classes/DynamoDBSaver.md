@@ -58,7 +58,7 @@ at module scope and in a Lambda's init phase.
 
 > **deleteThread**(`threadId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:209](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L209)
+Defined in: [checkpointer/saver.ts:211](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L211)
 
 Delete every checkpoint, payload and pending write of a thread.
 
@@ -75,7 +75,9 @@ carrying what did succeed; UpstreamError; AbortError.
 
 Guarantees: a row this adapter did not write is left in place and logged.
 Single pass: call it when the thread is quiescent, since a checkpoint
-written while it runs may survive it.
+written while it runs may survive it, and a write that recreates a row with
+the same bytes can be left pointing at an offloaded object the delete
+removed.
 
 #### Parameters
 
@@ -101,7 +103,7 @@ written while it runs may survive it.
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/saver.ts:275](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L275)
+Defined in: [checkpointer/saver.ts:277](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L277)
 
 Release owned resources.
 
@@ -122,7 +124,7 @@ Throws: nothing this adapter raises.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:298](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L298)
+Defined in: [checkpointer/saver.ts:300](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L300)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded payloads don't outlive the items that point at them.
@@ -154,7 +156,7 @@ not per request.
 
 > **getDeltaChannelHistory**(`options`): `Promise`\<`Record`\<`string`, `DeltaChannelHistory`\>\>
 
-Defined in: [checkpointer/saver.ts:249](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L249)
+Defined in: [checkpointer/saver.ts:251](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L251)
 
 Walk a checkpoint's ancestors for the delta channels named, returning each
 channel's on-path writes oldest-first and its nearest stored value.

@@ -14,10 +14,10 @@ import type { CheckpointerContext } from './setup';
 export interface CheckpointVerification {
   verdict: WriteVerdict;
   /**
-   * The descriptors the two rows hold now, projected to `location` and `s3Key`;
-   * only an offloaded one names an object. Filled only for a `'not-landed'`
-   * verdict that read both rows, the one answer that licenses a release, and
-   * empty otherwise.
+   * The descriptors the two rows held when read, projected to `location` and
+   * `s3Key`; only an offloaded one names an object. Filled only for a
+   * `'not-landed'` verdict that read both rows, the one answer that licenses a
+   * release, and empty otherwise.
    */
   live: DescriptorRef[];
 }
@@ -95,10 +95,10 @@ function verificationOf(
  * Returns: the verdict — see {@link WriteVerdict} for what each answer licenses
  * the caller to do. `'landed'` when the probed row holds this attempt's key,
  * whatever the other read did; `'not-landed'` when it does not and both reads
- * succeeded, with `live` holding every descriptor the two rows hold now, each
- * projected to its `location` and `s3Key`; `'unverified'` when the probed read
- * failed, or when it disproved the landing and the other read failed. `live` is
- * empty for every answer but `'not-landed'` after two reads.
+ * succeeded, with `live` holding every descriptor the two rows held when read,
+ * each projected to its `location` and `s3Key`; `'unverified'` when the probed
+ * read failed, or when it disproved the landing and the other read failed.
+ * `live` is empty for every answer but `'not-landed'` after two reads.
  *
  * Throws: nothing — a failed read is part of the answer.
  *

@@ -204,7 +204,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    *
    * Guarantees: a row this adapter did not write is left in place and logged.
    * Single pass: call it when the thread is quiescent, since a checkpoint
-   * written while it runs may survive it.
+   * written while it runs may survive it, and a write that recreates a row with
+   * the same bytes can be left pointing at an offloaded object the delete
+   * removed.
    */
   async deleteThread(threadId: string, options?: CancelOptions): Promise<void> {
     return guardPublic('saver.deleteThread', () => {

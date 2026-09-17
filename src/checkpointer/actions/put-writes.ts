@@ -67,10 +67,11 @@ async function cleanUpItems(context: CheckpointerContext, dead: DeadUpload[]): P
  * another call — and in both cases only when that row does not point at the
  * same object. A special write's superseded payload is released only when a
  * read of the row after the commit does not name it. An upload can leak. An
- * object is released only when the row last seen before the release does not
- * name it; S3 has no conditional delete, so a write of byte-identical content
- * that commits between that read and the delete can still lose its object, and
- * that gap is the one remaining window.
+ * object is released only when the row last read, or returned with a rejected
+ * write, before the release does not name it. A byte-identical write whose
+ * upload found the object already stored before the delete, and whose row
+ * commits after that row was seen, can still lose its object; closing that
+ * needs an out-of-band sweeper.
  */
 export async function putWrites(
   context: CheckpointerContext,
