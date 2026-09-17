@@ -27,7 +27,8 @@ describe('BaseStore contract conformance', () => {
       { matchConditions: [{ matchType: 'prefix', path: ['c'] }], limit: 10, offset: 0 },
     ]);
 
-    expect(putResult).toBeUndefined();
+    /** A put and a delete answer `null`, the value `InMemoryStore.batch` pushes for them. */
+    expect(putResult).toBeNull();
     expect(getResult).toMatchObject({ namespace: ['c', 'u1'], key: 'k', value: { v: 1 } });
     expect(Array.isArray(searchResult)).toBe(true);
     expect((searchResult as { key: string }[]).map((item) => item.key)).toEqual(['k']);
