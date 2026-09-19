@@ -1,6 +1,7 @@
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 
+import { conditionalCheckFailure, type RejectionFields } from './cancellation';
 import type { DocItem } from './types';
 
 /**
@@ -90,9 +91,16 @@ export function revisionGuard(attribute: string, observed: ObservedRow): Revisio
 /**
  * Whether a conditional write was turned away by its guard.
  *
- * Accepts: `error` — any error-shaped value; only the name is read.
+ * The same rejection has two shapes, because a `PutItem` reports it as an
+ * exception of its own while a `TransactWriteItems` reports it as one
+ * cancellation reason among one per item. Both are the same event to a caller,
+ * so both answer true here and neither is a caller's business to tell apart.
  *
- * Returns: true for `ConditionalCheckFailedException`.
+ * Accepts: `error` — any error-shaped value; the exception's name and, for a
+ * cancelled transaction, its reasons are read.
+ *
+ * Returns: true for `ConditionalCheckFailedException`, and for a cancellation
+ * whose one cause is a `ConditionalCheckFailed` reason.
  *
  * Throws: nothing.
  *
@@ -101,8 +109,10 @@ export function revisionGuard(attribute: string, observed: ObservedRow): Revisio
  * identically, and the two are indistinguishable from the rejection alone —
  * which is why every caller reads the row back before deleting anything.
  */
-export function isConditionalCheckFailed(error: { name?: string }): boolean {
-  return error.name === 'ConditionalCheckFailedException';
+export function isConditionalCheckFailed(error: RejectionFields): boolean {
+  return (
+    error.name === 'ConditionalCheckFailedException' || conditionalCheckFailure(error) !== undefined
+  );
 }
 
 /**
@@ -114,6 +124,11 @@ export function isConditionalCheckFailed(error: { name?: string }): boolean {
  * was deleted between the observation and the write — in which case the caller
  * falls back to a read.
  *
+ * A cancelled transaction attaches the same row to the cancellation reason of
+ * the item whose condition failed, rather than to the error itself, and leaves
+ * it in the same raw form — so there is one place more to look and still one
+ * unmarshalling.
+ *
  * Accepts: `error` — any error; only a rejection from a guard built by
  * {@link revisionGuard} carries the item.
  *
@@ -123,6 +138,7 @@ export function isConditionalCheckFailed(error: { name?: string }): boolean {
  * AttributeValue form.
  */
 export function rejectedItem(error: Error): DocItem | undefined {
-  const raw = (error as { Item?: Record<string, AttributeValue> }).Item;
+  const attached = (error as { Item?: Record<string, AttributeValue> }).Item;
+  const raw = attached ?? conditionalCheckFailure(error)?.Item;
   return raw === undefined ? undefined : (unmarshall(raw) as DocItem);
 }
