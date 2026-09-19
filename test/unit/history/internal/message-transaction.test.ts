@@ -107,8 +107,14 @@ describe('writeMessageChunk', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
     const ctx = context(client);
-    await writeMessageChunk(ctx, [messageItem('MSG#1')], { sessionId: 's1', count: 1, now: 'u' });
-    await writeMessageChunk(ctx, [messageItem('MSG#2')], { sessionId: 's1', count: 1, now: 'u' });
+    /**
+     * Distinct `now` values, because `createdAt` below is the contrast that
+     * proves the simulation freezes an `if_not_exists` clause at all. Give
+     * both appends the same timestamp and that assertion holds whether or not
+     * the helper freezes anything, and a one-line slip in it would go unseen.
+     */
+    await writeMessageChunk(ctx, [messageItem('MSG#1')], { sessionId: 's1', count: 1, now: 'u1' });
+    await writeMessageChunk(ctx, [messageItem('MSG#2')], { sessionId: 's1', count: 1, now: 'u2' });
     const calls = mock.commandCalls(TransactWriteCommand);
     expect(sessionWriteId(calls[0].args[0])).not.toBe(sessionWriteId(calls[1].args[0]));
 
