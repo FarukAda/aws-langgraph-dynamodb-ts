@@ -31,8 +31,14 @@ const BACKFILL_CLIENT_MEMBERS: readonly string[] = ['scan', 'update'];
  * accepts the full retry surface, not the adapters' narrower `RetryPolicy`
  * `validateRetryPolicy` checks — `onRetry` is backfill's only way to observe
  * retries, since it takes no `logger`.
+ *
+ * `deadlineAt` is the one exclusion: it is an internal per-call bound a write
+ * path sets on itself, not something an application names, so it stays an
+ * unknown key here and is refused like any other. Excluding it by `Omit`
+ * rather than by leaving it out keeps the list exhaustive, so a genuinely new
+ * option still fails to compile until it is decided on here.
  */
-const BACKFILL_RETRY_KEYS = allKeysOf<RetryOptions>({
+const BACKFILL_RETRY_KEYS = allKeysOf<Omit<RetryOptions, 'deadlineAt'>>({
   maxAttempts: 'maxAttempts',
   baseDelayMs: 'baseDelayMs',
   maxDelayMs: 'maxDelayMs',

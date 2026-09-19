@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { findRetryCallsWithoutOptions } from './guards/retry-options';
-import { listSourceFiles } from './guards/source-files';
+import { listSourceFiles, SRC_ROOT } from './guards/source-files';
+
+const readSource = (file: string): string => readFileSync(resolve(SRC_ROOT, file), 'utf8');
 
 describe('findRetryCallsWithoutOptions', () => {
   it('flags a call that passes only the operation', () => {
@@ -19,6 +22,29 @@ describe('findRetryCallsWithoutOptions', () => {
   it('does not mistake a trailing comma for a second argument', () => {
     const text = 'withDynamoDBRetry(() =>\n  client.get({ a: "x)" }),\n);';
     expect(findRetryCallsWithoutOptions(text)).toEqual([1]);
+  });
+});
+
+describe('the per-write deadline stays off the caller-facing surface', () => {
+  /**
+   * `RetryOptions` is re-exported from the package entry point and is the
+   * retry surface `backfillRecencyIndex` accepts, so a new field on it would
+   * otherwise be a public option. `deadlineAt` is computed per call by the
+   * paths that carry a client request token, never named by an application:
+   * `@internal` is what keeps it out of the shipped declarations and the
+   * generated docs, both of which strip internal members.
+   */
+  it('marks RetryOptions.deadlineAt @internal', () => {
+    const source = readSource('shared/dynamodb/retry.ts');
+    expect(source).toContain('deadlineAt?: number;');
+    const preceding = source.slice(0, source.indexOf('deadlineAt?: number;'));
+    expect(preceding.slice(preceding.lastIndexOf('/**'))).toContain('@internal');
+  });
+
+  it('leaves deadlineAt out of the keys backfillRecencyIndex accepts', () => {
+    expect(readSource('shared/dynamodb/backfill-validation.ts')).not.toContain(
+      "deadlineAt: 'deadlineAt'",
+    );
   });
 });
 

@@ -13,6 +13,21 @@ export function nowIso(): string {
 }
 
 /**
+ * The current time as epoch milliseconds.
+ *
+ * Accepts: nothing; it reads `Date.now`, which the test setup freezes.
+ *
+ * Returns: the millisecond, unrounded — the unit a whole-operation deadline is
+ * measured in, since a retry budget is bounded far below a second's
+ * granularity of error.
+ *
+ * Throws: nothing.
+ */
+export function nowMs(): number {
+  return Date.now();
+}
+
+/**
  * The current time as whole epoch seconds, the unit DynamoDB's TTL uses.
  *
  * Accepts: nothing; it reads `Date.now`, which the test setup freezes.

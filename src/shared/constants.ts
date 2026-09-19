@@ -85,6 +85,26 @@ export const MAX_RETRY_ATTEMPTS = 100;
 export const MAX_RETRY_DELAY_MS = 60_000;
 
 /**
+ * How long DynamoDB treats a repeated client request token as the same request
+ * rather than a new one, so re-sending a tokened write is deduplicated instead
+ * of applied twice (10 minutes). Recorded as its own constant so the margin
+ * {@link MAX_WRITE_LIFETIME_MS} keeps under it is legible.
+ */
+export const TOKEN_IDEMPOTENCY_WINDOW_MS = 600_000;
+
+/**
+ * Longest one token-carrying write may keep retrying (5 minutes): half of
+ * {@link TOKEN_IDEMPOTENCY_WINDOW_MS}. The other half absorbs the attempt
+ * still in flight when the budget ends, clock skew between this client's own
+ * clock and DynamoDB's timer, and SDK-internal queueing, so a write that
+ * retries to the end still finishes well inside the window its token is
+ * honoured for. Its own literal rather than a division of the window: aliasing
+ * two caps has already meant that retuning one silently moved the other (see
+ * {@link LIST_SCAN_WARN_THRESHOLD}).
+ */
+export const MAX_WRITE_LIFETIME_MS = 300_000;
+
+/**
  * The most shards a recency index may have. The indexed read builds every
  * shard's partition key and issues at least one query per shard, so an
  * unbounded value turns a config typo into an unbounded stream of requests and

@@ -1,13 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { relative } from 'node:path';
 
-import { nowIso, nowSeconds } from '../../../src/shared/clock';
+import { nowIso, nowMs, nowSeconds } from '../../../src/shared/clock';
 import { FROZEN_NOW_MS } from '../../shared/helpers/test-setup';
 import { listSourceFiles, SRC_ROOT } from '../../static/guards/source-files';
 
 describe('nowIso', () => {
   it('returns the frozen clock time as an ISO string', () => {
     expect(nowIso()).toBe(new Date(FROZEN_NOW_MS).toISOString());
+  });
+});
+
+describe('nowMs', () => {
+  it('returns the frozen clock time as epoch milliseconds, unrounded', () => {
+    expect(nowMs()).toBe(FROZEN_NOW_MS);
   });
 });
 
