@@ -13,7 +13,15 @@ describe('nowIso', () => {
 
 describe('nowMs', () => {
   it('returns the frozen clock time as epoch milliseconds, unrounded', () => {
-    expect(nowMs()).toBe(FROZEN_NOW_MS);
+    /**
+     * Read from a time that is deliberately **not** a whole second:
+     * `FROZEN_NOW_MS` is an exact multiple of 1000, so asserting against it
+     * alone passes just as well for an implementation that truncates to
+     * seconds — the one mistake this function's contract rules out.
+     */
+    const midSecond = FROZEN_NOW_MS + 137;
+    jest.spyOn(Date, 'now').mockReturnValue(midSecond);
+    expect(nowMs()).toBe(midSecond);
   });
 });
 

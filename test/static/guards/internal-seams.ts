@@ -1,7 +1,13 @@
 import * as ts from 'typescript';
 
-/** Option properties that are test seams: they must carry `@internal` so `stripInternal` drops them. */
-export const INTERNAL_SEAMS: readonly string[] = ['createClient', 'createS3Client'];
+/**
+ * Option properties that must never reach a caller: the two client-factory test
+ * seams, and `deadlineAt`, which a write path computes for itself. Each must
+ * carry `@internal` so `stripInternal` drops it from the shipped declarations
+ * and `excludeInternal` from the generated docs. Checked wherever the property
+ * is declared, not in one named file, so moving it does not lose the guard.
+ */
+export const INTERNAL_SEAMS: readonly string[] = ['createClient', 'createS3Client', 'deadlineAt'];
 
 /** 1-based lines where a seam property is declared without an `@internal` JSDoc tag. */
 export function findUnmarkedSeams(source: string): number[] {

@@ -20,7 +20,7 @@ describe('findUnmarkedSeams', () => {
   });
 });
 
-describe('the client factory seams (CORE-16)', () => {
+describe('the members that must not reach a caller (CORE-16)', () => {
   it('are marked @internal wherever they are declared', () => {
     const offenders = listSourceFiles().flatMap((path) =>
       findUnmarkedSeams(readFileSync(path, 'utf8')).map((line) => `${path}:${line}`),

@@ -30,17 +30,13 @@ describe('the per-write deadline stays off the caller-facing surface', () => {
    * `RetryOptions` is re-exported from the package entry point and is the
    * retry surface `backfillRecencyIndex` accepts, so a new field on it would
    * otherwise be a public option. `deadlineAt` is computed per call by the
-   * paths that carry a client request token, never named by an application:
-   * `@internal` is what keeps it out of the shipped declarations and the
-   * generated docs, both of which strip internal members.
+   * paths that carry a client request token, never named by an application.
+   * The `@internal` marker that keeps it out of the shipped declarations and
+   * the generated docs is checked by `internal-seams`, which walks the AST and
+   * finds the property wherever it is declared; what is left here is the other
+   * half, which no AST walk can see: the key list a caller's options are
+   * validated against.
    */
-  it('marks RetryOptions.deadlineAt @internal', () => {
-    const source = readSource('shared/dynamodb/retry.ts');
-    expect(source).toContain('deadlineAt?: number;');
-    const preceding = source.slice(0, source.indexOf('deadlineAt?: number;'));
-    expect(preceding.slice(preceding.lastIndexOf('/**'))).toContain('@internal');
-  });
-
   it('leaves deadlineAt out of the keys backfillRecencyIndex accepts', () => {
     expect(readSource('shared/dynamodb/backfill-validation.ts')).not.toContain(
       "deadlineAt: 'deadlineAt'",
