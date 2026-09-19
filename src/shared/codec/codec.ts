@@ -22,6 +22,14 @@ interface DescriptorBase {
   schemaVersion?: number;
   serdeType: string;
   compressed: boolean;
+  /**
+   * The id of the write that produced this descriptor — the `objectId` its
+   * encode was given, and the identity a delete pins on to tell the row it
+   * observed from one another write replaced since. Optional because a row
+   * written before the field existed carries none, and a row observed without
+   * one is deleted unconditionally rather than pinned on nothing.
+   */
+  writeId?: string;
 }
 
 /** A payload stored inline as bytes in the DynamoDB item. */

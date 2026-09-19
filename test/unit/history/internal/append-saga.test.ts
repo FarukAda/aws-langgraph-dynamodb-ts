@@ -10,6 +10,7 @@ import type { ChatMessageItem } from '../../../../src/history/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { CompensationFailedError, RetryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { createUlidFactory } from '../../../../src/shared/ulid';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function inlineItem(sk: string): ChatMessageItem {
@@ -36,7 +37,7 @@ function s3Item(sk: string, s3Key: string): ChatMessageItem {
 }
 
 function context(client: unknown, offloader?: unknown, logger: unknown = SILENT_LOGGER) {
-  return { client, tableName: 'history', logger, offloader } as never;
+  return { client, tableName: 'history', logger, offloader, ulid: createUlidFactory() } as never;
 }
 
 describe('appendChunks', () => {

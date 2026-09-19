@@ -90,7 +90,19 @@ export async function encodePayload<T>(
   const { bytes, compressed }: CompressionResult = deps.compression
     ? await compress(raw, deps.compression)
     : { bytes: raw, compressed: false };
-  const base = { schemaVersion: DESCRIPTOR_SCHEMA_VERSION, serdeType, compressed };
+  /**
+   * `writeId` is set here rather than at each call site so both descriptor
+   * kinds and every adapter inherit one identity from one statement. It does
+   * not raise `DESCRIPTOR_SCHEMA_VERSION`: the version is refused by a reader
+   * that is older than it, and this field is additive and ignorable, so
+   * announcing it would cost readability of these rows for nothing.
+   */
+  const base = {
+    schemaVersion: DESCRIPTOR_SCHEMA_VERSION,
+    serdeType,
+    compressed,
+    writeId: options.objectId,
+  };
   if (deps.offloader && deps.offloader.shouldOffload(bytes)) {
     const s3Key = deps.offloader.buildKey(options.keyParts, options.objectId);
     await deps.offloader.upload(s3Key, bytes, options.row);

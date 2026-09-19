@@ -12,6 +12,13 @@ export interface SessionUpdateFields {
   sessionId: string;
   /** Index partitions, from the adapter's context; see `indexKeys`. */
   indexShards?: number;
+  /**
+   * The id of the append writing this update, drawn per chunk transaction by
+   * {@link writeMessageChunk}. It travels in the fields rather than being
+   * minted inside the builder, so an attempt rebuilt for a retry carries the
+   * id of the write it retries rather than a new one.
+   */
+  writeId: string;
   count: number;
   now: string;
   title?: string;
@@ -21,10 +28,11 @@ export interface SessionUpdateFields {
 
 /**
  * Build the metadata `Update` transact-item: `ADD` the message count and `SET`
- * `updatedAt` every time, while `createdAt`, `sessionId`, `title`, and the `ttl`
- * anchor are written once via `if_not_exists`. Folding the `ttl` anchor in here
- * means the first append fixes one shared expiry atomically with the count, with
- * no separate pre-write that could orphan a metadata-only row. When
+ * `updatedAt` and the appending write's id every time, while `createdAt`,
+ * `sessionId`, `title`, and the `ttl` anchor are written once via
+ * `if_not_exists`. Folding the `ttl` anchor in here means the first append
+ * fixes one shared expiry atomically with the count, with no separate
+ * pre-write that could orphan a metadata-only row. When
  * `forceTtlRefresh` is set (because {@link resolveTtlAnchor} found the persisted
  * anchor missing or already expired), the `ttl` clause instead does a plain
  * `SET`, so the SESSION row's own stale attribute actually heals instead of
@@ -36,8 +44,10 @@ export interface SessionUpdateFields {
  * Accepts: `count` — how many messages this append adds, which `ADD` applies to
  * whatever the row holds, so two concurrent appends both count. `title` —
  * written once and never overwritten, so a session keeps the title its first
- * turn produced. `ttlTimestamp` — absent leaves the row without an expiry.
- * `forceTtlRefresh` — see above.
+ * turn produced. `writeId` — the appending write's own id, rewritten on every
+ * append so the row always names the write that last added to it.
+ * `ttlTimestamp` — absent leaves the row without an expiry. `forceTtlRefresh` —
+ * see above.
  *
  * Returns: the `Update` transact-item. It creates the row when there is none:
  * every once-only field is an `if_not_exists`, so the first append and the
@@ -61,6 +71,7 @@ export function buildSessionUpdateItem(
     '#u': 'updatedAt',
     '#c': 'createdAt',
     '#sid': 'sessionId',
+    '#wid': 'writeId',
     '#v': 'v',
     '#gpk': 'gsi1pk',
     '#gsk': 'gsi1sk',
@@ -70,6 +81,7 @@ export function buildSessionUpdateItem(
     ':u': fields.now,
     ':c': fields.now,
     ':sid': fields.sessionId,
+    ':wid': fields.writeId,
     ':v': ROW_FORMAT_VERSION,
     ':gpk': index.gsi1pk,
     ':gsk': index.gsi1sk,
@@ -84,6 +96,15 @@ export function buildSessionUpdateItem(
     '#u = :u',
     '#c = if_not_exists(#c, :c)',
     '#sid = if_not_exists(#sid, :sid)',
+    /**
+     * An unconditional `SET`, deliberately unlike the three `if_not_exists`
+     * clauses around it. This is not a once-only field: its whole content is
+     * that it moves. Written in their style it would stamp the id when the
+     * session was created and never again, and a delete pinning on the id it
+     * observed would be present, well formed, and always pass — which is the
+     * failure it exists to prevent.
+     */
+    '#wid = :wid',
     '#v = :v',
     /**
      * The session row is listed by recency across partitions, so it carries the

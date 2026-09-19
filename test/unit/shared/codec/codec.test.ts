@@ -196,6 +196,31 @@ describe('persisted descriptor shape (CODEC-16)', () => {
     expect(descriptor.schemaVersion).toBe(1);
   });
 
+  /**
+   * The id names the write, not the row, and it is the identity a later delete
+   * pins on to tell the row it observed from one another write replaced it
+   * with. A payload's size decides which descriptor kind a row gets and nothing
+   * about that identity changes with it, so both kinds have to carry it.
+   */
+  it('stamps the write id it was given on an inline and on an offloaded descriptor', async () => {
+    const options = { keyParts: ['k'], objectId: 'WRITE-1', row: { pk: 'PK', sk: 'SK' } };
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
+      upload: async (key: string) => key,
+    };
+    const inline = await encodePayload({ a: 1 }, { serde }, options);
+    const offloaded = await encodePayload(
+      { a: 1 },
+      { serde, offloader: offloader as never },
+      options,
+    );
+    expect(inline.location).toBe(PayloadLocation.INLINE);
+    expect(offloaded.location).toBe(PayloadLocation.S3);
+    expect(inline.writeId).toBe('WRITE-1');
+    expect(offloaded.writeId).toBe('WRITE-1');
+  });
+
   it('reads a descriptor written before the version field existed', async () => {
     const legacy = {
       location: PayloadLocation.INLINE,

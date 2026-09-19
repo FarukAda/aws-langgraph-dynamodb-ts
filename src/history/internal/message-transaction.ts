@@ -73,9 +73,9 @@ async function attempt(
  * budget inside `withDynamoDBRetry` to handle, or to the caller otherwise.
  *
  * Accepts: `items` — one chunk, already within the transaction's limits.
- * `fields` — the session-metadata update accompanying it; its `indexShards` is
- * taken from the adapter's context, never from the caller. `retry.signal` —
- * aborts between attempts.
+ * `fields` — the session-metadata update accompanying it; its `indexShards` and
+ * its `writeId` are taken from the adapter's context, never from the caller.
+ * `retry.signal` — aborts between attempts.
  *
  * Returns: nothing. The chunk and the count are committed together or not at
  * all.
@@ -87,16 +87,23 @@ async function attempt(
  * Guarantees: `messageCount` can never disagree with the messages that landed,
  * because they land in one transaction. At most one extra attempt is spent on
  * the benign ttl race, and it carries its own request token, so a retry can
- * never double-apply the count.
+ * never double-apply the count. The SESSION row's `writeId` moves if and only
+ * if a message row was added: the update travels in the same transaction as
+ * the rows, and nothing else writes it.
  */
 export async function writeMessageChunk(
   context: HistoryContext,
   items: ChatMessageItem[],
-  fields: SessionUpdateFields,
+  fields: Omit<SessionUpdateFields, 'writeId'>,
   retry: ChunkRetryOptions = {},
 ): Promise<void> {
-  /** The index shard comes from the adapter's context, not from the caller's fields. */
-  const withIndex = { ...fields, indexShards: context.indexShards };
+  /**
+   * The index shard comes from the adapter's context, not from the caller's
+   * fields, and the write id is drawn here — once per chunk, beside it. Drawn
+   * here rather than inside the builder, every attempt of this chunk carries
+   * one id, and no caller can supply or reuse one.
+   */
+  const withIndex = { ...fields, indexShards: context.indexShards, writeId: context.ulid() };
   try {
     await attempt(context, items, withIndex, retry);
   } catch (error) {
