@@ -42,9 +42,13 @@ const CONDITION_FAILED = 'ConditionalCheckFailed';
  *
  * Its parameter is the weak {@link RejectionFields} rather than `Error`, which
  * is a deliberate trade: `{}` and `{ name }` now compile where they did not,
- * and in exchange this module stays the single place that reads
- * `CancellationReasons`, so the two readers above cannot drift apart. Every
- * caller today passes an `Error`.
+ * and in exchange this module stays the only place that dereferences
+ * `CancellationReasons`, so {@link conditionalCheckFailure}, the retry
+ * classifier and the two history readers cannot drift apart in how they read
+ * it. Every value that reaches it at runtime comes from a `catch`; the two
+ * call sites inside this package that pass it along rather than an `Error`
+ * ({@link conditionalCheckFailure} and `isConditionalCheckFailed`) received
+ * one from a `catch` themselves.
  *
  * Returns: one entry per transaction item, in the order the items were sent
  * (https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html),
