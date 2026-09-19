@@ -40,6 +40,12 @@ const CONDITION_FAILED = 'ConditionalCheckFailed';
  * Accepts: `error` — any error; only a `TransactionCanceledException` carries
  * the field.
  *
+ * Its parameter is the weak {@link RejectionFields} rather than `Error`, which
+ * is a deliberate trade: `{}` and `{ name }` now compile where they did not,
+ * and in exchange this module stays the single place that reads
+ * `CancellationReasons`, so the two readers above cannot drift apart. Every
+ * caller today passes an `Error`.
+ *
  * Returns: one entry per transaction item, in the order the items were sent
  * (https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html),
  * or `undefined` when the error carries none — which is what an older service
@@ -59,6 +65,14 @@ export function getCancellationReasons(error: RejectionFields): CancellationReas
  * ride are set aside. What must remain is a single cause, and it must be the
  * condition: a cancellation that also failed a second item for its own reason
  * is not a guard rejection, and reporting one would hide the other failure.
+ *
+ * A reason carrying no `Code` counts as a cause here, while the retry
+ * classifier treats that same shape as transient. The disagreement is
+ * deliberate, because the two readers are conservative in opposite directions:
+ * for the classifier, an unreadable reason may be retried, which a request
+ * token makes harmless; here it must **not** be read as a clean rejection,
+ * since acting on one discards whatever else the transaction failed on. AWS
+ * populates `Code` for every item, so neither branch is reachable in practice.
  *
  * Accepts: `error` — any error; only a cancellation carries reasons.
  *
