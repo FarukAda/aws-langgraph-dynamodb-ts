@@ -16,22 +16,44 @@ const scan = (): ScannedFile[] =>
 
 describe('findMessageWritePathBreaks', () => {
   it('flags a Put action built anywhere in history but the owning file', () => {
-    expect(
-      findMessageWritePathBreaks([{ path: 'history/actions/add.ts', text: '{ Put: { Item } }' }]),
-    ).toEqual(['history/actions/add.ts: builds a Put action']);
+    const text = 'const a = { Put: { TableName: t, Item: i } };';
+    expect(findMessageWritePathBreaks([{ path: 'history/actions/add.ts', text }])).toEqual([
+      'history/actions/add.ts: builds a Put action',
+    ]);
   });
 
-  it('flags a direct client.put, which no transaction would carry', () => {
+  it('flags a hoisted action, whose value the key alone does not show', () => {
+    const text = `const action = { TableName: t, Item: i };
+const w = { Put: action };`;
+    expect(findMessageWritePathBreaks([{ path: 'history/internal/x.ts', text }])).toEqual([
+      'history/internal/x.ts: builds a Put action',
+    ]);
+  });
+
+  it('flags a PutRequest, which reaches the table through batchWriteAll', () => {
+    const text = 'const w = [{ PutRequest: { Item: i } }];';
+    expect(findMessageWritePathBreaks([{ path: 'history/internal/x.ts', text }])).toEqual([
+      'history/internal/x.ts: builds a PutRequest action',
+    ]);
+  });
+
+  it('flags a direct .put call, which no transaction would carry', () => {
     expect(
-      findMessageWritePathBreaks([{ path: 'history/internal/x.ts', text: 'await client.put(i);' }]),
-    ).toEqual(['history/internal/x.ts: writes a row with client.put']);
+      findMessageWritePathBreaks([{ path: 'history/internal/x.ts', text: 'await c.put(i);' }]),
+    ).toEqual(['history/internal/x.ts: writes a row with .put']);
+  });
+
+  it('ignores a write action quoted in a comment or a string', () => {
+    const quoted = '/** Built as Put: { Item } by the owner; never call c.put( here. */';
+    const text = quoted + ' const doc = "see Put: { Item } elsewhere";';
+    expect(findMessageWritePathBreaks([{ path: 'history/internal/x.ts', text }])).toEqual([]);
   });
 
   it('accepts the owning file and ignores the other adapters', () => {
     expect(
       findMessageWritePathBreaks([
-        { path: MESSAGE_PUT_OWNER, text: '{ Put: { TableName, Item } }' },
-        { path: 'store/internal/persist.ts', text: 'client.put({ Item }); { Put: { Item } }' },
+        { path: MESSAGE_PUT_OWNER, text: 'const w = { Put: { TableName: t, Item: i } };' },
+        { path: 'store/internal/persist.ts', text: 'const w = { Put: { Item: i } }; c.put(i);' },
       ]),
     ).toEqual([]);
   });
