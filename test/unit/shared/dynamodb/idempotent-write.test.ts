@@ -1,0 +1,193 @@
+import { TransactWriteCommand, type TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
+
+import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
+import { REVISION_ATTRIBUTE, revisionGuard } from '../../../../src/shared/dynamodb/conditional-put';
+import {
+  type IdempotentWriteDeps,
+  putIdempotently,
+  referencesS3Object,
+} from '../../../../src/shared/dynamodb/idempotent-write';
+import * as retryModule from '../../../../src/shared/dynamodb/retry';
+import type { RetryOptions } from '../../../../src/shared/dynamodb/retry';
+import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
+import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
+
+const TABLE = 'adapter-table';
+const ITEM = {
+  PK: 'p',
+  SK: 's',
+  value: { location: PayloadLocation.S3, s3Key: 'k', serdeType: 'json', compressed: false },
+};
+
+const throttled = (): Error =>
+  Object.assign(new Error('slow down'), { name: 'ThrottlingException' });
+
+/** A policy whose backoff sleeps for no time at all, so a retry costs the suite nothing. */
+const instantPolicy = (overrides: RetryOptions = {}): RetryOptions => ({
+  maxAttempts: 4,
+  baseDelayMs: 10,
+  maxDelayMs: 10,
+  rng: () => 0,
+  ...overrides,
+});
+
+let client: IdempotentWriteDeps['client'];
+let mock: ReturnType<typeof createStrictDocumentMock>['mock'];
+
+beforeEach(() => {
+  ({ client, mock } = createStrictDocumentMock());
+});
+
+afterEach(() => {
+  mock.restore();
+});
+
+const emitted = (): TransactWriteCommandInput[] =>
+  mock.commandCalls(TransactWriteCommand).map((call) => call.args[0].input);
+
+type TransactPut = NonNullable<
+  NonNullable<TransactWriteCommandInput['TransactItems']>[number]['Put']
+>;
+
+const putOf = (input: TransactWriteCommandInput): TransactPut | undefined =>
+  input.TransactItems?.[0]?.Put;
+
+describe('referencesS3Object', () => {
+  it('answers only for a descriptor whose payload was offloaded', () => {
+    expect(referencesS3Object({ location: PayloadLocation.S3, s3Key: 'k' })).toBe(true);
+    expect(referencesS3Object({ location: PayloadLocation.INLINE })).toBe(false);
+  });
+});
+
+describe('putIdempotently', () => {
+  it("puts one guarded item, carrying the guard's fragments and its ALL_OLD request", async () => {
+    mock.on(TransactWriteCommand).resolves({});
+    const deps = { client, tableName: TABLE, retry: instantPolicy() };
+
+    await putIdempotently(
+      deps,
+      ITEM,
+      revisionGuard(REVISION_ATTRIBUTE, {
+        exists: true,
+        revision: 'r1',
+      }),
+    );
+
+    const [input] = emitted();
+    expect(input.TransactItems).toHaveLength(1);
+    expect(putOf(input)).toEqual({
+      TableName: TABLE,
+      Item: ITEM,
+      ConditionExpression: '#rev = :rev',
+      ExpressionAttributeNames: { '#rev': REVISION_ATTRIBUTE },
+      ExpressionAttributeValues: { ':rev': 'r1' },
+      ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
+    });
+    expect(input.ClientRequestToken).toHaveLength(36);
+  });
+
+  it('puts an unguarded item when the caller pins nothing', async () => {
+    mock.on(TransactWriteCommand).resolves({});
+
+    await putIdempotently({ client, tableName: TABLE, retry: instantPolicy() }, ITEM);
+
+    expect(putOf(emitted()[0])).toEqual({ TableName: TABLE, Item: ITEM });
+  });
+
+  it('re-sends the one request, token included, for every attempt of one budget', async () => {
+    mock.on(TransactWriteCommand).rejectsOnce(throttled()).resolves({});
+
+    await putIdempotently({ client, tableName: TABLE, retry: instantPolicy() }, ITEM);
+
+    const inputs = emitted();
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0].ClientRequestToken).toBe(inputs[1].ClientRequestToken);
+    expect(inputs[0]).toBe(inputs[1]);
+  });
+
+  /**
+   * A compare-and-swap re-pin sends a different condition under the same
+   * 10-minute window, which the service refuses when the token is reused. The
+   * refusal cannot be provoked here, so what is asserted is the thing that
+   * prevents it: the two emitted requests carry different tokens.
+   */
+  it('draws a fresh token for a re-pinned write', async () => {
+    mock.on(TransactWriteCommand).resolves({});
+    const deps = { client, tableName: TABLE, retry: instantPolicy() };
+
+    await putIdempotently(deps, ITEM, revisionGuard(REVISION_ATTRIBUTE, { exists: false }));
+    await putIdempotently(
+      deps,
+      ITEM,
+      revisionGuard(REVISION_ATTRIBUTE, {
+        exists: true,
+        revision: 'r2',
+      }),
+    );
+
+    const inputs = emitted();
+    expect(inputs).toHaveLength(2);
+    expect(putOf(inputs[0])).toMatchObject({ ConditionExpression: 'attribute_not_exists(PK)' });
+    expect(putOf(inputs[1])).toMatchObject({ ConditionExpression: '#rev = :rev' });
+    expect(inputs[0].ClientRequestToken).not.toBe(inputs[1].ClientRequestToken);
+  });
+
+  it("bounds this call without stamping a deadline on the adapter's own policy", async () => {
+    mock.on(TransactWriteCommand).resolves({});
+    const policy = instantPolicy();
+    const deps = { client, tableName: TABLE, retry: policy };
+    const spy = jest.spyOn(retryModule, 'withDynamoDBRetry');
+
+    await putIdempotently(deps, ITEM);
+
+    const passed = spy.mock.calls[0][1];
+    expect(passed).toEqual({ ...policy, deadlineAt: FROZEN_NOW_MS + MAX_WRITE_LIFETIME_MS });
+    expect(passed).not.toBe(policy);
+    expect(policy).not.toHaveProperty('deadlineAt');
+    expect(deps.retry).toBe(policy);
+  });
+
+  /**
+   * The contrast is the whole test: one policy, two jitter draws. The draw that
+   * lands a sleep exactly on the lifetime ends the budget after one attempt;
+   * the draw that sleeps for no time at all spends every attempt. Only a
+   * deadline of this call's own makes the first of those differ from the second.
+   */
+  it('ends the budget rather than sleeping past the write lifetime', async () => {
+    mock.on(TransactWriteCommand).rejects(throttled());
+    const onTheLimit = instantPolicy({
+      baseDelayMs: MAX_WRITE_LIFETIME_MS,
+      maxDelayMs: MAX_WRITE_LIFETIME_MS,
+      rng: () => 1,
+    });
+
+    await expect(
+      putIdempotently({ client, tableName: TABLE, retry: onTheLimit }, ITEM),
+    ).rejects.toThrow(RetryExhaustedError);
+    expect(emitted()).toHaveLength(1);
+
+    mock.resetHistory();
+    await expect(
+      putIdempotently({ client, tableName: TABLE, retry: instantPolicy() }, ITEM),
+    ).rejects.toThrow(RetryExhaustedError);
+    expect(emitted()).toHaveLength(4);
+  });
+
+  it("carries the caller's abort signal into the budget", async () => {
+    mock.on(TransactWriteCommand).resolves({});
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      putIdempotently(
+        { client, tableName: TABLE, retry: instantPolicy() },
+        ITEM,
+        undefined,
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ code: 'ABORTED' });
+    expect(emitted()).toHaveLength(0);
+  });
+});
