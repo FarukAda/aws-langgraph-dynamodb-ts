@@ -101,6 +101,7 @@ describe('DynamoDBFactory', () => {
     expect(() => all.destroy()).not.toThrow();
   });
 
+  /** Partial on purpose: the whole built config is pinned by the client's own test. */
   it('createAll passes maxAttempts: 1 through to the client factory (disables SDK-internal retries)', () => {
     const fake = fakeClientFactory();
     const createClient = jest.fn(fake.create);
@@ -110,7 +111,9 @@ describe('DynamoDBFactory', () => {
       store: { tableName: 'store' },
       history: { tableName: 'hist' },
     });
-    expect(createClient).toHaveBeenCalledWith({ maxAttempts: 1, region: 'eu-west-1' });
+    expect(createClient).toHaveBeenCalledWith(
+      expect.objectContaining({ maxAttempts: 1, region: 'eu-west-1' }),
+    );
   });
 });
 

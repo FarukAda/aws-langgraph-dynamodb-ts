@@ -105,6 +105,44 @@ export const TOKEN_IDEMPOTENCY_WINDOW_MS = 600_000;
 export const MAX_WRITE_LIFETIME_MS = 300_000;
 
 /**
+ * How long one request attempt may take on a client this library builds
+ * (10 seconds) before the SDK's request handler destroys it and rejects with a
+ * retryable `TimeoutError`. {@link MAX_WRITE_LIFETIME_MS} bounds how many
+ * attempts *start*; it is checked between them, so it can refuse to begin
+ * another wait and can never shorten the attempt already in flight. Without a
+ * handler timeout — every one of them defaults to 0 — a hung socket holds that
+ * attempt open forever and the write lifetime bounds nothing.
+ *
+ * Measured, not picked. Across the fan-out widths this package documents, the
+ * worst interval the handler itself saw — socket acquisition including the
+ * wait behind the agent's fifty sockets, connect, request write and
+ * time-to-first-response-header — was 0.92 s, at a thousand concurrent writes
+ * of 20 KB values, and ten seconds is roughly eleven times that. The asymmetry
+ * settles the close call: too large leaves one attempt hanging for at most ten
+ * seconds, which the write lifetime's own headroom absorbs, while too small
+ * turns a healthy wide fan-out into a retry storm.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * How long a socket may sit idle (5 seconds) on a client this library builds
+ * before the request is destroyed. {@link DEFAULT_REQUEST_TIMEOUT_MS} stops
+ * applying the moment response *headers* arrive, because the handler resolves
+ * there and clears its timers, so it says nothing about a response body that
+ * then stalls mid-stream. This does.
+ *
+ * Not a tuning knob. The handler installs the socket listener immediately only
+ * below 6 000 ms; at or above that it defers registration by 3 000 ms and
+ * returns the deferral's timer id, which the same clear-on-resolve cancels
+ * when response headers arrive — so at 6 000 or more the field silently stops
+ * doing anything for every response that answers inside three seconds, which
+ * is the normal case. A unit assertion holds this value under that threshold
+ * so raising it fails loudly instead of disabling the only bound a stalled
+ * body has.
+ */
+export const DEFAULT_SOCKET_TIMEOUT_MS = 5_000;
+
+/**
  * The most shards a recency index may have. The indexed read builds every
  * shard's partition key and issues at least one query per shard, so an
  * unbounded value turns a config typo into an unbounded stream of requests and

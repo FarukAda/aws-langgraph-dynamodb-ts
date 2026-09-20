@@ -104,6 +104,12 @@ describe('the factory checks the shape of its own clientConfig', () => {
     },
   );
 
+  /**
+   * Partial on purpose. The subject is that no key is dropped, not what the
+   * shared client adds of its own; the built config is pinned whole by that
+   * client's own test, which is the one place that should have to change when
+   * a default moves.
+   */
   it('hands every clientConfig key to the shared client, including ones this package never reads', () => {
     const fake = fakeClientFactory();
     const clientConfig = {
@@ -114,7 +120,7 @@ describe('the factory checks the shape of its own clientConfig', () => {
     };
     const f = new DynamoDBFactory({ clientConfig, createClient: fake.create });
     f.createAll({ saver: { tableName: 'tbl' } }).destroy();
-    expect(fake.create).toHaveBeenCalledWith(clientConfig);
+    expect(fake.create).toHaveBeenCalledWith(expect.objectContaining(clientConfig));
   });
 });
 

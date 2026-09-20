@@ -1,6 +1,7 @@
 import { DynamoDBClient, type DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
+import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_SOCKET_TIMEOUT_MS } from '../constants';
 import type { Logger } from '../logging/logger';
 
 /** A resolved DynamoDB client plus its ownership flag. */
@@ -35,7 +36,11 @@ export interface ResolveClientOptions {
  *
  * Guarantees: a client this call builds gets `maxAttempts: 1` unless the config
  * overrides it, so the SDK performs no retries of its own and this library's
- * retry layer is the only one. An injected client keeps whatever it was built
+ * retry layer is the only one. It also gets a default request handler that
+ * bounds how long one attempt may run, which `maxAttempts` alone does not. A
+ * `requestHandler` in `clientConfig` replaces that default whole rather than
+ * merging with it — the documented escape hatch, and equally the documented
+ * way to give up the bound. An injected client keeps whatever it was built
  * with — see {@link warnOnStackedRetries}.
  */
 export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDynamoDBClient {
@@ -43,7 +48,26 @@ export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDy
     return { ddbClient: undefined, client: options.client, ownsClient: false };
   }
   const createClient = options.createClient ?? ((config) => new DynamoDBClient(config));
-  const ddbClient = createClient({ maxAttempts: 1, ...options.clientConfig });
+  /**
+   * `throwOnRequestTimeout` is what makes the request timeout a bound: without
+   * it the handler only logs a warning when the timeout is breached. No
+   * `connectionTimeout` is passed, deliberately — its timer starts when the
+   * request is created and is cleared only when the agent *assigns* a socket,
+   * so the time a request spends queued behind `maxSockets` counts against it.
+   * At the thousand-wide fan-out this package documents, any value short
+   * enough to be useful destroys healthy writes that this library then
+   * retries, and any value long enough to be safe bounds nothing the request
+   * timeout does not already bound.
+   */
+  const ddbClient = createClient({
+    maxAttempts: 1,
+    requestHandler: {
+      requestTimeout: DEFAULT_REQUEST_TIMEOUT_MS,
+      socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS,
+      throwOnRequestTimeout: true,
+    },
+    ...options.clientConfig,
+  });
   return { ddbClient, client: DynamoDBDocument.from(ddbClient), ownsClient: true };
 }
 
@@ -74,6 +98,13 @@ export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDy
  * library's attempts into several of its own, so the time spent inside a
  * single attempt stops being bounded by anything this library sets — which is
  * why the warning says to construct it with `maxAttempts: 1`.
+ *
+ * `maxAttempts: 1` is necessary but not sufficient. The per-attempt bound
+ * holds for an injected client only if it also carries its own request
+ * timeout: a client this library builds is given one
+ * ({@link resolveDynamoDBClient}), and an injected client is used exactly as
+ * handed over, so one without a handler timeout leaves a single attempt
+ * unbounded even with the SDK's retries switched off.
  */
 export async function warnOnStackedRetries(
   client: DynamoDBDocument,
