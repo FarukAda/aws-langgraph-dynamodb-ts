@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
+import { nowMs } from '../../shared/clock';
+import { MAX_WRITE_LIFETIME_MS, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
 import { getCancellationReasons } from '../../shared/dynamodb/cancellation';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { ChatMessageItem } from '../types';
@@ -47,12 +48,23 @@ async function attempt(
   retry: ChunkRetryOptions,
 ): Promise<void> {
   const input = buildInput(context, items, fields);
+  /**
+   * Minted here, beside the token, rather than once per `writeMessageChunk`.
+   * The ttl race sends the chunk twice and each send draws its own token, so
+   * each send is honoured for its own ten minutes and is entitled to a full
+   * budget. One deadline per call would hand the second send whatever the
+   * first did not spend, silently halving the retrying that matters most —
+   * the send made after a race has already been lost.
+   */
+  const deadlineAt = nowMs() + MAX_WRITE_LIFETIME_MS;
   await withDynamoDBRetry(() => context.client.transactWrite(input), {
     ...context.retry,
     /** The contention floor: a caller policy may raise the budget, never lower it. */
     maxAttempts: Math.max(MESSAGE_APPEND_RETRY_MAX_ATTEMPTS, context.retry?.maxAttempts ?? 0),
     rng: retry.rng,
     signal: retry.signal,
+    /** A bound on the whole budget, never on the attempt count above it. */
+    deadlineAt,
   });
 }
 
@@ -87,9 +99,11 @@ async function attempt(
  * Guarantees: `messageCount` can never disagree with the messages that landed,
  * because they land in one transaction. At most one extra attempt is spent on
  * the benign ttl race, and it carries its own request token, so a retry can
- * never double-apply the count. The SESSION row's `writeId` moves if and only
- * if a message row was added: the update travels in the same transaction as
- * the rows, and nothing else writes it.
+ * never double-apply the count — and its own deadline of
+ * {@link MAX_WRITE_LIFETIME_MS}, so the retrying stops while that token is
+ * still deduplicating rather than after it has expired. The SESSION row's
+ * `writeId` moves if and only if a message row was added: the update travels in
+ * the same transaction as the rows, and nothing else writes it.
  */
 export async function writeMessageChunk(
   context: HistoryContext,

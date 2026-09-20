@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { nowMs } from '../../shared/clock';
+import { MAX_WRITE_LIFETIME_MS } from '../../shared/constants';
 import { getCancellationReasons } from '../../shared/dynamodb/cancellation';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
@@ -54,6 +56,18 @@ function isCancelledByCondition(error: Error): boolean {
  * vanished row and a newer incarnation are both "nothing of mine to revert",
  * not errors — this runs from an in-progress rollback, where a spurious error
  * for a no-op would misrepresent what happened.
+ *
+ * Guarantees: the decrement is applied at most once, however often the request
+ * is re-sent. `ADD #count :neg` is the one write in this package that is not
+ * naturally idempotent — applied twice it subtracts twice, and nothing reads
+ * the row back afterwards to notice — so a re-sent attempt must be answered
+ * from DynamoDB's idempotency cache rather than re-evaluated. Two things hold
+ * that together and only together: the `ClientRequestToken`, which makes a
+ * re-send a no-op, and the deadline of {@link MAX_WRITE_LIFETIME_MS}, which
+ * stops the retrying while that token is still honoured. Without the deadline
+ * a long caller policy could still be retrying after the window closed, and
+ * the re-send would then land as a second subtraction, leaving `messageCount`
+ * quietly wrong.
  */
 export async function revertSessionCount(
   context: HistoryContext,
@@ -72,7 +86,11 @@ export async function revertSessionCount(
   };
   const input = { TransactItems: [{ Update: update }], ClientRequestToken: randomUUID() };
   try {
-    await withDynamoDBRetry(() => context.client.transactWrite(input), context.retry);
+    await withDynamoDBRetry(() => context.client.transactWrite(input), {
+      /** Spread, never assigned onto: `context.retry` is the adapter's own object. */
+      ...context.retry,
+      deadlineAt: nowMs() + MAX_WRITE_LIFETIME_MS,
+    });
   } catch (error) {
     if (isCancelledByCondition(error as Error)) return;
     throw error;
@@ -131,7 +149,11 @@ export async function revertSessionCreation(
     ClientRequestToken: randomUUID(),
   };
   try {
-    await withDynamoDBRetry(() => context.client.transactWrite(input), context.retry);
+    await withDynamoDBRetry(() => context.client.transactWrite(input), {
+      ...context.retry,
+      /** The delete carries a token too, and the same window bounds its retrying. */
+      deadlineAt: nowMs() + MAX_WRITE_LIFETIME_MS,
+    });
     return;
   } catch (error) {
     if (!isCancelledByCondition(error as Error)) throw error;
