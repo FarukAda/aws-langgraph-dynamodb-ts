@@ -2,6 +2,7 @@ import {
   DEFAULT_RETRY_MAX_ATTEMPTS,
   INITIAL_BACKOFF_DELAY_MS,
   MAX_BACKOFF_DELAY_MS,
+  MAX_WRITE_LIFETIME_MS,
 } from '../constants';
 import type { Logger } from '../logging/logger';
 import type { RetryOptions } from './retry';
@@ -21,6 +22,62 @@ export interface RetryPolicy {
   maxDelayMs?: number;
 }
 
+/** A policy with every field defaulted, before the logger is attached to it. */
+interface ResolvedPolicy {
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+}
+
+/**
+ * The nominal worst case of a policy's backoff schedule, in milliseconds.
+ *
+ * `withRetry` sleeps *between* attempts, so a budget of `maxAttempts` attempts
+ * holds `maxAttempts - 1` sleeps, and full jitter draws the k-th of them from
+ * `[0, min(baseDelayMs * 2 ** (k - 1), maxDelayMs))`. The worst case is
+ * therefore the **sum of those caps**:
+ *
+ * `sum over k in 1..maxAttempts-1 of min(baseDelayMs * 2 ** (k - 1), maxDelayMs)`
+ *
+ * It is stated here because the reading a reader reaches for —
+ * `maxAttempts * maxDelayMs` — is wrong in both directions at once: it counts
+ * a sleep after the final attempt, which never happens, and it charges the cap
+ * for every early sleep the exponential has not yet climbed to. At the
+ * defaults those first six sleeps total 6.3 s, not 30 s.
+ *
+ * Nominal, not actual: each sleep is drawn uniformly below its cap, so a real
+ * budget averages about half of this and only approaches it in the limit. The
+ * cap is what a bound has to be measured against all the same.
+ */
+function nominalBudgetMs(policy: ResolvedPolicy): number {
+  let total = 0;
+  for (let sleep = 1; sleep < policy.maxAttempts; sleep++) {
+    total += Math.min(policy.baseDelayMs * 2 ** (sleep - 1), policy.maxDelayMs);
+  }
+  return total;
+}
+
+/**
+ * Warn when a policy's nominal budget outlives {@link MAX_WRITE_LIFETIME_MS},
+ * the deadline every token-carrying write in this package runs under.
+ *
+ * Warn, never refuse. A long policy is the caller's own choice, it stays
+ * legal, and the deadline already makes it safe — what it is not, without this
+ * line, is visible: a deadline that ends a budget early and a budget that is
+ * simply spent both surface as the same `RetryExhaustedError`, so the first
+ * evidence that a configured policy can never run to its end would otherwise
+ * be an incident. Said once, at construction, it is said before the first
+ * write rather than after.
+ */
+function warnIfOutlivesWriteLifetime(policy: ResolvedPolicy, logger: Logger): void {
+  const budgetMs = nominalBudgetMs(policy);
+  if (budgetMs <= MAX_WRITE_LIFETIME_MS) return;
+  logger.warn('retry policy outlives the write lifetime; the budget will be cut short', {
+    budgetMs,
+    maxWriteLifetimeMs: MAX_WRITE_LIFETIME_MS,
+  });
+}
+
 /**
  * Resolve an adapter's retry policy once, at construction.
  *
@@ -32,13 +89,21 @@ export interface RetryPolicy {
  * (the attempt, the delay about to be slept, the error's name) instead of only
  * surfacing once the budget is exhausted.
  *
- * Throws: nothing; the policy was validated where it was given.
+ * Throws: nothing; the policy was validated where it was given. A policy whose
+ * nominal budget outlives {@link MAX_WRITE_LIFETIME_MS} is warned about rather
+ * than refused, exactly once, here — see
+ * {@link warnIfOutlivesWriteLifetime}. The defaults are far inside it and say
+ * nothing.
  */
 export function resolveRetryPolicy(policy: RetryPolicy | undefined, logger: Logger): RetryOptions {
-  return {
+  const resolved = {
     maxAttempts: policy?.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS,
     baseDelayMs: policy?.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS,
     maxDelayMs: policy?.maxDelayMs ?? MAX_BACKOFF_DELAY_MS,
+  };
+  warnIfOutlivesWriteLifetime(resolved, logger);
+  return {
+    ...resolved,
     onRetry: ({ attempt, delayMs, error }) =>
       logger.debug('retrying after a transient error', { attempt, delayMs, error: error.name }),
   };

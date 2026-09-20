@@ -1,3 +1,4 @@
+import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
 import { withRetry } from '../../../../src/shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../../../src/shared/dynamodb/retry-policy';
 
@@ -36,5 +37,65 @@ describe('resolveRetryPolicy (DDB-03, DDB-10)', () => {
       delayMs: 1,
       error: 'ThrottlingException',
     });
+  });
+});
+
+/**
+ * A policy long enough to outlive the deadline every token-carrying write
+ * runs under is legal and stays legal; what it must not be is silent. The
+ * budget is compared against `MAX_WRITE_LIFETIME_MS` rather than against the
+ * ten-minute window itself, because that constant is the bound the writes
+ * actually carry.
+ */
+describe('resolveRetryPolicy warns when a policy outlives the write deadline (DDB-03)', () => {
+  it('stays silent for the defaults, which is what keeps the warning worth reading', () => {
+    const logger = fakeLogger();
+    resolveRetryPolicy(undefined, logger);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 99 sleeps at the default delays: 6 300 ms while the exponential climbs,
+   * then 93 caps of 5 000 ms. The number is asserted exactly because it is the
+   * one a reader compares against the deadline.
+   */
+  it('warns once, naming the budget and the deadline it exceeds', () => {
+    const logger = fakeLogger();
+    resolveRetryPolicy({ maxAttempts: 100 }, logger);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('retry policy outlives'), {
+      budgetMs: 471_300,
+      maxWriteLifetimeMs: MAX_WRITE_LIFETIME_MS,
+    });
+  });
+
+  /**
+   * The formula, pinned. 64 sleeps sum to 296 300 ms — just inside the
+   * deadline — while the reading a reader is most likely to assume,
+   * `maxAttempts × maxDelayMs`, gives 325 000 ms and would warn here.
+   */
+  it('sums the schedule rather than multiplying attempts by the delay cap', () => {
+    const logger = fakeLogger();
+    resolveRetryPolicy({ maxAttempts: 65 }, logger);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A raised delay cap is the other way over, and the one a caller reaches
+   * first: 18 attempts is the append path's own floor, and at a 60 s cap that
+   * schedule alone runs to 522 300 ms.
+   */
+  it('counts a raised delay cap, not only a raised attempt count', () => {
+    const logger = fakeLogger();
+    resolveRetryPolicy({ maxAttempts: 18, maxDelayMs: 60_000 }, logger);
+    expect(logger.warn).toHaveBeenCalledWith(expect.any(String), {
+      budgetMs: 522_300,
+      maxWriteLifetimeMs: MAX_WRITE_LIFETIME_MS,
+    });
+  });
+
+  it('leaves the resolved options themselves unchanged', () => {
+    const resolved = resolveRetryPolicy({ maxAttempts: 100 }, fakeLogger());
+    expect(resolved).toMatchObject({ maxAttempts: 100, baseDelayMs: 100, maxDelayMs: 5000 });
   });
 });
