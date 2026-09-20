@@ -56,6 +56,17 @@ function context(client: unknown, retry?: RetryOptions): HistoryContext {
  * while `rng: () => 0` keeps the sleep the test really performs
  * instantaneous. What `withRetry` then measures against the deadline is the
  * elapsed time of the documented schedule, not a stand-in for it.
+ *
+ * **One half of the check is nulled, deliberately, and the counts below are
+ * one higher because of it.** `crossesDeadline` is predictive — it compares
+ * `now + delayMs` and refuses the sleep that *would* cross — but `rng: () => 0`
+ * makes `delayMs` zero, so what is really evaluated here is `now >= deadline`:
+ * worst-case elapsed with no lookahead, a combination production never
+ * produces. Every attempt count in this file is therefore one past what the
+ * un-jittered schedule would reach. The predictive half is pinned where it
+ * belongs, by `retry.test.ts`'s "cuts the budget before a sleep that would
+ * cross the deadline"; what this file pins is that the deadline is minted per
+ * attempt, at the right value, off the adapter's own object.
  */
 function installScheduleClock(baseDelayMs: number, maxDelayMs: number): RetryOptions {
   const clock = { now: FROZEN_NOW_MS };
@@ -91,10 +102,12 @@ describe('the append transaction stays inside the window its token is honoured f
 
   /**
    * 18 attempts at a 60 s cap nominally back off for 522 300 ms, which is the
-   * configuration this deadline exists for. The 14th sleep carries the elapsed
-   * time to 342 300 ms, past the 300 s lifetime, so the 15th attempt is the
-   * last one sent — and the 16th, the one that would have landed the chunk
-   * under a token DynamoDB may no longer honour, is never sent at all.
+   * configuration this deadline exists for: the budget ends well short of its
+   * eighteenth attempt, and the send that would have landed the chunk under a
+   * token DynamoDB may no longer honour is never made. The exact attempt the
+   * count stops at is the helper's, not production's - see its note about the
+   * nulled lookahead - so the assertion is on "stopped early and rejected",
+   * not on a number the real schedule would reach.
    */
   it('exhausts at the deadline rather than re-landing past it', async () => {
     const { client, mock } = createStrictDocumentMock();

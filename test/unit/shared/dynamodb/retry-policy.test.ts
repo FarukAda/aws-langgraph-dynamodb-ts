@@ -1,4 +1,7 @@
-import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
+import {
+  MAX_WRITE_LIFETIME_MS,
+  MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
+} from '../../../../src/shared/constants';
 import { withRetry } from '../../../../src/shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../../../src/shared/dynamodb/retry-policy';
 
@@ -97,5 +100,35 @@ describe('resolveRetryPolicy warns when a policy outlives the write deadline (DD
   it('leaves the resolved options themselves unchanged', () => {
     const resolved = resolveRetryPolicy({ maxAttempts: 100 }, fakeLogger());
     expect(resolved).toMatchObject({ maxAttempts: 100, baseDelayMs: 100, maxDelayMs: 5000 });
+  });
+});
+
+describe('the attempt floor an adapter applies', () => {
+  /**
+   * The configuration a caller is most likely to reach, and the one the
+   * warning used to miss entirely: raising only the delay cap leaves
+   * `maxAttempts` at the default, so the caller's own policy looks harmless -
+   * while the history append raises the count to its floor and keeps the
+   * raised delays, producing a budget well past the deadline.
+   */
+  it('warns at the attempts the adapter will really make, not the ones the caller wrote', () => {
+    const logger = fakeLogger();
+
+    resolveRetryPolicy({ maxDelayMs: 60_000 }, logger);
+    expect(logger.warn).not.toHaveBeenCalled();
+
+    resolveRetryPolicy({ maxDelayMs: 60_000 }, logger, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS);
+    expect(logger.warn).toHaveBeenCalledWith(expect.any(String), {
+      budgetMs: 522_300,
+      maxWriteLifetimeMs: MAX_WRITE_LIFETIME_MS,
+    });
+  });
+
+  it('leaves an adapter that honours the caller its own budget', () => {
+    const logger = fakeLogger();
+
+    resolveRetryPolicy(undefined, logger, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS);
+
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

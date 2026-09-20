@@ -43,7 +43,8 @@ interface ResolvedPolicy {
  * `maxAttempts * maxDelayMs` — is wrong in both directions at once: it counts
  * a sleep after the final attempt, which never happens, and it charges the cap
  * for every early sleep the exponential has not yet climbed to. At the
- * defaults those first six sleeps total 6.3 s, not 30 s.
+ * defaults - five attempts, so four sleeps - they total 1.5 s where the naive
+ * reading says 25 s.
  *
  * Nominal, not actual: each sleep is drawn uniformly below its cap, so a real
  * budget averages about half of this and only approaches it in the limit. The
@@ -89,19 +90,39 @@ function warnIfOutlivesWriteLifetime(policy: ResolvedPolicy, logger: Logger): vo
  * (the attempt, the delay about to be slept, the error's name) instead of only
  * surfacing once the budget is exhausted.
  *
+ * Accepts: `attemptFloor` — the lowest attempt count this adapter will actually
+ * use, when it raises a caller's below its own. The budget is warned about at
+ * that number rather than at the caller's, because it is the one the writes
+ * will really spend; an adapter that honours the caller's count passes none.
+ *
  * Throws: nothing; the policy was validated where it was given. A policy whose
  * nominal budget outlives {@link MAX_WRITE_LIFETIME_MS} is warned about rather
- * than refused, exactly once, here — see
+ * than refused, once per adapter constructed — three adapters built from one
+ * long policy each say so for themselves — see
  * {@link warnIfOutlivesWriteLifetime}. The defaults are far inside it and say
  * nothing.
  */
-export function resolveRetryPolicy(policy: RetryPolicy | undefined, logger: Logger): RetryOptions {
+export function resolveRetryPolicy(
+  policy: RetryPolicy | undefined,
+  logger: Logger,
+  attemptFloor = 0,
+): RetryOptions {
   const resolved = {
     maxAttempts: policy?.maxAttempts ?? DEFAULT_RETRY_MAX_ATTEMPTS,
     baseDelayMs: policy?.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS,
     maxDelayMs: policy?.maxDelayMs ?? MAX_BACKOFF_DELAY_MS,
   };
-  warnIfOutlivesWriteLifetime(resolved, logger);
+  /**
+   * Measured at the attempts the adapter will really make, not at the ones the
+   * caller wrote. The history append raises a caller's count to its own floor
+   * while keeping the caller's delays, so a policy that only raises
+   * `maxDelayMs` produces a budget far past the deadline and would otherwise
+   * be warned about nowhere. An adapter with no floor passes none.
+   */
+  warnIfOutlivesWriteLifetime(
+    { ...resolved, maxAttempts: Math.max(resolved.maxAttempts, attemptFloor) },
+    logger,
+  );
   return {
     ...resolved,
     onRetry: ({ attempt, delayMs, error }) =>

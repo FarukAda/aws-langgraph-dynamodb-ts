@@ -6,7 +6,10 @@ import type { CompressionConfig } from '../../shared/codec/compression';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
 import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import {
+  DEFAULT_READ_CONCURRENCY,
+  MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
+} from '../../shared/constants';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
@@ -98,7 +101,7 @@ export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): Histor
         : undefined,
       ttl: options.ttl,
       logger,
-      retry: resolveRetryPolicy(options.retry, logger),
+      retry: resolveRetryPolicy(options.retry, logger, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS),
       indexShards: options.indexShards ?? DEFAULT_INDEX_SHARDS,
       readConcurrency: options.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
       indexName: options.indexName,

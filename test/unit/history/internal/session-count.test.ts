@@ -223,8 +223,10 @@ describe('a tokened revert stays inside the window its token is honoured for', (
    * on a sustained conflict — nearly three times the window the token survives.
    * The clock advances by each sleep the schedule starts (`onRetry` fires once
    * before each, and `rng: () => 0` keeps the sleep itself instantaneous), so
-   * the budget ends on its sixth attempt rather than its eighteenth, while the
-   * token still deduplicates the sends already made.
+   * the budget ends a handful of attempts in rather than at its eighteenth,
+   * while the token still deduplicates the sends already made. The exact count
+   * belongs to the helper rather than to production, which checks the sleep it
+   * is about to take and so stops one attempt earlier.
    */
   it('cuts short a budget that would outlive the token', async () => {
     const { client, mock } = createStrictDocumentMock();
