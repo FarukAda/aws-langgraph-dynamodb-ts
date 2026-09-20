@@ -117,7 +117,9 @@ describe('deleteStoreItem deletes only the row the caller observed', () => {
    * unconditional delete erases a put that lands between the caller's call and
    * the write. The pre-read finds nothing, so no transaction is sent at all -
    * and the vector and S3 cleanup still run, because clearing a stranded vector
-   * for a key with no row is a repair path callers have today.
+   * for a key with no row is a repair path callers have today. The vector is
+   * still cleared through the same confirmation every other path goes through,
+   * which is the second read here; `delete-vector-gate` owns that rule.
    */
   it('sends no write when the pre-read finds no row, and still runs the trailing cleanup', async () => {
     const backend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
@@ -129,7 +131,7 @@ describe('deleteStoreItem deletes only the row the caller observed', () => {
     await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
 
     expect(h.mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
-    expect(h.mock.calls()).toHaveLength(1);
+    expect(h.mock.calls()).toHaveLength(2);
     expect(table.rows.size).toBe(1);
     expect(backend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
     expect(h.released()).toEqual([]);

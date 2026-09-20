@@ -79,6 +79,39 @@ async function removeObservedRow(
 }
 
 /**
+ * Drop the item's vector, but only on a fresh read that finds no row at the
+ * key.
+ *
+ * The question is deliberately **not** "did this call remove the row" — that
+ * one is true in exactly the interleaving that goes wrong. It is "does the key
+ * hold a row *now*", which a racing put that recreated it and a
+ * compare-and-swap that left it alone both answer the same way, and which costs
+ * a point read of this library's own table rather than anything the backend has
+ * to offer. The reconciler already asks it before pruning a vector, so the
+ * delete path is no longer the less careful of the two.
+ *
+ * A read that itself fails answers "not confirmed" and keeps the vector: a
+ * stale vector for a deleted item, which `reconcileVectorIndex` removes, rather
+ * than a missing one for a live item, which is the defect this exists for.
+ */
+async function dropVectorWhenGone(
+  context: StoreContext,
+  op: PutOperation,
+  key: RowKey,
+): Promise<void> {
+  const backend = context.vectorBackend;
+  if (backend === undefined) return;
+  if (!(await rowIsAbsent(context, key))) {
+    context.logger.info('store.delete: kept a vector whose item is still there', {
+      namespace: op.namespace,
+      key: op.key,
+    });
+    return;
+  }
+  await syncVectorIndex(backend, op.namespace, op.key, undefined, context.logger);
+}
+
+/**
  * Delete the item and, when a vector backend is configured, drop its vector.
  *
  * The row is read first, then removed inside a one-item `TransactWriteItems`
@@ -93,7 +126,9 @@ async function removeObservedRow(
  * same race closed from the other side: there is nothing to pin, so a put that
  * lands mid-call survives. The S3 release and the vector sync still run, since
  * a key with no row can still have a stranded vector and clearing it is a
- * repair path callers have today.
+ * repair path callers have today — and the vector sync goes through the same
+ * confirmation as every other path rather than letting the pre-read stand in
+ * for it, so the put that lands mid-call keeps its vector too.
  *
  * What a caller can and cannot tell apart:
  *
@@ -102,12 +137,20 @@ async function removeObservedRow(
  *   place, release nothing — correctly, a live row names the object — and emit
  *   one `warn`. Throwing instead would add a failure mode to an interleaving
  *   that succeeds today, which every caller deleting in a `finally` would have
- *   to handle. **One thing about this outcome is not yet right:** the vector
- *   sync below still runs, so a configured `vectorBackend` loses the live
- *   row's vector and `search` stops returning an item `get` still returns,
- *   until `reconcileVectorIndex` runs. It is a new state - before this change
- *   no interleaving left the row alive - and it is closed by gating that call
- *   on a confirmation that the row is really gone.
+ *   to handle.
+ * - **The vector is dropped only on a confirmation, and that window is
+ *   narrowed rather than closed.** Immediately before the backend call — and
+ *   above the S3 cleanup, so no round trip with its own retries sits inside the
+ *   window — one strongly-consistent projected read asks whether the key holds
+ *   a row now, and a row that is there keeps its vector and logs one `info`.
+ *   That covers both interleavings that used to erase a live item's vector: a
+ *   put recreating the row this call removed, and the compare-and-swap above
+ *   resolving with the row untouched. What is left is a put committing between
+ *   that read and the backend call, two adjacent statements apart. Closing it
+ *   needs a compare-and-swap **on the vector backend** — delete this vector
+ *   only if it is still the one written at time T — which the `VectorBackend`
+ *   contract cannot express and no implementation would be obliged to honour,
+ *   so `reconcileVectorIndex` stays the named repair for it.
  * - **A deadline cut and a spent budget are one error.** The transaction's
  *   budget is additionally bounded by `MAX_WRITE_LIFETIME_MS`, so a caller who
  *   configures a long retry policy can see the budget end there rather than at
@@ -137,7 +180,11 @@ async function removeObservedRow(
  * row's when something did. It is never read back from the response, so the
  * object a delete whose acknowledgement was lost removed is no longer leaked by
  * construction. Nothing is released while the outcome is unknown: only a
- * confirmed absence or a confirmed delete licenses it.
+ * confirmed absence or a confirmed delete licenses it. And the backend's
+ * `delete` is never reached without a confirmation immediately before it, on
+ * every path including the one whose key never had a row: one rule with no
+ * exception, because an exception on a repair-shaped path is where the erasure
+ * comes back unnoticed.
  */
 export async function deleteStoreItem(
   context: StoreContext,
@@ -145,10 +192,9 @@ export async function deleteStoreItem(
   pk: string,
   sk: string,
 ): Promise<void> {
+  const key: RowKey = { PK: pk, SK: sk };
   const existing = await readExisting(context, pk, sk);
-  const released = existing.exists
-    ? await removeObservedRow(context, { PK: pk, SK: sk }, existing)
-    : existing;
+  const released = existing.exists ? await removeObservedRow(context, key, existing) : existing;
   if (released === undefined) {
     context.logger.warn('store.delete: compare-and-swap exhausted; the item was not deleted', {
       namespace: op.namespace,
@@ -156,6 +202,7 @@ export async function deleteStoreItem(
       attempts: OVERWRITE_CAS_MAX_ATTEMPTS,
     });
   }
+  await dropVectorWhenGone(context, op, key);
   if (context.offloader && released?.value) {
     await cleanUpS3Orphans(
       context.offloader,
@@ -164,8 +211,5 @@ export async function deleteStoreItem(
       context.logger,
       { scope: [...op.namespace, op.key] },
     );
-  }
-  if (context.vectorBackend) {
-    await syncVectorIndex(context.vectorBackend, op.namespace, op.key, undefined, context.logger);
   }
 }
