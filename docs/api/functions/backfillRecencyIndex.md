@@ -8,7 +8,7 @@
 
 > **backfillRecencyIndex**(`options`): `Promise`\<[`BackfillResult`](../interfaces/BackfillResult.md)\>
 
-Defined in: [shared/dynamodb/backfill-index.ts:119](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L119)
+Defined in: [shared/dynamodb/backfill-index.ts:134](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-index.ts#L134)
 
 Give rows written before the recency index their index keys.
 
@@ -19,8 +19,10 @@ that read it — the rows are still there, and every other read still returns
 them, but a listing would not.
 
 Safe to re-run and safe to run while adapters are writing: every write is
-conditional on the row having no keys yet, so a row a live adapter has
-already indexed is left exactly as it is.
+conditional on the row still being there and having no keys yet, so a row a
+live adapter has already indexed is left exactly as it is, and a row deleted
+after the scan found it stays deleted rather than being re-created by an
+`UpdateItem`, which upserts.
 
 `indexShards` must match what the adapters use. A mismatch puts rows on
 shards no listing queries, which looks exactly like the rows being missing.
@@ -48,9 +50,10 @@ throw — this is the function's own error boundary, the same as every
 adapter's public methods, so a caller's mistake never escapes as a bare
 exception.
 
-Guarantees: every write is conditional on the row having no keys yet, so
-re-running is safe, running against a live table is safe, and a row a live
-adapter has already indexed is left exactly as it is.
+Guarantees: every write is conditional on the row still being there and
+having no keys yet, so re-running is safe, running against a live table is
+safe, a row a live adapter has already indexed is left exactly as it is, and
+a row deleted between the scan and the write is never re-created.
 
 ## Parameters
 
