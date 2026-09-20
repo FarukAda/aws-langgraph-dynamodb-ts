@@ -1,5 +1,6 @@
 import {
   GetBucketLifecycleConfigurationCommand,
+  GetBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -117,6 +118,7 @@ describe('DynamoDBChatMessageHistory', () => {
     const { client } = createStrictDocumentMock();
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const h = new DynamoDBChatMessageHistory({
       tableName: 'history',
       client,

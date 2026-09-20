@@ -1,8 +1,10 @@
 import { ensureS3Lifecycle } from '../../../../src/checkpointer/actions/ensure-lifecycle';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 
+const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+
 function context(over: Partial<CheckpointerContext>): CheckpointerContext {
-  return { tableName: 'ckpt', ...over } as CheckpointerContext;
+  return { tableName: 'ckpt', logger, ...over } as CheckpointerContext;
 }
 
 describe('ensureS3Lifecycle', () => {
@@ -11,7 +13,7 @@ describe('ensureS3Lifecycle', () => {
   it('installs a rule whose expiry matches the configured ttl, rounded up', async () => {
     const s3 = offloader();
     await ensureS3Lifecycle(context({ offloader: s3 as never, ttl: { days: 30 } }));
-    expect(s3.ensureLifecycleRule).toHaveBeenCalledWith(32);
+    expect(s3.ensureLifecycleRule).toHaveBeenCalledWith(32, logger);
   });
 
   /**
@@ -21,7 +23,7 @@ describe('ensureS3Lifecycle', () => {
   it('rounds a sub-day ttl up to a whole day and adds the sweep margin', async () => {
     const s3 = offloader();
     await ensureS3Lifecycle(context({ offloader: s3 as never, ttl: { seconds: 3600 } }));
-    expect(s3.ensureLifecycleRule).toHaveBeenCalledWith(3);
+    expect(s3.ensureLifecycleRule).toHaveBeenCalledWith(3, logger);
   });
 
   /** Without a bucket there is nothing to rule over. */

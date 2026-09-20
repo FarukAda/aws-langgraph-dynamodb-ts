@@ -33,5 +33,5 @@ import type { CheckpointerContext } from '../internal/setup';
  */
 export async function ensureS3Lifecycle(context: CheckpointerContext): Promise<void> {
   if (!context.offloader || !context.ttl) return;
-  await context.offloader.ensureLifecycleRule(lifecycleExpirationDays(context.ttl));
+  await context.offloader.ensureLifecycleRule(lifecycleExpirationDays(context.ttl), context.logger);
 }

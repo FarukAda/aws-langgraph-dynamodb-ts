@@ -263,7 +263,10 @@ export class DynamoDBChatMessageHistory {
   async ensureS3LifecycleRule(): Promise<void> {
     return guardPublic('history.ensureS3LifecycleRule', async () => {
       if (!this.context.offloader || !this.context.ttl) return;
-      await this.context.offloader.ensureLifecycleRule(lifecycleExpirationDays(this.context.ttl));
+      await this.context.offloader.ensureLifecycleRule(
+        lifecycleExpirationDays(this.context.ttl),
+        this.context.logger,
+      );
     });
   }
 }

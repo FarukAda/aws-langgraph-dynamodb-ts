@@ -1,6 +1,7 @@
 import {
   DeleteObjectsCommand,
   GetBucketLifecycleConfigurationCommand,
+  GetBucketVersioningCommand,
   GetObjectCommand,
   PutBucketLifecycleConfigurationCommand,
   PutObjectCommand,
@@ -198,9 +199,26 @@ describe('S3Offloader', () => {
   it('ensureLifecycleRule delegates to the bucket lifecycle config', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const { offloader } = makeOffloader();
-    await offloader.ensureLifecycleRule(30);
+    await offloader.ensureLifecycleRule(30, logger);
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  /** The adapter's logger reaches the bucket-versioning report through here. */
+  it('ensureLifecycleRule reports an unversioned bucket through the adapter logger', async () => {
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
+    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    s3Mock.on(GetBucketVersioningCommand).resolves({});
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    const { offloader } = makeOffloader();
+    await offloader.ensureLifecycleRule(30, logger);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('versioning is off'),
+      expect.objectContaining({ bucket: 'b' }),
+    );
   });
 
   it('builds a default S3 client when no factory seam is given', async () => {

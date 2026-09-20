@@ -1,5 +1,6 @@
 import {
   GetBucketLifecycleConfigurationCommand,
+  GetBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -319,6 +320,7 @@ describe('DynamoDBSaver', () => {
     const { client } = createStrictDocumentMock();
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const saver = new DynamoDBSaver({
       tableName: 'ckpt',
       client,

@@ -6,8 +6,10 @@ import type {
 
 import { S3_RELEASE_GRACE_DAYS } from '../../constants';
 import { ValidationError } from '../../errors/errors';
+import type { Logger } from '../../logging/logger';
 import { loadS3Sdk } from './client';
 import { assertScopedKeyPrefix, buildLifecycleRuleId, buildMarkerRuleId } from './config';
+import { reportBucketVersioning } from './versioning';
 
 /** The bucket's current rules plus the bucket-level field a Put must carry back. */
 interface LifecycleState {
@@ -120,6 +122,25 @@ function assertNoIdCollision(rule: LifecycleRule | undefined, prefix: string, id
   );
 }
 
+/** Replace the bucket's whole configuration with `rules`, carrying its own field back. */
+async function putRules(
+  client: S3Client,
+  bucket: string,
+  state: LifecycleState,
+  rules: LifecycleRule[],
+): Promise<void> {
+  const { PutBucketLifecycleConfigurationCommand } = await loadS3Sdk();
+  await client.send(
+    new PutBucketLifecycleConfigurationCommand({
+      Bucket: bucket,
+      LifecycleConfiguration: { Rules: rules },
+      ...(state.transitionDefaultMinimumObjectSize === undefined
+        ? {}
+        : { TransitionDefaultMinimumObjectSize: state.transitionDefaultMinimumObjectSize }),
+    }),
+  );
+}
+
 /**
  * Ensure the two rules scoped to `prefix` exist on `bucket`: a `days`-day
  * expiration for current versions, and the reclaim that removes the delete
@@ -133,7 +154,9 @@ function assertNoIdCollision(rule: LifecycleRule | undefined, prefix: string, id
  * unversioned bucket, which keeps no noncurrent version and leaves no marker.
  *
  * Returns: nothing. Idempotent: when both rules already say this, no write is
- * issued.
+ * issued. The bucket's versioning state is reported either way, because the
+ * containment a released payload depends on is missing or present regardless
+ * of whether this particular call had a rule to write.
  *
  * Throws: ValidationError naming `s3.keyPrefix` for an unscoped prefix, or when
  * either rule id this prefix produces is already held by a different prefix
@@ -150,6 +173,7 @@ export async function ensureLifecycleRule(
   bucket: string,
   prefix: string,
   days: number,
+  logger: Logger,
 ): Promise<void> {
   assertScopedKeyPrefix(prefix);
   const ttlId = buildLifecycleRuleId(prefix);
@@ -161,16 +185,8 @@ export async function ensureLifecycleRule(
   assertNoIdCollision(heldMarker, prefix, markerId);
   const expiry = ttlRule(ttlId, prefix, days, heldTtl);
   const reclaim = markerRule(markerId, prefix);
-  if (alreadyCorrect(heldTtl, expiry) && alreadyCorrect(heldMarker, reclaim)) return;
-  const merged = upsert(upsert(state.rules, expiry), reclaim);
-  const { PutBucketLifecycleConfigurationCommand } = await loadS3Sdk();
-  await client.send(
-    new PutBucketLifecycleConfigurationCommand({
-      Bucket: bucket,
-      LifecycleConfiguration: { Rules: merged },
-      ...(state.transitionDefaultMinimumObjectSize === undefined
-        ? {}
-        : { TransitionDefaultMinimumObjectSize: state.transitionDefaultMinimumObjectSize }),
-    }),
-  );
+  if (!alreadyCorrect(heldTtl, expiry) || !alreadyCorrect(heldMarker, reclaim)) {
+    await putRules(client, bucket, state, upsert(upsert(state.rules, expiry), reclaim));
+  }
+  await reportBucketVersioning(client, bucket, logger);
 }

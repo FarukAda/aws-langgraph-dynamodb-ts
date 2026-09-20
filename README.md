@@ -386,6 +386,9 @@ const logger: Logger = {
 | `warn` | `store.put: compare-and-swap exhausted; overwriting unconditionally` | `namespace`, `key`, `attempts` | three concurrent overwrites of one item; the put succeeded but one S3 object may be orphaned until the lifecycle rule sweeps it |
 | `warn` | `store.delete: compare-and-swap exhausted; the item was not deleted` | `namespace`, `key`, `attempts` | three writes landed at one item between this delete's read and its attempt, each time; the item is still there and nothing was released, because the live row names it — re-run the delete once the key is idle |
 | `warn` | `putWrites: special-write compare-and-swap exhausted; overwriting unconditionally` | `sortKey`, `channel`, `attempts` | same, for an interrupt/resume/error write written concurrently for one task |
+| `warn` | `ensureS3LifecycleRule: versioning is off on the offload bucket, so releasing a payload deletes it outright with no recovery window` | `bucket` | the bucket keeps no versions, so releasing an offloaded payload erases it and no lifecycle rule can hold anything back; enable bucket versioning if you want a mistaken release to be recoverable |
+| `warn` | `ensureS3LifecycleRule: versioning is suspended on the offload bucket, so releasing a payload deletes it outright` | `bucket` | same exposure, and not the same remedy: re-enable versioning to restore it from here on, and treat the payloads released during the suspension as gone — nothing brings those back |
+| `warn` | `ensureS3LifecycleRule: could not read the offload bucket versioning state, so whether a released payload is recoverable is unknown` | `bucket`, `reason` | the lifecycle rules were written; only the versioning check failed, most often `AccessDenied` on a role without `s3:GetBucketVersioning`. Grant it, or check the state yourself |
 | `warn` | `Some orphaned S3 objects could not be deleted after` | `failedCount` | objects leaked after a failed write or a delete; `ensureS3LifecycleRule()` reclaims them, otherwise clean up by prefix |
 | `warn` | `Failed to clean up orphaned S3 objects after` | `reason` | the cleanup itself failed after retries; same remedy |
 | `warn` | `: refusing to delete an S3 object outside this row's scope` | `key` | a row referenced an object outside its own key path — a tampered or foreign row; the object was left alone, investigate the writer |
@@ -521,7 +524,10 @@ marker that never goes away.
 Both of those clauses do nothing on a bucket **without versioning**: there are no noncurrent
 versions to keep and no markers to reclaim, and a release is an ordinary delete with no recovery
 window at all. Versioning is the operator's to enable; this library reports what it finds and
-changes nothing it was not asked to.
+changes nothing it was not asked to. `ensureS3LifecycleRule()` reads the bucket's versioning state
+after it has written the rules and logs a `warn` for anything but `Enabled` (see
+[Logging](#logging)) — it never refuses, because the rules are worth writing either way and a
+deployment that worked yesterday on an unversioned bucket must not start failing today.
 
 ## IAM permissions
 
@@ -565,7 +571,7 @@ When the table carries the recency index and an adapter names it with `indexName
 
 `LangGraphTableScans` is needed only by the table-wide reads — a rootless `store.search([])`, `store.listNamespaces()` without a concrete prefix root, `backfillRecencyIndex()`, and, on an adapter without `indexName`, `history.listSessions()` and `saver.list()` without a `thread_id` (with `indexName` those two `Query` the index instead). Every other operation is a `GetItem`, a `Query` or a write. Leave the statement out of any role that must not read across tenants (see below).
 
-When S3 offloading is enabled, the role also needs the object actions under the configured key prefix (`langgraph-checkpoints/` by default; adjust when `keyPrefix` is set) and, only for the deployment-time `ensureS3LifecycleRule()` call, the two lifecycle actions on the bucket itself:
+When S3 offloading is enabled, the role also needs the object actions under the configured key prefix (`langgraph-checkpoints/` by default; adjust when `keyPrefix` is set) and, only for the deployment-time `ensureS3LifecycleRule()` call, the two lifecycle actions plus the versioning read on the bucket itself:
 
 ```json
 {
@@ -577,10 +583,16 @@ When S3 offloading is enabled, the role also needs the object actions under the 
 {
   "Sid": "LangGraphS3Lifecycle",
   "Effect": "Allow",
-  "Action": ["s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration"],
+  "Action": [
+    "s3:GetLifecycleConfiguration",
+    "s3:PutLifecycleConfiguration",
+    "s3:GetBucketVersioning"
+  ],
   "Resource": "arn:aws:s3:::<bucket>"
 }
 ```
+
+`s3:GetBucketVersioning` is the one action there whose absence is **not** fatal: the call reports the bucket's versioning state and logs a `warn` it cannot read it, so a role provisioned before this action existed keeps working and simply learns nothing about its recovery window.
 
 With `serverSideEncryption: 'aws:kms'` the role additionally needs `kms:GenerateDataKey` (uploads) and `kms:Decrypt` (downloads) on the key. Semantic search through Bedrock embeddings needs `bedrock:InvokeModel` on the model. A static test (`test/static/iam-actions.test.ts`) keeps the DynamoDB and S3 actions above equal to the calls the code makes.
 

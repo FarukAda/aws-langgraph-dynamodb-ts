@@ -6,6 +6,7 @@ import {
   DEFAULT_S3_SSE,
   DEFAULT_S3_THRESHOLD_BYTES,
 } from '../../constants';
+import type { Logger } from '../../logging/logger';
 import { type BacklinkRow, backlinkMetadata } from './backlink';
 import { createDefaultS3Client, loadS3Sdk } from './client';
 import type { S3ClientConfigLike } from './client-types';
@@ -223,16 +224,24 @@ export class S3Offloader {
    * Ensure a `${ttlDays}`-day expiration lifecycle rule exists for the prefix.
    *
    * Accepts: `ttlDays` — whole days, the only granularity S3 accepts.
+   * `logger` — the adapter's, for the bucket's versioning state, which is
+   * reported rather than enforced.
    *
-   * Returns: nothing. A rule that is already correct is left alone, so this is
-   * safe to call on every deploy.
+   * Returns: nothing. Rules that are already correct are left alone, so this
+   * is safe to call on every deploy.
    *
-   * Throws: ValidationError naming `s3.keyPrefix` when the rule id this prefix
+   * Throws: ValidationError naming `s3.keyPrefix` when a rule id this prefix
    * would take is already held by a different prefix; whatever reading or
    * writing the bucket's lifecycle configuration throws.
    */
-  async ensureLifecycleRule(ttlDays: number): Promise<void> {
-    return ensureLifecycleRule(await this.getClient(), this.bucketName, this.keyPrefix, ttlDays);
+  async ensureLifecycleRule(ttlDays: number, logger: Logger): Promise<void> {
+    return ensureLifecycleRule(
+      await this.getClient(),
+      this.bucketName,
+      this.keyPrefix,
+      ttlDays,
+      logger,
+    );
   }
 
   /**

@@ -1,5 +1,6 @@
 import {
   GetBucketLifecycleConfigurationCommand,
+  GetBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -169,6 +170,7 @@ describe('createAll teardown is total', () => {
     const fake = fakeClientFactory();
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const factory = new DynamoDBFactory({
       createClient: fake.create,
       ttl: { days: 30 },
@@ -227,6 +229,7 @@ describe('shared adapter defaults (CORE-17)', () => {
     const seen: object[] = [];
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const base = {
       clientConfig: { region: 'eu-central-1' },
       createClient: fakeClientFactory().create,
@@ -254,6 +257,7 @@ describe('shared adapter defaults (CORE-17)', () => {
     const { client } = createStrictDocumentMock();
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const factory = new DynamoDBFactory({ client, ttl: { days: 30 }, s3: s3() });
     const all = factory.createAll({
       saver: { tableName: 'ckpt' },
@@ -272,6 +276,7 @@ describe('shared adapter defaults (CORE-17)', () => {
     const create = jest.fn(fake.create);
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const factory = new DynamoDBFactory({
       clientConfig: { region: 'eu-west-1' },
       createClient: create,

@@ -328,7 +328,10 @@ export class DynamoDBStore extends BaseStore {
   async ensureS3LifecycleRule(): Promise<void> {
     return guardPublic('store.ensureS3LifecycleRule', async () => {
       if (!this.context.offloader || !this.context.ttl) return;
-      await this.context.offloader.ensureLifecycleRule(lifecycleExpirationDays(this.context.ttl));
+      await this.context.offloader.ensureLifecycleRule(
+        lifecycleExpirationDays(this.context.ttl),
+        this.context.logger,
+      );
     });
   }
 }
