@@ -4,11 +4,11 @@ import type {
   TransitionDefaultMinimumObjectSize,
 } from '@aws-sdk/client-s3';
 
-import { S3_RELEASE_GRACE_DAYS } from '../../constants';
 import { ValidationError } from '../../errors/errors';
 import type { Logger } from '../../logging/logger';
 import { loadS3Sdk } from './client';
 import { assertScopedKeyPrefix, buildLifecycleRuleId, buildMarkerRuleId } from './config';
+import { alreadyCorrect, markerRule, ttlRule } from './rules';
 import { reportBucketVersioning } from './versioning';
 
 /** The bucket's current rules plus the bucket-level field a Put must carry back. */
@@ -31,95 +31,6 @@ async function readState(client: S3Client, bucket: string): Promise<LifecycleSta
     if ((error as { name?: string }).name === 'NoSuchLifecycleConfiguration') return { rules: [] };
     throw error;
   }
-}
-
-/**
- * The fields this package manages on a rule, as one value two rules compare
- * by. Comparing whole rules would issue a write on every call over a field S3
- * reports and this package never sets.
- */
-function managedShape(rule: LifecycleRule | undefined): string {
-  return JSON.stringify([
-    rule?.Status,
-    rule?.Filter?.Prefix,
-    rule?.Expiration?.Days,
-    rule?.Expiration?.ExpiredObjectDeleteMarker,
-    rule?.NoncurrentVersionExpiration?.NoncurrentDays,
-  ]);
-}
-
-/** Whether the rule the bucket carries already says what this call would write. */
-function alreadyCorrect(existing: LifecycleRule | undefined, desired: LifecycleRule): boolean {
-  return managedShape(existing) === managedShape(desired);
-}
-
-/**
- * The noncurrent retention to write: the longest one already governing these
- * keys, and never less than the release grace.
- *
- * S3 honours the **shorter** of two overlapping expirations, so a rule this
- * package does not own decides how long a released payload really survives
- * under its prefix. Writing the grace beside a bucket-wide 90-day retention
- * would cut that window to a day for every key here, which is the opposite of
- * what a floor is for. A rule overlaps when it carries no prefix filter, or
- * one this prefix starts with; a filter this cannot read in full — tags, size
- * bounds — counts as overlapping too, because assuming it covers these keys
- * can only lengthen retention. A rule scoped beside this prefix governs none
- * of its keys, and one scoped beneath it governs only some, so neither raises
- * the floor for all of them.
- */
-function noncurrentDays(rules: readonly LifecycleRule[], prefix: string): number {
-  const held = rules
-    .filter((rule) => {
-      const scope = rule.Filter?.Prefix;
-      return scope === undefined || prefix.startsWith(scope);
-    })
-    .map((rule) => rule.NoncurrentVersionExpiration?.NoncurrentDays ?? 0);
-  return Math.max(...held, S3_RELEASE_GRACE_DAYS);
-}
-
-/**
- * Expires the current version on the TTL's schedule and released ones on the
- * grace, carrying through every field of the rule it replaces that this
- * package does not manage: `NewerNoncurrentVersions`, transitions, the
- * multipart abort. Dropping one is unrecoverable, because the next call reads
- * the rewritten rule as already correct and never restores it. The
- * `Expiration` is the exception and is replaced whole, since S3 refuses one
- * carrying both `Days` and `Date`.
- */
-function ttlRule(
-  id: string,
-  prefix: string,
-  days: number,
-  rules: readonly LifecycleRule[],
-  existing?: LifecycleRule,
-): LifecycleRule {
-  return {
-    ...existing,
-    ID: id,
-    Filter: { Prefix: prefix },
-    Status: 'Enabled',
-    Expiration: { Days: days },
-    NoncurrentVersionExpiration: {
-      ...existing?.NoncurrentVersionExpiration,
-      NoncurrentDays: noncurrentDays(rules, prefix),
-    },
-  };
-}
-
-/**
- * Reclaims the delete marker a release leaves once its last noncurrent version
- * has expired. A second rule, not a field on the first: S3 refuses
- * `ExpiredObjectDeleteMarker` inside an `Expiration` that also carries `Days`,
- * so each rule's `Expiration` holds its own half and nothing of the other's.
- */
-function markerRule(id: string, prefix: string): LifecycleRule {
-  return {
-    ID: id,
-    Filter: { Prefix: prefix },
-    Status: 'Enabled',
-    Expiration: { ExpiredObjectDeleteMarker: true },
-  };
 }
 
 /** `rules` with `rule` replacing the one holding its id, or appended when none does. */
@@ -178,8 +89,8 @@ async function putRules(
  * Accepts: `prefix` — re-checked for scoping here, because these rules are the
  * one place an unscoped prefix would destroy data outside this library's.
  * `days` — the current-version expiry only. Released versions are governed by
- * {@link S3_RELEASE_GRACE_DAYS} instead, which is a floor: a longer noncurrent
- * retention the bucket already carries is kept. Both are inert on an
+ * the release grace instead (see {@link ttlRule}), which is a floor measured
+ * against every rule already governing these keys. Both are inert on an
  * unversioned bucket, which keeps no noncurrent version and leaves no marker.
  *
  * Returns: nothing. Idempotent: when both rules already say this, no write is
@@ -213,7 +124,7 @@ export async function ensureLifecycleRule(
   assertNoIdCollision(heldTtl, prefix, ttlId);
   assertNoIdCollision(heldMarker, prefix, markerId);
   const expiry = ttlRule(ttlId, prefix, days, state.rules, heldTtl);
-  const reclaim = markerRule(markerId, prefix);
+  const reclaim = markerRule(markerId, prefix, heldMarker);
   if (!alreadyCorrect(heldTtl, expiry) || !alreadyCorrect(heldMarker, reclaim)) {
     await putRules(client, bucket, state, upsert(upsert(state.rules, expiry), reclaim));
   }

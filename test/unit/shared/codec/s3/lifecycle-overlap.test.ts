@@ -22,109 +22,47 @@ function silent() {
   return { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 }
 
-beforeEach(() => {
-  s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
-  s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-});
-
 function client(): S3Client {
   return new S3Client({ region: 'us-east-1' });
 }
 
-/** Run against a bucket holding `rules`, and return the ttl rule that was written. */
-async function ttlRuleWrittenOver(
-  rules: LifecycleRule[],
-  prefix = PREFIX,
-  id = TTL_ID,
-): Promise<LifecycleRule | undefined> {
-  s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: rules });
-  await ensureLifecycleRule(client(), 'b', prefix, TTL_DAYS, silent());
-  const calls = s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand);
-  expect(calls).toHaveLength(1);
-  return (calls[0].args[0].input.LifecycleConfiguration?.Rules ?? []).find(
-    (rule) => rule.ID === id,
-  );
+/**
+ * A bucket that remembers what was written to it, so a second call reads the
+ * first call's result — which is the only way to tell an upgrade that settles
+ * from one that rewrites the same rule on every deploy.
+ */
+function bucketHolding(rules: LifecycleRule[]): { rules: () => LifecycleRule[] } {
+  let held = rules;
+  s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+  s3Mock.on(GetBucketLifecycleConfigurationCommand).callsFake(() => ({ Rules: held }));
+  s3Mock.on(PutBucketLifecycleConfigurationCommand).callsFake((input) => {
+    held = input.LifecycleConfiguration?.Rules ?? [];
+    return {};
+  });
+  return { rules: () => held };
+}
+
+function writes(): number {
+  return s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand).length;
 }
 
 /**
- * S3 honours the **shorter** of two overlapping expirations, so a rule this
- * package does not own still decides how long a released payload really
- * survives under its prefix. Reading only this package's own rule let a
- * bucket-wide 90-day retention collapse to the grace the moment a
- * prefix-scoped rule was added beside it.
+ * The rule-set reasoning is unit-tested directly against `rules.ts`; what these
+ * cases prove is that the whole set reaches it through the read, and that what
+ * comes back settles.
  */
-describe('the noncurrent grace against rules this package does not own', () => {
-  it('takes the retention of a bucket-wide rule that has no prefix filter', async () => {
-    const written = await ttlRuleWrittenOver([
+describe('ensureLifecycleRule over a bucket that already holds rules', () => {
+  it('writes the retention of a rule it does not own', async () => {
+    const bucket = bucketHolding([
       { ID: 'bucket-wide', Status: 'Enabled', NoncurrentVersionExpiration: { NoncurrentDays: 90 } },
     ]);
-    expect(written?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(90);
+    await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
+    const ours = bucket.rules().find((rule) => rule.ID === TTL_ID);
+    expect(ours?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(90);
   });
 
-  it('takes the retention of a rule whose prefix contains ours', async () => {
-    const written = await ttlRuleWrittenOver(
-      [
-        {
-          ID: 'parent-prefix',
-          Filter: { Prefix: 'langgraph-checkpoints/' },
-          Status: 'Enabled',
-          NoncurrentVersionExpiration: { NoncurrentDays: 45 },
-        },
-      ],
-      'langgraph-checkpoints/store/',
-      'langgraph-ttl-langgraph-checkpoints-store',
-    );
-    expect(written?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(45);
-  });
-
-  /** A filter this package cannot read in full is read as covering everything. */
-  it('treats a rule filtered by tags as covering this prefix', async () => {
-    const written = await ttlRuleWrittenOver([
-      {
-        ID: 'tagged',
-        Filter: { And: { Prefix: 'other/', Tags: [{ Key: 'team', Value: 'a' }] } },
-        Status: 'Enabled',
-        NoncurrentVersionExpiration: { NoncurrentDays: 60 },
-      },
-    ]);
-    expect(written?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(60);
-  });
-
-  /** A rule beside ours governs none of our keys and must not raise our grace. */
-  it('ignores a rule scoped to a prefix that does not cover ours', async () => {
-    const written = await ttlRuleWrittenOver([
-      {
-        ID: 'unrelated',
-        Filter: { Prefix: 'other-app/' },
-        Status: 'Enabled',
-        NoncurrentVersionExpiration: { NoncurrentDays: 90 },
-      },
-    ]);
-    expect(written?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(S3_RELEASE_GRACE_DAYS);
-  });
-
-  /** A rule under ours governs some of our keys, which is not a reason to hold all of them. */
-  it('ignores a rule scoped beneath ours', async () => {
-    const written = await ttlRuleWrittenOver([
-      {
-        ID: 'deeper',
-        Filter: { Prefix: 'langgraph-checkpoints/store/' },
-        Status: 'Enabled',
-        NoncurrentVersionExpiration: { NoncurrentDays: 90 },
-      },
-    ]);
-    expect(written?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(S3_RELEASE_GRACE_DAYS);
-  });
-
-  it('takes the longest retention when several rules overlap', async () => {
-    const written = await ttlRuleWrittenOver([
-      { ID: 'bucket-wide', Status: 'Enabled', NoncurrentVersionExpiration: { NoncurrentDays: 7 } },
-      {
-        ID: 'parent-prefix',
-        Filter: { Prefix: 'langgraph-' },
-        Status: 'Enabled',
-        NoncurrentVersionExpiration: { NoncurrentDays: 120 },
-      },
+  it('leaves the grace in place when no rule it does not own governs these keys', async () => {
+    const bucket = bucketHolding([
       {
         ID: 'unrelated',
         Filter: { Prefix: 'other-app/' },
@@ -132,66 +70,44 @@ describe('the noncurrent grace against rules this package does not own', () => {
         NoncurrentVersionExpiration: { NoncurrentDays: 365 },
       },
     ]);
-    expect(written?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(120);
+    await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
+    const ours = bucket.rules().find((rule) => rule.ID === TTL_ID);
+    expect(ours?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(S3_RELEASE_GRACE_DAYS);
   });
-});
 
-/**
- * The rule is rewritten whenever the ttl moves, so anything on it that this
- * package does not manage has to survive that rewrite. It cannot be recovered
- * afterwards: the next call reads the rewritten rule as already correct.
- */
-describe('fields on the ttl rule that this package does not manage', () => {
-  it('keeps NewerNoncurrentVersions while writing the retention beside it', async () => {
-    const written = await ttlRuleWrittenOver([
-      {
-        ID: TTL_ID,
-        Filter: { Prefix: PREFIX },
-        Status: 'Enabled',
-        Expiration: { Days: 7 },
-        NoncurrentVersionExpiration: { NoncurrentDays: 30, NewerNoncurrentVersions: 5 },
-      },
+  /**
+   * A rule carrying the older top-level `Prefix` and no `Filter` is upgraded.
+   * Sending both back would be refused with `MalformedXML`, failing the
+   * provisioning call outright, and re-upgrading it on every deploy would mean
+   * the upgrade never took.
+   */
+  it('upgrades a rule written in the older schema, exactly once', async () => {
+    const bucket = bucketHolding([
+      { ID: TTL_ID, Prefix: PREFIX, Status: 'Enabled', Expiration: { Days: 7 } },
     ]);
-    expect(written?.NoncurrentVersionExpiration).toEqual({
-      NoncurrentDays: 30,
-      NewerNoncurrentVersions: 5,
-    });
+    await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
+    const upgraded = bucket.rules().find((rule) => rule.ID === TTL_ID);
+    expect(upgraded?.Filter).toEqual({ Prefix: PREFIX });
+    expect(upgraded === undefined || 'Prefix' in upgraded).toBe(false);
+    expect(writes()).toBe(1);
+
+    await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
+    expect(writes()).toBe(1);
   });
 
-  it('keeps transitions and the multipart abort it never wrote', async () => {
-    const written = await ttlRuleWrittenOver([
+  it('carries a field it does not manage through a ttl change', async () => {
+    const bucket = bucketHolding([
       {
         ID: TTL_ID,
         Filter: { Prefix: PREFIX },
         Status: 'Enabled',
         Expiration: { Days: 7 },
         Transitions: [{ Days: 10, StorageClass: 'GLACIER' }],
-        NoncurrentVersionTransitions: [{ NoncurrentDays: 3, StorageClass: 'GLACIER' }],
-        AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
       },
     ]);
-    expect(written?.Transitions).toEqual([{ Days: 10, StorageClass: 'GLACIER' }]);
-    expect(written?.NoncurrentVersionTransitions).toEqual([
-      { NoncurrentDays: 3, StorageClass: 'GLACIER' },
-    ]);
-    expect(written?.AbortIncompleteMultipartUpload).toEqual({ DaysAfterInitiation: 7 });
-    expect(written?.Expiration?.Days).toBe(TTL_DAYS);
-  });
-
-  /**
-   * The expiration itself is replaced rather than merged: S3 refuses an
-   * `Expiration` carrying both `Days` and `Date`, so merging this package's
-   * days into a date-based one would produce a rule S3 rejects outright.
-   */
-  it('replaces a date-based expiration instead of merging days into it', async () => {
-    const written = await ttlRuleWrittenOver([
-      {
-        ID: TTL_ID,
-        Filter: { Prefix: PREFIX },
-        Status: 'Enabled',
-        Expiration: { Date: new Date('2030-01-01T00:00:00.000Z') },
-      },
-    ]);
-    expect(written?.Expiration).toEqual({ Days: TTL_DAYS });
+    await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
+    const ours = bucket.rules().find((rule) => rule.ID === TTL_ID);
+    expect(ours?.Transitions).toEqual([{ Days: 10, StorageClass: 'GLACIER' }]);
+    expect(ours?.Expiration?.Days).toBe(TTL_DAYS);
   });
 });

@@ -515,18 +515,38 @@ window in which it can still be restored. One day is S3's smallest and rounds up
 midnight, so the real window is 24–48 h.
 
 It is a floor, never a cap, and the floor is measured against **every rule that already governs
-these keys** — this one, any rule with no prefix filter at all, and any whose prefix this one
-starts with. The longest `NoncurrentDays` among them is what gets written. S3 honours the
+these keys**: the longest `NoncurrentDays` among them is what gets written. S3 honours the
 *shorter* of two overlapping expirations, so a prefix-scoped day written beside a bucket-wide
 90-day retention would quietly cut the real window under this prefix from 90 days to one; taking
 the longest is what makes "nothing here shortens a retention you chose" true rather than merely
-intended. A rule scoped beside this prefix, or beneath it, is left out — it governs none of these
-keys, or only some of them.
+intended.
 
-Fields on the rule that this library does not manage survive the rewrite a changed `ttl` triggers:
-`NewerNoncurrentVersions`, `Transitions`, `NoncurrentVersionTransitions` and
-`AbortIncompleteMultipartUpload` are carried across. Only the `Expiration` is replaced outright
-rather than merged, because S3 refuses one carrying both `Days` and `Date`.
+Only an `Enabled` rule counts — a disabled one expires nothing, so it neither shortens a window nor
+raises this floor. An enabled rule governs these keys when it:
+
+- names no prefix at all: bucket-wide, or filtered only by tags or object size. A filter this
+  library cannot read in full is taken to cover everything, which is the safe direction — it can
+  only lengthen retention;
+- names a prefix in `Filter.Prefix` that this `keyPrefix` starts with;
+- names that prefix somewhere else the schema allows — nested in `Filter.And.Prefix` beside tags or
+  size bounds, or in the older top-level `Prefix` — and this `keyPrefix` starts with it.
+
+A rule scoped beside this prefix, or beneath it, is left out: it governs none of these keys, or
+only some of them.
+
+**The floor ratchets.** This library's own rule is one of the rules it measures against, so a value
+written once outlives the rule that justified it — delete your bucket-wide 90-day rule and the 90
+days stay, because lowering them is exactly the silent shortening this is here to prevent. The way
+back down is to delete this library's rule and call `ensureS3LifecycleRule()` again, which writes
+it afresh at the one-day grace.
+
+Fields on either rule that this library does not manage survive the rewrite a changed `ttl`
+triggers: `NewerNoncurrentVersions`, `Transitions`, `NoncurrentVersionTransitions` and
+`AbortIncompleteMultipartUpload` are carried across. A rule written in the older schema — a
+top-level `Prefix` and no `Filter` — is **upgraded** to a `Filter` rather than carried across
+beside one, since the two are alternatives and a rule holding both is refused. Only the
+`Expiration` is replaced outright rather than merged: merging this library's `Days` into a `Date`
+you set would change the expiry you configured.
 
 The second rule reclaims the delete markers themselves, once the last noncurrent version under a
 key has expired. It has to be a separate rule — S3 rejects `ExpiredObjectDeleteMarker` inside an
