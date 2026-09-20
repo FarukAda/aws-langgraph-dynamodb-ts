@@ -8,7 +8,8 @@ import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
  */
 export interface FaultRule {
   match: (commandName: string, input: unknown) => boolean;
-  fail: () => Error;
+  /** Builds the error to throw. It is given the command's name, so one rule can refuse each shape the way the service really refuses it. */
+  fail: (commandName: string) => Error;
   times: number;
   skip?: number;
 }
@@ -32,7 +33,7 @@ export function installFaults(client: DynamoDBClient, rules: FaultRule[]): void 
           rule.skip -= 1;
         } else {
           rule.times -= 1;
-          throw rule.fail();
+          throw rule.fail(commandName);
         }
       }
       return next(args);

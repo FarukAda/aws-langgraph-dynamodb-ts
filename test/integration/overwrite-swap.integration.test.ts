@@ -3,6 +3,8 @@
 // commit, so exactly one previous payload is superseded and nothing is
 // orphaned.
 
+import { randomUUID } from 'node:crypto';
+
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
@@ -155,5 +157,41 @@ describe('overwrite compare-and-swap (F5)', () => {
       expect(supersededA.value).toEqual(descriptor('B'));
       expect(finalRow.Item?.rev).toBe('A');
     }
+  });
+
+  /**
+   * The fact the whole tokened write rests on, asserted at the tier that runs
+   * in CI rather than inferred from a one-off probe: a re-sent transaction
+   * whose first use was **applied** is answered from the idempotency cache,
+   * not applied a second time. The interleaving is the real one - the write
+   * lands, its acknowledgement is lost, a racing delete removes the row and
+   * releases its object, and the identical request is retried into a
+   * partition where the creation guard holds again. Without the cache that
+   * retry recreates a row naming an object nobody will ever write again.
+   */
+  it('discards the re-send of a transaction whose acknowledgement was lost', async () => {
+    const pk = 'STORE#token-reland';
+    const sk = 'k';
+    const input = {
+      TransactItems: [
+        {
+          Put: {
+            TableName: tableName,
+            Item: { PK: pk, SK: sk, rev: 'A', value: 'A' },
+            ConditionExpression: 'attribute_not_exists(PK)',
+          },
+        },
+      ],
+      ClientRequestToken: randomUUID(),
+    };
+    await client.transactWrite(input);
+    await client.delete({ TableName: tableName, Key: { PK: pk, SK: sk } });
+    await client.transactWrite(input);
+    const after = await client.get({
+      TableName: tableName,
+      Key: { PK: pk, SK: sk },
+      ConsistentRead: true,
+    });
+    expect(after.Item).toBeUndefined();
   });
 });

@@ -5,7 +5,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { DynamoDBSaver, DynamoDBStore, ErrorCode, type Logger } from '../../src/index';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../src/shared/dynamodb/conditional-put';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
-import { awsError, installFaults } from './helpers/fault-injection';
+import { awsError, installFaults, transactionCanceled } from './helpers/fault-injection';
 import { MemoryS3 } from './helpers/memory-s3';
 import { referencedS3Keys } from './helpers/referenced-keys';
 
@@ -20,6 +20,23 @@ afterAll(async () => {
   await deleteTable(admin, tableName);
   admin.destroy();
 });
+
+/**
+ * A guarded store put, whichever shape it takes. An offloaded payload now goes
+ * out as a one-item transaction under a client request token, so a matcher that
+ * names only `PutItemCommand` stops matching and the fault it injects never
+ * fires - the failure reads as "the compare-and-swap never exhausted" rather
+ * than as "the test is looking for the wrong command".
+ */
+function isGuardedStorePut(name: string, input: unknown): boolean {
+  const guarded = (put?: { ConditionExpression?: string; Item?: { rev?: string } }): boolean =>
+    put?.ConditionExpression !== undefined && put?.Item?.rev !== undefined;
+  if (name === 'PutItemCommand') return guarded(input as Parameters<typeof guarded>[0]);
+  if (name !== 'TransactWriteItemsCommand') return false;
+  const items = (input as { TransactItems?: { Put?: Parameters<typeof guarded>[0] }[] })
+    .TransactItems;
+  return items?.length === 1 && guarded(items[0].Put);
+}
 
 /** A logger that records `warn` calls and stays silent otherwise. */
 function recordingLogger(): Logger & { warnings: string[] } {
@@ -63,11 +80,18 @@ describe('compare-and-swap exhaustion falls back to an unconditional write (TEST
     /** Installed after the seed put, so only the overwrite's guarded puts are rejected. */
     installFaults(base, [
       {
-        match: (name, input) =>
-          name === 'PutItemCommand' &&
-          (input as { ConditionExpression?: string }).ConditionExpression !== undefined &&
-          (input as { Item?: { rev?: string } }).Item?.rev !== undefined,
-        fail: () => awsError('ConditionalCheckFailedException'),
+        match: isGuardedStorePut,
+        /**
+         * Each shape is refused the way the service really refuses it: a
+         * transaction loses its guard as a cancellation carrying one
+         * `ConditionalCheckFailed` reason, never as the bare exception a
+         * `PutItem` answers with. Injecting the bare one here would exhaust the
+         * swap through a shape this path can no longer produce.
+         */
+        fail: (commandName: string) =>
+          commandName === 'TransactWriteItemsCommand'
+            ? transactionCanceled(['ConditionalCheckFailed'])
+            : awsError('ConditionalCheckFailedException'),
         times: OVERWRITE_CAS_MAX_ATTEMPTS,
       },
     ]);
