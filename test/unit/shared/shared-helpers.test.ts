@@ -1,4 +1,4 @@
-import { BatchWriteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { readBodyBounded } from '../../../src/shared/codec/s3/bounded-body';
 import { iterateRecencyIndex } from '../../../src/shared/dynamodb/index-query';
@@ -146,10 +146,9 @@ describe('deletePartitionRows', () => {
         { PK: 'p', SK: 'MINE#2' },
       ],
     });
-    mock.on(BatchWriteCommand).resolves({});
+    mock.on(DeleteCommand).resolves({});
     await deletePartitionRows(base(client));
-    const written = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.t;
-    expect(written).toHaveLength(2);
+    expect(mock.commandCalls(DeleteCommand)).toHaveLength(2);
   });
 
   /** A shared partition holding another adapter's row must never be wiped. */
@@ -162,10 +161,9 @@ describe('deletePartitionRows', () => {
         { PK: 'p', SK: 'THEIRS#1' },
       ],
     });
-    mock.on(BatchWriteCommand).resolves({});
+    mock.on(DeleteCommand).resolves({});
     await deletePartitionRows(base(client, warn));
-    const written = mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.t;
-    expect(written).toHaveLength(1);
+    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('foreign row'), {
       sortKey: 'THEIRS#1',
     });
@@ -175,7 +173,7 @@ describe('deletePartitionRows', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });
     await deletePartitionRows(base(client));
-    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
+    expect(mock.commandCalls(DeleteCommand)).toHaveLength(0);
   });
 });
 

@@ -55,4 +55,13 @@ describe('error subclasses', () => {
     const err = new BatchWriteAllIncompleteError(0, 1, [new Error('boom')]);
     expect(err.succeededCount).toBe(0);
   });
+
+  /** The chunk wording is the default, so the batch path's message is untouched. */
+  it('BatchWriteAllIncompleteError counts rows when a caller deletes one row per request', () => {
+    const batched = new BatchWriteAllIncompleteError(1, 2, [new Error('boom')], 25);
+    expect(batched.message).toContain('batchWriteAll did not fully drain: 1/2 chunk(s) succeeded');
+    const perRow = new BatchWriteAllIncompleteError(1, 2, [new Error('boom')], 1, 'row');
+    expect(perRow.message).toContain('1/2 row(s) succeeded, 1 row(s) failed');
+    expect(perRow.message).not.toContain('batchWriteAll');
+  });
 });

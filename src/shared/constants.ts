@@ -137,6 +137,20 @@ export const MESSAGE_APPEND_RETRY_MAX_ATTEMPTS = 18;
 export const DEFAULT_READ_CONCURRENCY = 8;
 
 /**
+ * Conditional row deletes a partition-wide delete keeps in flight. Pinning a
+ * row on the write that produced it costs one request per row where a batch
+ * carried twenty-five, so issuing them one at a time would have paid a round
+ * trip per row; eight at once gives most of that back while keeping a
+ * partition of any size from opening a socket per row. A fixed value rather
+ * than a caller option: this is a maintenance path, and it has no other knob.
+ *
+ * Its own literal at the same value as {@link DEFAULT_READ_CONCURRENCY}, not an
+ * alias of it — aliasing two limits has already meant that retuning one
+ * silently moved the other (see {@link LIST_SCAN_WARN_THRESHOLD}).
+ */
+export const DELETE_CONCURRENCY = 8;
+
+/**
  * Largest `readConcurrency` an adapter accepts: it is a multiplier on the
  * memory-ceiling formula (see the option's own doc) and on requests fired at
  * once, so an unbounded value turns a typo into an out-of-memory crash or a

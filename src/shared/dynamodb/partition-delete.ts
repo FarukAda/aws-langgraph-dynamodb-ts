@@ -1,16 +1,25 @@
 import type { DynamoDBDocument, QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import type { PayloadDescriptor } from '../codec/codec';
-import { collectS3Keys } from '../codec/descriptor-keys';
 import type { S3Offloader } from '../codec/s3/offloader';
-import { cleanUpS3Orphans } from '../codec/s3/orphans';
 import { BATCH_WRITE_MAX } from '../constants';
 import { BatchWriteAllIncompleteError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
-import { batchWriteAll } from './batch-write';
+import { type RevisionGuard, WRITE_ID_ATTRIBUTE, writeIdGuard } from './conditional-put';
 import { paginateQuery } from './paginate';
+import { flushPendingDeletes, type PendingDelete } from './partition-flush';
 import type { RetryOptions } from './retry';
 import type { DocItem } from './types';
+
+/**
+ * One offloaded payload a row references, named by the attribute holding it.
+ * The name is not decoration: the row is pinned through a document path over
+ * that attribute, and a refused row's objects must stay where they are.
+ */
+export interface NamedDescriptor {
+  attribute: string;
+  descriptor: PayloadDescriptor;
+}
 
 /** Collaborators and per-adapter policy for one partition-wide delete. */
 export interface PartitionDeleteOptions {
@@ -18,7 +27,7 @@ export interface PartitionDeleteOptions {
   tableName: string;
   params: QueryCommandInput;
   logger: Logger;
-  /** The adapter's retry options for the page reads and batch deletes. */
+  /** The adapter's retry options for the page reads and the row deletes. */
   retry?: RetryOptions;
   /** Aborting it stops the read between pages and rejects with the library's AbortError. */
   signal?: AbortSignal;
@@ -31,98 +40,133 @@ export interface PartitionDeleteOptions {
    * holding a foreign row would have that row deleted too.
    */
   ownsSortKey: (sortKey: string) => boolean;
-  /** The offloaded payload descriptors a row references, if any. */
-  descriptorsOf: (row: DocItem) => (PayloadDescriptor | undefined)[];
+  /** The offloaded payload descriptors a row references, each named by its attribute. */
+  descriptorsOf: (row: DocItem) => NamedDescriptor[];
+  /**
+   * Top-level attribute carrying a row's per-write id, for the row kinds that
+   * have one. Preferred over a descriptor's own id where it exists: it needs no
+   * document path, and it is the same attribute the writer already pins on.
+   */
+  idAttribute?: string;
+  /**
+   * The logical unit a row belongs to. A unit's rows are written together but
+   * deleted one by one, so a refusal on an earlier one has to suppress the
+   * rest; an adapter whose rows form no unit supplies nothing.
+   */
+  unitOf?: (row: DocItem) => string;
+  /**
+   * The row kind bounding a flush. Rows arrive kind by kind, so flushing when
+   * the kind changes is what settles a refusal before the rows it must suppress
+   * are issued.
+   */
+  kindOf?: (row: DocItem) => string;
   /** The partition's own leading S3 key parts; objects outside their path are never deleted. */
   scope: readonly string[];
 }
 
-/** A bounded buffer of keys to delete plus the S3 descriptors they reference. */
-interface DeleteBuffer {
-  keys: DocItem[];
-  descriptors: PayloadDescriptor[];
-}
-
 /**
- * Running totals across every flush. A streamed delete issues many
- * independent batches; without carrying these forward, a mid-stream failure
- * reports only the failing flush's counts and understates how much was
- * actually deleted.
+ * Everything one pass carries between flushes. The totals run across every
+ * flush: a streamed delete issues many independent requests, and without
+ * carrying them forward a mid-stream failure would report only the failing
+ * flush's counts and understate how much was actually deleted. `units` is the
+ * carry-forward itself, and holds the ids of refused units rather than rows, so
+ * its size is bounded by refusals and not by partition size.
  */
-interface DeleteProgress {
-  writes: number;
-  succeededChunks: number;
-  totalChunks: number;
-}
-
-/** Delete the buffered keys, best-effort clean their S3 objects, then clear it. */
-async function flushBuffer(
-  options: PartitionDeleteOptions,
-  buffer: DeleteBuffer,
-  progress: DeleteProgress,
-): Promise<void> {
-  if (buffer.keys.length === 0) return;
-  const chunks = Math.ceil(buffer.keys.length / BATCH_WRITE_MAX);
-  try {
-    await batchWriteAll(
-      options.client,
-      options.tableName,
-      buffer.keys.map((Key) => ({ DeleteRequest: { Key } })),
-      { retry: options.retry, signal: options.signal },
-    );
-  } catch (error) {
-    /** batchWriteAll's only throw is a BatchWriteAllIncompleteError (see batch-write.ts). */
-    const failure = error as BatchWriteAllIncompleteError;
-    throw new BatchWriteAllIncompleteError(
-      progress.succeededChunks + failure.succeededChunks,
-      progress.totalChunks + failure.totalChunks,
-      failure.failedChunks,
-      progress.writes + failure.succeededCount,
-    );
-  }
-  progress.writes += buffer.keys.length;
-  progress.succeededChunks += chunks;
-  progress.totalChunks += chunks;
-  if (options.offloader) {
-    await cleanUpS3Orphans(
-      options.offloader,
-      collectS3Keys(buffer.descriptors),
-      options.operation,
-      options.logger,
-      { scope: options.scope },
-    );
-  }
-  buffer.keys = [];
-  buffer.descriptors = [];
+interface PassState {
+  buffer: PendingDelete[];
+  deleted: number;
+  attempted: number;
+  skipped: number;
+  units: Set<string>;
 }
 
 /**
- * Delete every row of one partition that belongs to the calling adapter.
+ * The condition the read's own observation supports: the top-level id when the
+ * row carries one, else the id on the first descriptor that has one. A row
+ * observed with neither gets none and is deleted unconditionally — every row
+ * written before the id existed is such a row, and refusing those would leave a
+ * table upgraded in place impossible to empty.
+ */
+function pinFor(
+  idAttribute: string | undefined,
+  row: DocItem,
+  named: readonly NamedDescriptor[],
+): RevisionGuard | undefined {
+  if (idAttribute !== undefined) {
+    const observed = row[idAttribute];
+    if (typeof observed === 'string') return writeIdGuard(idAttribute, observed);
+  }
+  for (const entry of named) {
+    const { writeId } = entry.descriptor;
+    if (writeId !== undefined) return writeIdGuard(entry.attribute, writeId, WRITE_ID_ATTRIBUTE);
+  }
+  return undefined;
+}
+
+/** The row as a buffered delete: its key, its pin, its objects and its unit. */
+function pendingDelete(options: PartitionDeleteOptions, row: DocItem): PendingDelete {
+  const named = options.descriptorsOf(row);
+  return {
+    key: { PK: row.PK as string, SK: row.SK as string },
+    guard: pinFor(options.idAttribute, row, named),
+    descriptors: named.map((entry) => entry.descriptor),
+    unit: options.unitOf?.(row),
+  };
+}
+
+/** Whether an earlier kind's refusal already settled this row's unit. */
+function unitRefused(options: PartitionDeleteOptions, row: DocItem, state: PassState): boolean {
+  const unit = options.unitOf?.(row);
+  return unit !== undefined && state.units.has(unit);
+}
+
+/** Delete the buffered rows, fold what they settled into the pass, and empty the buffer. */
+async function flushBuffer(options: PartitionDeleteOptions, state: PassState): Promise<void> {
+  if (state.buffer.length === 0) return;
+  const tally = await flushPendingDeletes(options, state.buffer.splice(0));
+  state.deleted += tally.deleted;
+  state.skipped += tally.refused;
+  state.attempted += tally.deleted + tally.refused + tally.failures.length;
+  for (const unit of tally.refusedUnits) state.units.add(unit);
+  if (tally.failures.length === 0) return;
+  const { deleted, attempted } = state;
+  throw new BatchWriteAllIncompleteError(deleted, attempted, tally.failures, deleted, 'row');
+}
+
+/**
+ * Delete exactly the rows of one partition that this adapter's read observed.
  *
  * Accepts: `params` — the partition query, which carries no sort-key
  * condition. `ownsSortKey` — decides per row; a row it rejects is left in
  * place and reported at `warn`, which is what keeps a shared table's other
- * adapters intact. `descriptorsOf` — the offloaded payloads a row references.
- * `scope` — the partition's own leading S3 key parts; an object outside their
- * path is never deleted. `signal` — stops the read between pages.
+ * adapters intact. `descriptorsOf` — the offloaded payloads a row references,
+ * each named by the attribute holding it. `idAttribute`, `unitOf` and `kindOf`
+ * — the per-write id, the unit and the kind boundary, for an adapter whose
+ * rows have them. `scope` — the partition's own leading S3 key parts; an object
+ * outside their path is never deleted. `signal` — stops the read between pages.
  *
  * Returns: how many rows were deleted, not counting the ones left in place.
  *
- * Throws: {@link BatchWriteAllIncompleteError} when a batch does not drain,
- * carrying what did succeed across every earlier batch; `AbortError` when the
- * signal fires. S3 cleanup never throws ({@link cleanUpS3Orphans}).
+ * Throws: {@link BatchWriteAllIncompleteError} when a row's delete fails,
+ * carrying what did succeed across every earlier flush; `AbortError` when the
+ * signal fires. S3 cleanup never throws, whatever it finds.
  *
- * Guarantees: the read is deliberately uncapped (`maxItems` and
- * `maxIterations` are `Infinity`), so a partition of any size is deleted to
- * completion rather than truncated at the in-memory page caps — memory stays
- * bounded because rows are flushed in batches of {@link BATCH_WRITE_MAX} and
- * never accumulated. A failure part-way keeps the rows already deleted; this is
- * a single pass over a quiescent partition, not a transaction.
+ * Guarantees: every delete is pinned on the per-write id the read observed, so
+ * a row rewritten after that read is left in place and reported rather than
+ * erased with the object it names. A row observed carrying no id is deleted
+ * unconditionally, as it was before the pin existed. The read is deliberately
+ * uncapped (`maxItems` and `maxIterations` are `Infinity`), so a partition of
+ * any size is deleted to completion rather than truncated at the in-memory page
+ * caps — memory stays bounded because rows are flushed in batches of
+ * {@link BATCH_WRITE_MAX} and never accumulated. The carry-forward depends on
+ * the scan being **ascending**, which is the default the partition queries rely
+ * on: a kind's rows are settled before the next kind's are issued, so a refusal
+ * suppresses the rest of its unit. A failure part-way keeps the rows already
+ * deleted; this is a single pass over a quiescent partition, not a transaction.
  */
 export async function deletePartitionRows(options: PartitionDeleteOptions): Promise<number> {
-  const buffer: DeleteBuffer = { keys: [], descriptors: [] };
-  const progress: DeleteProgress = { writes: 0, succeededChunks: 0, totalChunks: 0 };
-  let skipped = 0;
+  const state: PassState = { buffer: [], deleted: 0, attempted: 0, skipped: 0, units: new Set() };
+  let kind: string | undefined;
   const pages = paginateQuery({
     client: options.client,
     params: options.params,
@@ -132,20 +176,29 @@ export async function deletePartitionRows(options: PartitionDeleteOptions): Prom
     maxIterations: Number.POSITIVE_INFINITY,
   });
   for await (const row of pages) {
-    if (!options.ownsSortKey(row.SK as string)) {
-      skipped += 1;
-      options.logger.warn(`${options.operation}: left a foreign row in place`, {
-        sortKey: row.SK as string,
+    const sortKey = row.SK as string;
+    if (!options.ownsSortKey(sortKey)) {
+      state.skipped += 1;
+      options.logger.warn(`${options.operation}: left a foreign row in place`, { sortKey });
+      continue;
+    }
+    const rowKind = options.kindOf?.(row);
+    if (rowKind !== kind) {
+      await flushBuffer(options, state);
+      kind = rowKind;
+    }
+    if (unitRefused(options, row, state)) {
+      state.skipped += 1;
+      options.logger.warn(`${options.operation}: skipped a row whose unit was refused`, {
+        sortKey,
       });
       continue;
     }
-    buffer.keys.push({ PK: row.PK as string, SK: row.SK as string });
-    for (const descriptor of options.descriptorsOf(row)) {
-      if (descriptor) buffer.descriptors.push(descriptor);
-    }
-    if (buffer.keys.length >= BATCH_WRITE_MAX) await flushBuffer(options, buffer, progress);
+    state.buffer.push(pendingDelete(options, row));
+    if (state.buffer.length >= BATCH_WRITE_MAX) await flushBuffer(options, state);
   }
-  await flushBuffer(options, buffer, progress);
-  options.logger.info(`${options.operation}: deleted rows`, { deleted: progress.writes, skipped });
-  return progress.writes;
+  await flushBuffer(options, state);
+  const { deleted, skipped } = state;
+  options.logger.info(`${options.operation}: deleted rows`, { deleted, skipped });
+  return deleted;
 }

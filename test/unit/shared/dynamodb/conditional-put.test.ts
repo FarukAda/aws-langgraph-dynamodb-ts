@@ -4,6 +4,8 @@ import {
   rejectedItem,
   REVISION_ATTRIBUTE,
   revisionGuard,
+  WRITE_ID_ATTRIBUTE,
+  writeIdGuard,
 } from '../../../../src/shared/dynamodb/conditional-put';
 import {
   DEFAULT_RETRYABLE_ERRORS,
@@ -173,5 +175,36 @@ describe('a cancelled guard rejection is classified as one always was (T3)', () 
     const error = cancelled([]);
     expect(isConditionalCheckFailed(error)).toBe(false);
     expect(isRetryableError(error, DEFAULT_RETRYABLE_ERRORS)).toBe(false);
+  });
+});
+
+describe('writeIdGuard', () => {
+  it('pins a top-level attribute by equality, and attaches the row to a rejection', () => {
+    expect(writeIdGuard('writeGroup', 'g1')).toEqual({
+      ConditionExpression: '#pin = :pin',
+      ExpressionAttributeNames: { '#pin': 'writeGroup' },
+      ExpressionAttributeValues: { ':pin': 'g1' },
+      ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
+    });
+  });
+
+  it('pins a descriptor through a document path over the attribute that holds it', () => {
+    expect(writeIdGuard('metadata', 'w1', WRITE_ID_ATTRIBUTE)).toEqual({
+      ConditionExpression: '#pin.#field = :pin',
+      ExpressionAttributeNames: { '#pin': 'metadata', '#field': 'writeId' },
+      ExpressionAttributeValues: { ':pin': 'w1' },
+      ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
+    });
+  });
+
+  /**
+   * One shape, no second clause: a row observed *without* an id is deleted
+   * unconditionally rather than pinned on absence, so an absence test here
+   * would be the first step back to a rule with branches.
+   */
+  it('never emits an absence check, whichever place it pins', () => {
+    const guards = [writeIdGuard('writeGroup', 'g1'), writeIdGuard('value', 'w1', 'writeId')];
+    for (const guard of guards)
+      expect(guard.ConditionExpression).not.toContain('attribute_not_exists');
   });
 });

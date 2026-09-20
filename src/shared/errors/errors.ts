@@ -149,6 +149,11 @@ export class BatchWriteIncompleteError extends DynamoDBLangGraphError {
  * confirmed persisted across every chunk (full chunks plus any failed
  * chunk's own partial drain), more precise than `succeededChunks` alone
  * when a chunk partially drains before exhausting its retries.
+ *
+ * A partition-wide delete reports through the same error, because what it
+ * answers is the same question — how much of this call got through — but it
+ * sends one conditional request per row rather than a batch of twenty-five, so
+ * it counts rows where this counts chunks and says so in its message.
  */
 export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
   readonly succeededChunks: number;
@@ -161,7 +166,10 @@ export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
    * `failedChunks` — each failing chunk's own error, commonly a
    * {@link BatchWriteIncompleteError}. `succeededCount` — individual writes
    * confirmed persisted across every chunk, which is more precise than the
-   * chunk tally when a chunk partially drains.
+   * chunk tally when a chunk partially drains. `unit` — what the first two
+   * counts count, so a caller that sends one conditional request per row rather
+   * than a batch of twenty-five is not described as a batch that did not drain;
+   * omitting it reproduces the batch wording exactly.
    *
    * Returns: the error, with the first failing chunk's error as `cause`. Every
    * chunk not represented in `failedChunks` drained successfully and its writes
@@ -174,10 +182,12 @@ export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
     totalChunks: number,
     failedChunks: Error[],
     succeededCount = 0,
+    unit: 'chunk' | 'row' = 'chunk',
   ) {
     super(
-      `batchWriteAll did not fully drain: ${succeededChunks}/${totalChunks} chunk(s) succeeded, ` +
-        `${failedChunks.length} chunk(s) failed. ${succeededCount} write(s) persisted before the failure.`,
+      `${unit === 'chunk' ? 'batchWriteAll' : 'the partition delete'} did not fully drain: ` +
+        `${succeededChunks}/${totalChunks} ${unit}(s) succeeded, ` +
+        `${failedChunks.length} ${unit}(s) failed. ${succeededCount} write(s) persisted before the failure.`,
       ErrorCode.BATCH_WRITE_INCOMPLETE,
       {},
       failedChunks[0],

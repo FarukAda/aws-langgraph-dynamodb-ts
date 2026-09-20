@@ -1,4 +1,4 @@
-import { BatchWriteCommand, GetCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DeleteCommand, GetCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { deleteThread } from '../../../../src/checkpointer/actions/delete-thread';
 import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
@@ -56,7 +56,7 @@ describe('critical paths leave an operational trace (I7)', () => {
         { PK: 'CHKPT#t', SK: 'HISTORY#SESSION' },
       ],
     });
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(DeleteCommand).resolves({});
     const { logger, lines } = capturingLogger();
     const context: CheckpointerContext = { client, tableName: 't', serde, logger };
     await deleteThread(context, 't');
@@ -73,7 +73,7 @@ describe('critical paths leave an operational trace (I7)', () => {
         { PK: 'HIST#s', SK: 'META##c1' },
       ],
     });
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(DeleteCommand).resolves({});
     const { logger, lines } = capturingLogger();
     const context: HistoryContext = {
       client,

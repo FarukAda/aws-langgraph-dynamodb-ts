@@ -88,6 +88,49 @@ export function revisionGuard(attribute: string, observed: ObservedRow): Revisio
   };
 }
 
+/** The field a payload descriptor carries the id of the write that produced it in. */
+export const WRITE_ID_ATTRIBUTE = 'writeId';
+
+/**
+ * Build the condition admitting a delete only while the row still carries the
+ * per-write id the reader observed on it.
+ *
+ * A partition-wide delete reads a partition and then deletes what it saw. A row
+ * rewritten in between was acknowledged to its writer and is erased anyway, and
+ * the object it named is released — which this turns into a refusal the pass
+ * reports instead. The id is the write's own, never recomputed from the row's
+ * state, so nothing can restore it and no second writer can arrive at it.
+ *
+ * Accepts: `attribute` — the attribute the id lives on, top-level for a row
+ * that carries one (a pending write's `writeGroup`, a session row's own id) and
+ * the payload attribute otherwise. `id` — the id the read observed; a row
+ * observed *without* one is deleted unconditionally rather than pinned, so this
+ * is never called for it. `field` — the field inside the attribute, which turns
+ * the condition into a document path over a descriptor; omitted for a
+ * top-level pin.
+ *
+ * Returns: the condition fragments for a `DeleteCommand`, asking DynamoDB to
+ * attach the existing row to a rejection so the refusal can be told from a row
+ * that was already gone with no second read.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: one equality and nothing else. A document path over an attribute
+ * that is absent, or present without the field, evaluates false rather than
+ * failing the request, so one shape covers an offloaded row, an inline one and
+ * a row a racer has rewritten into either.
+ */
+export function writeIdGuard(attribute: string, id: string, field?: string): RevisionGuard {
+  const names: Record<string, string> = { '#pin': attribute };
+  if (field !== undefined) names['#field'] = field;
+  return {
+    ...RETURN_REJECTED_ROW,
+    ConditionExpression: field === undefined ? '#pin = :pin' : '#pin.#field = :pin',
+    ExpressionAttributeNames: names,
+    ExpressionAttributeValues: { ':pin': id },
+  };
+}
+
 /**
  * Whether a conditional write was turned away by its guard.
  *

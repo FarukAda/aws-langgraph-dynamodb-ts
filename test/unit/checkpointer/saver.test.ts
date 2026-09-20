@@ -4,7 +4,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import {
-  BatchWriteCommand,
+  DeleteCommand,
   PutCommand,
   QueryCommand,
   TransactWriteCommand,
@@ -278,7 +278,7 @@ describe('DynamoDBSaver', () => {
     mock.on(QueryCommand).resolves({ Items: [] });
     const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
     await saver.deleteThread('t');
-    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
+    expect(mock.commandCalls(DeleteCommand)).toHaveLength(0);
   });
 
   it('refuses a deleteThread options key this package does not read', async () => {
@@ -386,7 +386,7 @@ describe('cancellation via RunnableConfig.signal (CORE-04)', () => {
           }
         : { Items: [] };
     });
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(DeleteCommand).resolves({});
     const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
     await expect(saver.deleteThread('t', { signal: controller.signal })).rejects.toMatchObject({
       code: ErrorCode.ABORTED,

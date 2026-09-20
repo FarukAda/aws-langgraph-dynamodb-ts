@@ -4,7 +4,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import {
-  BatchWriteCommand,
+  DeleteCommand,
   DynamoDBDocument,
   GetCommand,
   QueryCommand,
@@ -55,9 +55,9 @@ describe('DynamoDBChatMessageHistory', () => {
         { PK: 'sess-1', SK: 'HISTORY#SESSION' },
       ],
     });
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(DeleteCommand).resolves({});
     await history(client).clear('sess-1');
-    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
+    expect(mock.commandCalls(DeleteCommand)).toHaveLength(2);
   });
 
   it('listSessions scans for sessions', async () => {

@@ -65,6 +65,34 @@ export function dropResponses(client: DynamoDBClient, commandName: string, times
   );
 }
 
+/**
+ * Run `hook` after a matching command's response has come back, for up to
+ * `times` occurrences, before the caller sees that response. It is what makes a
+ * read-then-write race deterministic: a writer that lands between a partition
+ * query and the deletes it drives is the whole subject of the conditional
+ * delete path, and `Promise.all` cannot place a write there reliably.
+ */
+export function afterResponse(
+  client: DynamoDBClient,
+  commandName: string,
+  hook: () => Promise<void>,
+  times = 1,
+): void {
+  let remaining = times;
+  client.middlewareStack.add(
+    (next, context) => async (args) => {
+      const result = await next(args);
+      const name = (context as { commandName?: string }).commandName ?? '';
+      if (name === commandName && remaining > 0) {
+        remaining -= 1;
+        await hook();
+      }
+      return result;
+    },
+    { step: 'deserialize', name: 'after-response' },
+  );
+}
+
 /** Build a synthetic AWS error with the given exception `name`. */
 export function awsError(name: string, message = name): Error {
   return Object.assign(new Error(message), { name });
