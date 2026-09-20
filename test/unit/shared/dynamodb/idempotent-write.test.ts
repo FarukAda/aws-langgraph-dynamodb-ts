@@ -8,6 +8,7 @@ import {
   type IdempotentWriteDeps,
   putIdempotently,
   referencesS3Object,
+  transactIdempotently,
 } from '../../../../src/shared/dynamodb/idempotent-write';
 import * as retryModule from '../../../../src/shared/dynamodb/retry';
 import type { RetryOptions } from '../../../../src/shared/dynamodb/retry';
@@ -313,5 +314,42 @@ describe('deleteIdempotently', () => {
       ),
     ).rejects.toMatchObject({ code: 'ABORTED' });
     expect(emitted()).toHaveLength(0);
+  });
+});
+
+describe('transactIdempotently', () => {
+  /**
+   * The generalisation the other two rest on. A caller with two rows that must
+   * land together - the checkpoint's META and PAYLOAD pair - sends them as the
+   * actions of one transaction rather than as two calls, and gets the same
+   * single token and the same deadline the one-action callers get.
+   */
+  it('sends every action it is given, in order, under one token', async () => {
+    mock.on(TransactWriteCommand).resolves({});
+    const second = { ...ITEM, SK: 's2' };
+
+    await transactIdempotently({ client, tableName: TABLE, retry: instantPolicy() }, [
+      { Put: { TableName: TABLE, Item: ITEM } },
+      { Put: { TableName: TABLE, Item: second } },
+    ]);
+
+    const [input] = emitted();
+    expect(input.TransactItems).toHaveLength(2);
+    expect(input.TransactItems?.map((action) => action.Put?.Item)).toEqual([ITEM, second]);
+    expect(input.ClientRequestToken).toHaveLength(36);
+  });
+
+  it('re-sends the one request, token included, for every attempt of one budget', async () => {
+    mock.on(TransactWriteCommand).rejectsOnce(throttled()).resolves({});
+
+    await transactIdempotently({ client, tableName: TABLE, retry: instantPolicy() }, [
+      { Put: { TableName: TABLE, Item: ITEM } },
+      { Put: { TableName: TABLE, Item: { ...ITEM, SK: 's2' } } },
+    ]);
+
+    const inputs = emitted();
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0]).toBe(inputs[1]);
+    expect(inputs[0].ClientRequestToken).toBe(inputs[1].ClientRequestToken);
   });
 });

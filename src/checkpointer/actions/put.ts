@@ -7,8 +7,7 @@ import type {
 
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { transactIdempotently } from '../../shared/dynamodb/idempotent-write';
 import { ValidationError } from '../../shared/errors/errors';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { verifyCheckpointLanded } from '../internal/checkpoint-write-verify';
@@ -51,16 +50,19 @@ import { validateCheckpointId } from '../internal/validation';
  * the transaction throws once the outcome is established.
  *
  * Guarantees: both rows land or neither does — they are one transaction, so a
- * META row never names a payload that is not there. Writing the same
- * `checkpoint.id` again replaces both, which is what a retry and a repair tool
- * both need; the objects the replaced rows named are not deleted by the put,
- * and are left to the lifecycle rule. On failure with S3 offload configured the
- * row carrying an offloaded descriptor is read back before any upload is
- * deleted (see {@link verifyCheckpointLanded}): a transaction that committed
- * and lost its response is reported as success, a confirmed non-commit cleans
- * up the objects this call uploaded, and an unverifiable outcome leaks them
- * rather than risk stranding a live row. Each put uploads under an object id
- * of its own, so no row another put commits names this call's uploads.
+ * META row never names a payload that is not there. That transaction goes out
+ * under a client request token drawn once, with the request it travels on, so
+ * a retry that follows a lost acknowledgement is discarded by the service
+ * rather than applied a second time. Writing the same `checkpoint.id` again
+ * replaces both, which is what a retry and a repair tool both need; the objects
+ * the replaced rows named are not deleted by the put, and are left to the
+ * lifecycle rule. On failure with S3 offload configured the row carrying an
+ * offloaded descriptor is read back before any upload is deleted (see
+ * {@link verifyCheckpointLanded}): a transaction that committed and lost its
+ * response is reported as success, a confirmed non-commit cleans up the
+ * objects this call uploaded, and an unverifiable outcome leaks them rather
+ * than risk stranding a live row. Each put uploads under an object id of its
+ * own, so no row another put commits names this call's uploads.
  */
 export async function putCheckpoint(
   context: CheckpointerContext,
@@ -93,15 +95,33 @@ export async function putCheckpoint(
     },
   };
   try {
-    await withDynamoDBRetry(
-      () =>
-        context.client.transactWrite({
-          TransactItems: [
-            { Put: { TableName: context.tableName, Item: meta } },
-            { Put: { TableName: context.tableName, Item: payload } },
-          ],
-        }),
-      retryFor(context, signal),
+    /**
+     * One request, one token, re-sent unchanged for every attempt of the
+     * budget — which is what the token is worth here, since a token minted on
+     * a request the retry closure rebuilt would be a fresh one per attempt and
+     * would deduplicate nothing.
+     *
+     * Neither row is guarded, so nothing else can turn a re-send away: a retry
+     * that follows a lost acknowledgement puts both rows back, and one
+     * arriving after a `deleteThread` removed them puts back two live rows
+     * naming two objects that call has already released. Inside the service's
+     * idempotency window the token discards it instead. The pair is atomic, so
+     * what that window covers is the pair: a re-send either re-applies both
+     * rows or neither.
+     *
+     * A condition on either row is not the alternative it looks like. Two
+     * guarded items would make one genuine race cancel with two
+     * `ConditionalCheckFailed` reasons, and `conditionalCheckFailure` reads a
+     * cancellation as a guard rejection only while a single cause remains — so
+     * the race would surface as an unrecognised non-retryable error.
+     */
+    await transactIdempotently(
+      context,
+      [
+        { Put: { TableName: context.tableName, Item: meta } },
+        { Put: { TableName: context.tableName, Item: payload } },
+      ],
+      signal,
     );
   } catch (error) {
     if (!context.offloader) throw error;

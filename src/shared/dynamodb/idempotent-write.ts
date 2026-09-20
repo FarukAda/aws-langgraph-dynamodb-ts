@@ -49,7 +49,7 @@ export function referencesS3Object(descriptor: DescriptorRef): boolean {
 type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
 
 /**
- * Commit one action as a single-item
+ * Commit `actions` as one
  * {@link https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html | TransactWriteItems}
  * under a client request token, so a re-send DynamoDB already applied lands as
  * a no-op instead of as a second write.
@@ -79,12 +79,26 @@ type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[nu
  * can assert only that two re-pins carry different tokens, and the refusal
  * itself belongs to the tier that runs against AWS.
  *
- * **One item, never more.** A cancellation is read as a guard rejection only
- * while exactly one cause remains once the items along for the ride are set
- * aside, so guarding a second item in the same transaction would turn a
- * genuine race into an unrecognised non-retryable error. Keeping one item per
- * transaction also keeps each write's outcome independent of its neighbours',
- * which is what the fan-out writers rely on.
+ * **At most one guarded action, and only ever as many actions as must land
+ * together.** A cancellation is read as a guard rejection only while exactly
+ * one cause remains once the items along for the ride are set aside, so a
+ * second *guarded* action in the same transaction would turn a genuine race
+ * into an unrecognised non-retryable error. Every row-at-a-time caller here
+ * passes a single action for a second reason as well: a transaction cancels
+ * whole, so one item per transaction keeps each write's outcome independent of
+ * its neighbours', which is what the fan-out writers rely on. More than one
+ * action is for the callers whose rows are atomic by contract and carry no
+ * condition between them.
+ *
+ * Accepts: `deps` — the adapter's client, table and retry policy. `actions` —
+ * the `Put`, `Delete`, `Update` or `ConditionCheck` entries to commit
+ * together, captured by reference and re-sent unchanged on every attempt of
+ * the budget, so a caller must not mutate one while this call is in flight.
+ * `signal` — aborts between attempts.
+ *
+ * Returns: nothing. The transaction committed, or it threw.
+ *
+ * Throws: whatever the transaction throws.
  *
  * Guarantees: the retrying stops while the token is still honoured. The budget
  * carries a deadline of {@link MAX_WRITE_LIFETIME_MS} from now, half the
@@ -95,12 +109,12 @@ type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[nu
  * object would bound every later call of the same adapter by this call's
  * clock.
  */
-async function transactOnce(
+export async function transactIdempotently(
   deps: IdempotentWriteDeps,
-  action: TransactAction,
+  actions: TransactAction[],
   signal?: AbortSignal,
 ): Promise<void> {
-  const input = { TransactItems: [action], ClientRequestToken: randomUUID() };
+  const input = { TransactItems: actions, ClientRequestToken: randomUUID() };
   const deadlineAt = nowMs() + MAX_WRITE_LIFETIME_MS;
   await withDynamoDBRetry(() => deps.client.transactWrite(input), {
     ...retryFor(deps, signal),
@@ -109,8 +123,8 @@ async function transactOnce(
 }
 
 /**
- * Commit one row under a request token; see {@link transactOnce} for why the
- * write takes a transaction's shape and what the token buys.
+ * Commit one row under a request token; see {@link transactIdempotently} for
+ * why the write takes a transaction's shape and what the token buys.
  *
  * Accepts: `deps` — the adapter's client, table and retry policy. `item` — the
  * row to commit. It is captured by reference and re-sent unchanged on every
@@ -137,12 +151,16 @@ export async function putIdempotently(
   guard?: RevisionGuard,
   signal?: AbortSignal,
 ): Promise<void> {
-  await transactOnce(deps, { Put: { TableName: deps.tableName, Item: item, ...guard } }, signal);
+  await transactIdempotently(
+    deps,
+    [{ Put: { TableName: deps.tableName, Item: item, ...guard } }],
+    signal,
+  );
 }
 
 /**
- * Remove one row under a request token; see {@link transactOnce} for why the
- * delete takes a transaction's shape and what the token buys.
+ * Remove one row under a request token; see {@link transactIdempotently} for
+ * why the delete takes a transaction's shape and what the token buys.
  *
  * It buys more here than a put's token does. An unconditional `DeleteItem`
  * cannot be turned away, so a retry that arrives after the first attempt
@@ -176,5 +194,9 @@ export async function deleteIdempotently(
   guard?: RevisionGuard,
   signal?: AbortSignal,
 ): Promise<void> {
-  await transactOnce(deps, { Delete: { TableName: deps.tableName, Key: key, ...guard } }, signal);
+  await transactIdempotently(
+    deps,
+    [{ Delete: { TableName: deps.tableName, Key: key, ...guard } }],
+    signal,
+  );
 }
