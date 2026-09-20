@@ -512,9 +512,21 @@ Both ids are slugs of the `keyPrefix`, so each adapter's prefix gets its own pai
 `NoncurrentDays` is the grace a **released** payload gets. On a versioned bucket, releasing an
 object does not erase it: it becomes a noncurrent version behind a delete marker, and this is the
 window in which it can still be restored. One day is S3's smallest and rounds up to the next UTC
-midnight, so the real window is 24–48 h. It is a floor, never a cap: a longer
-`NoncurrentVersionExpiration` already on the rule is kept as it is, because shortening a retention
-an operator chose is not this library's business.
+midnight, so the real window is 24–48 h.
+
+It is a floor, never a cap, and the floor is measured against **every rule that already governs
+these keys** — this one, any rule with no prefix filter at all, and any whose prefix this one
+starts with. The longest `NoncurrentDays` among them is what gets written. S3 honours the
+*shorter* of two overlapping expirations, so a prefix-scoped day written beside a bucket-wide
+90-day retention would quietly cut the real window under this prefix from 90 days to one; taking
+the longest is what makes "nothing here shortens a retention you chose" true rather than merely
+intended. A rule scoped beside this prefix, or beneath it, is left out — it governs none of these
+keys, or only some of them.
+
+Fields on the rule that this library does not manage survive the rewrite a changed `ttl` triggers:
+`NewerNoncurrentVersions`, `Transitions`, `NoncurrentVersionTransitions` and
+`AbortIncompleteMultipartUpload` are carried across. Only the `Expiration` is replaced outright
+rather than merged, because S3 refuses one carrying both `Days` and `Date`.
 
 The second rule reclaims the delete markers themselves, once the last noncurrent version under a
 key has expired. It has to be a separate rule — S3 rejects `ExpiredObjectDeleteMarker` inside an

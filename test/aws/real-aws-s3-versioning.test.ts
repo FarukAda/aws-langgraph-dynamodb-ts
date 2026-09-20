@@ -128,6 +128,9 @@ describe('an unversioned offload bucket against real AWS', () => {
     await saver.ensureS3LifecycleRule();
     saver.destroy();
     await waitForBothRules(s3, prefix);
+    // Named first, so a role without s3:GetBucketVersioning fails this gate on
+    // its own cause rather than on an empty filter two lines down.
+    expect(logger.warnings.filter(([m]) => m.includes('could not read'))).toHaveLength(0);
     const versioning = logger.warnings.filter(([message]) => message.includes('versioning is off'));
     expect(versioning).toHaveLength(1);
     expect(versioning[0][0]).toContain('enable bucket versioning');

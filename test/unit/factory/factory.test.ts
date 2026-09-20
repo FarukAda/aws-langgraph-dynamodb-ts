@@ -17,6 +17,17 @@ import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/help
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
 
+/**
+ * An unstubbed `GetBucketVersioning` resolves as nothing through
+ * `aws-sdk-client-mock`, which this package reads as a failed versioning check
+ * and warns about. Every provisioning case therefore asserts on a logger: a
+ * dropped stub would otherwise leave the case green while it proved the
+ * opposite of its name.
+ */
+function fakeLogger() {
+  return { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+}
+
 function fakeClientFactory() {
   const destroy = jest.fn();
   const client = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
@@ -171,14 +182,17 @@ describe('createAll teardown is total', () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+    const logger = fakeLogger();
     const factory = new DynamoDBFactory({
       createClient: fake.create,
+      logger,
       ttl: { days: 30 },
       s3: throwingS3(),
     });
     const all = factory.createAll({ saver: { tableName: 'ckpt' }, store: { tableName: 'store' } });
     await all.saver.ensureS3LifecycleRule();
     await all.store.ensureS3LifecycleRule();
+    expect(logger.warn).not.toHaveBeenCalled();
     expect(() => all.destroy()).not.toThrow();
     expect(fake.destroy).toHaveBeenCalledTimes(1);
   });
@@ -230,9 +244,11 @@ describe('shared adapter defaults (CORE-17)', () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+    const logger = fakeLogger();
     const base = {
       clientConfig: { region: 'eu-central-1' },
       createClient: fakeClientFactory().create,
+      logger,
       ttl: { days: 30 },
       s3: {
         bucketName: 'shared',
@@ -250,6 +266,7 @@ describe('shared adapter defaults (CORE-17)', () => {
     const all = new DynamoDBFactory(base).createAll({ store: { tableName: 'store' } });
     await all.store.ensureS3LifecycleRule();
     expect(seen.pop()).toMatchObject({ region: 'eu-central-1' });
+    expect(logger.warn).not.toHaveBeenCalled();
     all.destroy();
   });
 
@@ -258,7 +275,8 @@ describe('shared adapter defaults (CORE-17)', () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
-    const factory = new DynamoDBFactory({ client, ttl: { days: 30 }, s3: s3() });
+    const logger = fakeLogger();
+    const factory = new DynamoDBFactory({ client, logger, ttl: { days: 30 }, s3: s3() });
     const all = factory.createAll({
       saver: { tableName: 'ckpt' },
       store: { tableName: 'store', ttl: { days: 1 } },
@@ -268,6 +286,7 @@ describe('shared adapter defaults (CORE-17)', () => {
     await all.store.ensureS3LifecycleRule();
     await all.history.ensureS3LifecycleRule();
     expect(lifecycleDays()).toEqual([32, 3, 32]);
+    expect(logger.warn).not.toHaveBeenCalled();
     all.destroy();
   });
 
@@ -277,9 +296,11 @@ describe('shared adapter defaults (CORE-17)', () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+    const logger = fakeLogger();
     const factory = new DynamoDBFactory({
       clientConfig: { region: 'eu-west-1' },
       createClient: create,
+      logger,
       ttl: { days: 30 },
       s3: s3(),
     });
@@ -289,6 +310,7 @@ describe('shared adapter defaults (CORE-17)', () => {
     });
     await saver.ensureS3LifecycleRule();
     expect(lifecycleDays()).toEqual([32]);
+    expect(logger.warn).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });
 

@@ -36,10 +36,15 @@ export async function reportBucketVersioning(
   try {
     status = (await client.send(new GetBucketVersioningCommand({ Bucket: bucket }))).Status;
   } catch (error) {
-    /** The error's name, never its message, which can carry credential text. */
+    /**
+     * The error's name, never its message, which can carry credential text —
+     * and read off a shape rather than an Error, because a client seam can
+     * reject with anything at all and this function promises not to throw.
+     */
+    const reason = (error as { name?: string } | null)?.name ?? 'unknown';
     logger.warn(
       'ensureS3LifecycleRule: could not read the offload bucket versioning state, so whether a released payload is recoverable is unknown; the lifecycle rules were written, and the role needs s3:GetBucketVersioning',
-      { bucket, reason: (error as Error).name },
+      { bucket, reason },
     );
     return;
   }

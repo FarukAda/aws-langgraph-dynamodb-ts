@@ -300,6 +300,10 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     await saver.ensureS3LifecycleRule();
     const { ttl, marker } = await waitForBothRules(s3, prefix, 32);
     expect(ttl?.Status).toBe('Enabled');
+    // The filter is the field whose round trip decides whether a destructive
+    // rule stays scoped to this package's keys.
+    expect(ttl?.Filter?.Prefix).toBe(prefix);
+    expect(marker?.Filter?.Prefix).toBe(prefix);
     expect(ttl?.Expiration).toEqual({ Days: 32 });
     expect(ttl?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(S3_RELEASE_GRACE_DAYS);
     expect(marker?.Status).toBe('Enabled');

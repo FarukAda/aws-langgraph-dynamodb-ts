@@ -119,14 +119,18 @@ describe('DynamoDBStore', () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const store = new DynamoDBStore({
       tableName: 'store',
       client,
+      logger,
       s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
       ttl: { days: 30 },
     });
     await store.ensureS3LifecycleRule();
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
+    /** A warn here would mean the versioning stub above was not the one consumed. */
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('ensureS3LifecycleRule no-ops when ttl is not configured', async () => {

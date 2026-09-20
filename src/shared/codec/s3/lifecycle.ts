@@ -54,30 +54,56 @@ function alreadyCorrect(existing: LifecycleRule | undefined, desired: LifecycleR
 }
 
 /**
- * The noncurrent retention to write: the release grace, or the longer one the
- * bucket already carries. An operator who chose 30 days chose them, and this
- * package needs *at least* the grace rather than any particular value.
+ * The noncurrent retention to write: the longest one already governing these
+ * keys, and never less than the release grace.
+ *
+ * S3 honours the **shorter** of two overlapping expirations, so a rule this
+ * package does not own decides how long a released payload really survives
+ * under its prefix. Writing the grace beside a bucket-wide 90-day retention
+ * would cut that window to a day for every key here, which is the opposite of
+ * what a floor is for. A rule overlaps when it carries no prefix filter, or
+ * one this prefix starts with; a filter this cannot read in full — tags, size
+ * bounds — counts as overlapping too, because assuming it covers these keys
+ * can only lengthen retention. A rule scoped beside this prefix governs none
+ * of its keys, and one scoped beneath it governs only some, so neither raises
+ * the floor for all of them.
  */
-function noncurrentDays(existing: LifecycleRule | undefined): number {
-  return Math.max(
-    existing?.NoncurrentVersionExpiration?.NoncurrentDays ?? 0,
-    S3_RELEASE_GRACE_DAYS,
-  );
+function noncurrentDays(rules: readonly LifecycleRule[], prefix: string): number {
+  const held = rules
+    .filter((rule) => {
+      const scope = rule.Filter?.Prefix;
+      return scope === undefined || prefix.startsWith(scope);
+    })
+    .map((rule) => rule.NoncurrentVersionExpiration?.NoncurrentDays ?? 0);
+  return Math.max(...held, S3_RELEASE_GRACE_DAYS);
 }
 
-/** Expires the current version on the TTL's schedule and released ones on the grace. */
+/**
+ * Expires the current version on the TTL's schedule and released ones on the
+ * grace, carrying through every field of the rule it replaces that this
+ * package does not manage: `NewerNoncurrentVersions`, transitions, the
+ * multipart abort. Dropping one is unrecoverable, because the next call reads
+ * the rewritten rule as already correct and never restores it. The
+ * `Expiration` is the exception and is replaced whole, since S3 refuses one
+ * carrying both `Days` and `Date`.
+ */
 function ttlRule(
   id: string,
   prefix: string,
   days: number,
+  rules: readonly LifecycleRule[],
   existing?: LifecycleRule,
 ): LifecycleRule {
   return {
+    ...existing,
     ID: id,
     Filter: { Prefix: prefix },
     Status: 'Enabled',
     Expiration: { Days: days },
-    NoncurrentVersionExpiration: { NoncurrentDays: noncurrentDays(existing) },
+    NoncurrentVersionExpiration: {
+      ...existing?.NoncurrentVersionExpiration,
+      NoncurrentDays: noncurrentDays(rules, prefix),
+    },
   };
 }
 
@@ -104,20 +130,23 @@ function upsert(rules: readonly LifecycleRule[], rule: LifecycleRule): Lifecycle
 }
 
 /**
- * Refuse to touch a rule that carries this rule's id but scopes a different
- * prefix. The id is a slug of the prefix, and slugging maps every
- * non-alphanumeric character to `-`, so `app/langgraph/` and `app-langgraph/`
- * produce the same id. Taking the rule over would expire one prefix's objects
- * on the other's schedule, and leaving it would silently give this prefix no
- * rule at all.
+ * Refuse to touch a rule that carries one of this prefix's ids but scopes a
+ * different prefix. Two shapes reach here: slugging maps every non-alphanumeric
+ * character to `-`, so `app/langgraph/` and `app-langgraph/` produce one id;
+ * and the marker rule appends `-markers`, so `app/`'s marker id is the
+ * expiration id of `app-markers/`. Taking the rule over would expire one
+ * prefix's objects on the other's schedule, and leaving it would silently give
+ * this prefix no rule at all.
  */
 function assertNoIdCollision(rule: LifecycleRule | undefined, prefix: string, id: string): void {
   const found = rule?.Filter?.Prefix;
   if (rule === undefined || found === undefined || found === prefix) return;
   throw new ValidationError(
-    `the S3 lifecycle rule id "${id}" is already used by the prefix "${found}"; two key prefixes ` +
-      'that differ only in characters the rule id replaces cannot share one bucket — choose an ' +
-      's3.keyPrefix whose letters and digits differ',
+    `the S3 lifecycle rule id "${id}" is already used by the prefix "${found}"; an id is the key ` +
+      'prefix with every non-alphanumeric character replaced by "-", and the marker rule appends ' +
+      '"-markers" to that, so "a/b/" takes the id of "a-b/" and "app/" takes the marker id of ' +
+      '"app-markers/" — choose an s3.keyPrefix that produces neither id of any other prefix on ' +
+      'this bucket',
     's3.keyPrefix',
   );
 }
@@ -183,7 +212,7 @@ export async function ensureLifecycleRule(
   const heldMarker = state.rules.find((rule) => rule.ID === markerId);
   assertNoIdCollision(heldTtl, prefix, ttlId);
   assertNoIdCollision(heldMarker, prefix, markerId);
-  const expiry = ttlRule(ttlId, prefix, days, heldTtl);
+  const expiry = ttlRule(ttlId, prefix, days, state.rules, heldTtl);
   const reclaim = markerRule(markerId, prefix);
   if (!alreadyCorrect(heldTtl, expiry) || !alreadyCorrect(heldMarker, reclaim)) {
     await putRules(client, bucket, state, upsert(upsert(state.rules, expiry), reclaim));

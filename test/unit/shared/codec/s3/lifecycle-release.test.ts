@@ -197,10 +197,10 @@ describe('the marker-reclaim rule', () => {
   });
 
   /**
-   * The rule id is a slug of the prefix, so the marker id a second prefix
-   * produces can already be held by the first's — exactly the exposure the
-   * ttl id has, and refused the same way rather than expiring one prefix's
-   * markers on the other's schedule.
+   * The marker id can collide in a way the ttl id alone cannot: this prefix's
+   * marker id is the ttl id of the prefix `langgraph-checkpoints-markers/`,
+   * whose letters and digits already differ from ours. The refusal must name
+   * the suffix, or its remedy reads as advice the operator has followed.
    */
   it('refuses when its id is already held by a different prefix', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
@@ -218,6 +218,7 @@ describe('the marker-reclaim rule', () => {
     ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 's3.keyPrefix' },
+      message: expect.stringContaining('-markers'),
     });
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
   });

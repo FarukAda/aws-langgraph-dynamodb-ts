@@ -90,6 +90,21 @@ describe('reportBucketVersioning', () => {
     expect(fields).toEqual({ bucket: 'b', reason: 'AccessDenied' });
   });
 
+  /** A rejection from a client seam need not be an Error, and must not become one here. */
+  it('falls back to a placeholder when the rejection carries no name', async () => {
+    s3Mock.on(GetBucketVersioningCommand).callsFake(() => Promise.reject({ httpStatusCode: 500 }));
+    const logger = fakeLogger();
+    await expect(reportBucketVersioning(client(), 'b', logger)).resolves.toBeUndefined();
+    expect(warning(logger)[1]).toEqual({ bucket: 'b', reason: 'unknown' });
+  });
+
+  it('warns rather than throwing when the rejection is not an object at all', async () => {
+    s3Mock.on(GetBucketVersioningCommand).callsFake(() => Promise.reject(null));
+    const logger = fakeLogger();
+    await expect(reportBucketVersioning(client(), 'b', logger)).resolves.toBeUndefined();
+    expect(warning(logger)[1]).toEqual({ bucket: 'b', reason: 'unknown' });
+  });
+
   /** The error's name, never its message, which can carry credential text. */
   it('names the failure without repeating what it said', async () => {
     s3Mock

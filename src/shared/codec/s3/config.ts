@@ -150,9 +150,13 @@ export function buildLifecycleRuleId(prefix: string): string {
  *
  * Throws: nothing.
  *
- * Guarantees: it is a slug of the prefix like the first id, so it is no more
- * injective than that one — `ensureLifecycleRule` refuses to take over either
- * id when a different prefix already holds it.
+ * Guarantees: it is *less* injective than the first id rather than merely as
+ * injective. On top of the slug collisions that one already has,
+ * `buildMarkerRuleId('app/')` and `buildLifecycleRuleId('app-markers/')` are
+ * one id — a clash between two prefixes whose letters and digits differ, which
+ * the first id alone cannot produce. `ensureLifecycleRule` refuses to take
+ * over either id when a different prefix already holds it, and its refusal
+ * names the suffix so the remedy fits the case.
  */
 export function buildMarkerRuleId(prefix: string): string {
   return `${buildLifecycleRuleId(prefix)}-markers`;
