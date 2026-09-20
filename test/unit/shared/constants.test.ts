@@ -16,6 +16,7 @@ describe('shared constants', () => {
     expect(C.MAX_TTL_DAYS).toBe(365 * 5);
     expect(C.MAX_TTL_SECONDS).toBe(C.MAX_TTL_DAYS * 24 * 60 * 60);
     expect(C.S3_LIFECYCLE_SWEEP_MARGIN_DAYS).toBe(2);
+    expect(C.S3_RELEASE_GRACE_DAYS).toBe(1);
   });
 
   it('pins the identifier and key byte caps', () => {

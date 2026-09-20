@@ -138,6 +138,27 @@ export function buildLifecycleRuleId(prefix: string): string {
 }
 
 /**
+ * The id of the rule that reclaims this prefix's expired delete markers:
+ * {@link buildLifecycleRuleId}'s id with a suffix of its own.
+ *
+ * Accepts: `prefix` — as {@link buildLifecycleRuleId} takes it.
+ *
+ * Returns: a second deterministic id, distinct from the expiration rule's.
+ * S3 refuses `ExpiredObjectDeleteMarker` inside an `Expiration` that also
+ * carries `Days`, so the reclaim cannot be a field on that rule and needs an
+ * id to be found by.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: it is a slug of the prefix like the first id, so it is no more
+ * injective than that one — `ensureLifecycleRule` refuses to take over either
+ * id when a different prefix already holds it.
+ */
+export function buildMarkerRuleId(prefix: string): string {
+  return `${buildLifecycleRuleId(prefix)}-markers`;
+}
+
+/**
  * An adapter's default S3 key prefix.
  *
  * Accepts: `base` — the shared prefix, ending in `/`. `adapter` — the adapter's

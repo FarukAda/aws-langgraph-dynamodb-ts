@@ -221,3 +221,16 @@ export const MAX_S3_KEY_BYTES = 1024;
  * must outlive its row, never the other way round.
  */
 export const S3_LIFECYCLE_SWEEP_MARGIN_DAYS = 2;
+
+/**
+ * Days a released payload's noncurrent version survives behind its delete
+ * marker before S3 reclaims it. One day is the smallest the lifecycle API
+ * accepts and it rounds up to the next UTC midnight, so the window is 24-48 h:
+ * long enough to restore a payload released in error, short enough that a
+ * versioned bucket does not pay for every release it has ever made. It is a
+ * floor and never a cap — a longer retention the bucket already carries is
+ * kept, because this package has no business shortening someone else's
+ * recovery window. Inert on an unversioned bucket, which has no noncurrent
+ * versions to expire.
+ */
+export const S3_RELEASE_GRACE_DAYS = 1;
