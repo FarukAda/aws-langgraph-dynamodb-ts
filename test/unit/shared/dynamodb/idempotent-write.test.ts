@@ -58,6 +58,13 @@ describe('referencesS3Object', () => {
   it('answers only for a descriptor whose payload was offloaded', () => {
     expect(referencesS3Object({ location: PayloadLocation.S3, s3Key: 'k' })).toBe(true);
     expect(referencesS3Object({ location: PayloadLocation.INLINE })).toBe(false);
+    /**
+     * The location alone decides, and a key-less offloaded descriptor is the
+     * case that says so. Requiring the key here - aligning this with
+     * collectS3Keys, which does require one - would route such a row back onto
+     * the untokened put, which is the write this helper exists to replace.
+     */
+    expect(referencesS3Object({ location: PayloadLocation.S3 })).toBe(true);
   });
 });
 
@@ -157,10 +164,16 @@ describe('putIdempotently', () => {
    */
   it('ends the budget rather than sleeping past the write lifetime', async () => {
     mock.on(TransactWriteCommand).rejects(throttled());
+    /**
+     * Half of twice the lifetime, rather than all of it once: `fullJitter`
+     * returns `rng() * delayMs` and documents `rng` as `[0, 1)`, so `1` is the
+     * one draw the seam promises never to make. This lands the same boundary
+     * from inside the contract.
+     */
     const onTheLimit = instantPolicy({
-      baseDelayMs: MAX_WRITE_LIFETIME_MS,
-      maxDelayMs: MAX_WRITE_LIFETIME_MS,
-      rng: () => 1,
+      baseDelayMs: 2 * MAX_WRITE_LIFETIME_MS,
+      maxDelayMs: 2 * MAX_WRITE_LIFETIME_MS,
+      rng: () => 0.5,
     });
 
     await expect(

@@ -82,7 +82,7 @@ export function referencesS3Object(descriptor: DescriptorRef): boolean {
  *
  * Accepts: `deps` — the adapter's client, table and retry policy. `item` — the
  * row to commit. `guard` — the condition fragments from
- * {@link revisionGuard}, or a caller's own; omitted writes unconditionally,
+ * `revisionGuard`, or a caller's own; omitted writes unconditionally,
  * which is the case a token helps most, since nothing else stops a re-send
  * from landing. `signal` — aborts between attempts.
  *
@@ -91,8 +91,8 @@ export function referencesS3Object(descriptor: DescriptorRef): boolean {
  * Throws: whatever the transaction throws. A guard rejection now arrives as a
  * `TransactionCanceledException` whose single reason is `ConditionalCheckFailed`
  * rather than as a `ConditionalCheckFailedException`; both answer
- * {@link isConditionalCheckFailed} and both carry the rejected row to
- * {@link rejectedItem}, so a caller reads them the same way. A spent budget
+ * `isConditionalCheckFailed` and both carry the rejected row to
+ * `rejectedItem`, so a caller reads them the same way. A spent budget
  * throws `RetryExhaustedError` as any other call does.
  *
  * Guarantees: the retrying stops while the token is still honoured. The budget
