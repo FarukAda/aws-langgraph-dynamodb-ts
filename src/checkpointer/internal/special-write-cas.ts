@@ -43,6 +43,25 @@ type CasAttemptResult =
  *
  * `guard` absent means no pin at all, which is the unconditional overwrite the
  * exhausted compare-and-swap below falls back to.
+ *
+ * Both callers arrive here and the token is worth different things to each. On
+ * a pinned attempt the condition already turns a re-send away, so what the
+ * token adds is narrower: inside one budget, a re-send of an attempt that
+ * *committed* and lost its acknowledgement is answered from the idempotency
+ * cache rather than colliding with the `writeGroup` it wrote itself — the
+ * collision {@link verifyAfterFailure} otherwise has to spend a read to
+ * resolve. On the unconditional overwrite below there is no condition at all,
+ * so the token is the only thing standing between a lost acknowledgement and a
+ * second landing.
+ *
+ * A rejection buys nothing either way, and the loop above is built on that: a
+ * cancelled attempt commits nothing, so nothing is cached for its token and a
+ * retry would be a fresh evaluation — see {@link putIdempotently}, and the
+ * transaction helper it delegates to, for that precondition stated in full.
+ * It is why a lost compare-and-swap re-reads and re-pins rather than
+ * re-sending, and why each re-pin calls this function afresh for a new token.
+ * The deadline inside the helper is what holds each budget within the window
+ * the token is honoured for; the token enforces no window itself.
  */
 async function commitSpecialRow(
   context: CheckpointerContext,

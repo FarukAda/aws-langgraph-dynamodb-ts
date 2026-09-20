@@ -69,6 +69,28 @@ const RETURN_REJECTED_ROW = { ReturnValuesOnConditionCheckFailure: 'ALL_OLD' } a
  * strongly-consistent read.
  *
  * Throws: nothing.
+ *
+ * Guarantees: it pins the revision the caller observed — a value, its absence,
+ * or the row's own absence — and nothing else about the row. A revision is
+ * drawn afresh by every write that replaces the row (`randomUUID()` for a
+ * store record, the call's own `writeGroup` for a special row) and nothing
+ * restores a spent one, so a **satisfied** guard proves that nothing replaced
+ * the row between the caller's read and this write: the row overwritten is the
+ * row observed, still naming the descriptor the caller read off it. That is
+ * what makes it safe to release the payload this write superseded — the
+ * caller is holding the descriptor the row really named, not a stale copy of
+ * one a racer has already replaced and released. An update that leaves the
+ * revision alone can still have touched the row in between — the recency-index
+ * backfill is the one such write in this package, and it adds index keys and
+ * nothing else — so what the guard pins is the row's identity, not every byte
+ * of it.
+ *
+ * A **rejected** guard proves the mirror and no more: the row is not the one
+ * observed. It is never evidence that a competitor won, because a write whose
+ * acknowledgement was lost can be turned away by the row it committed itself
+ * — see {@link isConditionalCheckFailed} — and it carries no idempotency for a
+ * retry either, since a rejected attempt commits nothing for a token to be
+ * answered from.
  */
 export function revisionGuard(attribute: string, observed: ObservedRow): RevisionGuard {
   if (!observed.exists)
@@ -119,6 +141,14 @@ export const WRITE_ID_ATTRIBUTE = 'writeId';
  * that is absent, or present without the field, evaluates false rather than
  * failing the request, so one shape covers an offloaded row, an inline one and
  * a row a racer has rewritten into either.
+ *
+ * What a satisfied guard proves is the delete's counterpart of
+ * {@link revisionGuard}'s: the row removed is the row the partition read saw,
+ * not a replacement a later write left at the same key — which is what makes
+ * the object that read recorded against it the right one to release. A
+ * rejection means the row now carries some other write's id, and this pass
+ * leaves it in place and reports it rather than re-pinning, because a row it
+ * never read is not its to delete.
  */
 export function writeIdGuard(attribute: string, id: string, field?: string): RevisionGuard {
   const names: Record<string, string> = { '#pin': attribute };

@@ -27,6 +27,28 @@ function isTtlConditionLoss(error: Error): boolean {
   );
 }
 
+/**
+ * Build one send of the chunk, drawing the token that makes its re-sends safe.
+ *
+ * The message rows are keyed by their own ULIDs, so putting one twice changes
+ * nothing; the session update is `ADD #count :n`, and that is the whole of the
+ * damage a re-send would do. Applied rather than deduplicated it adds the
+ * chunk's count a second time to a row whose messages are already there,
+ * nothing on this path reads the count back to notice, and
+ * `reconcileMessageCount` is the only repair.
+ *
+ * Drawn per send rather than per call, because the second send the ttl race
+ * triggers is a *different* request: it repeats the same chunk with
+ * `forceTtlRefresh: false`, which drops the session update's
+ * ConditionExpression, and the same token presented with changed parameters
+ * inside the service's window is refused outright. That race is also the one
+ * place the precondition on what a token guarantees shows here — the first
+ * send was cancelled by its condition, so it committed nothing, nothing was
+ * cached for its token, and the second send is a fresh evaluation rather than
+ * a replay. The deadline the caller draws beside this input is what keeps each
+ * send's retrying inside the window that send's token is honoured for; the
+ * token enforces no window of its own.
+ */
 function buildInput(
   context: HistoryContext,
   items: ChatMessageItem[],

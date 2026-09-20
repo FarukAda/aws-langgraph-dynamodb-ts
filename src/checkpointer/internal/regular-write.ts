@@ -63,6 +63,25 @@ const FIRST_WRITE_WINS: RevisionGuard = {
  * One item per transaction, never several: a transaction cancels whole, so
  * batching would let one duplicate write — the expected outcome of a retry
  * under first-write-wins — turn away every neighbour it travelled with.
+ *
+ * What {@link FIRST_WRITE_WINS} changes about the token. It is a condition, so
+ * an attempt it turns away commits nothing, DynamoDB caches nothing for that
+ * attempt's token, and the retry is a fresh evaluation of first-write-wins
+ * against the table as it stands then — the token carries none of it forward,
+ * and {@link putIdempotently}, with the transaction helper it delegates to, is
+ * where that precondition is stated in full. What the token does carry is the
+ * other half: inside one budget, a re-send of an attempt that *committed* and
+ * lost its acknowledgement is answered from the idempotency cache instead of
+ * colliding with the row it wrote itself. That collision is the rejection
+ * {@link rejectionProvesForeignRow} exists to disbelieve, and on the inline
+ * shape it is still live, because a `PutItem` has no token to be answered
+ * from.
+ *
+ * The deadline inside the helper is what keeps the budget within the window
+ * the token is honoured for; the token enforces no window of its own. Past it
+ * a re-send is a new write, and a new write here is this row put back after a
+ * concurrent `deleteThread` released its object, or after a ttl sweep and the
+ * lifecycle rule did.
  */
 async function commitItem(
   context: CheckpointerContext,

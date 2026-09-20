@@ -64,6 +64,27 @@ type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[nu
  * can, and inside the service's 10-minute window the re-send is discarded
  * rather than applied.
  *
+ * **What the token guarantees, and what it does not.** A write whose first
+ * attempt **committed** is applied exactly once, at that moment — so a later
+ * writer supersedes it normally and a concurrent delete stands. A write whose
+ * first attempt was **rejected by its condition** carries no idempotency at
+ * all: a cancelled transaction never completes, so DynamoDB caches no result
+ * for its token, and a retry with the same token is a **fresh evaluation**
+ * against the table as it stands at retry time. The short version — "a retried
+ * write lands once" — is therefore false, and every caller that reasons about a
+ * rejection must reason about the table, not about the token.
+ *
+ * Two readings that sentence must not be given, because the shorter version of
+ * it invites both. It is about writes **this library sends with a token**: it
+ * says nothing about a `BatchWriteItem`, which can carry no token at all, and
+ * nothing about a first request that was already wrong, which no token can
+ * help — a token makes a *re-sent* request harmless and has nothing to say
+ * about a race that needs no retry to go wrong. And "exactly once" is about
+ * **application, not ordering**: a cancelled-then-retried write applies later
+ * than its first attempt, or not at all. What a cancellation does still
+ * reserve is the token's *parameters*, which is why a re-pin must draw a fresh
+ * one rather than re-present this one.
+ *
  * **Stable across a re-send, fresh across a re-pin.** The input — token
  * included — is built once here, outside the retry closure, so every attempt
  * of one budget re-sends the identical request and the token deduplicates it.
@@ -105,11 +126,23 @@ type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[nu
  * Guarantees: the retrying stops while the token is still honoured. The budget
  * carries a deadline of {@link MAX_WRITE_LIFETIME_MS} from now, half the
  * window the service deduplicates over, so the wait that would carry this
- * write past it is never started. That deadline is spread onto a copy of the
- * policy and never assigned onto it: `retryFor` hands back the adapter's own
- * options object when there is no signal, and stamping a deadline onto that
- * object would bound every later call of the same adapter by this call's
- * clock.
+ * write past it is never started.
+ *
+ * Nothing in the token enforces that window — the service honours a token for
+ * `TOKEN_IDEMPOTENCY_WINDOW_MS` whatever the caller's policy says, and a
+ * re-send arriving after it closes is a new request that is applied. The
+ * deadline is what keeps the budget inside it, and it bounds only the waits
+ * *between* attempts: it is tested before each backoff and cannot shorten an
+ * attempt already in flight. On a client this library builds the per-attempt
+ * `DEFAULT_REQUEST_TIMEOUT_MS` bounds that attempt as well; on an **injected**
+ * client, which is used exactly as given and may carry no request timeout at
+ * all, a single hung request can still carry the budget past the window, and
+ * nothing here prevents it.
+ *
+ * That deadline is spread onto a copy of the policy and never assigned onto
+ * it: `retryFor` hands back the adapter's own options object when there is no
+ * signal, and stamping a deadline onto that object would bound every later
+ * call of the same adapter by this call's clock.
  */
 export async function transactIdempotently(
   deps: IdempotentWriteDeps,

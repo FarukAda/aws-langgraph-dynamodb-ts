@@ -41,6 +41,24 @@ import type { StoreContext } from './setup';
  * transaction conflicts with any concurrent write to the same item, so under
  * heavy contention this put can exhaust its budget where a plain `PutItem`
  * would simply have won the race.
+ *
+ * That bound is not a second retry limit; it is what keeps the budget inside
+ * the window the token is honoured for. The token enforces no window of its
+ * own, and a re-send arriving after it has closed is a new write that lands
+ * over whatever has replaced this row and names an object a concurrent release
+ * may already have taken away.
+ *
+ * The pin decides which half of the token's guarantee applies, and the swap
+ * below is written around the answer. An attempt the guard turns away commits
+ * nothing, so nothing is cached for its token and a retry would be a fresh
+ * evaluation — {@link putIdempotently}, and the transaction helper it
+ * delegates to, state that precondition in full — which is why a loss is
+ * answered by re-reading and re-pinning under a new token rather than by
+ * re-sending this one. What the token does cover is a
+ * *committed* attempt whose acknowledgement was lost: within one budget its
+ * re-send is answered from the idempotency cache instead of being turned away
+ * by the `rev` it wrote itself, which is the rejection the swap below resolves
+ * by re-reading, and which the inline shape can still produce.
  */
 async function put(
   context: StoreContext,

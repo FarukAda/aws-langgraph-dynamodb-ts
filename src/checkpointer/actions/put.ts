@@ -114,6 +114,24 @@ export async function putCheckpoint(
      * `ConditionalCheckFailed` reasons, and `conditionalCheckFailure` reads a
      * cancellation as a guard rejection only while a single cause remains — so
      * the race would surface as an unrecognised non-retryable error.
+     *
+     * Because neither row is guarded, the precondition on what a token
+     * guarantees — see {@link transactIdempotently} — never bites on the rows
+     * themselves: no condition here can turn an attempt away, so an attempt
+     * either committed the pair, and its re-send is discarded, or committed
+     * nothing. It does bite on the transaction, which a conflict with a
+     * concurrent writer of the same id can still cancel: a cancellation
+     * completes nothing and is cached as nothing, so the attempt after one is
+     * a fresh evaluation rather than a replay. That is the wanted outcome here
+     * — the pair did not land, so it must still land — and it is why the
+     * token's promise is worded about a write that *committed* rather than one
+     * that was merely sent.
+     *
+     * The deadline that helper carries is what keeps this budget inside the
+     * window the token is honoured for. The token enforces no window itself,
+     * and a re-send arriving after it has closed is simply a new request: both
+     * rows land again, over whatever has replaced them and after whatever
+     * released the objects they name.
      */
     await transactIdempotently(
       context,

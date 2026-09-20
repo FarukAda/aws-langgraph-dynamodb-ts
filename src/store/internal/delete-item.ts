@@ -58,6 +58,26 @@ async function repinOrResolve(
  * Returns `undefined` when the compare-and-swap is exhausted: the row is still
  * there, held by whoever kept winning, and nothing may be released because a
  * live row names it.
+ *
+ * The pin and the token close different failures and the loop needs both. The
+ * pin refuses a delete of a row a put replaced after the observation, which
+ * takes no lost acknowledgement at all — only a put landing between the
+ * pre-read and this write. The token covers the lost acknowledgement, and what
+ * it buys is that a rejection reaching the catch below is *informative*:
+ * inside one budget the re-send of an attempt that already committed is
+ * answered from the idempotency cache rather than removing whatever has
+ * arrived at the key since, so a cancellation means a genuine race and not
+ * this call's own landed delete reported back as a loss. An unconditional
+ * `DeleteItem` can be neither turned away nor deduplicated, which is why the
+ * write takes a transaction's shape ({@link deleteIdempotently}).
+ *
+ * A rejection carries no idempotency forward — a cancelled attempt commits
+ * nothing, so nothing is cached for its token — and here that is exactly what
+ * is wanted, because the next iteration must be evaluated afresh, against a
+ * fresh pin taken from the row the rejection returned. The deadline inside the
+ * helper keeps each iteration's retrying within the window its token is
+ * honoured for; past that window a re-send is re-evaluated like any other
+ * request and the rejection is ambiguous again.
  */
 async function removeObservedRow(
   context: StoreContext,

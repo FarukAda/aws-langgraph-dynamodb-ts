@@ -64,10 +64,19 @@ function isCancelledByCondition(error: Error): boolean {
  * from DynamoDB's idempotency cache rather than re-evaluated. Two things hold
  * that together and only together: the `ClientRequestToken`, which makes a
  * re-send a no-op, and the deadline of {@link MAX_WRITE_LIFETIME_MS}, which
- * stops the retrying while that token is still honoured. Without the deadline
- * a long caller policy could still be retrying after the window closed, and
- * the re-send would then land as a second subtraction, leaving `messageCount`
- * quietly wrong.
+ * stops the retrying while that token is still honoured. Nothing in the token
+ * enforces that window — the service honours it for its own ten minutes
+ * whatever a caller's retry policy says — so without the deadline a long
+ * policy could still be retrying after the window closed, and the re-send
+ * would then land as a second subtraction, leaving `messageCount` quietly
+ * wrong. `reconcileMessageCount` is the repair if that happens anyway: it
+ * recounts the live messages and writes the true total back.
+ *
+ * The guard is no second line of defence for it. An attempt the condition
+ * turns away commits nothing, so DynamoDB caches no result for that attempt's
+ * token and a retry is a fresh evaluation rather than a deduplicated one — the
+ * exactly-once promise holds for an attempt that **committed**, which is also
+ * the only attempt whose re-send could subtract twice.
  */
 export async function revertSessionCount(
   context: HistoryContext,
@@ -125,6 +134,25 @@ export async function revertSessionCount(
  * call's title; both are a complete undo of what this call contributed.
  *
  * Throws: whatever the writes throw other than their own condition failures.
+ *
+ * Guarantees: the delete is applied at most once, and inside the window its
+ * token is honoured for, a re-send of an attempt that **committed** is
+ * answered from DynamoDB's idempotency cache rather than re-evaluated. The
+ * condition would already stop such a re-send from removing anything it should
+ * not; what the token adds is that it comes back as the success it was.
+ * Re-evaluated instead, it finds the row gone, fails both equalities, and the
+ * cancellation is read below as "a concurrent append has added to this row" —
+ * sending a rollback that already completed down the decrement-and-strip path
+ * meant for the case where the row survived. Both writes on that path are
+ * themselves guarded, and the decrement's incarnation pin refuses a session
+ * re-created in the meantime, so the price is two spurious conditional writes
+ * rather than a wrong count; the token is what keeps them from being spent.
+ *
+ * A rejection carries no idempotency forward — a cancelled attempt commits
+ * nothing, so nothing is cached for its token — and here that is exactly the
+ * wanted behaviour, since the fall-through below is a fresh decision about
+ * what to do instead. The deadline drawn beside the token is what keeps the
+ * retrying inside that window; the token enforces no window of its own.
  */
 export async function revertSessionCreation(
   context: HistoryContext,
@@ -151,7 +179,7 @@ export async function revertSessionCreation(
   try {
     await withDynamoDBRetry(() => context.client.transactWrite(input), {
       ...context.retry,
-      /** The delete carries a token too, and the same window bounds its retrying. */
+      /** The delete carries a token too; this is what keeps its retrying inside the window. */
       deadlineAt: nowMs() + MAX_WRITE_LIFETIME_MS,
     });
     return;
