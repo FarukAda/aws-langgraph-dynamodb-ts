@@ -159,7 +159,6 @@ function racedByAThreadDelete() {
       rows.clear();
       throw Object.assign(new Error('connection reset'), { name: 'ECONNRESET' });
     },
-    get: async (): Promise<Record<string, never>> => ({}),
   };
   return {
     context: contextWith(client as never, instantPolicy()),

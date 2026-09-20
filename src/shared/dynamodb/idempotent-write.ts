@@ -82,8 +82,10 @@ type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[nu
  * **At most one guarded action, and only ever as many actions as must land
  * together.** A cancellation is read as a guard rejection only while exactly
  * one cause remains once the items along for the ride are set aside, so a
- * second *guarded* action in the same transaction would turn a genuine race
- * into an unrecognised non-retryable error. Every row-at-a-time caller here
+ * second *guarded* action whose condition fails in the same race would turn
+ * that race into an unrecognised non-retryable error — which is exactly what a
+ * competing writer of the same checkpoint id would produce, since it fails
+ * both rows at once. Every row-at-a-time caller here
  * passes a single action for a second reason as well: a transaction cancels
  * whole, so one item per transaction keeps each write's outcome independent of
  * its neighbours', which is what the fan-out writers rely on. More than one
@@ -93,7 +95,7 @@ type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[nu
  * Accepts: `deps` — the adapter's client, table and retry policy. `actions` —
  * the `Put`, `Delete`, `Update` or `ConditionCheck` entries to commit
  * together, captured by reference and re-sent unchanged on every attempt of
- * the budget, so a caller must not mutate one while this call is in flight.
+ * the budget, so a caller must mutate neither the array nor an entry of it while this call is in flight.
  * `signal` — aborts between attempts.
  *
  * Returns: nothing. The transaction committed, or it threw.

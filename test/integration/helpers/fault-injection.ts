@@ -72,6 +72,12 @@ export function dropResponses(client: DynamoDBClient, commandName: string, times
  * read-then-write race deterministic: a writer that lands between a partition
  * query and the deletes it drives is the whole subject of the conditional
  * delete path, and `Promise.all` cannot place a write there reliably.
+ *
+ * **A hook that throws becomes the command's failure**, after the request has
+ * committed — which is how a test models a lost acknowledgement with a racing
+ * write inside it. That is load-bearing, not incidental: wrapping the `await`
+ * below in a try/catch would leave such a test green while it silently stopped
+ * exercising the retry at all.
  */
 export function afterResponse(
   client: DynamoDBClient,
