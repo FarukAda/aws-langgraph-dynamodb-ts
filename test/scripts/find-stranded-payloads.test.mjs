@@ -698,3 +698,41 @@ test('a request that times out is reported as unreadable, never as a stranded ro
   assert.deepEqual(result.stranded, [], 'a request the sweep gave up on is not a finding');
   assert.equal(result.checked, 6, 'and the keys after it are still swept');
 });
+
+test('a listing that times out fails the sweep, rather than clearing a bucket it never read', async () => {
+  /**
+   * The other half of the bound. A `HeadObject` or `GetItem` the sweep gave up
+   * on is one unreadable row; a `ListObjectVersions` it gave up on is a bucket
+   * it did not see, so it must come back out of `main` — which is what the
+   * script turns into a non-zero exit — and it must print no report, because a
+   * report saying nothing was found is the one answer an operator must never
+   * get from a sweep that never listed anything.
+   */
+  const stall = () => {
+    const error = new Error('request timed out');
+    error.name = 'TimeoutError';
+    return Promise.reject(error);
+  };
+  const destroyed = [];
+  const stalling = (label) => () => ({ send: stall, destroy: () => destroyed.push(label) });
+  const logged = [];
+  const printed = console.log;
+  console.log = (line) => logged.push(line);
+  try {
+    await assert.rejects(
+      main(['--bucket', 'b', '--table', 't'], {
+        createS3: stalling('s3'),
+        createDynamoDB: stalling('ddb'),
+      }),
+      { name: 'TimeoutError' },
+      'a listing the sweep could not read must fail it, not end it quietly',
+    );
+  } finally {
+    console.log = printed;
+  }
+  assert.ok(
+    !logged.some((line) => line.includes('stranded row(s)')),
+    `a sweep that failed must print no report: ${JSON.stringify(logged)}`,
+  );
+  assert.deepEqual(destroyed, ['s3', 'ddb'], 'and both clients are still closed on the way out');
+});
