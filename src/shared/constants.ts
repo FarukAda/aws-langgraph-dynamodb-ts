@@ -126,12 +126,17 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * How long a socket may sit idle (5 seconds) on a client this library builds
- * before the request handler destroys the request and rejects it with a
- * retryable `TimeoutError`. An idle timer rather than a deadline: activity in
- * either direction resets it, so it bounds a transfer that has stalled and
- * never one that is merely slow, and its clock starts at socket assignment
- * rather than at request creation. What each client needs it *for* differs,
- * so that belongs at each client's own call site rather than here.
+ * before the request handler destroys the request. Which error that surfaces
+ * as depends on when it fires: before response headers the handler's own
+ * rejection reaches the caller as a `TimeoutError`, while after them the call
+ * has already resolved and the destroy arrives through the response stream
+ * instead, as an `ECONNRESET` abort. Both are classified retryable, so either
+ * way a stalled transfer becomes a retry of this library's own. An idle timer
+ * rather than a deadline: activity in either direction resets it, so it bounds
+ * a transfer that has stalled and never one that is merely slow, and its clock
+ * starts at socket assignment rather than at request creation. What each
+ * client needs it *for* differs, so that belongs at each client's own call
+ * site rather than here.
  *
  * Not a tuning knob. The handler installs the socket listener immediately only
  * below 6 000 ms; at or above that it defers registration by 3 000 ms and

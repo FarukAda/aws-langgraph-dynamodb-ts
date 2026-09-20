@@ -1,4 +1,7 @@
+import type { S3Client } from '@aws-sdk/client-s3';
+
 import { S3Offloader } from '../../../../../src/shared/codec/s3/offloader';
+import { downloadObject } from '../../../../../src/shared/codec/s3/read-write';
 import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../../../../src/shared/constants';
 
 type ClientModule = typeof import('../../../../../src/shared/codec/s3/client');
@@ -165,5 +168,48 @@ describe('the same bound on an injected S3 client factory', () => {
       requestHandler: { requestTimeout: 222 },
     });
     offloader.destroy();
+  });
+});
+
+describe('a download that stalls after its response headers have arrived', () => {
+  /** One chunk, then the read dies the way a destroyed socket kills it. */
+  function abortingBody(): object {
+    return {
+      async *[Symbol.asyncIterator]() {
+        yield new Uint8Array([1]);
+        throw Object.assign(new Error('aborted'), { code: 'ECONNRESET' });
+      },
+    };
+  }
+
+  /** Only what {@link downloadObject} calls on a client. */
+  function clientYielding(bodies: object[]): { client: S3Client; calls: () => number } {
+    let sent = 0;
+    const client = {
+      send: async () => {
+        sent += 1;
+        return { Body: bodies[sent - 1] };
+      },
+    } as unknown as S3Client;
+    return { client, calls: () => sent };
+  }
+
+  /**
+   * The case the idle timer exists for on this client: the handler resolves at
+   * the response *headers*, so a body stalling mid-stream is destroyed after
+   * the promise has already settled. The rejection the handler prepares is
+   * then discarded, and what reaches this library is the response stream's own
+   * `ECONNRESET` rather than a `TimeoutError` — a different name for the same
+   * event, and the reason both are in the shared classifier. The read runs
+   * inside the retried closure, so the stalled attempt costs an attempt rather
+   * than the download.
+   */
+  it('retries the aborted read the destroy produces, which carries no TimeoutError', async () => {
+    const whole = { transformToByteArray: async () => new Uint8Array([7, 8]) };
+    const { client, calls } = clientYielding([abortingBody(), whole]);
+    await expect(downloadObject(client, 'b', 'k.bin', 1024)).resolves.toEqual(
+      new Uint8Array([7, 8]),
+    );
+    expect(calls()).toBe(2);
   });
 });
