@@ -126,7 +126,14 @@ async function flushBuffer(options: PartitionDeleteOptions, state: PassState): P
   const tally = await flushPendingDeletes(options, state.buffer.splice(0));
   state.deleted += tally.deleted;
   state.skipped += tally.refused;
-  state.attempted += tally.deleted + tally.refused + tally.failures.length;
+  /**
+   * Refusals are deliberately out of this total. They are not rows the pass
+   * failed to delete; they are rows it was never entitled to delete, already
+   * counted as `skipped` and reported on their own line. Counting them here
+   * would make the error read `1/3 row(s) succeeded, 1 row(s) failed` and leave
+   * the reader to guess at the third.
+   */
+  state.attempted += tally.deleted + tally.failures.length;
   for (const unit of tally.refusedUnits) state.units.add(unit);
   if (tally.failures.length === 0) return;
   const { deleted, attempted } = state;

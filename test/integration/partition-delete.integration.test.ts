@@ -43,6 +43,14 @@ beforeAll(async () => {
 afterAll(async () => {
   saver.destroy();
   history.destroy();
+  /**
+   * The adapters below are built on clients this file owns, and `destroy()` on
+   * an adapter deliberately leaves a caller-supplied client alone. Without this
+   * the run ends with live keep-alive agents and jest reports a worker that
+   * failed to exit, long after the last assertion passed.
+   */
+  for (const base of racingClients) base.destroy();
+  racingClients.length = 0;
   await deleteTable(admin, tableName);
   admin.destroy();
 });
@@ -66,6 +74,9 @@ const threadConfig = (threadId: string, checkpointId?: string) => ({
   configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: checkpointId },
 });
 
+/** Every client this file builds for a racing writer, destroyed in `afterAll`. */
+const racingClients: DynamoDBClient[] = [];
+
 /**
  * A saver whose partition read is interrupted, once, by `race` — so a write
  * lands after the read observed the partition and before any delete is issued,
@@ -73,6 +84,7 @@ const threadConfig = (threadId: string, checkpointId?: string) => ({
  */
 function racingSaver(race: () => Promise<void>, withS3 = true): DynamoDBSaver {
   const base = new DynamoDBClient({ ...DDB_LOCAL_CONFIG, maxAttempts: 1 });
+  racingClients.push(base);
   afterResponse(base, 'QueryCommand', race);
   return new DynamoDBSaver({
     tableName,
@@ -85,6 +97,7 @@ function racingSaver(race: () => Promise<void>, withS3 = true): DynamoDBSaver {
 /** The same, for a chat-history session. */
 function racingHistory(race: () => Promise<void>): DynamoDBChatMessageHistory {
   const base = new DynamoDBClient({ ...DDB_LOCAL_CONFIG, maxAttempts: 1 });
+  racingClients.push(base);
   afterResponse(base, 'QueryCommand', race);
   return new DynamoDBChatMessageHistory({
     tableName,
@@ -136,6 +149,12 @@ describe('deleteThread deletes exactly the rows it observed (D2)', () => {
     racer.destroy();
     const tuple = await saver.getTuple(stored);
     expect(tuple?.checkpoint.id).toBe('cp-1');
+    /**
+     * The id alone would hold for the checkpoint written before the race as
+     * well; the marker is what says the racer's write is the one that
+     * survived, which is the whole claim of this test.
+     */
+    expect(String(tuple?.checkpoint.channel_values.blob)).toMatch(/^B/);
     expect(tuple?.pendingWrites?.map(([, channel]) => channel)).toEqual(['messages']);
     expect(await missingObjects()).toEqual([]);
     expect(warnings.some((line) => line.includes('rewritten since the read'))).toBe(true);
@@ -144,7 +163,10 @@ describe('deleteThread deletes exactly the rows it observed (D2)', () => {
 
   /**
    * The residue the design keeps open and names: a pending write rewritten
-   * after its checkpoint's rows were already deleted outlives them. It is a
+   * during the pass outlives the checkpoint it belongs to. The hook fires
+   * after the partition read and before any delete, so the racing write lands
+   * while META and PAYLOAD are still there; they are deleted with the ids the
+   * read observed, and only the WRITE row - whose id moved - is refused. It is a
    * leak, not a loss — no read path reaches it through the missing META row —
    * it is reported, and a second pass clears it.
    */

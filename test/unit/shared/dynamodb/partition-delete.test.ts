@@ -240,13 +240,22 @@ describe('deletePartitionRows carries a refusal forward', () => {
    * before the next kind's are issued. One buffer of twenty-five spanning the
    * boundary would issue both at once and suppress nothing.
    */
-  it('flushes at the kind boundary, so every kind settles before the next is issued', async () => {
+  it("issues a kind's deletes together, in the order the scan returns them", async () => {
+    /**
+     * Deliberately weaker than the name this test used to carry. Issue order
+     * cannot prove the kind-boundary flush: the deletes are started in index
+     * order whether a boundary exists or not, so this assertion stays green
+     * with the flush removed. What it pins is that the kinds are not
+     * interleaved, which is the scan property the carry-forward relies on. The
+     * boundary itself is proven by the suppression test above and by
+     * `delete-thread`'s `table.issued` assertion, both of which go red without
+     * it.
+     */
     const { client, table } = stage(unitRows);
     await deletePartitionRows(checkpointerOptions(client));
     const kinds = table.issued.map((sortKey) => sortKey.split('#')[0]);
     expect(kinds).toEqual(['META', 'META', 'PAYLOAD', 'PAYLOAD', 'WRITE', 'WRITE']);
   });
-
   it('never lets one refusal stop the rows behind it', async () => {
     const observed = [meta('c1', 'w1'), meta('c2', 'w1'), meta('c3', 'w1')];
     const current = [meta('c1', 'w2'), meta('c2', 'w1'), meta('c3', 'w2')];

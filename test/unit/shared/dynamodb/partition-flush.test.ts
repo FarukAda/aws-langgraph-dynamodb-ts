@@ -172,6 +172,13 @@ describe('flushPendingDeletes', () => {
     const tally = await flushPendingDeletes(deps(client), rows);
     expect(tally.failures).toEqual([denied]);
     expect(attempts).toBe(DELETE_CONCURRENCY);
+    /**
+     * The rows already in flight when the failure lands are still counted:
+     * `mapWithConcurrency` lets each worker finish the row it holds before it
+     * stops taking new ones. Without this the pass would throw away deletes it
+     * really did perform, and report less than it did.
+     */
+    expect(tally.deleted).toBe(DELETE_CONCURRENCY - 1);
   });
 
   it('cleans nothing up when the adapter has no offloader', async () => {

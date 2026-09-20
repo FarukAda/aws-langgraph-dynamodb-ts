@@ -112,9 +112,11 @@ async function deleteRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally)
  * refusal never stops anything. S3 cleanup never throws either
  * ({@link cleanUpS3Orphans}).
  *
- * Guarantees: at most {@link DELETE_CONCURRENCY} requests are in flight, so one
- * request per row costs a bounded number of round trips rather than one per
- * row, and a partition of any size cannot open a socket per row. A row the pin
+ * Guarantees: at most {@link DELETE_CONCURRENCY} requests are in flight. There
+ * is one request per row - that is the price of a condition, which a batch
+ * write silently ignores - but they cost a bounded number of sequential rounds
+ * rather than one per row, and a partition of any size cannot open a socket
+ * per row. A row the pin
  * turned away is left exactly as the racing writer left it, and nothing it
  * names is released — a live row still names those objects.
  */

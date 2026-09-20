@@ -21,11 +21,19 @@ function rowKey(item: { PK?: unknown; SK?: unknown }): string {
  * The rejection DynamoDB answers a lost condition with: the row attached in raw
  * AttributeValue form when it is still there, and nothing at all when it is
  * gone — the two shapes the delete path has to tell apart.
+ *
+ * The row rides along **only** when the request asked for it. Attaching it
+ * unconditionally would be the one infidelity that matters: a guard that
+ * forgot `ReturnValuesOnConditionCheckFailure` would then still look like a
+ * refusal carrying its row, when in production it answers without one, the
+ * caller reads that as "already gone", and it counts a live row as deleted and
+ * releases the objects that row still names.
  */
-function rejection(row: DocItem | undefined): Error {
+function rejection(input: DeleteCommandInput, row: DocItem | undefined): Error {
+  const asked = input.ReturnValuesOnConditionCheckFailure === 'ALL_OLD';
   return Object.assign(new Error('The conditional request failed'), {
     name: 'ConditionalCheckFailedException',
-    Item: row === undefined ? undefined : marshall(row),
+    Item: row === undefined || !asked ? undefined : marshall(row),
   });
 }
 
@@ -69,7 +77,7 @@ export function conditionalTable(items: readonly DocItem[]): ConditionalTable {
       const key = rowKey(input.Key ?? {});
       issued.push(String(input.Key?.SK));
       const row = rows.get(key);
-      if (!conditionHolds(input, row)) throw rejection(row);
+      if (!conditionHolds(input, row)) throw rejection(input, row);
       rows.delete(key);
       return {};
     },
