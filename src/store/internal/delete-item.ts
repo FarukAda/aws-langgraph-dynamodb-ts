@@ -65,9 +65,10 @@ async function repinOrResolve(
  * pre-read and this write. The token covers the lost acknowledgement, and what
  * it buys is that a rejection reaching the catch below is *informative*:
  * inside one budget the re-send of an attempt that already committed is
- * answered from the idempotency cache rather than removing whatever has
- * arrived at the key since, so a cancellation means a genuine race and not
- * this call's own landed delete reported back as a loss. An unconditional
+ * answered from the idempotency cache rather than turned away by whatever has
+ * arrived at the key since — a rejection the loop would re-pin on, deleting
+ * next iteration a row this call never read — so a cancellation means a
+ * genuine race and not this call's own landed delete reported back as a loss. An unconditional
  * `DeleteItem` can be neither turned away nor deduplicated, which is why the
  * write takes a transaction's shape ({@link deleteIdempotently}).
  *

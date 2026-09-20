@@ -42,11 +42,12 @@ import type { StoreContext } from './setup';
  * heavy contention this put can exhaust its budget where a plain `PutItem`
  * would simply have won the race.
  *
- * That bound is not a second retry limit; it is what keeps the budget inside
- * the window the token is honoured for. The token enforces no window of its
- * own, and a re-send arriving after it has closed is a new write that lands
- * over whatever has replaced this row and names an object a concurrent release
- * may already have taken away.
+ * That bound does end a long budget early, as above, but it is not there as a
+ * retry limit of its own: it is what keeps the budget inside the window the
+ * token is honoured for. The token enforces no window of its own, and a
+ * re-send arriving after it has closed is a new write that lands over whatever
+ * has replaced this row and names an object a concurrent release may already
+ * have taken away.
  *
  * The pin decides which half of the token's guarantee applies, and the swap
  * below is written around the answer. An attempt the guard turns away commits

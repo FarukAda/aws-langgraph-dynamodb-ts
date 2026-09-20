@@ -58,10 +58,11 @@ function isCancelledByCondition(error: Error): boolean {
  * for a no-op would misrepresent what happened.
  *
  * Guarantees: the decrement is applied at most once, however often the request
- * is re-sent. `ADD #count :neg` is the one write in this package that is not
- * naturally idempotent — applied twice it subtracts twice, and nothing reads
- * the row back afterwards to notice — so a re-sent attempt must be answered
- * from DynamoDB's idempotency cache rather than re-evaluated. Two things hold
+ * is re-sent. `ADD #count :neg` is one of the two writes in this package that
+ * are not naturally idempotent — the append's own `ADD #count :n` is the
+ * other — and applied twice it subtracts twice, with nothing reading the row
+ * back afterwards to notice, so a re-sent attempt must be answered from
+ * DynamoDB's idempotency cache rather than re-evaluated. Two things hold
  * that together and only together: the `ClientRequestToken`, which makes a
  * re-send a no-op, and the deadline of {@link MAX_WRITE_LIFETIME_MS}, which
  * stops the retrying while that token is still honoured. Nothing in the token
