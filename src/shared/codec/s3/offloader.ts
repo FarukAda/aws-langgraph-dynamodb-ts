@@ -5,6 +5,7 @@ import {
   DEFAULT_S3_KEY_PREFIX,
   DEFAULT_S3_SSE,
   DEFAULT_S3_THRESHOLD_BYTES,
+  DEFAULT_SOCKET_TIMEOUT_MS,
 } from '../../constants';
 import type { Logger } from '../../logging/logger';
 import { type BacklinkRow, backlinkMetadata } from './backlink';
@@ -63,10 +64,23 @@ export class S3Offloader {
   private getClient(): Promise<S3Client> {
     if (!this.clientPromise) {
       const cfg: S3ClientConfigLike = this.config.clientConfig ?? {};
-      /** The hook is typed structurally for consumers; the runtime modules use the real SDK client. */
+      /**
+       * The hook is typed structurally for consumers; the runtime modules use
+       * the real SDK client. It hands over a constructor, not a configuration,
+       * so a caller who supplies one has not opted out of the bound: the same
+       * default handler {@link createDefaultS3Client} applies reaches it, for
+       * the reason recorded there. `cfg` still spreads last, so a caller who
+       * does want to replace it puts a `requestHandler` in `clientConfig`.
+       */
       this.clientPromise = (
         this.config.createS3Client
-          ? Promise.resolve(this.config.createS3Client({ maxAttempts: 1, ...cfg }) as S3Client)
+          ? Promise.resolve(
+              this.config.createS3Client({
+                maxAttempts: 1,
+                requestHandler: { socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS },
+                ...cfg,
+              }) as S3Client,
+            )
           : createDefaultS3Client(cfg)
       ).then(
         (client) => {

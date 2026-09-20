@@ -172,6 +172,7 @@ describe('S3Offloader', () => {
     expect(createS3Client).toHaveBeenCalledTimes(1);
   });
 
+  /** The key set stays exact: a key this path adds of its own would otherwise go unnamed. */
   it('passes maxAttempts: 1 to a custom createS3Client factory too, unless overridden', async () => {
     s3Mock.on(PutObjectCommand).resolves({});
     const createS3Client = jest.fn((cfg: S3ClientConfig) => new S3Client(cfg));
@@ -181,9 +182,14 @@ describe('S3Offloader', () => {
       createS3Client,
     });
     await offloader.upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
-    expect(createS3Client).toHaveBeenCalledWith({ maxAttempts: 1, region: 'us-east-1' });
+    expect(createS3Client).toHaveBeenCalledWith({
+      maxAttempts: 1,
+      region: 'us-east-1',
+      requestHandler: expect.anything(),
+    });
   });
 
+  /** Exact here too, for the same reason; the handler's own field is pinned once, next door. */
   it('lets an explicit maxAttempts in clientConfig override the default for a custom factory', async () => {
     s3Mock.on(PutObjectCommand).resolves({});
     const createS3Client = jest.fn((cfg: S3ClientConfig) => new S3Client(cfg));
@@ -193,7 +199,11 @@ describe('S3Offloader', () => {
       createS3Client,
     });
     await offloader.upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' });
-    expect(createS3Client).toHaveBeenCalledWith({ region: 'us-east-1', maxAttempts: 3 });
+    expect(createS3Client).toHaveBeenCalledWith({
+      region: 'us-east-1',
+      maxAttempts: 3,
+      requestHandler: expect.anything(),
+    });
   });
 
   it('ensureLifecycleRule delegates to the bucket lifecycle config', async () => {

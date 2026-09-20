@@ -126,19 +126,22 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * How long a socket may sit idle (5 seconds) on a client this library builds
- * before the request is destroyed. {@link DEFAULT_REQUEST_TIMEOUT_MS} stops
- * applying the moment response *headers* arrive, because the handler resolves
- * there and clears its timers, so it says nothing about a response body that
- * then stalls mid-stream. This does.
+ * before the request handler destroys the request and rejects it with a
+ * retryable `TimeoutError`. An idle timer rather than a deadline: activity in
+ * either direction resets it, so it bounds a transfer that has stalled and
+ * never one that is merely slow, and its clock starts at socket assignment
+ * rather than at request creation. What each client needs it *for* differs,
+ * so that belongs at each client's own call site rather than here.
  *
  * Not a tuning knob. The handler installs the socket listener immediately only
  * below 6 000 ms; at or above that it defers registration by 3 000 ms and
- * returns the deferral's timer id, which the same clear-on-resolve cancels
- * when response headers arrive — so at 6 000 or more the field silently stops
- * doing anything for every response that answers inside three seconds, which
- * is the normal case. A unit assertion holds this value under that threshold
- * so raising it fails loudly instead of disabling the only bound a stalled
- * body has.
+ * returns the deferral's timer id, which the handler's clear-on-resolve
+ * cancels when response headers arrive — so at 6 000 or more the field
+ * silently stops doing anything for every response that answers inside three
+ * seconds, which is the normal case. That is a fact about the request handler
+ * and about neither client. A unit assertion holds this value under that
+ * threshold so raising it fails loudly instead of disabling the only bound a
+ * stalled transfer has.
  */
 export const DEFAULT_SOCKET_TIMEOUT_MS = 5_000;
 
