@@ -66,6 +66,14 @@ export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDy
  * 3 requests per operation at the SDK default) and a throttling event turns
  * into a retry storm. Saying so once, at construction, is the only place the
  * caller can act on it.
+ *
+ * The one gap a deadline cannot cover. A tokened write's budget is bounded by
+ * `MAX_WRITE_LIFETIME_MS`, but that bound is checked between attempts: it can
+ * refuse to start another wait, and it cannot shorten an attempt already in
+ * flight. An injected client that retries internally turns one of this
+ * library's attempts into several of its own, so the time spent inside a
+ * single attempt stops being bounded by anything this library sets — which is
+ * why the warning says to construct it with `maxAttempts: 1`.
  */
 export async function warnOnStackedRetries(
   client: DynamoDBDocument,
