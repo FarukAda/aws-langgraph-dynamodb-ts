@@ -234,6 +234,12 @@ jobs:
       - name: Duplicated source (jscpd)
         run: npm run cpd
 
+      # The maintenance sweep is an ESM .mjs script, so its tests run under
+      # node --test rather than the jest tier. No build and no AWS: the whole
+      # suite drives hand-rolled fake clients.
+      - name: Maintenance script tests (node --test)
+        run: npm run test:scripts
+
       - name: Workflow syntax (actionlint)
         run: |
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7

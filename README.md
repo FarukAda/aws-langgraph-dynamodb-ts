@@ -866,6 +866,47 @@ Requests per call, before retries. "Consistent" reads are `ConsistentRead: true`
 
 Alert on the two `error` events (a corrupt message row, a failed append rollback) and on the five `warn` events that name an orphan or an exhausted compare-and-swap (see [Logging](#logging)); count `RetryExhaustedError` and `UpstreamError` by `context.operation` and `httpStatusCode`. `RetryExhaustedError.context.attempts` and every `debug` retry line carry the SDK `requestId` of the last failure for AWS Support. Watch the table's `ThrottledRequests` and `ConsumedWriteCapacityUnits` per partition key prefix — the [hot-partition](#production-notes) note explains which identifier concentrates load.
 
+### Finding rows whose payload was released
+
+On a versioned bucket a released payload is not erased: it becomes a noncurrent version behind a delete marker, and it stays there for the grace window the [lifecycle rules](#s3-lifecycle-rules) set. That window is the only cheap opportunity to find a **stranded row** — one that is still live and still names an object whose payload has been released — because the object side lists exactly the releases, and every offloaded object carries its row's key as S3 user metadata (`dynamodb-pk-b64`, `dynamodb-sk-b64`).
+
+The sweep that does this lives at `scripts/find-stranded-payloads.mjs` **in the repository**. It is deliberately not in the npm tarball and there is no `bin` for it: its command line would otherwise become a `1.x` compatibility promise for a tool an operator runs a handful of times. Clone the repository (or copy the one file) to run it:
+
+```bash
+node scripts/find-stranded-payloads.mjs \
+  --bucket my-bucket --table my-table --region eu-west-1 \
+  --prefix langgraph-checkpoints/ --grace-days 1
+```
+
+`--prefix` defaults to `langgraph-checkpoints/` and `--grace-days` to `1`, the grace `ensureS3LifecycleRule()` writes; pass the larger number when the bucket carries a longer `NoncurrentDays` floor, so the hours-remaining figure is not pessimistic. The script prints the settings it swept with, so a report pasted into an incident channel says what it ran against. It **exits 0 whenever the sweep completed**, found something or not, and non-zero only when the sweep itself failed — so anything you wire it into should alert on the report, not on the exit code.
+
+**Permissions are the operator's, not the library's.** The sweep needs `s3:ListBucketVersions` and `s3:GetObjectVersion` on the bucket and `dynamodb:GetItem` on the table. The first two are actions this library never calls, which is why they are absent from the policy under [IAM permissions](#iam-permissions): grant them to whoever runs the sweep, not to the role your application runs as.
+
+**When to run it.** On demand: after an incident, or when `S3_OFFLOAD_FAILED` or a `NoSuchKey` read failure starts alarming. Not hourly — it costs per release, not per query, and the numbers below are per sweep.
+
+**What it reads, in order.** `ListObjectVersions` under the prefix, paginated; for each released key, `HeadObject` on the **surviving payload version** to read the backlink; then a strongly consistent `GetItem` on the decoded key. It reports a row that is live and still names that key. A row that is gone is the ordinary release — on the happy path that is every marker — and a row that now names a different object was superseded, not stranded; neither is reported. Each finding prints the DynamoDB key, the object key, the payload version's id, the delete marker's id and timestamp, and the hours of grace remaining.
+
+**What it costs.** Per sweep, with `V` versions and `M` delete markers under the prefix:
+
+| | requests |
+| --- | --- |
+| listing | `ceil((V + M) / 1000)` — `ListObjectVersions` returns at most 1000 entries per page, counting versions and markers together |
+| per marker | 1 `HeadObject` + 1 `GetItem` |
+| total | `ceil((V + M) / 1000) + 2M` |
+
+With the marker-reclaim rule on the bucket, `M` is the releases still inside the grace window — roughly one to two days of release volume — and `V` is the live payload count plus the same. A deployment releasing 10 000 payloads a day with 100 000 live offloaded objects therefore has `V = 120 000` (100 000 live plus 20 000 not-yet-expired noncurrent) and `M = 20 000`, so one sweep costs `ceil(140 000 / 1000) + 2 x 20 000` = **40 140 requests**, dominated by the per-marker pair. That is a few dollars of S3 and DynamoDB requests, which is the other reason to run it on demand rather than on a schedule.
+
+**Without the marker-reclaim rule, `M` is total lifetime release volume** and the figure above has no upper bound: every release leaves a marker that is never reclaimed, so the sweep's cost grows for the life of the bucket. Two deployments do not get that rule from this library:
+
+- **`s3` configured without a `ttl`.** `ensureS3LifecycleRule()` is a no-op in that shape, so a versioned bucket accumulates a delete marker per release forever.
+- **Anyone who never calls `ensureS3LifecycleRule()` at all.**
+
+Both must write the two rules themselves; [their shapes are above](#s3-lifecycle-rules), verbatim.
+
+**What it cannot find.** A strand whose grace window has already expired. S3 reclaims the noncurrent version first and then the delete marker, so there is neither a marker to list nor a backlink to read, and the sweep is blind to it by construction. Finding those needs the opposite direction — a full table `Scan`, keeping every row that carries an offloaded descriptor, then one `HeadObject` per descriptor to see whether the object is still there — which costs a read of the whole table and stays a recipe rather than a script. While the marker is still present but its last version has gone, the sweep counts the key separately as having no surviving payload version, which is the last warning you get.
+
+**What to do with a finding.** The script repairs nothing, and it should not: the right remedy depends on why the row is there. Either **restore the payload** — `DeleteObjectVersion` on the *delete marker's* version id, which makes the payload current again, and which only works while the hours remaining are positive — or **accept the delete** — `DeleteItem` on the DynamoDB key. For a checkpointer `WRITE` row that survived a `deleteThread()`, deleting the row is right; for a store item recreated after its object was released, it is not.
+
 ### Lambda and other short-lived runtimes
 
 Construct the adapters once at module scope (or one `DynamoDBFactory.createAll()`), reuse them across invocations, and pass a `client` you own if the function also uses DynamoDB elsewhere; `destroy()` is only needed when a process wants to release sockets before exit. Size the function timeout against the worst-case retry budgets above: a heavily contended chat append can take about a minute, and `retry.maxAttempts` / `retry.maxDelayMs` trade that ceiling against resilience to throttling. Every long-running method takes an `AbortSignal`, so a timeout can cancel cleanly (see [Error handling](#error-handling)).

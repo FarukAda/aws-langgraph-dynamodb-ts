@@ -7,7 +7,8 @@
     ".github/scripts/*.mjs",
     "*.config.ts",
     "test/**/*.test.ts",
-    "test/package-smoke/*.test.mjs"
+    "test/package-smoke/*.test.mjs",
+    "test/scripts/*.test.mjs"
   ],
   "project": ["src/**/*.ts", "test/**/*.ts"],
   "ignoreDependencies": ["ts-node"]

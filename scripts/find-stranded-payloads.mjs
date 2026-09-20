@@ -1,0 +1,432 @@
+/**
+ * Report DynamoDB rows whose offloaded S3 payload has been released.
+ *
+ * A release on a versioned bucket does not erase the object: it leaves a delete
+ * marker with the payload surviving behind it as a noncurrent version, until the
+ * lifecycle rule's grace expires. That window is the only time a stranded row —
+ * one still live, still naming an object whose payload was released — can be
+ * found cheaply, because the object side lists exactly the releases and each
+ * object carries its row's key as `dynamodb-pk-b64` / `dynamodb-sk-b64` user
+ * metadata.
+ *
+ * What it reads, in order: `ListObjectVersions` under the prefix, paginated;
+ * for each released key, `HeadObject` on the surviving payload version to read
+ * that backlink; then a strongly-consistent `GetItem` on the decoded key. It
+ * writes nothing and repairs nothing — it prints the two remedies and leaves the
+ * choice to an operator, because the right one depends on why the row is there.
+ *
+ * Usage:
+ *   node scripts/find-stranded-payloads.mjs --bucket B --table T [--region R]
+ *                                           [--prefix P] [--grace-days N]
+ *
+ * Exit code: 0 when the sweep completed, whether or not it found anything;
+ * non-zero only when the sweep itself failed.
+ *
+ * The operator running it needs `s3:ListBucketVersions`, `s3:GetObjectVersion`
+ * and `dynamodb:GetItem` — the first two are not actions the library itself ever
+ * calls. See the README runbook.
+ */
+import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';
+import { HeadObjectCommand, ListObjectVersionsCommand, S3Client } from '@aws-sdk/client-s3';
+import { unmarshall } from '@aws-sdk/util-dynamodb';
+import { pathToFileURL } from 'node:url';
+
+/**
+ * The key prefix swept when none is given. It mirrors `DEFAULT_S3_KEY_PREFIX`
+ * in `src/shared/constants.ts`, and a static test pins the two together.
+ */
+export const DEFAULT_PREFIX = 'langgraph-checkpoints/';
+
+/**
+ * Days a released payload survives behind its delete marker. It mirrors
+ * `S3_RELEASE_GRACE_DAYS` in `src/shared/constants.ts` — the value
+ * `ensureS3LifecycleRule()` writes as `NoncurrentDays` — and a static test pins
+ * the two together. Pass `--grace-days` when the bucket carries a longer floor.
+ */
+export const DEFAULT_GRACE_DAYS = 1;
+
+/** The metadata names carrying the backlink. S3 lower-cases them; both are base64url. */
+const PK_FIELD = 'dynamodb-pk-b64';
+const SK_FIELD = 'dynamodb-sk-b64';
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** Each accepted flag and the field it fills. */
+const FLAGS = {
+  '--bucket': 'bucket',
+  '--table': 'table',
+  '--region': 'region',
+  '--prefix': 'prefix',
+  '--grace-days': 'graceDays',
+};
+
+/** `--flag=value` split into its two halves; a bare `--flag` yields no value. */
+function splitFlag(argument) {
+  const equals = argument.indexOf('=');
+  if (equals < 0) return [argument, undefined];
+  return [argument.slice(0, equals), argument.slice(equals + 1)];
+}
+
+/** `--grace-days` as a number, refusing anything that is not a count of days. */
+function graceDaysOf(value) {
+  const days = Number(value);
+  if (!Number.isFinite(days) || days < 0) {
+    throw new Error(`--grace-days must be a non-negative number of days, not "${value}"`);
+  }
+  return days;
+}
+
+/**
+ * The sweep's settings, from `--flag value` or `--flag=value` pairs.
+ *
+ * Throws when a flag is unknown, has no value, or when `--bucket` or `--table`
+ * is missing: the sweep has nothing to read without them.
+ */
+export function parseArgs(argv) {
+  const parsed = {
+    bucket: undefined,
+    table: undefined,
+    region: undefined,
+    prefix: DEFAULT_PREFIX,
+    graceDays: DEFAULT_GRACE_DAYS,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const [flag, inline] = splitFlag(argv[index]);
+    const field = FLAGS[flag];
+    if (field === undefined) {
+      throw new Error(`unknown argument "${flag}"; accepted: ${Object.keys(FLAGS).join(' ')}`);
+    }
+    let value = inline;
+    if (value === undefined) {
+      index += 1;
+      value = argv[index];
+    }
+    if (value === undefined) throw new Error(`"${flag}" needs a value`);
+    parsed[field] = field === 'graceDays' ? graceDaysOf(value) : value;
+  }
+  if (parsed.bucket === undefined) throw new Error('--bucket is required');
+  if (parsed.table === undefined) throw new Error('--table is required');
+  return parsed;
+}
+
+/** An empty accumulator for the paginated listing, keyed by object key in listing order. */
+export function emptyListing() {
+  return { keys: new Map(), pages: 0, versions: 0, markers: 0 };
+}
+
+/** The accumulator's slot for `key`, created on first sight so listing order is preserved. */
+function slotFor(listing, key) {
+  const existing = listing.keys.get(key);
+  if (existing !== undefined) return existing;
+  const slot = { versions: [], markers: [] };
+  listing.keys.set(key, slot);
+  return slot;
+}
+
+/** One listing entry reduced to what the join needs. */
+function normalise(entry) {
+  return {
+    versionId: entry.VersionId,
+    isLatest: entry.IsLatest === true,
+    lastModified: new Date(entry.LastModified),
+  };
+}
+
+/**
+ * Fold one `ListObjectVersions` page into `listing`.
+ *
+ * `Versions` and `DeleteMarkers` are separate arrays that paginate together
+ * under one `KeyMarker`/`VersionIdMarker` pair, so a key's marker and its
+ * surviving version can land on different pages. Accumulating both arrays by
+ * key across every page is the carry that joins them; a join done one page at a
+ * time would report neither half.
+ */
+export function addVersionsPage(listing, page) {
+  listing.pages += 1;
+  for (const version of page.Versions ?? []) {
+    slotFor(listing, version.Key).versions.push(normalise(version));
+    listing.versions += 1;
+  }
+  for (const marker of page.DeleteMarkers ?? []) {
+    slotFor(listing, marker.Key).markers.push(normalise(marker));
+    listing.markers += 1;
+  }
+  return listing;
+}
+
+/**
+ * The newest of `entries`, or undefined for none. Ties on `LastModified` are
+ * broken by the greater version id, so the choice is the same on every run.
+ */
+function pickNewest(entries) {
+  let best;
+  for (const entry of entries) {
+    if (best === undefined) {
+      best = entry;
+      continue;
+    }
+    const delta = entry.lastModified.getTime() - best.lastModified.getTime();
+    if (delta > 0 || (delta === 0 && entry.versionId > best.versionId)) best = entry;
+  }
+  return best;
+}
+
+/**
+ * One record per released key: the delete marker and the payload version behind
+ * it, **joined by `Key`**.
+ *
+ * A marker's `VersionId` is the marker's own, not the payload's — heading that
+ * version reads the marker and returns a 404 with no metadata. And the two
+ * arrays are not parallel: a key that is still live contributes versions and no
+ * marker, so pairing the nth marker with the nth version pairs a key with
+ * another key's object. The payload version is the newest entry in `Versions`
+ * for that same key that is not the current one, which is not the same as the
+ * first entry listed for it.
+ *
+ * `payloadVersionId` is null when the key has a marker but no surviving
+ * version: its grace is spent and there is nothing left to read the backlink
+ * from.
+ */
+export function joinReleases(listing) {
+  const releases = [];
+  for (const [key, slot] of listing.keys) {
+    if (slot.markers.length === 0) continue;
+    const current = slot.markers.filter((marker) => marker.isLatest);
+    const marker = pickNewest(current.length > 0 ? current : slot.markers);
+    const payload = pickNewest(slot.versions.filter((version) => !version.isLatest));
+    releases.push({
+      key,
+      markerVersionId: marker.versionId,
+      markerLastModified: marker.lastModified,
+      payloadVersionId: payload === undefined ? null : payload.versionId,
+      payloadLastModified: payload === undefined ? null : payload.lastModified,
+    });
+  }
+  return releases;
+}
+
+/**
+ * Hours left before S3 reclaims the surviving version, counted from the delete
+ * marker — the moment the payload became noncurrent. Negative once spent; S3's
+ * day granularity rounds the real deadline up to the next UTC midnight, so this
+ * is the pessimistic end of a 24-48 h window.
+ */
+export function graceHoursRemaining(markerLastModified, graceDays, now = Date.now()) {
+  const expiresAt = markerLastModified.getTime() + graceDays * DAY_MS;
+  return Math.round(((expiresAt - now) / HOUR_MS) * 10) / 10;
+}
+
+/** One base64url metadata value as the text it encodes. */
+function decodePart(value) {
+  return Buffer.from(value, 'base64url').toString('utf8');
+}
+
+/**
+ * The DynamoDB key an object's user metadata points back at, or null when the
+ * pair is not both there — an object written by something else, or a version
+ * that is not a payload at all.
+ */
+export function decodeBacklink(metadata) {
+  if (metadata === undefined || metadata === null) return null;
+  const lowered = {};
+  for (const [name, value] of Object.entries(metadata)) lowered[name.toLowerCase()] = value;
+  const pk = lowered[PK_FIELD];
+  const sk = lowered[SK_FIELD];
+  if (typeof pk !== 'string' || typeof sk !== 'string') return null;
+  return { pk: decodePart(pk), sk: decodePart(sk) };
+}
+
+/**
+ * Whether an unmarshalled row still references `s3Key`.
+ *
+ * A row can carry more than one payload descriptor, under attributes that
+ * differ by row kind (`checkpoint`, `metadata`, `value`, `message`), so the
+ * whole item is walked for any object that is offloaded and names this key.
+ * A row that has since been rewritten to name another object is not stranded;
+ * it was superseded.
+ */
+export function rowNamesKey(item, s3Key) {
+  if (item === null || typeof item !== 'object') return false;
+  if (!Array.isArray(item) && item.location === 'S3' && item.s3Key === s3Key) return true;
+  return Object.values(item).some((value) => rowNamesKey(value, s3Key));
+}
+
+/** Every version and delete marker under `prefix`, paginated to the end. */
+export async function listReleases(s3, { bucket, prefix }) {
+  const listing = emptyListing();
+  let keyMarker;
+  let versionIdMarker;
+  for (;;) {
+    const page = await s3.send(
+      new ListObjectVersionsCommand({
+        Bucket: bucket,
+        Prefix: prefix,
+        KeyMarker: keyMarker,
+        VersionIdMarker: versionIdMarker,
+      }),
+    );
+    addVersionsPage(listing, page);
+    if (page.IsTruncated !== true) return listing;
+    keyMarker = page.NextKeyMarker;
+    versionIdMarker = page.NextVersionIdMarker;
+  }
+}
+
+/**
+ * The backlink on one released key's surviving payload version, or null with
+ * the reason recorded. A version that cannot be read is reported rather than
+ * thrown: one unreadable object must not end the sweep.
+ */
+async function readBacklink(s3, bucket, release, result) {
+  const record = { key: release.key, versionId: release.payloadVersionId };
+  try {
+    const head = await s3.send(
+      new HeadObjectCommand({
+        Bucket: bucket,
+        Key: release.key,
+        VersionId: release.payloadVersionId,
+      }),
+    );
+    const backlink = decodeBacklink(head.Metadata);
+    if (backlink !== null) return backlink;
+    result.unreadable.push({ ...record, reason: 'no backlink metadata on this version' });
+  } catch (error) {
+    result.unreadable.push({ ...record, reason: error.name ?? 'HeadObject failed' });
+  }
+  return null;
+}
+
+/** The row at `(pk, sk)`, read consistently, or null when there is none. */
+async function readRow(ddb, { table, pk, sk }) {
+  const response = await ddb.send(
+    new GetItemCommand({
+      TableName: table,
+      Key: { PK: { S: pk }, SK: { S: sk } },
+      ConsistentRead: true,
+    }),
+  );
+  return response.Item === undefined ? null : unmarshall(response.Item);
+}
+
+/**
+ * Sweep one prefix and report the rows whose payload was released.
+ *
+ * Reads only. `s3` and `ddb` are anything with a `send`, so the whole sweep is
+ * driven by fakes in the tests.
+ */
+export async function sweep({ s3, ddb, bucket, table, prefix, graceDays, now = Date.now() }) {
+  const listing = await listReleases(s3, { bucket, prefix });
+  const releases = joinReleases(listing);
+  const result = {
+    bucket,
+    table,
+    prefix,
+    graceDays,
+    pages: listing.pages,
+    versions: listing.versions,
+    markers: listing.markers,
+    releases: releases.length,
+    expired: 0,
+    checked: 0,
+    unreadable: [],
+    stranded: [],
+  };
+  for (const release of releases) {
+    if (release.payloadVersionId === null) {
+      result.expired += 1;
+      continue;
+    }
+    result.checked += 1;
+    const backlink = await readBacklink(s3, bucket, release, result);
+    if (backlink === null) continue;
+    const row = await readRow(ddb, { table, pk: backlink.pk, sk: backlink.sk });
+    if (row === null || !rowNamesKey(row, release.key)) continue;
+    result.stranded.push({
+      pk: backlink.pk,
+      sk: backlink.sk,
+      key: release.key,
+      payloadVersionId: release.payloadVersionId,
+      markerVersionId: release.markerVersionId,
+      markerLastModified: release.markerLastModified,
+      graceHoursRemaining: graceHoursRemaining(release.markerLastModified, graceDays, now),
+    });
+  }
+  return result;
+}
+
+/** One stranded row, as one line an incident channel can carry. */
+export function formatStranded(row) {
+  return [
+    'STRANDED',
+    `pk=${JSON.stringify(row.pk)}`,
+    `sk=${JSON.stringify(row.sk)}`,
+    `objectKey=${row.key}`,
+    `payloadVersionId=${row.payloadVersionId}`,
+    `deleteMarkerVersionId=${row.markerVersionId}`,
+    `markerLastModified=${row.markerLastModified.toISOString()}`,
+    `graceHoursRemaining=${row.graceHoursRemaining}`,
+  ].join(' ');
+}
+
+/** The two remedies, printed after any finding. This script applies neither. */
+const REMEDIES = [
+  'This script repairs nothing. Each row above has two remedies, and which one is',
+  'right depends on why the row is still there:',
+  '  (a) restore the payload - DeleteObjectVersion on the delete marker, the id',
+  '      printed above as deleteMarkerVersionId, which makes the payload current',
+  '      again. Do this while graceHoursRemaining is still positive.',
+  '  (b) accept the delete - DeleteItem on the DynamoDB key printed above (pk, sk).',
+  'For a checkpointer WRITE row that survived a deleteThread, (b) is right; for a',
+  'store item that was recreated after its object was released, it is not.',
+];
+
+/** The whole report: what was swept, what was found, and what to do with it. */
+export function reportLines(result) {
+  const lines = [
+    `swept bucket=${result.bucket} prefix=${result.prefix} table=${result.table} ` +
+      `graceDays=${result.graceDays}`,
+    `listed ${result.versions} version(s) and ${result.markers} delete marker(s) ` +
+      `over ${result.pages} page(s)`,
+    `${result.releases} released key(s): ${result.checked} checked, ` +
+      `${result.expired} with no surviving payload version`,
+  ];
+  for (const row of result.unreadable) {
+    lines.push(
+      `UNREADABLE objectKey=${row.key} payloadVersionId=${row.versionId} reason=${row.reason}`,
+    );
+  }
+  for (const row of result.stranded) lines.push(formatStranded(row));
+  lines.push(`${result.stranded.length} stranded row(s)`);
+  if (result.stranded.length > 0) lines.push(...REMEDIES);
+  return lines;
+}
+
+/** Parse, announce what is about to be swept, sweep it, print the report. */
+export async function main(argv) {
+  const options = parseArgs(argv);
+  const clientConfig = options.region === undefined ? {} : { region: options.region };
+  console.log(
+    `sweeping bucket=${options.bucket} prefix=${options.prefix} table=${options.table} ` +
+      `region=${options.region ?? '(from the environment)'} graceDays=${options.graceDays}`,
+  );
+  const s3 = new S3Client(clientConfig);
+  const ddb = new DynamoDBClient(clientConfig);
+  try {
+    const result = await sweep({ s3, ddb, ...options });
+    for (const line of reportLines(result)) console.log(line);
+  } finally {
+    s3.destroy();
+    ddb.destroy();
+  }
+}
+
+const runDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (runDirectly) {
+  main(process.argv.slice(2)).catch((error) => {
+    console.error(`sweep failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
