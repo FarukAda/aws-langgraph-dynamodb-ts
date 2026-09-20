@@ -83,8 +83,9 @@ describe.each(ADAPTERS)('%s nested options', (_name, Adapter) => {
    * application can run a newer SDK than this package was compiled against,
    * so a key this package's types do not know is still the SDK's to read.
    *
-   * Partial on purpose: the subject is that no key is dropped, not what the
-   * shared client adds of its own, which is pinned whole by that client's test.
+   * The handler's own fields are pinned once, by the shared client's test. The
+   * key *set* is still exact here: the subject is that no key is dropped, and
+   * a key an adapter adds of its own would otherwise reach the SDK unnamed.
    */
   it('hands every clientConfig key to the SDK, including one it was not compiled with', () => {
     const createClient = jest.fn(() => fakeClient() as never);
@@ -92,13 +93,12 @@ describe.each(ADAPTERS)('%s nested options', (_name, Adapter) => {
       clientConfig: { region: 'eu-west-1', newerSdkOption: true },
       createClient,
     });
-    expect(createClient).toHaveBeenCalledWith(
-      expect.objectContaining({
-        maxAttempts: 1,
-        region: 'eu-west-1',
-        newerSdkOption: true,
-      }),
-    );
+    expect(createClient).toHaveBeenCalledWith({
+      maxAttempts: 1,
+      region: 'eu-west-1',
+      newerSdkOption: true,
+      requestHandler: expect.anything(),
+    });
   });
 
   it.each(['x', null, [], 42])('refuses s3.clientConfig %p, naming it', (clientConfig) => {
