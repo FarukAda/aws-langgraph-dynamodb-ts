@@ -102,7 +102,12 @@ async function removeObservedRow(
  *   place, release nothing — correctly, a live row names the object — and emit
  *   one `warn`. Throwing instead would add a failure mode to an interleaving
  *   that succeeds today, which every caller deleting in a `finally` would have
- *   to handle.
+ *   to handle. **One thing about this outcome is not yet right:** the vector
+ *   sync below still runs, so a configured `vectorBackend` loses the live
+ *   row's vector and `search` stops returning an item `get` still returns,
+ *   until `reconcileVectorIndex` runs. It is a new state - before this change
+ *   no interleaving left the row alive - and it is closed by gating that call
+ *   on a confirmation that the row is really gone.
  * - **A deadline cut and a spent budget are one error.** The transaction's
  *   budget is additionally bounded by `MAX_WRITE_LIFETIME_MS`, so a caller who
  *   configures a long retry policy can see the budget end there rather than at

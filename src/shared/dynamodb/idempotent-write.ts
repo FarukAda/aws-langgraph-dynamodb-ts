@@ -163,7 +163,12 @@ export async function putIdempotently(
  * Throws: as {@link putIdempotently} does. A rejection carries the row that
  * turned it away only while there is one — an absent row cancels with no
  * `Item` at all, which is how a caller tells "someone rewrote it" from "it was
- * already gone".
+ * already gone". **That reading is only sound while the guard asks for the
+ * row.** Every guard `revisionGuard` builds carries
+ * `ReturnValuesOnConditionCheckFailure: 'ALL_OLD'`; a caller passing its own
+ * guard without it, or no guard at all, gets an empty rejection for a row that
+ * is very much still there — and a caller that then releases what that row
+ * names has deleted an object a live row points at.
  */
 export async function deleteIdempotently(
   deps: IdempotentWriteDeps,

@@ -1,4 +1,5 @@
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { marshall } from '@aws-sdk/util-dynamodb';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
@@ -19,6 +20,13 @@ const op: PutOperation = { namespace: ['users', 'u1'], key: 'profile', value: nu
 
 const throttled = (): Error =>
   Object.assign(new Error('slow down'), { name: 'ThrottlingException' });
+
+/** The cancellation a guard rejection arrives as, carrying the row that turned it away. */
+const rejectedWith = (item: DocItem): Error =>
+  Object.assign(new Error('Transaction cancelled'), {
+    name: 'TransactionCanceledException',
+    CancellationReasons: [{ Code: 'ConditionalCheckFailed', Item: marshall(item) }],
+  });
 
 /** A whole row as the table holds it, offloaded under `s3Key`. */
 const row = (rev: string | undefined, s3Key = 'users/u1/profile.bin'): DocItem => ({
@@ -234,6 +242,32 @@ describe('deleteStoreItem when the transaction budget is spent', () => {
       code: ErrorCode.RETRY_EXHAUSTED,
     });
     expect(h.released()).toEqual([]);
+  });
+
+  it('releases what the re-pin observed, not what the pre-read did, when the budget then dies', () => {
+    /**
+     * The composition the other two cases leave to construction: a racer wins
+     * the first attempt, the call re-pins onto that racer's row, and only then
+     * does the budget die with the row confirmed gone. What is released must be
+     * the racer's object - the row that was actually removed - and never the
+     * one the pre-read saw. Returning the pre-read's observation on this path
+     * would delete an object no row ever named again while leaving the racer's
+     * behind.
+     */
+    const h = harness();
+    answerDeleteReads(h.mock, projected(row('r0')), undefined);
+    let attempt = 0;
+    h.mock.on(TransactWriteCommand).callsFake(() => {
+      attempt += 1;
+      if (attempt === 1) throw rejectedWith(row('stamped', 'theirs.bin'));
+      throw throttled();
+    });
+
+    return expect(deleteStoreItem(h.ctx, op, PK, SK))
+      .resolves.toBeUndefined()
+      .then(() => {
+        expect(h.released()).toEqual(['theirs.bin']);
+      });
   });
 
   it('propagates a failure that is neither a guard rejection nor a spent budget', async () => {

@@ -101,7 +101,12 @@ export interface RevisionTable {
 
 /**
  * Evaluate a `revisionGuard` condition against the row as it is now. It
- * understands exactly the three shapes that guard builds: the row's absence,
+ * understands the three shapes that guard builds, with one deliberate
+ * divergence: `attribute_not_exists(#rev)` against an **absent** row is
+ * refused here, where the service evaluates it as true and commits a no-op.
+ * Both land on the same caller outcome, so no test can tell them apart - but
+ * do not add a case on that cell without fixing this first, or the case will
+ * be testing the fake: the row's absence,
  * the revision attribute's absence, and equality on it. An unguarded delete
  * always holds.
  */
