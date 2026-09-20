@@ -58,14 +58,23 @@ const SHORT_SOCKET_TIMEOUT_MS = 400;
  * threshold by a unit assertion; the pair below is what makes that assertion
  * mean something.
  *
- * `STALL_WINDOW_MS` has to outlast the release a working 6 000 ms timer would
- * produce, measured from request creation, and no longer — anything shorter
- * would only prove the timer had not fired early, which it would not have done
- * either way.
+ * `STALL_WINDOW_MS` has to outlast the release a working timer at the
+ * threshold would produce — measured at ~6 005 ms from request creation by the
+ * twin below — and anything shorter would only prove the timer had not fired
+ * early, which it would not have done either way. The ~2.5 s beyond that is
+ * headroom for a contended machine, not a longer wait: `probeStall` races the
+ * read against the window, so the released twin returns at its release and
+ * only the never-released case sits out the full window. It is deliberately
+ * short of 9 000 ms, the deferral plus its own timeout, which is the one
+ * duration this case must *not* be read as waiting for.
+ *
+ * `DEFERRAL_MS` is the handler's own `DEFER_EVENT_LISTENER_TIME`. It is here
+ * as the precondition of the 6 000 ms case rather than as a wait.
  */
 const DEFERRED_SOCKET_TIMEOUT_MS = 6_000;
 const ARMED_SOCKET_TIMEOUT_MS = 5_999;
-const STALL_WINDOW_MS = 7_500;
+const STALL_WINDOW_MS = 8_500;
+const DEFERRAL_MS = 3_000;
 
 let silent: MisbehavingServer;
 let stalled: MisbehavingServer;
@@ -154,7 +163,9 @@ function record(label: string, elapsedMs: number): void {
 }
 
 interface StallProbe {
-  /** What the read had done by the end of the window; `undefined` means nothing released it. */
+  /** How long after request creation the response *headers* arrived. */
+  headersAtMs: number;
+  /** What the read had done within the window; `undefined` means nothing released it in it. */
   atWindow: string | undefined;
   /** How long after request creation something released it, if anything did. */
   releasedAtMs: number | undefined;
@@ -163,15 +174,28 @@ interface StallProbe {
 }
 
 /**
- * Start a stalled read under `socketTimeout`, watch it for `STALL_WINDOW_MS`
- * from request creation, then drop the connection so the read always ends and
- * no socket outlives the test. Asserting that something does *not* happen
- * needs both halves: the silence, and the proof the read was live through it.
+ * Start a stalled read under `socketTimeout`, watch it until something
+ * releases it or `STALL_WINDOW_MS` from request creation passes — whichever
+ * comes first — then drop the connection so the read always ends and no socket
+ * outlives the test. Asserting that something does *not* happen needs both
+ * halves: the silence, and the proof the read was live through it.
+ *
+ * Racing the read against the window rather than always sitting out the window
+ * is what buys the window its headroom: the twin that *is* released returns
+ * when it is released, so widening the window past anything a loaded machine
+ * might do costs the pair nothing.
+ *
+ * `headersAtMs` is the precondition the 6 000 ms case rests on and would
+ * otherwise leave unsaid. Nothing is armed there only because the headers
+ * cancel the deferral before its 3 000 ms elapse; a machine slow enough to
+ * miss that is exercising a different path and has to say so rather than
+ * surfacing as a released stall.
  */
 async function probeStall(socketTimeout: number): Promise<StallProbe> {
   const client = await s3At(stalled.url, socketTimeout);
   const started = Date.now();
   const body = await stalledBody(client, `stall-${socketTimeout}.bin`);
+  const headersAtMs = Date.now() - started;
   let outcome: string | undefined;
   let releasedAtMs: number | undefined;
   const mark = (result: string) => {
@@ -182,11 +206,18 @@ async function probeStall(socketTimeout: number): Promise<StallProbe> {
     () => mark('resolved'),
     (error: Error & { code?: string }) => mark(`rejected:${error.code}`),
   );
-  await new Promise((resolve) => setTimeout(resolve, STALL_WINDOW_MS - (Date.now() - started)));
+  let windowTimer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    read,
+    new Promise<void>((resolve) => {
+      windowTimer = setTimeout(resolve, STALL_WINDOW_MS - (Date.now() - started));
+    }),
+  ]);
+  clearTimeout(windowTimer);
   const atWindow = outcome;
   stalled.dropConnections();
   await read;
-  return { atWindow, releasedAtMs, final: outcome };
+  return { headersAtMs, atWindow, releasedAtMs, final: outcome };
 }
 
 describe('(a) a request that is never answered', () => {
@@ -225,7 +256,10 @@ describe('(a) a request that is never answered', () => {
    * request timer never runs. The attempt is still bounded and still
    * classified retryable, which is what §4.5 needs; the timer that does it is
    * not the one named. Pinned by message, so a smithy change that reorders
-   * them fails here rather than silently.
+   * them fails here rather than silently — and by the absent `code`, because
+   * `setSocketTimeout`'s rejection carries `name` alone, so `ETIMEDOUT` never
+   * reaches a caller of the shipped configuration and only the `TimeoutError`
+   * token in {@link DEFAULT_RETRYABLE_ERRORS} makes the retry happen.
    */
   it('is bounded by the shipped pair — by the idle timer, not the request timer', async () => {
     const client = dynamodbAt(silent.url);
@@ -235,6 +269,7 @@ describe('(a) a request that is never answered', () => {
     record('(a) shipped pair', elapsedMs);
     expect(error.name).toBe('TimeoutError');
     expect(error.message).toContain(`socket timed out after ${DEFAULT_SOCKET_TIMEOUT_MS} ms`);
+    expect(error.code).toBeUndefined();
     expect(isRetryableError(error, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
     expect(elapsedMs).toBeGreaterThanOrEqual(DEFAULT_SOCKET_TIMEOUT_MS - 300);
     expect(elapsedMs).toBeLessThan(DEFAULT_REQUEST_TIMEOUT_MS);
@@ -330,11 +365,16 @@ describe('(d) the same stall, either side of the deferral threshold', () => {
    *
    * Dropping the connection settles the other half: the read was live the
    * whole time and rejects the moment anything releases it, so its silence was
-   * the timer's absence rather than a dead promise.
+   * the timer's absence rather than a dead promise. The headers assertion
+   * settles the third: they have to land inside the deferral for it to be
+   * cancelled, and a machine slow enough to miss that would arm the listener
+   * after all — a different mechanism, and one this case should report rather
+   * than fail obscurely inside.
    */
   it('is not released at all at 6 000, because registration is deferred then cancelled', async () => {
     const probe = await probeStall(DEFERRED_SOCKET_TIMEOUT_MS);
     record('(d) still pending at 6 000 after', STALL_WINDOW_MS);
+    expect(probe.headersAtMs).toBeLessThan(DEFERRAL_MS);
     expect(probe.atWindow).toBeUndefined();
     expect(probe.final).toBe('rejected:ECONNRESET');
   }, 30_000);
