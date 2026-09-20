@@ -23,6 +23,7 @@ import {
   type VectorRef,
 } from '../../src/index';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../src/shared/dynamodb/conditional-put';
+import { SILENT_LOGGER } from '../../src/shared/logging/logger';
 import { partitionKey, sortKey } from '../../src/store/internal/keys';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 import { FakeEmbeddings } from './helpers/fake-embeddings';
@@ -124,19 +125,37 @@ async function bumpRevision(namespace: string[], key: string): Promise<void> {
   });
 }
 
+/** What a case can observe of one store's own run, besides the backend it shares. */
+interface StoreProbe {
+  store: DynamoDBStore;
+  warnings: string[];
+  writes: number;
+}
+
 /** A store on a fresh single-attempt client sharing the one backend, with `configure` installed. */
-function faultyStore(configure: (base: DynamoDBClient) => void): DynamoDBStore {
+function faultyStore(configure: (base: DynamoDBClient) => void): StoreProbe {
   const base = new DynamoDBClient({ ...DDB_LOCAL_CONFIG, maxAttempts: 1 });
   configure(base);
-  const store = new DynamoDBStore({
+  const probe: StoreProbe = { store: undefined as never, warnings: [], writes: 0 };
+  base.middlewareStack.add(
+    (next, context) => async (args) => {
+      if ((context as { commandName?: string }).commandName === 'TransactWriteItemsCommand') {
+        probe.writes += 1;
+      }
+      return next(args);
+    },
+    { step: 'initialize', name: 'count-writes' },
+  );
+  probe.store = new DynamoDBStore({
     tableName,
     client: DynamoDBDocument.from(base),
     index,
     vectorBackend: backend,
+    logger: { ...SILENT_LOGGER, warn: (message: string) => probe.warnings.push(message) },
     retry: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1 },
   });
-  disposables.push(base, store);
-  return store;
+  disposables.push(base, probe.store);
+  return probe;
 }
 
 /** The keys `search` finds under `namespace` for the text every case indexes. */
@@ -180,13 +199,13 @@ describe('a put that recreates the row during the delete', () => {
   it('keeps the vector, and search still finds the item', async () => {
     const namespace = ['recreated'];
     await seeder.put(namespace, 'k', { text: TEXT });
-    const store = faultyStore((base) =>
+    const probe = faultyStore((base) =>
       afterResponse(base, 'TransactWriteItemsCommand', async () => {
         await seeder.put(namespace, 'k', { text: TEXT });
       }),
     );
 
-    await expect(store.delete(namespace, 'k')).resolves.toBeUndefined();
+    await expect(probe.store.delete(namespace, 'k')).resolves.toBeUndefined();
 
     expect(await rowOf(namespace, 'k')).toBeDefined();
     expect(backend.deleted).toEqual([]);
@@ -209,7 +228,7 @@ describe('three writers winning in a row', () => {
   it('keeps the vector of the item the delete left alone', async () => {
     const namespace = ['held'];
     await seeder.put(namespace, 'k', { text: TEXT });
-    const store = faultyStore((base) =>
+    const probe = faultyStore((base) =>
       beforeRequest(
         base,
         'TransactWriteItemsCommand',
@@ -218,9 +237,19 @@ describe('three writers winning in a row', () => {
       ),
     );
 
-    await expect(store.delete(namespace, 'k')).resolves.toBeUndefined();
+    await expect(probe.store.delete(namespace, 'k')).resolves.toBeUndefined();
 
     expect(await rowOf(namespace, 'k')).toBeDefined();
+    /**
+     * Without these two the case would still pass if the swap resolved on its
+     * first rejection instead of exhausting - a cancellation that stopped
+     * carrying its row reads as "already gone", the row is live either way, and
+     * the gate would be proved on a path this case does not claim to test.
+     */
+    expect(probe.writes).toBe(OVERWRITE_CAS_MAX_ATTEMPTS);
+    expect(probe.warnings).toContain(
+      'store.delete: compare-and-swap exhausted; the item was not deleted',
+    );
     expect(backend.deleted).toEqual([]);
     expect(await foundKeys(namespace)).toEqual(['k']);
   });
@@ -238,15 +267,33 @@ describe('a delete of a key that never had a row', () => {
   it('still confirms, so a put landing mid-call keeps its vector', async () => {
     const namespace = ['absent'];
     backend.vectors.set('absent/k', { namespace, key: 'k' });
-    const store = faultyStore((base) =>
+    const probe = faultyStore((base) =>
       afterResponse(base, 'GetItemCommand', async () => {
         await seeder.put(namespace, 'k', { text: TEXT });
       }),
     );
 
-    await expect(store.delete(namespace, 'k')).resolves.toBeUndefined();
+    await expect(probe.store.delete(namespace, 'k')).resolves.toBeUndefined();
 
+    /**
+     * An empty `deleted` here means "confirmed, and kept" only while the repair
+     * itself still exists: a regression that dropped the stranded-vector clear
+     * on this path entirely would look identical. The sibling case below is what
+     * tells the two apart, and the unit tier pins it directly.
+     */
+    expect(probe.writes).toBe(0);
     expect(backend.deleted).toEqual([]);
     expect(await foundKeys(namespace)).toEqual(['k']);
+  });
+
+  it('clears the stranded vector when nothing lands mid-call', async () => {
+    const namespace = ['absent-quiet'];
+    backend.vectors.set('absent-quiet/k', { namespace, key: 'k' });
+    const probe = faultyStore(() => {});
+
+    await expect(probe.store.delete(namespace, 'k')).resolves.toBeUndefined();
+
+    expect(probe.writes).toBe(0);
+    expect(backend.deleted).toEqual(['absent-quiet/k']);
   });
 });

@@ -102,7 +102,7 @@ async function dropVectorWhenGone(
   const backend = context.vectorBackend;
   if (backend === undefined) return;
   if (!(await rowIsAbsent(context, key))) {
-    context.logger.info('store.delete: kept a vector whose item is still there', {
+    context.logger.info('store.delete: kept a vector whose item was not confirmed gone', {
       namespace: op.namespace,
       key: op.key,
     });

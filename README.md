@@ -389,7 +389,7 @@ const logger: Logger = {
 | `warn` | `Some orphaned S3 objects could not be deleted after` | `failedCount` | objects leaked after a failed write or a delete; `ensureS3LifecycleRule()` reclaims them, otherwise clean up by prefix |
 | `warn` | `Failed to clean up orphaned S3 objects after` | `reason` | the cleanup itself failed after retries; same remedy |
 | `warn` | `: refusing to delete an S3 object outside this row's scope` | `key` | a row referenced an object outside its own key path — a tampered or foreign row; the object was left alone, investigate the writer |
-| `warn` | `store.put vector-index sync failed; reconcileVectorIndex will repair` | `namespace`, `key`, `reason` | the `vectorBackend` rejected an upsert or delete; the canonical item is fine, run `reconcileVectorIndex` when convenient |
+| `warn` | `store vector-index sync failed; reconcileVectorIndex will repair` | `namespace`, `key`, `operation`, `reason` | the `vectorBackend` rejected the `operation` named in the fields, an upsert or a delete; the canonical item is fine, run `reconcileVectorIndex` when convenient |
 | `warn` | `factory.destroy: an adapter did not release its resources` | `reason` | one adapter's teardown failed; the rest were released anyway and the process may hold that adapter's sockets until it exits |
 | `warn` | `injected DynamoDB client keeps the SDK's own retries` | `maxAttempts` | construct the injected client with `maxAttempts: 1` unless you want the SDK's retries to stack inside the library's budget |
 | `warn` | `putWrites: write row held by an unexpected channel; write not persisted` | `sortKey`, `expected`, `found` | another writer holds this task's row for a different channel; only this library should write the key space |
@@ -410,7 +410,7 @@ const logger: Logger = {
 | `info` | `: deleted rows` | `deleted`, `skipped` | `deleteThread`/`clear` finished |
 | `info` | `reconcileVectorIndex prune skipped: backend has no listKeys` | `prefix` | the backend cannot enumerate vectors, so stale ones were not pruned |
 | `info` | `reconcileVectorIndex: kept a vector whose item reappeared` | `namespace`, `key` | an item was written while pruning; nothing to do |
-| `info` | `store.delete: kept a vector whose item is still there` | `namespace`, `key` | the delete's confirmation read found a row at the key — a put recreated it, the compare-and-swap was exhausted, or the read itself failed — so the vector was left alone; nothing to do, and `reconcileVectorIndex` clears it if the row really is gone |
+| `info` | `store.delete: kept a vector whose item was not confirmed gone` | `namespace`, `key` | the delete's confirmation did not establish that the key is empty — a row is there because a put recreated it or the compare-and-swap was exhausted, **or the read itself failed and answered nothing** — so the vector was left alone; nothing to do, and `reconcileVectorIndex` clears it if the row really is gone |
 
 ## Infrastructure setup
 

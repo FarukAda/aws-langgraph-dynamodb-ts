@@ -26,10 +26,16 @@ export async function syncVectorIndex(
     if (embedding) await backend.upsert(namespace, key, embedding);
     else await backend.delete(namespace, key);
   } catch (error) {
-    /** The name, not the message: a backend's error text is not an identifier. */
-    logger.warn('store.put vector-index sync failed; reconcileVectorIndex will repair', {
+    /**
+     * The name, not the message: a backend's error text is not an identifier.
+     * The literal does not name a method, because both `store.put` and
+     * `store.delete` reach here and reporting a failed delete as a failed put
+     * sends an operator to the wrong call site; `operation` carries which one.
+     */
+    logger.warn('store vector-index sync failed; reconcileVectorIndex will repair', {
       namespace,
       key,
+      operation: embedding ? 'upsert' : 'delete',
       reason: (error as Error).name,
     });
   }

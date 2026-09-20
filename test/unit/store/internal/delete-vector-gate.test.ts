@@ -84,7 +84,7 @@ function harness(withBackend = true) {
   return { mock, ctx, backend, order, reads, info };
 }
 
-const KEPT = 'store.delete: kept a vector whose item is still there';
+const KEPT = 'store.delete: kept a vector whose item was not confirmed gone';
 
 describe('the vector delete is gated on a confirmation that the row is gone', () => {
   it('drops the vector after one consistent PK read, and before the S3 cleanup', async () => {
