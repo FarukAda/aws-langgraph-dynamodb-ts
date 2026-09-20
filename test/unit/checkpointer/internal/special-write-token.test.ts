@@ -201,6 +201,8 @@ describe('an inline special write is left exactly as it was', () => {
 
     expect(emitted).toHaveLength(OVERWRITE_CAS_MAX_ATTEMPTS + 1);
     expect(emitted[3].kind).toBe('put');
+    /** Key order too, so "unchanged, key for key" is proven for every inline emission. */
+    expect(Object.keys(emitted[3].request)).toEqual(['TableName', 'Item']);
     expect(emitted[3].request).toEqual({ TableName: 'ckpt', Item: row });
   });
 
@@ -262,6 +264,7 @@ describe('the write without an offloader stays out of the change', () => {
     expect(outcome).toEqual({ committed: true });
     expect(emitted.map((entry) => entry.kind)).toEqual(['put']);
     expect(emitted[0].token).toBeUndefined();
+    expect(Object.keys(emitted[0].request)).toEqual(['TableName', 'Item']);
     expect(emitted[0].request).toEqual({ TableName: 'ckpt', Item: row });
     expect(gets()).toBe(0);
   });

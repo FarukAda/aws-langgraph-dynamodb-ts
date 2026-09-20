@@ -63,7 +63,7 @@ export interface RowPutInput {
   Item?: DocItem;
   ConditionExpression?: string;
   ExpressionAttributeNames?: Record<string, string>;
-  ExpressionAttributeValues?: Record<string, string>;
+  ExpressionAttributeValues?: Record<string, string | number | boolean>;
   ReturnValuesOnConditionCheckFailure?: string;
 }
 
@@ -104,8 +104,15 @@ export function committedRows(mock: DocumentMock): DocItem[] {
  */
 export function rowWrite(
   write: (input: Record<string, unknown>) => Promise<unknown>,
-): (input: { TransactItems: { Put: Record<string, unknown> }[] }) => Promise<unknown> {
-  return async (input) => write(input.TransactItems[0].Put);
+): (input: { TransactItems: { Put?: Record<string, unknown> }[] }) => Promise<unknown> {
+  return async (input) => {
+    const put = input.TransactItems[0]?.Put;
+    if (put === undefined) {
+      /** A readable failure beats a TypeError from the next site that routes a delete here. */
+      throw new Error('rowWrite: the transaction carries no Put; this double only answers writes');
+    }
+    return write(put);
+  };
 }
 
 /**

@@ -44,8 +44,12 @@ const FIRST_WRITE_WINS: RevisionGuard = {
  * **descriptor** rather than by the adapter. An item whose payload was
  * offloaded goes out as a one-item `TransactWriteItems` under a client request
  * token, so a re-send of a write the service already applied is discarded
- * instead of landing a second time — which, after the losing call's cleanup has
- * released that row's object, would leave a live row naming nothing. An item
+ * instead of landing a second time — which, after the row and its object have
+ * been removed by something else, would put back a row naming an object nobody
+ * will write again. **That "something else" is not the losing call here**: a
+ * regular write only ever releases its own upload, and nothing supersedes a
+ * regular-write row. It is a concurrent `deleteThread`, or a `ttl` sweep
+ * followed by the S3 lifecycle rule — which is what the re-land test models. An item
  * whose payload is inline goes out as the plain `PutItem` it has always been,
  * guard fragments and all: it names no object, so its re-land is an ordinary
  * first-write-wins outcome rather than unreadable data, and a transaction would
