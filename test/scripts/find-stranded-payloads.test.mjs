@@ -5,9 +5,12 @@
  *
  * Every client here is hand-rolled: an object with a `send` that answers on the
  * command's constructor name and records what it was asked. Nothing reaches AWS,
- * and a command the fake does not recognise throws, which is how the "repairs
- * nothing" assertion holds for every path rather than for the paths a test
- * happens to walk.
+ * and a command the fake does not recognise throws.
+ *
+ * {@link sweepFixture} deliberately walks every branch of the sweep — stranded,
+ * gone, superseded, rewritten, unreadable three ways, and a marker with no
+ * surviving version — because an assertion over the commands a sweep sent is
+ * only worth the paths that sweep took.
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -19,7 +22,8 @@ import {
   DEFAULT_GRACE_DAYS,
   DEFAULT_PREFIX,
   decodeBacklink,
-  emptyListing,
+  emptyJoin,
+  finishJoin,
   formatStranded,
   graceHoursRemaining,
   joinReleases,
@@ -32,12 +36,13 @@ import {
 /** Base64url of `text`, the encoding the backlink metadata uses. */
 const b64 = (text) => Buffer.from(text, 'utf8').toString('base64url');
 
-/** A joined listing built from whole pages, the way the sweep builds one. */
-function listingOf(pages) {
-  const listing = emptyListing();
-  for (const page of pages) addVersionsPage(listing, page);
-  return listing;
-}
+/** One page holding a released key: its delete marker, current, and the payload behind it. */
+const releasedPage = (key) => ({
+  Versions: [{ Key: key, VersionId: `${key}-v1`, IsLatest: false, LastModified: '2026-09-19T11:00:00Z' }],
+  DeleteMarkers: [
+    { Key: key, VersionId: `${key}-mark`, IsLatest: true, LastModified: '2026-09-19T12:00:00Z' },
+  ],
+});
 
 /**
  * An S3 stand-in. `pages` are served in order under the caller's
@@ -79,8 +84,11 @@ function fakeS3({ pages = [], heads = {} } = {}) {
   };
 }
 
-/** A DynamoDB stand-in over plain items keyed by `pk|sk`. */
-function fakeDynamo(items = {}) {
+/**
+ * A DynamoDB stand-in over plain items keyed by `pk|sk`. A key listed in
+ * `refuses` rejects the way DynamoDB rejects one it will not accept.
+ */
+function fakeDynamo(items = {}, refuses = {}) {
   const sent = [];
   return {
     sent,
@@ -91,7 +99,13 @@ function fakeDynamo(items = {}) {
       if (name !== 'GetItemCommand') {
         return Promise.reject(new Error(`unexpected DynamoDB command: ${name}`));
       }
-      const item = items[`${command.input.Key.PK.S}|${command.input.Key.SK.S}`];
+      const id = `${command.input.Key.PK.S}|${command.input.Key.SK.S}`;
+      if (refuses[id] !== undefined) {
+        const error = new Error(refuses[id]);
+        error.name = refuses[id];
+        return Promise.reject(error);
+      }
+      const item = items[id];
       return Promise.resolve(item === undefined ? {} : { Item: marshall(item) });
     },
   };
@@ -154,7 +168,7 @@ test('the join pairs a marker with its own key, never with the version beside it
     ],
   };
   assert.deepEqual(
-    joinReleases(listingOf([page])).map((release) => [
+    joinReleases([page]).map((release) => [
       release.key,
       release.markerVersionId,
       release.payloadVersionId,
@@ -176,7 +190,7 @@ test('the join takes the newest surviving version for a key, not the first liste
       { Key: 'p/d.bin', VersionId: 'd-mark', IsLatest: true, LastModified: '2026-09-19T06:00:00Z' },
     ],
   };
-  assert.equal(joinReleases(listingOf([page]))[0].payloadVersionId, 'd-new');
+  assert.equal(joinReleases([page])[0].payloadVersionId, 'd-new');
 });
 
 test('the join carries a key across a page boundary, in either direction', () => {
@@ -202,14 +216,84 @@ test('the join carries a key across a page boundary, in either direction', () =>
 
   for (const pages of [markerFirst, versionFirst]) {
     const perPage = pages
-      .flatMap((page) => joinReleases(listingOf([page])))
+      .flatMap((page) => joinReleases([page]))
       .filter((release) => release.payloadVersionId !== null);
     assert.deepEqual(perPage, [], 'a per-page join pairs no payload with this marker');
     assert.deepEqual(
-      joinReleases(listingOf(pages)).map((r) => [r.key, r.markerVersionId, r.payloadVersionId]),
+      joinReleases(pages).map((r) => [r.key, r.markerVersionId, r.payloadVersionId]),
       [['p/e.bin', 'e-mark', 'e-1']],
     );
   }
+});
+
+test('the join holds one key at a time and emits a release the moment that key closes', () => {
+  /**
+   * `ListObjectVersions` answers in ascending key order and resumes at a
+   * position in that same order, so a key is complete as soon as a later key
+   * appears. The sweep is run after an incident, on a bucket whose marker set
+   * has no upper bound without the reclaim rule, so the join must not grow with
+   * the listing: it keeps the open key's entries and nothing else.
+   */
+  const closed = [];
+  const join = emptyJoin((release) => closed.push(release.key));
+
+  addVersionsPage(join, releasedPage('p/a.bin'));
+  assert.deepEqual(closed, [], 'a key is still open until a later key appears');
+  assert.equal(join.open.key, 'p/a.bin');
+
+  addVersionsPage(join, releasedPage('p/b.bin'));
+  assert.deepEqual(closed, ['p/a.bin'], 'the earlier key closes as soon as a later one opens');
+  assert.equal(join.open.key, 'p/b.bin');
+  assert.equal(join.open.versions.length + join.open.markers.length, 2);
+
+  finishJoin(join);
+  assert.deepEqual(closed, ['p/a.bin', 'p/b.bin']);
+  assert.equal(join.open, null);
+  assert.ok(
+    !('keys' in join),
+    'the join must not retain a per-key map of the whole listing; it holds the open key only',
+  );
+});
+
+test('a key listed after a later key had closed fails the sweep rather than being trusted', () => {
+  /**
+   * The ordering the streaming join rests on is checked, not assumed. One
+   * retained key and one comparison catch a listing that is not ascending —
+   * including a key reappearing after it was closed, which is the shape that
+   * would silently split one key's entries into two half-joins.
+   */
+  const descending = emptyJoin(() => {});
+  addVersionsPage(descending, releasedPage('p/b.bin'));
+  assert.throws(
+    () => addVersionsPage(descending, releasedPage('p/a.bin')),
+    /ascending key order/,
+    'a key below the last closed one must fail the sweep',
+  );
+
+  const reappearing = emptyJoin(() => {});
+  addVersionsPage(reappearing, releasedPage('p/b.bin'));
+  addVersionsPage(reappearing, releasedPage('p/c.bin'));
+  assert.throws(() => addVersionsPage(reappearing, releasedPage('p/b.bin')), /p\/b\.bin/);
+});
+
+test('a key whose current version is an object is not a release, however many markers it carries', () => {
+  /**
+   * A key released and then written again — the same object id re-landing, or
+   * a legacy store key that carries no per-write segment and is rewritten in
+   * place — keeps its delete marker as a noncurrent entry. Its payload is
+   * current and readable, so there is nothing stranded; calling it stranded
+   * would offer an operator a `DeleteItem` on a healthy row.
+   */
+  const page = {
+    Versions: [
+      { Key: 'p/g.bin', VersionId: 'g-2', IsLatest: true, LastModified: '2026-09-19T14:00:00Z' },
+      { Key: 'p/g.bin', VersionId: 'g-1', IsLatest: false, LastModified: '2026-09-19T10:00:00Z' },
+    ],
+    DeleteMarkers: [
+      { Key: 'p/g.bin', VersionId: 'g-mark', IsLatest: false, LastModified: '2026-09-19T12:00:00Z' },
+    ],
+  };
+  assert.deepEqual(joinReleases([page]), []);
 });
 
 test('a marker whose last version has already expired joins to no payload', () => {
@@ -218,7 +302,7 @@ test('a marker whose last version has already expired joins to no payload', () =
       { Key: 'p/f.bin', VersionId: 'f-mark', IsLatest: true, LastModified: '2026-09-01T00:00:00Z' },
     ],
   };
-  assert.equal(joinReleases(listingOf([page]))[0].payloadVersionId, null);
+  assert.equal(joinReleases([page])[0].payloadVersionId, null);
 });
 
 test('graceHoursRemaining counts from the marker, and goes negative once spent', () => {
@@ -227,13 +311,39 @@ test('graceHoursRemaining counts from the marker, and goes negative once spent',
   assert.equal(graceHoursRemaining(marker, 1, new Date('2026-09-21T06:00:00Z').getTime()), -6);
 });
 
-test('decodeBacklink reads the two base64url metadata fields, or reports what is missing', () => {
+test('decodeBacklink reads the two base64url metadata fields, astral characters included', () => {
+  const pk = 'STORE#\u{1F600}ns';
+  const sk = 'k/é中';
+  assert.deepEqual(decodeBacklink({ 'dynamodb-pk-b64': b64(pk), 'dynamodb-sk-b64': b64(sk) }), {
+    pk,
+    sk,
+  });
   assert.deepEqual(
-    decodeBacklink({ 'dynamodb-pk-b64': b64('CHKPT#t'), 'dynamodb-sk-b64': b64('PAYLOAD##c') }),
+    decodeBacklink({ 'DynamoDB-PK-B64': b64('CHKPT#t'), 'DYNAMODB-SK-B64': b64('PAYLOAD##c') }),
     { pk: 'CHKPT#t', sk: 'PAYLOAD##c' },
   );
   assert.equal(decodeBacklink({ 'dynamodb-pk-b64': b64('CHKPT#t') }), null);
   assert.equal(decodeBacklink(undefined), null);
+});
+
+test('decodeBacklink refuses a value that is not the base64url of what it decodes to', () => {
+  /**
+   * Node's base64 decoder drops characters outside the alphabet instead of
+   * throwing, so a malformed value decodes to something rather than to an
+   * error. Re-encoding is what tells the two apart. An empty part matters most:
+   * DynamoDB rejects an empty key attribute outright, so letting one through
+   * would end the sweep on a `ValidationException` instead of skipping one
+   * unreadable object.
+   */
+  const good = b64('CHKPT#t');
+  for (const bad of ['', '!!!', 'not base64url!', 'a', '====']) {
+    assert.equal(
+      decodeBacklink({ 'dynamodb-pk-b64': bad, 'dynamodb-sk-b64': good }),
+      null,
+      `a pk of ${JSON.stringify(bad)} must not decode`,
+    );
+    assert.equal(decodeBacklink({ 'dynamodb-pk-b64': good, 'dynamodb-sk-b64': bad }), null);
+  }
 });
 
 test('rowNamesKey walks the whole row, whatever attribute holds the descriptor', () => {
@@ -243,7 +353,12 @@ test('rowNamesKey walks the whole row, whatever attribute holds the descriptor',
   assert.equal(rowNamesKey({ nested: [{ deep: offloaded('p/x.bin') }] }, 'p/x.bin'), true);
 });
 
-/** The fixture every sweep test below runs against: four released keys, one strand. */
+/**
+ * The fixture every sweep test below runs against. It reaches each branch
+ * exactly once: one strand, one row that is gone, one superseded row, one key
+ * rewritten after its release, three objects unreadable for three different
+ * reasons, one marker whose payload has expired, and one key never released.
+ */
 function sweepFixture() {
   const at = (key, suffix, time) => ({
     Key: key,
@@ -251,23 +366,38 @@ function sweepFixture() {
     IsLatest: false,
     LastModified: time,
   });
-  const marker = (key) => ({
+  const marker = (key, isLatest = true) => ({
     Key: key,
     VersionId: `${key}-mark`,
-    IsLatest: true,
+    IsLatest: isLatest,
     LastModified: '2026-09-20T00:00:00Z',
   });
-  const keys = ['p/live.bin', 'p/gone.bin', 'p/super.bin', 'p/nometa.bin'];
+  const withPayload = ['p/live.bin', 'p/gone.bin', 'p/super.bin', 'p/nometa.bin', 'p/badmeta.bin', 'p/404.bin'];
   /**
    * `p/alive.bin` was never released, so it contributes a version and no
    * marker. It is what makes the two arrays non-parallel, and what turns a
    * join by position into wrong `HeadObject` calls rather than lucky ones.
+   * `p/rewritten.bin` carries a marker that is no longer current, so its
+   * payload is live and it is not a release at all. `p/expired.bin` carries a
+   * marker with nothing left behind it.
    */
   const alive = { ...at('p/alive.bin', 'v1', '2026-09-19T22:00:00Z'), IsLatest: true };
+  const rewritten = [
+    { ...at('p/rewritten.bin', 'v2', '2026-09-20T02:00:00Z'), IsLatest: true },
+    at('p/rewritten.bin', 'v1', '2026-09-19T20:00:00Z'),
+  ];
   const pages = [
     {
-      Versions: [alive, ...keys.map((key) => at(key, 'v1', '2026-09-19T23:00:00Z'))],
-      DeleteMarkers: keys.map(marker),
+      Versions: [
+        alive,
+        ...rewritten,
+        ...withPayload.map((key) => at(key, 'v1', '2026-09-19T23:00:00Z')),
+      ],
+      DeleteMarkers: [
+        ...withPayload.map((key) => marker(key)),
+        marker('p/expired.bin'),
+        marker('p/rewritten.bin', false),
+      ],
     },
   ];
   const meta = (pk, sk) => ({ Metadata: { 'dynamodb-pk-b64': b64(pk), 'dynamodb-sk-b64': b64(sk) } });
@@ -276,19 +406,29 @@ function sweepFixture() {
     'p/gone.bin|p/gone.bin-v1': meta('CHKPT#t2', 'PAYLOAD##c2'),
     'p/super.bin|p/super.bin-v1': meta('STORE#ns', 'k3'),
     'p/nometa.bin|p/nometa.bin-v1': { Metadata: {} },
+    'p/badmeta.bin|p/badmeta.bin-v1': {
+      Metadata: { 'dynamodb-pk-b64': '!!not base64url!!', 'dynamodb-sk-b64': '' },
+    },
+    /** Mapped so a regression that reports this key shows up as a strand, not as a 404. */
+    'p/rewritten.bin|p/rewritten.bin-v1': meta('CHKPT#t4', 'PAYLOAD##c4'),
   };
   const items = {
     'CHKPT#t1|PAYLOAD##c1': { PK: 'CHKPT#t1', SK: 'PAYLOAD##c1', checkpoint: offloaded('p/live.bin') },
     'STORE#ns|k3': { PK: 'STORE#ns', SK: 'k3', value: offloaded('p/newer.bin') },
+    'CHKPT#t4|PAYLOAD##c4': {
+      PK: 'CHKPT#t4',
+      SK: 'PAYLOAD##c4',
+      checkpoint: offloaded('p/rewritten.bin'),
+    },
   };
   return { pages, heads, items };
 }
 
 /** The sweep over {@link sweepFixture}, at a fixed `now` six hours into the grace. */
-async function runSweep() {
+async function runSweep(refuses = {}) {
   const { pages, heads, items } = sweepFixture();
   const s3 = fakeS3({ pages, heads });
-  const ddb = fakeDynamo(items);
+  const ddb = fakeDynamo(items, refuses);
   const result = await sweep({
     s3,
     ddb,
@@ -307,8 +447,11 @@ test('a live row that still names the released key is the only one reported', as
     result.stranded.map((row) => [row.pk, row.sk, row.key]),
     [['CHKPT#t1', 'PAYLOAD##c1', 'p/live.bin']],
   );
-  assert.equal(result.markers, 4);
-  assert.equal(result.checked, 4);
+  assert.equal(result.markers, 8);
+  assert.equal(result.versions, 9);
+  assert.equal(result.releases, 7);
+  assert.equal(result.checked, 6);
+  assert.equal(result.expired, 1);
 });
 
 test('the report line carries the row key, object key, version, marker time and grace left', async () => {
@@ -331,7 +474,14 @@ test('HeadObject is asked for the payload version, and GetItem reads consistentl
   const heads = s3.sent.filter((entry) => entry.name === 'HeadObjectCommand');
   assert.deepEqual(
     heads.map((entry) => entry.input.VersionId),
-    ['p/live.bin-v1', 'p/gone.bin-v1', 'p/super.bin-v1', 'p/nometa.bin-v1'],
+    [
+      'p/404.bin-v1',
+      'p/badmeta.bin-v1',
+      'p/gone.bin-v1',
+      'p/live.bin-v1',
+      'p/nometa.bin-v1',
+      'p/super.bin-v1',
+    ],
   );
   assert.ok(ddb.sent.every((entry) => entry.input.ConsistentRead === true));
 });
@@ -341,20 +491,56 @@ test('a row that is gone, and one that now names another object, are both left o
   const read = ddb.sent.map((entry) => `${entry.input.Key.PK.S}|${entry.input.Key.SK.S}`);
   assert.ok(read.includes('CHKPT#t2|PAYLOAD##c2'), 'the released row must be looked up');
   assert.ok(read.includes('STORE#ns|k3'), 'the superseded row must be looked up');
-  assert.equal(result.stranded.length, 1);
+  assert.deepEqual(
+    result.stranded.map((row) => row.key),
+    ['p/live.bin'],
+  );
 });
 
-test('an object without the backlink metadata is reported unreadable and the sweep goes on', async () => {
-  const { result } = await runSweep();
+test('a key rewritten after its release is never even looked up', async () => {
+  const { s3, ddb } = await runSweep();
+  const looked = [...s3.sent, ...ddb.sent].map((entry) => JSON.stringify(entry.input));
+  assert.ok(
+    !looked.some((input) => input.includes('p/rewritten.bin') || input.includes('CHKPT#t4')),
+    'a key whose current version is an object is not a release and costs no request',
+  );
+});
+
+test('an object whose backlink cannot be read is reported and the sweep goes on', async () => {
+  const { result, ddb } = await runSweep();
   assert.deepEqual(
-    result.unreadable.map((row) => row.key),
-    ['p/nometa.bin'],
+    result.unreadable.map((row) => row.key).sort(),
+    ['p/404.bin', 'p/badmeta.bin', 'p/nometa.bin'],
+  );
+  const read = ddb.sent.map((entry) => `${entry.input.Key.PK.S}|${entry.input.Key.SK.S}`);
+  assert.ok(
+    read.every((id) => !id.startsWith('|') && !id.endsWith('|')),
+    'a malformed backlink must never become a GetItem on an empty key attribute',
   );
   assert.equal(result.stranded.length, 1);
 });
 
-test('nothing is ever repaired: only the three reading commands are sent', async () => {
-  const { s3, ddb } = await runSweep();
+test('a row DynamoDB refuses is reported rather than ending the sweep', async () => {
+  const { result } = await runSweep({ 'CHKPT#t2|PAYLOAD##c2': 'ProvisionedThroughputExceededException' });
+  assert.ok(
+    result.unreadable.some((row) => row.reason.includes('ProvisionedThroughputExceededException')),
+    'the failed row read must be reported',
+  );
+  assert.deepEqual(
+    result.stranded.map((row) => row.key),
+    ['p/live.bin'],
+    'the keys after it must still be swept',
+  );
+});
+
+test('nothing is ever repaired: every branch of the sweep sends only reading commands', async () => {
+  const { result, s3, ddb } = await runSweep();
+  /** Without these the assertions below would only cover the paths this fixture happens to walk. */
+  assert.ok(result.stranded.length > 0, 'the fixture must reach the stranded branch');
+  assert.ok(result.expired > 0, 'the fixture must reach the no-surviving-version branch');
+  assert.equal(result.unreadable.length, 3, 'the fixture must reach all three unreadable branches');
+  assert.ok(result.checked < result.releases, 'the fixture must skip at least one release');
+
   assert.deepEqual(new Set(s3.names()), new Set(['ListObjectVersionsCommand', 'HeadObjectCommand']));
   assert.deepEqual(new Set(ddb.names()), new Set(['GetItemCommand']));
   const mutating = /^(Delete|Put|Copy|Write|Update|Restore|Transact|Batch)/;

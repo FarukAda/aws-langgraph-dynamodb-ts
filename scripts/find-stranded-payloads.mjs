@@ -110,18 +110,28 @@ export function parseArgs(argv) {
   return parsed;
 }
 
-/** An empty accumulator for the paginated listing, keyed by object key in listing order. */
-export function emptyListing() {
-  return { keys: new Map(), pages: 0, versions: 0, markers: 0 };
-}
-
-/** The accumulator's slot for `key`, created on first sight so listing order is preserved. */
-function slotFor(listing, key) {
-  const existing = listing.keys.get(key);
-  if (existing !== undefined) return existing;
-  const slot = { versions: [], markers: [] };
-  listing.keys.set(key, slot);
-  return slot;
+/**
+ * A streaming join across the paginated listing, holding one key at a time.
+ *
+ * `ListObjectVersions` answers in ascending key order, with every entry for a
+ * key — versions and delete markers alike — adjacent and newest first, and
+ * `KeyMarker`/`VersionIdMarker` resume at a position in that same order
+ * ("NextKeyMarker specifies the first key not returned"). A key is therefore
+ * complete the moment a later key appears, so the join never needs the whole
+ * listing: it holds the open key's entries and the last key it closed. That
+ * matters because this sweep is run after an incident, and on a bucket without
+ * the marker-reclaim rule the marker set has no upper bound — the one moment at
+ * which a tool holding the entire listing would run out of memory.
+ *
+ * The ordering is checked, not trusted: a key opening at or below the last one
+ * closed fails the sweep. It costs one comparison and one retained key, and it
+ * catches a key reappearing after it was closed as well as any other break in
+ * the order.
+ *
+ * `onRelease` is called once per released key, in listing order.
+ */
+export function emptyJoin(onRelease) {
+  return { pages: 0, versions: 0, markers: 0, open: null, lastClosedKey: null, onRelease };
 }
 
 /** One listing entry reduced to what the join needs. */
@@ -131,28 +141,6 @@ function normalise(entry) {
     isLatest: entry.IsLatest === true,
     lastModified: new Date(entry.LastModified),
   };
-}
-
-/**
- * Fold one `ListObjectVersions` page into `listing`.
- *
- * `Versions` and `DeleteMarkers` are separate arrays that paginate together
- * under one `KeyMarker`/`VersionIdMarker` pair, so a key's marker and its
- * surviving version can land on different pages. Accumulating both arrays by
- * key across every page is the carry that joins them; a join done one page at a
- * time would report neither half.
- */
-export function addVersionsPage(listing, page) {
-  listing.pages += 1;
-  for (const version of page.Versions ?? []) {
-    slotFor(listing, version.Key).versions.push(normalise(version));
-    listing.versions += 1;
-  }
-  for (const marker of page.DeleteMarkers ?? []) {
-    slotFor(listing, marker.Key).markers.push(normalise(marker));
-    listing.markers += 1;
-  }
-  return listing;
 }
 
 /**
@@ -173,36 +161,102 @@ function pickNewest(entries) {
 }
 
 /**
- * One record per released key: the delete marker and the payload version behind
- * it, **joined by `Key`**.
+ * One key's entries as a release, or null when that key was not released.
  *
- * A marker's `VersionId` is the marker's own, not the payload's — heading that
- * version reads the marker and returns a 404 with no metadata. And the two
- * arrays are not parallel: a key that is still live contributes versions and no
- * marker, so pairing the nth marker with the nth version pairs a key with
- * another key's object. The payload version is the newest entry in `Versions`
- * for that same key that is not the current one, which is not the same as the
- * first entry listed for it.
+ * A key is released exactly when its **current** entry is a delete marker. A
+ * key carrying a marker further down its history was written again after that
+ * release — the same object id re-landing, or a legacy store key with no
+ * per-write segment, rewritten in place — so its payload is current and
+ * readable. Calling that stranded would hand an operator a `DeleteItem` on a
+ * healthy row.
+ *
+ * The marker's `VersionId` is the marker's own, not the payload's: heading that
+ * version reads the marker and returns a 404 with no metadata. The payload is
+ * the newest entry in `Versions` for this key that is not the current one,
+ * which is not the same as the first entry listed for it.
  *
  * `payloadVersionId` is null when the key has a marker but no surviving
- * version: its grace is spent and there is nothing left to read the backlink
+ * version: its grace is spent and there is nothing left to read a backlink
  * from.
  */
-export function joinReleases(listing) {
-  const releases = [];
-  for (const [key, slot] of listing.keys) {
-    if (slot.markers.length === 0) continue;
-    const current = slot.markers.filter((marker) => marker.isLatest);
-    const marker = pickNewest(current.length > 0 ? current : slot.markers);
-    const payload = pickNewest(slot.versions.filter((version) => !version.isLatest));
-    releases.push({
-      key,
-      markerVersionId: marker.versionId,
-      markerLastModified: marker.lastModified,
-      payloadVersionId: payload === undefined ? null : payload.versionId,
-      payloadLastModified: payload === undefined ? null : payload.lastModified,
-    });
+function releaseOf({ key, versions, markers }) {
+  const marker = markers.find((entry) => entry.isLatest);
+  if (marker === undefined) return null;
+  const payload = pickNewest(versions.filter((version) => !version.isLatest));
+  return {
+    key,
+    markerVersionId: marker.versionId,
+    markerLastModified: marker.lastModified,
+    payloadVersionId: payload === undefined ? null : payload.versionId,
+    payloadLastModified: payload === undefined ? null : payload.lastModified,
+  };
+}
+
+/** Close the open key, emitting its release if it had one. */
+function closeOpenKey(join) {
+  const open = join.open;
+  if (open === null) return;
+  join.open = null;
+  join.lastClosedKey = open.key;
+  const release = releaseOf(open);
+  if (release !== null) join.onRelease(release);
+}
+
+/** The slot for `key`, closing the previous one and checking the listing's order. */
+function openKey(join, key) {
+  if (join.open !== null && join.open.key === key) return join.open;
+  closeOpenKey(join);
+  if (join.lastClosedKey !== null && key <= join.lastClosedKey) {
+    throw new Error(
+      `S3 listed key "${key}" after "${join.lastClosedKey}" had been closed; ` +
+        'ListObjectVersions answers in ascending key order and this listing does not, ' +
+        'so one key may have been split in two and the join cannot be trusted',
+    );
   }
+  join.open = { key, versions: [], markers: [] };
+  return join.open;
+}
+
+/**
+ * Fold one `ListObjectVersions` page into `join`.
+ *
+ * `Versions` and `DeleteMarkers` are two arrays split out of one ordered
+ * stream, so they are merged back into key order here — at most 1000 entries,
+ * the page's own cap — before being fed to the join one key at a time. A key
+ * whose marker and payload straddle a page boundary stays open across it and is
+ * joined when it closes; a join done page by page would report neither half.
+ */
+export function addVersionsPage(join, page) {
+  join.pages += 1;
+  const entries = [];
+  for (const version of page.Versions ?? []) {
+    entries.push({ key: version.Key, kind: 'versions', entry: normalise(version) });
+    join.versions += 1;
+  }
+  for (const marker of page.DeleteMarkers ?? []) {
+    entries.push({ key: marker.Key, kind: 'markers', entry: normalise(marker) });
+    join.markers += 1;
+  }
+  entries.sort((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0));
+  for (const { key, kind, entry } of entries) openKey(join, key)[kind].push(entry);
+  return join;
+}
+
+/** Close the last open key, once the listing has no more pages. */
+export function finishJoin(join) {
+  closeOpenKey(join);
+  return join;
+}
+
+/**
+ * Every release in `pages`, collected. The sweep uses the streaming form; this
+ * is for a caller that already holds a whole listing, and for the tests.
+ */
+export function joinReleases(pages) {
+  const releases = [];
+  const join = emptyJoin((release) => releases.push(release));
+  for (const page of pages) addVersionsPage(join, page);
+  finishJoin(join);
   return releases;
 }
 
@@ -217,15 +271,28 @@ export function graceHoursRemaining(markerLastModified, graceDays, now = Date.no
   return Math.round(((expiresAt - now) / HOUR_MS) * 10) / 10;
 }
 
-/** One base64url metadata value as the text it encodes. */
+/**
+ * One base64url metadata value as the text it encodes, or null when the value
+ * is not the base64url of anything usable.
+ *
+ * Node's base64 decoder drops characters outside the alphabet rather than
+ * throwing, so a malformed value decodes to something instead of to an error;
+ * re-encoding is what tells a real backlink from a garbage one. The empty
+ * result matters most: DynamoDB refuses an empty key attribute outright, so
+ * letting one through would end the whole sweep on a `ValidationException`
+ * rather than skip one unreadable object.
+ */
 function decodePart(value) {
-  return Buffer.from(value, 'base64url').toString('utf8');
+  const text = Buffer.from(value, 'base64url').toString('utf8');
+  if (text.length === 0) return null;
+  return Buffer.from(text, 'utf8').toString('base64url') === value ? text : null;
 }
 
 /**
  * The DynamoDB key an object's user metadata points back at, or null when the
- * pair is not both there — an object written by something else, or a version
- * that is not a payload at all.
+ * pair is not both present and both readable — an object written by something
+ * else, a version that is not a payload at all, or metadata mangled since it
+ * was written.
  */
 export function decodeBacklink(metadata) {
   if (metadata === undefined || metadata === null) return null;
@@ -234,7 +301,8 @@ export function decodeBacklink(metadata) {
   const pk = lowered[PK_FIELD];
   const sk = lowered[SK_FIELD];
   if (typeof pk !== 'string' || typeof sk !== 'string') return null;
-  return { pk: decodePart(pk), sk: decodePart(sk) };
+  const decoded = { pk: decodePart(pk), sk: decodePart(sk) };
+  return decoded.pk === null || decoded.sk === null ? null : decoded;
 }
 
 /**
@@ -252,9 +320,8 @@ export function rowNamesKey(item, s3Key) {
   return Object.values(item).some((value) => rowNamesKey(value, s3Key));
 }
 
-/** Every version and delete marker under `prefix`, paginated to the end. */
-export async function listReleases(s3, { bucket, prefix }) {
-  const listing = emptyListing();
+/** Each `ListObjectVersions` page under `prefix`, handed to `onPage` in order. */
+async function eachListingPage(s3, { bucket, prefix }, onPage) {
   let keyMarker;
   let versionIdMarker;
   for (;;) {
@@ -266,8 +333,8 @@ export async function listReleases(s3, { bucket, prefix }) {
         VersionIdMarker: versionIdMarker,
       }),
     );
-    addVersionsPage(listing, page);
-    if (page.IsTruncated !== true) return listing;
+    await onPage(page);
+    if (page.IsTruncated !== true) return;
     keyMarker = page.NextKeyMarker;
     versionIdMarker = page.NextVersionIdMarker;
   }
@@ -290,58 +357,77 @@ async function readBacklink(s3, bucket, release, result) {
     );
     const backlink = decodeBacklink(head.Metadata);
     if (backlink !== null) return backlink;
-    result.unreadable.push({ ...record, reason: 'no backlink metadata on this version' });
+    result.unreadable.push({
+      ...record,
+      reason: `no readable ${PK_FIELD} / ${SK_FIELD} pair on this version`,
+    });
   } catch (error) {
     result.unreadable.push({ ...record, reason: error.name ?? 'HeadObject failed' });
   }
   return null;
 }
 
-/** The row at `(pk, sk)`, read consistently, or null when there is none. */
-async function readRow(ddb, { table, pk, sk }) {
-  const response = await ddb.send(
-    new GetItemCommand({
-      TableName: table,
-      Key: { PK: { S: pk }, SK: { S: sk } },
-      ConsistentRead: true,
-    }),
-  );
-  return response.Item === undefined ? null : unmarshall(response.Item);
+/**
+ * The row at `(pk, sk)`, read consistently: the item, null when there is none,
+ * or undefined with the reason recorded when the read itself failed. A
+ * throttled or refused row read must not end a sweep that has already found
+ * something and still has keys to check.
+ */
+async function readRow(ddb, { table, pk, sk }, release, result) {
+  try {
+    const response = await ddb.send(
+      new GetItemCommand({
+        TableName: table,
+        Key: { PK: { S: pk }, SK: { S: sk } },
+        ConsistentRead: true,
+      }),
+    );
+    return response.Item === undefined ? null : unmarshall(response.Item);
+  } catch (error) {
+    const name = error.name ?? 'unknown error';
+    result.unreadable.push({
+      key: release.key,
+      versionId: release.payloadVersionId,
+      reason: `GetItem pk=${JSON.stringify(pk)} sk=${JSON.stringify(sk)} failed: ${name}`,
+    });
+    return undefined;
+  }
 }
 
 /**
  * Sweep one prefix and report the rows whose payload was released.
  *
  * Reads only. `s3` and `ddb` are anything with a `send`, so the whole sweep is
- * driven by fakes in the tests.
+ * driven by fakes in the tests. Each release is inspected as the listing closes
+ * its key, so nothing proportional to the bucket is ever held: only the open
+ * key, the releases one page closed, and the findings themselves.
  */
 export async function sweep({ s3, ddb, bucket, table, prefix, graceDays, now = Date.now() }) {
-  const listing = await listReleases(s3, { bucket, prefix });
-  const releases = joinReleases(listing);
   const result = {
     bucket,
     table,
     prefix,
     graceDays,
-    pages: listing.pages,
-    versions: listing.versions,
-    markers: listing.markers,
-    releases: releases.length,
+    pages: 0,
+    versions: 0,
+    markers: 0,
+    releases: 0,
     expired: 0,
     checked: 0,
     unreadable: [],
     stranded: [],
   };
-  for (const release of releases) {
+  const inspect = async (release) => {
+    result.releases += 1;
     if (release.payloadVersionId === null) {
       result.expired += 1;
-      continue;
+      return;
     }
     result.checked += 1;
     const backlink = await readBacklink(s3, bucket, release, result);
-    if (backlink === null) continue;
-    const row = await readRow(ddb, { table, pk: backlink.pk, sk: backlink.sk });
-    if (row === null || !rowNamesKey(row, release.key)) continue;
+    if (backlink === null) return;
+    const row = await readRow(ddb, { table, ...backlink }, release, result);
+    if (row === null || row === undefined || !rowNamesKey(row, release.key)) return;
     result.stranded.push({
       pk: backlink.pk,
       sk: backlink.sk,
@@ -351,7 +437,21 @@ export async function sweep({ s3, ddb, bucket, table, prefix, graceDays, now = D
       markerLastModified: release.markerLastModified,
       graceHoursRemaining: graceHoursRemaining(release.markerLastModified, graceDays, now),
     });
-  }
+  };
+  const pending = [];
+  const join = emptyJoin((release) => pending.push(release));
+  const drain = async () => {
+    while (pending.length > 0) await inspect(pending.shift());
+  };
+  await eachListingPage(s3, { bucket, prefix }, async (page) => {
+    addVersionsPage(join, page);
+    await drain();
+  });
+  finishJoin(join);
+  await drain();
+  result.pages = join.pages;
+  result.versions = join.versions;
+  result.markers = join.markers;
   return result;
 }
 

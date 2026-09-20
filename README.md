@@ -884,7 +884,9 @@ node scripts/find-stranded-payloads.mjs \
 
 **When to run it.** On demand: after an incident, or when `S3_OFFLOAD_FAILED` or a `NoSuchKey` read failure starts alarming. Not hourly — it costs per release, not per query, and the numbers below are per sweep.
 
-**What it reads, in order.** `ListObjectVersions` under the prefix, paginated; for each released key, `HeadObject` on the **surviving payload version** to read the backlink; then a strongly consistent `GetItem` on the decoded key. It reports a row that is live and still names that key. A row that is gone is the ordinary release — on the happy path that is every marker — and a row that now names a different object was superseded, not stranded; neither is reported. Each finding prints the DynamoDB key, the object key, the payload version's id, the delete marker's id and timestamp, and the hours of grace remaining.
+**What it reads, in order.** `ListObjectVersions` under the prefix, paginated; for each released key, `HeadObject` on the **surviving payload version** to read the backlink; then a strongly consistent `GetItem` on the decoded key. A key counts as released only when its **current** version is a delete marker: one written again after a release carries its marker further down its history, its payload is current and readable, and it costs the sweep no request at all. It reports a row that is live and still names that key. A row that is gone is the ordinary release — on the happy path that is every marker — and a row that now names a different object was superseded, not stranded; neither is reported. Each finding prints the DynamoDB key, the object key, the payload version's id, the delete marker's id and timestamp, and the hours of grace remaining.
+
+An object whose backlink cannot be read, and a row DynamoDB will not hand back, are each printed as one `UNREADABLE` line naming the object key and the reason, and the sweep carries on: one 404, one object written by something else, and one throttled read must not cost you the rest of the report.
 
 **What it costs.** Per sweep, with `V` versions and `M` delete markers under the prefix:
 
@@ -902,6 +904,8 @@ With the marker-reclaim rule on the bucket, `M` is the releases still inside the
 - **Anyone who never calls `ensureS3LifecycleRule()` at all.**
 
 Both must write the two rules themselves; [their shapes are above](#s3-lifecycle-rules), verbatim.
+
+The cost grows with that listing; the memory does not. `ListObjectVersions` answers in ascending key order, so every entry for one object key arrives together and the sweep joins a key the moment a later one appears — it holds one key at a time, never the listing. That is what lets it finish on the bucket described above, which is the one you are most likely to sweep after an incident. It also checks that order rather than assuming it: a key listed after a later key has already been joined fails the sweep with a non-zero exit instead of reporting a join it cannot stand behind.
 
 **What it cannot find.** A strand whose grace window has already expired. S3 reclaims the noncurrent version first and then the delete marker, so there is neither a marker to list nor a backlink to read, and the sweep is blind to it by construction. Finding those needs the opposite direction — a full table `Scan`, keeping every row that carries an offloaded descriptor, then one `HeadObject` per descriptor to see whether the object is still there — which costs a read of the whole table and stays a recipe rather than a script. While the marker is still present but its last version has gone, the sweep counts the key separately as having no surviving payload version, which is the last warning you get.
 
