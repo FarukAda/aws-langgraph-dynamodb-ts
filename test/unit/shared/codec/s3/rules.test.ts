@@ -1,7 +1,12 @@
 import type { LifecycleRule } from '@aws-sdk/client-s3';
 
-import { alreadyCorrect, ttlRule } from '../../../../../src/shared/codec/s3/rules';
+import {
+  alreadyCorrect,
+  assertNoIdCollision,
+  ttlRule,
+} from '../../../../../src/shared/codec/s3/rules';
 import { S3_RELEASE_GRACE_DAYS } from '../../../../../src/shared/constants';
+import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 
 const PREFIX = 'langgraph-checkpoints/';
 const TTL_ID = 'langgraph-ttl-langgraph-checkpoints';
@@ -48,6 +53,7 @@ describe('the rules that set the floor', () => {
     ],
     ['tags and no prefix at either level', holding(90, { Filter: { And: { Tags: TAGS } } })],
     ['a size bound and no prefix', holding(90, { Filter: { ObjectSizeGreaterThan: 1024 } })],
+    ['the legacy prefix set to nothing, which is bucket-wide', holding(90, { Prefix: '' })],
     [
       'the legacy prefix naming a prefix this one starts with',
       holding(90, { Prefix: 'langgraph-' }),
@@ -97,6 +103,34 @@ describe('the rules that set the floor', () => {
     const ours = ttlRule(TTL_ID, PREFIX, TTL_DAYS, [holding(90)]);
     expect(floorOver([ours])).toBe(90);
   });
+
+  /**
+   * The status test answers "does this rule constrain these keys", which is the
+   * right question of a foreign rule and the wrong one of the rule being
+   * replaced: that value is this package's own committed floor, and an operator
+   * who disables the rule to pause expiry during an incident must not find the
+   * recovery window cut to a day on the next deploy.
+   */
+  it('keeps the floor the held rule committed to even when it has been disabled', () => {
+    const ours: LifecycleRule = {
+      ID: TTL_ID,
+      Filter: { Prefix: PREFIX },
+      Status: 'Disabled',
+      Expiration: { Days: TTL_DAYS },
+      NoncurrentVersionExpiration: { NoncurrentDays: 60 },
+    };
+    expect(
+      ttlRule(TTL_ID, PREFIX, TTL_DAYS, [ours], ours).NoncurrentVersionExpiration?.NoncurrentDays,
+    ).toBe(60);
+  });
+
+  it('still refuses a disabled rule it does not hold', () => {
+    const held: LifecycleRule = { ID: TTL_ID, Filter: { Prefix: PREFIX }, Status: 'Enabled' };
+    expect(
+      ttlRule(TTL_ID, PREFIX, TTL_DAYS, [held, holding(90, { Status: 'Disabled' })], held)
+        .NoncurrentVersionExpiration?.NoncurrentDays,
+    ).toBe(S3_RELEASE_GRACE_DAYS);
+  });
 });
 
 describe('alreadyCorrect', () => {
@@ -127,5 +161,70 @@ describe('alreadyCorrect', () => {
   it('holds for a rule that differs only in a field this package does not manage', () => {
     const held = { ...desired(), Transitions: [{ Days: 10, StorageClass: 'GLACIER' as const }] };
     expect(alreadyCorrect(held, desired())).toBe(true);
+  });
+});
+
+/**
+ * The guard has to read a rule's scope exactly where `scopeOf` reads it. While
+ * it looked only at `Filter.Prefix`, a rule written in the older schema named
+ * its scope somewhere the guard could not see: the guard waved it through and
+ * the rewrite replaced that scope with this package's own, so the objects the
+ * operator's rule governed lost their expiration and nothing governed them.
+ */
+describe('assertNoIdCollision', () => {
+  const ID = TTL_ID;
+
+  /** The refusal this rule provokes, or a failure saying it provoked none. */
+  function refusal(rule: LifecycleRule): { code?: string; context?: { field?: string } } {
+    try {
+      assertNoIdCollision(rule, PREFIX, ID);
+    } catch (error) {
+      return error as { code?: string; context?: { field?: string } };
+    }
+    throw new Error('expected the rule id collision to be refused');
+  }
+
+  const accepted: [string, LifecycleRule | undefined][] = [
+    ['no rule at that id at all', undefined],
+    ['a rule scoping this very prefix', { ID, Filter: { Prefix: PREFIX }, Status: 'Enabled' }],
+    ['a rule naming no scope anywhere', { ID, Status: 'Enabled' }],
+    [
+      'a rule in the older schema scoping this very prefix',
+      { ID, Prefix: PREFIX, Status: 'Enabled' },
+    ],
+  ];
+
+  it.each(accepted)('takes over %s', (_name, rule) => {
+    expect(() => assertNoIdCollision(rule, PREFIX, ID)).not.toThrow();
+  });
+
+  const refused: [string, LifecycleRule][] = [
+    [
+      'a filter scoping another prefix',
+      { ID, Filter: { Prefix: 'someone-elses/' }, Status: 'Enabled' },
+    ],
+    [
+      'a nested filter scoping another prefix',
+      { ID, Filter: { And: { Prefix: 'someone-elses/', Tags: TAGS } }, Status: 'Enabled' },
+    ],
+    [
+      'the older schema scoping another prefix',
+      { ID, Prefix: 'someone-elses/', Status: 'Enabled' },
+    ],
+    ['the older schema scoping the whole bucket', { ID, Prefix: '', Status: 'Enabled' }],
+  ];
+
+  it.each(refused)('refuses %s', (_name, rule) => {
+    expect(refusal(rule)).toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 's3.keyPrefix' },
+    });
+  });
+
+  /** Narrowing a bucket-wide rule to this prefix would strip the rest of the bucket. */
+  it('names the scope it refuses to replace', () => {
+    expect(() => assertNoIdCollision({ ID, Prefix: '', Status: 'Enabled' }, PREFIX, ID)).toThrow(
+      'is already used by the prefix ""',
+    );
   });
 });

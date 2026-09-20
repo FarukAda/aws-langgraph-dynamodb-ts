@@ -525,8 +525,12 @@ Only an `Enabled` rule counts — a disabled one expires nothing, so it neither 
 raises this floor. An enabled rule governs these keys when it:
 
 - names no prefix at all: bucket-wide, or filtered only by tags or object size. A filter this
-  library cannot read in full is taken to cover everything, which is the safe direction — it can
-  only lengthen retention;
+  library cannot read in full is taken to cover everything, which is the safe direction for your
+  recovery window — it can only lengthen retention. Safe is not free: a longer floor holds another
+  day of released payloads for every day it adds, and since a delete marker is only reclaimed once
+  its last noncurrent version has expired, the marker set under the prefix grows with it, which is
+  what an out-of-band sweep over these keys has to walk. Reading a prefix out of `Filter.And`
+  makes an unreadable filter rare rather than impossible;
 - names a prefix in `Filter.Prefix` that this `keyPrefix` starts with;
 - names that prefix somewhere else the schema allows — nested in `Filter.And.Prefix` beside tags or
   size bounds, or in the older top-level `Prefix` — and this `keyPrefix` starts with it.

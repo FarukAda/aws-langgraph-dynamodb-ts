@@ -4,11 +4,10 @@ import type {
   TransitionDefaultMinimumObjectSize,
 } from '@aws-sdk/client-s3';
 
-import { ValidationError } from '../../errors/errors';
 import type { Logger } from '../../logging/logger';
 import { loadS3Sdk } from './client';
 import { assertScopedKeyPrefix, buildLifecycleRuleId, buildMarkerRuleId } from './config';
-import { alreadyCorrect, markerRule, ttlRule } from './rules';
+import { alreadyCorrect, assertNoIdCollision, markerRule, ttlRule } from './rules';
 import { reportBucketVersioning } from './versioning';
 
 /** The bucket's current rules plus the bucket-level field a Put must carry back. */
@@ -38,28 +37,6 @@ function upsert(rules: readonly LifecycleRule[], rule: LifecycleRule): Lifecycle
   return rules.some((held) => held.ID === rule.ID)
     ? rules.map((held) => (held.ID === rule.ID ? rule : held))
     : [...rules, rule];
-}
-
-/**
- * Refuse to touch a rule that carries one of this prefix's ids but scopes a
- * different prefix. Two shapes reach here: slugging maps every non-alphanumeric
- * character to `-`, so `app/langgraph/` and `app-langgraph/` produce one id;
- * and the marker rule appends `-markers`, so `app/`'s marker id is the
- * expiration id of `app-markers/`. Taking the rule over would expire one
- * prefix's objects on the other's schedule, and leaving it would silently give
- * this prefix no rule at all.
- */
-function assertNoIdCollision(rule: LifecycleRule | undefined, prefix: string, id: string): void {
-  const found = rule?.Filter?.Prefix;
-  if (rule === undefined || found === undefined || found === prefix) return;
-  throw new ValidationError(
-    `the S3 lifecycle rule id "${id}" is already used by the prefix "${found}"; an id is the key ` +
-      'prefix with every non-alphanumeric character replaced by "-", and the marker rule appends ' +
-      '"-markers" to that, so "a/b/" takes the id of "a-b/" and "app/" takes the marker id of ' +
-      '"app-markers/" — choose an s3.keyPrefix that produces neither id of any other prefix on ' +
-      'this bucket',
-    's3.keyPrefix',
-  );
 }
 
 /** Replace the bucket's whole configuration with `rules`, carrying its own field back. */

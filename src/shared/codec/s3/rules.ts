@@ -1,6 +1,7 @@
 import type { LifecycleRule } from '@aws-sdk/client-s3';
 
 import { S3_RELEASE_GRACE_DAYS } from '../../constants';
+import { ValidationError } from '../../errors/errors';
 
 /**
  * The prefix a rule governs, wherever it names one: in its filter, nested
@@ -38,15 +39,30 @@ function governs(rule: LifecycleRule, prefix: string): boolean {
  * would cut that window to a day for every key here, which is the opposite of
  * what a floor is for.
  *
+ * The rule being replaced counts whatever its status, unlike every other rule
+ * here: that value is this package's own committed floor rather than a
+ * constraint someone else placed on these keys, and `Status` has nothing to say
+ * about it. An operator who disables the rule to pause expiry during an
+ * incident would otherwise find the recovery window cut to the grace on the
+ * next deploy — a second way down from the ratchet, and a silent one.
+ *
  * The rule this package writes is itself in the set, so the floor ratchets: a
  * value written once outlives the rule that justified it, and the way back
  * down is to delete this package's rule and let it be written afresh.
  */
-function noncurrentDays(rules: readonly LifecycleRule[], prefix: string): number {
+function noncurrentDays(
+  rules: readonly LifecycleRule[],
+  prefix: string,
+  existing?: LifecycleRule,
+): number {
   const held = rules
     .filter((rule) => governs(rule, prefix))
     .map((rule) => rule.NoncurrentVersionExpiration?.NoncurrentDays ?? 0);
-  return Math.max(...held, S3_RELEASE_GRACE_DAYS);
+  return Math.max(
+    ...held,
+    existing?.NoncurrentVersionExpiration?.NoncurrentDays ?? 0,
+    S3_RELEASE_GRACE_DAYS,
+  );
 }
 
 /**
@@ -97,7 +113,7 @@ export function ttlRule(
     Expiration: { Days: days },
     NoncurrentVersionExpiration: {
       ...existing?.NoncurrentVersionExpiration,
-      NoncurrentDays: noncurrentDays(rules, prefix),
+      NoncurrentDays: noncurrentDays(rules, prefix, existing),
     },
   };
 }
@@ -125,6 +141,48 @@ export function markerRule(id: string, prefix: string, existing?: LifecycleRule)
     Status: 'Enabled',
     Expiration: { ExpiredObjectDeleteMarker: true },
   };
+}
+
+/**
+ * Refuse to touch a rule that carries one of this prefix's ids but scopes a
+ * different prefix. Three shapes reach here: slugging maps every
+ * non-alphanumeric character to `-`, so `app/langgraph/` and `app-langgraph/`
+ * produce one id; the marker rule appends `-markers`, so `app/`'s marker id is
+ * the expiration id of `app-markers/`; and a rule written in the older schema
+ * holds an id this package would take while naming its scope in the top-level
+ * `Prefix`.
+ *
+ * Accepts: `rule` — the rule holding `id`, or nothing. `prefix` — the one this
+ * call scopes rules to.
+ *
+ * Returns: nothing; acceptance is the absence of a throw. A rule naming no
+ * scope anywhere is taken over, and so is one already scoping this prefix —
+ * including in the older schema, which is then upgraded to a filter.
+ *
+ * Throws: ValidationError naming `s3.keyPrefix`.
+ *
+ * Guarantees: the scope is read wherever the rule names it, through the same
+ * {@link scopeOf} the floor uses. Reading only `Filter.Prefix` let a rule in
+ * the older schema through, and the rewrite then replaced its scope with this
+ * one's — so the objects that rule governed silently lost their expiration,
+ * and a bucket-wide rule was narrowed to this prefix.
+ */
+export function assertNoIdCollision(
+  rule: LifecycleRule | undefined,
+  prefix: string,
+  id: string,
+): void {
+  if (rule === undefined) return;
+  const found = scopeOf(rule);
+  if (found === undefined || found === prefix) return;
+  throw new ValidationError(
+    `the S3 lifecycle rule id "${id}" is already used by the prefix "${found}"; an id is the key ` +
+      'prefix with every non-alphanumeric character replaced by "-", and the marker rule appends ' +
+      '"-markers" to that, so "a/b/" takes the id of "a-b/" and "app/" takes the marker id of ' +
+      '"app-markers/" — choose an s3.keyPrefix that produces neither id of any other prefix on ' +
+      'this bucket',
+    's3.keyPrefix',
+  );
 }
 
 /**

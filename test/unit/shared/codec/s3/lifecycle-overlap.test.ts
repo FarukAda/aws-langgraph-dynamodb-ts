@@ -9,6 +9,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 
 import { ensureLifecycleRule } from '../../../../../src/shared/codec/s3/lifecycle';
 import { S3_RELEASE_GRACE_DAYS } from '../../../../../src/shared/constants';
+import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 
 const s3Mock = mockClient(S3Client);
 
@@ -93,6 +94,30 @@ describe('ensureLifecycleRule over a bucket that already holds rules', () => {
 
     await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
     expect(writes()).toBe(1);
+  });
+
+  /**
+   * A rule in the older schema names its scope where a filter-only read cannot
+   * see it. Taking such a rule over replaces that scope with this package's,
+   * so the objects it governed lose their expiration and nothing governs them
+   * — the rule has to be refused instead, exactly as a filtered one is.
+   */
+  it('refuses a rule in the older schema that scopes someone else', async () => {
+    bucketHolding([
+      {
+        ID: TTL_ID,
+        Prefix: 'someone-elses/',
+        Status: 'Enabled',
+        Expiration: { Days: 400 },
+      },
+    ]);
+    await expect(
+      ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent()),
+    ).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 's3.keyPrefix' },
+    });
+    expect(writes()).toBe(0);
   });
 
   it('carries a field it does not manage through a ttl change', async () => {
