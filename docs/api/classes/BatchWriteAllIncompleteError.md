@@ -6,7 +6,7 @@
 
 # Class: BatchWriteAllIncompleteError
 
-Defined in: [shared/errors/errors.ts:153](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L153)
+Defined in: [shared/errors/errors.ts:158](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L158)
 
 batchWriteAll attempts every chunk rather than stopping at the first
 failure — a mid-sequence chunk failing does not abandon the chunks after
@@ -18,6 +18,11 @@ confirmed persisted across every chunk (full chunks plus any failed
 chunk's own partial drain), more precise than `succeededChunks` alone
 when a chunk partially drains before exhausting its retries.
 
+A partition-wide delete reports through the same error, because what it
+answers is the same question — how much of this call got through — but it
+sends one conditional request per row rather than a batch of twenty-five, so
+it counts rows where this counts chunks and says so in its message.
+
 ## Extends
 
 - [`DynamoDBLangGraphError`](DynamoDBLangGraphError.md)
@@ -26,15 +31,18 @@ when a chunk partially drains before exhausting its retries.
 
 ### Constructor
 
-> **new BatchWriteAllIncompleteError**(`succeededChunks`, `totalChunks`, `failedChunks`, `succeededCount?`): `BatchWriteAllIncompleteError`
+> **new BatchWriteAllIncompleteError**(`succeededChunks`, `totalChunks`, `failedChunks`, `succeededCount?`, `unit?`): `BatchWriteAllIncompleteError`
 
-Defined in: [shared/errors/errors.ts:172](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L172)
+Defined in: [shared/errors/errors.ts:180](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L180)
 
 Accepts: `succeededChunks`/`totalChunks` — the chunk tally.
 `failedChunks` — each failing chunk's own error, commonly a
 [BatchWriteIncompleteError](BatchWriteIncompleteError.md). `succeededCount` — individual writes
 confirmed persisted across every chunk, which is more precise than the
-chunk tally when a chunk partially drains.
+chunk tally when a chunk partially drains. `unit` — what the first two
+counts count, so a caller that sends one conditional request per row rather
+than a batch of twenty-five is not described as a batch that did not drain;
+omitting it reproduces the batch wording exactly.
 
 Returns: the error, with the first failing chunk's error as `cause`. Every
 chunk not represented in `failedChunks` drained successfully and its writes
@@ -59,6 +67,10 @@ Throws: nothing; building an error may not fail.
 ##### succeededCount?
 
 `number` = `0`
+
+##### unit?
+
+`"chunk"` \| `"row"`
 
 #### Returns
 
@@ -98,7 +110,7 @@ Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-lan
 
 > `readonly` **failedChunks**: `Error`[]
 
-Defined in: [shared/errors/errors.ts:156](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L156)
+Defined in: [shared/errors/errors.ts:161](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L161)
 
 ***
 
@@ -106,7 +118,7 @@ Defined in: [shared/errors/errors.ts:156](https://github.com/FarukAda/aws-langgr
 
 > `readonly` **succeededChunks**: `number`
 
-Defined in: [shared/errors/errors.ts:154](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L154)
+Defined in: [shared/errors/errors.ts:159](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L159)
 
 ***
 
@@ -114,7 +126,7 @@ Defined in: [shared/errors/errors.ts:154](https://github.com/FarukAda/aws-langgr
 
 > `readonly` **succeededCount**: `number`
 
-Defined in: [shared/errors/errors.ts:157](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L157)
+Defined in: [shared/errors/errors.ts:162](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L162)
 
 ***
 
@@ -122,4 +134,4 @@ Defined in: [shared/errors/errors.ts:157](https://github.com/FarukAda/aws-langgr
 
 > `readonly` **totalChunks**: `number`
 
-Defined in: [shared/errors/errors.ts:155](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L155)
+Defined in: [shared/errors/errors.ts:160](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L160)

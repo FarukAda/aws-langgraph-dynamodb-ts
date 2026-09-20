@@ -6,7 +6,7 @@
 
 # Class: CompensationFailedError
 
-Defined in: [shared/errors/errors.ts:199](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L199)
+Defined in: [shared/errors/errors.ts:209](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L209)
 
 A compensating rollback failed after an append-saga chunk error, so the
 trigger error could not be cleanly undone. Carries the original trigger as
@@ -23,7 +23,7 @@ trigger error could not be cleanly undone. Carries the original trigger as
 
 > **new CompensationFailedError**(`cause`, `rollbackError`): `CompensationFailedError`
 
-Defined in: [shared/errors/errors.ts:212](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L212)
+Defined in: [shared/errors/errors.ts:222](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L222)
 
 Accepts: `cause` — the failure that triggered the rollback. `rollbackError` —
 why the rollback itself could not finish.
@@ -82,4 +82,4 @@ Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-lan
 
 > `readonly` **rollbackError**: `Error`
 
-Defined in: [shared/errors/errors.ts:200](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L200)
+Defined in: [shared/errors/errors.ts:210](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L210)
