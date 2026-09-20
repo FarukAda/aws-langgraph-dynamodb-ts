@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import type { DynamoDBDocument, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { nowMs } from '../clock';
 import { PayloadLocation } from '../codec/codec';
@@ -45,8 +45,11 @@ export function referencesS3Object(descriptor: DescriptorRef): boolean {
   return descriptor.location === PayloadLocation.S3;
 }
 
+/** One action of a `TransactWriteItems`, as the document client takes it. */
+type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
+
 /**
- * Commit one row as a single-item
+ * Commit one action as a single-item
  * {@link https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html | TransactWriteItems}
  * under a client request token, so a re-send DynamoDB already applied lands as
  * a no-op instead of as a second write.
@@ -54,9 +57,12 @@ export function referencesS3Object(descriptor: DescriptorRef): boolean {
  * A write that offloads its payload uploads the object first and commits the
  * row second. Lose the row's acknowledgement and the retry can commit it
  * twice; the cleanup that follows then releases an object the other attempt's
- * row still names, leaving a live row pointing at nothing. `PutItem` takes no
- * token and cannot be made to; a one-item transaction can, and inside the
- * service's 10-minute window the re-send is discarded rather than applied.
+ * row still names, leaving a live row pointing at nothing. A delete has the
+ * mirror problem: its retry, re-evaluated rather than deduplicated, meets a row
+ * a competitor wrote after the first attempt landed and erases it. `PutItem`
+ * and `DeleteItem` take no token and cannot be made to; a one-item transaction
+ * can, and inside the service's 10-minute window the re-send is discarded
+ * rather than applied.
  *
  * **Stable across a re-send, fresh across a re-pin.** The input — token
  * included — is built once here, outside the retry closure, so every attempt
@@ -80,24 +86,6 @@ export function referencesS3Object(descriptor: DescriptorRef): boolean {
  * transaction also keeps each write's outcome independent of its neighbours',
  * which is what the fan-out writers rely on.
  *
- * Accepts: `deps` — the adapter's client, table and retry policy. `item` — the
- * row to commit. It is captured by reference and re-sent unchanged on every
- * attempt of the budget, so a caller must not mutate it while this call is in
- * flight: the re-send would carry the same token with different parameters,
- * which the service refuses with `IdempotentParameterMismatchException`. `guard` — the condition fragments from
- * `revisionGuard`, or a caller's own; omitted writes unconditionally,
- * which is the case a token helps most, since nothing else stops a re-send
- * from landing. `signal` — aborts between attempts.
- *
- * Returns: nothing. The write committed, or it threw.
- *
- * Throws: whatever the transaction throws. A guard rejection now arrives as a
- * `TransactionCanceledException` whose single reason is `ConditionalCheckFailed`
- * rather than as a `ConditionalCheckFailedException`; both answer
- * `isConditionalCheckFailed` and both carry the rejected row to
- * `rejectedItem`, so a caller reads them the same way. A spent budget
- * throws `RetryExhaustedError` as any other call does.
- *
  * Guarantees: the retrying stops while the token is still honoured. The budget
  * carries a deadline of {@link MAX_WRITE_LIFETIME_MS} from now, half the
  * window the service deduplicates over, so the wait that would carry this
@@ -107,19 +95,81 @@ export function referencesS3Object(descriptor: DescriptorRef): boolean {
  * object would bound every later call of the same adapter by this call's
  * clock.
  */
+async function transactOnce(
+  deps: IdempotentWriteDeps,
+  action: TransactAction,
+  signal?: AbortSignal,
+): Promise<void> {
+  const input = { TransactItems: [action], ClientRequestToken: randomUUID() };
+  const deadlineAt = nowMs() + MAX_WRITE_LIFETIME_MS;
+  await withDynamoDBRetry(() => deps.client.transactWrite(input), {
+    ...retryFor(deps, signal),
+    deadlineAt,
+  });
+}
+
+/**
+ * Commit one row under a request token; see {@link transactOnce} for why the
+ * write takes a transaction's shape and what the token buys.
+ *
+ * Accepts: `deps` — the adapter's client, table and retry policy. `item` — the
+ * row to commit. It is captured by reference and re-sent unchanged on every
+ * attempt of the budget, so a caller must not mutate it while this call is in
+ * flight: the re-send would carry the same token with different parameters,
+ * which the service refuses with `IdempotentParameterMismatchException`.
+ * `guard` — the condition fragments from `revisionGuard`, or a caller's own;
+ * omitted writes unconditionally, which is the case a token helps most, since
+ * nothing else stops a re-send from landing. `signal` — aborts between
+ * attempts.
+ *
+ * Returns: nothing. The write committed, or it threw.
+ *
+ * Throws: whatever the transaction throws. A guard rejection now arrives as a
+ * `TransactionCanceledException` whose single reason is `ConditionalCheckFailed`
+ * rather than as a `ConditionalCheckFailedException`; both answer
+ * `isConditionalCheckFailed` and both carry the rejected row to
+ * `rejectedItem`, so a caller reads them the same way. A spent budget
+ * throws `RetryExhaustedError` as any other call does.
+ */
 export async function putIdempotently(
   deps: IdempotentWriteDeps,
   item: DocItem,
   guard?: RevisionGuard,
   signal?: AbortSignal,
 ): Promise<void> {
-  const input = {
-    TransactItems: [{ Put: { TableName: deps.tableName, Item: item, ...guard } }],
-    ClientRequestToken: randomUUID(),
-  };
-  const deadlineAt = nowMs() + MAX_WRITE_LIFETIME_MS;
-  await withDynamoDBRetry(() => deps.client.transactWrite(input), {
-    ...retryFor(deps, signal),
-    deadlineAt,
-  });
+  await transactOnce(deps, { Put: { TableName: deps.tableName, Item: item, ...guard } }, signal);
+}
+
+/**
+ * Remove one row under a request token; see {@link transactOnce} for why the
+ * delete takes a transaction's shape and what the token buys.
+ *
+ * It buys more here than a put's token does. An unconditional `DeleteItem`
+ * cannot be turned away, so a retry that arrives after the first attempt
+ * already committed removes whatever a competitor has written since. Under a
+ * token that replay is answered from the idempotency cache and never reaches
+ * the row, which is what makes a condition failure *informative*: it now
+ * proves a genuine race rather than possibly reporting this call's own
+ * landed attempt.
+ *
+ * Accepts: `deps` — the adapter's client, table and retry policy. `key` — the
+ * row's key, captured by reference and re-sent unchanged for the same reason a
+ * put's item is. `guard` — the condition fragments pinning what the caller
+ * observed; omitted deletes unconditionally. `signal` — aborts between
+ * attempts.
+ *
+ * Returns: nothing. The delete committed, or it threw.
+ *
+ * Throws: as {@link putIdempotently} does. A rejection carries the row that
+ * turned it away only while there is one — an absent row cancels with no
+ * `Item` at all, which is how a caller tells "someone rewrote it" from "it was
+ * already gone".
+ */
+export async function deleteIdempotently(
+  deps: IdempotentWriteDeps,
+  key: DocItem,
+  guard?: RevisionGuard,
+  signal?: AbortSignal,
+): Promise<void> {
+  await transactOnce(deps, { Delete: { TableName: deps.tableName, Key: key, ...guard } }, signal);
 }

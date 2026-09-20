@@ -384,6 +384,7 @@ const logger: Logger = {
 | `error` | `history.addMessages rollback failed; messageCount may have drifted` | `sessionId`, `committedChunks` | a multi-chunk append failed and its rollback failed too (`CompensationFailedError`); run `reconcileMessageCount` for the session once it is idle |
 | `error` | `getMessages: skipped a corrupt message item` | `sessionId`, `sortKey`, `reason` | a message row could not be decoded (or its S3 object is gone) and was dropped under `onCorruptMessage: 'skip'`; inspect or delete the row |
 | `warn` | `store.put: compare-and-swap exhausted; overwriting unconditionally` | `namespace`, `key`, `attempts` | three concurrent overwrites of one item; the put succeeded but one S3 object may be orphaned until the lifecycle rule sweeps it |
+| `warn` | `store.delete: compare-and-swap exhausted; the item was not deleted` | `namespace`, `key`, `attempts` | three writes landed at one item between this delete's read and its attempt, each time; the item is still there and nothing was released, because the live row names it — re-run the delete once the key is idle |
 | `warn` | `putWrites: special-write compare-and-swap exhausted; overwriting unconditionally` | `sortKey`, `channel`, `attempts` | same, for an interrupt/resume/error write written concurrently for one task |
 | `warn` | `Some orphaned S3 objects could not be deleted after` | `failedCount` | objects leaked after a failed write or a delete; `ensureS3LifecycleRule()` reclaims them, otherwise clean up by prefix |
 | `warn` | `Failed to clean up orphaned S3 objects after` | `reason` | the cleanup itself failed after retries; same remedy |
@@ -756,7 +757,7 @@ Requests per call, before retries. "Consistent" reads are `ConsistentRead: true`
 | `saver.deleteThread`, `history.clear` | 1 consistent `Query` per page, 1 `BatchWriteItem` per 25 rows | 1 `DeleteObjects` per 1000 keys |
 | `store.get` | 1 consistent `GetItem` | 1 `GET` |
 | `store.put` | 1 consistent `GetItem` (previous descriptor and revision), 1 `PutItem` (with `s3` guarded: up to 3 attempts under contention, each re-reading from the rejection, then 1 unguarded if all 3 are rejected), 1 consistent `GetItem` after a write that fails, to learn whether it landed, plus the `vectorBackend` upsert | 1 `PUT`, then `DELETE` of the superseded object |
-| `store.delete` | 1 `DeleteItem` returning the old row, plus the `vectorBackend` delete | `DELETE` of the removed object |
+| `store.delete` | 1 consistent `GetItem` (the revision to pin on and the descriptor to release); with a row there, 1 `TransactWriteItems` removing it under that pin, up to 3 attempts under contention, each re-pinning from the rejection and none of them deleting if all 3 are rejected; **no write at all when there is no row**; 1 consistent `GetItem` after a write whose budget is spent, to learn whether it landed; plus the `vectorBackend` delete | `DELETE` of the released object |
 | `store.search` | 1 eventually consistent `Query` per page (`Scan` for `[]`), reading rows in batches of 8 until the page is full; a `query` adds one embedding call | 1 `GET` per offloaded candidate |
 | `store.listNamespaces` | `Query` (`Scan` without a prefix root) per page, projected to each item's key and format version | none |
 | `history.addMessages` | 1 consistent `GetItem` of the session row when `ttl` is set, then 1 `TransactWriteItems` per chunk (up to 99 messages plus the session update); a rollback costs 1 `BatchWriteItem` per 25 rows plus a session update | 1 `PUT` per offloaded message |
@@ -767,7 +768,7 @@ Requests per call, before retries. "Consistent" reads are `ConsistentRead: true`
 
 ### Monitoring
 
-Alert on the two `error` events (a corrupt message row, a failed append rollback) and on the four `warn` events that name an orphan or an exhausted compare-and-swap (see [Logging](#logging)); count `RetryExhaustedError` and `UpstreamError` by `context.operation` and `httpStatusCode`. `RetryExhaustedError.context.attempts` and every `debug` retry line carry the SDK `requestId` of the last failure for AWS Support. Watch the table's `ThrottledRequests` and `ConsumedWriteCapacityUnits` per partition key prefix — the [hot-partition](#production-notes) note explains which identifier concentrates load.
+Alert on the two `error` events (a corrupt message row, a failed append rollback) and on the five `warn` events that name an orphan or an exhausted compare-and-swap (see [Logging](#logging)); count `RetryExhaustedError` and `UpstreamError` by `context.operation` and `httpStatusCode`. `RetryExhaustedError.context.attempts` and every `debug` retry line carry the SDK `requestId` of the last failure for AWS Support. Watch the table's `ThrottledRequests` and `ConsumedWriteCapacityUnits` per partition key prefix — the [hot-partition](#production-notes) note explains which identifier concentrates load.
 
 ### Lambda and other short-lived runtimes
 

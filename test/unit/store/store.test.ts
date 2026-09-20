@@ -3,18 +3,19 @@ import {
   PutBucketLifecycleConfigurationCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import {
-  DeleteCommand,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  ScanCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
-import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
+import {
+  answerDeleteReads,
+  createStrictDocumentMock,
+  deletedKeys,
+  fakeMiddlewareStack,
+  observableRow,
+  resolveRowDeletes,
+} from '../../shared/helpers/ddb-mock';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -34,12 +35,13 @@ describe('DynamoDBStore', () => {
     expect(item?.value).toEqual({ name: 'Faruk' });
   });
 
-  it('delete dispatches a DeleteCommand', async () => {
+  it('delete reads the row and removes the one it read', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(DeleteCommand).resolves({});
+    answerDeleteReads(mock, observableRow());
+    resolveRowDeletes(mock);
     const store = new DynamoDBStore({ tableName: 'store', client });
     await store.delete(['n'], 'k');
-    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
+    expect(deletedKeys(mock)).toHaveLength(1);
   });
 
   it('search dispatches a scoped Query and returns matches', async () => {

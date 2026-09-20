@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -6,7 +6,11 @@ import { cleanUpS3Orphans } from '../../../../src/shared/codec/s3/orphans';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import {
+  answerDeleteReads,
+  createStrictDocumentMock,
+  observableRow,
+} from '../../../shared/helpers/ddb-mock';
 
 jest.mock('../../../../src/shared/codec/s3/orphans', () => ({
   cleanUpS3Orphans: jest.fn(async () => undefined),
@@ -72,9 +76,8 @@ describe('store put/delete bind row-sourced S3 keys to the item (SEC-03)', () =>
 
   it("cleans up the deleted item's object under the namespace/key scope", async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(DeleteCommand).resolves({ Attributes: { value: previous } });
-    /** The read after the delete finds no row, so nothing names the removed object. */
-    mock.on(GetCommand).resolves({});
+    answerDeleteReads(mock, observableRow(previous));
+    mock.on(TransactWriteCommand).resolves({});
     await putItem(context(client), { namespace: ['users', 'u1'], key: 'profile', value: null });
     expect(cleanUpMock).toHaveBeenCalledWith(
       expect.anything(),

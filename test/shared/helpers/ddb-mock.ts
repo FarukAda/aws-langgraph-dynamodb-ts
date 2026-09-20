@@ -1,5 +1,11 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocument, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import {
+  DeleteCommand,
+  DynamoDBDocument,
+  GetCommand,
+  PutCommand,
+  TransactWriteCommand,
+} from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
 import type { DocItem } from '../../../src/shared/dynamodb/types';
@@ -68,6 +74,62 @@ export function committedRows(mock: DocumentMock): DocItem[] {
     }
   }
   return rows;
+}
+
+/**
+ * A row delete takes one of two shapes too, and the caller does not choose it
+ * either: a store row is removed inside a one-item `TransactWriteItems` under a
+ * request token, while every other delete this package sends is a plain
+ * `DeleteItem`. These three let a test state what should happen to a delete
+ * without restating that decision, and they give up the shape assertion in
+ * exchange, exactly as their write-side counterparts do.
+ */
+/** Let every row delete succeed, whichever shape it takes. */
+export function resolveRowDeletes(mock: DocumentMock): void {
+  mock.on(DeleteCommand).resolves({});
+  mock.on(TransactWriteCommand).resolves({});
+}
+
+/** The keys deleted, in the order they were sent, across both shapes. */
+export function deletedKeys(mock: DocumentMock): DocItem[] {
+  const keys: DocItem[] = [];
+  for (const call of mock.commandCalls(DeleteCommand)) {
+    const { Key } = call.args[0].input as { Key?: DocItem };
+    if (Key) keys.push(Key);
+  }
+  for (const call of mock.commandCalls(TransactWriteCommand)) {
+    const { TransactItems } = call.args[0].input as {
+      TransactItems?: { Delete?: { Key?: DocItem } }[];
+    };
+    for (const item of TransactItems ?? []) if (item.Delete?.Key) keys.push(item.Delete.Key);
+  }
+  return keys;
+}
+
+/**
+ * Answer the two reads a store delete can issue: the pre-read, recognised by
+ * the projection it alone asks for, and the confirmation read that resolves an
+ * ambiguous spent budget.
+ *
+ * A delete whose pre-read observes nothing sends no write at all, so a site
+ * whose subject is what happens *around* the delete has to seed a row here or
+ * it is testing the short-circuit instead.
+ */
+export function answerDeleteReads(
+  mock: DocumentMock,
+  observed?: DocItem,
+  stillThere?: DocItem,
+): void {
+  mock
+    .on(GetCommand)
+    .callsFake((input: { ProjectionExpression?: string }) =>
+      String(input.ProjectionExpression).includes('#c') ? { Item: observed } : { Item: stillThere },
+    );
+}
+
+/** A store row a delete's pre-read can observe, carrying `value` when given one. */
+export function observableRow(value?: DocItem): DocItem {
+  return { createdAt: 'T0', rev: 'r0', ...(value === undefined ? {} : { value }) };
 }
 
 /**

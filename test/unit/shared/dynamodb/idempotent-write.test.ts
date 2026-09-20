@@ -4,6 +4,7 @@ import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
 import { REVISION_ATTRIBUTE, revisionGuard } from '../../../../src/shared/dynamodb/conditional-put';
 import {
+  deleteIdempotently,
   type IdempotentWriteDeps,
   putIdempotently,
   referencesS3Object,
@@ -20,6 +21,7 @@ const ITEM = {
   SK: 's',
   value: { location: PayloadLocation.S3, s3Key: 'k', serdeType: 'json', compressed: false },
 };
+const KEY = { PK: 'p', SK: 's' };
 
 const throttled = (): Error =>
   Object.assign(new Error('slow down'), { name: 'ThrottlingException' });
@@ -53,6 +55,13 @@ type TransactPut = NonNullable<
 
 const putOf = (input: TransactWriteCommandInput): TransactPut | undefined =>
   input.TransactItems?.[0]?.Put;
+
+type TransactDelete = NonNullable<
+  NonNullable<TransactWriteCommandInput['TransactItems']>[number]['Delete']
+>;
+
+const deleteOf = (input: TransactWriteCommandInput): TransactDelete | undefined =>
+  input.TransactItems?.[0]?.Delete;
 
 describe('referencesS3Object', () => {
   it('answers only for a descriptor whose payload was offloaded', () => {
@@ -197,6 +206,108 @@ describe('putIdempotently', () => {
       putIdempotently(
         { client, tableName: TABLE, retry: instantPolicy() },
         ITEM,
+        undefined,
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ code: 'ABORTED' });
+    expect(emitted()).toHaveLength(0);
+  });
+});
+
+describe('deleteIdempotently', () => {
+  it("removes one guarded key, carrying the guard's fragments and its ALL_OLD request", async () => {
+    mock.on(TransactWriteCommand).resolves({});
+    const deps = { client, tableName: TABLE, retry: instantPolicy() };
+
+    await deleteIdempotently(
+      deps,
+      KEY,
+      revisionGuard(REVISION_ATTRIBUTE, { exists: true, revision: 'r1' }),
+    );
+
+    const [input] = emitted();
+    expect(input.TransactItems).toHaveLength(1);
+    expect(deleteOf(input)).toEqual({
+      TableName: TABLE,
+      Key: KEY,
+      ConditionExpression: '#rev = :rev',
+      ExpressionAttributeNames: { '#rev': REVISION_ATTRIBUTE },
+      ExpressionAttributeValues: { ':rev': 'r1' },
+      ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
+    });
+    expect(input.ClientRequestToken).toHaveLength(36);
+    /** The one action, and nothing of the put's shape alongside it. */
+    expect(input.TransactItems?.[0].Put).toBeUndefined();
+  });
+
+  it('removes an unguarded key when the caller pins nothing', async () => {
+    mock.on(TransactWriteCommand).resolves({});
+
+    await deleteIdempotently({ client, tableName: TABLE, retry: instantPolicy() }, KEY);
+
+    expect(deleteOf(emitted()[0])).toEqual({ TableName: TABLE, Key: KEY });
+  });
+
+  it('re-sends the one request, token included, for every attempt of one budget', async () => {
+    mock.on(TransactWriteCommand).rejectsOnce(throttled()).resolves({});
+
+    await deleteIdempotently({ client, tableName: TABLE, retry: instantPolicy() }, KEY);
+
+    const inputs = emitted();
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0]).toBe(inputs[1]);
+    expect(inputs[0].ClientRequestToken).toBe(inputs[1].ClientRequestToken);
+  });
+
+  /**
+   * A cancelled token reserves its parameters on real DynamoDB, so the re-pin
+   * that follows a lost compare-and-swap must draw a new one or be refused with
+   * `IdempotentParameterMismatchException`. The refusal is an AWS-tier
+   * observation; what is asserted here is the thing that prevents it.
+   */
+  it('draws a fresh token for a re-pinned delete', async () => {
+    mock.on(TransactWriteCommand).resolves({});
+    const deps = { client, tableName: TABLE, retry: instantPolicy() };
+
+    await deleteIdempotently(deps, KEY, revisionGuard(REVISION_ATTRIBUTE, { exists: true }));
+    await deleteIdempotently(
+      deps,
+      KEY,
+      revisionGuard(REVISION_ATTRIBUTE, { exists: true, revision: 'r2' }),
+    );
+
+    const inputs = emitted();
+    expect(deleteOf(inputs[0])).toMatchObject({
+      ConditionExpression: 'attribute_not_exists(#rev)',
+    });
+    expect(deleteOf(inputs[1])).toMatchObject({ ConditionExpression: '#rev = :rev' });
+    expect(inputs[0].ClientRequestToken).not.toBe(inputs[1].ClientRequestToken);
+  });
+
+  it("bounds this call without stamping a deadline on the adapter's own policy", async () => {
+    mock.on(TransactWriteCommand).resolves({});
+    const policy = instantPolicy();
+    const deps = { client, tableName: TABLE, retry: policy };
+    const spy = jest.spyOn(retryModule, 'withDynamoDBRetry');
+
+    await deleteIdempotently(deps, KEY);
+
+    expect(spy.mock.calls[0][1]).toEqual({
+      ...policy,
+      deadlineAt: FROZEN_NOW_MS + MAX_WRITE_LIFETIME_MS,
+    });
+    expect(policy).not.toHaveProperty('deadlineAt');
+  });
+
+  it("carries the caller's abort signal into the budget", async () => {
+    mock.on(TransactWriteCommand).resolves({});
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      deleteIdempotently(
+        { client, tableName: TABLE, retry: instantPolicy() },
+        KEY,
         undefined,
         controller.signal,
       ),

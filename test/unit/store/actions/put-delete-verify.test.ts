@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
@@ -7,7 +7,12 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import { createStrictDocumentMock, rejectRowWrites } from '../../../shared/helpers/ddb-mock';
+import {
+  answerDeleteReads,
+  createStrictDocumentMock,
+  observableRow,
+  rejectRowWrites,
+} from '../../../shared/helpers/ddb-mock';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -60,10 +65,10 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
     // server-side and only the acknowledgement was lost.
     const { client, mock } = createStrictDocumentMock();
     mock
-      .on(DeleteCommand)
+      .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('throttled'), { name: 'ThrottlingException' }));
-    // the post-failure verification sees the row gone
-    mock.on(GetCommand).resolves({});
+    // the pre-read observes the row; the post-failure verification sees it gone
+    answerDeleteReads(mock, observableRow({ location: PayloadLocation.S3, s3Key: 'old.bin' }));
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     const offloader = trackingOffloader();
     await expect(
@@ -78,9 +83,9 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
   it('propagates an ambiguous delete failure when the row is still present (I4)', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
-      .on(DeleteCommand)
+      .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('throttled'), { name: 'ThrottlingException' }));
-    mock.on(GetCommand).resolves({ Item: { createdAt: 'c', value: inlineDescriptor } });
+    answerDeleteReads(mock, observableRow(inlineDescriptor), observableRow(inlineDescriptor));
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await expect(
       putItem(context(client, { vectorBackend: vectorBackend as never }), op({ value: null })),
@@ -91,8 +96,9 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
   it('propagates a non-ambiguous delete failure untouched (I4)', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
-      .on(DeleteCommand)
+      .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('bad'), { name: 'ValidationException' }));
+    answerDeleteReads(mock, observableRow(inlineDescriptor));
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await expect(
       putItem(context(client, { vectorBackend: vectorBackend as never }), op({ value: null })),
@@ -176,10 +182,11 @@ async function valueCommittedBy(value: PutOperation['value']): Promise<{ s3Key: 
   return committed!;
 }
 
-/** Delete the item, whose row DynamoDB hands back holding `removed`, and report what was released. */
+/** Delete the item, whose row the pre-read observes holding `removed`, and report what was released. */
 async function deleteReturning(removed: object) {
   const { client, mock } = createStrictDocumentMock();
-  mock.on(DeleteCommand).resolves({ Attributes: { value: removed } });
+  answerDeleteReads(mock, observableRow(removed as never));
+  mock.on(TransactWriteCommand).resolves({});
   const offloader = trackingOffloader();
   await expect(
     putItem(context(client, { offloader: offloader as never }), op({ value: null })),
@@ -192,16 +199,18 @@ async function deleteReturning(removed: object) {
  * The timeline of a delete racing a re-put, with every put uploading under its
  * own `rev`:
  *
- * 1. This call deletes the row, and DynamoDB hands back the removed value, which
- *    the put that wrote it uploaded under that put's own `rev`.
+ * 1. This call reads the row and pins the delete to the revision it observed,
+ *    whose value the put that wrote it uploaded under that put's own `rev`.
  * 2. A racer then puts the same value again. It uploads under its own `rev`
  *    and commits a row naming that object.
- * 3. This call releases the removed object without reading the row.
+ * 3. This call releases the object its own observation named.
  *
- * The invariant is that the racer's committed object is never released.
+ * The invariant is that the racer's committed object is never released, and it
+ * now holds for one more reason: a racer that got there first is refused by the
+ * condition rather than erased.
  */
-describe('deleteStoreItem releases the removed object without reading the row again', () => {
-  it("releases exactly the removed object, which a racer's re-put of the same value does not name", async () => {
+describe('deleteStoreItem releases the object its own observation named', () => {
+  it("releases exactly the observed object, which a racer's re-put of the same value does not name", async () => {
     const removed = await valueCommittedBy({ name: 'Faruk' });
     const racer = await valueCommittedBy({ name: 'Faruk' });
 
@@ -209,12 +218,13 @@ describe('deleteStoreItem releases the removed object without reading the row ag
 
     expect(racer.s3Key).not.toBe(removed.s3Key);
     expect(deleted).toEqual([removed.s3Key]);
-    expect(reads).toHaveLength(0);
+    /** One read, the pre-read; the ambiguity read is spent only on a failure. */
+    expect(reads).toHaveLength(1);
   });
 
-  it('releases nothing, and reads nothing, when the removed value was inline', async () => {
+  it('releases nothing, with one read, when the observed value was inline', async () => {
     const { deleted, reads } = await deleteReturning({ location: PayloadLocation.INLINE });
-    expect(reads).toHaveLength(0);
+    expect(reads).toHaveLength(1);
     expect(deleted).toEqual([]);
   });
 });

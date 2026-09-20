@@ -1,16 +1,22 @@
 import {
-  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
   ScanCommand,
+  TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { BaseStore, type Operation, type OperationResults } from '@langchain/langgraph-checkpoint';
 
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { partitionKey, sortKey } from '../../../src/store/internal/keys';
 import { DynamoDBStore } from '../../../src/store/store';
-import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import {
+  answerDeleteReads,
+  createStrictDocumentMock,
+  deletedKeys,
+  observableRow,
+  resolveRowDeletes,
+} from '../../shared/helpers/ddb-mock';
 
 type Call = (store: DynamoDBStore) => Promise<unknown>;
 
@@ -127,27 +133,29 @@ describe('what stays legal', () => {
   it('put, get and delete round-trip an item', async () => {
     const { store, mock } = storeWithMock();
     let stored: Record<string, unknown> | undefined;
-    mock.on(GetCommand).callsFake((input) => (input.ProjectionExpression ? {} : { Item: stored }));
+    /** The pre-read a delete pins on sees the same row every other read does. */
+    mock.on(GetCommand).callsFake(() => ({ Item: stored }));
     mock.on(PutCommand).callsFake((input) => {
       stored = input.Item;
       return {};
     });
-    mock.on(DeleteCommand).callsFake(() => {
+    mock.on(TransactWriteCommand).callsFake(() => {
       stored = undefined;
       return {};
     });
     await store.put(['users', 'u1'], 'profile', { name: 'Faruk' });
     expect((await store.get(['users', 'u1'], 'profile'))?.value).toEqual({ name: 'Faruk' });
     await store.delete(['users', 'u1'], 'profile');
-    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
+    expect(deletedKeys(mock)).toHaveLength(1);
     expect(await store.get(['users', 'u1'], 'profile')).toBeNull();
   });
 
   it('a put of null through batch is still the delete operation', async () => {
     const { store, mock } = storeWithMock();
-    mock.on(DeleteCommand).resolves({});
+    answerDeleteReads(mock, observableRow());
+    resolveRowDeletes(mock);
     await store.batch([{ namespace: ['ns'], key: 'k', value: null }]);
-    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
+    expect(deletedKeys(mock)).toHaveLength(1);
   });
 
   it('put accepts index false, an index path absent from the value, an empty index and none', async () => {
@@ -196,8 +204,8 @@ describe('what stays legal', () => {
    */
   it('get, delete, search, listNamespaces and reconcile accept "." and a "langgraph" root', async () => {
     const { store, mock } = storeWithMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(DeleteCommand).resolves({});
+    answerDeleteReads(mock, observableRow());
+    resolveRowDeletes(mock);
     mock.on(QueryCommand).resolves({ Items: [] });
     mock.on(ScanCommand).resolves({ Items: [row(['a', 'langgraph']), row(['langgraph', 'b.c'])] });
     await expect(store.get(['a.b'], 'k')).resolves.toBeNull();
@@ -214,7 +222,7 @@ describe('what stays legal', () => {
     await expect(store.reconcileVectorIndex(['a.b'])).rejects.toMatchObject({
       context: { field: 'vectorBackend' },
     });
-    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
+    expect(deletedKeys(mock)).toHaveLength(1);
   });
 
   it('listNamespaces answers limit 0 with nothing and an empty prefix with everything', async () => {

@@ -1,9 +1,9 @@
 import {
-  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
   ScanCommand,
+  TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import {
   AsyncBatchedStore,
@@ -15,7 +15,13 @@ import {
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { partitionKey, sortKey } from '../../../src/store/internal/keys';
 import { DynamoDBStore } from '../../../src/store/store';
-import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import {
+  answerDeleteReads,
+  createStrictDocumentMock,
+  deletedKeys,
+  observableRow,
+  resolveRowDeletes,
+} from '../../shared/helpers/ddb-mock';
 
 type Mock = ReturnType<typeof createStrictDocumentMock>['mock'];
 
@@ -27,13 +33,14 @@ function storeWithMock(): { store: DynamoDBStore; mock: Mock } {
 /** Back the mock with a one-row table, so writes, reads and a search observe each other. */
 function oneRowTable(mock: Mock): void {
   let stored: Record<string, unknown> | undefined;
-  mock.on(GetCommand).callsFake((input) => (input.ProjectionExpression ? {} : { Item: stored }));
+  /** The pre-read a delete pins on sees the same row every other read does. */
+  mock.on(GetCommand).callsFake(() => ({ Item: stored }));
   mock.on(QueryCommand).callsFake(() => ({ Items: stored ? [stored] : [] }));
   mock.on(PutCommand).callsFake((input) => {
     stored = input.Item;
     return {};
   });
-  mock.on(DeleteCommand).callsFake(() => {
+  mock.on(TransactWriteCommand).callsFake(() => {
     stored = undefined;
     return {};
   });
@@ -150,14 +157,14 @@ describe('store.batch() enforces every operation rule itself', () => {
 
   it('accepts a put with index false or paths, and still deletes on a null value', async () => {
     const { store, mock } = storeWithMock();
-    mock.on(GetCommand).resolves({});
+    answerDeleteReads(mock, observableRow());
     mock.on(PutCommand).resolves({});
-    mock.on(DeleteCommand).resolves({});
+    resolveRowDeletes(mock);
     await store.batch([put({ a: 1 }, false)]);
     await store.batch([put({ a: 1 }, ['nonexistent'])]);
     await store.batch([put(null)]);
     expect(mock.commandCalls(PutCommand)).toHaveLength(2);
-    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
+    expect(deletedKeys(mock)).toHaveLength(1);
   });
 
   it('validates the whole batch before running any of it, so nothing is half-applied', async () => {
@@ -207,7 +214,7 @@ describe('a "." label round-trips wherever upstream accepts it', () => {
     const { store, mock } = storeWithMock();
     oneRowTable(mock);
     await roundTripAnEmailNamespace(viaBatch(store));
-    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
+    expect(deletedKeys(mock)).toHaveLength(1);
   });
 });
 
@@ -261,7 +268,7 @@ describe('through AsyncBatchedStore, as a running graph uses the store', () => {
     const { store, mock } = storeWithMock();
     oneRowTable(mock);
     await withBatched(store, roundTripAnEmailNamespace);
-    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
+    expect(deletedKeys(mock)).toHaveLength(1);
   });
 });
 

@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
@@ -9,9 +9,13 @@ import { putItem } from '../../../../src/store/actions/put';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import {
+  answerDeleteReads,
   committedRows,
   createStrictDocumentMock,
+  deletedKeys,
+  observableRow,
   rejectRowWrites,
+  resolveRowDeletes,
   resolveRowWrites,
 } from '../../../shared/helpers/ddb-mock';
 import { stubEmbeddings } from '../../../shared/helpers/embeddings-stub';
@@ -92,12 +96,10 @@ describe('putItem', () => {
 
   it('deletes when value is null', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(DeleteCommand).resolves({});
+    answerDeleteReads(mock, observableRow());
+    resolveRowDeletes(mock);
     await putItem(context(client), op({ value: null }));
-    expect(mock.commandCalls(DeleteCommand)[0].args[0].input.Key).toEqual({
-      PK: 'STORE#users',
-      SK: 'u1#profile',
-    });
+    expect(deletedKeys(mock)).toEqual([{ PK: 'STORE#users', SK: 'u1#profile' }]);
   });
 
   it('rejects an invalid namespace element', async () => {
@@ -340,37 +342,40 @@ describe('putItem', () => {
   });
 
   /**
-   * The row is never read: what was removed comes back with the delete, and its
-   * object was uploaded under the removed row's own put, which no other put's row
-   * names.
+   * The object released is the one the pre-read observed, never one a response
+   * reported: a response can be lost and the object it named with it, which is
+   * how the removed object used to be leaked. The row is read exactly once.
    */
-  it('cleans up the offloaded object DynamoDB reports as removed, without a pre-read (STORE-08)', async () => {
+  it('cleans up the offloaded object the pre-read observed (STORE-08)', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(DeleteCommand).resolves({
-      Attributes: {
-        value: { location: PayloadLocation.S3, serdeType: 'json', s3Key: 'users/u1/profile.bin' },
-      },
-    });
-    mock.on(GetCommand).resolves({});
+    answerDeleteReads(
+      mock,
+      observableRow({
+        location: PayloadLocation.S3,
+        serdeType: 'json',
+        s3Key: 'users/u1/profile.bin',
+      }),
+    );
+    mock.on(TransactWriteCommand).resolves({});
     const offloader = trackingOffloader();
     await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['users/u1/profile.bin']);
-    expect(mock.commandCalls(DeleteCommand)[0].args[0].input.ReturnValues).toBe('ALL_OLD');
-    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
-    expect(mock.calls()).toHaveLength(1);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+    expect(mock.calls()).toHaveLength(2);
   });
 
   it('does not attempt S3 cleanup on delete when no offloader is configured', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(DeleteCommand).resolves({});
+    answerDeleteReads(mock, observableRow());
+    mock.on(TransactWriteCommand).resolves({});
     await putItem(context(client), op({ value: null }));
-    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+    expect(mock.calls()).toHaveLength(2);
   });
 
-  it('does not call deleteBatch when offloader is configured but no descriptor found', async () => {
+  it('does not call deleteBatch when the observed row names no object', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
-    mock.on(DeleteCommand).resolves({});
+    answerDeleteReads(mock, observableRow({ location: PayloadLocation.INLINE }));
+    mock.on(TransactWriteCommand).resolves({});
     const offloader = trackingOffloader();
     await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
     expect(offloader.deleteBatch).not.toHaveBeenCalled();

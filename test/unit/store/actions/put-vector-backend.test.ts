@@ -1,11 +1,15 @@
-import { DeleteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import {
+  answerDeleteReads,
+  createStrictDocumentMock,
+  observableRow,
+} from '../../../shared/helpers/ddb-mock';
 import { stubEmbeddings } from '../../../shared/helpers/embeddings-stub';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
@@ -90,7 +94,8 @@ describe('putItem with a vector backend', () => {
 
   it('deletes from the vector backend when removing an item', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(DeleteCommand).resolves({});
+    answerDeleteReads(mock, observableRow());
+    mock.on(TransactWriteCommand).resolves({});
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await putItem(context(client, { vectorBackend: vectorBackend as never }), op({ value: null }));
     expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
@@ -122,7 +127,8 @@ describe('putItem with a vector backend', () => {
 
   it('does not fail a delete when the vector backend delete throws', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(DeleteCommand).resolves({});
+    answerDeleteReads(mock, observableRow());
+    mock.on(TransactWriteCommand).resolves({});
     const vectorBackend = {
       upsert: jest.fn(),
       query: jest.fn(),
