@@ -121,16 +121,35 @@ about one round trip rather than ten (see `runBatch`).
 
 > **delete**(`namespace`, `key`): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:188](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L188)
+Defined in: [store/store.ts:207](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L207)
 
 Remove one item, as upstream does: a put operation carrying `null`.
 
 Accepts: `namespace` and `key` — as [get](#get).
 
-Returns: nothing. Deleting an item that is not there is not an error.
+Returns: nothing. Deleting an item that is not there is not an error —
+which now describes the outcome rather than the round trip, since the row
+is read before it is removed.
 
 Throws: ValidationError naming `namespace`, `namespace element`, `key` or
-`sortKey`; UpstreamError; RetryExhaustedError.
+`sortKey`; UpstreamError; RetryExhaustedError. The set of types is
+unchanged, but the occasions are not: that pre-read is a request like any
+other, so a delete of a key with **no row** can now fail where it always
+succeeded. Nothing has been written when it does — no row removed, no
+object released, no vector touched. A delete the row's revision turns away
+never reaches a caller at all: it is re-pinned on the row the rejection
+returned and re-issued, because refusing to remove a row a concurrent put
+replaced is what stops this call erasing that put.
+
+Guarantees: the item is gone, was already gone, or — when three attempts in
+a row are each turned away by a write that landed since the observation
+that attempt pinned — is still there and was left alone. That last case
+**resolves**, logging one `warn` naming the namespace, the key and the
+attempt count, where the reference store always removes the item;
+throwing instead would add a failure mode to an interleaving that succeeds
+today, which every caller deleting in a `finally` would have to handle.
+Re-run once the key is quiescent. Nothing is released on that path, which
+is correct: a live row still names the object.
 
 #### Parameters
 
@@ -156,7 +175,7 @@ Throws: ValidationError naming `namespace`, `namespace element`, `key` or
 
 > **destroy**(): `void`
 
-Defined in: [store/store.ts:306](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L306)
+Defined in: [store/store.ts:325](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L325)
 
 Release owned resources.
 
@@ -177,7 +196,7 @@ Throws: nothing this adapter raises.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:328](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L328)
+Defined in: [store/store.ts:347](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L347)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -251,7 +270,7 @@ RetryExhaustedError.
 
 > **listNamespaces**(`options?`): `Promise`\<`string`[][]\>
 
-Defined in: [store/store.ts:209](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L209)
+Defined in: [store/store.ts:228](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L228)
 
 List the distinct namespaces, sorted, optionally filtered and truncated.
 
@@ -337,7 +356,7 @@ Throws: ValidationError naming `namespace`, `namespace element`, `key`,
 
 > **reconcileVectorIndex**(`namespacePrefix`, `options?`): `Promise`\<[`VectorReconcileResult`](../interfaces/VectorReconcileResult.md)\>
 
-Defined in: [store/store.ts:270](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L270)
+Defined in: [store/store.ts:289](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L289)
 
 Repair the configured vector backend against the canonical items under
 `namespacePrefix`. A maintenance tool; see the action of the same name.
@@ -375,7 +394,7 @@ a vector is deleted only on evidence that its item is gone.
 
 > **search**(`namespacePrefix`, `options?`): `Promise`\<`SearchItem`[]\>
 
-Defined in: [store/store.ts:239](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L239)
+Defined in: [store/store.ts:258](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L258)
 
 Search with optional cancellation. Overrides the base implementation, which
 routes through [batch](#batch) and therefore cannot carry a signal.
@@ -423,7 +442,7 @@ the `vectorBackend` when one is configured.
 
 > **stop**(): `void`
 
-Defined in: [store/store.ts:292](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L292)
+Defined in: [store/store.ts:311](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L311)
 
 LangGraph's lifecycle hook.
 

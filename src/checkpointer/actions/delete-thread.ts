@@ -51,7 +51,18 @@ function kindOf(row: DocItem): string {
  *
  * Throws: ValidationError for a malformed `threadId`;
  * `BatchWriteAllIncompleteError` when a row's delete fails, carrying what did
- * succeed; `AbortError` when the signal fires.
+ * succeed; `AbortError` when the signal fires. A refused row is **not** one of
+ * those failures and raises nothing: the pin turned it away because it was
+ * rewritten after the read, and deleting it would erase a write already
+ * acknowledged to its author and release the object that write uploaded, so
+ * leaving it is the safe answer rather than a degraded one. The error's two
+ * counts are **rows**, not batches — rows deleted and rows attempted, summed
+ * across every flush of the pass, with `succeededCount` repeating the first and
+ * `failedChunks` holding each failing row's own error — and its message says so,
+ * because a pass that sends one request per row is not a batch that did not
+ * drain. Refused rows are in neither count; they are reported at `warn` with
+ * their sort keys and counted as skipped. The remedy for a refusal is the same
+ * as for a row written after the read: re-run once the thread is quiescent.
  *
  * Guarantees: a row this adapter did not write is left in place and logged, so
  * a shared-table partition is never collaterally wiped. A row written or

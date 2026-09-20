@@ -194,7 +194,16 @@ async function dropVectorWhenGone(
  * Throws: whatever the pre-read throws; whatever the transaction throws other
  * than a guard rejection, which is this call's own business; and
  * `RetryExhaustedError` when the budget is spent and a read cannot confirm the
- * row is gone.
+ * row is gone. Three things about that list are worth saying rather than
+ * leaving to be inferred. The **pre-read** is why a delete of a key with no row
+ * can now fail at all, and nothing has been written when it does. A **guard
+ * rejection** is refused rather than raised: the row it names was replaced
+ * after this call observed it, so removing it would erase that put and release
+ * the object the put uploaded, and re-pinning on the row the rejection carried
+ * is strictly safer than either raising or proceeding. And **exhausting** those
+ * re-pins throws nothing either — it resolves with the item still there and one
+ * `warn`, so a caller that needs the item gone re-runs once the key is
+ * quiescent rather than catching anything.
  *
  * Guarantees: the object released is the **last observation's**, on every path
  * that releases at all — the pre-read's when nothing re-pinned, the rejected

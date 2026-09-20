@@ -180,10 +180,29 @@ export class DynamoDBStore extends BaseStore {
    *
    * Accepts: `namespace` and `key` — as {@link get}.
    *
-   * Returns: nothing. Deleting an item that is not there is not an error.
+   * Returns: nothing. Deleting an item that is not there is not an error —
+   * which now describes the outcome rather than the round trip, since the row
+   * is read before it is removed.
    *
    * Throws: ValidationError naming `namespace`, `namespace element`, `key` or
-   * `sortKey`; UpstreamError; RetryExhaustedError.
+   * `sortKey`; UpstreamError; RetryExhaustedError. The set of types is
+   * unchanged, but the occasions are not: that pre-read is a request like any
+   * other, so a delete of a key with **no row** can now fail where it always
+   * succeeded. Nothing has been written when it does — no row removed, no
+   * object released, no vector touched. A delete the row's revision turns away
+   * never reaches a caller at all: it is re-pinned on the row the rejection
+   * returned and re-issued, because refusing to remove a row a concurrent put
+   * replaced is what stops this call erasing that put.
+   *
+   * Guarantees: the item is gone, was already gone, or — when three attempts in
+   * a row are each turned away by a write that landed since the observation
+   * that attempt pinned — is still there and was left alone. That last case
+   * **resolves**, logging one `warn` naming the namespace, the key and the
+   * attempt count, where the reference store always removes the item;
+   * throwing instead would add a failure mode to an interleaving that succeeds
+   * today, which every caller deleting in a `finally` would have to handle.
+   * Re-run once the key is quiescent. Nothing is released on that path, which
+   * is correct: a live row still names the object.
    */
   override async delete(namespace: string[], key: string): Promise<void> {
     return guardPublic('store.delete', async () => {

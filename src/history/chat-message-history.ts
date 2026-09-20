@@ -130,12 +130,18 @@ export class DynamoDBChatMessageHistory {
    *
    * Throws: ValidationError for a malformed session id, an invalid `signal`,
    * or an `options.<key>` this package does not read;
-   * BatchWriteAllIncompleteError when a delete batch does not fully drain;
-   * UpstreamError; AbortError.
+   * BatchWriteAllIncompleteError when a row's delete fails, counting rows
+   * rather than batches; UpstreamError; AbortError. A row refused because it
+   * was rewritten after the partition read raises nothing: it is left in place,
+   * reported at `warn`, and counted as skipped.
    *
-   * Guarantees: a row this adapter did not write is left in place and logged.
-   * Single pass: call it when the session is quiescent, since a message
-   * appended while it runs may survive it.
+   * Guarantees: a row this adapter did not write is left in place and logged,
+   * and neither is a row rewritten since the read — an append landing during
+   * the call moves the session row's own write id, so that row survives with
+   * the session it belongs to instead of being removed under a live
+   * conversation. Single pass: call it when the session is quiescent, since a
+   * message appended while it runs may survive it, and the surviving session
+   * row then over-counts until `reconcileMessageCount` repairs it.
    */
   clear(sessionId: string, options?: CancelOptions): Promise<void> {
     return guardPublic('history.clear', () => {

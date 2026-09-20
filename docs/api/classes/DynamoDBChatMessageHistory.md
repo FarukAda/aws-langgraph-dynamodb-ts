@@ -130,7 +130,7 @@ when one is configured.
 
 > **clear**(`sessionId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:140](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L140)
+Defined in: [history/chat-message-history.ts:146](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L146)
 
 Delete a session's messages, metadata and offloaded objects.
 
@@ -140,12 +140,18 @@ Returns: nothing. Clearing a session that does not exist is not an error.
 
 Throws: ValidationError for a malformed session id, an invalid `signal`,
 or an `options.<key>` this package does not read;
-BatchWriteAllIncompleteError when a delete batch does not fully drain;
-UpstreamError; AbortError.
+BatchWriteAllIncompleteError when a row's delete fails, counting rows
+rather than batches; UpstreamError; AbortError. A row refused because it
+was rewritten after the partition read raises nothing: it is left in place,
+reported at `warn`, and counted as skipped.
 
-Guarantees: a row this adapter did not write is left in place and logged.
-Single pass: call it when the session is quiescent, since a message
-appended while it runs may survive it.
+Guarantees: a row this adapter did not write is left in place and logged,
+and neither is a row rewritten since the read — an append landing during
+the call moves the session row's own write id, so that row survives with
+the session it belongs to instead of being removed under a live
+conversation. Single pass: call it when the session is quiescent, since a
+message appended while it runs may survive it, and the surviving session
+row then over-counts until `reconcileMessageCount` repairs it.
 
 #### Parameters
 
@@ -167,7 +173,7 @@ appended while it runs may survive it.
 
 > **destroy**(): `void`
 
-Defined in: [history/chat-message-history.ts:242](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L242)
+Defined in: [history/chat-message-history.ts:248](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L248)
 
 Release owned resources.
 
@@ -188,7 +194,7 @@ Throws: nothing this adapter raises.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:263](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L263)
+Defined in: [history/chat-message-history.ts:269](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L269)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -218,7 +224,7 @@ per request.
 
 > **forSession**(`sessionId`, `window?`): [`DynamoDBSessionChatMessageHistory`](DynamoDBSessionChatMessageHistory.md)
 
-Defined in: [history/chat-message-history.ts:228](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L228)
+Defined in: [history/chat-message-history.ts:234](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L234)
 
 Get a single-session LangChain adapter for `sessionId`.
 
@@ -300,7 +306,7 @@ One query page plus one S3 download per offloaded message.
 
 > **listSessions**(`options?`): `Promise`\<[`SessionPage`](../interfaces/SessionPage.md)\>
 
-Defined in: [history/chat-message-history.ts:181](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L181)
+Defined in: [history/chat-message-history.ts:187](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L187)
 
 List every session as a metadata summary, most recently updated first.
 With a configured `indexName` this reads each index shard newest-first,
@@ -351,7 +357,7 @@ most one DynamoDB page per shard, whatever the table holds.
 
 > **reconcileMessageCount**(`sessionId`, `options?`): `Promise`\<`number`\>
 
-Defined in: [history/chat-message-history.ts:205](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L205)
+Defined in: [history/chat-message-history.ts:211](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L211)
 
 Recompute and repair a session's `messageCount` from the stored messages.
 A maintenance tool for external corruption; run it when the session is idle.

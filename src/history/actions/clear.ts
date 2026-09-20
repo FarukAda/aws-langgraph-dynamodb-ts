@@ -28,7 +28,19 @@ function descriptorsOf(row: DocItem): NamedDescriptor[] {
  * there is simply nothing in the partition.
  *
  * Throws: ValidationError naming `sessionId`; `BatchWriteAllIncompleteError`
- * when a row's delete fails, carrying what did succeed; `AbortError`.
+ * when a row's delete fails, carrying what did succeed; `AbortError`. A refused
+ * row raises nothing and is not one of those failures: the pin turned it away
+ * because an append landed after the read, and deleting the session row then
+ * would remove the `messageCount`, the `updatedAt` and the recency-index entry
+ * of a session that is still alive — leaving it is the safe answer. The error's
+ * two counts are **rows**, not batches — rows deleted and rows attempted,
+ * summed across every flush of the pass, with `succeededCount` repeating the
+ * first and `failedChunks` holding each failing row's own error — and its
+ * message says so, because a pass that sends one request per row is not a batch
+ * that did not drain. Refused rows are in neither count; each is reported at
+ * `warn` with its sort key and counted as skipped. The remedy is to re-run once
+ * the session is quiescent, and `reconcileMessageCount` repairs the count the
+ * surviving session row is left over-counting in the meantime.
  *
  * Guarantees: a row this adapter did not write is left in place and logged, so
  * a shared-table partition is never collaterally wiped. Offloaded objects are

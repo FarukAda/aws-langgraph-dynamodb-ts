@@ -213,14 +213,20 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * object, `options.<key>` for a key this package does not read, `signal`
    * for a signal that is not `AbortSignal`-shaped, or `thread_id` for a
    * malformed `threadId`;
-   * BatchWriteAllIncompleteError when a delete batch does not fully drain,
-   * carrying what did succeed; UpstreamError; AbortError.
+   * BatchWriteAllIncompleteError when a row's delete fails, counting rows
+   * rather than batches and carrying what did succeed; UpstreamError;
+   * AbortError. A row refused because it was rewritten after the partition read
+   * raises nothing: it is left exactly as its writer left it, reported at
+   * `warn`, and counted as skipped.
    *
-   * Guarantees: a row this adapter did not write is left in place and logged.
-   * Single pass: call it when the thread is quiescent, since a checkpoint
-   * written while it runs may survive it, and a write whose own attempt
-   * committed before this call read the partition can, when its retry lands
-   * afterwards, put its row back naming an object this call released.
+   * Guarantees: a row this adapter did not write is left in place and logged,
+   * and neither is a row rewritten since the read — so an acknowledged write is
+   * no longer erased, nor the object it names released, by a delete that
+   * observed the row before it. Single pass: call it when the thread is
+   * quiescent, since a checkpoint written at a key the read never saw survives
+   * it, and so does the re-landing of an inline pending write, which carries no
+   * request token on purpose. What comes back there is an ordinary row, naming
+   * no object this call could have released.
    */
   async deleteThread(threadId: string, options?: CancelOptions): Promise<void> {
     return guardPublic('saver.deleteThread', () => {
