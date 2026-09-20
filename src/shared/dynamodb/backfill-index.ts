@@ -4,7 +4,8 @@ import { guardPublic } from '../errors/boundary';
 import { decodeScanCursor, encodeScanCursor, indexTargetOf } from './backfill-target';
 import type { BackfillOptions, BackfillResult } from './backfill-types';
 import { validateBackfillOptions } from './backfill-validation';
-import { DEFAULT_INDEX_SHARDS, indexKeys } from './index-keys';
+import { isConditionalCheckFailed } from './conditional-put';
+import { DEFAULT_INDEX_SHARDS, type IndexKeys, indexKeys } from './index-keys';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
 import type { DocItem } from './types';
 
@@ -18,12 +19,45 @@ function runRetry(options: BackfillOptions): RetryOptions {
   return { ...options.retry, signal: options.signal ?? options.retry?.signal };
 }
 
-/** Write one row's index keys; false when the row is not one a listing reaches. */
+/**
+ * Write one row's index keys; false when this run wrote none for it.
+ *
+ * False is an ordinary outcome and never a failure. Either the row is not one a
+ * listing reaches, so it needs no keys; or the conditional update was refused,
+ * which by the terms of that condition means the row already carries keys a
+ * live adapter gave it, or the row is gone. In every one of those cases this
+ * run has nothing to do for the row, and the row is counted as skipped.
+ *
+ * Which is why the refusal ends the row rather than the run. Both races are
+ * ordinary on a table that is being written to, and that is the only kind of
+ * table anyone runs a backfill against; a tool that stopped whenever the table
+ * it is migrating is in use would never finish one. Re-running is cheap and
+ * safe besides — the scan's own `attribute_not_exists` filter never looks at a
+ * row an earlier run indexed.
+ *
+ * Any other failure is rethrown and ends the run, because nothing about it says
+ * this row needed no writing.
+ */
 async function indexRow(options: BackfillOptions, row: DocItem, shards: number): Promise<boolean> {
   const target = indexTargetOf(row);
   if (target === undefined) return false;
   const keys = indexKeys(target.tag, target.id, target.at, shards);
   if (options.dryRun) return true;
+  try {
+    await writeIndexKeys(options, row, keys);
+  } catch (error) {
+    if (!isConditionalCheckFailed(error as Error)) throw error;
+    return false;
+  }
+  return true;
+}
+
+/** The conditional `UpdateItem` that gives one row the keys computed for it. */
+async function writeIndexKeys(
+  options: BackfillOptions,
+  row: DocItem,
+  keys: IndexKeys,
+): Promise<void> {
   await withDynamoDBRetry(
     () =>
       options.client.update({
@@ -53,7 +87,6 @@ async function indexRow(options: BackfillOptions, row: DocItem, shards: number):
       }),
     runRetry(options),
   );
-  return true;
 }
 
 /** One scan page, and the rows of it that were given keys. */
@@ -114,9 +147,11 @@ async function backfillPage(
  * `options.signal` — cancels the run; `retry.signal` does so when there is no
  * top-level `signal`, and the top-level one wins when both are given.
  *
- * Returns: how many rows were scanned and how many were given keys, plus a
- * `nextCursor` when the run stopped short of the end. An absent cursor means
- * the table is fully backfilled.
+ * Returns: how many rows were scanned, how many were given keys and how many
+ * were skipped — a row no listing reaches, and a row whose write the condition
+ * refused because the row already has keys or is gone — plus a `nextCursor`
+ * when the run stopped short of the end. An absent cursor means the table is
+ * fully backfilled.
  *
  * Throws: ValidationError naming the offending option, before any DynamoDB
  * call; RetryExhaustedError once a transient failure has used every attempt;
@@ -124,12 +159,16 @@ async function backfillPage(
  * is given; UpstreamError wrapping any other error the scan or the writes
  * throw — this is the function's own error boundary, the same as every
  * adapter's public methods, so a caller's mistake never escapes as a bare
- * exception.
+ * exception. A refused write is none of these: it is an outcome for one row,
+ * reported in `skipped`.
  *
  * Guarantees: every write is conditional on the row still being there and
  * having no keys yet, so re-running is safe, running against a live table is
  * safe, a row a live adapter has already indexed is left exactly as it is, and
- * a row deleted between the scan and the write is never re-created.
+ * a row deleted between the scan and the write is never re-created. Neither
+ * refusal stops the run: both mean this run has nothing to do for that row, so
+ * the row is counted as skipped and the walk carries on to the rest of the
+ * table.
  */
 export async function backfillRecencyIndex(options: BackfillOptions): Promise<BackfillResult> {
   return guardPublic('backfillRecencyIndex', async () => {

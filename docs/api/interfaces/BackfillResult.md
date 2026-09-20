@@ -26,7 +26,7 @@ Rows given index keys.
 
 > `optional` **nextCursor?**: `string`
 
-Defined in: [shared/dynamodb/backfill-types.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L17)
+Defined in: [shared/dynamodb/backfill-types.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L20)
 
 Opaque; absent when the table is fully walked. Pass it back to continue —
 the pass is resumable, so a large table can be backfilled in bounded runs.
@@ -47,6 +47,7 @@ Rows the scan evaluated.
 
 > **skipped**: `number`
 
-Defined in: [shared/dynamodb/backfill-types.ts:12](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L12)
+Defined in: [shared/dynamodb/backfill-types.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L15)
 
-Rows no listing reaches, so no keys were written.
+Rows this run wrote no keys for: one no listing reaches, and one whose
+write the condition refused because it already has keys or is gone.

@@ -8,7 +8,10 @@ export interface BackfillResult {
   scanned: number;
   /** Rows given index keys. */
   indexed: number;
-  /** Rows no listing reaches, so no keys were written. */
+  /**
+   * Rows this run wrote no keys for: one no listing reaches, and one whose
+   * write the condition refused because it already has keys or is gone.
+   */
   skipped: number;
   /**
    * Opaque; absent when the table is fully walked. Pass it back to continue —

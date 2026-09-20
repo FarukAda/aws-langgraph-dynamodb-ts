@@ -1,6 +1,7 @@
 import { ScanCommand, UpdateCommand, type UpdateCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { backfillRecencyIndex } from '../../../../src/shared/dynamodb/backfill-index';
+import type { BackfillResult } from '../../../../src/shared/dynamodb/backfill-types';
 import type { DocItem } from '../../../../src/shared/dynamodb/types';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -15,18 +16,33 @@ const session = {
   updatedAt: '2026-02-02T00:00:00.000Z',
 };
 
-/** Where that row lives in the fake table. */
+/** A second such row, on the page after it: the work a run that stopped never reaches. */
+const other = {
+  PK: 'HIST#s2',
+  SK: 'HISTORY#SESSION',
+  sessionId: 's2',
+  updatedAt: '2026-03-03T00:00:00.000Z',
+};
+
+/** Where those rows live in the fake table. */
 const SESSION_KEY = 'HIST#s1|HISTORY#SESSION';
+const OTHER_KEY = 'HIST#s2|HISTORY#SESSION';
+
+/** What a page that is not the last one reports as its last evaluated key. */
+const PAGE_KEY = { PK: 'HIST#s1', SK: 'HISTORY#SESSION' };
 
 function rowKey(item: { PK?: unknown; SK?: unknown }): string {
   return `${String(item.PK)}|${String(item.SK)}`;
 }
 
+/** An error DynamoDB answers a request with, under the name it carries. */
+function failure(name: string, message: string): Error {
+  return Object.assign(new Error(message), { name });
+}
+
 /** The rejection DynamoDB answers a lost condition on an `UpdateItem` with. */
 function rejection(): Error {
-  return Object.assign(new Error('The conditional request failed'), {
-    name: 'ConditionalCheckFailedException',
-  });
+  return failure('ConditionalCheckFailedException', 'The conditional request failed');
 }
 
 /**
@@ -97,19 +113,29 @@ function updateTable(items: readonly DocItem[]): {
 }
 
 /**
- * One pass whose scan answers `observed` while the table the writes land on
- * holds `current`. The difference between the two is the race under test.
+ * One run whose scan answers `pages` in order while the table the writes land
+ * on holds `current`. The difference between the two is the race under test,
+ * and a second page is what shows whether a refusal on the first ended the
+ * run: a run that ended there never issues the second scan, and a scan past
+ * the last page raises rather than answering something the run could count.
  */
 async function backfillAgainst(
-  observed: readonly DocItem[],
+  pages: readonly (readonly DocItem[])[],
   current: readonly DocItem[],
-): Promise<{ rows: Map<string, DocItem>; outcome: 'resolved' | Error }> {
+  run: { maxPages?: number } = {},
+): Promise<{ rows: Map<string, DocItem>; outcome: BackfillResult | Error }> {
   const { client, mock } = createStrictDocumentMock();
   const table = updateTable(current);
-  mock.on(ScanCommand).resolves({ Items: [...observed] });
+  let page = 0;
+  mock.on(ScanCommand).callsFake((): object => {
+    const items = pages[page];
+    if (items === undefined) throw new Error('the run scanned past its last page');
+    page += 1;
+    return { Items: [...items], LastEvaluatedKey: page < pages.length ? PAGE_KEY : undefined };
+  });
   mock.on(UpdateCommand).callsFake(table.handler);
-  const outcome = await backfillRecencyIndex({ client, tableName: TABLE }).then(
-    (): 'resolved' => 'resolved',
+  const outcome = await backfillRecencyIndex({ client, tableName: TABLE, ...run }).then(
+    (result): BackfillResult => result,
     (error: Error) => error,
   );
   return { rows: table.rows, outcome };
@@ -129,27 +155,27 @@ describe('backfillRecencyIndex writes only to a row that is still there', () => 
    * the whole point: a condition that does nothing builds the same request.
    */
   it('does not re-create a row deleted between the scan and the update', async () => {
-    const { rows } = await backfillAgainst([session], []);
+    const { rows } = await backfillAgainst([[session]], []);
     expect(rows.has(SESSION_KEY)).toBe(false);
     expect(rows.size).toBe(0);
   });
 
   /**
-   * That refusal is not swallowed: it reaches the caller through the tool's own
-   * error boundary, as every rejection of this update already did. The run
-   * stops rather than reporting the vanished row as work done — a backfill is
-   * re-runnable, and the scan filter skips whatever the stopped run had already
-   * indexed.
+   * The refusal is this run's own condition doing its job, not a failure: the
+   * row is gone, so there is nothing left to give keys to. It is counted as
+   * skipped and the walk goes on — the second page, which a run that ended at
+   * the refusal never scans, is what tells the two apart.
    */
-  it('reports the refusal rather than counting the vanished row as indexed', async () => {
-    const { outcome } = await backfillAgainst([session], []);
-    expect(outcome).toMatchObject({ name: 'UpstreamError', code: ErrorCode.UPSTREAM });
-    expect((outcome as Error).cause).toMatchObject({ name: 'ConditionalCheckFailedException' });
+  it('counts a row that vanished between the scan and the update as skipped, and reads on', async () => {
+    const { rows, outcome } = await backfillAgainst([[session], [other]], [other]);
+    expect(outcome).toEqual({ scanned: 2, indexed: 1, skipped: 1 });
+    expect(rows.has(SESSION_KEY)).toBe(false);
+    expect(rows.get(OTHER_KEY)).toMatchObject({ gsi1sk: '2026-03-03T00:00:00.000Z#s2' });
   });
 
   it('still gives an existing row that has no keys its index keys', async () => {
-    const { rows, outcome } = await backfillAgainst([session], [session]);
-    expect(outcome).toBe('resolved');
+    const { rows, outcome } = await backfillAgainst([[session]], [session]);
+    expect(outcome).toEqual({ scanned: 1, indexed: 1, skipped: 0 });
     expect(rows.get(SESSION_KEY)).toEqual({
       ...session,
       gsi1pk: expect.stringMatching(/^SESS#\d+$/),
@@ -161,11 +187,46 @@ describe('backfillRecencyIndex writes only to a row that is still there', () => 
    * The other half of the same condition, unchanged: a row a live adapter
    * indexed between the scan and the update carries its true timestamp, and
    * overwriting it with the pre-index epoch would move a live row to the bottom
-   * of every listing.
+   * of every listing. On a table with a running graph that refusal is the
+   * ordinary case rather than an edge one, so it too is skipped and read past.
    */
   it('still refuses a row a live adapter has already indexed, leaving its keys alone', async () => {
     const indexed = { ...session, gsi1pk: 'SESS#3', gsi1sk: '2026-09-01T00:00:00.000Z#s1' };
-    const { rows } = await backfillAgainst([session], [indexed]);
+    const { rows, outcome } = await backfillAgainst([[session], [other]], [indexed, other]);
     expect(rows.get(SESSION_KEY)).toEqual(indexed);
+    expect(outcome).toEqual({ scanned: 2, indexed: 1, skipped: 1 });
+  });
+
+  /**
+   * What keeps the catch from being a swallow. Only the guard's own refusal is
+   * an ordinary outcome; anything else still reaches the caller through the
+   * tool's error boundary. Without this, a backfill that cannot write at all —
+   * a malformed request, a denied permission — would report a tableful of
+   * skipped rows and finish as if the table had been walked.
+   */
+  it('still ends the run when the update fails for any other reason', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(ScanCommand).resolves({ Items: [session] });
+    mock.on(UpdateCommand).callsFake((): object => {
+      throw failure('ValidationException', 'ExpressionAttributeValues contains invalid value');
+    });
+    const outcome = await backfillRecencyIndex({ client, tableName: TABLE }).catch(
+      (error: Error) => error,
+    );
+    expect(outcome).toMatchObject({ name: 'UpstreamError', code: ErrorCode.UPSTREAM });
+    expect((outcome as Error).cause).toMatchObject({ name: 'ValidationException' });
+  });
+
+  /**
+   * A refusal does not hold the cursor back. The run stops at its page cap,
+   * not at the refused row, and the cursor it returns is the one the scan
+   * reported — so resuming carries on past that page rather than re-reading
+   * it, which is right in both directions: the refused row needs nothing done
+   * to it, and the scan's own filter skips whatever the page did index.
+   */
+  it('advances the cursor of a capped run whose only row was refused', async () => {
+    const { outcome } = await backfillAgainst([[session], [other]], [other], { maxPages: 1 });
+    expect(outcome).toMatchObject({ scanned: 1, indexed: 0, skipped: 1 });
+    expect((outcome as BackfillResult).nextCursor).toEqual(expect.any(String));
   });
 });
