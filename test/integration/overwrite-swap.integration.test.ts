@@ -8,12 +8,16 @@ import { randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
+import { DynamoDBStore } from '../../src/index';
 import { type PayloadDescriptor, PayloadLocation } from '../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../src/shared/logging/logger';
+import { partitionKey, sortKey } from '../../src/store/internal/keys';
 import { putWithRevisionSwap } from '../../src/store/internal/overwrite-swap';
 import type { ExistingRecordMeta } from '../../src/store/internal/read-existing';
 import type { StoreItemRecord } from '../../src/store/types';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
+import { afterResponse } from './helpers/fault-injection';
+import { MemoryS3 } from './helpers/memory-s3';
 
 const tableName = 'overwrite-swap-itest';
 const admin = new DynamoDBClient(DDB_LOCAL_CONFIG);
@@ -131,10 +135,12 @@ describe('overwrite compare-and-swap (F5)', () => {
       value: seed,
       createdAt: 'T0',
     };
-    // Deliberately minimal: putWithRevisionSwap only ever reads tableName,
-    // client, and logger off its context (never offloader, index, etc.), so
-    // this mirrors the shape test/unit/store/internal/overwrite-swap.test.ts
-    // already relies on -- but with a real DynamoDBDocument instead of a mock.
+    // Deliberately minimal: putWithRevisionSwap reads tableName, client,
+    // logger and retry off its context, and hands that same context to the
+    // tokened write as its deps -- never offloader or index, because the
+    // choice of write shape is the descriptor's. These records carry an S3
+    // descriptor, so this drives the transaction path against a real
+    // DynamoDBDocument rather than a mock.
     const context = { tableName, offloader: {}, logger: SILENT_LOGGER, client };
 
     const [supersededA, supersededB] = await Promise.all([
@@ -185,6 +191,9 @@ describe('overwrite compare-and-swap (F5)', () => {
       ClientRequestToken: randomUUID(),
     };
     await client.transactWrite(input);
+    /** Without this the whole test would still pass if the first call applied nothing. */
+    const created = await client.get({ TableName: tableName, Key: { PK: pk, SK: sk } });
+    expect(created.Item).toBeDefined();
     await client.delete({ TableName: tableName, Key: { PK: pk, SK: sk } });
     await client.transactWrite(input);
     const after = await client.get({
@@ -193,5 +202,40 @@ describe('overwrite compare-and-swap (F5)', () => {
       ConsistentRead: true,
     });
     expect(after.Item).toBeUndefined();
+  });
+
+  /**
+   * The composition, not the service fact: `store.put` itself, a write that
+   * commits and whose acknowledgement is then lost, a concurrent delete that
+   * removes the row it wrote, and the library's own retry re-sending the
+   * identical tokened request. The row must stay deleted.
+   *
+   * Without the token the retry is a fresh conditional put, the creation guard
+   * holds again now the row is gone, and the put resurrects a row the caller
+   * had every reason to believe was deleted - carrying a payload id nothing
+   * will ever write again.
+   */
+  it('does not resurrect a row a concurrent delete removed while its put was in flight', async () => {
+    const namespace = ['reland'];
+    const key = 'k';
+    const rowKey = { PK: partitionKey(namespace), SK: sortKey(namespace, key) };
+    const base = new DynamoDBClient({ ...DDB_LOCAL_CONFIG, maxAttempts: 1 });
+    afterResponse(base, 'TransactWriteItemsCommand', async () => {
+      await client.delete({ TableName: tableName, Key: rowKey });
+      throw Object.assign(new Error('simulated lost response'), { name: 'ETIMEDOUT' });
+    });
+    const store = new DynamoDBStore({
+      tableName,
+      client: DynamoDBDocument.from(base),
+      logger: SILENT_LOGGER,
+      s3: { bucketName: 'memory', thresholdBytes: 1, createS3Client: () => new MemoryS3() },
+    });
+
+    await store.put(namespace, key, { pad: 'p'.repeat(600) });
+
+    const after = await client.get({ TableName: tableName, Key: rowKey, ConsistentRead: true });
+    expect(after.Item).toBeUndefined();
+    store.destroy();
+    base.destroy();
   });
 });

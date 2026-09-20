@@ -81,7 +81,10 @@ export function referencesS3Object(descriptor: DescriptorRef): boolean {
  * which is what the fan-out writers rely on.
  *
  * Accepts: `deps` — the adapter's client, table and retry policy. `item` — the
- * row to commit. `guard` — the condition fragments from
+ * row to commit. It is captured by reference and re-sent unchanged on every
+ * attempt of the budget, so a caller must not mutate it while this call is in
+ * flight: the re-send would carry the same token with different parameters,
+ * which the service refuses with `IdempotentParameterMismatchException`. `guard` — the condition fragments from
  * `revisionGuard`, or a caller's own; omitted writes unconditionally,
  * which is the case a token helps most, since nothing else stops a re-send
  * from landing. `signal` — aborts between attempts.

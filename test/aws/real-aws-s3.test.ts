@@ -200,7 +200,16 @@ describe('S3 offload against real AWS', () => {
     const base = new DynamoDBClient(clientConfig);
     installFaults(base, [
       {
-        match: (name) => name === 'PutItemCommand',
+        /**
+         * Both shapes. This payload clears the offload threshold, so the
+         * overwrite goes out as a one-item transaction rather than a plain
+         * put; a matcher naming only `PutItemCommand` would never fire, the
+         * faulted put would succeed, and this test would fail claiming the
+         * injected error never arrived - while the invariant it guards, that a
+         * failed overwrite never deletes the still-live row's object, would go
+         * unexercised.
+         */
+        match: (name) => name === 'PutItemCommand' || name === 'TransactWriteItemsCommand',
         fail: () =>
           Object.assign(new Error('injected overwrite failure'), { name: 'ValidationException' }),
         times: 1,

@@ -25,6 +25,13 @@ export function createStrictDocumentMock(): {
  * under a client request token, an inline one as a plain `PutItem`. These three
  * let a test state what should happen to the write without restating that
  * decision.
+ *
+ * They **give up the shape assertion** in exchange, on purpose: a site using
+ * them passes whichever way the write is routed, so it can no longer notice a
+ * wrong routing decision. Use them where the subject is what happens *around*
+ * the write - the S3 cleanup, the verification read, the returned descriptor -
+ * and leave a site whose subject is the shape itself pinned to the one command
+ * it expects.
  */
 type DocumentMock = ReturnType<typeof mockClient>;
 

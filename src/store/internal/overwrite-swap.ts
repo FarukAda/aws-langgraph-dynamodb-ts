@@ -32,6 +32,15 @@ import type { StoreContext } from './setup';
  * `observed` absent means no pin at all, which is the unconditional write the
  * exhausted swap below falls back to — and the one a token helps most, since
  * with no condition to turn it away nothing else stops a re-send from landing.
+ *
+ * Two things do change for a caller on the offloaded path, both priced in the
+ * design. The budget is additionally bounded by `MAX_WRITE_LIFETIME_MS`, so a
+ * caller who configures an aggressively long retry policy can now see it end
+ * there rather than at its own last attempt; at the defaults the whole budget
+ * is orders of magnitude shorter and the bound is unreachable. And a
+ * transaction conflicts with any concurrent write to the same item, so under
+ * heavy contention this put can exhaust its budget where a plain `PutItem`
+ * would simply have won the race.
  */
 async function put(
   context: StoreContext,

@@ -82,11 +82,16 @@ describe('compare-and-swap exhaustion falls back to an unconditional write (TEST
       {
         match: isGuardedStorePut,
         /**
-         * Each shape is refused the way the service really refuses it: a
-         * transaction loses its guard as a cancellation carrying one
+         * Each shape is refused with the name and reason code the service
+         * uses: a transaction loses its guard as a cancellation carrying one
          * `ConditionalCheckFailed` reason, never as the bare exception a
-         * `PutItem` answers with. Injecting the bare one here would exhaust the
-         * swap through a shape this path can no longer produce.
+         * `PutItem` answers with, and injecting the bare one here would
+         * exhaust the swap through a shape this path can no longer produce.
+         * Neither arm attaches the rejected row, although the guard asks for
+         * it, so the swap takes its read fallback on every attempt - which is
+         * deliberate here (the exhaustion path is the subject) and is why the
+         * re-pin-from-the-cancellation branch is pinned at the unit tier
+         * instead.
          */
         fail: (commandName: string) =>
           commandName === 'TransactWriteItemsCommand'
