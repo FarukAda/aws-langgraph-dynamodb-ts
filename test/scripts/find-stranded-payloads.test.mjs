@@ -19,14 +19,18 @@ import { marshall } from '@aws-sdk/util-dynamodb';
 
 import {
   addVersionsPage,
+  boundedClientConfig,
   DEFAULT_GRACE_DAYS,
   DEFAULT_PREFIX,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_SOCKET_TIMEOUT_MS,
   decodeBacklink,
   emptyJoin,
   finishJoin,
   formatStranded,
   graceHoursRemaining,
   joinReleases,
+  main,
   parseArgs,
   reportLines,
   rowNamesKey,
@@ -607,4 +611,90 @@ test('a sweep that finds nothing still reports what it swept', async () => {
   assert.deepEqual(result.stranded, []);
   assert.match(reportLines(result).join('\n'), /bkt/);
   assert.equal(ddb.sent.length, 0);
+});
+
+/**
+ * `main` over stand-in constructors: each records the config it was handed and
+ * answers the smallest sweep there is, one empty listing page. Nothing reaches
+ * the network, and the report is captured so the run stays readable.
+ */
+async function runMain(argv = ['--bucket', 'b', '--table', 't']) {
+  const s3Configs = [];
+  const ddbConfigs = [];
+  const recording = (configs, answer) => (config) => {
+    configs.push(config);
+    return { send: () => Promise.resolve(answer), destroy() {} };
+  };
+  const logged = [];
+  const printed = console.log;
+  console.log = (line) => logged.push(line);
+  try {
+    await main(argv, {
+      createS3: recording(s3Configs, { IsTruncated: false }),
+      createDynamoDB: recording(ddbConfigs, {}),
+    });
+  } finally {
+    console.log = printed;
+  }
+  return { s3Configs, ddbConfigs, logged };
+}
+
+test('both clients are bounded, so a stalled connection fails the sweep instead of hanging it', async () => {
+  const { s3Configs, ddbConfigs } = await runMain();
+  assert.equal(s3Configs.length, 1);
+  assert.equal(ddbConfigs.length, 1);
+  const bound = {
+    requestTimeout: DEFAULT_REQUEST_TIMEOUT_MS,
+    socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS,
+    throwOnRequestTimeout: true,
+  };
+  assert.deepEqual(s3Configs[0].requestHandler, bound, 'the S3 client must carry the bound');
+  assert.deepEqual(ddbConfigs[0].requestHandler, bound, 'the DynamoDB client must carry the bound');
+});
+
+test('neither client is given maxAttempts, so the SDK retries this script relies on survive', async () => {
+  const { s3Configs, ddbConfigs } = await runMain();
+  for (const config of [...s3Configs, ...ddbConfigs]) {
+    assert.ok(
+      !('maxAttempts' in config),
+      'this script has no retry layer of its own: the SDK’s retries are the only ones',
+    );
+  }
+});
+
+test('neither client is given a connectionTimeout, which would count the wait for a socket', async () => {
+  const { s3Configs, ddbConfigs } = await runMain();
+  for (const config of [...s3Configs, ...ddbConfigs]) {
+    assert.ok(!('connectionTimeout' in config.requestHandler));
+    assert.ok(!('connectionTimeout' in config));
+  }
+});
+
+test('the bound rides on the region the command line asked for, and adds no flag of its own', async () => {
+  const { s3Configs, ddbConfigs } = await runMain([
+    '--bucket',
+    'b',
+    '--table',
+    't',
+    '--region',
+    'eu-west-1',
+  ]);
+  assert.equal(s3Configs[0].region, 'eu-west-1');
+  assert.equal(ddbConfigs[0].region, 'eu-west-1');
+  const { s3Configs: defaulted } = await runMain();
+  assert.ok(!('region' in defaulted[0]), 'no region still means the one from the environment');
+});
+
+test('a caller’s own requestHandler replaces the bound whole rather than merging with it', () => {
+  const own = { socketTimeout: 1 };
+  assert.deepEqual(boundedClientConfig({ requestHandler: own }).requestHandler, own);
+  assert.equal(boundedClientConfig({ region: 'eu-west-1' }).region, 'eu-west-1');
+});
+
+test('a request that times out is reported as unreadable, never as a stranded row', async () => {
+  const { result } = await runSweep({ 'CHKPT#t1|PAYLOAD##c1': 'TimeoutError' });
+  const text = reportLines(result).join('\n');
+  assert.match(text, /UNREADABLE objectKey=p\/live\.bin .*TimeoutError/);
+  assert.deepEqual(result.stranded, [], 'a request the sweep gave up on is not a finding');
+  assert.equal(result.checked, 6, 'and the keys after it are still swept');
 });

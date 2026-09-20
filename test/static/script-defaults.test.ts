@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { DEFAULT_S3_KEY_PREFIX, S3_RELEASE_GRACE_DAYS } from '../../src/shared/constants';
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_S3_KEY_PREFIX,
+  DEFAULT_SOCKET_TIMEOUT_MS,
+  S3_RELEASE_GRACE_DAYS,
+} from '../../src/shared/constants';
 import { readReadme } from './guards/iam-actions';
 import { SRC_ROOT } from './guards/source-files';
 
@@ -24,6 +29,11 @@ function declaredDefault(name: string): string {
   return match[1];
 }
 
+/** The same literal as a number, since the script writes milliseconds with digit separators. */
+function declaredNumber(name: string): number {
+  return Number(declaredDefault(name).replaceAll('_', ''));
+}
+
 describe('the sweep script and the constants it mirrors', () => {
   it('defaults its grace window to the same number of days the lifecycle rule writes', () => {
     expect(declaredDefault('DEFAULT_GRACE_DAYS')).toBe(String(S3_RELEASE_GRACE_DAYS));
@@ -31,6 +41,14 @@ describe('the sweep script and the constants it mirrors', () => {
 
   it('defaults its prefix to the same base prefix the adapters offload under', () => {
     expect(declaredDefault('DEFAULT_PREFIX')).toBe(`'${DEFAULT_S3_KEY_PREFIX}'`);
+  });
+
+  it('bounds one request with the same milliseconds the adapters bound one with', () => {
+    expect(declaredNumber('DEFAULT_REQUEST_TIMEOUT_MS')).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+  });
+
+  it('bounds an idle socket with the same milliseconds the adapters bound one with', () => {
+    expect(declaredNumber('DEFAULT_SOCKET_TIMEOUT_MS')).toBe(DEFAULT_SOCKET_TIMEOUT_MS);
   });
 
   it('refuses a name it cannot find, so a renamed default fails here rather than drifting', () => {

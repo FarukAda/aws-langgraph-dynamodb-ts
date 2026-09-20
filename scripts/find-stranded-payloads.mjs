@@ -45,6 +45,15 @@ export const DEFAULT_PREFIX = 'langgraph-checkpoints/';
  */
 export const DEFAULT_GRACE_DAYS = 1;
 
+/**
+ * How long one of this script's requests may run, and how long it may sit idle
+ * mid-response. They mirror `DEFAULT_REQUEST_TIMEOUT_MS` and
+ * `DEFAULT_SOCKET_TIMEOUT_MS` in `src/shared/constants.ts` — the bounds the
+ * library's own clients carry — and a static test pins each pair together.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+export const DEFAULT_SOCKET_TIMEOUT_MS = 5_000;
+
 /** The metadata names carrying the backlink. S3 lower-cases them; both are base64url. */
 const PK_FIELD = 'dynamodb-pk-b64';
 const SK_FIELD = 'dynamodb-sk-b64';
@@ -502,16 +511,69 @@ export function reportLines(result) {
   return lines;
 }
 
-/** Parse, announce what is about to be swept, sweep it, print the report. */
-export async function main(argv) {
+/**
+ * The config both clients are built from: a request handler that bounds how
+ * long a request may run, under whatever the caller set.
+ *
+ * The shape differs from the library's own clients in three ways, each of them
+ * deliberate, because what this script sends is not what the library sends.
+ *
+ * It carries a `requestTimeout` where the library's S3 client deliberately
+ * carries none. There, a `PutObject`'s response headers arrive only once the
+ * whole body has been uploaded, so a bound on the request would be a bound on
+ * the upload and would destroy a legitimate large one for being slow. This
+ * script sends `ListObjectVersions`, `HeadObject` and `GetItem` and nothing
+ * else, all small, so the timer bounds a request rather than a transfer.
+ * `throwOnRequestTimeout` is what makes it a bound at all — without it the
+ * handler only warns — and `socketTimeout` covers what a request timeout
+ * cannot, a response that stalls after its headers have arrived.
+ *
+ * It sets no `maxAttempts`, where the library pins it to 1. The library pins
+ * it because it has a retry layer of its own and stacking the two multiplies
+ * the budget. This script has no retry layer, so the SDK's own retries are the
+ * only ones it gets and they have to stay: take them away and one throttled
+ * `GetItem` becomes an unreadable row in the report.
+ *
+ * It passes no `connectionTimeout`, for the reason the library refuses one:
+ * that timer counts the wait behind the agent's sockets, and this script
+ * issues a `HeadObject` and a `GetItem` for every released key, so it queues
+ * by design.
+ *
+ * `clientConfig` is spread last, so anything a caller sets — a
+ * `requestHandler` above all — replaces this one whole rather than merging
+ * into it.
+ */
+export function boundedClientConfig(clientConfig) {
+  return {
+    requestHandler: {
+      requestTimeout: DEFAULT_REQUEST_TIMEOUT_MS,
+      socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS,
+      throwOnRequestTimeout: true,
+    },
+    ...clientConfig,
+  };
+}
+
+/** The real constructors: what the script builds its clients with when it runs. */
+const realS3 = (config) => new S3Client(config);
+const realDynamoDB = (config) => new DynamoDBClient(config);
+
+/**
+ * Parse, announce what is about to be swept, sweep it, print the report.
+ *
+ * `createS3` and `createDynamoDB` default to the real constructors and are
+ * here only so a test can read the config a client was built with. They take
+ * no flag and change nothing on the command line.
+ */
+export async function main(argv, { createS3 = realS3, createDynamoDB = realDynamoDB } = {}) {
   const options = parseArgs(argv);
   const clientConfig = options.region === undefined ? {} : { region: options.region };
   console.log(
     `sweeping bucket=${options.bucket} prefix=${options.prefix} table=${options.table} ` +
       `region=${options.region ?? '(from the environment)'} graceDays=${options.graceDays}`,
   );
-  const s3 = new S3Client(clientConfig);
-  const ddb = new DynamoDBClient(clientConfig);
+  const s3 = createS3(boundedClientConfig(clientConfig));
+  const ddb = createDynamoDB(boundedClientConfig(clientConfig));
   try {
     const result = await sweep({ s3, ddb, ...options });
     for (const line of reportLines(result)) console.log(line);
