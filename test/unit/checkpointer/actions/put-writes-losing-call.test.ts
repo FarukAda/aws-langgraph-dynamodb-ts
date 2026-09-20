@@ -1,11 +1,11 @@
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { marshall } from '@aws-sdk/util-dynamodb';
 
 import { putWrites } from '../../../../src/checkpointer/actions/put-writes';
 import { buildWriteItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { createStrictDocumentMock, rejectRowWrites } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
   dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
@@ -66,10 +66,21 @@ describe('putWrites when another call already won the row for the same write', (
       );
       offloader.upload.mockClear();
 
-      mock.on(PutCommand).rejects(
+      /**
+       * The loser's write is offloaded, so it goes out as a one-item
+       * transaction and the winner's row comes back attached to a cancellation
+       * reason rather than to an exception of its own.
+       */
+      rejectRowWrites(
+        mock,
         Object.assign(new Error('conflict'), {
-          name: 'ConditionalCheckFailedException',
-          Item: marshall(winner, { removeUndefinedValues: true }),
+          name: 'TransactionCanceledException',
+          CancellationReasons: [
+            {
+              Code: 'ConditionalCheckFailed',
+              Item: marshall(winner, { removeUndefinedValues: true }),
+            },
+          ],
         }),
       );
       mock.on(GetCommand).resolves({ Item: winner });

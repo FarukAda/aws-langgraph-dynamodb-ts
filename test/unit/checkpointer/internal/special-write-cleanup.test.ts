@@ -5,6 +5,7 @@ import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { rowWrite } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
   dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new Uint8Array()],
@@ -45,7 +46,12 @@ function trackingOffloader() {
   };
 }
 
-/** A document-client stub whose `get`/`put` are driven per test. */
+/**
+ * A document-client stub whose `get`/`put` are driven per test. Every item here
+ * is offloaded, so its row write goes out as a one-item transaction; `rowWrite`
+ * hands the stub the put that transaction carries, so each test still states
+ * what it wants of the write in one shape.
+ */
 interface ClientStub {
   get: (input: Record<string, unknown>) => Promise<{ Item?: Record<string, unknown> }>;
   put: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -53,7 +59,7 @@ interface ClientStub {
 
 function context(client: ClientStub, offloader?: ReturnType<typeof trackingOffloader>) {
   return {
-    client: client as never,
+    client: { ...client, transactWrite: rowWrite(client.put) } as never,
     tableName: 'ckpt',
     serde,
     logger: SILENT_LOGGER,

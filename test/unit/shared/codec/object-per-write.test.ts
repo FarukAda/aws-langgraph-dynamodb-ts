@@ -1,4 +1,4 @@
-import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { putCheckpoint } from '../../../../src/checkpointer/actions/put';
@@ -100,7 +100,7 @@ describe('each write call uploads to its own objects, even for identical bytes',
   ])('two putWrites calls of %s write', async (_kind, channel) => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
     const { uploaded, offloader } = recordingOffloader();
     const context = checkpointerContext(client, offloader);
     const config = { configurable: { thread_id: 't1', checkpoint_id: 'ckpt-1' } };

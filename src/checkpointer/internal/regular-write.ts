@@ -1,4 +1,8 @@
-import { isConditionalCheckFailed } from '../../shared/dynamodb/conditional-put';
+import {
+  isConditionalCheckFailed,
+  type RevisionGuard,
+} from '../../shared/dynamodb/conditional-put';
+import { putIdempotently, referencesS3Object } from '../../shared/dynamodb/idempotent-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
@@ -24,6 +28,54 @@ export interface RegularWriteOutcome {
 }
 
 /**
+ * First-write-wins, with the row that turned the write away attached to the
+ * rejection, so a losing call can tell a duplicate of its own from one another
+ * call committed without spending a read.
+ */
+const FIRST_WRITE_WINS: RevisionGuard = {
+  ConditionExpression: 'attribute_not_exists(PK)',
+  ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
+};
+
+/**
+ * Commit one regular row under {@link FIRST_WRITE_WINS}.
+ *
+ * The write takes one of two shapes, and which one is decided by the
+ * **descriptor** rather than by the adapter. An item whose payload was
+ * offloaded goes out as a one-item `TransactWriteItems` under a client request
+ * token, so a re-send of a write the service already applied is discarded
+ * instead of landing a second time — which, after the losing call's cleanup has
+ * released that row's object, would leave a live row naming nothing. An item
+ * whose payload is inline goes out as the plain `PutItem` it has always been,
+ * guard fragments and all: it names no object, so its re-land is an ordinary
+ * first-write-wins outcome rather than unreadable data, and a transaction would
+ * charge twice the write capacity to buy that.
+ *
+ * The question is the descriptor's because an adapter *with* an offloader
+ * configured still writes inline whenever the payload is under its threshold,
+ * so asking the adapter would tokenise a fan-out of small writes that strand
+ * nothing — the very workload this path exists to keep cheap.
+ *
+ * One item per transaction, never several: a transaction cancels whole, so
+ * batching would let one duplicate write — the expected outcome of a retry
+ * under first-write-wins — turn away every neighbour it travelled with.
+ */
+async function commitItem(
+  context: CheckpointerContext,
+  item: CheckpointWriteItem,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (referencesS3Object(item.value)) {
+    await putIdempotently(context, item, FIRST_WRITE_WINS, signal);
+    return;
+  }
+  await withDynamoDBRetry(
+    () => context.client.put({ TableName: context.tableName, Item: item, ...FIRST_WRITE_WINS }),
+    retryFor(context, signal),
+  );
+}
+
+/**
  * Resolve a non-guard failure by reading the row back. Without an offloader
  * there is no object to protect, so the write is simply reported as not landed
  * and the caller's cleanup is a no-op. The row holding this call's own
@@ -39,9 +91,10 @@ async function verifyFailure(
 }
 
 /**
- * Write regular items with a first-write-wins guard. Every `PutCommand` fully
- * settles (`Promise.allSettled`) before this resolves and never rejects; a
- * genuine failure is reported via `error`, not thrown.
+ * Write regular items with a first-write-wins guard. Every write fully settles
+ * (`Promise.allSettled`) before this resolves and never rejects; a genuine
+ * failure is reported via `error`, not thrown. The fan-out is one call per
+ * item whichever shape {@link commitItem} gives that item's write.
  *
  * A failure is not proof of a non-commit: `withDynamoDBRetry` re-issues a put
  * whose response was lost, and the re-issues can time out at the transport, so
@@ -69,20 +122,7 @@ export async function writeRegularItems(
   items: CheckpointWriteItem[],
   signal?: AbortSignal,
 ): Promise<RegularWriteOutcome> {
-  const results = await Promise.allSettled(
-    items.map((item) =>
-      withDynamoDBRetry(
-        () =>
-          context.client.put({
-            TableName: context.tableName,
-            Item: item,
-            ConditionExpression: 'attribute_not_exists(PK)',
-            ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
-          }),
-        retryFor(context, signal),
-      ),
-    ),
-  );
+  const results = await Promise.allSettled(items.map((item) => commitItem(context, item, signal)));
   const outcome: RegularWriteOutcome = { deadUploads: [] };
   for (const [index, result] of results.entries()) {
     if (result.status === 'fulfilled') continue;

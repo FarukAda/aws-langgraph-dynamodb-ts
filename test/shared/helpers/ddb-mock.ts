@@ -54,26 +54,58 @@ export function rejectRowWrites(mock: DocumentMock, error: Error): void {
 }
 
 /**
- * The fields either shape's input carries a row on. Reading the shape rather
- * than the command's class keeps this off `instanceof`, which is forbidden
- * here as it is in the source.
+ * What either shape carries a row on: the request a plain put sent, or the one
+ * its transaction wrapped. Reading the shape rather than the command's class
+ * keeps this off `instanceof`, which is forbidden here as it is in the source.
  */
-interface RowWriteInput {
+export interface RowPutInput {
+  TableName?: string;
   Item?: DocItem;
-  TransactItems?: { Put?: { Item?: DocItem } }[];
+  ConditionExpression?: string;
+  ExpressionAttributeNames?: Record<string, string>;
+  ExpressionAttributeValues?: Record<string, string>;
+  ReturnValuesOnConditionCheckFailure?: string;
+}
+
+/**
+ * The put each row write sent, in order, across both shapes — so a test whose
+ * subject is the *guard* a write carries can assert it without also deciding
+ * which shape the write took.
+ */
+export function rowWriteInputs(mock: DocumentMock): RowPutInput[] {
+  const puts: RowPutInput[] = [];
+  for (const call of mock.calls()) {
+    const { input } = call.args[0] as {
+      input: RowPutInput & { TransactItems?: { Put?: RowPutInput }[] };
+    };
+    if (input.Item) puts.push(input);
+    for (const entry of input.TransactItems ?? []) if (entry.Put) puts.push(entry.Put);
+  }
+  return puts;
 }
 
 /** The rows committed, in the order they were sent, across both shapes. */
 export function committedRows(mock: DocumentMock): DocItem[] {
-  const rows: DocItem[] = [];
-  for (const call of mock.calls()) {
-    const { input } = call.args[0] as { input: RowWriteInput };
-    if (input.Item) rows.push(input.Item);
-    for (const item of input.TransactItems ?? []) {
-      if (item.Put?.Item) rows.push(item.Put.Item);
-    }
-  }
-  return rows;
+  return rowWriteInputs(mock)
+    .map((put) => put.Item)
+    .filter((item): item is DocItem => item !== undefined);
+}
+
+/**
+ * Drive a hand-rolled client double's row write from the one shape its test
+ * states the write in.
+ *
+ * A double that implements only `put` sees nothing at all once the row it
+ * writes is offloaded, because that write goes out as a one-item
+ * `TransactWriteItems` instead. This unwraps the transaction and hands `write`
+ * the `Put` it carries, so a double that counts writes still counts them once
+ * and a test that reads `ConditionExpression` off the request still finds it.
+ * Like the three above it gives up the shape assertion in exchange.
+ */
+export function rowWrite(
+  write: (input: Record<string, unknown>) => Promise<unknown>,
+): (input: { TransactItems: { Put: Record<string, unknown> }[] }) => Promise<unknown> {
+  return async (input) => write(input.TransactItems[0].Put);
 }
 
 /**

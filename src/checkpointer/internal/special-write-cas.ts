@@ -1,8 +1,10 @@
 import {
   isConditionalCheckFailed,
   OVERWRITE_CAS_MAX_ATTEMPTS,
+  type RevisionGuard,
   revisionGuard,
 } from '../../shared/dynamodb/conditional-put';
+import { putIdempotently, referencesS3Object } from '../../shared/dynamodb/idempotent-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { CheckpointWriteItem } from '../types';
@@ -18,6 +20,45 @@ import {
 /** Outcome of {@link attemptCasWrites}: either a settled write, or every attempt rejected. */
 type CasAttemptResult =
   { done: true; outcome: SpecialWriteOutcome } | { done: false; observed: SpecialRowState };
+
+/**
+ * Commit one special row, optionally pinned to the `writeGroup` the caller
+ * observed.
+ *
+ * The write takes one of two shapes, and which one is decided by the
+ * **descriptor** rather than by the adapter. An item whose payload was
+ * offloaded goes out as a one-item `TransactWriteItems` under a client request
+ * token, so a re-send of a write the service already applied is discarded
+ * instead of landing a second time — which, after a concurrent call has
+ * released that row's object, would leave a live row naming nothing. An item
+ * whose payload is inline goes out as the plain `PutItem` it has always been,
+ * guard fragments and all: it names no object, so its re-land is an ordinary
+ * last-write-wins outcome rather than unreadable data, and a transaction would
+ * charge twice the write capacity to buy that.
+ *
+ * The question is the descriptor's because this path runs whenever an offloader
+ * is *configured*, and such an adapter still writes inline whenever the payload
+ * is under its threshold — so asking the adapter would tokenise writes that
+ * strand nothing.
+ *
+ * `guard` absent means no pin at all, which is the unconditional overwrite the
+ * exhausted compare-and-swap below falls back to.
+ */
+async function commitSpecialRow(
+  context: CheckpointerContext,
+  item: CheckpointWriteItem,
+  guard?: RevisionGuard,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (referencesS3Object(item.value)) {
+    await putIdempotently(context, item, guard, signal);
+    return;
+  }
+  await withDynamoDBRetry(
+    () => context.client.put({ TableName: context.tableName, Item: item, ...guard }),
+    retryFor(context, signal),
+  );
+}
 
 /**
  * Retry a conditional put up to {@link OVERWRITE_CAS_MAX_ATTEMPTS} times,
@@ -37,6 +78,12 @@ type CasAttemptResult =
  *
  * Only a rejection whose re-read proves some *other* writer holds the row is
  * retried; every other failure is already settled by the verification.
+ *
+ * Each iteration calls {@link commitSpecialRow} afresh, so an offloaded item's
+ * re-pin draws a new request token. That is required rather than merely tidy:
+ * the re-pinned request carries a different `ConditionExpression`, and the same
+ * token presented with changed parameters inside the service's window is
+ * refused outright.
  */
 async function attemptCasWrites(
   context: CheckpointerContext,
@@ -48,14 +95,11 @@ async function attemptCasWrites(
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
     const attempted = observed;
     try {
-      await withDynamoDBRetry(
-        () =>
-          context.client.put({
-            TableName: context.tableName,
-            Item: item,
-            ...revisionGuard(SPECIAL_REVISION_ATTRIBUTE, attempted),
-          }),
-        retryFor(context, signal),
+      await commitSpecialRow(
+        context,
+        item,
+        revisionGuard(SPECIAL_REVISION_ATTRIBUTE, attempted),
+        signal,
       );
       return { done: true, outcome: { committed: true, superseded: attempted.value } };
     } catch (error) {
@@ -71,7 +115,16 @@ async function attemptCasWrites(
 
 /**
  * Overwrite the row unconditionally once the compare-and-swap budget is spent,
- * verifying rather than assuming if that put fails too.
+ * verifying rather than assuming if that write fails too.
+ *
+ * This is the call a request token helps most, and the reason it is worth
+ * carrying one here at all. Every other write on this path is pinned, so a
+ * re-send that arrives after the first attempt already committed is turned away
+ * by its own guard; this one has no condition, so nothing but the token stops
+ * it landing a second time — over whatever a competitor wrote in between, and
+ * over a row whose object a concurrent cleanup has since released. It still
+ * takes the shape {@link commitSpecialRow} gives it, so an inline payload is
+ * written exactly as before.
  */
 async function overwriteUnconditionally(
   context: CheckpointerContext,
@@ -80,10 +133,7 @@ async function overwriteUnconditionally(
   signal?: AbortSignal,
 ): Promise<SpecialWriteOutcome> {
   try {
-    await withDynamoDBRetry(
-      () => context.client.put({ TableName: context.tableName, Item: item }),
-      retryFor(context, signal),
-    );
+    await commitSpecialRow(context, item, undefined, signal);
     return { committed: true, superseded: observed.value };
   } catch (error) {
     return (await verifyAfterFailure(context, item, observed, error as Error)).outcome;
@@ -94,6 +144,11 @@ async function overwriteUnconditionally(
  * The plain put used without an offloader: no object exists to orphan, so no
  * swap and no read. A failure is reported as not committed without verifying,
  * which stays truthful because there is no upload for the caller to keep.
+ *
+ * It stays a plain put whatever the descriptor says. A row read back from a
+ * table an offloading adapter wrote can name an object, but this adapter cannot
+ * have uploaded it, so there is nothing here for a token to protect and no
+ * reason to pay a transaction's write capacity.
  */
 async function writeWithoutOffloader(
   context: CheckpointerContext,
