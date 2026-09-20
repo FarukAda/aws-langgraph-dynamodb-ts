@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
@@ -8,7 +8,12 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import {
+  committedRows,
+  createStrictDocumentMock,
+  rejectRowWrites,
+  resolveRowWrites,
+} from '../../../shared/helpers/ddb-mock';
 import { stubEmbeddings } from '../../../shared/helpers/embeddings-stub';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
@@ -46,6 +51,11 @@ function trackingOffloader(
     ownsKey: () => true,
   };
 }
+/** The single item an offloaded row write wraps in its transaction. */
+interface TransactPut {
+  Put: { Item: Record<string, unknown> };
+}
+
 const binKey = (parts: string[], objectId: string): string =>
   [...parts, objectId].join('/') + '.bin';
 
@@ -157,7 +167,7 @@ describe('putItem', () => {
   it('cleans up offloaded objects when the write fails', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    rejectRowWrites(mock, Object.assign(new Error('boom'), { name: 'ValidationException' }));
     const offloader = trackingOffloader();
     await expect(
       putItem(context(client, { offloader: offloader as never }), op({})),
@@ -173,8 +183,8 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     let rev: string | undefined;
     mock.on(GetCommand).callsFake(async () => (rev ? { Item: { rev } } : {}));
-    mock.on(PutCommand).callsFake((input) => {
-      rev = input.Item.rev as string;
+    mock.on(TransactWriteCommand).callsFake((input: { TransactItems: TransactPut[] }) => {
+      rev = input.TransactItems[0].Put.Item.rev as string;
       throw Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
     });
     const offloader = trackingOffloader();
@@ -185,7 +195,7 @@ describe('putItem', () => {
   it('cleans up the new S3 object and rethrows when an ambiguous retry-exhaustion write genuinely did not land', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
     const offloader = trackingOffloader();
     const ctx = context(client, { offloader: offloader as never });
     await expect(putItem(ctx, op({}))).rejects.toThrow('timeout');
@@ -220,7 +230,7 @@ describe('putItem', () => {
   it("offloads every put to a key of its own, ending in that put's rev", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
     const uploaded: string[] = [];
     const offloader = trackingOffloader({
       upload: async (key: string) => {
@@ -232,7 +242,7 @@ describe('putItem', () => {
     await putItem(ctx, op({}));
     await putItem(ctx, op({}));
     await putItem(ctx, op({ value: { name: 'someone else' } }));
-    const revs = mock.commandCalls(PutCommand).map((call) => call.args[0].input.Item!.rev);
+    const revs = committedRows(mock).map((row) => row.rev);
     expect(uploaded).toEqual(revs.map((rev) => `users/u1/profile/${rev}`));
     expect(new Set(uploaded).size).toBe(3);
   });
@@ -250,7 +260,7 @@ describe('putItem', () => {
         },
       },
     });
-    mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    rejectRowWrites(mock, Object.assign(new Error('boom'), { name: 'ValidationException' }));
     const offloader = trackingOffloader({ buildKey: binKey });
     await expect(
       putItem(context(client, { offloader: offloader as never }), op({})),
@@ -275,13 +285,11 @@ describe('putItem', () => {
       rev: 'A',
     });
     mock.on(GetCommand).resolves({ Item: first });
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
 
     await putItem(ctx, op({}));
 
-    const surviving = mock.commandCalls(PutCommand)[0].args[0].input.Item!.value as {
-      s3Key: string;
-    };
+    const surviving = committedRows(mock)[0].value as { s3Key: string };
     expect(surviving.s3Key).not.toBe((first.value as { s3Key: string }).s3Key);
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(offloader.deleteBatch).toHaveBeenCalledWith([(first.value as { s3Key: string }).s3Key]);
@@ -302,11 +310,11 @@ describe('putItem', () => {
       rev: 'A',
     });
     mock.on(GetCommand).resolves({ Item: first });
-    mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    rejectRowWrites(mock, Object.assign(new Error('boom'), { name: 'ValidationException' }));
 
     await expect(putItem(ctx, op({}))).rejects.toThrow('boom');
 
-    const own = mock.commandCalls(PutCommand)[0].args[0].input.Item!.value as { s3Key: string };
+    const own = committedRows(mock)[0].value as { s3Key: string };
     expect(own.s3Key).not.toBe((first.value as { s3Key: string }).s3Key);
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(offloader.deleteBatch).toHaveBeenCalledWith([own.s3Key]);
@@ -315,7 +323,7 @@ describe('putItem', () => {
   it('cleans up the previous S3 object after a successful overwrite', async () => {
     const { client, mock } = createStrictDocumentMock();
     answerExisting(mock);
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
     const offloader = trackingOffloader({ buildKey: binKey });
     await putItem(context(client, { offloader: offloader as never }), op({}));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);

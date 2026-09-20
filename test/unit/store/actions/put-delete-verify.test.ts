@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DeleteCommand, GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
@@ -7,7 +7,7 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { createStrictDocumentMock, rejectRowWrites } from '../../../shared/helpers/ddb-mock';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -116,7 +116,7 @@ describe('persistRecord ambiguous-failure verification', () => {
       .on(GetCommand)
       .resolvesOnce({})
       .rejects(Object.assign(new Error('read down'), { name: 'ValidationException' }));
-    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
     const offloader = trackingOffloader();
     await expect(
       putItem(context(client, { offloader: offloader as never }), op({})),
@@ -133,9 +133,13 @@ describe('persistRecord ambiguous-failure verification', () => {
       .on(GetCommand)
       .resolvesOnce({})
       .rejects(Object.assign(new Error('read down'), { name: 'ValidationException' }));
-    mock
-      .on(PutCommand)
-      .rejects(Object.assign(new Error('rejected'), { name: 'ConditionalCheckFailedException' }));
+    /** An offloaded row commits as a transaction, so its guard rejection is a cancellation. */
+    mock.on(TransactWriteCommand).rejects(
+      Object.assign(new Error('rejected'), {
+        name: 'TransactionCanceledException',
+        CancellationReasons: [{ Code: 'ConditionalCheckFailed' }],
+      }),
+    );
     const offloader = trackingOffloader();
     await expect(
       putItem(context(client, { offloader: offloader as never }), op({})),
@@ -146,7 +150,7 @@ describe('persistRecord ambiguous-failure verification', () => {
   it('still deletes the new S3 object when the verification read confirms the write did not land', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).rejects(Object.assign(new Error('bad'), { name: 'ValidationException' }));
+    rejectRowWrites(mock, Object.assign(new Error('bad'), { name: 'ValidationException' }));
     const offloader = trackingOffloader();
     await expect(
       putItem(context(client, { offloader: offloader as never }), op({})),
@@ -160,10 +164,14 @@ async function valueCommittedBy(value: PutOperation['value']): Promise<{ s3Key: 
   const { client, mock } = createStrictDocumentMock();
   let committed: { s3Key: string } | undefined;
   mock.on(GetCommand).resolves({});
-  mock.on(PutCommand).callsFake(async (input: { Item: { value: { s3Key: string } } }) => {
-    committed = input.Item.value;
-    return {};
-  });
+  mock
+    .on(TransactWriteCommand)
+    .callsFake(
+      async (input: { TransactItems: { Put: { Item: { value: { s3Key: string } } } }[] }) => {
+        committed = input.TransactItems[0].Put.Item.value;
+        return {};
+      },
+    );
   await putItem(context(client, { offloader: trackingOffloader() as never }), op({ value }));
   return committed!;
 }

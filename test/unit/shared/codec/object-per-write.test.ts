@@ -9,7 +9,7 @@ import { buildS3Key } from '../../../../src/shared/codec/s3/config';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { createStrictDocumentMock, resolveRowWrites } from '../../../shared/helpers/ddb-mock';
 
 /**
  * An offloader that builds real keys and records every key it is asked to
@@ -56,7 +56,7 @@ describe('each write call uploads to its own objects, even for identical bytes',
   it('two store.put calls of one value to one item', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
     const { uploaded, offloader } = recordingOffloader();
     const context: StoreContext = {
       client,

@@ -1,4 +1,4 @@
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
@@ -7,7 +7,11 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import {
+  createStrictDocumentMock,
+  rejectRowWrites,
+  resolveRowWrites,
+} from '../../../shared/helpers/ddb-mock';
 
 function trackingOffloader() {
   return {
@@ -49,10 +53,13 @@ async function rowCommittedBy(value: PutOperation['value']): Promise<CommittedRo
   const { client, mock } = createStrictDocumentMock();
   let row: CommittedRow | undefined;
   mock.on(GetCommand).resolves({});
-  mock.on(PutCommand).callsFake(async (input: { Item: CommittedRow }) => {
-    row = { rev: input.Item.rev, value: input.Item.value };
-    return {};
-  });
+  mock
+    .on(TransactWriteCommand)
+    .callsFake(async (input: { TransactItems: { Put: { Item: CommittedRow } }[] }) => {
+      const committed = input.TransactItems[0].Put.Item;
+      row = { rev: committed.rev, value: committed.value };
+      return {};
+    });
   await putItem(context(client, trackingOffloader()), { ...OP, value });
   return row!;
 }
@@ -88,7 +95,7 @@ describe("store.put never releases a racer's committed object when its own write
           ? { Item: { createdAt: 'c', ...earlier } }
           : { Item: racer },
       );
-    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
 
     await expect(putItem(context(client, offloader), OP)).rejects.toMatchObject({
       code: ErrorCode.RETRY_EXHAUSTED,
@@ -121,7 +128,7 @@ describe('store.put releases the payload a successful overwrite superseded witho
     const { client, mock } = createStrictDocumentMock();
     const offloader = trackingOffloader();
     mock.on(GetCommand).resolves({ Item: { createdAt: 'c', ...superseded } });
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
 
     await expect(
       putItem(context(client, offloader), { ...OP, value: { note: 'C2' } }),
@@ -141,7 +148,7 @@ describe('store.put releases the payload a successful overwrite superseded witho
       const { client, mock } = createStrictDocumentMock();
       const offloader = trackingOffloader();
       mock.on(GetCommand).resolves(existing as never);
-      mock.on(PutCommand).resolves({});
+      resolveRowWrites(mock);
 
       await putItem(context(client, offloader), { ...OP, value: { note: 'C2' } });
 

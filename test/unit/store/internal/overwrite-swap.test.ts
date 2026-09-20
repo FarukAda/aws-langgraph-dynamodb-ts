@@ -22,8 +22,22 @@ const record = (): StoreItemRecord => ({
   rev: 'mine',
 });
 
-const conditionalFailure = () =>
-  Object.assign(new Error('rejected'), { name: 'ConditionalCheckFailedException' });
+/**
+ * The guard rejection as a one-item transaction reports it. Every record here
+ * is offloaded, so every write below goes out as a transaction and every
+ * rejection arrives in this shape rather than as a bare exception name.
+ */
+const cancelledGuard = (item?: Record<string, unknown>) =>
+  Object.assign(new Error('cancelled'), {
+    name: 'TransactionCanceledException',
+    CancellationReasons: [{ Code: 'ConditionalCheckFailed', ...(item ? { Item: item } : {}) }],
+  });
+
+/** The request an offloaded put takes; its one item carries what a plain put took. */
+interface TransactInput {
+  TransactItems: { Put: Record<string, unknown> }[];
+  ClientRequestToken: string;
+}
 
 function harness(options: {
   failures: number;
@@ -32,17 +46,18 @@ function harness(options: {
 }) {
   let puts = 0;
   const inputs: Record<string, unknown>[] = [];
+  const send = (input: Record<string, unknown>): Record<string, never> => {
+    inputs.push(input);
+    puts += 1;
+    if (puts <= options.failures) throw cancelledGuard();
+    return {};
+  };
   const context = {
     tableName: 'store',
     offloader: {},
     logger: options.logger ?? SILENT_LOGGER,
     client: {
-      put: async (input: Record<string, unknown>) => {
-        inputs.push(input);
-        puts += 1;
-        if (puts <= options.failures) throw conditionalFailure();
-        return {};
-      },
+      transactWrite: async (input: TransactInput) => send(input.TransactItems[0].Put),
       get: async () => {
         const next = options.reReads.shift();
         return {
@@ -158,7 +173,7 @@ describe('putWithRevisionSwap', () => {
       offloader: {},
       logger: SILENT_LOGGER,
       client: {
-        put: async () => {
+        transactWrite: async () => {
           throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
         },
         get: async () => ({ Item: undefined }),
@@ -197,6 +212,13 @@ describe('putWithRevisionSwap', () => {
 });
 
 describe('putWithRevisionSwap with the rejected row on the exception (DDB-07)', () => {
+  /**
+   * An inline record, because the row attached to the exception itself — rather
+   * than to a cancellation reason — is the shape a plain put's rejection
+   * carries, and the inline payload is what still goes out as a plain put. The
+   * cancelled-transaction shape of the same rejection is covered beside this
+   * file.
+   */
   it('re-pins from the exception without a second read', async () => {
     let puts = 0;
     let reads = 0;
@@ -233,7 +255,16 @@ describe('putWithRevisionSwap with the rejected row on the exception (DDB-07)', 
         },
       },
     };
-    const superseded = await putWithRevisionSwap(context as never, record(), {
+    const inlineRecord = {
+      ...record(),
+      value: {
+        location: PayloadLocation.INLINE as const,
+        serdeType: 'json',
+        compressed: false,
+        bytes: new Uint8Array([1]),
+      },
+    };
+    const superseded = await putWithRevisionSwap(context as never, inlineRecord, {
       exists: true,
       revision: 'stale',
     });

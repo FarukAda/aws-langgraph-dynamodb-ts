@@ -1,6 +1,8 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocument, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
+
+import type { DocItem } from '../../../src/shared/dynamodb/types';
 
 /**
  * Build a `DynamoDBDocument` whose every command rejects unless explicitly
@@ -15,6 +17,50 @@ export function createStrictDocumentMock(): {
   const mock = mockClient(client);
   mock.rejects(new Error('unstubbed command'));
   return { client, mock };
+}
+
+/**
+ * A row write takes one of two shapes and the caller does not choose it: a
+ * record whose payload was offloaded commits as a one-item `TransactWriteItems`
+ * under a client request token, an inline one as a plain `PutItem`. These three
+ * let a test state what should happen to the write without restating that
+ * decision.
+ */
+type DocumentMock = ReturnType<typeof mockClient>;
+
+/** Let every row write succeed, whichever shape it takes. */
+export function resolveRowWrites(mock: DocumentMock): void {
+  mock.on(PutCommand).resolves({});
+  mock.on(TransactWriteCommand).resolves({});
+}
+
+/** Fail every row write with `error`, whichever shape it takes. */
+export function rejectRowWrites(mock: DocumentMock, error: Error): void {
+  mock.on(PutCommand).rejects(error);
+  mock.on(TransactWriteCommand).rejects(error);
+}
+
+/**
+ * The fields either shape's input carries a row on. Reading the shape rather
+ * than the command's class keeps this off `instanceof`, which is forbidden
+ * here as it is in the source.
+ */
+interface RowWriteInput {
+  Item?: DocItem;
+  TransactItems?: { Put?: { Item?: DocItem } }[];
+}
+
+/** The rows committed, in the order they were sent, across both shapes. */
+export function committedRows(mock: DocumentMock): DocItem[] {
+  const rows: DocItem[] = [];
+  for (const call of mock.calls()) {
+    const { input } = call.args[0] as { input: RowWriteInput };
+    if (input.Item) rows.push(input.Item);
+    for (const item of input.TransactItems ?? []) {
+      if (item.Put?.Item) rows.push(item.Put.Item);
+    }
+  }
+  return rows;
 }
 
 /**

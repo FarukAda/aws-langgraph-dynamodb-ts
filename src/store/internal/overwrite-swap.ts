@@ -5,18 +5,44 @@ import {
   REVISION_ATTRIBUTE,
   revisionGuard,
 } from '../../shared/dynamodb/conditional-put';
+import { putIdempotently, referencesS3Object } from '../../shared/dynamodb/idempotent-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { StoreItemRecord } from '../types';
 import { type ExistingRecordMeta, existingFrom, readExisting } from './read-existing';
 import type { StoreContext } from './setup';
 
-/** Put the record, optionally pinned to the revision the caller observed. */
+/**
+ * Put the record, optionally pinned to the revision the caller observed.
+ *
+ * The write takes one of two shapes, and which one is decided by the
+ * **descriptor** rather than by the adapter. A record whose payload was
+ * offloaded goes out as a one-item `TransactWriteItems` under a client request
+ * token, so a re-send of a write the service already applied is discarded
+ * instead of landing a second time — which, after a concurrent operation has
+ * released that row's object, would leave a live row naming nothing. A record
+ * whose payload is inline goes out as the plain `PutItem` it has always been,
+ * guard fragments and all: it names no object, so its re-land is an ordinary
+ * last-write-wins outcome rather than unreadable data, and a transaction would
+ * charge twice the write capacity to buy that.
+ *
+ * The question is the descriptor's because an adapter *with* an offloader
+ * configured still writes inline whenever the payload is under its threshold,
+ * so asking the adapter would tokenise writes that strand nothing.
+ *
+ * `observed` absent means no pin at all, which is the unconditional write the
+ * exhausted swap below falls back to — and the one a token helps most, since
+ * with no condition to turn it away nothing else stops a re-send from landing.
+ */
 async function put(
   context: StoreContext,
   record: StoreItemRecord,
   observed?: ExistingRecordMeta,
 ): Promise<void> {
-  const guard = observed ? revisionGuard(REVISION_ATTRIBUTE, observed) : {};
+  const guard = observed ? revisionGuard(REVISION_ATTRIBUTE, observed) : undefined;
+  if (referencesS3Object(record.value)) {
+    await putIdempotently(context, record, guard);
+    return;
+  }
   await withDynamoDBRetry(
     () => context.client.put({ TableName: context.tableName, Item: record, ...guard }),
     context.retry,
@@ -78,9 +104,10 @@ export async function putWithRevisionSwap(
       await put(context, record, attempted);
       return attempted;
     } catch (error) {
-      if (!isConditionalCheckFailed(error as { name?: string })) throw error;
+      const rejection = error as Error;
+      if (!isConditionalCheckFailed(rejection)) throw rejection;
       /** The rejection carries the row that turned it away; the read is spent only when it does not. */
-      const rejected = rejectedItem(error as Error);
+      const rejected = rejectedItem(rejection);
       observed = rejected
         ? existingFrom(rejected)
         : await readExisting(context, record.PK, record.SK);
