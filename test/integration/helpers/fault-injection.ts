@@ -94,6 +94,36 @@ export function afterResponse(
   );
 }
 
+/**
+ * Run `hook` before a matching command is sent, for up to `times` occurrences.
+ *
+ * The mirror of {@link afterResponse}, and the two are not interchangeable:
+ * `afterResponse` awaits the response first, so it can never fire for a command
+ * the service *refuses*. Landing a competing write before every attempt of a
+ * compare-and-swap is only reachable from here, because the attempts that
+ * re-pin from a cancellation issue no read to hook and their own transactions
+ * come back as errors.
+ */
+export function beforeRequest(
+  client: DynamoDBClient,
+  commandName: string,
+  hook: () => Promise<void>,
+  times = 1,
+): void {
+  let remaining = times;
+  client.middlewareStack.add(
+    (next, context) => async (args) => {
+      const name = (context as { commandName?: string }).commandName ?? '';
+      if (name === commandName && remaining > 0) {
+        remaining -= 1;
+        await hook();
+      }
+      return next(args);
+    },
+    { step: 'initialize', name: 'before-request' },
+  );
+}
+
 /** Build a synthetic AWS error with the given exception `name`. */
 export function awsError(name: string, message = name): Error {
   return Object.assign(new Error(message), { name });
