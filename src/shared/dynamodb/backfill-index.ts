@@ -33,11 +33,23 @@ async function indexRow(options: BackfillOptions, row: DocItem, shards: number):
         ExpressionAttributeNames: { '#gpk': 'gsi1pk', '#gsk': 'gsi1sk' },
         ExpressionAttributeValues: { ':gpk': keys.gsi1pk, ':gsk': keys.gsi1sk },
         /**
-         * Never overwrite keys a row already has: a row a running adapter wrote
-         * carries its true timestamp, and replacing it with the pre-index epoch
-         * would move a live row to the bottom of every listing.
+         * Two clauses, and both are load-bearing.
+         *
+         * `attribute_not_exists(#gpk)` never overwrites keys a row already has:
+         * a row a running adapter wrote carries its true timestamp, and
+         * replacing it with the pre-index epoch would move a live row to the
+         * bottom of every listing.
+         *
+         * `attribute_exists(PK)` is what makes this an update rather than an
+         * upsert, which is what `UpdateItem` is by default. A condition naming
+         * only the index attribute is satisfied by a key holding *nothing at
+         * all*, so a row deleted between the scan that found it and this update
+         * was re-created — as a stub carrying nothing but `PK`, `SK` and the
+         * two index keys, and carrying them it landed in the recency index that
+         * the cross-partition listings read. The tool exists to give keys to
+         * rows that are already there, so nothing legitimate is refused.
          */
-        ConditionExpression: 'attribute_not_exists(#gpk)',
+        ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(#gpk)',
       }),
     runRetry(options),
   );
@@ -83,8 +95,10 @@ async function backfillPage(
  * them, but a listing would not.
  *
  * Safe to re-run and safe to run while adapters are writing: every write is
- * conditional on the row having no keys yet, so a row a live adapter has
- * already indexed is left exactly as it is.
+ * conditional on the row still being there and having no keys yet, so a row a
+ * live adapter has already indexed is left exactly as it is, and a row deleted
+ * after the scan found it stays deleted rather than being re-created by an
+ * `UpdateItem`, which upserts.
  *
  * `indexShards` must match what the adapters use. A mismatch puts rows on
  * shards no listing queries, which looks exactly like the rows being missing.
@@ -112,9 +126,10 @@ async function backfillPage(
  * adapter's public methods, so a caller's mistake never escapes as a bare
  * exception.
  *
- * Guarantees: every write is conditional on the row having no keys yet, so
- * re-running is safe, running against a live table is safe, and a row a live
- * adapter has already indexed is left exactly as it is.
+ * Guarantees: every write is conditional on the row still being there and
+ * having no keys yet, so re-running is safe, running against a live table is
+ * safe, a row a live adapter has already indexed is left exactly as it is, and
+ * a row deleted between the scan and the write is never re-created.
  */
 export async function backfillRecencyIndex(options: BackfillOptions): Promise<BackfillResult> {
   return guardPublic('backfillRecencyIndex', async () => {

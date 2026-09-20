@@ -31,15 +31,17 @@ describe('backfillRecencyIndex', () => {
   /**
    * A row a live adapter already indexed carries its true timestamp; replacing
    * it with the pre-index epoch would move a live row to the bottom of every
-   * listing. The write is conditional so re-running is safe.
+   * listing. The row must also still be there, since `UpdateItem` upserts.
+   * What each clause *does* is asserted in `backfill-condition.test.ts`,
+   * against a fake that evaluates the condition — this only pins the text.
    */
-  it('never overwrites keys a row already has', async () => {
+  it('never overwrites keys a row already has, and never writes a row that is gone', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [session] });
     mock.on(UpdateCommand).resolves({});
     await backfillRecencyIndex({ client, tableName: TABLE });
     const update = mock.commandCalls(UpdateCommand)[0].args[0].input;
-    expect(update.ConditionExpression).toBe('attribute_not_exists(#gpk)');
+    expect(update.ConditionExpression).toBe('attribute_exists(PK) AND attribute_not_exists(#gpk)');
   });
 
   it('skips rows that already carry keys at the scan, not in memory', async () => {
