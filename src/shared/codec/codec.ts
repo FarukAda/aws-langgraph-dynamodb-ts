@@ -148,14 +148,20 @@ export async function readPayloadBytes(
  * Throws: everything {@link readPayloadBytes} throws, plus whatever
  * `loadsTyped` raises for bytes it cannot parse — `PAYLOAD_CORRUPT` from this
  * package's own serde.
+ *
+ * Guarantees: the bytes are read first, in a statement of their own. Passing
+ * `descriptor.serdeType` and the awaited read as two arguments to one call read
+ * the property *before* the guard ran, since arguments evaluate left to right —
+ * so a row whose payload is `null` raised a bare `TypeError` carrying no code,
+ * which a public boundary can only rebrand as an `UpstreamError`. Every read
+ * path now answers such a row with the ValidationError naming `descriptor` that
+ * the history adapter, which reads its bytes separately, already produced.
  */
 export async function decodePayload<T>(
   descriptor: PayloadDescriptor,
   deps: CodecDeps,
   scope: readonly string[],
 ): Promise<T> {
-  return deps.serde.loadsTyped(
-    descriptor.serdeType,
-    await readPayloadBytes(descriptor, deps, scope),
-  );
+  const bytes = await readPayloadBytes(descriptor, deps, scope);
+  return deps.serde.loadsTyped(descriptor.serdeType, bytes);
 }

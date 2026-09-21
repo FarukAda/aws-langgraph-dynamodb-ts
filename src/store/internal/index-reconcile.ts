@@ -7,7 +7,7 @@ import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { StoreItemRecord } from '../types';
 import type { VectorBackend, VectorRef } from '../vector-backend';
 import type { JsonValue } from './filter';
-import { narrowStoreRecord, readStoreItem } from './item-mapper';
+import { narrowWholeRecord, readStoreItem } from './item-mapper';
 import { namespaceMatchesPrefix, partitionKey, sortKey } from './keys';
 import { scopedQuery } from './query';
 import { embedValues } from './semantic-search';
@@ -90,7 +90,7 @@ export async function collectReconcileTargets(
     maxItems: context.maxScanItems,
   });
   for await (const raw of source) {
-    const record = narrowStoreRecord(raw);
+    const record = narrowWholeRecord(raw);
     if (!record) {
       context.logger.warn('reconcileVectorIndex: skipped a row that is not a store item', {
         sortKey: raw.SK as string,

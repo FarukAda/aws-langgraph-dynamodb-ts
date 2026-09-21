@@ -48,6 +48,35 @@ export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
   return record;
 }
 
+/**
+ * The same narrowing for a call site that needs the *whole* row, not just its
+ * identity: {@link readStoreItem} reads the timestamps as well as the payload,
+ * and a row that carries none made `new Date(undefined)` — an `Invalid Date`
+ * handed back under a declared `Date`, which surfaces as a `RangeError` in the
+ * caller's own code, far from the row that caused it.
+ *
+ * It is a separate narrow rather than a stricter {@link narrowStoreRecord}
+ * because a namespace listing deliberately reads rows without their timestamps
+ * (see `projectKeys`): requiring one there would hide every namespace in the
+ * table.
+ *
+ * Accepts: `raw` — any whole row, as read by `get`, a search or a reconcile.
+ *
+ * Returns: the record, or undefined for a row {@link narrowStoreRecord}
+ * refuses and for one whose `createdAt` or `updatedAt` is not the string this
+ * package writes there. A row this adapter cannot describe is skipped where a
+ * foreign one already is, so one of them never costs a listing the rest of its
+ * rows.
+ *
+ * Throws: as {@link narrowStoreRecord}.
+ */
+export function narrowWholeRecord(raw: DocItem): StoreItemRecord | undefined {
+  const record = narrowStoreRecord(raw);
+  if (record === undefined) return undefined;
+  const stamped = typeof record.createdAt === 'string' && typeof record.updatedAt === 'string';
+  return stamped ? record : undefined;
+}
+
 /** Map a store context to the codec collaborators. */
 function storeCodecDeps(context: StoreContext): CodecDeps {
   return { serde: context.serde, compression: context.compression, offloader: context.offloader };
@@ -131,7 +160,8 @@ export async function buildStoreItem(
  *
  * Accepts: `record` — a whole row, never a projection: the value and the
  * timestamps are read from it, and `projectKeys` rows exist only to establish
- * identity for a namespace listing.
+ * identity for a namespace listing. {@link narrowWholeRecord} is what proves a
+ * raw row is one of those, timestamps included.
  *
  * Returns: the item, with the timestamps this library stamped at write time.
  *

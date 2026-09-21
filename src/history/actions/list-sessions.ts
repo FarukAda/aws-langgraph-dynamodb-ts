@@ -20,18 +20,57 @@ import type { ChatSessionItem, ListSessionsOptions, SessionMetadata, SessionPage
 const DEFAULT_PAGE_SIZE = 100;
 
 /**
- * The session a row describes, or undefined for a foreign or expired row.
+ * Whether a row's `ttl` is an instant this listing can both judge and render.
+ *
+ * Neither of the two things done with it refuses a value it cannot use.
+ * {@link isExpiredRow} compares it against the clock, and a non-number compares
+ * `false` against every clock, so an unreadable ttl reads as *live* rather than
+ * being filtered out. `expiresAt` then renders it, and `NaN`, `Infinity` and
+ * anything past the ±8.64e12 seconds a `Date` spans are all numbers whose
+ * `toISOString` throws `RangeError` — which failed the whole listing.
+ */
+function hasReadableTtl(ttl: DocItem[string]): boolean {
+  if (ttl === undefined) return true;
+  return typeof ttl === 'number' && Number.isFinite(new Date(ttl * 1000).getTime());
+}
+
+/**
+ * Whether every attribute {@link summarise} hands back is the type this package
+ * writes there.
+ *
+ * The identity test above proves a row is a session row; this proves its own
+ * attributes are usable. They are returned under declared types, so a row that
+ * disagrees answers the caller with a lie — `messageCount: 'many'` handed back
+ * as a number — or, for the ttl, with a `RangeError`. A row this release cannot
+ * speak for is dropped the way a foreign row is, never at the cost of the rest
+ * of the page.
+ */
+function isSummarisable(raw: DocItem): boolean {
+  return (
+    typeof raw.messageCount === 'number' &&
+    typeof raw.createdAt === 'string' &&
+    typeof raw.updatedAt === 'string' &&
+    (raw.title === undefined || typeof raw.title === 'string') &&
+    hasReadableTtl(raw.ttl)
+  );
+}
+
+/**
+ * The session a row describes, or undefined for a foreign, malformed or expired
+ * row.
  *
  * Throws: `FORMAT_UNSUPPORTED` for a SESSION row a newer release wrote. It is
  * not a foreign row to skip, and summarising it under this release's rules
  * could return its attributes with a meaning they no longer have. Checked
- * before the ttl, so the answer does not depend on the reading machine's clock.
+ * before the shape and the ttl, so a newer row is refused rather than judged
+ * against attribute types it may no longer use, and the answer does not depend
+ * on the reading machine's clock.
  */
 function summarise(raw: DocItem, nowSeconds: number): SessionMetadata | undefined {
   const item = raw as ChatSessionItem;
   if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') return undefined;
   assertReadableRow(item, 'session');
-  if (isExpiredRow(item, nowSeconds)) return undefined;
+  if (!isSummarisable(raw) || isExpiredRow(item, nowSeconds)) return undefined;
   return {
     sessionId: item.sessionId,
     title: item.title,
@@ -45,8 +84,8 @@ function summarise(raw: DocItem, nowSeconds: number): SessionMetadata | undefine
 /**
  * One page from the recency index, newest-updated first.
  *
- * Expired and foreign rows are dropped after the read, so a page can come back
- * shorter than `limit` while more rows remain. The cursor still advances,
+ * Expired, foreign and malformed rows are dropped after the read, so a page can
+ * come back shorter than `limit` while more rows remain. The cursor still advances,
  * because it is the position in the index rather than a count of what survived
  * filtering.
  */
@@ -194,7 +233,10 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
  *
  * Returns: the page, newest-updated first, and a `nextCursor` while rows may
  * remain. A page can come back shorter than `limit` while more remain: expired
- * and foreign rows are dropped after the read, and the cursor is a position in
+ * and foreign rows are dropped after the read, and so is a row of this
+ * package's own whose `messageCount`, `createdAt`, `updatedAt`, `title` or
+ * `ttl` is not the type written there — one unreadable `ttl` used to fail the
+ * whole call, taking every healthy session with it. The cursor is a position in
  * the index rather than a count of what survived filtering. A cursor does not
  * promise more rows: the page after it can come back empty (see
  * `queryRecencyIndex`).

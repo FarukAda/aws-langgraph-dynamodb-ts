@@ -10,7 +10,7 @@ import { paginateScan } from '../../shared/dynamodb/scan';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { ValidationError } from '../../shared/errors/errors';
 import type { StoreItemRecord } from '../types';
-import { narrowStoreRecord, readStoreItem } from './item-mapper';
+import { narrowWholeRecord, readStoreItem } from './item-mapper';
 import { namespaceMatchesPrefix } from './keys';
 import { scopedQuery, storeScan } from './query';
 import type { RankCandidate } from './ranker';
@@ -64,9 +64,9 @@ function candidateSource(
       });
 }
 
-/** The store record a raw row denotes, or undefined for a foreign, expired or out-of-prefix row. */
+/** The store record a raw row denotes, or undefined for a foreign, malformed, expired or out-of-prefix row. */
 function liveRecord(raw: DocItem, op: SearchOperation, now: number): StoreItemRecord | undefined {
-  const record = narrowStoreRecord(raw);
+  const record = narrowWholeRecord(raw);
   if (!record || isExpiredRow(record, now)) return undefined;
   return namespaceMatchesPrefix(record.namespace, op.namespacePrefix) ? record : undefined;
 }
@@ -131,9 +131,11 @@ function tooManyCandidates(count: number, cap: number): ValidationError {
  * The bound is tested after a row is in hand, not before one is asked for, so
  * a `need` of 0 would still cost one request; `searchItems` answers that case
  * ahead of this call rather than letting it be paid here.
- * Expired rows, rows of other adapters and rows whose own `namespace` does not
- * match the prefix are skipped — the last matters because a Scan has no
- * key condition at all, so the prefix is enforced here rather than by DynamoDB.
+ * Expired rows, rows of other adapters, rows carrying none of the timestamps a
+ * decoded item reports, and rows whose own `namespace` does not match the
+ * prefix are all skipped — the last matters because a Scan has no key condition
+ * at all, so the prefix is enforced here rather than by DynamoDB, and the one
+ * before it because a single such row must not cost a search its other results.
  */
 export async function collectCandidates(
   context: StoreContext,

@@ -6,7 +6,7 @@ import { isMissingObjectError } from '../../shared/codec/payload-loss';
 import { isExpiredRow } from '../../shared/dynamodb/expiry';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { narrowStoreRecord, readStoreItem } from '../internal/item-mapper';
+import { narrowWholeRecord, readStoreItem } from '../internal/item-mapper';
 import { partitionKey, sortKey } from '../internal/keys';
 import type { StoreContext } from '../internal/setup';
 import { validateStoreKey } from '../internal/validation';
@@ -17,7 +17,9 @@ import type { StoreItemRecord } from '../types';
  * foreign row sharing this key has no `namespace`, and one carrying a `value`
  * PayloadDescriptor in the same shape a store item uses (a checkpointer WRITE
  * row) would otherwise decode cleanly and be handed back as the caller's own
- * value.
+ * value. The narrow is the whole-row one, so a row with no `createdAt` or
+ * `updatedAt` is refused here rather than decoded into an item whose
+ * timestamps are `Invalid Date`.
  */
 async function readRow(
   context: StoreContext,
@@ -35,7 +37,7 @@ async function readRow(
     retryFor(context, signal),
   );
   if (!result.Item) return undefined;
-  const record = narrowStoreRecord(result.Item);
+  const record = narrowWholeRecord(result.Item);
   if (!record) {
     context.logger.warn('store.get: ignored a row that is not a store item', {
       partitionKey: partitionKey(namespace),
@@ -70,9 +72,11 @@ function sameObject(a: StoreItemRecord, b: StoreItemRecord): boolean {
  * `signal` — aborts the reads.
  *
  * Returns: the item, or `null` for one that does not exist, has expired, or
- * whose key holds a row this adapter does not own. The three are one answer on
- * purpose: a caller cannot act on the difference, and reporting a foreign row
- * would leak that a shared table holds one.
+ * whose key holds a row this adapter does not own — which includes a row whose
+ * `createdAt` or `updatedAt` is not the string this package writes there, since
+ * an item is reported with both. The answers are one on purpose: a caller
+ * cannot act on the difference, and reporting a foreign row would leak that a
+ * shared table holds one.
  *
  * Throws: ValidationError naming `namespace` or `key`; `FORMAT_UNSUPPORTED` for
  * a row written by a newer version, which is *not* reported as absent — hiding
