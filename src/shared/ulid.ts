@@ -1,9 +1,18 @@
 import { randomBytes } from 'node:crypto';
 
+import { ValidationError } from './errors/errors';
+
 const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const ENCODING_LEN = 32;
 const TIME_CHARS = 10;
 const RANDOM_CHARS = 16;
+
+/**
+ * One past the last millisecond ten base-32 characters can hold: `32^10`,
+ * which is `2^50`, and lands in the year 37648. Derived rather than written
+ * down, so widening {@link TIME_CHARS} moves the rule with it.
+ */
+export const ULID_TIME_RANGE_MS = ENCODING_LEN ** TIME_CHARS;
 /** Bytes drawn per refill of the {@link secureRng} pool: 16 ids per syscall. */
 const RNG_POOL_BYTES = 256;
 
@@ -50,15 +59,35 @@ function encodeTime(timeMs: number): string {
 /**
  * The 10 time characters every ULID generated at `timeMs` starts with.
  *
- * Accepts: `timeMs` — epoch milliseconds, at least 0; the ten base-32
- * characters hold up to 2^50 ms, which runs out in the year 36812.
+ * Accepts: `timeMs` — epoch milliseconds inside `[0, {@link
+ * ULID_TIME_RANGE_MS})`, which is every instant the ten characters can encode.
  *
  * Returns: the prefix, usable as a sort-key bound — every id from that
  * millisecond onward sorts at or after it, every earlier id before it.
  *
- * Throws: nothing.
+ * Throws: ValidationError for a millisecond outside the range, naming no field:
+ * no caller-supplied option is at fault here, and the rule a caller meets is
+ * `validateMessageWindow`'s, which names `before`. This guard is the invariant
+ * underneath it, so no second caller can rebuild the bound that broke.
+ *
+ * Guarantees: exactly ten characters, all of them from the ULID alphabet.
+ * Neither held before. A negative millisecond took a negative remainder into
+ * the alphabet and yielded `undefined` per character, so the bound read
+ * `undefinedundefined…` — which sorts *above* every real id, since `u` and `d`
+ * are both above `Z` — and a window asking for messages before 1969 matched
+ * the whole conversation instead of none of it. A millisecond at or past the
+ * range wrapped to `0000000000` and matched nothing at all. Both are garbage
+ * indistinguishable from a real answer, so both are refused rather than
+ * clamped: clamping would hand back the same wrong page under a different
+ * name.
  */
 export function ulidTimePrefix(timeMs: number): string {
+  if (!(timeMs >= 0 && timeMs < ULID_TIME_RANGE_MS)) {
+    throw new ValidationError(
+      `a ULID time prefix covers epoch milliseconds 0 to ${ULID_TIME_RANGE_MS - 1} (the year ` +
+        `37648); ${timeMs} is outside it and has no ten-character encoding`,
+    );
+  }
   return encodeTime(timeMs);
 }
 

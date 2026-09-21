@@ -8,6 +8,7 @@ import {
 import { MAX_PARTITION_ID_BYTES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
 import { redactedMessage } from '../../shared/logging/secret-patterns';
+import { ULID_TIME_RANGE_MS } from '../../shared/ulid';
 import { validateIdentifier, validateLimit } from '../../shared/validation/primitives';
 import type { MessageWindow } from '../types';
 import { SORT_KEY_SEPARATOR } from './keys';
@@ -117,9 +118,10 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
  * `RunnableWithMessageHistory`, so answering it with nothing tells the model
  * the conversation never happened, and the chain persists the answer it gives
  * on that basis as the transcript. `before` — absent means up to now;
- * otherwise a `Date` whose time is finite. `null` is refused, naming `before`,
- * rather than read as "up to now". A `Date` is duck-typed, since one from
- * another realm is still a date.
+ * otherwise a `Date` whose time is finite *and* inside the range a message id
+ * encodes, `[0, {@link ULID_TIME_RANGE_MS})`. `null` is refused, naming
+ * `before`, rather than read as "up to now". A `Date` is duck-typed, since one
+ * from another realm is still a date.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
@@ -127,7 +129,12 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
  * call. `before: null` used to reach `null.getTime`, a property access the
  * boundary branded `UpstreamError` instead of naming the caller's mistake; an
  * invalid `Date` would otherwise derive a NaN sort key that matches nothing
- * and read as an empty conversation.
+ * and read as an empty conversation. A pre-epoch `Date` was worse than either:
+ * the bound built from it sorted above every real id, so the window came back
+ * holding the entire conversation the caller had asked to exclude. Past the
+ * range the bound wrapped to the lowest prefix and the window came back empty.
+ * The range is checked here, at the boundary that can name `before`, rather
+ * than left to the id encoder, which cannot.
  *
  * Guarantees: this one check serves both documented promises a conversation
  * window carries — `getMessages(sessionId, options)` and the `window` a
@@ -144,5 +151,13 @@ export function validateMessageWindow(window: MessageWindow): void {
     const hasGetTime = window.before !== null && typeof window.before.getTime === 'function';
     const time = hasGetTime ? window.before.getTime() : Number.NaN;
     if (!Number.isFinite(time)) throw new ValidationError('before must be a valid Date', 'before');
+    if (time < 0 || time >= ULID_TIME_RANGE_MS) {
+      throw new ValidationError(
+        'before must be a Date from the epoch onwards and before the year 37648: the bound is ' +
+          'the message id of that instant, and a message id encodes its millisecond in ten ' +
+          'base-32 characters, which hold no instant outside that range',
+        'before',
+      );
+    }
   }
 }

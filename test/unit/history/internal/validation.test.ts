@@ -9,6 +9,7 @@ import {
 } from '../../../../src/history/internal/validation';
 import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { ULID_TIME_RANGE_MS } from '../../../../src/shared/ulid';
 
 function expectValidationError(fn: () => void): void {
   try {
@@ -146,5 +147,20 @@ describe('validateMessageWindow (HIST-06)', () => {
     expectValidationError(() => validateMessageWindow({ before: new Date('x') }));
     expectValidationError(() => validateMessageWindow({ before: 5 as never }));
     expectValidationError(() => validateMessageWindow({ before: '2024-01-01' as never }));
+  });
+
+  /**
+   * A `before` outside the range a message id can encode used to build a bound
+   * out of that range anyway: a pre-epoch date yielded a prefix above every
+   * real id, so the window returned the entire conversation, and a date past
+   * the range wrapped to the lowest prefix and returned none of it. Both read
+   * as a plausible answer to the caller, which is why the date is refused
+   * instead of the bound being clamped.
+   */
+  it('rejects a before outside the range a message id encodes', () => {
+    expectValidationError(() => validateMessageWindow({ before: new Date(-1) }));
+    expectValidationError(() => validateMessageWindow({ before: new Date(-1000) }));
+    expectValidationError(() => validateMessageWindow({ before: new Date(ULID_TIME_RANGE_MS) }));
+    expect(() => validateMessageWindow({ before: new Date(ULID_TIME_RANGE_MS - 1) })).not.toThrow();
   });
 });

@@ -186,8 +186,8 @@ DynamoDBChatMessageHistory.getMessages | options=1 | throws ValidationError/VALI
 DynamoDBChatMessageHistory.getMessages | options=null | throws ValidationError/VALIDATION field=options
 DynamoDBChatMessageHistory.getMessages | options={"before":"x"} | throws ValidationError/VALIDATION field=before
 DynamoDBChatMessageHistory.getMessages | options={"before":123} | throws ValidationError/VALIDATION field=before
-DynamoDBChatMessageHistory.getMessages | options={"before":Date(+037648-05-06T22:07:22.624Z)} | RESOLVED []
-DynamoDBChatMessageHistory.getMessages | options={"before":Date(1969-12-31T23:59:59.000Z)} | RESOLVED []
+DynamoDBChatMessageHistory.getMessages | options={"before":Date(+037648-05-06T22:07:22.624Z)} | throws ValidationError/VALIDATION field=before
+DynamoDBChatMessageHistory.getMessages | options={"before":Date(1969-12-31T23:59:59.000Z)} | throws ValidationError/VALIDATION field=before
 DynamoDBChatMessageHistory.getMessages | options={"before":Date(1970-01-01)} | RESOLVED []
 DynamoDBChatMessageHistory.getMessages | options={"before":Date(Invalid)} | throws ValidationError/VALIDATION field=before
 DynamoDBChatMessageHistory.getMessages | options={"before":null} | throws ValidationError/VALIDATION field=before

@@ -1,6 +1,12 @@
 import { randomBytes } from 'node:crypto';
 
-import { createUlidFactory, secureRng, ulidTimePrefix } from '../../../src/shared/ulid';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
+import {
+  ULID_TIME_RANGE_MS,
+  createUlidFactory,
+  secureRng,
+  ulidTimePrefix,
+} from '../../../src/shared/ulid';
 
 jest.mock('node:crypto', () => {
   const actual = jest.requireActual<typeof import('node:crypto')>('node:crypto');
@@ -136,5 +142,38 @@ describe('ulidTimePrefix (HIST-06)', () => {
     expect(createUlidFactory(() => t)().startsWith(prefix)).toBe(true);
     expect(ulidTimePrefix(t - 1) < prefix).toBe(true);
     expect(prefix < ulidTimePrefix(t + 1)).toBe(true);
+  });
+
+  it('holds both ends of the range the ten characters can encode', () => {
+    expect(ulidTimePrefix(0)).toBe('0000000000');
+    expect(ulidTimePrefix(ULID_TIME_RANGE_MS - 1)).toBe('ZZZZZZZZZZ');
+  });
+
+  /**
+   * The property a sort-key bound rests on, and the one that broke. A prefix
+   * outside the ULID alphabet sorts above *every* real id — `u` and `d` are
+   * both above `Z` — so a bound built from one is an upper bound on nothing.
+   */
+  it('is always ten characters of the ULID alphabet, whatever it is given', () => {
+    for (const ms of [0, 1, 1_700_000_000_000, ULID_TIME_RANGE_MS - 1]) {
+      expect(ulidTimePrefix(ms)).toMatch(/^[0-9A-HJKMNP-TV-Z]{10}$/);
+    }
+  });
+
+  /**
+   * Ten base-32 characters hold `[0, 32^10)` and nothing else. A negative
+   * millisecond indexed the alphabet with a negative remainder, so every
+   * character came back `undefined` and the bound read `undefinedundefined…`,
+   * which sorts above every real id: a window asking for messages before 1969
+   * matched the whole conversation. A millisecond at or above the range
+   * wrapped to `0000000000` and matched none of it. Neither garbage answer is
+   * distinguishable from a real one, so both are refused.
+   */
+  it('refuses a millisecond the ten characters cannot hold', () => {
+    for (const ms of [-1, -1000, ULID_TIME_RANGE_MS, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => ulidTimePrefix(ms)).toThrow(
+        expect.objectContaining({ code: ErrorCode.VALIDATION }) as Error,
+      );
+    }
   });
 });
