@@ -312,21 +312,47 @@ export const S3_LIFECYCLE_SWEEP_MARGIN_DAYS = 2;
 export const S3_RELEASE_GRACE_DAYS = 1;
 
 /**
- * Characters of a row-sourced string one log line carries, past which it is
- * cut and marked with its real length.
+ * Characters of an unchecked string one log line or one public error message
+ * carries, past which it is cut and marked with its real length.
  *
- * The values these lines quote are a row's sort key and an offloaded object's
+ * Most of what these lines quote is a row's sort key or an offloaded object's
  * S3 key, so the service already caps each at 1024 bytes — the cost is not one
  * long line but many. `list: skipped a row that is not a checkpoint meta item`
  * and `left a foreign row in place` fire once per row, and those passes walk a
  * whole partition, up to {@link MAX_TOTAL_ITEMS_IN_MEMORY} rows: one call on a
- * shared table could write megabytes of log.
+ * shared table could write megabytes of log. A consumer's `VectorBackend`
+ * carries no such service cap at all.
  *
  * 256 is {@link MAX_KEY_SEGMENT_BYTES}, this package's own budget for one
  * identifier inside a key, so any key composed from identifiers it validated
- * is quoted whole in the common case and only a foreign or hand-written row —
- * exactly the case these lines report — is cut. Nothing is lost by cutting:
- * the line's job is to say which row to go and look at, and the row holds the
- * rest.
+ * is quoted whole in the common case and only a foreign row, a hand-written
+ * one or a backend's own answer — exactly the cases these lines report — is
+ * cut. Nothing is lost by cutting: the line's job is to say which row to go
+ * and look at, and the row holds the rest.
  */
 export const MAX_LOGGED_VALUE_CHARS = 256;
+
+/**
+ * Labels of an unchecked `string[]` one log line or one public error message
+ * carries, past which the rest are dropped and the real depth is stated.
+ *
+ * An array is two unbounded things — how many labels there are and how long
+ * each one is — so a bound on the labels alone is not a bound: a backend
+ * answering with one label of a megabyte and one answering with a million
+ * labels of a character cost the same line. {@link MAX_LOGGED_VALUE_CHARS}
+ * covers the first, this covers the second.
+ *
+ * 8 is a budget rather than a rule about namespaces: a store namespace is a
+ * path, what identifies which path is its leading labels, and every namespace
+ * this package's own documentation forms is two or three deep. The marker
+ * states the depth it really had, so a deeper one is cut without being
+ * misreported.
+ *
+ * A `namespace` and `key` pair that passed `validateStoreKey` needs none of
+ * this and goes in whole: that check measures the sort key they *compose*, so
+ * it bounds how many labels there are as well as how long each one is. A
+ * search or listing **prefix** passes no such check — nothing composes it into
+ * a key — so its depth is unchecked however carefully each label was checked,
+ * and a backend's own answer is unchecked in both.
+ */
+export const MAX_LOGGED_LABELS = 8;
