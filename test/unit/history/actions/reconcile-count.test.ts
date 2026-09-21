@@ -11,8 +11,21 @@ function context(client: HistoryContext['client']): HistoryContext {
   return { client, tableName: 'history', logger: SILENT_LOGGER } as never;
 }
 
-/** A page of `count` message rows as the count's projection returns them: format version only. */
-const messages = (count: number) => ({ Items: Array.from({ length: count }, () => ({ v: 1 })) });
+/**
+ * One message row as the count's projection returns it: the identity the
+ * narrow tests, the format version and the ttl — never the payload.
+ */
+const row = (sessionId: string, extra: Record<string, unknown> = {}) => ({
+  PK: `HIST#${sessionId}`,
+  sessionId,
+  message: { location: 'INLINE' },
+  ...extra,
+});
+
+/** A page of `count` message rows of this release's format version. */
+const messages = (count: number, sessionId = 's1') => ({
+  Items: Array.from({ length: count }, () => row(sessionId, { v: 1 })),
+});
 
 describe('reconcileMessageCount', () => {
   it('counts the live messages across pages and writes the authoritative count', async () => {
@@ -26,20 +39,23 @@ describe('reconcileMessageCount', () => {
     mock
       .on(QueryCommand)
       .resolvesOnce({
-        Items: [{ v: 1 }, { v: 1, ttl: now }],
-        LastEvaluatedKey: { PK: 's1', SK: 'MSG#x' },
+        Items: [row('s1', { v: 1 }), row('s1', { v: 1, ttl: now })],
+        LastEvaluatedKey: { PK: 'HIST#s1', SK: 'MSG#x' },
       })
-      .resolves({ Items: [{ ttl: now + 1 }, {}] });
+      .resolves({ Items: [row('s1', { ttl: now + 1 }), row('s1')] });
     mock.on(UpdateCommand).resolves({});
 
     const result = await reconcileMessageCount(context(client), 's1');
 
     expect(result).toBe(3);
     const query = mock.commandCalls(QueryCommand)[0].args[0].input;
-    expect(query.ProjectionExpression).toBe('#v, #ttl');
+    expect(query.ProjectionExpression).toBe('#pk, #sid, #msg.#loc, #v, #ttl');
     expect(query.ExpressionAttributeNames).toEqual({
       '#pk': 'PK',
       '#sk': 'SK',
+      '#sid': 'sessionId',
+      '#msg': 'message',
+      '#loc': 'location',
       '#v': 'v',
       '#ttl': 'ttl',
     });
@@ -119,7 +135,7 @@ describe('reconcileMessageCount is safe on a live session (HIST-09)', () => {
   it('gives up with a ConflictError when the session never settles', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { messageCount: 1 } });
-    mock.on(QueryCommand).resolves(messages(1));
+    mock.on(QueryCommand).resolves(messages(1, 'busy'));
     mock.on(UpdateCommand).rejects(rejected());
     await expect(reconcileMessageCount(context(client), 'busy')).rejects.toMatchObject({
       name: 'ConflictError',
@@ -130,7 +146,7 @@ describe('reconcileMessageCount is safe on a live session (HIST-09)', () => {
   it('pins the absence of the attribute on a row written before it existed', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: {} });
-    mock.on(QueryCommand).resolves(messages(4));
+    mock.on(QueryCommand).resolves(messages(4, 'old'));
     mock.on(UpdateCommand).resolves({});
     await expect(reconcileMessageCount(context(client), 'old')).resolves.toBe(4);
     const update = mock.commandCalls(UpdateCommand)[0].args[0].input;

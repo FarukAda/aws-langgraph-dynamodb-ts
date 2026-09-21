@@ -213,8 +213,11 @@ export class DynamoDBChatMessageHistory {
    * Throws: ValidationError for a malformed session id, an invalid `signal`,
    * or an `options.<key>` this package does not read; ConflictError when the
    * session does not exist or stayed busy through every attempt;
-   * `FORMAT_UNSUPPORTED` for a message row a newer release wrote, which
-   * `getMessages` refuses too; UpstreamError; AbortError.
+   * `FORMAT_UNSUPPORTED` for a message row a newer release wrote, and
+   * ValidationError naming `message` for a row in the session's message key
+   * space that this adapter did not write, both of which `getMessages` refuses
+   * too — a count is a repair only while it agrees with the read;
+   * UpstreamError; AbortError.
    *
    * Guarantees: safe on a live session — the write is pinned to the value the
    * row held when the count was computed, so a concurrent append makes it

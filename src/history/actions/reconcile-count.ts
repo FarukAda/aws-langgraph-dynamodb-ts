@@ -104,8 +104,11 @@ async function writeCount(
  * session does not exist — rather than creating a permanent, TTL-less
  * metadata-only row — and when it stays too busy to settle within
  * {@link OVERWRITE_CAS_MAX_ATTEMPTS} attempts; `FORMAT_UNSUPPORTED` for a
- * message row a newer release wrote, which `getMessages` refuses too; whatever
- * the reads and the write throw.
+ * message row a newer release wrote, and ValidationError naming `message` for
+ * a row in the session's message key space that this adapter did not write,
+ * both of which `getMessages` refuses too — writing a count back for a session
+ * no read can open would repair nothing; whatever the reads and the write
+ * throw.
  *
  * Guarantees: safe on a live session. The write is pinned to the value the row
  * held when the count was computed, so an append landing in between fails the

@@ -21,7 +21,8 @@ function context(client: HistoryContext['client']): HistoryContext {
   } as HistoryContext;
 }
 
-type Row = Record<string, string | number | object>;
+/** `undefined` stands for an attribute the row does not carry, which DynamoDB never returns. */
+type Row = Record<string, string | number | object | undefined>;
 
 const NOW = Math.floor(FROZEN_NOW_MS / 1000);
 
@@ -33,6 +34,30 @@ const message = (ulid: string, extra: { ttl?: number; v?: number } = {}): Row =>
   message: { location: 'INLINE', serdeType: 'json', schemaVersion: 1, compressed: false },
   ...extra,
 });
+
+/**
+ * The attributes a projection names, as DynamoDB returns them: a document path
+ * that does not resolve — because the attribute is absent, or is not a map —
+ * is simply left out of the item rather than raising.
+ */
+function project(row: Row, projection: string, names: Record<string, string>): Row {
+  const kept: Row = {};
+  for (const token of projection.split(',')) {
+    const [head, leaf] = token
+      .trim()
+      .split('.')
+      .map((segment) => names[segment] ?? segment);
+    if (row[head] === undefined) continue;
+    if (leaf === undefined) {
+      kept[head] = row[head];
+      continue;
+    }
+    const nested = row[head] as Record<string, unknown>;
+    if (typeof nested !== 'object' || nested === null || !(leaf in nested)) continue;
+    kept[head] = { [leaf]: nested[leaf] };
+  }
+  return kept;
+}
 
 /**
  * Answer each page of the count's query as DynamoDB would. A `COUNT` select
@@ -50,12 +75,8 @@ function serve(mock: ReturnType<typeof createStrictDocumentMock>['mock'], pages:
       const kept = rows.filter((row) => row.ttl === undefined || (row.ttl as number) > now);
       return { Count: kept.length, ...more };
     }
-    const names = String(input.ProjectionExpression ?? Object.keys(rows[0] ?? {}).join(','))
-      .split(',')
-      .map((token) => input.ExpressionAttributeNames?.[token.trim()] ?? token.trim());
-    const items = rows.map((row) =>
-      Object.fromEntries(names.filter((name) => name in row).map((name) => [name, row[name]])),
-    );
+    const projection = String(input.ProjectionExpression ?? Object.keys(rows[0] ?? {}).join(','));
+    const items = rows.map((row) => project(row, projection, input.ExpressionAttributeNames ?? {}));
     return { Items: items, ...more };
   });
 }
@@ -74,16 +95,24 @@ describe('countLiveMessages', () => {
     await expect(countLiveMessages(context(client), 's1')).resolves.toBe(3);
   });
 
-  /** A session of offloaded or long messages costs no payload transfer to count. */
+  /**
+   * A session of offloaded or long messages costs no payload transfer to
+   * count. The descriptor is reached by the one nested path that proves the
+   * attribute is a map — never `#msg` whole, which would pull every inline
+   * payload in the session across the wire.
+   */
   it('asks for no message payload', async () => {
     const { client, mock } = createStrictDocumentMock();
     serve(mock, [[]]);
     await countLiveMessages(context(client), 's1');
     const input = mock.commandCalls(QueryCommand)[0].args[0].input;
-    expect(input.ProjectionExpression).toBe('#v, #ttl');
+    expect(input.ProjectionExpression).toBe('#pk, #sid, #msg.#loc, #v, #ttl');
     expect(input.ExpressionAttributeNames).toEqual({
       '#pk': 'PK',
       '#sk': 'SK',
+      '#sid': 'sessionId',
+      '#msg': 'message',
+      '#loc': 'location',
       '#v': 'v',
       '#ttl': 'ttl',
     });
@@ -124,6 +153,33 @@ describe('countLiveMessages', () => {
     await expect(readWindow(context(client), 's1', {})).rejects.toMatchObject({
       code: ErrorCode.FORMAT_UNSUPPORTED,
       context: { field: 'v' },
+    });
+  });
+
+  /**
+   * A row the read path refuses is not a row to count: `getMessages` answers
+   * the whole session with a refusal, so a count that succeeded would write a
+   * `messageCount` back onto a session no reader can open.
+   */
+  it.each([
+    ['no sessionId', { sessionId: undefined }],
+    ['a sessionId naming another session', { sessionId: 'other' }],
+    ['no message attribute', { message: undefined }],
+    ['a message attribute that is not a map', { message: 'x' }],
+    ['a partition the sessionId disagrees with', { PK: 'HIST#other' }],
+  ])('refuses a row with %s, as the read path does', async (_label, over) => {
+    const { client, mock } = createStrictDocumentMock();
+    const rows = [message('01A'), { ...message('01B'), ...over }];
+    serve(mock, [rows]);
+    await expect(countLiveMessages(context(client), 's1')).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'message' },
+    });
+    mock.reset();
+    mock.on(QueryCommand).resolves({ Items: rows });
+    await expect(readWindow(context(client), 's1', {})).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'message' },
     });
   });
 
