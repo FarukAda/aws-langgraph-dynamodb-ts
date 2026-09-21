@@ -56,13 +56,15 @@ import { validateCheckpointId } from '../internal/validation';
  * rather than applied a second time. Writing the same `checkpoint.id` again
  * replaces both, which is what a retry and a repair tool both need; the objects
  * the replaced rows named are not deleted by the put, and are left to the
- * lifecycle rule. On failure with S3 offload configured the row carrying an
- * offloaded descriptor is read back before any upload is deleted (see
- * {@link verifyCheckpointLanded}): a transaction that committed and lost its
- * response is reported as success, a confirmed non-commit cleans up the
- * objects this call uploaded, and an unverifiable outcome leaks them rather
- * than risk stranding a live row. Each put uploads under an object id of its
- * own, so no row another put commits names this call's uploads.
+ * lifecycle rule. A payload the serde refuses is refused before any write and
+ * releases whatever the same call had already uploaded, so an encode that fails
+ * halfway leaves nothing behind either. On failure with S3 offload configured
+ * the row carrying an offloaded descriptor is read back before any upload is
+ * deleted (see {@link verifyCheckpointLanded}): a transaction that committed
+ * and lost its response is reported as success, a confirmed non-commit cleans
+ * up the objects this call uploaded, and an unverifiable outcome leaks them
+ * rather than risk stranding a live row. Each put uploads under an object id of
+ * its own, so no row another put commits names this call's uploads.
  */
 export async function putCheckpoint(
   context: CheckpointerContext,

@@ -72,9 +72,12 @@ async function cleanUpItems(
  * {@link writeRegularItems}): a verified non-commit, or a guard rejection whose
  * returned row provably belongs to another call. A special write's superseded
  * payload is released only once the write that superseded it committed. An
- * upload can leak. Every offloaded write of this call is uploaded under the
- * call's own `writeGroup`, so no row another call writes names one of this
- * call's uploads, and no release reads the row again first.
+ * upload can leak. A payload refused partway through the encode releases the
+ * objects the earlier writes of the same call had already uploaded, before the
+ * refusal reaches the caller and while no row of the call exists. Every
+ * offloaded write of this call is uploaded under the call's own `writeGroup`,
+ * so no row another call writes names one of this call's uploads, and no
+ * release reads the row again first.
  */
 export async function putWrites(
   context: CheckpointerContext,

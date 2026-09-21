@@ -38,6 +38,32 @@ function transientTimeout(): Error {
   return Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
 }
 
+/**
+ * A serde that encodes normally except for its `refuseAt`-th value, which it
+ * turns into no bytes at all — the refusal `encodePayload` raises for a payload
+ * no reader could parse back. Pointed at the *second* value it reaches the
+ * metadata, after the checkpoint's own object has already uploaded.
+ */
+function refusingSerde(refuseAt: number): CheckpointerContext['serde'] {
+  let calls = 0;
+  return {
+    ...serde,
+    dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => {
+      calls += 1;
+      return calls === refuseAt ? ['json', new Uint8Array()] : serde.dumpsTyped(value);
+    },
+  };
+}
+
+function trackingOffloader() {
+  return {
+    shouldOffload: () => true,
+    buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
+    upload: async (key: string) => key,
+    deleteBatch: jest.fn().mockResolvedValue([]),
+  };
+}
+
 describe('putCheckpoint', () => {
   it('transactionally writes the META and PAYLOAD items and returns the new config', async () => {
     const { client, mock } = createStrictDocumentMock();
@@ -98,6 +124,49 @@ describe('putCheckpoint', () => {
       ),
     ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+
+  it('releases the checkpoint object when the metadata payload is refused', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = trackingOffloader();
+    const ctx = {
+      ...contextWith(client),
+      serde: refusingSerde(2),
+      offloader: offloader as never,
+    };
+    await expect(
+      putCheckpoint(ctx, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'value' } });
+    // The checkpoint uploaded, the metadata was refused, and no row names
+    // either: the object must not survive the call it was uploaded for.
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
+    expect(keys).toEqual([expect.stringMatching(/^t1\/\/ckpt-1\/checkpoint\/[^/]+$/)]);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+  });
+
+  it('still reports the refusal when releasing the object fails', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = trackingOffloader();
+    offloader.deleteBatch.mockRejectedValue(
+      Object.assign(new Error('denied'), { name: 'AccessDenied' }),
+    );
+    const ctx = { ...contextWith(client), serde: refusingSerde(2), offloader: offloader as never };
+    // The release is best-effort: a caller needs to see why its payload was
+    // refused, not why a cleanup could not finish.
+    await expect(
+      putCheckpoint(ctx, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'value' } });
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+  });
+
+  it('rethrows a refused payload untouched when no offloader is configured', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = { ...contextWith(client), serde: refusingSerde(2) };
+    await expect(
+      putCheckpoint(ctx, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'value' } });
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
   it('rejects an over-limit checkpoint with a typed error before any write when s3 is not configured (CKPT-03)', async () => {

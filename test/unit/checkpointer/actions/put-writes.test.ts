@@ -344,4 +344,37 @@ describe('putWrites', () => {
     ).resolves.toBeUndefined();
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
   });
+
+  it("releases an earlier write's object when a later payload is refused", async () => {
+    // The first write's object uploads, the second serialises to nothing and
+    // is refused, and no row is ever written — so nothing names the first
+    // write's object and the call must not leave it behind.
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = trackingOffloader();
+    let calls = 0;
+    const refusing = {
+      ...serde,
+      dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => {
+        calls += 1;
+        return calls === 2 ? ['json', new Uint8Array()] : serde.dumpsTyped(value);
+      },
+    };
+    const ctx = { ...context(client), serde: refusing, offloader: offloader as never };
+    await expect(
+      putWrites(
+        ctx,
+        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+        [
+          ['a', 'first'],
+          ['b', 'refused'],
+        ],
+        'task-1',
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'value' } });
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
+    expect(keys).toEqual([expect.stringMatching(/^t\/\/c1\/task-1\/write-0\/a\/[^/]+$/)]);
+    expect(mock.commandCalls(PutCommand)).toHaveLength(0);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+  });
 });

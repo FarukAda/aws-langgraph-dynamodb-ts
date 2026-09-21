@@ -1,8 +1,10 @@
 import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
 
 import { nowIso } from '../../shared/clock';
-import { type CodecDeps } from '../../shared/codec/codec';
+import { type CodecDeps, type PayloadDescriptor } from '../../shared/codec/codec';
+import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { encodePayload } from '../../shared/codec/encode';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
 import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
 import { createUlidFactory } from '../../shared/ulid';
@@ -30,6 +32,30 @@ export function codecDeps(context: CheckpointerContext): CodecDeps {
 function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T {
   if (ttlTimestamp !== undefined) item.ttl = ttlTimestamp;
   return item;
+}
+
+/**
+ * Release the objects a build had already uploaded when a later payload of the
+ * same build threw.
+ *
+ * Each payload uploads as it encodes, well before the row that would name it is
+ * written, so a build that throws partway leaves the payloads it had already
+ * finished with nothing pointing at them: this call writes no row at all, and
+ * every key ends in an `objectId` drawn for this call alone, so no row another
+ * call commits can name one either. Nothing will ever reference them, which is
+ * what makes deleting them unconditionally safe — no read of the table is
+ * needed first.
+ *
+ * Best-effort, and it never replaces the failure that caused it: a caller needs
+ * to see why its payload was refused, not why a cleanup could not finish.
+ */
+async function releaseUploads(
+  context: CheckpointerContext,
+  uploaded: readonly PayloadDescriptor[],
+  operation: string,
+): Promise<void> {
+  if (!context.offloader) return;
+  await cleanUpS3Orphans(context.offloader, collectS3Keys(uploaded), operation, context.logger);
 }
 
 /**
@@ -61,7 +87,9 @@ const nextPutObjectId = createUlidFactory();
  * Throws: ValidationError naming `value` for a checkpoint the serializer cannot
  * represent; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded.
  * Encoding precedes every write, so a checkpoint that cannot be stored never
- * half-writes a thread.
+ * half-writes a thread — and a metadata payload refused after the checkpoint's
+ * own object has uploaded releases that object before the failure leaves here
+ * (see {@link releaseUploads}), so a refusal strands nothing either.
  */
 export async function buildCheckpointItems(
   context: CheckpointerContext,
@@ -80,11 +108,23 @@ export async function buildCheckpointItems(
     objectId,
     row: { pk, sk: payloadSortKey(checkpointNs, checkpoint.id) },
   });
-  const metadataDescriptor = await encodePayload(metadata, deps, {
-    keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata'],
-    objectId,
-    row: { pk, sk: metaSortKey(checkpointNs, checkpoint.id) },
-  });
+  /**
+   * The checkpoint's object is already uploaded by the time the metadata is
+   * encoded, so a metadata payload the serde refuses — or cannot represent —
+   * would otherwise strand it: the transaction that would have named it never
+   * goes out. See {@link releaseUploads} for why deleting it needs no check.
+   */
+  let metadataDescriptor: PayloadDescriptor;
+  try {
+    metadataDescriptor = await encodePayload(metadata, deps, {
+      keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata'],
+      objectId,
+      row: { pk, sk: metaSortKey(checkpointNs, checkpoint.id) },
+    });
+  } catch (error) {
+    await releaseUploads(context, [checkpointDescriptor], 'put.encode');
+    throw error;
+  }
   /**
    * The META row takes part in the recency index, so that a `saver.list`
    * without a `thread_id` can stream checkpoints across threads from the index,
@@ -134,7 +174,10 @@ export async function buildCheckpointItems(
  * Returns: one row per write, special channels first, each carrying its
  * `occurrence` so a channel emitted twice by one call keeps both values.
  *
- * Throws: ValidationError naming `channel` or `value`; `S3_OFFLOAD_FAILED`.
+ * Throws: ValidationError naming `channel` or `value`; `S3_OFFLOAD_FAILED`. A
+ * payload refused partway through releases the objects the earlier writes of
+ * the same call had already uploaded (see {@link releaseUploads}), so a build
+ * that throws returns the caller to where it started.
  */
 export async function buildWriteItems(
   context: CheckpointerContext,
@@ -151,37 +194,52 @@ export async function buildWriteItems(
   const deps = codecDeps(context);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];
-  for (const { channel, value, index, occurrence } of resolveWriteIndices(writes)) {
-    /**
-     * `channel` is part of the key as well as the index: two channels can
-     * share an index (each channel's first occurrence is 0), so without it
-     * their uploads would collide on one S3 object within a single call.
-     */
-    const sk = writeSortKey(checkpointNs, checkpointId, taskId, index, channel);
-    const descriptor = await encodePayload(value, deps, {
-      keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`, channel],
-      objectId: writeGroup,
-      row: { pk, sk },
-    });
-    const item: CheckpointWriteItem = {
-      PK: pk,
-      SK: sk,
-      v: ROW_FORMAT_VERSION,
-      taskId,
-      index,
-      channel,
+  /**
+   * The writes upload one after another, so a payload refused at write N would
+   * otherwise strand writes 1..N-1's objects: this call returns no items and
+   * therefore writes no rows, leaving nothing that names them. See
+   * {@link releaseUploads} for why they are safe to delete unconditionally.
+   */
+  try {
+    for (const { channel, value, index, occurrence } of resolveWriteIndices(writes)) {
       /**
-       * Shared by every row this call writes. Positions shift when a retried
-       * task's write mix changes, so a channel an earlier call already
-       * committed can land at a second index and be replayed twice; the group
-       * is what lets the read side tell that apart from a channel a single
-       * call legitimately wrote more than once.
+       * `channel` is part of the key as well as the index: two channels can
+       * share an index (each channel's first occurrence is 0), so without it
+       * their uploads would collide on one S3 object within a single call.
        */
-      writeGroup,
-      occurrence,
-      value: descriptor,
-    };
-    items.push(withTtl(item, ttlTimestamp));
+      const sk = writeSortKey(checkpointNs, checkpointId, taskId, index, channel);
+      const descriptor = await encodePayload(value, deps, {
+        keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`, channel],
+        objectId: writeGroup,
+        row: { pk, sk },
+      });
+      const item: CheckpointWriteItem = {
+        PK: pk,
+        SK: sk,
+        v: ROW_FORMAT_VERSION,
+        taskId,
+        index,
+        channel,
+        /**
+         * Shared by every row this call writes. Positions shift when a retried
+         * task's write mix changes, so a channel an earlier call already
+         * committed can land at a second index and be replayed twice; the group
+         * is what lets the read side tell that apart from a channel a single
+         * call legitimately wrote more than once.
+         */
+        writeGroup,
+        occurrence,
+        value: descriptor,
+      };
+      items.push(withTtl(item, ttlTimestamp));
+    }
+  } catch (error) {
+    await releaseUploads(
+      context,
+      items.map((item) => item.value),
+      'putWrites.encode',
+    );
+    throw error;
   }
   return items;
 }
