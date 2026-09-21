@@ -259,6 +259,36 @@ export function assertNoSeparator(value: string, separator: string, field: strin
  * Guarantees: every guarantee of {@link assertNoControlChars} and
  * {@link assertWellFormed} holds for an accepted value, and it composes into a
  * key segment without escaping.
+ *
+ * Not guaranteed, and deliberately so: an accepted identifier is **not**
+ * normalised, and Unicode format characters (`Cf` — `U+200B` ZERO WIDTH SPACE,
+ * `U+200C`/`U+200D` the zero-width non-joiner and joiner, `U+FEFF`, `U+202E`
+ * RIGHT-TO-LEFT OVERRIDE) and the separators `U+2028`/`U+2029` are all
+ * accepted. Two facts make that safe, and one makes it necessary.
+ *
+ * It is safe because none of them can produce a collision. DynamoDB orders and
+ * compares strings by their UTF-8 bytes, and {@link assertWellFormed} has
+ * already made the mapping from an accepted identifier to those bytes
+ * injective — so two identifiers differing anywhere address two different
+ * rows. An identifier that reaches an S3 key is base64url-encoded on the way
+ * (`encodeKeyPart`), so none of these characters appears in a key at all. What
+ * one actually costs is a log line, a terminal or a console that renders two
+ * distinct identifiers alike: confusion for a reader, not a row either of them
+ * can reach. Terminal escapes and line breaks, which *are* an injection rather
+ * than a rendering, are refused by {@link assertNoControlChars}.
+ *
+ * It is necessary because refusing `Cf` would refuse ordinary text rather than
+ * hostile text. `U+200C` and `U+200D` carry meaning in Persian, Hindi and the
+ * Indic scripts — the Persian for "goes" is spelled with a `U+200C` — and
+ * `U+200D` is what joins the code points of every multi-person emoji. A rule
+ * against `Cf` would reject a `thread_id` or a store `key` taken from ordinary
+ * user text, in a package whose identifiers are the caller's own.
+ *
+ * Normalising would be worse than breaking: `NFC` folds `e` + `U+0301` onto
+ * `U+00E9`, so a row written under one form would afterwards be addressed
+ * under the other and the caller's data would stop being found. That is silent
+ * loss on upgrade, bought with a rendering nicety. A caller who wants either
+ * rule can apply it to its own identifiers before passing them.
  */
 export function validateIdentifier(
   value: string,

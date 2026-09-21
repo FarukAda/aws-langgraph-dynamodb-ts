@@ -268,6 +268,43 @@ describe('validateIdentifier', () => {
     );
   });
 
+  /**
+   * The deliberate half of the rule, locked so it cannot reverse by accident.
+   * Format characters and the Unicode line separators are accepted, because
+   * refusing them would refuse ordinary text: `U+200C` and `U+200D` carry
+   * meaning in Persian and the Indic scripts, and `U+200D` joins every
+   * multi-person emoji. What they cost is a log line or a console that renders
+   * two identifiers alike, not a row either can reach.
+   */
+  it.each([
+    ['zero width space', 'a\u200Bb'],
+    ['zero width non-joiner, as Persian spells mi-ravad', '\u0645\u06CC\u200C\u0631\u0648\u062F'],
+    ['zero width joiner, as a multi-person emoji is built', '\u{1F468}\u200D\u{1F469}'],
+    ['byte order mark', 'a\uFEFFb'],
+    ['right-to-left override', 'a\u202Eb'],
+    ['line separator', 'a\u2028b'],
+    ['paragraph separator', 'a\u2029b'],
+  ])('accepts an identifier holding a %s', (_name, value) => {
+    expect(() => validateIdentifier(value, '#', 'thread_id', 1024)).not.toThrow();
+  });
+
+  /**
+   * And the identifier is not normalised, which is what keeps an upgrade safe.
+   * Normalising would map these two onto one key, so a row written under the
+   * decomposed form would stop being found under the composed one.
+   */
+  it('keeps two identifiers distinct when only their Unicode composition differs', () => {
+    const composed = 'caf\u00E9';
+    const decomposed = 'cafe\u0301';
+    expect(composed).not.toBe(decomposed);
+    expect(composed.normalize('NFC')).toBe(decomposed.normalize('NFC'));
+    expect(() => validateIdentifier(composed, '#', 'thread_id', 1024)).not.toThrow();
+    expect(() => validateIdentifier(decomposed, '#', 'thread_id', 1024)).not.toThrow();
+    expect(Buffer.from(composed, 'utf8').toString('base64url')).not.toBe(
+      Buffer.from(decomposed, 'utf8').toString('base64url'),
+    );
+  });
+
   /** Two identifiers that encode to one key must not both be accepted. */
   it('rejects the one of two identifiers that would share an encoded key', () => {
     const lossy = `tenant${HIGH}`;
