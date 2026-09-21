@@ -9,7 +9,7 @@ export type LogArgument = string | number | boolean | null | object;
  *
  * It is the one piece of foreign code every adapter of this package calls, and
  * it is called almost entirely from `catch` blocks — see
- * {@link absorbLoggerFailure} for what that costs and where it is paid.
+ * `absorbLoggerFailure` for what that costs and where it is paid.
  */
 export interface Logger {
   info(message: string, ...args: LogArgument[]): void;
@@ -75,7 +75,7 @@ export function absorbLoggerFailure(emit: () => void): void {
  * Wrapped once per adapter, here, rather than remembered at each of the three
  * dozen call sites: a site that forgets is a site whose failure path reports
  * the wrong error, and those sites are exactly the ones a test suite exercises
- * least. {@link absorbLoggerFailure} stays for the two places that take a
+ * least. `absorbLoggerFailure` stays for the two places that take a
  * `Logger` as an argument and promise, with no precondition on which one,
  * never to throw: `redactLogger`, which a caller may wrap any logger with, and
  * the S3 orphan cleanup.
@@ -105,7 +105,7 @@ function containedLogger(inner: Logger): Logger {
  * can opt in. Otherwise a **wrapper** around the caller's logger, not the
  * object itself: the same four levels, delegating each call with its message
  * and arguments unchanged, and absorbing anything the caller's method throws
- * (see {@link absorbLoggerFailure}). Identity is therefore not preserved, and
+ * (see `absorbLoggerFailure`). Identity is therefore not preserved, and
  * a caller comparing what it passed in against what an adapter holds would
  * find two different objects; nothing observable about a log line changes.
  *

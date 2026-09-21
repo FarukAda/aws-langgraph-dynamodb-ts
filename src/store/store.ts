@@ -327,7 +327,7 @@ export class DynamoDBStore extends BaseStore {
    *
    * Throws: whatever a resource's own `destroy` raises — but only after every
    * other one has been released, so a client that fails to close can no longer
-   * strand the one behind it (see {@link releaseOwned}). It used to: an S3
+   * strand the one behind it (see `releaseOwned`). It used to: an S3
    * client whose sockets were already gone threw first, and the DynamoDB client
    * this adapter built leaked for the life of the process. The clause read
    * "nothing this adapter raises", which a caller reads as nothing at all.

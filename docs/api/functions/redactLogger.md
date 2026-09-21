@@ -8,7 +8,7 @@
 
 > **redactLogger**(`inner`, `options?`): [`Logger`](../interfaces/Logger.md)
 
-Defined in: [shared/logging/redaction.ts:177](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L177)
+Defined in: [shared/logging/redaction.ts:178](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L178)
 
 Wrap a logger so object args are redacted before delegation.
 
@@ -29,8 +29,9 @@ Guarantees: the message string is passed through unchanged — never
 interpolate a secret into it — and every other argument is redacted before
 it reaches `inner`. Past the wrap call nothing escapes a log call: an
 argument whose redaction fails is replaced by a fixed marker, and a failure
-of `inner` itself is absorbed, because the operation that wrote the line was
-only observing itself and is commonly reporting some other failure already.
+of `inner` itself is absorbed (`absorbLoggerFailure`), because the
+operation that wrote the line was only observing itself and is commonly
+reporting some other failure already.
 
 ## Parameters
 

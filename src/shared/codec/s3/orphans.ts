@@ -81,7 +81,7 @@ function selectOrphans(
  * outcome that is not a clean delete is logged at `warn`, carrying counts and
  * the failing error's *name* — never its message, which can hold a credential
  * fragment. A `logger` that throws is one more thing this absorbs (see
- * {@link absorbLoggerFailure}): the promise covers the caller's own code too,
+ * `absorbLoggerFailure`): the promise covers the caller's own code too,
  * or every call site's `catch` would hand its caller the wrong error. Every
  * logger reaching here through an adapter is already contained at
  * `resolveLogger`; the guard stays because this promise is written without a
