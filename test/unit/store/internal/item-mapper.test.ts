@@ -1,5 +1,6 @@
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import {
   buildStoreItem,
@@ -130,6 +131,11 @@ describe('narrowStoreRecord key consistency (SEC-03)', () => {
     expect(narrowStoreRecord(row({ key: 'other' }))).toBeUndefined();
     expect(narrowStoreRecord(row({ key: 42 }))).toBeUndefined();
   });
+
+  /** The binding is judged under this release's rules, so only for a row it can read. */
+  it('still rejects a mismatched row stamped with a version it reads', () => {
+    expect(narrowStoreRecord(row({ namespace: ['tenantB', 'u1'], v: 1 }))).toBeUndefined();
+  });
 });
 
 describe('narrowStoreRecord refuses a row from a newer format version (STORE-11)', () => {
@@ -153,8 +159,28 @@ describe('narrowStoreRecord refuses a row from a newer format version (STORE-11)
     expect(() => narrowStoreRecord({ ...row, v: 99 } as never)).toThrow(/format version 99/);
   });
 
-  it('still skips a row whose attributes disagree with its key', () => {
-    expect(narrowStoreRecord({ ...row, key: 'other', v: 99 } as never)).toBeUndefined();
+  /**
+   * The version is read before the shape, so a row a newer release wrote is
+   * reported as newer even when its attributes are not ones this release would
+   * accept — a later format may compose the key from attributes this one does
+   * not know, and hiding the row because of that is how a `get` answers `null`
+   * for an item that exists.
+   */
+  it('reports a newer row whose attributes disagree with its key', () => {
+    expect(() => narrowStoreRecord({ ...row, key: 'other', v: 99 } as never)).toThrow(
+      expect.objectContaining({
+        code: ErrorCode.FORMAT_UNSUPPORTED,
+        context: { field: 'v' },
+      }),
+    );
+  });
+
+  /** A row with no `namespace` at all is still not this adapter's to version. */
+  it('reports a newer row that carries no store attributes at all', () => {
+    expect(() => narrowStoreRecord({ PK: 'STORE#n', SK: 'k', v: 99 } as never)).toThrow(
+      expect.objectContaining({ code: ErrorCode.FORMAT_UNSUPPORTED }),
+    );
+    expect(narrowStoreRecord({ PK: 'STORE#n', SK: 'k', v: 1 } as never)).toBeUndefined();
   });
 });
 

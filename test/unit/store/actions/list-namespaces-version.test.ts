@@ -90,10 +90,30 @@ describe.each([
     ]);
   });
 
-  /** A row that is not a store item is not this adapter's to version: skipped, never refused. */
-  it('still skips a foreign row that carries a high v', async () => {
+  /**
+   * The version is read before the shape, so a row in the partition this
+   * listing reads that a newer release wrote is reported even when it carries
+   * none of the attributes this release narrows on. A later format may name
+   * them differently, and reading that as "foreign, skip it" is how a listing
+   * omits a namespace that exists.
+   */
+  it('reports a row a newer release wrote whose shape it would otherwise skip', async () => {
     const { client, mock } = createStrictDocumentMock();
     serve(mock, [{ PK: 'STORE#users', SK: 'other', v: 9 }, row(['users', 'a'])]);
+
+    await expect(
+      listNamespaces(context(client), { limit: 10, offset: 0, ...scope }),
+    ).rejects.toMatchObject({ code: ErrorCode.FORMAT_UNSUPPORTED, context: { field: 'v' } });
+  });
+
+  /**
+   * At a version this release reads, a row it cannot narrow is still skipped:
+   * that is what keeps one foreign row on a shared table from costing a
+   * listing every namespace beside it.
+   */
+  it('still skips a foreign row at a version it reads', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    serve(mock, [{ PK: 'STORE#users', SK: 'other', v: 1 }, row(['users', 'a'])]);
 
     const namespaces = await listNamespaces(context(client), { limit: 10, offset: 0, ...scope });
 

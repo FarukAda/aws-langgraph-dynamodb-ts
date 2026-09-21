@@ -29,17 +29,28 @@ import { dropSupersededWrites } from './write-dedup';
  * written by this adapter. A `metadata` of `null` is refused here, since
  * dereferencing it later raised a raw `TypeError`.
  *
- * Throws: `FORMAT_UNSUPPORTED` for a row that *is* this adapter's but was
- * written by a newer version — skipping it would report a thread as shorter
- * than it is, so it fails loudly instead.
+ * Throws: `FORMAT_UNSUPPORTED` for a row a newer version wrote — checked
+ * **before** the shape, as every other read of this package's rows checks it,
+ * so a row a newer release wrote is reported as newer rather than judged
+ * against attribute names it may no longer use. Skipping it would report a
+ * thread as shorter than it is.
  *
  * Guarantees: a row's attributes are bound to the partition it lives in. Those
  * attributes name the S3 scope the row's payloads are read under and the thread
  * the assembled tuple reports, so a writer confined to its own partition could
  * otherwise hand back another tenant's offloaded payload under that tenant's
- * `thread_id` — the same binding `narrowStoreRecord` makes for store items.
+ * `thread_id` — the same binding `narrowStoreRecord` makes for store items. The
+ * binding is judged under this release's rules, which is why it is judged only
+ * for a row this release can read.
  */
 export function narrowMetaItem(raw: DocItem): CheckpointMetaItem | undefined {
+  /**
+   * The version first. A row a newer version wrote is not a foreign row to
+   * skip, and this release's names for its attributes are not that release's,
+   * so testing the shape first decides a row is foreign whenever a later
+   * format renamed what this one reads.
+   */
+  assertReadableRow(raw, 'checkpoint');
   const isCheckpoint =
     typeof raw.threadId === 'string' &&
     typeof raw.checkpointId === 'string' &&
@@ -51,14 +62,7 @@ export function narrowMetaItem(raw: DocItem): CheckpointMetaItem | undefined {
   const consistent =
     item.PK === partitionKey(item.threadId) &&
     item.SK === metaSortKey(item.checkpointNs, item.checkpointId);
-  if (!consistent) return undefined;
-  /**
-   * A row that *is* this adapter's but was written by a newer version is not a
-   * foreign row to skip: skipping it would report a thread as shorter than it
-   * is, so it fails loudly instead.
-   */
-  assertReadableRow(raw, 'checkpoint');
-  return item;
+  return consistent ? item : undefined;
 }
 
 /**

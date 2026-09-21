@@ -28,24 +28,25 @@ import type { StoreContext } from './setup';
  *
  * Returns: the record, or undefined for a row that is not this adapter's item.
  *
- * Throws: `FORMAT_UNSUPPORTED` for a row that *is* this adapter's but was
- * written by a newer format version — skipping it would hide an item that
- * exists, so it fails loudly instead.
+ * Throws: `FORMAT_UNSUPPORTED` for a row a newer format version wrote —
+ * checked **before** the shape, as every other read of this package's rows
+ * checks it, so such a row is reported as newer rather than judged against
+ * attribute names it may no longer use. Skipping it would hide an item that
+ * exists.
  */
 export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
+  /**
+   * The version first. A later format may compose the row's key from
+   * attributes this one does not know, so testing the shape first reads such a
+   * row as foreign and hides an item that is there.
+   */
+  assertReadableRow(raw, 'store item');
   if (!Array.isArray(raw.namespace) || typeof raw.key !== 'string') return undefined;
   const record = raw as StoreItemRecord;
   const consistent =
     record.PK === partitionKey(record.namespace) &&
     record.SK === sortKey(record.namespace, record.key);
-  if (!consistent) return undefined;
-  /**
-   * A row that is this adapter's but newer than this version understands is not
-   * a foreign row to skip: skipping it would hide an item that exists, so it
-   * fails loudly.
-   */
-  assertReadableRow(record, 'store item');
-  return record;
+  return consistent ? record : undefined;
 }
 
 /**

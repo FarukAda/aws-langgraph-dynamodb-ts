@@ -84,11 +84,36 @@ describe.each([
     expect(page.sessions.map((session) => session.sessionId)).toEqual(['stamped', 'unstamped']);
   });
 
-  /** A foreign row is not this package's to version: it is skipped, never refused. */
-  it('still skips a foreign row that carries a high v', async () => {
+  /**
+   * The version is read before the shape, so a row in this listing's key space
+   * that a newer release wrote is reported even when its attributes are not
+   * ones this release would summarise. A later format may key or name a
+   * session row differently, and reading that as "foreign, skip it" is how a
+   * page comes back silently short of sessions that exist.
+   */
+  it('reports a row a newer release wrote whose shape it would otherwise skip', async () => {
     const { client, mock } = createStrictDocumentMock();
     serve(mock, [
       { PK: 'X', SK: 'OTHER', v: 9, gsi1sk: '2026-01-03T00:00:00Z#x' },
+      sessionRow('real', '2026-01-01T00:00:00Z'),
+    ]);
+
+    await expect(listSessions(context(client, indexed), { limit: 10 })).rejects.toMatchObject({
+      code: ErrorCode.FORMAT_UNSUPPORTED,
+      context: { field: 'v' },
+    });
+  });
+
+  /**
+   * At a version this release reads, a row it cannot summarise is still
+   * dropped from the page rather than failing it — that skip is what keeps one
+   * hand-written row from costing a caller every healthy session beside it.
+   */
+  it('still skips an unsummarisable row at a version it reads', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    serve(mock, [
+      { PK: 'X', SK: 'OTHER', v: 1, gsi1sk: '2026-01-03T00:00:00Z#x' },
+      { ...sessionRow('bad-count', '2026-01-02T00:00:00Z'), messageCount: 'many' },
       sessionRow('real', '2026-01-01T00:00:00Z'),
     ]);
 

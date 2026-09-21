@@ -15,6 +15,7 @@ import type { CheckpointerContext } from '../../../../src/checkpointer/internal/
 import { dropSupersededWrites } from '../../../../src/checkpointer/internal/write-dedup';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
 
@@ -238,8 +239,26 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
     expect(() => narrowMetaItem({ ...meta, v: 99 } as never)).toThrow(/format version 99/);
   });
 
-  it('still skips a genuinely foreign row, whatever version it claims', () => {
-    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 99 } as never)).toBeUndefined();
+  /**
+   * The version is read before the shape. A row a newer release wrote may have
+   * renamed or dropped the very attributes this narrow tests, so judging it
+   * first is how a reader decides a row is foreign because it can no longer
+   * read it — and answers a caller with a thread that is quietly short instead
+   * of the one error that names the remedy.
+   */
+  it('reports a newer row whose shape this release would otherwise refuse', () => {
+    expect(() => narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 99 } as never)).toThrow(
+      expect.objectContaining({
+        code: ErrorCode.FORMAT_UNSUPPORTED,
+        context: { field: 'v' },
+      }),
+    );
+  });
+
+  /** A row at a version this release reads keeps the skip these narrows exist for. */
+  it('still skips a foreign row at a version it reads', () => {
+    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 1 } as never)).toBeUndefined();
+    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1' } as never)).toBeUndefined();
   });
 });
 
@@ -272,9 +291,24 @@ describe('narrowMetaItem binds a row to the partition it lives in (SEC-03)', () 
     expect(narrowMetaItem(row({ threadId: 42 }) as never)).toBeUndefined();
   });
 
-  /** Refused as foreign before the version check, since it is not this adapter's row at all. */
-  it('rejects a mismatched row without even reading its format version', () => {
-    expect(narrowMetaItem(row({ threadId: 'tenantB', v: 99 }) as never)).toBeUndefined();
+  /**
+   * The binding is judged under this release's rules, so it is judged only for
+   * a row this release can read: a mismatched row a newer format wrote is
+   * reported as newer rather than skipped, because the attribute the binding
+   * compares may not mean there what it means here.
+   */
+  it('reports a mismatched row a newer format wrote rather than skipping it', () => {
+    expect(() => narrowMetaItem(row({ threadId: 'tenantB', v: 99 }) as never)).toThrow(
+      expect.objectContaining({
+        code: ErrorCode.FORMAT_UNSUPPORTED,
+        context: { field: 'v' },
+      }),
+    );
+  });
+
+  /** At a version this release reads, a mismatched row is still skipped. */
+  it('still skips a mismatched row stamped with a version it reads', () => {
+    expect(narrowMetaItem(row({ threadId: 'tenantB', v: 1 }) as never)).toBeUndefined();
   });
 });
 

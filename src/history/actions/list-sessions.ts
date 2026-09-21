@@ -68,18 +68,19 @@ function isSummarisable(raw: DocItem): boolean {
  * caller taking that id to `getMessages` read a partition the row never lived
  * in.
  *
- * Throws: `FORMAT_UNSUPPORTED` for a SESSION row a newer release wrote. It is
- * not a foreign row to skip, and summarising it under this release's rules
- * could return its attributes with a meaning they no longer have. Checked
- * before the shape and the ttl, so a newer row is refused rather than judged
- * against attribute types it may no longer use, and the answer does not depend
- * on the reading machine's clock.
+ * Throws: `FORMAT_UNSUPPORTED` for a row a newer release wrote. It is not a
+ * foreign row to skip, and summarising it under this release's rules could
+ * return its attributes with a meaning they no longer have. Checked before the
+ * shape, the binding and the ttl — as every other read of this package's rows
+ * checks it — so a newer row is refused rather than judged against attribute
+ * names it may no longer use, and the answer does not depend on the reading
+ * machine's clock.
  */
 function summarise(raw: DocItem, nowSeconds: number): SessionMetadata | undefined {
   const item = raw as ChatSessionItem;
+  assertReadableRow(item, 'session');
   if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') return undefined;
   if (item.PK !== sessionPartition(item.sessionId)) return undefined;
-  assertReadableRow(item, 'session');
   if (!isSummarisable(raw) || isExpiredRow(item, nowSeconds)) return undefined;
   return {
     sessionId: item.sessionId,
