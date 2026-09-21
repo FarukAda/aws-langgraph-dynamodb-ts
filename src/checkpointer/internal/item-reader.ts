@@ -9,6 +9,7 @@ import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { assertReadableRow } from '../../shared/dynamodb/row-version';
 import type { DocItem } from '../../shared/dynamodb/types';
+import { truncateForLog } from '../../shared/logging/truncate';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { codecDeps } from './item-writer';
 import { metaSortKey, partitionKey } from './keys';
@@ -84,7 +85,7 @@ export function narrowHead(
   const meta = narrowMetaItem(raw);
   if (!meta) {
     context.logger.warn('getTuple: skipped a row that is not a checkpoint meta item', {
-      sortKey: raw.SK as string,
+      sortKey: truncateForLog(raw.SK as string),
     });
   }
   return meta;

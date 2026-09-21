@@ -6,6 +6,7 @@ import { BATCH_WRITE_MAX } from '../constants';
 import { ErrorCode } from '../errors/error-code';
 import { BatchWriteAllIncompleteError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
+import { truncateForLog } from '../logging/truncate';
 import type { DynamoDBDocumentLike } from './client-types';
 import { type RevisionGuard, WRITE_ID_ATTRIBUTE, writeIdGuard } from './conditional-put';
 import { paginateQuery } from './paginate';
@@ -202,7 +203,9 @@ export async function deletePartitionRows(options: PartitionDeleteOptions): Prom
     const sortKey = row.SK as string;
     if (!options.ownsSortKey(sortKey)) {
       state.skipped += 1;
-      options.logger.warn(`${options.operation}: left a foreign row in place`, { sortKey });
+      options.logger.warn(`${options.operation}: left a foreign row in place`, {
+        sortKey: truncateForLog(sortKey),
+      });
       continue;
     }
     const rowKind = options.kindOf?.(row);
@@ -213,7 +216,7 @@ export async function deletePartitionRows(options: PartitionDeleteOptions): Prom
     if (unitRefused(options, row, state)) {
       state.skipped += 1;
       options.logger.warn(`${options.operation}: skipped a row whose unit was refused`, {
-        sortKey,
+        sortKey: truncateForLog(sortKey),
       });
       continue;
     }

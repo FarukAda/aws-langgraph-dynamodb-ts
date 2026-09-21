@@ -310,3 +310,23 @@ export const S3_LIFECYCLE_SWEEP_MARGIN_DAYS = 2;
  * versions to expire.
  */
 export const S3_RELEASE_GRACE_DAYS = 1;
+
+/**
+ * Characters of a row-sourced string one log line carries, past which it is
+ * cut and marked with its real length.
+ *
+ * The values these lines quote are a row's sort key and an offloaded object's
+ * S3 key, so the service already caps each at 1024 bytes — the cost is not one
+ * long line but many. `list: skipped a row that is not a checkpoint meta item`
+ * and `left a foreign row in place` fire once per row, and those passes walk a
+ * whole partition, up to {@link MAX_TOTAL_ITEMS_IN_MEMORY} rows: one call on a
+ * shared table could write megabytes of log.
+ *
+ * 256 is {@link MAX_KEY_SEGMENT_BYTES}, this package's own budget for one
+ * identifier inside a key, so any key composed from identifiers it validated
+ * is quoted whole in the common case and only a foreign or hand-written row —
+ * exactly the case these lines report — is cut. Nothing is lost by cutting:
+ * the line's job is to say which row to go and look at, and the row holds the
+ * rest.
+ */
+export const MAX_LOGGED_VALUE_CHARS = 256;

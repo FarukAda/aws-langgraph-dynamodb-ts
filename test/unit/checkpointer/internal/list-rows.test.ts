@@ -4,7 +4,9 @@ import { metaRows, narrowOrWarn } from '../../../../src/checkpointer/internal/li
 import type { ListScope } from '../../../../src/checkpointer/internal/list-scope';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { MAX_LOGGED_VALUE_CHARS, MAX_SORT_KEY_BYTES } from '../../../../src/shared/constants';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { truncateForLog } from '../../../../src/shared/logging/truncate';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(
@@ -101,6 +103,24 @@ describe('narrowOrWarn', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a checkpoint meta item'), {
       sortKey: 'META##zzz',
     });
+  });
+
+  /**
+   * These warnings fire once per row, and a listing walks up to ten thousand,
+   * so a foreign partition of long sort keys turned one `list` into megabytes
+   * of log. The line still identifies the row; the rest is in the row.
+   */
+  it('bounds the sort key it reports', () => {
+    const warn = jest.fn();
+    const ctx = context({} as never, { logger: { ...SILENT_LOGGER, warn } });
+    const sortKey = `META##${'z'.repeat(MAX_SORT_KEY_BYTES)}`;
+    expect(narrowOrWarn(ctx, { PK: 'CHKPT#t', SK: sortKey, value: {} })).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.any(String), {
+      sortKey: truncateForLog(sortKey),
+    });
+    const reported = (warn.mock.calls[0][1] as { sortKey: string }).sortKey;
+    expect(reported.startsWith('META##')).toBe(true);
+    expect(reported.length).toBeLessThan(MAX_LOGGED_VALUE_CHARS + 20);
   });
 
   /** A row of ours from a newer release fails loudly rather than shortening the thread. */

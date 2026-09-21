@@ -6,6 +6,7 @@ import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import type { DocItem } from '../../shared/dynamodb/types';
+import { truncateForLog } from '../../shared/logging/truncate';
 import type { CheckpointMetaItem } from '../types';
 import { narrowMetaItem } from './item-reader';
 import { type ListScope, listQuery, listScan } from './list-scope';
@@ -110,7 +111,7 @@ export function narrowOrWarn(
   const meta = narrowMetaItem(raw);
   if (!meta) {
     context.logger.warn('list: skipped a row that is not a checkpoint meta item', {
-      sortKey: raw.SK as string,
+      sortKey: truncateForLog(raw.SK as string),
     });
   }
   return meta;

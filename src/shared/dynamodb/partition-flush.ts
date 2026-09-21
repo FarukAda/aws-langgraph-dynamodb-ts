@@ -4,6 +4,7 @@ import { cleanUpS3Orphans } from '../codec/s3/orphans';
 import { mapWithConcurrency } from '../concurrency';
 import { DELETE_CONCURRENCY } from '../constants';
 import type { Logger } from '../logging/logger';
+import { truncateForLog } from '../logging/truncate';
 import type { DynamoDBDocumentLike } from './client-types';
 import { isConditionalCheckFailed, rejectedItem, type RevisionGuard } from './conditional-put';
 import { withDynamoDBRetry, type RetryOptions } from './retry';
@@ -54,7 +55,7 @@ function recordRefusal(deps: FlushDeps, row: PendingDelete, tally: FlushTally): 
   tally.refused += 1;
   if (row.unit !== undefined) tally.refusedUnits.push(row.unit);
   deps.logger.warn(`${deps.operation}: left a row rewritten since the read`, {
-    sortKey: row.key.SK as string,
+    sortKey: truncateForLog(row.key.SK as string),
   });
 }
 

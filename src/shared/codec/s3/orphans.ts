@@ -1,5 +1,6 @@
 import { fullJitter, nextBackoffDelay, sleep } from '../../dynamodb/backoff';
 import type { Logger } from '../../logging/logger';
+import { truncateForLog } from '../../logging/truncate';
 import type { S3Offloader } from './offloader';
 import { isTransientS3Error } from './retry';
 
@@ -68,7 +69,9 @@ function ownedOnly(
   return keys.filter((key) => {
     if (offloader.ownsKey(key, scope)) return true;
     absorbLoggerFailure(() =>
-      logger.warn(`${context}: refusing to delete an S3 object outside this row's scope`, { key }),
+      logger.warn(`${context}: refusing to delete an S3 object outside this row's scope`, {
+        key: truncateForLog(key),
+      }),
     );
     return false;
   });
