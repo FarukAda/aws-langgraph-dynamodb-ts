@@ -12,6 +12,7 @@ import {
 
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
+import { releaseOwned } from '../shared/release';
 import { SAVER_KEYS } from '../shared/validation/adapter-keys';
 import { assertCancelOptions, DELTA_CHANNEL_HISTORY_KEYS } from '../shared/validation/method-keys';
 import { assertShape, checkedShape } from '../shared/validation/option-shape';
@@ -300,11 +301,15 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * Returns: nothing. Idempotent, and a no-op for a client the caller injected
    * — that one is theirs to close.
    *
-   * Throws: nothing this adapter raises.
+   * Throws: whatever a resource's own `destroy` raises — but only after every
+   * other one has been released, so a client that fails to close can no longer
+   * strand the one behind it (see {@link releaseOwned}). It used to: an S3
+   * client whose sockets were already gone threw first, and the DynamoDB client
+   * this adapter built leaked for the life of the process. The clause read
+   * "nothing this adapter raises", which a caller reads as nothing at all.
    */
   destroy(): void {
-    this.context.offloader?.destroy();
-    if (this.ownsClient) this.ddbClient?.destroy();
+    releaseOwned([this.context.offloader, this.ownsClient ? this.ddbClient : undefined]);
   }
 
   /**
