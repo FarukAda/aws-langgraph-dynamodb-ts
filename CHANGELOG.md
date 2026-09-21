@@ -25,6 +25,10 @@ The adapters, the single-session adapter, the factory and `backfillRecencyIndex`
 
 ### Fixed
 
+- **`deleteThread()` and `clear()` no longer abandon a partition because one row carries no payload descriptor.** The helper that collects an offloaded row's object keys read `.location` off each descriptor it was handed, and a row whose payload attribute is `null` made that a `TypeError` — thrown from inside a flush whose own documentation promises it throws nothing, so the pass ended there and every row it had not reached stayed in place. The helper now accepts a missing descriptor as part of its signature rather than tolerating one by luck; such a row is deleted and simply releases nothing.
+
+- **`store.get()` answers a coded error when a concurrent overwrite leaves the row without a descriptor.** Its recovery path re-reads the row after the object behind it has gone, and read `.location` off whatever the re-read returned. A row overwritten to a `null` descriptor in that window produced a bare `TypeError` about a property read; it now produces the `ValidationError` naming `descriptor` that every other read path already answers such a row with. The original S3 loss is deliberately not reported instead: the row provably no longer names that object, so what is on the row is the accurate answer.
+
 - **`history.listSessions` no longer fails the whole call on one malformed SESSION row.** A row whose `ttl` was not a number survived the expiry filter — `'soon' <= now` is `false`, so it read as live — and then threw `RangeError: Invalid time value` out of `new Date(ttl * 1000).toISOString()`, surfacing as an `UpstreamError` that took every healthy session with it. `NaN`, `Infinity` and a value past the range a `Date` spans did the same. Such a row is now skipped, as a foreign row already was.
 
 - **`store.get` and `store.search` no longer return an item whose `createdAt` or `updatedAt` is an `Invalid Date`.** A row carrying no timestamps is skipped; `get` answers `null` for it, as it already does for an absent, expired or foreign row.
