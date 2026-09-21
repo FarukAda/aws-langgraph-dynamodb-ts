@@ -242,6 +242,17 @@ export interface RedactedErrorText {
  * value that had no text of its own is never reported as changed by the
  * describing.
  *
+ * None of the three is cut, and that is a decision rather than an omission.
+ * The rule that bounds unchecked text bounds what *this package* writes into
+ * its own `err.message` and its own log lines — `redactedMessage` is that
+ * funnel. This function is on the other side of the boundary: it rebuilds an
+ * Error the **consumer** handed to `redactSecrets`, or to the logger
+ * `redactLogger` wrapped, on the way to the consumer's own transport. Cutting
+ * there would change what their transport receives, for a value this package
+ * neither produced nor quotes, and the caller asked for redaction rather than
+ * for truncation. A consumer who wants a bound has their own transport to put
+ * one in.
+ *
  * Throws: **nothing**, for any value.
  */
 export function redactErrorText(error: Error, patterns: readonly RegExp[]): RedactedErrorText {

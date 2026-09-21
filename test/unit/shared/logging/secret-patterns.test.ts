@@ -99,13 +99,20 @@ describe('redactedMessage', () => {
 
   /**
    * Cutting before redacting would split a credential shape past the pattern
-   * that catches it and print the head verbatim, so the order is load-bearing.
+   * that catches it and print the head verbatim, so the order is load-bearing
+   * — and only a secret that *straddles* the cut can show it. A secret wholly
+   * before the boundary survives either order, since the cut never touches it
+   * and the redaction catches it whichever runs first; this one is placed so
+   * the marker ends exactly at the cut and the raw key would not, which makes
+   * the two orders disagree in both directions at once.
    */
-  it('redacts before it cuts, so a secret past the cap cannot survive the cut', () => {
-    const error = new Error(`AKIAIOSFODNN7EXAMPLE ${'padding '.repeat(MAX_RELAYED_MESSAGE_CHARS)}`);
-    const out = redactedMessage(error);
+  it('redacts before it cuts, so a secret astride the cut cannot survive it', () => {
+    const key = 'AKIAIOSFODNN7EXAMPLE';
+    const head = `${'x'.repeat(MAX_RELAYED_MESSAGE_CHARS - REDACTED.length - 1)} `;
+    const out = redactedMessage(new Error(`${head}${key} tail`));
     expect(out).toContain(REDACTED);
-    expect(out).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    /** Cutting first leaves exactly this head, which no pattern then matches. */
+    expect(out).not.toContain(key.slice(0, REDACTED.length));
   });
 
   /** Prose, not an identifier: a real AWS diagnostic is longer than a key and survives whole. */
