@@ -172,4 +172,68 @@ describe('isRetryableError parity with the SDK classifier (DDB-02)', () => {
       ).toBe(false);
     }
   });
+
+  /**
+   * `RequestLimitExceeded` is what an account over its table-count or
+   * control-plane rate gets, and `ProvisionedThroughputExceededException` what
+   * a provisioned table gets: both are the front door refusing a request that
+   * was never served, so both are retried like the `ThrottlingException` they
+   * sit beside.
+   */
+  it('retries every name DynamoDB uses to refuse a request at the front door', () => {
+    for (const name of [
+      'RequestLimitExceeded',
+      'ProvisionedThroughputExceededException',
+      'ThrottlingException',
+    ]) {
+      expect(
+        isRetryableError(Object.assign(new Error('slow down'), { name }), DEFAULT_RETRYABLE_ERRORS),
+      ).toBe(true);
+    }
+  });
+
+  /** The service failed the request itself, which says nothing about the request. */
+  it('retries the service-side failures', () => {
+    for (const name of ['InternalServerError', 'ServiceUnavailable']) {
+      expect(
+        isRetryableError(Object.assign(new Error('boom'), { name }), DEFAULT_RETRYABLE_ERRORS),
+      ).toBe(true);
+    }
+  });
+
+  /**
+   * `EAI_AGAIN` is a temporary DNS resolution failure and arrives as a `code`;
+   * `NetworkingError` is the SDK's own name for a connection that never formed.
+   * Neither request reached the service, so neither can have been applied.
+   */
+  it('retries a connection that never formed', () => {
+    expect(
+      isRetryableError(
+        Object.assign(new Error('getaddrinfo'), { code: 'EAI_AGAIN' }),
+        DEFAULT_RETRYABLE_ERRORS,
+      ),
+    ).toBe(true);
+    expect(
+      isRetryableError(
+        Object.assign(new Error('socket'), { name: 'NetworkingError' }),
+        DEFAULT_RETRYABLE_ERRORS,
+      ),
+    ).toBe(true);
+  });
+
+  /**
+   * The cases above name the entries a reader should be able to find by
+   * searching for them. This one closes the list as a whole: every token in it
+   * is matched through each of the four fields the classifier reads, so an
+   * entry added later cannot sit in the contract with nothing exercising it —
+   * which is how `RequestLimitExceeded` and `EAI_AGAIN` came to be untested.
+   */
+  it('retries every entry of the list through each field the classifier reads', () => {
+    for (const signal of DEFAULT_RETRYABLE_ERRORS) {
+      for (const field of ['name', 'code', 'errno', 'syscall'] as const) {
+        const error = Object.assign(new Error(signal), { [field]: signal });
+        expect(isRetryableError(error, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
+      }
+    }
+  });
 });
