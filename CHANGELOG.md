@@ -15,6 +15,8 @@ The adapters, the single-session adapter, the factory and `backfillRecencyIndex`
 
 ### Changed
 
+- **A cancelled S3 upload or download raises `AbortError` (`code: 'ABORTED'`) instead of `S3_OFFLOAD_FAILED`.** The documented contract was always `ABORTED`; the wrappers were rebranding it.
+
 - **A page can come back shorter than its `limit` for one more reason.** `history.listSessions` also drops a SESSION row whose `messageCount`, `createdAt`, `updatedAt` or `title` is not the type this package writes there, and `store.search` drops a row carrying no timestamps. For `listSessions` the cursor still advances, because it is a position in the index rather than a count of what survived filtering.
 
 - **The real-AWS test tier no longer runs on a schedule.** The nightly workflow is gone; `npm run test:aws` is a maintainer step before a release. One of its nine suites exercises Bedrock, and a scheduled job that retried or looped would bill the account unattended — the kind of cost nobody notices until the invoice arrives. Running it by hand keeps the spend attached to a person who chose it. What the tier covers is unchanged: 52 tests over real DynamoDB, S3 and Bedrock, each creating and deleting its own uniquely named resources.
@@ -24,6 +26,10 @@ The adapters, the single-session adapter, the factory and `backfillRecencyIndex`
 - **`getTuple` reads the latest checkpoint in one `Query` instead of one per expired row.** The newest-first metadata read evaluated a single row per page, and because DynamoDB applies a page size **before** a filter expression, every checkpoint past its `ttl` at the head of a thread emptied a whole page and cost its own round trip — twenty-six `Query` calls to step over twenty-five expired rows, on the read that begins every graph step, for as long as DynamoDB's TTL sweep lagged. The read now evaluates fifty rows per page, still stops at the first live checkpoint, and returns exactly the same tuple. A thread that sets no `ttl` pays for this in read capacity rather than round trips: the read evaluates up to fifty light `META` rows — roughly 26 KB, about seven strongly consistent read units — and keeps one.
 
 ### Fixed
+
+- **`signal` now cancels the request in flight, not only the wait between retries.** Every DynamoDB document-client call and both S3 transfers are issued with the caller's signal as the SDK's `abortSignal`, and a request cut by it is reported as `AbortError` (`code: 'ABORTED'`) instead of being classified and re-sent as a transport failure — a cut request rejects with `ECONNRESET`, which every classifier here reads as transient, so passing the signal without reading it first would have spent the whole retry budget against a fired signal. `uploadObject`/`downloadObject` previously received no signal at all, so an abort did not even end a backoff wait on that path. Cleanup and verification reads after a failure stay uncancelled, so an abort still cannot strand a live row pointing at a deleted object.
+
+- **`history.addMessages` passes its `signal` to each message's S3 upload.** An offloaded append previously spent one uncancellable upload per message before the first row was written.
 
 - **A row holding `null` in its payload attribute no longer ends a partition delete before its first row.** `deleteThread()` and `clear()` read each row's descriptor through a cast that allowed only `undefined` for an absent one, so a `null` there was destructured and raised a raw `TypeError` while the pass was still **buffering** rows — before any delete was issued, leaving the whole partition in place. Such a row names no payload, so it is now treated as one that carries no write id: deleted unconditionally, releasing nothing, which is what this path already documented for every row written before those ids existed.
 
