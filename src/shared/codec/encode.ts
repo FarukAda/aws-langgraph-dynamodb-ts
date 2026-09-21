@@ -62,11 +62,20 @@ function assertInlinePayloadFits(bytes: Uint8Array, deps: CodecDeps): void {
 /**
  * Reject a value the serde turned into no bytes at all. Zero bytes is not a
  * small payload: it is not a document in any format a reader can parse, so the
- * row is written happily and every later read of it fails — under the default
- * `JsonPlusSerializer` a function, a symbol and anything else `JSON.stringify`
- * answers `undefined` for encode this way. Checked before compression, so an
- * inline and an offloaded payload are refused identically and nothing is
- * uploaded for a payload no reader could ever use.
+ * row is written happily and every later read of it fails. Checked before
+ * compression, so an inline and an offloaded payload are refused identically
+ * and nothing is uploaded for a payload no reader could ever use.
+ *
+ * What reaches it under the default `JsonPlusSerializer` is a value that is
+ * *itself* a function or a symbol. A bare `undefined` is not one of them — it
+ * encodes to a 27-byte marker — and neither is a function or symbol nested in
+ * an object or an array, which is dropped from the document instead of
+ * emptying it, silently and out of this check's sight.
+ *
+ * The rule binds every serde, not only the defaults. A `serde` whose encoding
+ * of some legitimate value is genuinely empty — a message format whose empty
+ * message is zero bytes — cannot store that value through this package, and
+ * would have to give it a byte of its own.
  */
 function assertSerialisedToBytes(raw: Uint8Array): void {
   if (raw.length > 0) return;
@@ -82,8 +91,10 @@ function assertSerialisedToBytes(raw: Uint8Array): void {
  * The descriptor recording how to read `value` back: serialized, compressed if
  * configured, and offloaded to S3 if large enough.
  *
- * Accepts: `value` — anything the serde can represent; what it cannot is its
- * own error. `deps.compression` — absent or `enabled: false` stores the
+ * Accepts: `value` — anything the serde can represent as at least one byte;
+ * what it cannot represent is the serde's own error, and what it represents as
+ * nothing is refused here (see {@link assertSerialisedToBytes}), whichever
+ * serde is configured. `deps.compression` — absent or `enabled: false` stores the
  * serialized bytes as they are. `deps.offloader` — absent stores every payload
  * inline. `options` — the row's identity, the write's object id and the row's
  * DynamoDB key (see {@link EncodeOptions}).
