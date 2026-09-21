@@ -33,6 +33,15 @@ export type {
   FactoryBaseOptions,
 } from './factory/types';
 
+/**
+ * The plain JSON serializer the store and chat-history adapters use by
+ * default, exported so a checkpointer can be given it in place of LangGraph's
+ * `JsonPlusSerializer`, whose read path instantiates the class a stored
+ * `{"lc": …}` record names. See the README's *Trust boundary* note and
+ * `SECURITY.md`.
+ */
+export { JSON_SERDE } from './shared/codec/json-serde';
+
 export { DynamoDBLangGraphError, isDynamoDBLangGraphError } from './shared/errors/base-error';
 export type { ErrorContext } from './shared/errors/base-error';
 export { ErrorCode } from './shared/errors/error-code';

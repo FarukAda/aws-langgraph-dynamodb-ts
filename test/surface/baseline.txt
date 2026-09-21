@@ -817,6 +817,48 @@ DynamoDBStore.search | options={"query":null} | throws ValidationError/VALIDATIO
 DynamoDBStore.search | options={"signal":"x"} | throws ValidationError/VALIDATION field=signal
 ErrorCode | Object.isFrozen(ErrorCode) | OK Boolean
 ErrorCode | mutate ErrorCode.VALIDATION = "x" (refused?) | OK Boolean
+JSON_SERDE | Object.isFrozen(JSON_SERDE) | OK Boolean
+JSON_SERDE | swap dumpsTyped (refused?) | OK Boolean
+JSON_SERDE.dumpsTyped | value="x" | RESOLVED "\"x\""
+JSON_SERDE.dumpsTyped | value=-0 | RESOLVED "0"
+JSON_SERDE.dumpsTyped | value=1 | RESOLVED "1"
+JSON_SERDE.dumpsTyped | value=1n | throws ValidationError/VALIDATION field=value
+JSON_SERDE.dumpsTyped | value=Date(1970-01-01) | RESOLVED "\"1970-01-01T00:00:00.000Z\""
+JSON_SERDE.dumpsTyped | value=Infinity | RESOLVED "null"
+JSON_SERDE.dumpsTyped | value=Map("a"=>1) | RESOLVED "{}"
+JSON_SERDE.dumpsTyped | value=NaN | RESOLVED "null"
+JSON_SERDE.dumpsTyped | value=Set(1) | RESOLVED "{}"
+JSON_SERDE.dumpsTyped | value=Symbol("s") | throws ValidationError/VALIDATION field=value
+JSON_SERDE.dumpsTyped | value=Uint8Array([1,2,3]) | RESOLVED "{\"0\":1,\"1\":2,\"2\":3}"
+JSON_SERDE.dumpsTyped | value=[1,undefined,3] | RESOLVED "[1,null,3]"
+JSON_SERDE.dumpsTyped | value=[] | RESOLVED "[]"
+JSON_SERDE.dumpsTyped | value=fn | throws ValidationError/VALIDATION field=value
+JSON_SERDE.dumpsTyped | value=null | RESOLVED "null"
+JSON_SERDE.dumpsTyped | value=undefined | throws ValidationError/VALIDATION field=value
+JSON_SERDE.dumpsTyped | value={"a":1,"b":<undef>} | RESOLVED "{\"a\":1}"
+JSON_SERDE.dumpsTyped | value={"a":1,"self":<cycle^1>} | throws ValidationError/VALIDATION field=value
+JSON_SERDE.dumpsTyped | value={"f":fn} | RESOLVED "{}"
+JSON_SERDE.dumpsTyped | value={"n":1n} | throws ValidationError/VALIDATION field=value
+JSON_SERDE.dumpsTyped | value={"s":Symbol("s")} | RESOLVED "{}"
+JSON_SERDE.dumpsTyped | value={"toJSON":fn} | throws ValidationError/VALIDATION field=value
+JSON_SERDE.dumpsTyped | value={} | RESOLVED "{}"
+JSON_SERDE.loadsTyped | data="" | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+JSON_SERDE.loadsTyped | data="not json" | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+JSON_SERDE.loadsTyped | data="{\"a\":1}" | RESOLVED {"a":1}
+JSON_SERDE.loadsTyped | data=42 | throws ValidationError/VALIDATION field=data
+JSON_SERDE.loadsTyped | data=Symbol("s") | throws ValidationError/VALIDATION field=data
+JSON_SERDE.loadsTyped | data=Uint8Array([123,111,111,112,115]) | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+JSON_SERDE.loadsTyped | data=Uint8Array([123,34,97,34,58,49,125]) | RESOLVED {"a":1}
+JSON_SERDE.loadsTyped | data=Uint8Array([]) | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+JSON_SERDE.loadsTyped | data=[] | throws ValidationError/VALIDATION field=data
+JSON_SERDE.loadsTyped | data=bytes of {"__proto__":{"polluted":1}} | RESOLVED {"__proto__":{"polluted":1}}
+JSON_SERDE.loadsTyped | data=null | throws ValidationError/VALIDATION field=data
+JSON_SERDE.loadsTyped | data=undefined | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+JSON_SERDE.loadsTyped | data={} | throws ValidationError/VALIDATION field=data
+JSON_SERDE.loadsTyped | type="msgpack" | RESOLVED 1
+JSON_SERDE.loadsTyped | type=1 | RESOLVED 1
+JSON_SERDE.loadsTyped | type=null | RESOLVED 1
+JSON_SERDE.loadsTyped | type=undefined | RESOLVED 1
 backfillRecencyIndex | cursor="" | throws ValidationError/VALIDATION field=cursor
 backfillRecencyIndex | cursor="W10" | throws ValidationError/VALIDATION field=cursor
 backfillRecencyIndex | cursor="bnVsbA" | throws ValidationError/VALIDATION field=cursor
@@ -893,6 +935,7 @@ isDynamoDBLangGraphError | value=ValidationError("v") | OK Boolean
 isDynamoDBLangGraphError | value=null | OK false
 isDynamoDBLangGraphError | value=undefined | OK false
 isDynamoDBLangGraphError | value={} | OK false
+prototype-safety | Object.prototype.polluted after JSON_SERDE.loadsTyped | undefined
 prototype-safety | Object.prototype.polluted after redactSecrets | undefined
 prototype-safety | Object.prototype.x after backfillRecencyIndex cursor | undefined
 redactLogger | inner="x" | sync throws ValidationError/VALIDATION field=logger

@@ -7,6 +7,7 @@ import type {
   Checkpoint,
   CheckpointMetadata,
   SearchOperation,
+  SerializerProtocol,
 } from '@langchain/langgraph-checkpoint';
 import { expectTypeOf } from 'expect-type';
 
@@ -82,6 +83,8 @@ const VALUE_EXPORTS = [
   'DynamoDBSessionChatMessageHistory',
   'DynamoDBStore',
   'ErrorCode',
+  /** The plain-JSON `serde`: the store/history default, and a checkpointer's alternative. */
+  'JSON_SERDE',
   'ResultTruncatedError',
   'RetryExhaustedError',
   'UpstreamError',
@@ -97,6 +100,16 @@ describe('public value exports (CORE-12, TEST-10)', () => {
   it('are exactly the documented set, at runtime and in the types', () => {
     expect(Object.keys(api).sort()).toEqual([...VALUE_EXPORTS].sort());
     expectTypeOf<keyof typeof api>().toEqualTypeOf<(typeof VALUE_EXPORTS)[number]>();
+  });
+
+  /**
+   * `JSON_SERDE` is offered as something to pass as `serde`, so what it is
+   * typed as is the whole of its usefulness: anything narrower than the
+   * protocol would compile here and fail at the option it exists to fill.
+   */
+  it('offer the plain-JSON serde as a SerializerProtocol, frozen', () => {
+    expectTypeOf<typeof api.JSON_SERDE>().toEqualTypeOf<SerializerProtocol>();
+    expect(Object.isFrozen(api.JSON_SERDE)).toBe(true);
   });
 });
 

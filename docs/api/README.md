@@ -78,6 +78,10 @@
 - [TtlOption](type-aliases/TtlOption.md)
 - [VectorScoreDirection](type-aliases/VectorScoreDirection.md)
 
+## Variables
+
+- [JSON\_SERDE](variables/JSON_SERDE.md)
+
 ## Functions
 
 - [backfillRecencyIndex](functions/backfillRecencyIndex.md)

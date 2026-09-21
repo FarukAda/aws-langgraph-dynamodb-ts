@@ -68,4 +68,38 @@ describe('JSON_SERDE.loadsTyped', () => {
     const error = await JSON_SERDE.loadsTyped('json', new Uint8Array()).catch((e: Error) => e);
     expect(isPermanentPayloadLoss(error as Error)).toBe(true);
   });
+
+  /**
+   * The codec only ever hands it a `Uint8Array`, but the serializer is
+   * exported, so a caller can hand it anything. `TextDecoder` answered such a
+   * value with a bare `TypeError` naming an argument called "list" — the one
+   * error shape no public entry point in this package is allowed to produce.
+   * It is a validation failure and not a corrupt row: UTF-8 decoding replaces
+   * a malformed byte rather than refusing it, so the only way the decode fails
+   * is a `data` that is not bytes.
+   */
+  it.each([
+    ['null', null],
+    ['a plain object', {}],
+    ['a number', 42],
+  ])('refuses %s as data, naming the argument', async (_name, data) => {
+    await expect(
+      JSON_SERDE.loadsTyped('json', data as unknown as Uint8Array),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'data' } });
+  });
+});
+
+/**
+ * One object serves every adapter in the process that passed no `serde`, and
+ * it is reachable from the package root, so an assignment to either method by
+ * any one consumer would change how every other one reads and writes — the
+ * same argument that freezes `ErrorCode`.
+ */
+describe('JSON_SERDE as a shared object', () => {
+  it('refuses a method swap', () => {
+    expect(Object.isFrozen(JSON_SERDE)).toBe(true);
+    expect(() => {
+      (JSON_SERDE as { dumpsTyped: unknown }).dumpsTyped = (): void => undefined;
+    }).toThrow(TypeError);
+  });
 });

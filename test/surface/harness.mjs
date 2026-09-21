@@ -3,6 +3,7 @@
  */
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { TextDecoder, TextEncoder } from 'node:util';
 
 import { describe } from './describe.mjs';
 
@@ -224,6 +225,35 @@ function fuzzRedaction() {
   rows.push(['prototype-safety', 'Object.prototype.polluted after redactSecrets', String(({}).polluted)]);
 }
 
+/**
+ * The plain-JSON serde, which is a value on the public surface rather than a
+ * method of an adapter: a caller passes it as `serde`, and may also call it
+ * directly to read bytes it holds. Its two methods take whatever that caller
+ * hands them, so they are fuzzed like every other entry point — and the rows
+ * also record what it silently substitutes, which is the README's table read
+ * back off the code.
+ */
+async function fuzzSerde() {
+  const E = 'JSON_SERDE.dumpsTyped';
+  const cyc = { a: 1 }; cyc.self = cyc;
+  const shown = (v) => { try { return new TextDecoder().decode(v[1]); } catch { return describe(v); } };
+  const dumps = [undefined, null, 1, -0, NaN, Infinity, 'x', [], {}, () => 1, Symbol('s'), 1n, { n: 1n }, cyc, { a: 1, b: undefined }, [1, undefined, 3], new Map([['a', 1]]), new Set([1]), new Date(0), new Uint8Array([1, 2, 3]), { f: () => 1 }, { s: Symbol('s') }, { toJSON() { throw new Error('boom'); } }];
+  for (const v of dumps) await tryAsync(E, `value=${describe(v)}`, async () => shown(await lib.JSON_SERDE.dumpsTyped(v)));
+  const E2 = 'JSON_SERDE.loadsTyped';
+  const bytes = (s) => new TextEncoder().encode(s);
+  for (const v of [undefined, null, 42, [], {}, Symbol('s'), '', 'not json', '{"a":1}', bytes(''), bytes('{oops'), bytes('{"a":1}')]) await tryAsync(E2, `data=${describe(v)}`, () => lib.JSON_SERDE.loadsTyped('json', v));
+  for (const v of [undefined, null, 1, 'msgpack']) await tryAsync(E2, `type=${describe(v)}`, () => lib.JSON_SERDE.loadsTyped(v, '1'));
+  await tryAsync(E2, 'data=bytes of {"__proto__":{"polluted":1}}', () => lib.JSON_SERDE.loadsTyped('json', bytes('{"__proto__":{"polluted":1}}')));
+  rows.push(['prototype-safety', 'Object.prototype.polluted after JSON_SERDE.loadsTyped', String(({}).polluted)]);
+  trySync('JSON_SERDE', 'Object.isFrozen(JSON_SERDE)', () => Object.isFrozen(lib.JSON_SERDE));
+  /**
+   * As with `ErrorCode`: the assignment is the probe. A frozen object refuses
+   * it, and in a module that refusal is a throw, so letting it reach
+   * `outcome()` would file the guarantee as a bare escape.
+   */
+  trySync('JSON_SERDE', 'swap dumpsTyped (refused?)', () => { const before = lib.JSON_SERDE.dumpsTyped; let refused = false; try { lib.JSON_SERDE.dumpsTyped = () => 1; } catch { refused = true; } const after = lib.JSON_SERDE.dumpsTyped; if (!refused) lib.JSON_SERDE.dumpsTyped = before; return refused && after === before; });
+}
+
 function fuzzErrors() {
   const E = 'errors';
   trySync(E, 'new ValidationError()', () => new lib.ValidationError());
@@ -275,6 +305,7 @@ export async function collectRows() {
   fuzzFactory();
   await fuzzBackfill();
   fuzzRedaction();
+  await fuzzSerde();
   fuzzErrors();
   return rows.map((row) => [...row]);
 }
