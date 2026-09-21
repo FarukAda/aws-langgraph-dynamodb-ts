@@ -8,7 +8,7 @@
 
 > `const` **JSON\_SERDE**: `SerializerProtocol`
 
-Defined in: [shared/codec/json-serde.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/json-serde.ts#L46)
+Defined in: [shared/codec/json-serde.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/json-serde.ts#L48)
 
 A plain JSON serializer implementing LangGraph's `SerializerProtocol`:
 the default `serde` of `DynamoDBStore` and `DynamoDBChatMessageHistory`, and
@@ -27,7 +27,9 @@ rest. A value it cannot represent — `undefined`, a function, a symbol —
 stringifies to `undefined` and would be stored as **zero bytes**, which reads
 back as a parse error; a circular structure or a `BigInt` makes it throw. Both
 are reported as `ValidationError` naming `value`, at the write, rather than
-as an unreadable row later.
+as an unreadable row later — with the refusal attached as `cause` and never
+quoted into the message, which for a circular structure names the caller's
+own properties and classes.
 
 What it represents, it represents as JSON, which is lossy in ways nothing
 records: a `Map` or `Set` stores as `{}`, an object key whose value is
