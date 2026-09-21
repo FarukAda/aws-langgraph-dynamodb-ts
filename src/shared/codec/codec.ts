@@ -1,9 +1,11 @@
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import { isDynamoDBLangGraphError } from '../errors/base-error';
+import { DynamoDBLangGraphError, isDynamoDBLangGraphError } from '../errors/base-error';
+import { ErrorCode } from '../errors/error-code';
 import { ValidationError } from '../errors/errors';
 import { toError } from '../errors/wrap-error';
 import { CompressionConfig, decompress } from './compression';
+import { bytesHoldDeclaredForm } from './declared-form';
 import type { S3Offloader } from './s3/offloader';
 
 /** Where an encoded payload lives. */
@@ -154,20 +156,31 @@ export async function readPayloadBytes(
  * The value stored bytes hold, with a serde that refuses them branded rather
  * than left bare.
  *
- * Accepts: `serdeType` — the row's own, handed to the serde unchanged.
+ * Accepts: `serdeType` — the row's own, handed to the serde unchanged, and the
+ * declared form {@link bytesHoldDeclaredForm} checks the bytes against.
  * `bytes` — what {@link readPayloadBytes} returned. `deps.serde` — the
  * serializer the adapter was configured with, which may be the caller's.
  *
  * Returns: whatever the serde reconstructs, typed as the caller declares.
  *
  * Throws: the serde's own error whenever it is already one of this library's,
- * so `PAYLOAD_CORRUPT` from `JSON_SERDE` stays exactly what it was; anything
- * else as a ValidationError naming `serde`, carrying the refusal as `cause`.
+ * so `PAYLOAD_CORRUPT` from `JSON_SERDE` stays exactly what it was;
+ * `PAYLOAD_CORRUPT` when the bytes are no longer the form the row declares, on
+ * whatever serde raised it; anything else as a ValidationError naming `serde`,
+ * carrying the refusal as `cause`.
  *
- * Guarantees: no error leaves a decode unbranded. A stored `lc` constructor
- * record naming a class outside LangChain's allow-list is refused by `load()`
- * with a plain `Error`, which a public boundary could only rebrand as an
- * `UpstreamError` — reporting a row's own content to the caller as an AWS
+ * Guarantees: no error leaves a decode unbranded, and which serde the adapter
+ * was configured with never decides *which* brand. A rotted row read through
+ * `JSON_SERDE` reported `PAYLOAD_CORRUPT` while the identical row read through
+ * the checkpointer's own default reported the refusal below, so a caller
+ * quarantining on `PAYLOAD_CORRUPT` never matched and `history.getMessages`
+ * lost a whole conversation where it promises one dropped message.
+ *
+ * The refusal is what remains once the bytes are known to be intact: the
+ * serializer would not reconstruct the value they name. A stored `lc`
+ * constructor record naming a class outside LangChain's allow-list is refused
+ * by `load()` with a plain `Error`, which a public boundary could only rebrand
+ * as an `UpstreamError` — reporting a row's own content to the caller as an AWS
  * failure. It is deliberately *not* classified as payload loss, for
  * `assertKeyInScope`'s reason rather than `PAYLOAD_CORRUPT`'s: the bytes are
  * undamaged and parse, and which classes revive is a property of **this**
@@ -187,6 +200,15 @@ export async function loadPayloadValue<T>(
   } catch (error) {
     const refusal = toError(error as Error);
     if (isDynamoDBLangGraphError(refusal)) throw refusal;
+    if (!bytesHoldDeclaredForm(serdeType, bytes)) {
+      throw new DynamoDBLangGraphError(
+        'the stored payload is no longer the form this row declares, so no serde could decode ' +
+          'it; the refusal that proved it is attached as `cause`',
+        ErrorCode.PAYLOAD_CORRUPT,
+        {},
+        refusal,
+      );
+    }
     throw new ValidationError(
       'the configured serde refused the payload stored in this row: the bytes parse, but the ' +
         'serializer would not reconstruct the value they name — a stored `lc` constructor record ' +
@@ -208,8 +230,9 @@ export async function loadPayloadValue<T>(
  *
  * Throws: everything {@link readPayloadBytes} throws, plus everything
  * {@link loadPayloadValue} throws for bytes the serde will not accept —
- * `PAYLOAD_CORRUPT` from this package's own serde, ValidationError naming
- * `serde` for a refusal that is not already branded.
+ * `PAYLOAD_CORRUPT` for bytes that are no longer the form the row declares,
+ * whichever serde is configured, ValidationError naming `serde` for a refusal
+ * of bytes that are still intact.
  *
  * Guarantees: the bytes are read first, in a statement of their own. Passing
  * `descriptor.serdeType` and the awaited read as two arguments to one call read

@@ -49,9 +49,10 @@ function isUnreadableDescriptor(error: Error): boolean {
  * including two refusals that look like loss and are not. The `s3Key` scope
  * refusal: a row pointing outside its own path is a configuration or tenancy
  * fault to report, not a payload to write off. The `serde` refusal, on the same
- * reasoning: the bytes parse and are undamaged, and a serializer declining to
- * reconstruct the class they name says what *this* reader may do, not what the
- * payload is (see `loadPayloadValue`).
+ * reasoning: the bytes are checked against the form the row declares before
+ * that code is chosen, so reaching it means they are undamaged and a serializer
+ * declining to reconstruct the class they name says what *this* reader may do,
+ * not what the payload is (see `loadPayloadValue`).
  *
  * Returns: whether a caller should report rather than retry.
  *

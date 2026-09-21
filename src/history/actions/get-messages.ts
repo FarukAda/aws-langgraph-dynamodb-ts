@@ -42,11 +42,11 @@ function corruptOrRethrow(error: Error): Decoded {
  * other infrastructure failure (see `assertKeyInScope`).
  *
  * Deserializing is classified the same way, through the same predicate: bytes
- * the serializer cannot parse are this message's own loss, but a serde that
- * refuses to reconstruct what the bytes *name* — the branded refusal
- * {@link loadPayloadValue} raises for a stored `lc` record naming a class
- * outside its allow-list — is a misconfigured serde or a planted row, and is
- * reported for the same reason the out-of-scope key is. Bytes reached this
+ * that are no longer the form the row declares are this message's own loss, but
+ * a serde that refuses to reconstruct what intact bytes *name* — the branded
+ * refusal {@link loadPayloadValue} raises for a stored `lc` record naming a
+ * class outside its allow-list — is a misconfigured serde or a planted row, and
+ * is reported for the same reason the out-of-scope key is. Bytes reached this
  * stage bare before it existed, so a refusal of that kind was skipped here
  * while the store and the saver raised on the identical row.
  *
