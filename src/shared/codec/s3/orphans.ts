@@ -33,6 +33,30 @@ async function backoffSleep(delayMs: number, options: OrphanCleanupOptions): Pro
   }
 }
 
+/**
+ * Run one log call, absorbing a failure of the caller's own logger.
+ *
+ * `Logger` is an interface a consumer implements, which makes it the only
+ * foreign code this file calls: one that stringifies a circular object, whose
+ * transport has closed, or that asserts on a field it did not expect throws
+ * from inside the `catch` every caller runs the cleanup in, and its error then
+ * replaces the one the caller actually needs to see.
+ *
+ * Swallowed rather than reported onward, because the only channel a report
+ * could use is the logger that just broke, and the alternative — writing to the
+ * host's console uninvited — is what {@link Logger}'s silent default exists to
+ * refuse. What the line was going to say is an advisory about leaked objects,
+ * whose backstop is an S3 lifecycle rule rather than a log line; the error it
+ * now protects is the one that says why the write failed.
+ */
+function absorbLoggerFailure(emit: () => void): void {
+  try {
+    emit();
+  } catch {
+    /** Nowhere left to say it: the reporting channel is the broken part. */
+  }
+}
+
 /** Drop every key outside the row's scope, reporting each one. */
 function ownedOnly(
   offloader: S3Offloader,
@@ -43,7 +67,9 @@ function ownedOnly(
 ): string[] {
   return keys.filter((key) => {
     if (offloader.ownsKey(key, scope)) return true;
-    logger.warn(`${context}: refusing to delete an S3 object outside this row's scope`, { key });
+    absorbLoggerFailure(() =>
+      logger.warn(`${context}: refusing to delete an S3 object outside this row's scope`, { key }),
+    );
     return false;
   });
 }
@@ -75,7 +101,9 @@ function selectOrphans(
  * cleanup failure must not mask the write failure that caused it. Every
  * outcome that is not a clean delete is logged at `warn`, carrying counts and
  * the failing error's *name* — never its message, which can hold a credential
- * fragment.
+ * fragment. A `logger` that throws is one more thing this absorbs (see
+ * {@link absorbLoggerFailure}): the promise covers the caller's own code too,
+ * or every call site's `catch` would hand its caller the wrong error.
  *
  * Guarantees: an object outside the row's scope is never deleted. Leftovers
  * have no automatic backstop — an S3 lifecycle rule sweeps them only if one was
@@ -97,9 +125,16 @@ export async function cleanUpS3Orphans(
     try {
       const failed = await offloader.deleteBatch(orphans);
       if (failed.length === 0) return;
-      logger.warn(
-        `Some orphaned S3 objects could not be deleted after ${context}; a lifecycle rule from ensureS3LifecycleRule() would sweep them, otherwise clean up manually`,
-        { failedCount: failed.length },
+      /**
+       * Absorbed here and not by the `catch` below, which would read a broken
+       * logger as a failed delete: the delete succeeded, and only part of it
+       * could be reported.
+       */
+      absorbLoggerFailure(() =>
+        logger.warn(
+          `Some orphaned S3 objects could not be deleted after ${context}; a lifecycle rule from ensureS3LifecycleRule() would sweep them, otherwise clean up manually`,
+          { failedCount: failed.length },
+        ),
       );
       return;
     } catch (error) {
@@ -114,8 +149,10 @@ export async function cleanUpS3Orphans(
    * credential fragment in its text, and this package promises that its logs
    * hold identifiers and counts only.
    */
-  logger.warn(
-    `Failed to clean up orphaned S3 objects after ${context}; a lifecycle rule from ensureS3LifecycleRule() would sweep them, otherwise clean up manually`,
-    { reason: lastError.name },
+  absorbLoggerFailure(() =>
+    logger.warn(
+      `Failed to clean up orphaned S3 objects after ${context}; a lifecycle rule from ensureS3LifecycleRule() would sweep them, otherwise clean up manually`,
+      { reason: lastError.name },
+    ),
   );
 }

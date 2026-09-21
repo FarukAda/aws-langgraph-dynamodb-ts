@@ -40,11 +40,15 @@ function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T 
  *
  * Each payload uploads as it encodes, well before the row that would name it is
  * written, so a build that throws partway leaves the payloads it had already
- * finished with nothing pointing at them: this call writes no row at all, and
- * every key ends in an `objectId` drawn for this call alone, so no row another
- * call commits can name one either. Nothing will ever reference them, which is
- * what makes deleting them unconditionally safe — no read of the table is
- * needed first.
+ * finished with nothing pointing at them. Deleting them unconditionally — with
+ * no read of the table first — is safe for two independent reasons.
+ *
+ * The descriptors released here never escape the builder: they are locals it
+ * surrenders only at its `return`, which a build that throws never reaches, so
+ * nothing anywhere has ever been handed one to copy onto a row. That holds
+ * whatever the keys look like. Second, and only as a backstop to it, every key
+ * ends in an `objectId` drawn for this call alone, so no row another call
+ * commits addresses the same object.
  *
  * Best-effort, and it never replaces the failure that caused it: a caller needs
  * to see why its payload was refused, not why a cleanup could not finish.
