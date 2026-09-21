@@ -27,6 +27,8 @@ The adapters, the single-session adapter, the factory and `backfillRecencyIndex`
 
 ### Fixed
 
+- **`getDeltaChannelHistory` honours `config.signal` for the whole ancestor walk**, not only the read of the target checkpoint. The walk took each cursor from the previous tuple's `parentConfig`, which is built bare, so every hop — each one three DynamoDB requests plus an S3 download per offloaded payload, over a chain that ends only at the nearest ancestor holding a value — ran to completion after the caller had stopped waiting. The hop the signal fires on is now the last read the call makes, and a cancel is reported as `ABORTED` in preference to `ANCESTOR_EXPIRED`: a caller who stopped waiting was not waiting for the diagnosis.
+
 - **`signal` now cancels the request in flight, not only the wait between retries.** Every DynamoDB document-client call and both S3 transfers are issued with the caller's signal as the SDK's `abortSignal`, and a request cut by it is reported as `AbortError` (`code: 'ABORTED'`) instead of being classified and re-sent as a transport failure — a cut request rejects with `ECONNRESET`, which every classifier here reads as transient, so passing the signal without reading it first would have spent the whole retry budget against a fired signal. `uploadObject`/`downloadObject` previously received no signal at all, so an abort did not even end a backoff wait on that path. Cleanup and verification reads after a failure stay uncancelled, so an abort still cannot strand a live row pointing at a deleted object.
 
 - **`history.addMessages` passes its `signal` to each message's S3 upload.** An offloaded append previously spent one uncancellable upload per message before the first row was written.
