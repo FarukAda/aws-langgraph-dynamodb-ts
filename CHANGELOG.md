@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.2] - 2026-09-21
+
 The adapters, the single-session adapter, the factory and `backfillRecencyIndex` now refuse a caller's mistake with a `ValidationError` naming the argument, in every case listed under *Changed (breaking)* below, where they used to ignore it, crash, answer with a silently empty result or report it as an AWS failure. No case in the surface tier's table of malformed inputs now ends in `UpstreamError` or `RetryExhaustedError`.
 
 ### Added
@@ -915,7 +917,8 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 
 ---
 
-[Unreleased]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.1...HEAD
+[Unreleased]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.2...HEAD
+[1.0.0-rc.2]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.9.0...v1.0.0-rc.1
 [0.9.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.7.0...v0.8.0
