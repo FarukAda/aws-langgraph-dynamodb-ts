@@ -41,8 +41,19 @@ describe('defaultAdapterKeyPrefix', () => {
 });
 
 describe('assertScopedKeyPrefix', () => {
+  function expectRefusal(keyPrefix: string): void {
+    try {
+      assertScopedKeyPrefix(keyPrefix);
+      throw new Error('should have thrown');
+    } catch (error) {
+      expect((error as { context: { field?: string } }).context.field).toBe('s3.keyPrefix');
+    }
+  }
+
   it('accepts a prefix that ends at a path boundary', () => {
     expect(() => assertScopedKeyPrefix('payloads/store/')).not.toThrow();
+    expect(() => assertScopedKeyPrefix('langgraph/')).not.toThrow();
+    expect(() => assertScopedKeyPrefix('a/b/c/')).not.toThrow();
   });
 
   /**
@@ -50,12 +61,35 @@ describe('assertScopedKeyPrefix', () => {
    * another's, and a key-scope check would let one read the other's objects.
    */
   it('refuses a prefix that does not end at one', () => {
-    try {
-      assertScopedKeyPrefix('payloads/store');
-      throw new Error('should have thrown');
-    } catch (error) {
-      expect((error as { context: { field?: string } }).context.field).toBe('s3.keyPrefix');
-    }
+    expectRefusal('payloads/store');
+  });
+
+  /**
+   * The prefix is what the IAM object-key condition and the lifecycle rule's
+   * `Filter.Prefix` are both written against, and every tool that normalises a
+   * path resolves `..` before matching either. A prefix carrying one therefore
+   * names keys outside the scope the deployment granted and outside the scope
+   * the lifecycle rule sweeps, which is the one thing a prefix exists to fix.
+   */
+  it.each(['../', './', 'a/../b/', 'a/./b/'])('refuses the traversal prefix %j', (keyPrefix) => {
+    expectRefusal(keyPrefix);
+  });
+
+  /**
+   * An S3 key is a byte string, not a path: `/a/b.bin` and `a/b.bin` are two
+   * different objects, and a prefix with an empty segment addresses the one no
+   * normalising tool — the console, a lifecycle filter written by hand, this
+   * package's own scope check — agrees with.
+   */
+  it.each(['/a/', '//', 'a//b/'])('refuses the empty-segment prefix %j', (keyPrefix) => {
+    expectRefusal(keyPrefix);
+  });
+
+  /** The same rule identifiers already meet: this prefix reaches log lines too. */
+  it('refuses a prefix holding a control character or a lone surrogate', () => {
+    expectRefusal('a\nb/');
+    expectRefusal(`a${String.fromCharCode(0x1b)}b/`);
+    expectRefusal(`a${String.fromCharCode(0xd800)}b/`);
   });
 });
 

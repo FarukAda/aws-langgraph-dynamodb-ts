@@ -1,5 +1,6 @@
 import { MAX_S3_KEY_BYTES } from '../../constants';
 import { ValidationError } from '../../errors/errors';
+import { assertNoControlChars, assertWellFormed } from '../../validation/primitives';
 import type { S3ClientConfigLike, S3ClientLike } from './client-types';
 import { encodeKeyPart } from './key-scope';
 
@@ -82,22 +83,38 @@ export function buildS3Key(prefix: string, parts: readonly string[], objectId: s
   return key;
 }
 
+/** A path segment that names something other than itself, or nothing at all. */
+const UNSCOPED_SEGMENTS = new Set(['', '.', '..']);
+
 /**
  * Refuse a key prefix that does not scope what it is used for.
  *
  * Accepts: `keyPrefix` — must be a string, non-empty, not `/`, and end in `/`.
  * The type is checked here, before any string method is called, so every
  * caller gets it: a number or `null` escaped as a bare `TypeError` from
- * `keyPrefix.endsWith`.
+ * `keyPrefix.endsWith`. Every segment before that final `/` must be a real
+ * name: not empty, not `.`, not `..`. The whole prefix must also be free of
+ * control characters and well-formed UTF-16, the rules identifiers already
+ * meet, since it is written into log lines and into a lifecycle rule's filter.
  *
  * Returns: nothing; acceptance is the absence of a throw.
  *
- * Throws: ValidationError naming `s3.keyPrefix`.
+ * Throws: ValidationError naming `s3.keyPrefix`. The shape rule is reported
+ * before the segment rule, so a prefix breaking both is named by its shape.
  *
  * Guarantees: the prefix scopes both the objects and the lifecycle rule built
  * from it. An empty or root prefix would make that rule expire the whole
  * bucket, and one without a trailing `/` (`app/langgraph`) would also match
  * every sibling starting with the same characters (`app/langgraph-other/`).
+ * An accepted prefix also survives path normalisation unchanged, which is what
+ * the segment rule buys. An S3 key is a byte string rather than a path, so
+ * `a/../b/x.bin` and `b/x.bin` are two different objects — but the IAM
+ * object-key condition a deployment writes, the lifecycle rule's
+ * `Filter.Prefix`, the console and every tool that resolves a path before
+ * matching one disagree about which. A prefix holding `..`, `.` or an empty
+ * segment therefore writes objects outside the path the deployment granted and
+ * outside the path the lifecycle rule sweeps, which is the whole job of a
+ * prefix.
  */
 export function assertScopedKeyPrefix(keyPrefix: string): void {
   if (
@@ -109,6 +126,21 @@ export function assertScopedKeyPrefix(keyPrefix: string): void {
     throw new ValidationError(
       's3.keyPrefix must be a non-empty path that ends with "/" (for example "langgraph/"): ' +
         'it scopes both the offloaded objects and the S3 lifecycle rule',
+      's3.keyPrefix',
+    );
+  }
+  assertNoControlChars(keyPrefix, 's3.keyPrefix');
+  assertWellFormed(keyPrefix, 's3.keyPrefix');
+  if (
+    keyPrefix
+      .slice(0, -1)
+      .split('/')
+      .some((segment) => UNSCOPED_SEGMENTS.has(segment))
+  ) {
+    throw new ValidationError(
+      's3.keyPrefix must name a real path: no empty, "." or ".." segment (for example ' +
+        '"langgraph/", not "../langgraph/" or "/langgraph/"). Such a prefix addresses object ' +
+        'keys outside the path the IAM policy grants and the lifecycle rule sweeps',
       's3.keyPrefix',
     );
   }
