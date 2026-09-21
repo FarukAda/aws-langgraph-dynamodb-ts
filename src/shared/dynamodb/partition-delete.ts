@@ -3,6 +3,7 @@ import type { DynamoDBDocument, QueryCommandInput } from '@aws-sdk/lib-dynamodb'
 import type { PayloadDescriptor } from '../codec/codec';
 import type { S3Offloader } from '../codec/s3/offloader';
 import { BATCH_WRITE_MAX } from '../constants';
+import { ErrorCode } from '../errors/error-code';
 import { BatchWriteAllIncompleteError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
 import { type RevisionGuard, WRITE_ID_ATTRIBUTE, writeIdGuard } from './conditional-put';
@@ -120,6 +121,16 @@ function unitRefused(options: PartitionDeleteOptions, row: DocItem, state: PassS
   return unit !== undefined && state.units.has(unit);
 }
 
+/**
+ * The cancel among a flush's failures, when the caller's signal fired. A row
+ * whose delete was cancelled is neither deleted nor failed, so reporting the
+ * pass as an incomplete delete told a caller branching on `ABORTED` that its
+ * own stop was a fault.
+ */
+function cancelAmong(failures: readonly Error[]): Error | undefined {
+  return failures.find((failure) => (failure as { code?: string }).code === ErrorCode.ABORTED);
+}
+
 /** Delete the buffered rows, fold what they settled into the pass, and empty the buffer. */
 async function flushBuffer(options: PartitionDeleteOptions, state: PassState): Promise<void> {
   if (state.buffer.length === 0) return;
@@ -136,6 +147,8 @@ async function flushBuffer(options: PartitionDeleteOptions, state: PassState): P
   state.attempted += tally.deleted + tally.failures.length;
   for (const unit of tally.refusedUnits) state.units.add(unit);
   if (tally.failures.length === 0) return;
+  const cancelled = cancelAmong(tally.failures);
+  if (cancelled !== undefined) throw cancelled;
   const { deleted, attempted } = state;
   throw new BatchWriteAllIncompleteError(deleted, attempted, tally.failures, deleted, 'row');
 }
@@ -154,9 +167,11 @@ async function flushBuffer(options: PartitionDeleteOptions, state: PassState): P
  *
  * Returns: how many rows were deleted, not counting the ones left in place.
  *
- * Throws: {@link BatchWriteAllIncompleteError} when a row's delete fails,
- * carrying what did succeed across every earlier flush; `AbortError` when the
- * signal fires. S3 cleanup never throws, whatever it finds.
+ * Throws: `AbortError` when the signal fires, whether between pages or during
+ * a row's delete, unwrapped and with no further row issued — a cancel is not a
+ * delete that half-landed. Otherwise {@link BatchWriteAllIncompleteError} when
+ * a row's delete fails, carrying what did succeed across every earlier flush.
+ * S3 cleanup never throws, whatever it finds.
  *
  * Guarantees: every delete is pinned on the per-write id the read observed, so
  * a row rewritten after that read is left in place and reported rather than

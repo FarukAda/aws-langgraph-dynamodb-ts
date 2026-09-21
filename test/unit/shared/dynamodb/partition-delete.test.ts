@@ -15,6 +15,7 @@ import {
 } from '../../../../src/shared/dynamodb/partition-delete';
 import type { DocItem } from '../../../../src/shared/dynamodb/types';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { AbortError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { conditionalTable } from '../../../shared/helpers/conditional-delete';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -304,6 +305,22 @@ describe('deletePartitionRows reports a failure', () => {
       failedChunks: [denied],
     });
     expect(table.rows.size).toBe(1);
+  });
+
+  /**
+   * A cancelled pass is a cancel, not a delete that half-landed: a caller
+   * branching on `ABORTED` read a deliberate stop as a failed delete. The
+   * request count is the half that is easy to fake — the PAYLOAD row belongs to
+   * the next kind, so its delete is issued only if the pass carried on.
+   */
+  it('rethrows an abort from a row delete and issues no request after it', async () => {
+    const observed = [meta('c1', 'w1'), payload('c1', 'w1')];
+    const aborted = new AbortError();
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: observed });
+    mock.on(DeleteCommand).rejectsOnce(aborted).resolves({});
+    await expect(deletePartitionRows(checkpointerOptions(client))).rejects.toBe(aborted);
+    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
   });
 });
 

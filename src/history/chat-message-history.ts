@@ -131,7 +131,9 @@ export class DynamoDBChatMessageHistory {
    * Throws: ValidationError for a malformed session id, an invalid `signal`,
    * or an `options.<key>` this package does not read;
    * BatchWriteAllIncompleteError when a row's delete fails, counting rows
-   * rather than batches; UpstreamError; AbortError. A row refused because it
+   * rather than batches; UpstreamError; AbortError when the signal fires,
+   * which is what a cancel surfaces as rather than an incomplete delete, even
+   * when it fires part-way through the pass. A row refused because it
    * was rewritten after the partition read raises nothing: it is left in place,
    * reported at `warn`, and counted as skipped.
    *

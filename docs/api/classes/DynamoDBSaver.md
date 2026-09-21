@@ -58,7 +58,7 @@ at module scope and in a Lambda's init phase.
 
 > **deleteThread**(`threadId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:231](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L231)
+Defined in: [checkpointer/saver.ts:233](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L233)
 
 Delete every checkpoint, payload and pending write of a thread.
 
@@ -72,7 +72,9 @@ for a signal that is not `AbortSignal`-shaped, or `thread_id` for a
 malformed `threadId`;
 BatchWriteAllIncompleteError when a row's delete fails, counting rows
 rather than batches and carrying what did succeed; UpstreamError;
-AbortError. A row refused because it was rewritten after the partition read
+AbortError when the signal fires, which is what a cancel surfaces as
+rather than an incomplete delete, even when it fires part-way through the
+pass. A row refused because it was rewritten after the partition read
 raises nothing: it is left exactly as its writer left it, reported at
 `warn`, and counted as skipped.
 
@@ -109,7 +111,7 @@ no object this call could have released.
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/saver.ts:297](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L297)
+Defined in: [checkpointer/saver.ts:299](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L299)
 
 Release owned resources.
 
@@ -130,7 +132,7 @@ Throws: nothing this adapter raises.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:320](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L320)
+Defined in: [checkpointer/saver.ts:322](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L322)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded payloads don't outlive the items that point at them.
@@ -162,7 +164,7 @@ not per request.
 
 > **getDeltaChannelHistory**(`options`): `Promise`\<`Record`\<`string`, `DeltaChannelHistory`\>\>
 
-Defined in: [checkpointer/saver.ts:271](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L271)
+Defined in: [checkpointer/saver.ts:273](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L273)
 
 Walk a checkpoint's ancestors for the delta channels named, returning each
 channel's on-path writes oldest-first and its nearest stored value.

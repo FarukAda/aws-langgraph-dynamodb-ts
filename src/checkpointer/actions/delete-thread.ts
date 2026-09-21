@@ -51,7 +51,9 @@ function kindOf(row: DocItem): string {
  *
  * Throws: ValidationError for a malformed `threadId`;
  * `BatchWriteAllIncompleteError` when a row's delete fails, carrying what did
- * succeed; `AbortError` when the signal fires. A refused row is **not** one of
+ * succeed; `AbortError` when the signal fires, whether between pages or during
+ * a row's delete — a cancel is reported as a cancel and never as an incomplete
+ * delete, and no further row is issued after it. A refused row is **not** one of
  * those failures and raises nothing: the pin turned it away because it was
  * rewritten after the read, and deleting it would erase a write already
  * acknowledged to its author and release the object that write uploaded, so

@@ -61,10 +61,11 @@ async function rollbackCommitted(
     );
   } catch (error) {
     /**
-     * `batchWriteAll` has exactly one throw site and it always raises a
-     * {@link BatchWriteAllIncompleteError}, which its own contract states —
-     * asserted here rather than narrowed, since the false branch is
-     * unreachable and this project enforces 100% branch coverage.
+     * `batchWriteAll` raises a {@link BatchWriteAllIncompleteError} for every
+     * failure but a cancel, and this call passes no signal, so the cancel
+     * cannot arise here — asserted rather than narrowed, since the false
+     * branch is unreachable and this project enforces 100% branch coverage. A
+     * signal reaching this call would have to narrow instead.
      */
     const deleted = (error as BatchWriteAllIncompleteError).succeededCount;
     await revertSessionCount(context, sessionId, deleted, now);

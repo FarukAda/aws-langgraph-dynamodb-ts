@@ -28,7 +28,10 @@ function descriptorsOf(row: DocItem): NamedDescriptor[] {
  * there is simply nothing in the partition.
  *
  * Throws: ValidationError naming `sessionId`; `BatchWriteAllIncompleteError`
- * when a row's delete fails, carrying what did succeed; `AbortError`. A refused
+ * when a row's delete fails, carrying what did succeed; `AbortError` when the
+ * signal fires, whether between pages or during a row's delete — a cancel is
+ * reported as a cancel and never as an incomplete delete, and no further row
+ * is issued after it. A refused
  * row raises nothing and is not one of those failures: the pin turned it away
  * because an append landed after the read, and deleting the session row then
  * would remove the `messageCount`, the `updatedAt` and the recency-index entry

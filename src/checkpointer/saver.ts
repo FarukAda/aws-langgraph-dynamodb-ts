@@ -215,7 +215,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * malformed `threadId`;
    * BatchWriteAllIncompleteError when a row's delete fails, counting rows
    * rather than batches and carrying what did succeed; UpstreamError;
-   * AbortError. A row refused because it was rewritten after the partition read
+   * AbortError when the signal fires, which is what a cancel surfaces as
+   * rather than an incomplete delete, even when it fires part-way through the
+   * pass. A row refused because it was rewritten after the partition read
    * raises nothing: it is left exactly as its writer left it, reported at
    * `warn`, and counted as skipped.
    *
