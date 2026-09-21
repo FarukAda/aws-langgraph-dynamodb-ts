@@ -30,4 +30,7 @@ removed out of band.
 
 > `optional` **serde?**: `SerializerProtocol`
 
-Optional serializer override (defaults to the JSON serializer).
+Optional serializer override. The default is the exported `JSON_SERDE`,
+plain JSON: what it stores is the JSON projection of a value, and the
+README's *Table schema* section tabulates where that differs from the
+value itself.

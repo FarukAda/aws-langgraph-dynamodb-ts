@@ -6,7 +6,7 @@
 
 # Interface: DeltaChannelHistoryOptions
 
-Defined in: [checkpointer/types.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/types.ts#L20)
+Defined in: [checkpointer/types.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/types.ts#L30)
 
 Options [DynamoDBSaver.getDeltaChannelHistory](../classes/DynamoDBSaver.md#getdeltachannelhistory) accepts: the object
 `BaseCheckpointSaver.getDeltaChannelHistory` declares inline, named so a
@@ -19,7 +19,7 @@ parameter type.
 
 > **channels**: `string`[]
 
-Defined in: [checkpointer/types.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/types.ts#L27)
+Defined in: [checkpointer/types.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/types.ts#L37)
 
 The delta channels to rebuild, as an array of strings; `[]` reads nothing
 and returns `{}`.
@@ -30,6 +30,6 @@ and returns `{}`.
 
 > **config**: `RunnableConfig`
 
-Defined in: [checkpointer/types.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/types.ts#L22)
+Defined in: [checkpointer/types.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/types.ts#L32)
 
 The checkpoint to walk back from; must be an object.

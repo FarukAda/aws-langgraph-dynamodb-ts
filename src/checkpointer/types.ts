@@ -7,7 +7,17 @@ import type { BaseAdapterOptions, CodecOptions } from '../shared/options';
 /** Options for {@link DynamoDBSaver}. */
 export type DynamoDBSaverOptions = BaseAdapterOptions &
   CodecOptions & {
-    /** Optional serializer override (defaults to LangGraph's JSON serializer). */
+    /**
+     * Optional serializer override. The default is the base class's, which is
+     * LangGraph's `JsonPlusSerializer` — **not** the plain JSON serializer the
+     * store and chat-history adapters default to. The two differ on read as
+     * well as on write: `JsonPlusSerializer` reconstructs a `Map`, a `Set`, a
+     * `Uint8Array` or an allow-listed `langchain_core` class from the `lc`
+     * record a stored row carries, so the row selects which constructor runs,
+     * while plain JSON parses and reconstructs nothing. Pass the exported
+     * `JSON_SERDE` for the narrower read path, at the cost of the JSON
+     * projection the README's *Table schema* section tabulates.
+     */
     serde?: SerializerProtocol;
   };
 

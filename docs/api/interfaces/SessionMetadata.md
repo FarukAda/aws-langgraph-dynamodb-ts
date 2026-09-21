@@ -6,7 +6,7 @@
 
 # Interface: SessionMetadata
 
-Defined in: [history/types.ts:81](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L81)
+Defined in: [history/types.ts:86](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L86)
 
 Summary of a stored chat session.
 
@@ -16,7 +16,7 @@ Summary of a stored chat session.
 
 > **createdAt**: `string`
 
-Defined in: [history/types.ts:85](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L85)
+Defined in: [history/types.ts:90](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L90)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [history/types.ts:85](https://github.com/FarukAda/aws-langgraph-dyna
 
 > `optional` **expiresAt?**: `string`
 
-Defined in: [history/types.ts:88](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L88)
+Defined in: [history/types.ts:93](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L93)
 
 When the session's TTL expires, as an ISO-8601 instant; absent when no TTL is stored.
 
@@ -34,7 +34,7 @@ When the session's TTL expires, as an ISO-8601 instant; absent when no TTL is st
 
 > **messageCount**: `number`
 
-Defined in: [history/types.ts:84](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L84)
+Defined in: [history/types.ts:89](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L89)
 
 ***
 
@@ -42,7 +42,7 @@ Defined in: [history/types.ts:84](https://github.com/FarukAda/aws-langgraph-dyna
 
 > **sessionId**: `string`
 
-Defined in: [history/types.ts:82](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L82)
+Defined in: [history/types.ts:87](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L87)
 
 ***
 
@@ -50,7 +50,7 @@ Defined in: [history/types.ts:82](https://github.com/FarukAda/aws-langgraph-dyna
 
 > `optional` **title?**: `string`
 
-Defined in: [history/types.ts:83](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L83)
+Defined in: [history/types.ts:88](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L88)
 
 ***
 
@@ -58,4 +58,4 @@ Defined in: [history/types.ts:83](https://github.com/FarukAda/aws-langgraph-dyna
 
 > **updatedAt**: `string`
 
-Defined in: [history/types.ts:86](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L86)
+Defined in: [history/types.ts:91](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L91)

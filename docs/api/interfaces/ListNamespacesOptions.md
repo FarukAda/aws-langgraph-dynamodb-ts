@@ -6,7 +6,7 @@
 
 # Interface: ListNamespacesOptions
 
-Defined in: [store/types.ts:68](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L68)
+Defined in: [store/types.ts:73](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L73)
 
 Options [DynamoDBStore.listNamespaces](../classes/DynamoDBStore.md#listnamespaces) accepts: the object
 `BaseStore.listNamespaces` declares inline, with the same five optional
@@ -19,7 +19,7 @@ equal to upstream's parameter type.
 
 > `optional` **limit?**: `number`
 
-Defined in: [store/types.ts:82](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L82)
+Defined in: [store/types.ts:87](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L87)
 
 How many namespaces to return, from 0 to `MAX_PAGE_LIMIT` (10,000);
 default 100. `0` returns an empty array without reading the table.
@@ -30,7 +30,7 @@ default 100. `0` returns an empty array without reading the table.
 
 > `optional` **maxDepth?**: `number`
 
-Defined in: [store/types.ts:77](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L77)
+Defined in: [store/types.ts:82](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L82)
 
 Truncate each namespace to at most this many labels, at least 1; the
 namespaces that truncation makes equal are listed once.
@@ -41,7 +41,7 @@ namespaces that truncation makes equal are listed once.
 
 > `optional` **offset?**: `number`
 
-Defined in: [store/types.ts:84](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L84)
+Defined in: [store/types.ts:89](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L89)
 
 How many namespaces to skip first, a non-negative integer; default 0.
 
@@ -51,7 +51,7 @@ How many namespaces to skip first, a non-negative integer; default 0.
 
 > `optional` **prefix?**: `string`[]
 
-Defined in: [store/types.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L70)
+Defined in: [store/types.ts:75](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L75)
 
 Only namespaces starting with these labels; `'*'` matches any one label.
 
@@ -61,6 +61,6 @@ Only namespaces starting with these labels; `'*'` matches any one label.
 
 > `optional` **suffix?**: `string`[]
 
-Defined in: [store/types.ts:72](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L72)
+Defined in: [store/types.ts:77](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L77)
 
 Only namespaces ending with these labels; `'*'` matches any one label.

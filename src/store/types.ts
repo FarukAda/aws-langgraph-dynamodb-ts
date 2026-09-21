@@ -22,7 +22,12 @@ export type DynamoDBStoreOptions = BaseAdapterOptions &
      * against DynamoDB's 400 KB item limit; see that option's note.
      */
     index?: IndexConfig;
-    /** Optional serializer override (defaults to the JSON serializer). */
+    /**
+     * Optional serializer override. The default is the exported `JSON_SERDE`,
+     * plain JSON: what it stores is the JSON projection of a value, and the
+     * README's *Table schema* section tabulates where that differs from the
+     * value itself.
+     */
     serde?: SerializerProtocol;
     /** Optional external vector index; when set, similarity search delegates to it. */
     vectorBackend?: VectorBackend;

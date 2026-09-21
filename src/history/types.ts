@@ -6,7 +6,12 @@ import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/
 /** Options for {@link DynamoDBChatMessageHistory}. */
 export type DynamoDBChatMessageHistoryOptions = BaseAdapterOptions &
   CodecOptions & {
-    /** Optional serializer override (defaults to the JSON serializer). */
+    /**
+     * Optional serializer override. The default is the exported `JSON_SERDE`,
+     * plain JSON: what it stores is the JSON projection of a value, and the
+     * README's *Table schema* section tabulates where that differs from the
+     * value itself.
+     */
     serde?: SerializerProtocol;
     /**
      * What `getMessages` does when a stored message cannot be decoded — a
