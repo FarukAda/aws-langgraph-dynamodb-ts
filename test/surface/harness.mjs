@@ -245,10 +245,21 @@ function fuzzErrors() {
   for (const v of [null, undefined, 'x', {}, 1, new Error('e'), new lib.ValidationError('v')]) trySync('isDynamoDBLangGraphError', `value=${describe(v)}`, () => lib.isDynamoDBLangGraphError(v));
   trySync('isDynamoDBLangGraphError', 'foreign object carrying the brand symbol', () => lib.isDynamoDBLangGraphError({ [Symbol.for('@farukada/aws-langgraph-dynamodb-ts/error')]: true }));
   trySync('ErrorCode', 'Object.isFrozen(ErrorCode)', () => Object.isFrozen(lib.ErrorCode));
-  trySync('ErrorCode', 'mutate ErrorCode.VALIDATION = "x"', () => { const before = lib.ErrorCode.VALIDATION; lib.ErrorCode.VALIDATION = 'x'; const after = lib.ErrorCode.VALIDATION; lib.ErrorCode.VALIDATION = before; return `${before}->${after}`; });
+  /**
+   * The assignment is the probe, not a library call: a frozen enum refuses it,
+   * and in a module — which is strict mode — that refusal *is* a throw. Letting
+   * it reach `outcome()` would file the fix as a bare escape, so the refusal is
+   * caught here and reported as the answer the row exists to give.
+   */
+  trySync('ErrorCode', 'mutate ErrorCode.VALIDATION = "x" (refused?)', () => { const before = lib.ErrorCode.VALIDATION; let refused = false; try { lib.ErrorCode.VALIDATION = 'x'; } catch { refused = true; } const after = lib.ErrorCode.VALIDATION; if (!refused) lib.ErrorCode.VALIDATION = before; return refused && after === before; });
   trySync('errors', 'ValidationError JSON.stringify exposes?', () => Object.keys(JSON.parse(JSON.stringify(new lib.ValidationError('m', 'f')))).join(','));
-  trySync('errors', 'error.context returned by reference? (mutate then re-read)', () => { const ctx = { field: 'f' }; const e = new lib.DynamoDBLangGraphError('m', 'VALIDATION', ctx); ctx.field = 'changed'; return e.context.field; });
-  trySync('errors', 'BatchWriteIncompleteError.unprocessed by reference?', () => { const arr = [{ a: 1 }]; const e = new lib.BatchWriteIncompleteError(0, arr, 1); arr.push({ b: 2 }); return e.unprocessed.length; });
+  /**
+   * Both rows answer yes/no, not "what did it hold": a sync row records its
+   * value's constructor, so returning the value itself reported `String` or
+   * `Number` whichever way the copy went and the ratchet could not see it.
+   */
+  trySync('errors', 'error.context copied? (mutate the caller object, then re-read)', () => { const ctx = { field: 'f' }; const e = new lib.DynamoDBLangGraphError('m', 'VALIDATION', ctx); ctx.field = 'changed'; return e.context.field === 'f'; });
+  trySync('errors', 'BatchWriteIncompleteError.unprocessed copied?', () => { const arr = [{ a: 1 }]; const e = new lib.BatchWriteIncompleteError(0, arr, 1); arr.push({ b: 2 }); return e.unprocessed.length === 1; });
 }
 
 /**

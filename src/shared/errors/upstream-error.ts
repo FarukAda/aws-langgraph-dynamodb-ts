@@ -1,6 +1,7 @@
 import { redactedMessage } from '../logging/secret-patterns';
 import { DynamoDBLangGraphError } from './base-error';
 import { ErrorCode } from './error-code';
+import { toError } from './wrap-error';
 
 /** The request metadata an AWS SDK v3 error carries. */
 interface SdkMetadata {
@@ -24,15 +25,20 @@ export class UpstreamError extends DynamoDBLangGraphError {
 
   /**
    * Accepts: `cause` — the failure from below: the AWS SDK, the transport, a
-   * third-party `VectorBackend` or `Embeddings`. `operation` — the public
-   * method it surfaced through.
+   * third-party `VectorBackend` or `Embeddings`. It is caught, not declared, so
+   * it may be anything a `throw` produces. `operation` — the public method it
+   * surfaced through.
    *
    * Returns: the error, with `code: UPSTREAM`, the SDK's own error name as
    * `upstreamName`, and the request id and HTTP status when the SDK supplied
    * them. Absent metadata leaves no `undefined`-valued own property behind, so
-   * a serialized error carries only what is real.
+   * a serialized error carries only what is real. A cause that is not
+   * error-shaped is described through {@link toError}, so `cause` is always an
+   * `Error` and `upstreamName` always a string.
    *
-   * Throws: nothing; building an error may not fail.
+   * Throws: nothing; building an error may not fail. Reading `.name` off a
+   * thrown string, `null` or plain object crashed here — inside the `catch`
+   * whose whole purpose is to report what went wrong.
    */
   constructor(cause: Error, operation: string) {
     /**
@@ -43,15 +49,16 @@ export class UpstreamError extends DynamoDBLangGraphError {
      * `err.message`, which an application may print without going through a
      * redacting logger.
      */
+    const below = toError(cause);
     super(
-      `${operation}: ${cause.name}: ${redactedMessage(cause)}`,
+      `${operation}: ${below.name}: ${redactedMessage(below)}`,
       ErrorCode.UPSTREAM,
       { operation },
-      cause,
+      below,
     );
     this.name = 'UpstreamError';
-    this.upstreamName = cause.name;
-    const metadata = (cause as { $metadata?: SdkMetadata }).$metadata;
+    this.upstreamName = below.name;
+    const metadata = (below as { $metadata?: SdkMetadata }).$metadata;
     if (metadata?.requestId !== undefined) this.requestId = metadata.requestId;
     if (metadata?.httpStatusCode !== undefined) this.httpStatusCode = metadata.httpStatusCode;
   }

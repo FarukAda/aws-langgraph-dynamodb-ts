@@ -65,3 +65,55 @@ describe('error subclasses', () => {
     expect(perRow.message).not.toContain('batchWriteAll');
   });
 });
+
+/**
+ * Every constructor here documents "Throws: nothing; building an error may not
+ * fail", and each is reached from a `catch` on the failure path. A constructor
+ * that crashes on an argument it did not expect replaces the failure being
+ * reported with a bare `TypeError` that names none of it.
+ */
+describe('error constructors survive the arguments a JavaScript caller can reach', () => {
+  it('BatchWriteAllIncompleteError reports the failure when no failing chunk is passed', () => {
+    const error = new BatchWriteAllIncompleteError(0, 1, undefined as never);
+    expect(error.code).toBe(ErrorCode.BATCH_WRITE_INCOMPLETE);
+    expect(error.failedChunks).toEqual([]);
+    expect(error.cause).toBeUndefined();
+    expect(error.message).toContain('0 chunk(s) failed');
+  });
+
+  it('BatchWriteIncompleteError reports the failure when no unprocessed list is passed', () => {
+    const error = new BatchWriteIncompleteError(0, undefined as never, 1);
+    expect(error.code).toBe(ErrorCode.BATCH_WRITE_INCOMPLETE);
+    expect(error.unprocessed).toEqual([]);
+    expect(error.message).toContain('0 still un-acked');
+  });
+
+  it('CompensationFailedError describes a trigger and a rollback that are not errors', () => {
+    const error = new CompensationFailedError('append blew up' as never, null as never);
+    expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
+    expect(error.message).toContain('append blew up');
+    expect(error.rollbackError.message).toBe('null was thrown');
+    expect((error.cause as Error).message).toBe('append blew up');
+  });
+});
+
+/**
+ * Both lists are read long after the throw — from a `catch`, to drive
+ * reconciliation. Holding the caller's array by reference let a caller that
+ * reuses its buffer rewrite the contents of an error already in flight.
+ */
+describe('error constructors copy the lists they are handed', () => {
+  it('BatchWriteIncompleteError keeps the items that were un-acked at the throw', () => {
+    const unprocessed = [{ PutRequest: { Item: { pk: 'a' } } }];
+    const error = new BatchWriteIncompleteError(1, unprocessed, 1);
+    unprocessed.push({ PutRequest: { Item: { pk: 'b' } } });
+    expect(error.unprocessed).toHaveLength(1);
+  });
+
+  it('BatchWriteAllIncompleteError keeps the chunks that had failed at the throw', () => {
+    const failed = [new Error('boom')];
+    const error = new BatchWriteAllIncompleteError(0, 2, failed);
+    failed.push(new Error('later'));
+    expect(error.failedChunks).toHaveLength(1);
+  });
+});

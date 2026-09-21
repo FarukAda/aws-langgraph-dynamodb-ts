@@ -2,6 +2,7 @@ import type { WriteRequest } from '../dynamodb/types';
 import { redactedMessage } from '../logging/secret-patterns';
 import { DynamoDBLangGraphError } from './base-error';
 import { ErrorCode } from './error-code';
+import { toError } from './wrap-error';
 
 /** Input failed a validation rule before any AWS call was made; `context.field` names the input. */
 export class ValidationError extends DynamoDBLangGraphError {
@@ -122,20 +123,24 @@ export class BatchWriteIncompleteError extends DynamoDBLangGraphError {
    *
    * Returns: the error, carrying both counts. Items *not* listed in `unprocessed`
    * persist: there is no rollback, so reconciliation is driven from that list.
+   * That list is **copied**: it is read from a `catch` long after the throw, and
+   * a caller reusing its request buffer must not be able to rewrite it.
    *
-   * Throws: nothing; building an error may not fail.
+   * Throws: nothing; building an error may not fail. Anything but an array of
+   * requests reads as an empty list rather than crashing the report.
    */
   constructor(succeededCount: number, unprocessed: WriteRequest[], retries: number, cause?: Error) {
+    const items = Array.isArray(unprocessed) ? [...unprocessed] : [];
     super(
       `batchWrite did not drain after ${retries} UnprocessedItems retries: ` +
-        `${succeededCount} item(s) persisted, ${unprocessed.length} still un-acked.`,
+        `${succeededCount} item(s) persisted, ${items.length} still un-acked.`,
       ErrorCode.BATCH_WRITE_INCOMPLETE,
       {},
       cause,
     );
     this.name = 'BatchWriteIncompleteError';
     this.succeededCount = succeededCount;
-    this.unprocessed = unprocessed;
+    this.unprocessed = items;
   }
 }
 
@@ -173,9 +178,11 @@ export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
    *
    * Returns: the error, with the first failing chunk's error as `cause`. Every
    * chunk not represented in `failedChunks` drained successfully and its writes
-   * persist — there is no rollback.
+   * persist — there is no rollback. The list is **copied**, for the same reason
+   * {@link BatchWriteIncompleteError} copies its own.
    *
-   * Throws: nothing; building an error may not fail.
+   * Throws: nothing; building an error may not fail. Anything but an array of
+   * errors reads as an empty list rather than crashing the report.
    */
   constructor(
     succeededChunks: number,
@@ -184,18 +191,19 @@ export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
     succeededCount = 0,
     unit: 'chunk' | 'row' = 'chunk',
   ) {
+    const failed = Array.isArray(failedChunks) ? [...failedChunks] : [];
     super(
       `${unit === 'chunk' ? 'batchWriteAll' : 'the partition delete'} did not fully drain: ` +
         `${succeededChunks}/${totalChunks} ${unit}(s) succeeded, ` +
-        `${failedChunks.length} ${unit}(s) failed. ${succeededCount} write(s) persisted before the failure.`,
+        `${failed.length} ${unit}(s) failed. ${succeededCount} write(s) persisted before the failure.`,
       ErrorCode.BATCH_WRITE_INCOMPLETE,
       {},
-      failedChunks[0],
+      failed[0],
     );
     this.name = 'BatchWriteAllIncompleteError';
     this.succeededChunks = succeededChunks;
     this.totalChunks = totalChunks;
-    this.failedChunks = failedChunks;
+    this.failedChunks = failed;
     this.succeededCount = succeededCount;
   }
 }
@@ -211,23 +219,29 @@ export class CompensationFailedError extends DynamoDBLangGraphError {
 
   /**
    * Accepts: `cause` — the failure that triggered the rollback. `rollbackError` —
-   * why the rollback itself could not finish.
+   * why the rollback itself could not finish. Both are built from a `catch`, so
+   * either may be whatever a `throw` produced rather than an `Error`.
    *
-   * Returns: the error, carrying both. The session's `messageCount` may have
-   * drifted, which `reconcileMessageCount` repairs; the quoted text of both
-   * errors is redacted before it is embedded.
+   * Returns: the error, carrying both, each normalised through {@link toError}
+   * so `cause` and `rollbackError` are always error-shaped. The session's
+   * `messageCount` may have drifted, which `reconcileMessageCount` repairs; the
+   * quoted text of both errors is redacted before it is embedded.
    *
-   * Throws: nothing; building an error may not fail.
+   * Throws: nothing; building an error may not fail. Reading `.message` off a
+   * thrown non-`Error` crashed here, inside the `catch` that was reporting the
+   * rollback.
    */
   constructor(cause: Error, rollbackError: Error) {
+    const trigger = toError(cause);
+    const rollback = toError(rollbackError);
     super(
-      `compensation failed after an append error: ${redactedMessage(cause)} ` +
-        `(rollback: ${redactedMessage(rollbackError)})`,
+      `compensation failed after an append error: ${redactedMessage(trigger)} ` +
+        `(rollback: ${redactedMessage(rollback)})`,
       ErrorCode.COMPENSATION_FAILED,
       {},
-      cause,
+      trigger,
     );
     this.name = 'CompensationFailedError';
-    this.rollbackError = rollbackError;
+    this.rollbackError = rollback;
   }
 }

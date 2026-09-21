@@ -803,8 +803,8 @@ DynamoDBStore.search | options={"query":123} | throws ValidationError/VALIDATION
 DynamoDBStore.search | options={"query":["x"]} | throws ValidationError/VALIDATION field=query
 DynamoDBStore.search | options={"query":null} | throws ValidationError/VALIDATION field=query
 DynamoDBStore.search | options={"signal":"x"} | throws ValidationError/VALIDATION field=signal
-ErrorCode | Object.isFrozen(ErrorCode) | OK false
-ErrorCode | mutate ErrorCode.VALIDATION = "x" | OK String
+ErrorCode | Object.isFrozen(ErrorCode) | OK Boolean
+ErrorCode | mutate ErrorCode.VALIDATION = "x" (refused?) | OK Boolean
 backfillRecencyIndex | cursor="" | throws ValidationError/VALIDATION field=cursor
 backfillRecencyIndex | cursor="W10" | throws ValidationError/VALIDATION field=cursor
 backfillRecencyIndex | cursor="bnVsbA" | throws ValidationError/VALIDATION field=cursor
@@ -854,32 +854,32 @@ backfillRecencyIndex | retry={"maxAttempts":0} | throws ValidationError/VALIDATI
 backfillRecencyIndex | signal="x" | throws ValidationError/VALIDATION field=signal
 backfillRecencyIndex | signal=null | throws ValidationError/VALIDATION field=signal
 backfillRecencyIndex | signal={} | throws ValidationError/VALIDATION field=signal
-errors | BatchWriteIncompleteError.unprocessed by reference? | OK Number
+errors | BatchWriteIncompleteError.unprocessed copied? | OK Boolean
 errors | ValidationError JSON.stringify exposes? | OK String
-errors | error.context returned by reference? (mutate then re-read) | OK String
+errors | error.context copied? (mutate the caller object, then re-read) | OK Boolean
 errors | new AbortError(123) | OK String
-errors | new BatchWriteAllIncompleteError() | sync BARE TypeError
+errors | new BatchWriteAllIncompleteError() | OK String
 errors | new BatchWriteIncompleteError("a","b","c") | OK String
-errors | new CompensationFailedError("s", "t") | sync BARE TypeError
-errors | new CompensationFailedError(null, null) | sync BARE TypeError
+errors | new CompensationFailedError("s", "t") | OK CompensationFailedError
+errors | new CompensationFailedError(null, null) | OK CompensationFailedError
 errors | new ConflictError() | OK ConflictError
 errors | new DynamoDBLangGraphError("m", "NOT_A_CODE", null) | OK String
 errors | new DynamoDBLangGraphError("m", code, {}, "notAnError") | OK String
 errors | new ResultTruncatedError() | OK String
 errors | new RetryExhaustedError("m", "x") | OK String
-errors | new UpstreamError("str", "op") | sync BARE TypeError
+errors | new UpstreamError("str", "op") | OK UpstreamError
 errors | new UpstreamError(err) (no operation) | OK String
-errors | new UpstreamError(null, "op") | sync BARE TypeError
-errors | new UpstreamError({}, "op") | sync BARE TypeError
+errors | new UpstreamError(null, "op") | OK UpstreamError
+errors | new UpstreamError({}, "op") | OK String
 errors | new ValidationError() | OK ValidationError
 errors | new ValidationError(1, 2, 3) | OK String
 isDynamoDBLangGraphError | foreign object carrying the brand symbol | OK Boolean
-isDynamoDBLangGraphError | value="x" | sync BARE TypeError
-isDynamoDBLangGraphError | value=1 | sync BARE TypeError
+isDynamoDBLangGraphError | value="x" | OK false
+isDynamoDBLangGraphError | value=1 | OK false
 isDynamoDBLangGraphError | value=Error("e") | OK false
 isDynamoDBLangGraphError | value=ValidationError("v") | OK Boolean
-isDynamoDBLangGraphError | value=null | sync BARE TypeError
-isDynamoDBLangGraphError | value=undefined | sync BARE TypeError
+isDynamoDBLangGraphError | value=null | OK false
+isDynamoDBLangGraphError | value=undefined | OK false
 isDynamoDBLangGraphError | value={} | OK false
 prototype-safety | Object.prototype.polluted after redactSecrets | undefined
 prototype-safety | Object.prototype.x after backfillRecencyIndex cursor | undefined

@@ -37,6 +37,8 @@ export class DynamoDBLangGraphError extends Error {
    * Accepts: `message` — already redacted by whoever composed it, since it reaches
    * `err.message`, which an application may print without a redacting logger.
    * `context` — identifiers and counts only, never a payload or a credential.
+   * It is **copied**, so a caller that reuses one builder object cannot rewrite
+   * the context of an error already in flight; `null` reads as an absent one.
    * `cause` — the failure below this one, kept as the native `cause` chain.
    *
    * Returns: the error, branded so {@link isDynamoDBLangGraphError} recognises it
@@ -49,7 +51,7 @@ export class DynamoDBLangGraphError extends Error {
     super(message, cause === undefined ? undefined : { cause });
     this.name = 'DynamoDBLangGraphError';
     this.code = code;
-    this.context = context;
+    this.context = { ...context };
     Object.defineProperty(this, ERROR_BRAND, { value: true, enumerable: false });
   }
 }
@@ -57,15 +59,20 @@ export class DynamoDBLangGraphError extends Error {
 /**
  * Whether `value` is one of this library's errors.
  *
- * Accepts: any error, from any realm or any copy of this package.
+ * Accepts: any error, from any realm or any copy of this package — and, since
+ * the documented place to call this is inside a `catch`, any other value a
+ * `throw` can produce: `null`, `undefined`, a string, a number, a symbol.
  *
  * Returns: whether it carries the brand. A symbol registered by name, not
  * `instanceof`: two copies of this package in one dependency tree produce two
  * classes but one symbol, and an error crossing a realm boundary keeps its
- * properties while losing its prototype.
+ * properties while losing its prototype. Anything that cannot carry a property
+ * answers `false`.
  *
- * Throws: nothing.
+ * Throws: nothing. The `in` operator raises a `TypeError` on a non-object, and
+ * a guard that throws inside the `catch` it was called from would replace the
+ * failure the caller is reporting with one of its own.
  */
 export function isDynamoDBLangGraphError(value: Error): value is DynamoDBLangGraphError {
-  return ERROR_BRAND in value;
+  return typeof value === 'object' && value !== null && ERROR_BRAND in value;
 }
