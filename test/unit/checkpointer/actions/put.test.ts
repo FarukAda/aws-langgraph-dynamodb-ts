@@ -157,6 +157,10 @@ describe('putCheckpoint', () => {
     await expect(
       putCheckpoint(ctx, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'value' } });
+    // Asserted, not assumed: the refusal reaches the caller just as well when
+    // no release was attempted, so without this the test could not fail for
+    // the reason it exists.
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
