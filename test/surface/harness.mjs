@@ -338,15 +338,23 @@ const STORED_ROW_READERS = [
  * `JSON_SERDE` parses and reconstructs nothing.
  *
  * A `serdeType` this package has no grammar for is a third column, and it is
- * the column where the two serializers part: the classifier takes the type at
- * the row's word and never re-reads such a refusal as corruption, but
- * `JSON_SERDE` never looks at the declared type at all and brands its own parse
- * failure `PAYLOAD_CORRUPT` before the classifier is consulted. So the same row
- * is a reported refusal on the checkpointer default and payload loss on the
- * store and chat-history defaults — where, under `skip`, the message is
- * dropped. The rows record that as it is.
+ * the column where the two serializers used to part: the classifier takes the
+ * type at the row's word and never re-reads such a refusal as corruption, but
+ * `JSON_SERDE` looked at no declared type at all and branded its own parse
+ * failure `PAYLOAD_CORRUPT` before the classifier was consulted, so the same
+ * row was a reported refusal on the checkpointer default and payload loss on
+ * the store and chat-history defaults — where `skip` then dropped the message.
+ * It now refuses the form itself, with the brand the classifier would have
+ * reached, so the column lands alike everywhere.
  *
- * A descriptor carrying a forward `schemaVersion` is the fourth column: the
+ * The fourth column is that defect in ordinary clothes, reachable by
+ * configuration and by nothing else: `JsonPlusSerializer` stamps `bytes` on a
+ * raw `Uint8Array`, and those bytes are `123` — valid JSON. Read through
+ * `JSON_SERDE` the row used to decode to the *number* 123 and resolve, handing
+ * a caller a value no writer ever stored with nothing raised to say so. Only a
+ * serializer that reads the declared form can refuse it.
+ *
+ * A descriptor carrying a forward `schemaVersion` is the last column: the
  * payload is intact and a newer reader serves it, so it is `FORMAT_UNSUPPORTED`
  * rather than loss, on every adapter and under either corruption policy.
  */
@@ -368,6 +376,8 @@ async function fuzzStoredRows() {
     ['json bytes that no longer parse', 'JSON_SERDE', lib.JSON_SERDE, () => inlinePayload('json', '{oops')],
     ['json bytes naming a class the serde will not rebuild', 'JsonPlusSerializer', jsonPlus, () => inlinePayload('json', LC_RECORD)],
     ['x-msgpack bytes, which are not JSON', 'default serde', undefined, () => inlinePayload('x-msgpack', '{oops')],
+    ['x-msgpack bytes, which are not JSON', 'JSON_SERDE', lib.JSON_SERDE, () => inlinePayload('x-msgpack', '{oops')],
+    ['bytes stamped by the checkpointer default on a Uint8Array, which are also valid JSON', 'JSON_SERDE', lib.JSON_SERDE, () => inlinePayload('bytes', '123')],
     [`${CUSTOM_TYPE} bytes the serde refuses`, 'a custom serde', customSerde, () => inlinePayload(CUSTOM_TYPE, '{"a":1}')],
     ['json descriptor carrying schemaVersion 2', 'default serde', undefined, () => inlinePayload('json', '{}', { schemaVersion: 2 })],
   ];
