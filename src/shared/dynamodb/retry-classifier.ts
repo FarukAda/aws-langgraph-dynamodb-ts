@@ -122,8 +122,9 @@ function collectEvidence(error: Error): RetryEvidence {
  *
  * Accepts: `error` — an `Error`; its `cause` chain is walked to
  * {@link MAX_CAUSE_DEPTH}, and a cycle in it terminates the walk rather than
- * looping. `retryableErrors` — the signal tokens to match; an empty list still
- * admits the trait and status rules below.
+ * looping. Anything else a `throw` can produce carries no node to walk and is
+ * not retryable. `retryableErrors` — the signal tokens to match; an empty list
+ * still admits the trait and status rules below.
  *
  * Returns: true when any of these holds, in this order —
  * 1. the error is a transaction cancellation and **every** reason it carries is
@@ -141,7 +142,8 @@ function collectEvidence(error: Error): RetryEvidence {
  * a substring rule would let an unrelated name that merely contains one ride
  * along.
  *
- * Throws: nothing for any `Error`.
+ * Throws: **nothing**, for any value a `throw` can produce — see
+ * {@link getCancellationReasons}, which the first rule reads through.
  */
 export function isRetryableError(error: Error, retryableErrors: readonly string[]): boolean {
   const cancellation = transactionCancellationRetryable(error);

@@ -1,6 +1,10 @@
+import { GetCommand } from '@aws-sdk/lib-dynamodb';
+
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-loss';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { DynamoDBStore } from '../../../../src/store/store';
+import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 describe('JSON_SERDE.dumpsTyped', () => {
   it('round-trips a value through dumpsTyped/loadsTyped', async () => {
@@ -42,6 +46,21 @@ describe('JSON_SERDE.dumpsTyped', () => {
       },
     ],
     ['a BigInt', (): unknown => 1n],
+    /**
+     * `JSON.stringify` calls `toJSON`, so whatever that method throws is what
+     * this `catch` binds — and `throw 'boom'` is legal JavaScript. A caught
+     * value that is not an `Error` used to leave the redacting call this clause
+     * makes with a bare `TypeError`, out of the one serializer two of the three
+     * adapters use by default.
+     */
+    [
+      'a toJSON that throws a string',
+      (): unknown => ({
+        toJSON: (): never => {
+          throw 'boom';
+        },
+      }),
+    ],
   ])('reports %s as a validation failure rather than a raw TypeError', async (_name, build) => {
     await expect(JSON_SERDE.dumpsTyped(build())).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
@@ -86,6 +105,29 @@ describe('JSON_SERDE.loadsTyped', () => {
     await expect(
       JSON_SERDE.loadsTyped('json', data as unknown as Uint8Array),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'data' } });
+  });
+});
+
+/**
+ * `JSON_SERDE` is the default of `DynamoDBStore` and
+ * `DynamoDBChatMessageHistory`, so a refusal it cannot brand is a refusal the
+ * adapter cannot brand either — and the surface tier's invariant is that every
+ * public entry point answers a caller's mistake with a branded error.
+ */
+describe('the default serde as an adapter reaches it', () => {
+  it('lets store.put refuse a toJSON that throws a string, branded', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(GetCommand).resolves({});
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    const value = {
+      toJSON: (): never => {
+        throw 'boom';
+      },
+    };
+    await expect(store.put(['ns'], 'k', value)).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'value' },
+    });
   });
 });
 

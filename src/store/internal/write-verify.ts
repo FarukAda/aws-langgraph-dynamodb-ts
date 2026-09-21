@@ -5,17 +5,19 @@ import type { StoreContext } from './setup';
 /**
  * Whether `error` is a {@link RetryExhaustedError}.
  *
- * Accepts: any error. The test is by `name`, not `instanceof`, which is banned
- * repo-wide: an error crossing a module or realm boundary fails the identity
- * check while still being the same error.
+ * Accepts: any error, and equally anything else a `throw` can produce. The
+ * test is by `name`, not `instanceof`, which is banned repo-wide: an error
+ * crossing a module or realm boundary fails the identity check while still
+ * being the same error.
  *
  * Returns: whether the write is ambiguous for the reason retries were spent,
  * which is the only failure a verification read is allowed to resolve.
  *
- * Throws: nothing.
+ * Throws: **nothing**, for any value. A value carrying no name is not a spent
+ * budget, so the caller rethrows it rather than spending a read on it.
  */
 export function isRetryExhausted(error: Error): boolean {
-  return error.name === 'RetryExhaustedError';
+  return (error as Error | undefined)?.name === 'RetryExhaustedError';
 }
 
 /**

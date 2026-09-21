@@ -237,7 +237,7 @@ async function fuzzSerde() {
   const E = 'JSON_SERDE.dumpsTyped';
   const cyc = { a: 1 }; cyc.self = cyc;
   const shown = (v) => { try { return new TextDecoder().decode(v[1]); } catch { return describe(v); } };
-  const dumps = [undefined, null, 1, -0, NaN, Infinity, 'x', [], {}, () => 1, Symbol('s'), 1n, { n: 1n }, cyc, { a: 1, b: undefined }, [1, undefined, 3], new Map([['a', 1]]), new Set([1]), new Date(0), new Uint8Array([1, 2, 3]), { f: () => 1 }, { s: Symbol('s') }, { toJSON() { throw new Error('boom'); } }];
+  const dumps = [undefined, null, 1, -0, NaN, Infinity, 'x', [], {}, () => 1, Symbol('s'), 1n, { n: 1n }, cyc, { a: 1, b: undefined }, [1, undefined, 3], new Map([['a', 1]]), new Set([1]), new Date(0), new Uint8Array([1, 2, 3]), { f: () => 1 }, { s: Symbol('s') }, { toJSON() { throw new Error('boom'); } }, { thrown: 'primitive', toJSON() { throw 'boom'; } }];
   for (const v of dumps) await tryAsync(E, `value=${describe(v)}`, async () => shown(await lib.JSON_SERDE.dumpsTyped(v)));
   const E2 = 'JSON_SERDE.loadsTyped';
   const bytes = (s) => new TextEncoder().encode(s);

@@ -16,7 +16,8 @@ function isLibraryAbort(reason: Error | undefined): reason is AbortError {
 /**
  * Whether `error` is a cancellation rather than a failure.
  *
- * Accepts: `error` — any error, from any layer.
+ * Accepts: `error` — any error, from any layer, and equally any other value a
+ * `throw` can produce, since a `catch` is where this is called.
  *
  * Returns: whether it carries `code: 'ABORTED'`, which is the contract every
  * cancellable method documents and the only thing a caller branches on. It is
@@ -25,10 +26,11 @@ function isLibraryAbort(reason: Error | undefined): reason is AbortError {
  * while this one only decides whether an error a wrapper caught is the
  * caller's own stop and must be re-thrown as it is.
  *
- * Throws: nothing.
+ * Throws: **nothing**, for any value. A value that cannot carry a property is
+ * not a cancellation, which is the answer an uncoded `Error` gets too.
  */
 export function isAbortError(error: Error): boolean {
-  return (error as { code?: string }).code === ErrorCode.ABORTED;
+  return (error as { code?: string } | undefined)?.code === ErrorCode.ABORTED;
 }
 
 /**

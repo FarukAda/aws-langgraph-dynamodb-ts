@@ -15,6 +15,13 @@ const BASELINE = 'test/surface/baseline.txt';
  * a flat `=== 0` would have left this tier red throughout and reported nothing
  * useful on any intermediate commit; the `<=` is what it kept from that, and at
  * 0 it says exactly what `=== 0` says. Nothing may raise it.
+ *
+ * What 0 covers is only what the case list asks. It now asks the one question
+ * that separates a refusal this package composes from one the runtime raises:
+ * a `toJSON` that throws a value which is not an `Error` — legal JavaScript,
+ * and the shortest path from caller code into the `catch` blocks every refusal
+ * is composed in. The corpus held that case with an `Error`, which passed and
+ * proved nothing about it.
  */
 const EXPECTED_BARE = 0;
 

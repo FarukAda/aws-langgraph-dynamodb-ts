@@ -840,6 +840,7 @@ JSON_SERDE.dumpsTyped | value={"a":1,"self":<cycle^1>} | throws ValidationError/
 JSON_SERDE.dumpsTyped | value={"f":fn} | RESOLVED "{}"
 JSON_SERDE.dumpsTyped | value={"n":1n} | throws ValidationError/VALIDATION field=value
 JSON_SERDE.dumpsTyped | value={"s":Symbol("s")} | RESOLVED "{}"
+JSON_SERDE.dumpsTyped | value={"thrown":"primitive","toJSON":fn} | throws ValidationError/VALIDATION field=value
 JSON_SERDE.dumpsTyped | value={"toJSON":fn} | throws ValidationError/VALIDATION field=value
 JSON_SERDE.dumpsTyped | value={} | RESOLVED "{}"
 JSON_SERDE.loadsTyped | data="" | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT

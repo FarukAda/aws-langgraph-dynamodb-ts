@@ -5,16 +5,20 @@ import { ErrorCode } from '../errors/error-code';
  *
  * Accepts: `error` — any error; only `S3_OFFLOAD_FAILED` carrying a `NoSuchKey`
  * cause matches. An error with no `cause`, or one whose cause names another
- * S3 failure, is not a missing object.
+ * S3 failure, is not a missing object. Anything else a `throw` can produce —
+ * `null`, `undefined`, a primitive — carries no code and is not one either.
  *
  * Returns: whether the object is gone — a lifecycle sweep removed it, or a
  * competing overwrite deleted it between a row read and the download.
  *
- * Throws: nothing.
+ * Throws: **nothing**, for any value. A caught value that cannot carry a
+ * property answers `false`, as `isDynamoDBLangGraphError` does, rather than
+ * raising a `TypeError` inside the `catch` that is reporting the download
+ * failure this test exists to classify.
  */
 export function isMissingObjectError(error: Error): boolean {
-  const coded = error as { code?: string; cause?: { name?: string } };
-  return coded.code === ErrorCode.S3_OFFLOAD_FAILED && coded.cause?.name === 'NoSuchKey';
+  const coded = error as { code?: string; cause?: { name?: string } } | undefined;
+  return coded?.code === ErrorCode.S3_OFFLOAD_FAILED && coded.cause?.name === 'NoSuchKey';
 }
 
 /**
@@ -28,8 +32,8 @@ export function isMissingObjectError(error: Error): boolean {
  * (see `assertKeyInScope`).
  */
 function isUnreadableDescriptor(error: Error): boolean {
-  const coded = error as { code?: string; context?: { field?: string } };
-  return coded.code === ErrorCode.VALIDATION && coded.context?.field === 'descriptor';
+  const coded = error as { code?: string; context?: { field?: string } } | undefined;
+  return coded?.code === ErrorCode.VALIDATION && coded.context?.field === 'descriptor';
 }
 
 /**
@@ -51,13 +55,15 @@ function isUnreadableDescriptor(error: Error): boolean {
  *
  * Returns: whether a caller should report rather than retry.
  *
- * Throws: nothing.
+ * Throws: **nothing**, for any value a `throw` can produce. One that cannot
+ * carry a code is not permanent loss, which is the same answer an uncoded
+ * `Error` gets.
  */
 export function isPermanentPayloadLoss(error: Error): boolean {
-  const coded = error as { code?: string };
+  const code = (error as { code?: string } | undefined)?.code;
   return (
-    coded.code === ErrorCode.COMPRESSION_LIMIT ||
-    coded.code === ErrorCode.PAYLOAD_CORRUPT ||
+    code === ErrorCode.COMPRESSION_LIMIT ||
+    code === ErrorCode.PAYLOAD_CORRUPT ||
     isMissingObjectError(error) ||
     isUnreadableDescriptor(error)
   );

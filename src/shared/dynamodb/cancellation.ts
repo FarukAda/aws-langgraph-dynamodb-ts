@@ -53,12 +53,16 @@ const CONDITION_FAILED = 'ConditionalCheckFailed';
  * Returns: one entry per transaction item, in the order the items were sent
  * (https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html),
  * or `undefined` when the error carries none — which is what an older service
- * response or a different failure looks like.
+ * response, a different failure, or a thrown value that is not an object at
+ * all looks like.
  *
- * Throws: nothing.
+ * Throws: **nothing**, for any value a `throw` can produce. Every value that
+ * reaches this came from a `catch`, and `null` is one a `catch` can bind: the
+ * property read raised a `TypeError` there, inside the classification the
+ * retry layer makes before it decides whether to try again.
  */
 export function getCancellationReasons(error: RejectionFields): CancellationReason[] | undefined {
-  return error.CancellationReasons;
+  return (error as RejectionFields | undefined)?.CancellationReasons;
 }
 
 /**

@@ -1,3 +1,5 @@
+import { toError } from '../errors/wrap-error';
+
 /** Marker substituted for anything recognised as secret. */
 export const REDACTED = '[REDACTED]';
 
@@ -99,7 +101,11 @@ export function isSecretKey(key: string, patterns: readonly string[]): boolean {
 /**
  * An error's message with recognised credential shapes redacted.
  *
- * Accepts: any error. Only its `message` is read.
+ * Accepts: any error — and, since this is what a `catch` block binds, any
+ * other value a `throw` can produce: `null`, `undefined`, a string, a number,
+ * a symbol, a plain object. Such a value is described through {@link toError}
+ * first and the description is what is redacted, so a secret it carries in its
+ * own text is still caught.
  *
  * Returns: the message, redacted with the default value patterns — for
  * embedding in another error's message, since a wrapper that quotes its cause
@@ -107,10 +113,15 @@ export function isSecretKey(key: string, patterns: readonly string[]): boolean {
  * reaches `err.message`, which an application may print without a redacting
  * logger.
  *
- * Throws: nothing.
+ * Throws: **nothing**, for any value. Reading `.message` off a thrown
+ * primitive yielded `undefined` and the redaction then raised a `TypeError` —
+ * from inside the `catch` that was reporting the real failure, and from the
+ * one function a static guard funnels every one of this package's `catch`
+ * blocks into. Its promise has to hold for what a `catch` actually binds, or
+ * the guard concentrates every site into a function that is not safe.
  */
 export function redactedMessage(error: Error): string {
-  return redactText(error.message, DEFAULT_SECRET_VALUE_PATTERNS);
+  return redactText(toError(error).message, DEFAULT_SECRET_VALUE_PATTERNS);
 }
 
 /**
@@ -206,22 +217,29 @@ export interface RedactedErrorText {
 /**
  * Redact an Error's `name`, `message` and `stack`.
  *
- * Accepts: `error` — any error; a missing `stack` stays missing.
+ * Accepts: `error` — any error; a missing `stack` stays missing. Any other
+ * value a `throw` can produce is described through {@link toError} first, on
+ * the same reasoning as {@link redactedMessage}: the walk that calls this only
+ * reaches it for a value whose tag says `Error`, but the promise below is
+ * written in this function's own contract and is this function's to keep.
  *
  * Returns: the redacted text, plus `changed`: whether any secret was actually
  * found. That flag is what decides between passing a bare Error through by
  * reference — preserving its identity and stack trace — and rebuilding it so
- * the secret cannot escape.
+ * the secret cannot escape. It compares against the described error, so a
+ * value that had no text of its own is never reported as changed by the
+ * describing.
  *
- * Throws: nothing.
+ * Throws: **nothing**, for any value.
  */
 export function redactErrorText(error: Error, patterns: readonly RegExp[]): RedactedErrorText {
-  const message = redactText(error.message, patterns);
-  const stack = error.stack === undefined ? undefined : redactText(error.stack, patterns);
+  const described = toError(error);
+  const message = redactText(described.message, patterns);
+  const stack = described.stack === undefined ? undefined : redactText(described.stack, patterns);
   return {
-    name: error.name,
+    name: described.name,
     message,
     stack,
-    changed: message !== error.message || stack !== error.stack,
+    changed: message !== described.message || stack !== described.stack,
   };
 }

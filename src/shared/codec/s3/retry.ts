@@ -21,14 +21,17 @@ const RETRYABLE_S3_SIGNALS: readonly string[] = [
 /**
  * Whether `error` is a transient S3 failure worth retrying.
  *
- * Accepts: `error` — any error, including one carrying no name or code.
+ * Accepts: `error` — any error, including one carrying no name or code, and
+ * equally anything else a `throw` can produce.
  *
  * Returns: true for the signals listed above and for anything the shared
  * classifier recognises (HTTP 429/5xx, the SDK's `$retryable` trait, socket
  * errors); false for everything else, so a permission or validation failure is
- * reported on the first attempt.
+ * reported on the first attempt — and a value carrying no signal at all is
+ * reported rather than retried.
  *
- * Throws: nothing.
+ * Throws: **nothing**, for any value; {@link isRetryableError} is total and
+ * this adds nothing to it but a longer signal list.
  */
 export function isTransientS3Error(error: Error): boolean {
   return isRetryableError(error, RETRYABLE_S3_SIGNALS);

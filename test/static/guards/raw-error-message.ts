@@ -22,6 +22,15 @@ import * as ts from 'typescript';
  * refused, and a future classification that genuinely needs the raw text is a
  * decision to record here rather than a diff that slips past.
  *
+ * **What the funnel is worth.** Concentrating every `catch` in the package
+ * into one function is only an improvement if that function is safe for what a
+ * `catch` binds, and for a while it was not: `redactedMessage` read `.message`
+ * unguarded, so `throw 'boom'` — legal JavaScript, and what a caller's `toJSON`
+ * can raise — turned the redacting call into a `TypeError` raised from inside
+ * the `catch` that was reporting the real failure. It is total now, for every
+ * value a `throw` can produce, which is what makes this rule sound rather than
+ * merely uniform.
+ *
  * **What it cannot see.** The binding must be read directly. A message laundered
  * through a helper — `describe(error)` returning `error.message` from a
  * parameter — is invisible to a guard without type information, as is a read
