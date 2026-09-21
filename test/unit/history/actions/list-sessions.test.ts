@@ -151,7 +151,12 @@ describe('listSessions', () => {
       createdAt: '2024-01-01',
       updatedAt: '2024-02-01',
     });
-    expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toBe('#sk = :session');
+    const request = mock.commandCalls(ScanCommand)[0].args[0].input;
+    expect(request.FilterExpression).toBe('begins_with(#pk, :pkp) AND #sk = :session');
+    expect(request.ExpressionAttributeValues).toEqual({
+      ':pkp': 'HIST#',
+      ':session': 'HISTORY#SESSION',
+    });
   });
 
   it('returns an empty list when there are no sessions', async () => {

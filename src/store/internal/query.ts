@@ -1,6 +1,6 @@
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import { partitionKey, sortKeyPrefix } from './keys';
+import { partitionKey, sortKeyPrefix, storePartitionPrefix } from './keys';
 
 /**
  * Query input for a scoped prefix.
@@ -39,17 +39,35 @@ export function scopedQuery(tableName: string, prefix: string[]): QueryCommandIn
  * Accepts: the table name. There is nothing to scope by — this is the read for
  * a search or listing whose conditions name no concrete partition.
  *
- * Returns: the Scan input. The filter drops rows without a `namespace`
- * attribute, which is every other adapter's and every foreign row on a shared
- * table; it is applied after the read, so it saves transfer, not RCU.
+ * Returns: the Scan input, selecting this adapter's **key space** first and its
+ * rows within it second. `begins_with(PK, 'STORE#')` is what restricts the
+ * read: every store row carries that tag and no other adapter's partition key
+ * can, so a row belonging to another adapter or to another application never
+ * reaches the narrow. The `namespace` test stays behind it as a second line of
+ * defence over the store's own partitions.
+ *
+ * Selecting on the attribute alone was not equivalent. It admitted any row on a
+ * shared table that happens to carry a `namespace` attribute, and since a row
+ * stamped with a format version above this release is *reported* rather than
+ * skipped, one foreign row was enough to fail `search([])` and
+ * `listNamespaces()` outright. Nothing legitimate is lost: `narrowStoreRecord`
+ * already requires `PK` to equal `partitionKey(namespace)`, which carries the
+ * same tag, so every row the tag excludes was dropped after the read anyway.
+ *
+ * The extra condition is free. A filter "is applied after a `Scan` finishes but
+ * before the results are returned. Therefore, a `Scan` consumes the same amount
+ * of read capacity, regardless of whether a filter expression is present"
+ * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Scan.html).
+ * It saves transfer, not RCU — which is also why it cannot replace the narrow.
  *
  * Throws: nothing.
  */
 export function storeScan(tableName: string): ScanCommandInput {
   return {
     TableName: tableName,
-    FilterExpression: 'attribute_exists(#ns)',
-    ExpressionAttributeNames: { '#ns': 'namespace' },
+    FilterExpression: 'begins_with(#pk, :pkp) AND attribute_exists(#ns)',
+    ExpressionAttributeNames: { '#pk': 'PK', '#ns': 'namespace' },
+    ExpressionAttributeValues: { ':pkp': storePartitionPrefix() },
   };
 }
 

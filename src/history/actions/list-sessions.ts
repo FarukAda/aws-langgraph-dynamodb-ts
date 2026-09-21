@@ -12,7 +12,7 @@ import { assertSignalLike } from '../../shared/validation/collaborators';
 import { LIST_SESSIONS_KEYS } from '../../shared/validation/method-keys';
 import { assertShape } from '../../shared/validation/option-shape';
 import { validateInteger, validateLimit } from '../../shared/validation/primitives';
-import { SESSION_SORT_KEY, sessionPartition } from '../internal/keys';
+import { SESSION_SORT_KEY, historyPartitionPrefix, sessionPartition } from '../internal/keys';
 import type { HistoryContext } from '../internal/setup';
 import type { ChatSessionItem, ListSessionsOptions, SessionMetadata, SessionPage } from '../types';
 
@@ -136,6 +136,17 @@ async function pageFromIndex(
  * on the index path. It cannot bound the read — a scan has to finish before the
  * newest can be known — but answering a caller who asked for ten with five
  * thousand sessions was a wrong answer, not a cheaper one.
+ *
+ * The filter names the partition tag before the sort key. The sort key alone
+ * does not identify this adapter: a store namespace element may not hold the
+ * separator, but the join inserts one, so the legal store key
+ * `sortKey(['t', 'HISTORY'], 'SESSION')` composes `SESSION_SORT_KEY` byte for
+ * byte. Such a row sits in a `STORE#` partition, and since a row stamped with a
+ * format version above this release is *reported* rather than skipped, one of
+ * them was enough to fail this listing on a table the three adapters share.
+ * `summarise` already requires `PK` to equal `sessionPartition(sessionId)`, so
+ * the tag excludes only rows it was dropping after the read. Filtering costs no
+ * read capacity either way: DynamoDB applies it once the scan has finished.
  */
 async function allByScan(
   context: HistoryContext,
@@ -149,9 +160,12 @@ async function allByScan(
     client: context.client,
     params: {
       TableName: context.tableName,
-      FilterExpression: '#sk = :session',
-      ExpressionAttributeNames: { '#sk': 'SK' },
-      ExpressionAttributeValues: { ':session': SESSION_SORT_KEY },
+      FilterExpression: 'begins_with(#pk, :pkp) AND #sk = :session',
+      ExpressionAttributeNames: { '#pk': 'PK', '#sk': 'SK' },
+      ExpressionAttributeValues: {
+        ':pkp': historyPartitionPrefix(),
+        ':session': SESSION_SORT_KEY,
+      },
     },
     maxIterations: options.maxIterations,
     maxItems: options.maxItems,

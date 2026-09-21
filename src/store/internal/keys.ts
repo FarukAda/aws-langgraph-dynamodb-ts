@@ -9,6 +9,20 @@ export const NAMESPACE_SEPARATOR = '#';
 const ADAPTER_PARTITION_PREFIX = `STORE${NAMESPACE_SEPARATOR}`;
 
 /**
+ * The tag every store partition key starts with.
+ *
+ * Accepts: nothing — the tag is fixed, and the function exists so no caller
+ * composes it by hand.
+ *
+ * Returns: the tag, for a table-wide `begins_with` over this adapter's rows.
+ *
+ * Throws: nothing.
+ */
+export function storePartitionPrefix(): string {
+  return ADAPTER_PARTITION_PREFIX;
+}
+
+/**
  * Partition key for an item: the adapter tag plus the scope-root element.
  *
  * Accepts: `namespace` — normally a validated one, whose first element is the

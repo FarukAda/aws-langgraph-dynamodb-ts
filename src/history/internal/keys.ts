@@ -25,6 +25,20 @@ const MESSAGE_PREFIX = `${ADAPTER_PREFIX}MSG#`;
 const ADAPTER_PARTITION_PREFIX = `HIST${SORT_KEY_SEPARATOR}`;
 
 /**
+ * The tag every chat-history partition key starts with.
+ *
+ * Accepts: nothing — the tag is fixed, and the function exists so no caller
+ * composes it by hand.
+ *
+ * Returns: the tag, for a table-wide `begins_with` over this adapter's rows.
+ *
+ * Throws: nothing.
+ */
+export function historyPartitionPrefix(): string {
+  return ADAPTER_PARTITION_PREFIX;
+}
+
+/**
  * Partition key for a chat session: the adapter tag plus the session id.
  *
  * Accepts: `sessionId` — normally validated, so it cannot contain the
