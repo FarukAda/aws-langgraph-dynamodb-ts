@@ -27,14 +27,21 @@ export interface WalkStop {
  * the right rule for a reader asking for state. Here the distinction is the
  * whole point: one is an ordinary root, the other is data loss.
  *
- * Accepts: `config` — the parent pointer a walk stopped at.
+ * Accepts: `config` — the parent pointer a walk stopped at. `config.signal` —
+ * cancels the read, and is read before it is sent. The walk re-attaches the
+ * caller's signal to every cursor, so the probe takes its cancel from the same
+ * place every other reader in this package takes it, rather than from a
+ * parameter of its own.
  *
  * Returns: whether that checkpoint exists and whether it has expired, or
  * `undefined` when the config names no thread or no checkpoint — such a pointer
  * addresses nothing that could have expired, so the walk has simply run out of
  * chain.
  *
- * Throws: whatever the read throws after retries.
+ * Throws: whatever the read throws after retries; `AbortError` when the signal
+ * has already fired, which is answered in preference to the expiry this read
+ * exists to diagnose — a caller who cancelled is owed its own stop, and is no
+ * longer waiting to be told why the walk ended.
  *
  * Guarantees: the read ignores the ttl, deliberately. Every other read in this
  * package treats an expired row as absent, which is the right rule for a reader
@@ -60,7 +67,7 @@ export async function probeAncestor(
         },
         request,
       ),
-    retryFor(context),
+    retryFor(context, config.signal),
   );
   const row = result.Item as DocItem | undefined;
   return {

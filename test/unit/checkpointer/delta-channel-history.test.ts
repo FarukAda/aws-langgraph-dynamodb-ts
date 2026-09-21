@@ -2,6 +2,7 @@ import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { buildCheckpointItems } from '../../../src/checkpointer/internal/item-writer';
+import { metaSortKey } from '../../../src/checkpointer/internal/keys';
 import type { CheckpointerContext } from '../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
@@ -45,8 +46,15 @@ interface Row {
  * A saver over a thread of `rows`, each readable at its own key. A row whose
  * `ttl` has passed is still returned by the mock, exactly as DynamoDB does
  * until its sweep catches up — the library is what has to treat it as gone.
+ *
+ * `onRead` sees every request the saver sends, named by the sort key it reads,
+ * before that request is answered — so a test can count the reads a walk costs
+ * and cancel in the middle of one.
  */
-async function saverOver(rows: Row[]): Promise<DynamoDBSaver> {
+async function saverOver(
+  rows: Row[],
+  onRead: (sortKey: string) => void = () => undefined,
+): Promise<DynamoDBSaver> {
   const { client, mock } = createStrictDocumentMock();
   const ctx: CheckpointerContext = { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
   const built = await Promise.all(
@@ -64,17 +72,29 @@ async function saverOver(rows: Row[]): Promise<DynamoDBSaver> {
   );
   mock.on(GetCommand).callsFake((input) => {
     const sk = input.Key.SK as string;
+    onRead(sk);
     const item = built.find((b) => b.meta.SK === sk || b.payload.SK === sk);
     if (!item) return {};
     return { Item: sk.startsWith('PAYLOAD') ? item.payload : item.meta };
   });
-  mock.on(QueryCommand).resolves({ Items: [] });
+  mock.on(QueryCommand).callsFake(() => {
+    onRead('WRITES');
+    return { Items: [] };
+  });
   return new DynamoDBSaver({ tableName: 'ckpt', client, serde } as never);
 }
 
-function historyOf(saver: DynamoDBSaver, checkpointId: string, channels: string[]) {
+function historyOf(
+  saver: DynamoDBSaver,
+  checkpointId: string,
+  channels: string[],
+  signal?: AbortSignal,
+) {
   return saver.getDeltaChannelHistory({
-    config: { configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: checkpointId } },
+    config: {
+      configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: checkpointId },
+      signal,
+    },
     channels,
   });
 }
@@ -155,5 +175,88 @@ describe('delta-channel history across a TTL boundary', () => {
     const saver = await saverOver([{ id: 'c1', values: {}, expiresIn: HOUR }]);
 
     await expect(historyOf(saver, 'c1', [])).resolves.toEqual({});
+  });
+});
+
+/**
+ * Every hop of the walk is a `getTuple`, and a delta channel rebuilds from the
+ * nearest ancestor that stored a value, so the chain a caller pays for is as
+ * long as the gap between snapshots. The caller's `signal` has to reach every
+ * one of those reads, not just the first.
+ */
+describe('a cancel during the ancestor walk', () => {
+  /** One checkpoint costs three requests: its META row, its PAYLOAD row, its writes. */
+  const READS_PER_CHECKPOINT = 3;
+
+  /** A four-deep chain whose only stored value sits at the far end. */
+  const chain: Row[] = [
+    { id: 'c1', values: { messages: ['oldest'] }, expiresIn: HOUR },
+    { id: 'c2', values: {}, parent: 'c1', expiresIn: HOUR },
+    { id: 'c3', values: {}, parent: 'c2', expiresIn: HOUR },
+    { id: 'c4', values: {}, parent: 'c3', expiresIn: HOUR },
+  ];
+
+  it('ends the call at the hop the signal fired on and issues no further read', async () => {
+    const controller = new AbortController();
+    const reads: string[] = [];
+    let readsWhenAborted = 0;
+    const saver = await saverOver(chain, (sortKey) => {
+      reads.push(sortKey);
+      if (sortKey !== metaSortKey('', 'c2')) return;
+      controller.abort();
+      readsWhenAborted = reads.length;
+    });
+
+    await expect(historyOf(saver, 'c4', ['messages'], controller.signal)).rejects.toMatchObject({
+      code: ErrorCode.ABORTED,
+    });
+
+    /** The target and one ancestor read whole, then the META row that cancelled. */
+    expect(readsWhenAborted).toBe(2 * READS_PER_CHECKPOINT + 1);
+    expect(reads).toHaveLength(readsWhenAborted);
+  });
+
+  it('walks on to the far seed while the signal stays unfired', async () => {
+    const controller = new AbortController();
+    const saver = await saverOver(chain);
+
+    const history = await historyOf(saver, 'c4', ['messages'], controller.signal);
+
+    expect(history.messages.seed).toEqual(['oldest']);
+  });
+
+  it('answers a cancel with the cancel, not with the expiry it was about to find', async () => {
+    const controller = new AbortController();
+    const reads: string[] = [];
+    const saver = await saverOver(
+      [
+        { id: 'c1', values: { messages: ['first'] }, expiresIn: -HOUR },
+        { id: 'c2', values: {}, parent: 'c1', expiresIn: HOUR },
+      ],
+      (sortKey) => {
+        reads.push(sortKey);
+        if (sortKey === metaSortKey('', 'c1')) controller.abort();
+      },
+    );
+
+    await expect(historyOf(saver, 'c2', ['messages'], controller.signal)).rejects.toMatchObject({
+      code: ErrorCode.ABORTED,
+    });
+
+    /** The probe that would have reported `ANCESTOR_EXPIRED` is never sent. */
+    expect(reads).toHaveLength(READS_PER_CHECKPOINT + 1);
+  });
+
+  it('still reports an expired ancestor when a signal is given but never fires', async () => {
+    const controller = new AbortController();
+    const saver = await saverOver([
+      { id: 'c1', values: { messages: ['first'] }, expiresIn: -HOUR },
+      { id: 'c2', values: {}, parent: 'c1', expiresIn: HOUR },
+    ]);
+
+    await expect(historyOf(saver, 'c2', ['messages'], controller.signal)).rejects.toMatchObject({
+      code: ErrorCode.ANCESTOR_EXPIRED,
+      context: { threadId: 't', checkpointId: 'c1' },
+    });
   });
 });

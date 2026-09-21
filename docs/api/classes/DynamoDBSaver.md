@@ -111,7 +111,7 @@ no object this call could have released.
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/saver.ts:301](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L301)
+Defined in: [checkpointer/saver.ts:304](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L304)
 
 Release owned resources.
 
@@ -132,7 +132,7 @@ Throws: nothing this adapter raises.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:324](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L324)
+Defined in: [checkpointer/saver.ts:327](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L327)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded payloads don't outlive the items that point at them.
@@ -164,7 +164,7 @@ not per request.
 
 > **getDeltaChannelHistory**(`options`): `Promise`\<`Record`\<`string`, `DeltaChannelHistory`\>\>
 
-Defined in: [checkpointer/saver.ts:275](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L275)
+Defined in: [checkpointer/saver.ts:278](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L278)
 
 Walk a checkpoint's ancestors for the delta channels named, returning each
 channel's on-path writes oldest-first and its nearest stored value.
@@ -180,8 +180,9 @@ Accepts: `options` — must be an object naming exactly `config` and
 array reads nothing rather than being refused, since it is a legitimate
 "nothing to rebuild" request. `options.config` — the checkpoint to walk
 back from, shaped as [getTuple](#gettuple) requires and checked for that shape
-even when there is nothing to read; its `signal` aborts the read of that
-checkpoint.
+even when there is nothing to read; its `signal` aborts the whole walk —
+every ancestor read, not only the first — and the hop it fires on is the
+last read the call makes.
 
 Returns: per channel, its on-path writes oldest-first and the nearest
 stored value found.
@@ -192,7 +193,9 @@ object, `options.<key>` for an unknown key, `config`, `configurable` or
 is not an array of strings, and, once a channel is named, `thread_id`,
 `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
 identifier; `ANCESTOR_EXPIRED` when a checkpoint a channel still needs has
-expired; UpstreamError; RetryExhaustedError; AbortError.
+expired; UpstreamError; RetryExhaustedError; AbortError, which a walk
+cancelled as it reached an expired ancestor reports in place of
+`ANCESTOR_EXPIRED`.
 
 Guarantees: the walk stops at the first ancestor answering for every
 channel, so a deep thread costs reads only as far back as the nearest

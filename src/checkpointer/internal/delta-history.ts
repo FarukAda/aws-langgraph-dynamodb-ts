@@ -61,6 +61,28 @@ function takeSeeds(tuple: CheckpointTuple, walk: Walk): void {
 }
 
 /**
+ * The parent pointer a tuple carries, re-given the caller's `signal`.
+ *
+ * A tuple's `config` and `parentConfig` are built by `assembleTuple` as bare
+ * `{ configurable }` addresses, and they stay that way: they are handed to
+ * whoever called `getTuple`, who may keep a `parentConfig` and read from it
+ * later, long after this call's signal has fired. So the signal is re-attached
+ * here, to the cursor this walk reads with, rather than stamped onto the value
+ * the tuple publishes.
+ *
+ * The cursor is a `RunnableConfig`, and `config.signal` is how every reader in
+ * this package already takes a cancel, so nothing new carries it: the second
+ * hop is cancellable for exactly the reason the first one is.
+ */
+function cursorFor(
+  parent: RunnableConfig | undefined,
+  signal: AbortSignal | undefined,
+): RunnableConfig | undefined {
+  if (parent === undefined || signal === undefined) return parent;
+  return { ...parent, signal };
+}
+
+/**
  * Follow `parentConfig` from `start` until every channel has a seed or the
  * chain ends, feeding each ancestor to {@link collectWrites} and
  * {@link takeSeeds}.
@@ -69,14 +91,22 @@ function takeSeeds(tuple: CheckpointTuple, walk: Walk): void {
  * written or the cursor names no checkpoint, both ordinary ends of a chain, and
  * with {@link ancestorExpired} when the row is still stored but past its ttl,
  * which is a hole in the thread.
+ *
+ * `signal` cancels every hop, not just the first. The chain is unbounded in
+ * principle — a delta channel rebuilds from the nearest ancestor that stored a
+ * value — and each hop is a `getTuple`, which can cost an S3 download, so a
+ * walk that could not be stopped part-way was the one read in this package that
+ * ignored the cancel it was given. A cancel is read before the request is sent,
+ * so the hop the signal fires on is the last read the call makes.
  */
 async function walkAncestors(
   context: CheckpointerContext,
   getTuple: (config: RunnableConfig) => Promise<CheckpointTuple | undefined>,
   start: RunnableConfig | undefined,
   walk: Walk,
+  signal: AbortSignal | undefined,
 ): Promise<void> {
-  let cursor = start;
+  let cursor = cursorFor(start, signal);
   while (cursor !== undefined && walk.remaining.size > 0) {
     const tuple = await getTuple(cursor);
     if (tuple === undefined) {
@@ -86,7 +116,7 @@ async function walkAncestors(
     }
     collectWrites(tuple, walk);
     takeSeeds(tuple, walk);
-    cursor = tuple.parentConfig ?? undefined;
+    cursor = cursorFor(tuple.parentConfig, signal);
   }
 }
 
@@ -114,7 +144,9 @@ function historyOf(walk: Walk, channel: string): DeltaChannelHistory {
  *
  * Accepts: `channels` — the delta channels to rebuild; none returns nothing and
  * reads nothing. `getTuple` — the saver's own, so the walk sees exactly what a
- * reader would. `config` — the checkpoint to walk back from.
+ * reader would. `config` — the checkpoint to walk back from. `config.signal` —
+ * cancels the whole walk: it is re-attached to each ancestor cursor
+ * ({@link cursorFor}), because the pointer a tuple carries is a bare address.
  *
  * Returns: per channel, its on-path writes oldest-first and the nearest stored
  * value found. A channel whose value was never stored gets none, which is the
@@ -123,7 +155,10 @@ function historyOf(walk: Walk, channel: string): DeltaChannelHistory {
  *
  * Throws: `ANCESTOR_EXPIRED` when an ancestor a channel still needs exists but
  * has expired ({@link ancestorExpired}). An ancestor that was never written
- * still ends the walk quietly — that is an ordinary root.
+ * still ends the walk quietly — that is an ordinary root. `AbortError` when the
+ * signal fires, at whichever hop it fires on, and in preference to a diagnosis
+ * of the stop: a walk cancelled just as it reached an expired ancestor reports
+ * the cancel, since the caller stopped waiting for the answer either way.
  *
  * Guarantees: the walk stops at the first ancestor that answers for every
  * channel, so a deep thread costs reads only as far back as the nearest
@@ -138,7 +173,7 @@ export async function deltaChannelHistory(
   if (channels.length === 0) return {};
   const walk = startWalk(channels);
   const target = await getTuple(config);
-  await walkAncestors(context, getTuple, target?.parentConfig ?? undefined, walk);
+  await walkAncestors(context, getTuple, target?.parentConfig, walk, config.signal);
 
   const result: Record<string, DeltaChannelHistory> = {};
   for (const channel of channels) result[channel] = historyOf(walk, channel);

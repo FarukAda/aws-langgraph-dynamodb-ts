@@ -254,8 +254,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * array reads nothing rather than being refused, since it is a legitimate
    * "nothing to rebuild" request. `options.config` — the checkpoint to walk
    * back from, shaped as {@link getTuple} requires and checked for that shape
-   * even when there is nothing to read; its `signal` aborts the read of that
-   * checkpoint.
+   * even when there is nothing to read; its `signal` aborts the whole walk —
+   * every ancestor read, not only the first — and the hop it fires on is the
+   * last read the call makes.
    *
    * Returns: per channel, its on-path writes oldest-first and the nearest
    * stored value found.
@@ -266,7 +267,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * is not an array of strings, and, once a channel is named, `thread_id`,
    * `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
    * identifier; `ANCESTOR_EXPIRED` when a checkpoint a channel still needs has
-   * expired; UpstreamError; RetryExhaustedError; AbortError.
+   * expired; UpstreamError; RetryExhaustedError; AbortError, which a walk
+   * cancelled as it reached an expired ancestor reports in place of
+   * `ANCESTOR_EXPIRED`.
    *
    * Guarantees: the walk stops at the first ancestor answering for every
    * channel, so a deep thread costs reads only as far back as the nearest
