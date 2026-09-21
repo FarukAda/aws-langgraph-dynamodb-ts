@@ -11,6 +11,23 @@ import { abortErrorFrom } from './abort';
 import { fullJitter, sleep } from './backoff';
 import { DEFAULT_RETRYABLE_ERRORS, isRetryableError } from './retry-classifier';
 
+/**
+ * The per-request options one attempt hands to the SDK call it makes.
+ *
+ * It is the AWS SDK's own second argument (`HttpHandlerOptions` from
+ * `@smithy/types`) narrowed to the single field this library sets, so a call
+ * site forwards the value it was given instead of assembling one — the
+ * difference between `client.get(params, request)` at every site and thirty
+ * chances to write `{ signal }` where the SDK reads `abortSignal`.
+ *
+ * `DynamoDBDocumentLike` picks its members off the real `DynamoDBDocument`, so
+ * every method already accepts this as its optional second argument and no
+ * type had to move to make room for it.
+ */
+export interface SdkRequestOptions {
+  abortSignal?: AbortSignal;
+}
+
 /** What {@link RetryOptions.onRetry} learns before each backoff sleep. */
 export interface RetryAttemptInfo {
   attempt: number;
@@ -52,6 +69,16 @@ function crossesDeadline(deadlineAt: number | undefined, delayMs: number): boole
   return deadlineAt !== undefined && nowMs() + delayMs >= deadlineAt;
 }
 
+/**
+ * End the operation the moment the caller's signal has fired.
+ *
+ * One function for both observation points — before the first attempt, and
+ * after every failed one — so the two can never answer a cancel differently.
+ */
+function assertNotAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw abortErrorFrom(signal);
+}
+
 function delayForAttempt(attempt: number, base: number, max: number, rng: () => number): number {
   const exponential = base * 2 ** (attempt - 1);
   return fullJitter(Math.min(exponential, max), rng);
@@ -81,13 +108,22 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
 /**
  * Run `fn`, retrying transient failures with full-jitter exponential backoff.
  *
+ * Accepts: `fn` — given the {@link SdkRequestOptions} for the attempt, to pass
+ * as the second argument of the SDK call it makes. That argument is what
+ * carries `options.signal` into the request, and it is the only way a call
+ * site can: `fn` closes over its own parameters, so nothing else reaches it.
+ * An `fn` that makes no cancellable call ignores the parameter and is written
+ * exactly as it was, since a zero-argument function still satisfies the type.
+ *
  * Accepts: `options.maxAttempts` — total attempts including the first, default
  * {@link DEFAULT_RETRY_MAX_ATTEMPTS}; at least 1, which `validateRetryPolicy`
  * enforces for every caller-supplied policy. `options.baseDelayMs` /
  * `maxDelayMs` — the backoff schedule. `options.isRetryable` — replaces
  * `retryableErrors` entirely, so a call site can share one classifier with
- * paths that do not go through here. `options.signal` — checked once before
- * the first attempt and again during every backoff wait. `options.onRetry` —
+ * paths that do not go through here. `options.signal` — checked before the
+ * first attempt, handed to every attempt as `abortSignal` so the request in
+ * flight is cancelled rather than merely awaited, checked again when an
+ * attempt fails, and honoured during every backoff wait. `options.onRetry` —
  * called synchronously before each wait; an exception from it is not caught
  * and ends the operation. `options.deadlineAt` — an internal bound on the
  * whole budget rather than on one attempt: the wait that would carry the
@@ -98,8 +134,11 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
  *
  * Throws: the error itself, unchanged, when it is not retryable — a
  * `ValidationException` or a permission failure is never retried;
- * {@link AbortError} when the signal fires, including during a wait;
- * {@link RetryExhaustedError} once the budget ends, carrying the attempt
+ * {@link AbortError} when the signal fires, including during a wait and
+ * including while a request is in flight — the SDK rejects the cancelled
+ * request with an error of its own, and a failed attempt whose signal has
+ * fired is reported as the cancel it is rather than being classified, retried
+ * or wrapped; {@link RetryExhaustedError} once the budget ends, carrying the attempt
  * actually reached — not the attempts configured — and the last error as
  * `cause`. Its message quotes the last error **redacted**, because it reaches
  * `err.message`, which an application may print without a redacting logger.
@@ -110,27 +149,47 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
  * back, and release only what is confirmed not to have landed.
  *
  * A cancelled wait is also an abort no longer observed. The signal is read
- * before the first attempt and thereafter only inside each wait, so ending the
- * budget in place of a wait drops that one observation point: a signal that
- * would have fired during exactly that wait surfaces as
+ * before the first attempt, after every failed one, and inside each wait, so
+ * ending the budget in place of a wait drops only that last observation point:
+ * a signal that fires *after* the deadline has already refused the wait, in
+ * the window where the wait would have been running, surfaces as
  * {@link RetryExhaustedError} rather than {@link AbortError}. One already set
- * at entry, or fired during an earlier wait, is still caught.
+ * at entry, fired during an attempt, or fired during an earlier wait, is still
+ * caught.
  *
  * Guarantees: `fn` is called at least once and at most `maxAttempts` times. A
  * thrown non-`Error` is wrapped, so what a caller catches is always an `Error`.
  */
-export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
+export async function withRetry<T>(
+  fn: (request: SdkRequestOptions) => Promise<T>,
+  options: RetryOptions = {},
+): Promise<T> {
   const { maxAttempts, baseDelayMs, maxDelayMs, isRetryable, rng } = resolveRetryOptions(options);
 
-  if (options.signal?.aborted) throw abortErrorFrom(options.signal);
+  assertNotAborted(options.signal);
 
+  /**
+   * Built once and handed to every attempt. The SDK reads it and keeps
+   * nothing, so one object costs one allocation per operation instead of one
+   * per attempt, and a re-send cannot differ from the send before it.
+   */
+  const request: SdkRequestOptions = { abortSignal: options.signal };
   let lastError: Error = new Error('Retry failed without error');
   let attempts = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     attempts = attempt;
     try {
-      return await fn();
+      return await fn(request);
     } catch (error) {
+      /**
+       * Read before the error is classified. A cancelled request rejects with
+       * whatever the transport produced — the SDK's own `AbortError` for one
+       * cut before the response, a socket error for one cut mid-body — and
+       * both would otherwise be classified, retried against a signal that has
+       * already fired, and finally reported as a transport failure. A caller
+       * who cancelled is owed `ABORTED`, not a diagnosis of its own stop.
+       */
+      assertNotAborted(options.signal);
       lastError = toError(error as Error);
       if (!isRetryable(lastError)) throw lastError;
       if (attempt === maxAttempts) break;
@@ -158,7 +217,7 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
  * Throws: as {@link withRetry}.
  */
 export async function withDynamoDBRetry<T>(
-  fn: () => Promise<T>,
+  fn: (request: SdkRequestOptions) => Promise<T>,
   overrides?: Partial<RetryOptions>,
 ): Promise<T> {
   return withRetry(fn, { maxAttempts: DEFAULT_RETRY_MAX_ATTEMPTS, ...overrides });
