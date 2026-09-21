@@ -64,6 +64,8 @@ export class DynamoDBChatMessageHistory {
    *
    * Throws: ValidationError for a malformed session id or window, an invalid
    * `signal`, or naming `options.<key>` for a key this package does not read;
+   * ValidationError naming `s3Key` for a row addressing an object outside the
+   * session's own path, whatever the corruption policy;
    * `FORMAT_UNSUPPORTED` for a row a newer release wrote; UpstreamError;
    * AbortError; and, under `onCorruptMessage: 'throw'`, the decode error of a
    * corrupt row.

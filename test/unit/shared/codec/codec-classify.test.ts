@@ -186,10 +186,18 @@ describe('isPermanentPayloadLoss', () => {
   });
 });
 
-describe('isPermanentPayloadLoss on descriptor rejections (SEC-03, CODEC-16)', () => {
-  it('treats an out-of-scope key and an unreadable descriptor as permanent, other validation as not', () => {
-    expect(isPermanentPayloadLoss(new ValidationError('foreign', 's3Key'))).toBe(true);
+describe('isPermanentPayloadLoss on descriptor rejections (SEC-03, CODEC-16, M-03)', () => {
+  it('treats an unreadable descriptor as permanent and other validation, s3Key included, as not', () => {
     expect(isPermanentPayloadLoss(new ValidationError('newer', 'descriptor'))).toBe(true);
     expect(isPermanentPayloadLoss(new ValidationError('bad option', 's3'))).toBe(false);
+  });
+
+  /**
+   * An out-of-scope key means the reader may not follow it — a wrong prefix or
+   * a foreign row — not that the payload is unreadable, so it is reported
+   * rather than skipped.
+   */
+  it('does not treat an out-of-scope key as payload loss', () => {
+    expect(isPermanentPayloadLoss(new ValidationError('foreign', 's3Key'))).toBe(false);
   });
 });

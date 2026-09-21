@@ -338,7 +338,12 @@ describe('S3 key binding (SEC-03)', () => {
     return item;
   }
 
-  it("skips a message whose key lies outside the session's path under 'skip' and logs it", async () => {
+  /**
+   * The `'skip'` policy covers a payload nobody can read. A key outside the
+   * session's path is a wrong prefix or a foreign row, so it is reported
+   * under both policies rather than healed over with a shorter conversation.
+   */
+  it("throws on a message whose key lies outside the session's path under 'skip', logging nothing", async () => {
     const { client, mock } = createStrictDocumentMock();
     const offloader = binding();
     mock.on(QueryCommand).resolves({ Items: [await foreignItem(client, offloader)] });
@@ -347,12 +352,12 @@ describe('S3 key binding (SEC-03)', () => {
       offloader: offloader as never,
       logger: { ...SILENT_LOGGER, error },
     });
-    await expect(getMessages(reader, 's1')).resolves.toEqual([]);
+    await expect(getMessages(reader, 's1')).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 's3Key' },
+    });
     expect(offloader.download).not.toHaveBeenCalled();
-    expect(error).toHaveBeenCalledWith(
-      expect.stringContaining('corrupt'),
-      expect.objectContaining({ reason: 'ValidationError' }),
-    );
+    expect(error).not.toHaveBeenCalled();
   });
 
   it("throws on such a message under 'throw'", async () => {

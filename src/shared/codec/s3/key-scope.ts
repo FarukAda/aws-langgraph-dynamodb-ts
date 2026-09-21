@@ -63,12 +63,25 @@ export function isKeyInScope(key: string, prefix: string, parts: readonly string
  * Returns: nothing; acceptance is the absence of a throw.
  *
  * Throws: ValidationError naming `s3Key`, quoting the path the row may
- * reference. `isPermanentPayloadLoss` treats it as permanent: the row can never
- * be read by this adapter.
+ * reference. It reaches the caller on all three adapters, including
+ * `history.getMessages` under `onCorruptMessage: 'skip'`, because
+ * `isPermanentPayloadLoss` does **not** classify it — an out-of-scope key is
+ * not the same kind of thing as an unreadable descriptor. An unreadable
+ * descriptor condemns the payload itself: nobody can read those bytes, so
+ * skipping the row loses nothing that was ever retrievable. An out-of-scope
+ * key says only that *this* reader may not follow it — the object is very
+ * likely intact, under the prefix that does own it — and what produced it is a
+ * `keyPrefix` pointed at the wrong place, a table shared with another tenant,
+ * or a planted row. Every one of those is a condition an operator must see and
+ * can fix. Classifying it as loss made only `history` answer with a silently
+ * shorter conversation — the one adapter that consults the classifier — which
+ * the chain then re-persisted as the truth, while the store and the saver
+ * raised on the same row. A short answer is the one failure a caller cannot
+ * detect, and one row shape must not mean two things across three adapters.
  *
  * Guarantees: a row is trusted for its shape, never for the object it points
  * at. A writer able to place one row in a partition cannot make this library
- * download or delete another tenant's object.
+ * download or delete another tenant's object, nor make it quietly return less.
  */
 export function assertKeyInScope(key: string, prefix: string, parts: readonly string[]): void {
   if (isKeyInScope(key, prefix, parts)) return;

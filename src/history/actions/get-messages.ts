@@ -28,7 +28,10 @@ type Decoded = { kind: 'ok'; message: BaseMessage } | { kind: 'corrupt'; error: 
  * dropping the message would hand the caller a silently truncated conversation
  * that `RunnableWithMessageHistory` then re-persists. Only a *permanent* loss
  * at that stage — the object is gone, or the decompression guard tripped — is
- * corruption. Deserializing and rebuilding the message is pure data handling,
+ * corruption; a row whose `s3Key` lies outside the session's own path is a
+ * configuration or tenancy fault, so it is rethrown like any other
+ * infrastructure failure (see `assertKeyInScope`).
+ * Deserializing and rebuilding the message is pure data handling,
  * so any failure there (bad bytes, a type LangChain cannot rebuild such as a
  * `RemoveMessage`) is corruption too, and is confined to that one message.
  */
@@ -82,10 +85,12 @@ async function decodeMessage(
  * Throws: ValidationError naming `sessionId`, `limit`, `before`, `signal`, or
  * `options.<key>` for a key this package does not read;
  * `FORMAT_UNSUPPORTED` for a row a newer version wrote; the decode error of a
- * corrupt row under `onCorruptMessage: 'throw'`; any infrastructure failure —
- * a throttle, a permission, a transport error — whatever the policy, because
- * dropping a message for one of those would hand back a silently truncated
- * conversation that the chain then re-persists as the truth.
+ * corrupt row under `onCorruptMessage: 'throw'`; ValidationError naming
+ * `s3Key` for a row addressing an object outside the session's own path,
+ * whatever the policy; any infrastructure failure — a throttle, a permission,
+ * a transport error — whatever the policy, because dropping a message for one
+ * of those would hand back a silently truncated conversation that the chain
+ * then re-persists as the truth.
  *
  * Guarantees: strongly consistent, so the turn just appended is visible.
  * Offloaded messages download several at a time, and the corruption policy is
