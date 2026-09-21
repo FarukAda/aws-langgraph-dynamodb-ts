@@ -175,7 +175,7 @@ row then over-counts until `reconcileMessageCount` repairs it.
 
 > **destroy**(): `void`
 
-Defined in: [history/chat-message-history.ts:265](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L265)
+Defined in: [history/chat-message-history.ts:268](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L268)
 
 Release owned resources.
 
@@ -201,7 +201,7 @@ this adapter built leaked for the life of the process. The clause read
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:285](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L285)
+Defined in: [history/chat-message-history.ts:288](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L288)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -231,7 +231,7 @@ per request.
 
 > **forSession**(`sessionId`, `window?`): [`DynamoDBSessionChatMessageHistory`](DynamoDBSessionChatMessageHistory.md)
 
-Defined in: [history/chat-message-history.ts:246](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L246)
+Defined in: [history/chat-message-history.ts:249](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L249)
 
 Get a single-session LangChain adapter for `sessionId`.
 
@@ -373,7 +373,7 @@ whatever the table holds.
 
 > **reconcileMessageCount**(`sessionId`, `options?`): `Promise`\<`number`\>
 
-Defined in: [history/chat-message-history.ts:223](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L223)
+Defined in: [history/chat-message-history.ts:226](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L226)
 
 Recompute and repair a session's `messageCount` from the stored messages.
 A maintenance tool for external corruption; run it when the session is idle.
@@ -387,8 +387,11 @@ would see.
 Throws: ValidationError for a malformed session id, an invalid `signal`,
 or an `options.<key>` this package does not read; ConflictError when the
 session does not exist or stayed busy through every attempt;
-`FORMAT_UNSUPPORTED` for a message row a newer release wrote, which
-`getMessages` refuses too; UpstreamError; AbortError.
+`FORMAT_UNSUPPORTED` for a message row a newer release wrote, and
+ValidationError naming `message` for a row in the session's message key
+space that this adapter did not write, both of which `getMessages` refuses
+too — a count is a repair only while it agrees with the read;
+UpstreamError; AbortError.
 
 Guarantees: safe on a live session — the write is pinned to the value the
 row held when the count was computed, so a concurrent append makes it
