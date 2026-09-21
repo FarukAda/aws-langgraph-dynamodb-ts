@@ -3,6 +3,7 @@ import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 import { DynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { ValidationError } from '../errors/errors';
+import { redactedMessage } from '../logging/secret-patterns';
 
 /**
  * A minimal JSON serializer implementing LangGraph's {@link SerializerProtocol},
@@ -27,7 +28,7 @@ export const JSON_SERDE: SerializerProtocol = {
       text = JSON.stringify(value);
     } catch (error) {
       throw new ValidationError(
-        `value cannot be serialized as JSON: ${(error as Error).message}`,
+        `value cannot be serialized as JSON: ${redactedMessage(error as Error)}`,
         'value',
       );
     }

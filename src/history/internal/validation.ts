@@ -7,6 +7,7 @@ import {
 
 import { MAX_PARTITION_ID_BYTES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
+import { redactedMessage } from '../../shared/logging/secret-patterns';
 import { validateIdentifier, validateInteger } from '../../shared/validation/primitives';
 import type { MessageWindow } from '../types';
 import { SORT_KEY_SEPARATOR } from './keys';
@@ -67,7 +68,7 @@ export function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
       return mapChatMessagesToStoredMessages([message])[0];
     } catch (error) {
       throw new ValidationError(
-        `messages[${index}] is not a LangChain message: ${(error as Error).message}`,
+        `messages[${index}] is not a LangChain message: ${redactedMessage(error as Error)}`,
         'messages',
       );
     }
@@ -95,7 +96,8 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
       mapStoredMessagesToChatMessages([message]);
     } catch (error) {
       throw new ValidationError(
-        `messages[${index}] of type "${message.type}" cannot be stored: ${(error as Error).message}`,
+        `messages[${index}] of type "${message.type}" cannot be stored: ` +
+          redactedMessage(error as Error),
         'messages',
       );
     }

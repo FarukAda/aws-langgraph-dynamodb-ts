@@ -1,4 +1,9 @@
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { mockClient } from 'aws-sdk-client-mock';
+
+import { downloadObject, uploadObject } from '../../../../src/shared/codec/s3/read-write';
 import { withRetry } from '../../../../src/shared/dynamodb/retry';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { CompensationFailedError } from '../../../../src/shared/errors/errors';
 import { redactLogger, redactSecrets } from '../../../../src/shared/logging/redaction';
 import { redactText } from '../../../../src/shared/logging/secret-patterns';
@@ -227,5 +232,53 @@ describe('error messages that embed an upstream message (CORE-23)', () => {
     expect(error.message).not.toContain('abc123');
     expect(error.message).not.toContain('xyz');
     expect(error.message).toContain('[REDACTED]');
+  });
+});
+
+/**
+ * The S3 offload wraps an SDK failure in a public `S3_OFFLOAD_FAILED`. A
+ * signing or credential failure reaches it with the credential the SDK tried
+ * to sign with quoted in the SDK's own message, so copying that message
+ * verbatim puts `aws_secret_access_key=` and `x-amz-security-token=` on
+ * `err.message` — the field an application is most likely to print, log or
+ * return with no redacting logger anywhere in the path.
+ */
+describe('the S3 offload never copies an SDK message verbatim (CORE-23)', () => {
+  const s3Mock = mockClient(S3Client);
+  const signingFailure = (): Error =>
+    new Error(
+      'SignatureDoesNotMatch: signed with aws_secret_access_key=wJalrXUtnFEMIK7MDENG ' +
+        'and x-amz-security-token=FQoGZXIvYXdzEBYaDExample',
+    );
+
+  const failureOf = async (attempt: Promise<unknown>): Promise<Error> => {
+    const outcome = await attempt.then(
+      () => undefined,
+      (error: Error) => error,
+    );
+    expect(outcome).toBeDefined();
+    return outcome as Error;
+  };
+
+  const expectRedacted = (error: Error): void => {
+    expect((error as { code?: string }).code).toBe(ErrorCode.S3_OFFLOAD_FAILED);
+    expect(error.message).not.toContain('wJalrXUtnFEMIK7MDENG');
+    expect(error.message).not.toContain('FQoGZXIvYXdzEBYaDExample');
+    expect(error.message).toContain('[REDACTED]');
+  };
+
+  afterEach(() => s3Mock.reset());
+
+  it('redacts the credential an upload failure quotes', async () => {
+    s3Mock.on(PutObjectCommand).rejects(signingFailure());
+    const client = new S3Client({ region: 'us-east-1' });
+    const upload = uploadObject(client, { bucket: 'b', key: 'k.bin', data: new Uint8Array([1]) });
+    expectRedacted(await failureOf(upload));
+  });
+
+  it('redacts the credential a download failure quotes', async () => {
+    s3Mock.on(GetObjectCommand).rejects(signingFailure());
+    const client = new S3Client({ region: 'us-east-1' });
+    expectRedacted(await failureOf(downloadObject(client, 'b', 'k.bin', 1024)));
   });
 });
