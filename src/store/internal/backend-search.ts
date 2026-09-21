@@ -7,6 +7,7 @@ import type {
 
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { ErrorCode } from '../../shared/errors/error-code';
 import { ValidationError } from '../../shared/errors/errors';
 import { getItem } from '../actions/get';
 import type { VectorBackend, VectorMatch } from '../vector-backend';
@@ -40,10 +41,17 @@ function warnOnNonDescendingScores(
 }
 
 /**
- * Read the canonical item a backend match points at, or `undefined` when the
- * match is unusable. `getItem` validates, so a backend returning a namespace
- * element containing the reserved separator would otherwise turn the whole
- * search into a ValidationError instead of dropping the one bad match.
+ * Read the canonical item a backend match points at, or `null` when the match
+ * names an address this store cannot form. `getItem` validates, so a backend
+ * returning a namespace element containing the reserved separator would
+ * otherwise turn the whole search into a `ValidationError` instead of dropping
+ * the one bad match — which is the one case this exists for.
+ *
+ * Every other failure is the read itself not happening, and it is rethrown. A
+ * throttled or cancelled read says nothing about whether the item is there, so
+ * treating it as an absent match handed back a page silently one item short,
+ * with only a `warn` the default logger never prints to say so — while the
+ * in-DynamoDB path fails the same search outright.
  */
 async function fetchMatch(
   context: StoreContext,
@@ -53,10 +61,12 @@ async function fetchMatch(
   try {
     return await getItem(context, match.namespace, match.key, signal);
   } catch (error) {
+    const failure = error as Error;
+    if ((failure as { code?: string }).code !== ErrorCode.VALIDATION) throw failure;
     context.logger.warn('search: skipped an unusable vectorBackend match', {
       namespace: match.namespace,
       key: match.key,
-      reason: (error as Error).name,
+      reason: failure.name,
     });
     return null;
   }
@@ -119,12 +129,17 @@ async function fetchUnseen(
  * different width than the index declares, and naming `maxSearchCandidates`
  * either for a page larger than the cap or when the filter leaves the page short
  * at the cap — the same answer the in-DynamoDB ranker gives, rather than a
- * silently short page. Whatever the embeddings model and the backend throw.
+ * silently short page. Whatever a canonical read throws, apart from the
+ * `ValidationError` a backend key this store cannot address raises (see
+ * {@link fetchMatch}): a read that did not happen is not an item that is not
+ * there. Whatever the embeddings model and the backend throw.
  *
  * Guarantees: DynamoDB stays canonical. A match whose item has since been
- * deleted, lies outside the prefix, or cannot be read is dropped and the search
- * asks the backend for more, so a stale or over-broad index costs results only
- * in latency. Items are fetched with the same bounded concurrency as the
+ * deleted or lies outside the prefix is dropped and the search asks the backend
+ * for more, so a stale or over-broad index costs results only in latency. A
+ * match whose read *fails* is not dropped: the page a caller receives is never
+ * shorter than the matches that exist, which is what the in-DynamoDB path
+ * already promises. Items are fetched with the same bounded concurrency as the
  * in-DynamoDB path, and each distinct match is read once for the whole call
  * however many rounds it takes (see {@link fetchUnseen}).
  */
