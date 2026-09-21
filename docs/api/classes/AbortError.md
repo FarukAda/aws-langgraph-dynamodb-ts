@@ -6,7 +6,7 @@
 
 # Class: AbortError
 
-Defined in: [shared/errors/errors.ts:89](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L89)
+Defined in: [shared/errors/errors.ts:90](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L90)
 
 An operation was cancelled via its AbortSignal.
 
@@ -20,7 +20,7 @@ An operation was cancelled via its AbortSignal.
 
 > **new AbortError**(`message?`, `cause?`): `AbortError`
 
-Defined in: [shared/errors/errors.ts:99](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L99)
+Defined in: [shared/errors/errors.ts:100](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L100)
 
 Accepts: `cause` — the `AbortSignal`'s own reason, when it carried one.
 

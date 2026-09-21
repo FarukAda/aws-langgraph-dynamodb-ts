@@ -6,7 +6,7 @@
 
 # Class: RetryExhaustedError
 
-Defined in: [shared/errors/errors.ts:43](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L43)
+Defined in: [shared/errors/errors.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L44)
 
 A retried operation exhausted its attempt budget.
 
@@ -20,7 +20,7 @@ A retried operation exhausted its attempt budget.
 
 > **new RetryExhaustedError**(`message`, `attempts?`, `cause?`): `RetryExhaustedError`
 
-Defined in: [shared/errors/errors.ts:55](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L55)
+Defined in: [shared/errors/errors.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L56)
 
 Accepts: `attempts` — how many were made before the budget ran out. `cause` —
 the last failure, kept so a caller can classify what actually went wrong.

@@ -6,7 +6,7 @@
 
 # Class: ValidationError
 
-Defined in: [shared/errors/errors.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L7)
+Defined in: [shared/errors/errors.ts:8](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L8)
 
 Input failed a validation rule before any AWS call was made; `context.field` names the input.
 
@@ -20,7 +20,7 @@ Input failed a validation rule before any AWS call was made; `context.field` nam
 
 > **new ValidationError**(`message`, `field?`, `cause?`): `ValidationError`
 
-Defined in: [shared/errors/errors.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L19)
+Defined in: [shared/errors/errors.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L20)
 
 Accepts: `field` — the option, argument or cap that failed, dotted for a
 nested one (`s3.bucketName`). Omitted only where no single input is at

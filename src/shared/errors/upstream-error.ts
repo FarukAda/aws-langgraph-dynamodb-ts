@@ -33,7 +33,7 @@ export class UpstreamError extends DynamoDBLangGraphError {
    * `upstreamName`, and the request id and HTTP status when the SDK supplied
    * them. Absent metadata leaves no `undefined`-valued own property behind, so
    * a serialized error carries only what is real. A cause that is not
-   * error-shaped is described through {@link toError}, so `cause` is always an
+   * error-shaped is described through `toError`, so `cause` is always an
    * `Error` and `upstreamName` always a string.
    *
    * Throws: nothing; building an error may not fail. Reading `.name` off a

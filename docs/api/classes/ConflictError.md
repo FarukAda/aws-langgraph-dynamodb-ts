@@ -6,7 +6,7 @@
 
 # Class: ConflictError
 
-Defined in: [shared/errors/errors.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L26)
+Defined in: [shared/errors/errors.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L27)
 
 A conditional write failed because the precondition no longer holds.
 
@@ -20,7 +20,7 @@ A conditional write failed because the precondition no longer holds.
 
 > **new ConflictError**(`message`, `cause?`): `ConflictError`
 
-Defined in: [shared/errors/errors.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L36)
+Defined in: [shared/errors/errors.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L37)
 
 Accepts: `message` — what precondition no longer held. `cause` — the rejection
 beneath it, when there is one.

@@ -35,11 +35,13 @@ than `instanceof`, which is banned repo-wide.
 
 > **new DynamoDBLangGraphError**(`message`, `code`, `context?`, `cause?`): `DynamoDBLangGraphError`
 
-Defined in: [shared/errors/base-error.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L48)
+Defined in: [shared/errors/base-error.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L50)
 
 Accepts: `message` — already redacted by whoever composed it, since it reaches
 `err.message`, which an application may print without a redacting logger.
 `context` — identifiers and counts only, never a payload or a credential.
+It is **copied**, so a caller that reuses one builder object cannot rewrite
+the context of an error already in flight; `null` reads as an absent one.
 `cause` — the failure below this one, kept as the native `cause` chain.
 
 Returns: the error, branded so [isDynamoDBLangGraphError](../functions/isDynamoDBLangGraphError.md) recognises it

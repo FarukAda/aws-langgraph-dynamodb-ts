@@ -222,7 +222,7 @@ export class CompensationFailedError extends DynamoDBLangGraphError {
    * why the rollback itself could not finish. Both are built from a `catch`, so
    * either may be whatever a `throw` produced rather than an `Error`.
    *
-   * Returns: the error, carrying both, each normalised through {@link toError}
+   * Returns: the error, carrying both, each normalised through `toError`
    * so `cause` and `rollbackError` are always error-shaped. The session's
    * `messageCount` may have drifted, which `reconcileMessageCount` repairs; the
    * quoted text of both errors is redacted before it is embedded.

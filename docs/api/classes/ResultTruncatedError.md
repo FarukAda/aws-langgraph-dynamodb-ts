@@ -6,7 +6,7 @@
 
 # Class: ResultTruncatedError
 
-Defined in: [shared/errors/errors.ts:67](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L67)
+Defined in: [shared/errors/errors.ts:68](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L68)
 
 A paginated read hit its runaway guard (item or iteration cap) while more
 data remained, so the result would have been silently truncated. Narrow the
@@ -23,7 +23,7 @@ query (filter/prefix) or raise the cap rather than trusting a partial result.
 
 > **new ResultTruncatedError**(`cap`, `limit`): `ResultTruncatedError`
 
-Defined in: [shared/errors/errors.ts:78](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L78)
+Defined in: [shared/errors/errors.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L79)
 
 Accepts: `cap` — which cap was hit (`maxItems`, `maxIterations`). `limit` —
 its value, quoted in the message so the fix is obvious.

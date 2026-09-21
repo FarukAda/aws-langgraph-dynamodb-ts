@@ -6,7 +6,7 @@
 
 # Class: BatchWriteAllIncompleteError
 
-Defined in: [shared/errors/errors.ts:158](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L158)
+Defined in: [shared/errors/errors.ts:163](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L163)
 
 batchWriteAll attempts every chunk rather than stopping at the first
 failure — a mid-sequence chunk failing does not abandon the chunks after
@@ -33,7 +33,7 @@ it counts rows where this counts chunks and says so in its message.
 
 > **new BatchWriteAllIncompleteError**(`succeededChunks`, `totalChunks`, `failedChunks`, `succeededCount?`, `unit?`): `BatchWriteAllIncompleteError`
 
-Defined in: [shared/errors/errors.ts:180](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L180)
+Defined in: [shared/errors/errors.ts:187](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L187)
 
 Accepts: `succeededChunks`/`totalChunks` — the chunk tally.
 `failedChunks` — each failing chunk's own error, commonly a
@@ -46,9 +46,11 @@ omitting it reproduces the batch wording exactly.
 
 Returns: the error, with the first failing chunk's error as `cause`. Every
 chunk not represented in `failedChunks` drained successfully and its writes
-persist — there is no rollback.
+persist — there is no rollback. The list is **copied**, for the same reason
+[BatchWriteIncompleteError](BatchWriteIncompleteError.md) copies its own.
 
-Throws: nothing; building an error may not fail.
+Throws: nothing; building an error may not fail. Anything but an array of
+errors reads as an empty list rather than crashing the report.
 
 #### Parameters
 
@@ -110,7 +112,7 @@ Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-lan
 
 > `readonly` **failedChunks**: `Error`[]
 
-Defined in: [shared/errors/errors.ts:161](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L161)
+Defined in: [shared/errors/errors.ts:166](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L166)
 
 ***
 
@@ -118,7 +120,7 @@ Defined in: [shared/errors/errors.ts:161](https://github.com/FarukAda/aws-langgr
 
 > `readonly` **succeededChunks**: `number`
 
-Defined in: [shared/errors/errors.ts:159](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L159)
+Defined in: [shared/errors/errors.ts:164](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L164)
 
 ***
 
@@ -126,7 +128,7 @@ Defined in: [shared/errors/errors.ts:159](https://github.com/FarukAda/aws-langgr
 
 > `readonly` **succeededCount**: `number`
 
-Defined in: [shared/errors/errors.ts:162](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L162)
+Defined in: [shared/errors/errors.ts:167](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L167)
 
 ***
 
@@ -134,4 +136,4 @@ Defined in: [shared/errors/errors.ts:162](https://github.com/FarukAda/aws-langgr
 
 > `readonly` **totalChunks**: `number`
 
-Defined in: [shared/errors/errors.ts:160](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L160)
+Defined in: [shared/errors/errors.ts:165](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L165)

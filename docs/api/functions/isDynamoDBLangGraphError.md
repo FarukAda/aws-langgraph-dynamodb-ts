@@ -8,18 +8,23 @@
 
 > **isDynamoDBLangGraphError**(`value`): `value is DynamoDBLangGraphError`
 
-Defined in: [shared/errors/base-error.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L69)
+Defined in: [shared/errors/base-error.ts:76](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L76)
 
 Whether `value` is one of this library's errors.
 
-Accepts: any error, from any realm or any copy of this package.
+Accepts: any error, from any realm or any copy of this package — and, since
+the documented place to call this is inside a `catch`, any other value a
+`throw` can produce: `null`, `undefined`, a string, a number, a symbol.
 
 Returns: whether it carries the brand. A symbol registered by name, not
 `instanceof`: two copies of this package in one dependency tree produce two
 classes but one symbol, and an error crossing a realm boundary keeps its
-properties while losing its prototype.
+properties while losing its prototype. Anything that cannot carry a property
+answers `false`.
 
-Throws: nothing.
+Throws: nothing. The `in` operator raises a `TypeError` on a non-object, and
+a guard that throws inside the `catch` it was called from would replace the
+failure the caller is reporting with one of its own.
 
 ## Parameters
 
