@@ -20,6 +20,27 @@ import {
 import { beginsWithQuery } from './query';
 import type { CheckpointerContext } from './setup';
 
+/**
+ * Rows one page of the newest-first META read evaluates. The read stops at the
+ * first live row of ours, so this decides only how many *dead* rows one round
+ * trip can step over: at one row per page, a thread whose head has aged out
+ * under a `ttl` cost one `Query` per expired row, and DynamoDB's own sweep may
+ * lag that `ttl` by up to 48 hours, so the run of dead rows is as long as the
+ * thread is busy. This is the hottest read the package performs — every graph
+ * step begins with it — so paying a round trip per aged-out row was the wrong
+ * side of the trade.
+ *
+ * The trade runs the other way when nothing at the head has expired, which is
+ * every thread that sets no `ttl` at all. DynamoDB applies `Limit` before the
+ * filter and bills for what it evaluated, so such a read now pays for up to
+ * this many META rows and keeps exactly one. A META row measures roughly 500
+ * bytes for a typical checkpoint, which puts a page at ~26 KB: about seven
+ * strongly consistent read units where a single row costs one, and a fortieth
+ * of the 1 MB a `Query` may return, so the page size rather than the response
+ * cap is always what ends a page.
+ */
+const LATEST_META_PAGE_SIZE = 50;
+
 /** Per-read options for the payload and writes reads. */
 export interface ReadOptions {
   signal?: AbortSignal;
@@ -43,8 +64,9 @@ export interface ReadOptions {
  *
  * Guarantees: strongly consistent, and expiry is judged here rather than waited
  * for, so a checkpoint past its ttl is absent to every reader however long
- * DynamoDB's sweep lags. The newest-first read pages one row at a time past any
- * foreign row until it finds a real checkpoint.
+ * DynamoDB's sweep lags. The newest-first read returns the first live row of
+ * ours and stops there, stepping over expired and foreign rows
+ * {@link LATEST_META_PAGE_SIZE} at a time rather than one per round trip.
  */
 export async function fetchTargetMeta(
   context: CheckpointerContext,
@@ -73,10 +95,22 @@ export async function fetchTargetMeta(
     partitionKey(threadId),
     metaSortKeyPrefix(checkpointNs),
     {
-      limit: 1,
+      limit: LATEST_META_PAGE_SIZE,
       consistent: true,
     },
   );
+  /**
+   * Both caps stay off, each for its own reason. `maxItems` counts the rows
+   * yielded past the server-side filter, and a finite value there would add
+   * the probe {@link paginateQuery} runs to tell a reached cap apart from an
+   * exhausted read — more requests, on the read the page size above exists to
+   * make cheaper. `maxIterations` is the runaway guard, but a finite value
+   * would turn a namespace whose rows have all aged out into a thrown
+   * `ResultTruncatedError` where this function documents `undefined`, failing
+   * every graph step on exactly the thread shape the page size is here to
+   * serve. The page size is what bounds the walk instead: it divides the
+   * requests a dead head costs by {@link LATEST_META_PAGE_SIZE}.
+   */
   const rows = paginateQuery({
     retry: retryFor(context, signal),
     signal,

@@ -65,7 +65,7 @@ describe('fetchTargetMeta', () => {
     const meta = await fetchTargetMeta(context(client), 't', '');
     expect(meta?.checkpointId).toBe('newest');
     const input = mock.commandCalls(QueryCommand)[0].args[0].input;
-    expect(input.Limit).toBe(1);
+    expect(input.Limit).toBeGreaterThan(1);
     expect(input.ScanIndexForward).toBe(false);
     expect(input.ConsistentRead).toBe(true);
   });
