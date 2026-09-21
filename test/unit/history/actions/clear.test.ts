@@ -182,4 +182,32 @@ describe('clearSession', () => {
     await clearSession(context(client), 'sess-1');
     expect(mock.commandCalls(DeleteCommand)).toHaveLength(pageSize * pageCount);
   });
+
+  /**
+   * The signal has to reach the row deletes, not only the page reads. Handing
+   * it to `paginateQuery` alone still empties a single-page session after the
+   * caller stopped it and then reports the cancel, which satisfies "it threw
+   * `ABORTED`" while doing the one thing a cancel forbids. Only the requests
+   * already in flight when it fired may land; the rest are never issued.
+   */
+  it('issues no further row delete once the signal has fired part-way through the pass', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    const rows = 24;
+    mock.on(QueryCommand).resolves({
+      Items: Array.from({ length: rows }, (_, i) => ({
+        PK: 'HIST#sess-1',
+        SK: `HISTORY#MSG#${String(i).padStart(2, '0')}`,
+        message: inlineMessage,
+      })),
+    });
+    mock.on(DeleteCommand).callsFake(() => {
+      controller.abort();
+      return {};
+    });
+    await expect(
+      clearSession(context(client), 'sess-1', { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mock.commandCalls(DeleteCommand).length).toBeLessThan(rows);
+  });
 });

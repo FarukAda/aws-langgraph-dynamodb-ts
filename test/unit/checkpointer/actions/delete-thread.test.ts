@@ -227,3 +227,33 @@ describe('deleteThread S3 key binding (SEC-03)', () => {
     );
   });
 });
+
+/**
+ * The signal has to reach the row deletes, not only the page reads. A pass that
+ * hands it to `paginateQuery` alone still empties a single-page partition after
+ * the caller stopped it, and reports the cancel — so "it threw `ABORTED`" is
+ * satisfied by exactly the version the cancel exists to prevent. The request
+ * count is what separates them: the three rows are three kinds, each flushed on
+ * its own, so only the first is ever issued.
+ */
+describe('a cancelled deleteThread', () => {
+  it('issues no further row delete once the signal has fired part-way through the pass', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    mock.on(QueryCommand).resolves({
+      Items: [
+        { PK: 't', SK: 'META##c1' },
+        { PK: 't', SK: 'PAYLOAD##c1' },
+        { PK: 't', SK: 'WRITE##c1#task#0' },
+      ],
+    });
+    mock.on(DeleteCommand).callsFake(() => {
+      controller.abort();
+      return {};
+    });
+    await expect(
+      deleteThread(context(client), 't', { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError', code: ErrorCode.ABORTED });
+    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
+  });
+});
