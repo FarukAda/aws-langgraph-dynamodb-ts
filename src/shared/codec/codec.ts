@@ -1,6 +1,8 @@
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
+import { isDynamoDBLangGraphError } from '../errors/base-error';
 import { ValidationError } from '../errors/errors';
+import { toError } from '../errors/wrap-error';
 import { CompressionConfig, decompress } from './compression';
 import type { S3Offloader } from './s3/offloader';
 
@@ -109,7 +111,8 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
  * The payload bytes a descriptor stands for: downloaded when offloaded, then
  * decompressed. Infrastructure only, no deserialization — a caller that needs
  * to tell a transport or permission failure from bad data does this step and
- * `loadsTyped` separately (see `src/history/actions/get-messages.ts`).
+ * {@link loadPayloadValue} separately (see
+ * `src/history/actions/get-messages.ts`).
  *
  * Accepts: `descriptor` — as written by {@link encodePayload}; a
  * `schemaVersion` above this release's, or a `location` it does not know, is
@@ -148,16 +151,65 @@ export async function readPayloadBytes(
 }
 
 /**
- * The value a descriptor stands for: {@link readPayloadBytes} followed by the
- * serde's `loadsTyped`.
+ * The value stored bytes hold, with a serde that refuses them branded rather
+ * than left bare.
+ *
+ * Accepts: `serdeType` — the row's own, handed to the serde unchanged.
+ * `bytes` — what {@link readPayloadBytes} returned. `deps.serde` — the
+ * serializer the adapter was configured with, which may be the caller's.
+ *
+ * Returns: whatever the serde reconstructs, typed as the caller declares.
+ *
+ * Throws: the serde's own error whenever it is already one of this library's,
+ * so `PAYLOAD_CORRUPT` from `JSON_SERDE` stays exactly what it was; anything
+ * else as a ValidationError naming `serde`, carrying the refusal as `cause`.
+ *
+ * Guarantees: no error leaves a decode unbranded. A stored `lc` constructor
+ * record naming a class outside LangChain's allow-list is refused by `load()`
+ * with a plain `Error`, which a public boundary could only rebrand as an
+ * `UpstreamError` — reporting a row's own content to the caller as an AWS
+ * failure. It is deliberately *not* classified as payload loss, for
+ * `assertKeyInScope`'s reason rather than `PAYLOAD_CORRUPT`'s: the bytes are
+ * undamaged and parse, and which classes revive is a property of **this**
+ * reader — the serde it was given, and what that serde's allow-list carries —
+ * not of the payload. A refusal that says only "this reader may not
+ * reconstruct that" is a misconfigured serde or a planted row, both of which an
+ * operator must see; writing it off would let `history.getMessages` answer with
+ * a silently shorter conversation for the one row shape most worth noticing.
+ */
+export async function loadPayloadValue<T>(
+  serdeType: string,
+  bytes: Uint8Array,
+  deps: CodecDeps,
+): Promise<T> {
+  try {
+    return await deps.serde.loadsTyped(serdeType, bytes);
+  } catch (error) {
+    const refusal = toError(error as Error);
+    if (isDynamoDBLangGraphError(refusal)) throw refusal;
+    throw new ValidationError(
+      'the configured serde refused the payload stored in this row: the bytes parse, but the ' +
+        'serializer would not reconstruct the value they name — a stored `lc` constructor record ' +
+        'naming a class outside its allow-list reads this way, as does a serde that did not ' +
+        'write these bytes. The refusal itself is attached as `cause`',
+      'serde',
+      refusal,
+    );
+  }
+}
+
+/**
+ * The value a descriptor stands for: {@link readPayloadBytes} followed by
+ * {@link loadPayloadValue}.
  *
  * Accepts: as {@link readPayloadBytes}; `scope` has the same meaning.
  *
  * Returns: whatever the serde reconstructs, typed as the caller declares.
  *
- * Throws: everything {@link readPayloadBytes} throws, plus whatever
- * `loadsTyped` raises for bytes it cannot parse — `PAYLOAD_CORRUPT` from this
- * package's own serde.
+ * Throws: everything {@link readPayloadBytes} throws, plus everything
+ * {@link loadPayloadValue} throws for bytes the serde will not accept —
+ * `PAYLOAD_CORRUPT` from this package's own serde, ValidationError naming
+ * `serde` for a refusal that is not already branded.
  *
  * Guarantees: the bytes are read first, in a statement of their own. Passing
  * `descriptor.serdeType` and the awaited read as two arguments to one call read
@@ -173,5 +225,5 @@ export async function decodePayload<T>(
   scope: readonly string[],
 ): Promise<T> {
   const bytes = await readPayloadBytes(descriptor, deps, scope);
-  return deps.serde.loadsTyped(descriptor.serdeType, bytes);
+  return loadPayloadValue<T>(descriptor.serdeType, bytes, deps);
 }

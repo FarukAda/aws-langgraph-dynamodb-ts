@@ -42,8 +42,12 @@ function isUnreadableDescriptor(error: Error): boolean {
  * (`PAYLOAD_CORRUPT`), it trips the decompression guard (`COMPRESSION_LIMIT`),
  * or the row's own descriptor is unreadable ({@link isUnreadableDescriptor}).
  * Everything else is false, including an error that carries no code at all, and
- * including the `s3Key` scope refusal — a row pointing outside its own path is
- * a configuration or tenancy fault to report, not a payload to write off.
+ * including two refusals that look like loss and are not. The `s3Key` scope
+ * refusal: a row pointing outside its own path is a configuration or tenancy
+ * fault to report, not a payload to write off. The `serde` refusal, on the same
+ * reasoning: the bytes parse and are undamaged, and a serializer declining to
+ * reconstruct the class they name says what *this* reader may do, not what the
+ * payload is (see `loadPayloadValue`).
  *
  * Returns: whether a caller should report rather than retry.
  *

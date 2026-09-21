@@ -175,9 +175,11 @@ export async function buildStoreItem(
  *
  * Returns: the item, with the timestamps this library stamped at write time.
  *
- * Throws: `PAYLOAD_CORRUPT` for a payload that cannot be decoded, and whatever
- * the download throws for an offloaded one — including the missing-object error
- * `getItem` resolves against a concurrent overwrite.
+ * Throws: `PAYLOAD_CORRUPT` for a payload that cannot be decoded,
+ * ValidationError naming `serde` for one the configured serde refuses to
+ * reconstruct, and whatever the download throws for an offloaded one —
+ * including the missing-object error `getItem` resolves against a concurrent
+ * overwrite.
  */
 export async function readStoreItem(
   context: StoreContext,

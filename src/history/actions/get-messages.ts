@@ -4,7 +4,7 @@ import {
   mapStoredMessagesToChatMessages,
 } from '@langchain/core/messages';
 
-import { type CodecDeps, readPayloadBytes } from '../../shared/codec/codec';
+import { type CodecDeps, loadPayloadValue, readPayloadBytes } from '../../shared/codec/codec';
 import { isPermanentPayloadLoss } from '../../shared/codec/payload-loss';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
@@ -22,18 +22,37 @@ import type { ChatMessageItem, MessageWindow } from '../types';
 type Decoded = { kind: 'ok'; message: BaseMessage } | { kind: 'corrupt'; error: Error };
 
 /**
- * Decode one item in two stages so failures are classified by what caused
+ * This message's own loss, or the whole read's failure. Only what no reader
+ * could ever recover is confined to one message; everything else would hand
+ * the caller a silently truncated conversation that
+ * `RunnableWithMessageHistory` then re-persists as the truth.
+ */
+function corruptOrRethrow(error: Error): Decoded {
+  if (isPermanentPayloadLoss(error)) return { kind: 'corrupt', error };
+  throw error;
+}
+
+/**
+ * Decode one item in three stages so failures are classified by what caused
  * them. Fetching the bytes (an S3 download, decompression) is infrastructure:
- * a transport, throttling or permission failure there is rethrown, because
- * dropping the message would hand the caller a silently truncated conversation
- * that `RunnableWithMessageHistory` then re-persists. Only a *permanent* loss
- * at that stage — the object is gone, or the decompression guard tripped — is
- * corruption; a row whose `s3Key` lies outside the session's own path is a
- * configuration or tenancy fault, so it is rethrown like any other
- * infrastructure failure (see `assertKeyInScope`).
- * Deserializing and rebuilding the message is pure data handling,
- * so any failure there (bad bytes, a type LangChain cannot rebuild such as a
- * `RemoveMessage`) is corruption too, and is confined to that one message.
+ * a transport, throttling or permission failure there is rethrown. Only a
+ * *permanent* loss at that stage — the object is gone, or the decompression
+ * guard tripped — is corruption; a row whose `s3Key` lies outside the session's
+ * own path is a configuration or tenancy fault, so it is rethrown like any
+ * other infrastructure failure (see `assertKeyInScope`).
+ *
+ * Deserializing is classified the same way, through the same predicate: bytes
+ * the serializer cannot parse are this message's own loss, but a serde that
+ * refuses to reconstruct what the bytes *name* — the branded refusal
+ * {@link loadPayloadValue} raises for a stored `lc` record naming a class
+ * outside its allow-list — is a misconfigured serde or a planted row, and is
+ * reported for the same reason the out-of-scope key is. Bytes reached this
+ * stage bare before it existed, so a refusal of that kind was skipped here
+ * while the store and the saver raised on the identical row.
+ *
+ * Rebuilding the message from what the serde returned is pure data handling, so
+ * any failure there — a type LangChain cannot rebuild, such as a
+ * `RemoveMessage` — is corruption confined to that one message.
  */
 async function decodeMessage(
   context: HistoryContext,
@@ -51,11 +70,15 @@ async function decodeMessage(
   try {
     bytes = await readPayloadBytes(item.message, deps, [sessionId]);
   } catch (error) {
-    if (isPermanentPayloadLoss(error as Error)) return { kind: 'corrupt', error: error as Error };
-    throw error;
+    return corruptOrRethrow(error as Error);
+  }
+  let stored: StoredMessage;
+  try {
+    stored = await loadPayloadValue<StoredMessage>(item.message.serdeType, bytes, deps);
+  } catch (error) {
+    return corruptOrRethrow(error as Error);
   }
   try {
-    const stored = (await context.serde.loadsTyped(item.message.serdeType, bytes)) as StoredMessage;
     return { kind: 'ok', message: mapStoredMessagesToChatMessages([stored])[0] };
   } catch (error) {
     return { kind: 'corrupt', error: toError(error as Error) };
@@ -88,11 +111,12 @@ async function decodeMessage(
  * `options.<key>` for a key this package does not read;
  * `FORMAT_UNSUPPORTED` for a row a newer version wrote; the decode error of a
  * corrupt row under `onCorruptMessage: 'throw'`; ValidationError naming
- * `s3Key` for a row addressing an object outside the session's own path,
- * whatever the policy; any infrastructure failure — a throttle, a permission,
- * a transport error — whatever the policy, because dropping a message for one
- * of those would hand back a silently truncated conversation that the chain
- * then re-persists as the truth.
+ * `s3Key` for a row addressing an object outside the session's own path, and
+ * naming `serde` for a row whose payload the serializer refuses to
+ * reconstruct, both whatever the policy; any infrastructure failure — a
+ * throttle, a permission, a transport error — whatever the policy, because
+ * dropping a message for one of those would hand back a silently truncated
+ * conversation that the chain then re-persists as the truth.
  *
  * Guarantees: strongly consistent, so the turn just appended is visible.
  * Offloaded messages download several at a time, and the corruption policy is
