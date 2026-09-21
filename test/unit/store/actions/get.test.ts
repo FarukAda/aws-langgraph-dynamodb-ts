@@ -191,6 +191,28 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     expect(mock.commandCalls(GetCommand)).toHaveLength(2);
   });
 
+  /**
+   * The overwrite this re-read exists to catch can put anything on the row,
+   * including a `null` where the descriptor was. Comparing the two rows read
+   * `location` off it, so the caller of a public `get` was handed a bare
+   * TypeError about a property instead of a coded error naming the row's own
+   * unreadable descriptor.
+   */
+  it('answers a re-read row whose descriptor is null with a coded error, not a property read', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const downloads: Record<string, () => Promise<Uint8Array>> = {};
+    const ctx = { ...context(client), offloader: offloaderFor(downloads) as never };
+    const { old } = await records(ctx);
+    downloads[keyOf(old)] = gone;
+    mock
+      .on(GetCommand)
+      .resolvesOnce({ Item: old })
+      .resolvesOnce({ Item: { ...old, value: null } });
+    const error = await getItem(ctx, ['users', 'u1'], 'p').catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(DynamoDBLangGraphError);
+    expect(error).toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'descriptor' } });
+  });
+
   it('does not re-read for a failure that is not a missing object', async () => {
     const { client, mock } = createStrictDocumentMock();
     const throttled = async (): Promise<Uint8Array> => {

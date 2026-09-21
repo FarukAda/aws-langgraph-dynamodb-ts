@@ -79,6 +79,35 @@ describe('deleteThread', () => {
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k-cp']);
   });
 
+  /**
+   * A WRITE row a repair tool or a foreign writer left with a `null` payload
+   * attribute still carries its own `writeGroup`, so the pin comes off the row
+   * and the descriptor is first read by the S3 cleanup the flush runs on its
+   * way out — the one that documents it throws nothing. Reading `location` off
+   * the `null` ended the whole thread delete with a bare TypeError instead, and
+   * the rows of every other kind in the partition stayed.
+   */
+  it('deletes a row whose payload attribute is null and releases nothing for it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({
+      Items: [
+        { PK: 't', SK: 'WRITE##c1#task#0', writeGroup: 'g1', value: null },
+        {
+          PK: 't',
+          SK: 'PAYLOAD##c1',
+          checkpoint: { location: PayloadLocation.S3, serdeType: 'json', s3Key: 'k-cp' },
+        },
+      ],
+    });
+    mock.on(DeleteCommand).resolves({});
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]), ownsKey: () => true };
+    await deleteThread({ ...context(client), offloader: offloader as never }, 't');
+    const deleted = mock.commandCalls(DeleteCommand).map((call) => call.args[0].input.Key?.SK);
+    expect(deleted).toEqual(['WRITE##c1#task#0', 'PAYLOAD##c1']);
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['k-cp']);
+  });
+
   it('reads the partition strongly-consistently before deleting', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });
