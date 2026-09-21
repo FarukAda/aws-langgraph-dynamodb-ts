@@ -181,6 +181,45 @@ describe('flushPendingDeletes', () => {
     expect(tally.deleted).toBe(DELETE_CONCURRENCY - 1);
   });
 
+  /**
+   * `unmarshall` is handed an `Item` that is already a plain document. The
+   * stock document client does not produce one, so this is latent today — but
+   * `client` is an eight-method duck type the package documents for callers to
+   * wrap their own client with, which puts it in reach with no logger in the
+   * path at all. Losing it meant `failures` stayed empty and the pass read that
+   * as a clean flush.
+   */
+  it('records a throw from decoding the row a rejection carries', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(DeleteCommand).callsFake((input: DeleteCommandInput) => {
+      throw Object.assign(new Error('The conditional request failed'), {
+        name: 'ConditionalCheckFailedException',
+        Item: { PK: 'p', SK: String(input.Key?.SK) },
+      });
+    });
+    const tally = await flushPendingDeletes(deps(client), [pending('a')]);
+    expect(tally).toMatchObject({ deleted: 0, refused: 0 });
+    expect(tally.failures).toHaveLength(1);
+  });
+
+  /**
+   * The refusal report calls the caller's own `Logger`, which is consumer code.
+   * A throw there leaves the row settled but unreported, so it is filed as a
+   * failure and not also counted as a refusal — one row, one outcome.
+   */
+  it('records a throw from the refusal report instead of reporting a clean flush', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(DeleteCommand).callsFake(refuseAlways);
+    const warn = (): never => {
+      throw new TypeError('logger transport closed');
+    };
+    const tally = await flushPendingDeletes(deps(client, { logger: { ...SILENT_LOGGER, warn } }), [
+      pending('a'),
+    ]);
+    expect(tally).toMatchObject({ deleted: 0, refused: 0, refusedUnits: [] });
+    expect(tally.failures).toHaveLength(1);
+  });
+
   it('cleans nothing up when the adapter has no offloader', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(DeleteCommand).resolves({});

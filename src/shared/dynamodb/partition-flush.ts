@@ -50,27 +50,35 @@ export interface FlushTally {
   released: DescriptorRef[];
 }
 
-/** Record a row the pin turned away: left in place, nothing released, reported. */
+/**
+ * Record a row the pin turned away: left in place, nothing released, reported.
+ *
+ * Reported *before* it is counted, deliberately. The report calls the caller's
+ * own `Logger`, and a `Logger` that throws makes this row's handling
+ * incomplete; {@link deleteRow} then files it as a failure. Counting it first
+ * would leave the same row counted as a refusal the pass also reports as a
+ * failure. One row, one outcome.
+ */
 function recordRefusal(deps: FlushDeps, row: PendingDelete, tally: FlushTally): void {
-  tally.refused += 1;
-  if (row.unit !== undefined) tally.refusedUnits.push(row.unit);
   deps.logger.warn(`${deps.operation}: left a row rewritten since the read`, {
     sortKey: truncateForLog(row.key.SK as string),
   });
+  tally.refused += 1;
+  if (row.unit !== undefined) tally.refusedUnits.push(row.unit);
 }
 
 /**
- * Delete one row, turning a lost pin into an outcome rather than a rejection.
+ * Settle one row, turning a lost pin into an outcome rather than a rejection.
  *
  * A rejection carrying the row means it was rewritten after the read: the row
  * stays, its objects stay, and the pass reports it. A rejection carrying no row
  * means it is already gone — a racing delete, or this pass's own earlier
  * attempt whose acknowledgement was lost — which is the outcome the caller
  * asked for, so it counts as deleted and its objects are released. Anything
- * else is a genuine failure: it is recorded and rethrown, so the pass ends as
- * it does today rather than reporting a delete it did not make.
+ * else is a genuine failure and is rethrown, so the pass ends rather than
+ * reporting a delete it did not make.
  */
-async function deleteRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally): Promise<void> {
+async function settleRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally): Promise<void> {
   try {
     await withDynamoDBRetry(
       (request) =>
@@ -86,10 +94,7 @@ async function deleteRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally)
     );
   } catch (error) {
     const rejection = error as Error;
-    if (!isConditionalCheckFailed(rejection)) {
-      tally.failures.push(rejection);
-      throw rejection;
-    }
+    if (!isConditionalCheckFailed(rejection)) throw rejection;
     if (rejectedItem(rejection) !== undefined) {
       recordRefusal(deps, row, tally);
       return;
@@ -97,6 +102,29 @@ async function deleteRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally)
   }
   tally.deleted += 1;
   tally.released.push(...row.descriptors);
+}
+
+/**
+ * Delete one row, recording whatever stops it before letting the flush end.
+ *
+ * The recording wraps the whole of {@link settleRow} rather than sitting in the
+ * one branch that first needed it, because the delete's own rejection is not
+ * the only thing in there that can throw. Reading the row a rejection carries
+ * is a decode, and it fails on an `Item` that arrives already unmarshalled —
+ * which the stock document client does not produce, but a client wrapped
+ * through the documented injection seam can. Reporting a refusal is a call into
+ * the caller's own `Logger`, which is consumer code. Neither used to reach
+ * `tally.failures`, and an empty `failures` is exactly what the pass reads as
+ * "nothing went wrong": one such throw abandoned the rest of the buffer and the
+ * pass still resolved, reporting a thread deleted that was mostly still there.
+ */
+async function deleteRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally): Promise<void> {
+  try {
+    await settleRow(deps, row, tally);
+  } catch (error) {
+    tally.failures.push(error as Error);
+    throw error;
+  }
 }
 
 /**
@@ -110,12 +138,17 @@ async function deleteRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally)
  * Returns: the tally — rows deleted, rows refused and the units they belonged
  * to, the failures, and the descriptors released.
  *
- * Throws: nothing. A genuine failure stops the flush from starting further rows
- * and is handed back in `failures` for the caller to end the pass with; a
- * refusal never stops anything. S3 cleanup never throws either
+ * Throws: nothing. Every failure stops the flush from starting further rows and
+ * is handed back in `failures` for the caller to end the pass with — the
+ * delete's own rejection, and equally a throw from decoding a rejection's
+ * attached row or from the caller's logger, neither of which is this pass's to
+ * absorb. A refusal never stops anything. S3 cleanup never throws either
  * ({@link cleanUpS3Orphans}).
  *
- * Guarantees: at most {@link DELETE_CONCURRENCY} requests are in flight. There
+ * Guarantees: an empty `failures` means every row of the buffer was settled.
+ * The flush cannot both lose a failure and hand back a clean tally, which is
+ * what let a pass log a deleted thread over a partition it had mostly left
+ * alone. At most {@link DELETE_CONCURRENCY} requests are in flight. There
  * is one request per row - that is the price of a condition, which a batch
  * write silently ignores - but they cost a bounded number of sequential rounds
  * rather than one per row, and a partition of any size cannot open a socket
@@ -137,7 +170,14 @@ export async function flushPendingDeletes(
   try {
     await mapWithConcurrency(rows, DELETE_CONCURRENCY, (row) => deleteRow(deps, row, tally));
   } catch {
-    /** Every genuine failure is already in `tally.failures`; the throw only ends the flush. */
+    /**
+     * The only thing that reaches here is {@link deleteRow}'s own rethrow, and
+     * it records every failure it rethrows — the delete's rejection, the decode
+     * of a rejection's attached row, and the caller's logger alike. So what is
+     * dropped here is a second reference to something already in
+     * `tally.failures`, never the only record of it, and the throw's remaining
+     * job was to stop further rows from being started.
+     */
   }
   if (deps.offloader) {
     await cleanUpS3Orphans(

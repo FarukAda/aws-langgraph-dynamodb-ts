@@ -12,6 +12,7 @@ import type {
 
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
+import type { BatchWriteAllIncompleteError } from '../../../src/shared/errors/errors';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 
 const serde = {
@@ -350,5 +351,42 @@ describe('cancellation via RunnableConfig.signal (CORE-04)', () => {
       code: ErrorCode.ABORTED,
     });
     expect(mock.commandCalls(QueryCommand)).toHaveLength(1);
+  });
+
+  /**
+   * The promise is "BatchWriteAllIncompleteError when a row's delete fails,
+   * counting rows rather than batches and carrying what did succeed". A row
+   * whose *handling* threw — here the decode of the row a rejection carries,
+   * which an injected client can hand back already unmarshalled — reached no
+   * tally, so the flush ended early, the pass saw no failure, and the caller
+   * was told a thread was deleted that was mostly still in the table.
+   */
+  it('reports an incomplete deleteThread when a row s handling throws, with counts that add up', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({
+      Items: Array.from({ length: 20 }, (_, i) => ({ PK: 'CHKPT#t', SK: `WRITE##c1#task#${i}` })),
+    });
+    let deleted = 0;
+    mock.on(DeleteCommand).callsFake(async (input: { Key?: { SK?: string } }) => {
+      if (input.Key?.SK === 'WRITE##c1#task#7') {
+        throw Object.assign(new Error('The conditional request failed'), {
+          name: 'ConditionalCheckFailedException',
+          Item: { PK: 'CHKPT#t', SK: input.Key.SK },
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      deleted += 1;
+      return {};
+    });
+    const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
+    const raised = await saver.deleteThread('t').then(
+      () => undefined,
+      (error: BatchWriteAllIncompleteError) => error,
+    );
+    expect(raised).toMatchObject({ code: ErrorCode.BATCH_WRITE_INCOMPLETE });
+    expect(raised?.succeededCount).toBe(deleted);
+    expect((raised?.succeededChunks ?? 0) + (raised?.failedChunks.length ?? 0)).toBe(
+      raised?.totalChunks,
+    );
   });
 });
