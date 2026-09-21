@@ -15,6 +15,8 @@ The adapters, the single-session adapter, the factory and `backfillRecencyIndex`
 
 ### Changed
 
+- **A page can come back shorter than its `limit` for one more reason.** `history.listSessions` also drops a SESSION row whose `messageCount`, `createdAt`, `updatedAt` or `title` is not the type this package writes there, and `store.search` drops a row carrying no timestamps. For `listSessions` the cursor still advances, because it is a position in the index rather than a count of what survived filtering.
+
 - **The real-AWS test tier no longer runs on a schedule.** The nightly workflow is gone; `npm run test:aws` is a maintainer step before a release. One of its nine suites exercises Bedrock, and a scheduled job that retried or looped would bill the account unattended — the kind of cost nobody notices until the invoice arrives. Running it by hand keeps the spend attached to a person who chose it. What the tier covers is unchanged: 52 tests over real DynamoDB, S3 and Bedrock, each creating and deleting its own uniquely named resources.
 
 ### Performance
@@ -22,6 +24,12 @@ The adapters, the single-session adapter, the factory and `backfillRecencyIndex`
 - **`getTuple` reads the latest checkpoint in one `Query` instead of one per expired row.** The newest-first metadata read evaluated a single row per page, and because DynamoDB applies a page size **before** a filter expression, every checkpoint past its `ttl` at the head of a thread emptied a whole page and cost its own round trip — twenty-six `Query` calls to step over twenty-five expired rows, on the read that begins every graph step, for as long as DynamoDB's TTL sweep lagged. The read now evaluates fifty rows per page, still stops at the first live checkpoint, and returns exactly the same tuple. A thread that sets no `ttl` pays for this in read capacity rather than round trips: the read evaluates up to fifty light `META` rows — roughly 26 KB, about seven strongly consistent read units — and keeps one.
 
 ### Fixed
+
+- **`history.listSessions` no longer fails the whole call on one malformed SESSION row.** A row whose `ttl` was not a number survived the expiry filter — `'soon' <= now` is `false`, so it read as live — and then threw `RangeError: Invalid time value` out of `new Date(ttl * 1000).toISOString()`, surfacing as an `UpstreamError` that took every healthy session with it. `NaN`, `Infinity` and a value past the range a `Date` spans did the same. Such a row is now skipped, as a foreign row already was.
+
+- **`store.get` and `store.search` no longer return an item whose `createdAt` or `updatedAt` is an `Invalid Date`.** A row carrying no timestamps is skipped; `get` answers `null` for it, as it already does for an absent, expired or foreign row.
+
+- **A checkpointer pending write or store row whose payload descriptor is `null` or absent now raises `ValidationError` naming `descriptor` instead of a bare `TypeError` rebranded as `UpstreamError`.** `decodePayload` read `descriptor.serdeType` as an argument beside the awaited `readPayloadBytes(…)`, and arguments evaluate left to right, so the property was read before the guard that refuses that descriptor ever ran. This is the same error the chat-history adapter already produced for the same row, and `isPermanentPayloadLoss` classifies it, so `onCorruptMessage: 'skip'` honours it rather than rethrowing.
 
 - **A recency listing no longer skips or repeats a row at a page boundary.** The read merges pages from several index shards in memory and compared their sort keys with JavaScript's `>`, which orders **UTF-16 code units**, while the server-side bound that resumes the next page is DynamoDB's own key condition, which orders **UTF-8 bytes**. The two disagree wherever an astral character meets a high-BMP one, so when two shards tied on the timestamp and their ids differed above the BMP, the merge chose a cursor the server read from a different place: one row was dropped from the listing entirely, or handed out on two consecutive pages. The comparison now states the server's rule directly.
 
