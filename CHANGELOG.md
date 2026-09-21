@@ -203,6 +203,7 @@ The 1.0.0 hardening: every finding of an independent, enterprise-grade review of
 
 ### Changed (breaking)
 
+- **The input a `ValidationError` names moved from `context.operation` to `context.field`.** In `0.9.0`, `ErrorContext` had one field, `operation`, and `new ValidationError(message, field)` stored the offending input there; `ResultTruncatedError` stored the cap it hit in the same place. `ErrorContext` now has both, with `operation` meaning the public operation that failed and the new `field` meaning the input at fault, and both errors write to `field`. Code reading `error.context.operation` to learn which option or argument was rejected reads `undefined` and must read `error.context.field`.
 - **`DynamoDbLangGraphError` is now `DynamoDBLangGraphError`**, matching every other export; the `name` property changed with it. There is no alias.
 - **Raw AWS SDK errors no longer escape a public method.** Each is wrapped in a new `UpstreamError` (`code: 'UPSTREAM'`) with the SDK error as `cause` and its `upstreamName`, `requestId` and `httpStatusCode` copied. Code that matched `error.name === 'AccessDeniedException'` must look at `error.cause` (or `error.upstreamName`).
 - **`saver.list()` without a `thread_id` scans every thread** (a table `Scan`, as the reference savers do) instead of throwing `ValidationError`, and `saver.getTuple()` with a config that names no thread returns `undefined` instead of throwing — both required by LangChain's checkpointer validation suite. Grant `dynamodb:Scan` only to roles that may read across tenants.
@@ -239,7 +240,7 @@ The 1.0.0 hardening: every finding of an independent, enterprise-grade review of
 - Every read path filters rows past their `ttl` during DynamoDB's sweep lag (store `get`/`search`/`listNamespaces`, checkpointer `getTuple`/`list`, history `getMessages`/`listSessions`).
 - Retries: HTTP 429/5xx, `$retryable` errors and every SDK socket code are classified as transient with exact-token matching; S3 uploads and downloads retry SDK timeouts and status-only 5xx through the one classifier; `ResultTruncatedError` no longer fires when the page after the cap is empty; an injected DynamoDB client that keeps the SDK's own retries is warned about at construction.
 - S3: offloaded keys are bound to the adapter prefix and the row's own identifiers before any download or delete, so a tampered row cannot reach another item's object; a missing `@aws-sdk/client-s3` peer fails with a typed error naming the remedy; the shipped declarations compile without the optional peer installed.
-- Errors and logging: `ErrorContext.field` names the offending option or argument, `DynamoDBLangGraphError` carries structured context, redaction covers error text without over-redacting telemetry, and a payload that cannot fit a DynamoDB item is refused before the write.
+- Errors and logging: `DynamoDBLangGraphError` carries structured context, redaction covers error text without over-redacting telemetry, and a payload that cannot fit a DynamoDB item is refused before the write.
 - ULIDs draw their random component from `crypto.randomBytes`.
 - Metadata filters compare own properties only, and the lifecycle-rule slug no longer uses a quadratic regex.
 - The lockfile installs with npm 10 (Node 22) as well as npm 11.
