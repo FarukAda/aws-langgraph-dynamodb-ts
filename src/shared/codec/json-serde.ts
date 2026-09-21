@@ -4,6 +4,8 @@ import { DynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { ValidationError } from '../errors/errors';
 import { toError } from '../errors/wrap-error';
+import { truncateForLog } from '../logging/truncate';
+import { JSON_SERDE_TYPE } from './declared-form';
 
 /**
  * A plain JSON serializer implementing LangGraph's `SerializerProtocol`:
@@ -34,10 +36,13 @@ import { toError } from '../errors/wrap-error';
  * object and a `Date` as an ISO string. The README's *Table schema* section
  * holds the whole table, against the checkpointer default column by column.
  *
- * `loadsTyped` accepts the bytes or text `dumpsTyped` produced. Bytes that do
- * not parse are `PAYLOAD_CORRUPT`, because they can never be read and the
- * caller should report rather than retry; a `data` that is not bytes at all is
- * a `ValidationError` naming `data`, because that is the caller's mistake and
+ * `loadsTyped` reads only the `json` form it writes, and says
+ * so before it looks at a byte. Any other declared form is a `ValidationError`
+ * naming `serde`, because it says what *this* reader may rebuild and not that
+ * the payload is damaged. Bytes of that form which do not parse are
+ * `PAYLOAD_CORRUPT`, because they can never be read and the caller should
+ * report rather than retry; a `data` that is not bytes at all is a
+ * `ValidationError` naming `data`, because that is the caller's mistake and
  * not a row's.
  *
  * Frozen for the reason {@link ErrorCode} is: one object, shared by every
@@ -74,9 +79,37 @@ export const JSON_SERDE: SerializerProtocol = {
         'value',
       );
     }
-    return ['json', new TextEncoder().encode(text)];
+    return [JSON_SERDE_TYPE, new TextEncoder().encode(text)];
   },
-  async loadsTyped(_type, data) {
+  async loadsTyped(type, data) {
+    /**
+     * The declared form is honoured, and honoured first. Ignoring it left this
+     * serializer answering for forms it has no grammar for: a row stamped
+     * `bytes` by the checkpointer's default — what that serializer writes for a
+     * raw `Uint8Array` — parsed here as JSON and returned a *different value*
+     * whenever those bytes happened to be valid JSON, and returned this
+     * serializer's own `PAYLOAD_CORRUPT` when they were not. The second reading
+     * is the one that cost data: the codec passes an already-branded refusal
+     * through untouched, so `bytesHoldDeclaredForm` never ran, the row was
+     * filed as permanent loss, and history's default `onCorruptMessage: 'skip'`
+     * dropped the message. The same row read through the checkpointer's own
+     * default was reported as a refusal instead, so which serde an adapter
+     * carried decided whether a turn survived the read.
+     *
+     * A form this serializer cannot rebuild a value from is a statement about
+     * this reader, not about the payload, so it names `serde` — the same brand
+     * the codec puts on `JsonPlusSerializer`'s `Unknown serialization type`,
+     * which is what makes the two agree. The type is quoted from the row, so it
+     * is bounded, for the reason `truncateForLog` states.
+     */
+    if (type !== JSON_SERDE_TYPE) {
+      throw new ValidationError(
+        `this serializer reads only the \`${JSON_SERDE_TYPE}\` form it writes, and this payload ` +
+          `declares ${truncateForLog(String(JSON.stringify(type)))}; read the row with the ` +
+          'serializer that wrote it, or rewrite the row',
+        'serde',
+      );
+    }
     let text: string;
     /**
      * The decode is inside a guard of its own because it fails for a different

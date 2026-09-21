@@ -191,17 +191,24 @@ export async function readPayloadBytes(
  * Returns: whatever the serde reconstructs, typed as the caller declares.
  *
  * Throws: the serde's own error whenever it is already one of this library's,
- * so `PAYLOAD_CORRUPT` from `JSON_SERDE` stays exactly what it was;
- * `PAYLOAD_CORRUPT` when the bytes are no longer the form the row declares, on
- * whatever serde raised it; anything else as a ValidationError naming `serde`,
- * carrying the refusal as `cause`.
+ * so `PAYLOAD_CORRUPT` from `JSON_SERDE` stays exactly what it was — as does
+ * its refusal of a `serdeType` it has no grammar for, which it brands the same
+ * ValidationError naming `serde` that the classifier below reaches for on the
+ * identical row under any other serde; `PAYLOAD_CORRUPT` when the bytes are no
+ * longer the form the row declares, on whatever serde raised it; anything else
+ * as a ValidationError naming `serde`, carrying the refusal as `cause`.
  *
  * Guarantees: no error leaves a decode unbranded, and which serde the adapter
  * was configured with never decides *which* brand. A rotted row read through
  * `JSON_SERDE` reported `PAYLOAD_CORRUPT` while the identical row read through
  * the checkpointer's own default reported the refusal below, so a caller
  * quarantining on `PAYLOAD_CORRUPT` never matched and `history.getMessages`
- * lost a whole conversation where it promises one dropped message.
+ * lost a whole conversation where it promises one dropped message. A row
+ * declaring a form neither serde writes ran the same divergence the other way,
+ * and reached further: `JSON_SERDE` ignored the declared type, so its own
+ * `JSON.parse` failure arrived here already branded and the classifier was
+ * never consulted. The serializer honours the declared form now, which is what
+ * keeps this the one place the distinction is drawn.
  *
  * The refusal is what remains once the bytes are known to be intact: the
  * serializer would not reconstruct the value they name. A stored `lc`

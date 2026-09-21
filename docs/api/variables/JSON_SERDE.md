@@ -8,7 +8,7 @@
 
 > `const` **JSON\_SERDE**: `SerializerProtocol`
 
-Defined in: [shared/codec/json-serde.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/json-serde.ts#L48)
+Defined in: [shared/codec/json-serde.ts:53](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/json-serde.ts#L53)
 
 A plain JSON serializer implementing LangGraph's `SerializerProtocol`:
 the default `serde` of `DynamoDBStore` and `DynamoDBChatMessageHistory`, and
@@ -38,10 +38,13 @@ records: a `Map` or `Set` stores as `{}`, an object key whose value is
 object and a `Date` as an ISO string. The README's *Table schema* section
 holds the whole table, against the checkpointer default column by column.
 
-`loadsTyped` accepts the bytes or text `dumpsTyped` produced. Bytes that do
-not parse are `PAYLOAD_CORRUPT`, because they can never be read and the
-caller should report rather than retry; a `data` that is not bytes at all is
-a `ValidationError` naming `data`, because that is the caller's mistake and
+`loadsTyped` reads only the `json` form it writes, and says
+so before it looks at a byte. Any other declared form is a `ValidationError`
+naming `serde`, because it says what *this* reader may rebuild and not that
+the payload is damaged. Bytes of that form which do not parse are
+`PAYLOAD_CORRUPT`, because they can never be read and the caller should
+report rather than retry; a `data` that is not bytes at all is a
+`ValidationError` naming `data`, because that is the caller's mistake and
 not a row's.
 
 Frozen for the reason [ErrorCode](../enumerations/ErrorCode.md) is: one object, shared by every

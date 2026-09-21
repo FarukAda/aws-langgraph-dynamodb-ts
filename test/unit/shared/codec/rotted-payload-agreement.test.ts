@@ -244,6 +244,23 @@ describe('loadPayloadValue', () => {
   const rotted = new TextEncoder().encode('{not json');
 
   /**
+   * The declared form reaches the same verdict under either serializer. The
+   * checkpointer's default throws `Unknown serialization type` unbranded and
+   * the classifier takes the type at its word; `JSON_SERDE` refuses the form
+   * itself, branded the same way, and this passes that refusal through. They
+   * disagreed: `JSON_SERDE` read the declared type not at all, so its own
+   * `JSON.parse` failure arrived here already branded `PAYLOAD_CORRUPT` and the
+   * classifier never ran — which is a row reported on one adapter and dropped
+   * on another, for no reason but how the adapter was configured.
+   */
+  it.each(SERDES)('reports a form %s has no grammar for as a refusal', async (_name, serde) => {
+    await expect(loadPayloadValue('x-msgpack', rotted, { serde: serde() })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'serde' },
+    });
+  });
+
+  /**
    * The refusal of a serde whose format this package cannot check reaches the
    * caller intact, because a payload that merely cannot be checked is not a
    * payload that is known to be gone.

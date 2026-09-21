@@ -130,6 +130,58 @@ describe('JSON_SERDE.loadsTyped', () => {
 });
 
 /**
+ * `serdeType` names the form a row was written in, and this serializer writes
+ * exactly one. A row declaring another is a row some other serializer wrote —
+ * `JsonPlusSerializer` stamps `bytes` on a raw `Uint8Array`, and a caller's own
+ * serde may stamp anything — so parsing it anyway answers for a grammar this
+ * serializer does not have. It used to: the parameter was named `_type` and
+ * went unread.
+ */
+describe('JSON_SERDE.loadsTyped and the declared form', () => {
+  it.each([
+    ['bytes, which the checkpointer default stamps on a Uint8Array', 'bytes'],
+    ['a form a foreign serde stamps', 'x-msgpack'],
+  ])('refuses %s as a refusal naming the serde, not as a corrupt payload', async (_name, type) => {
+    await expect(
+      JSON_SERDE.loadsTyped(type, new TextEncoder().encode('{oops')),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'serde' } });
+  });
+
+  /**
+   * The worse half, and the one no error ever reported: `JsonPlusSerializer`
+   * writes `Uint8Array([49, 50, 51])` as those three bytes stamped `bytes`, and
+   * they are also valid JSON. Ignoring the declared form returned the number
+   * 123 — a value no writer ever stored — and raised nothing at all.
+   */
+  it('refuses a foreign form whose bytes do parse, rather than answering another value', async () => {
+    await expect(
+      JSON_SERDE.loadsTyped('bytes', new Uint8Array([49, 50, 51])),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'serde' } });
+  });
+
+  /**
+   * A refusal is not loss, which is the whole point of the distinction: under
+   * `onCorruptMessage: 'skip'` a payload classified as loss is dropped without
+   * a word, and a row this reader merely has no grammar for is not a lost row.
+   */
+  it('is not permanent payload loss, so the skip policy may not drop it', async () => {
+    const error = await JSON_SERDE.loadsTyped('x-msgpack', new Uint8Array()).catch(
+      (raised: Error) => raised,
+    );
+    expect(isPermanentPayloadLoss(error as Error)).toBe(false);
+  });
+
+  /** The form is quoted off a row, and a row bounds nothing it holds. */
+  it('bounds the declared form it quotes', async () => {
+    const error = await JSON_SERDE.loadsTyped('x'.repeat(5000), new Uint8Array()).catch(
+      (raised: Error) => raised,
+    );
+    expect((error as Error).message).toMatch(/…\(len \d+\)/);
+    expect((error as Error).message.length).toBeLessThan(600);
+  });
+});
+
+/**
  * `JSON_SERDE` is the default of `DynamoDBStore` and
  * `DynamoDBChatMessageHistory`, so a refusal it cannot brand is a refusal the
  * adapter cannot brand either — and the surface tier's invariant is that every

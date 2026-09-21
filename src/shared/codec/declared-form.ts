@@ -1,9 +1,20 @@
 /**
  * The one `serdeType` whose grammar this package can check for itself: the type
- * `JSON_SERDE` stamps on everything it writes, and the one LangGraph's own
- * `JsonPlusSerializer` stamps on every value but a raw `Uint8Array`.
+ * `JSON_SERDE` stamps on everything it writes, and the one LangGraph's
+ * own `JsonPlusSerializer` stamps on every value but a raw `Uint8Array`, which
+ * it stamps `bytes`.
+ *
+ * It is exported so the serializer that writes this form and the check that
+ * re-derives it read one constant. They had each decided separately what they
+ * understood: the check took any other type at its word, while `JSON_SERDE`
+ * ignored the declared type and ran `JSON.parse` on whatever it was handed. A
+ * row declaring a form neither of them writes was therefore classified one way
+ * through one serializer and the opposite way through the other — and a row
+ * declaring `bytes`, which the checkpointer's default writes for a raw
+ * `Uint8Array`, decoded to a *different value* rather than failing at all when
+ * its bytes happened to parse as JSON.
  */
-const JSON_SERDE_TYPE = 'json';
+export const JSON_SERDE_TYPE = 'json';
 
 /**
  * Whether stored bytes are still the form the row that holds them declares.
