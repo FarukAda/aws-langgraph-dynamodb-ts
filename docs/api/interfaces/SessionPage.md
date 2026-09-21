@@ -6,7 +6,7 @@
 
 # Interface: SessionPage
 
-Defined in: [history/types.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L79)
+Defined in: [history/types.ts:84](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L84)
 
 One page of [SessionMetadata](SessionMetadata.md), and where the next one resumes.
 
@@ -16,7 +16,7 @@ One page of [SessionMetadata](SessionMetadata.md), and where the next one resume
 
 > `optional` **nextCursor?**: `string`
 
-Defined in: [history/types.ts:82](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L82)
+Defined in: [history/types.ts:87](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L87)
 
 Absent when this page is the last one, or when the read was a scan.
 
@@ -26,4 +26,4 @@ Absent when this page is the last one, or when the read was a scan.
 
 > **sessions**: [`SessionMetadata`](SessionMetadata.md)[]
 
-Defined in: [history/types.ts:80](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L80)
+Defined in: [history/types.ts:85](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L85)

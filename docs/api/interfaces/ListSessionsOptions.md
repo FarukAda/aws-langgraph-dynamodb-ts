@@ -6,7 +6,7 @@
 
 # Interface: ListSessionsOptions
 
-Defined in: [history/types.ts:54](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L54)
+Defined in: [history/types.ts:59](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L59)
 
 Options for `listSessions`: the page, the scan caps, and cancellation.
 
@@ -20,7 +20,7 @@ Options for `listSessions`: the page, the scan caps, and cancellation.
 
 > `optional` **cursor?**: `string`
 
-Defined in: [history/types.ts:71](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L71)
+Defined in: [history/types.ts:76](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L76)
 
 Opaque cursor from a previous page. Requires a configured `indexName` —
 without the index there is no position to resume from, and passing one is
@@ -32,7 +32,7 @@ refused rather than answered with the first page again.
 
 > `optional` **limit?**: `number`
 
-Defined in: [history/types.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L65)
+Defined in: [history/types.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L70)
 
 How many sessions to return, newest-updated first; an integer from 0 to
 `MAX_PAGE_LIMIT` (10,000).
@@ -49,7 +49,7 @@ empty page on either path and reads neither.
 
 > `optional` **maxItems?**: `number`
 
-Defined in: [history/types.ts:75](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L75)
+Defined in: [history/types.ts:80](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L80)
 
 Cap on rows read into memory before `ResultTruncatedError` (default 10 000). Scan path only.
 
@@ -59,7 +59,7 @@ Cap on rows read into memory before `ResultTruncatedError` (default 10 000). Sca
 
 > `optional` **maxIterations?**: `number`
 
-Defined in: [history/types.ts:73](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L73)
+Defined in: [history/types.ts:78](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L78)
 
 Cap on scan pages before `ResultTruncatedError` (default 1000). Scan path only.
 
