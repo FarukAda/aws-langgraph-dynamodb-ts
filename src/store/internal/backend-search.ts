@@ -8,6 +8,7 @@ import type {
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
+import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
 import { getItem } from '../actions/get';
 import type { VectorBackend, VectorMatch } from '../vector-backend';
 import { namespaceMatchesPrefix } from './keys';
@@ -36,7 +37,7 @@ function warnOnNonDescendingScores(
   context.logger.warn(
     'search: vectorBackend returned ascending scores; VectorMatch.score must be a relevance ' +
       '(higher is better), not a distance — results are forwarded in the order the backend gave',
-    { namespacePrefix },
+    { namespacePrefix: truncateLabelsForLog(namespacePrefix) },
   );
 }
 
@@ -50,6 +51,11 @@ function warnOnNonDescendingScores(
  * `s3` configured, a descriptor that is not one, an `s3Key` outside the row's
  * path — and those are reads that did not happen, not items that are not
  * there, so telling them apart by code alone dropped them as well.
+ *
+ * The line quotes the address the backend gave, bounded: this fires in the
+ * branch where `validateStoreKey` refused it, one line per bad match, and
+ * nothing this package ran bounded either the labels or how many of them there
+ * are.
  */
 function addressable(context: StoreContext, match: VectorMatch): boolean {
   try {
@@ -57,8 +63,8 @@ function addressable(context: StoreContext, match: VectorMatch): boolean {
     return true;
   } catch (error) {
     context.logger.warn('search: skipped an unusable vectorBackend match', {
-      namespace: match.namespace,
-      key: match.key,
+      namespace: truncateLabelsForLog(match.namespace),
+      key: truncateForLog(match.key),
       reason: (error as Error).name,
     });
     return false;

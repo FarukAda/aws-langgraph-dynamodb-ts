@@ -4,7 +4,7 @@ import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { truncateForLog } from '../../shared/logging/truncate';
+import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
 import type { StoreItemRecord } from '../types';
 import type { VectorBackend, VectorRef } from '../vector-backend';
 import type { JsonValue } from './filter';
@@ -198,7 +198,9 @@ export async function pruneOrphans(
   live: ReconcileTarget[],
 ): Promise<number> {
   if (!backend.listKeys) {
-    context.logger.info('reconcileVectorIndex prune skipped: backend has no listKeys', { prefix });
+    context.logger.info('reconcileVectorIndex prune skipped: backend has no listKeys', {
+      prefix: truncateLabelsForLog(prefix),
+    });
     return 0;
   }
   const candidates = selectOrphans(await backend.listKeys(prefix), live);
@@ -211,13 +213,12 @@ export async function pruneOrphans(
   const observed = new Set(live.map((target) => refIdentity(target.namespace, target.key)));
   let pruned = 0;
   for (const ref of candidates) {
-    if (
-      !observed.has(refIdentity(ref.namespace, ref.key)) &&
-      !(await confirmedGone(context, ref))
-    ) {
+    const seen = observed.has(refIdentity(ref.namespace, ref.key));
+    if (!seen && !(await confirmedGone(context, ref))) {
+      /** The ref is a consumer backend's answer, bounded by nothing this package ran. */
       context.logger.info('reconcileVectorIndex: kept a vector whose item reappeared', {
-        namespace: ref.namespace,
-        key: ref.key,
+        namespace: truncateLabelsForLog(ref.namespace),
+        key: truncateForLog(ref.key),
       });
       continue;
     }

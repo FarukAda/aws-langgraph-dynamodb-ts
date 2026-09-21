@@ -1,7 +1,7 @@
 import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
+import { MAX_LOGGED_LABELS, MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { truncateForLog } from '../../../../src/shared/logging/truncate';
 import {
@@ -87,6 +87,17 @@ describe('pruneOrphans', () => {
     });
   });
 
+  /** The prefix is checked label by label and never for how many labels it holds. */
+  it('bounds the depth of the prefix the skip line reports', async () => {
+    const backend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    const deep = Array.from({ length: MAX_LOGGED_LABELS + 2 }, (_unused, at) => `d${at}`);
+    await pruneOrphans(context(undefined as never, { logger }), backend, deep, []);
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('prune skipped'), {
+      prefix: [...deep.slice(0, MAX_LOGGED_LABELS), `…(len ${deep.length})`],
+    });
+  });
+
   it('deletes backend refs with no live target', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
@@ -127,6 +138,36 @@ describe('pruneOrphans', () => {
     const count = await pruneOrphans(context(client), backend, ['n'], []);
     expect(count).toBe(0);
     expect(backend.delete).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The ref comes back from a consumer's `listKeys`, once per candidate, and
+   * nothing this package ran bounded either the labels or how many there are.
+   */
+  it('bounds the namespace and key it reports for a kept vector', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const info = jest.fn();
+    const ctx = context(client, { logger: { ...SILENT_LOGGER, info } });
+    mock.on(GetCommand).resolves({ Item: { value: { location: 'INLINE' } } });
+    const label = 'n'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const key = 'k'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const filler = Array.from({ length: MAX_LOGGED_LABELS }, (_unused, at) => `d${at}`);
+    const namespace = [label, ...filler];
+    const backend = {
+      upsert: jest.fn(),
+      delete: jest.fn(),
+      query: jest.fn(),
+      listKeys: jest.fn().mockResolvedValue([{ namespace, key }]),
+    };
+    await expect(pruneOrphans(ctx, backend, ['n'], [])).resolves.toBe(0);
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('item reappeared'), {
+      namespace: [
+        truncateForLog(label),
+        ...filler.slice(0, MAX_LOGGED_LABELS - 1),
+        `…(len ${namespace.length})`,
+      ],
+      key: truncateForLog(key),
+    });
   });
 });
 

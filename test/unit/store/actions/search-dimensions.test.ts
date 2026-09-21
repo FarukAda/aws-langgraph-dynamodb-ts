@@ -1,6 +1,7 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { MAX_LOGGED_LABELS } from '../../../../src/shared/constants';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
@@ -42,6 +43,36 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('dimension'),
       expect.objectContaining({ namespacePrefix: ['users'], count: 2 }),
+    );
+  });
+
+  /**
+   * A search prefix is checked label by label and never as a whole: nothing
+   * composes it into a key, so unlike a `namespace` and `key` pair it passes
+   * no cap on how many labels it holds.
+   */
+  it('bounds the depth of the namespacePrefix it reports', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const warn = jest.fn();
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      logger: { ...SILENT_LOGGER, warn },
+    });
+    const filler = Array.from({ length: MAX_LOGGED_LABELS }, (_unused, at) => `d${at}`);
+    const deep = ['users', ...filler];
+    const meta = { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0, 0]] };
+    mock.on(QueryCommand).resolves({
+      Items: [await buildStoreItem(ctx, deep, 's1', { v: 1 }, meta)],
+    });
+
+    await searchItems(ctx, { namespacePrefix: deep, query: 'q' });
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('dimension'),
+      expect.objectContaining({
+        namespacePrefix: [...deep.slice(0, MAX_LOGGED_LABELS), `…(len ${deep.length})`],
+      }),
     );
   });
 

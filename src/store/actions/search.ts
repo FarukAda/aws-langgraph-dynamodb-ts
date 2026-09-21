@@ -1,5 +1,6 @@
 import type { SearchItem, SearchOperation } from '@langchain/langgraph-checkpoint';
 
+import { truncateLabelsForLog } from '../../shared/logging/truncate';
 import { searchViaBackend } from '../internal/backend-search';
 import { collectCandidates } from '../internal/candidates';
 import { assertSearchOperation } from '../internal/operation-validation';
@@ -88,7 +89,7 @@ export async function searchItems(
     context.logger.warn(
       'search: some candidates carry an embedding of a different dimension than the query and ' +
         'were ranked unscored; re-embed them with reconcileVectorIndex or a re-put',
-      { namespacePrefix: op.namespacePrefix, count },
+      { namespacePrefix: truncateLabelsForLog(op.namespacePrefix), count },
     ),
   );
   return ranked.slice(offset, offset + limit);
