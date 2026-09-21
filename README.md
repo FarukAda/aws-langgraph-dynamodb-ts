@@ -690,6 +690,23 @@ Tenancy can be enforced at the IAM layer with `dynamodb:LeadingKeys`, because ev
 
 For the store the tenant must be the whole first namespace element (`STORE#acme`), since the partition key is exactly `STORE#<namespace[0]>`; the checkpointer and history patterns match any identifier under the tenant prefix. Offloaded S3 objects can be scoped the same way with an object-key condition on `arn:aws:s3:::<bucket>/langgraph-checkpoints/<adapter>/<base64url tenant prefix>*`, or by giving each tenant its own `keyPrefix`.
 
+### Trust boundary
+
+**Whoever can write a row chooses a code path in whichever process reads it.** A payload is bytes plus a serializer, and the checkpointer's default serializer — LangGraph's `JsonPlusSerializer` — does more than parse them. A stored record carrying an `lc` marker is a *constructor* record: `{"lc":1,"type":"constructor","id":["langchain_core","messages","HumanMessage"],"kwargs":{…}}` reads back as a real `HumanMessage`, built by calling that class with the stored arguments. The `Map`, `Set` and `Uint8Array` it restores (see [Table schema](#table-schema)) are rebuilt the same way. The class is chosen by the row, not by your code.
+
+Three measured facts bound what that means:
+
+- **The set of constructible classes is an allow-list, not the module graph.** An `id` outside it — `["evil","Thing"]`, `["node","child_process","exec"]` — **fails the read** with an invalid-namespace error rather than resolving to anything. So this is not a path to arbitrary code: it is a path to an allow-listed `langchain_core` class, constructed with arguments the row supplies.
+- **A stored `{"__proto__": {…}}` becomes the revived object's own prototype.** Under `JsonPlusSerializer`, reading those bytes yields an object where `o.isAdmin` is `true` while `Object.hasOwn(o, 'isAdmin')` is `false` — so a `hasOwnProperty` check says the field is absent and a plain read says it is there. It is confined to that object: the process-wide `Object.prototype` is **not** touched. Under `JSON_SERDE` the same bytes parse to an ordinary own key called `__proto__`, and the object's prototype is unchanged.
+- **Everything else on the read path is already bounded** and does not depend on this choice: an offloaded object must live under the row's own identifiers, downloads and decompression are capped, and a descriptor the reader does not understand is refused rather than guessed at.
+
+**The control is that table write access is trusted access.** Scope it the way you scope the data: the `dynamodb:LeadingKeys` policy above is what keeps one tenant from writing into another's partitions, and it is the same control, since a row planted in your partition is read by your process. A role that may write the table should be treated as a role that may run allow-listed constructors inside every reader of it.
+
+**If that is more trust than you want to grant, pass `serde: JSON_SERDE`** — the plain-JSON serializer this package exports, and the one the store and history adapters already use. It runs `JSON.parse` and reconstructs nothing, so no `lc` record and no `__proto__` key changes what a read produces. Two costs, both real:
+
+- What it stores is the JSON projection recorded in [Table schema](#table-schema): no `Map`, no `Set`, no `Uint8Array`, and a `BigInt` or a cycle refused at the write instead of substituted.
+- **It applies to every row it reads, including rows the other serializer wrote**, and nothing on the row distinguishes them — both defaults record `serdeType: "json"`. A `HumanMessage` or a `Map` written under `JsonPlusSerializer` reads back as its `lc` record, a plain object, not as the class. Choose it for a new deployment, or migrate by rewriting the rows; do not switch it under a live thread and expect the old rows to read as they did.
+
 ## Migrating from earlier versions
 
 **0.7.x → 0.8.0**: **every adapter's partition key is now adapter-tagged** —
