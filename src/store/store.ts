@@ -278,7 +278,9 @@ export class DynamoDBStore extends BaseStore {
    * `filter`, `query`, `offset`, `limit`, `maxSearchCandidates`, `index.dims`,
    * `signal`, or
    * `options.<key>` for a key this package does not read; AbortError;
-   * UpstreamError.
+   * `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
+   * version — a search reads rows it did not name, so one such row anywhere in
+   * the prefix it walks reports rather than being passed over; UpstreamError.
    *
    * Guarantees: a plain search stops reading once `offset + limit` matches are
    * in hand; a query ranks in-process up to `maxSearchCandidates`, or through
@@ -310,6 +312,9 @@ export class DynamoDBStore extends BaseStore {
    * Throws: ValidationError without both an `index` and a `vectorBackend`, for
    * an empty prefix, for an invalid `signal`, or for `options.<key>` naming a
    * key this package does not read; ResultTruncatedError past `maxScanItems`;
+   * `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
+   * version — repairing a backend from a view of the prefix that silently
+   * omitted such a row would prune the vectors of items that are still there;
    * UpstreamError.
    *
    * Guarantees: DynamoDB is never written — only the backend is repaired — and

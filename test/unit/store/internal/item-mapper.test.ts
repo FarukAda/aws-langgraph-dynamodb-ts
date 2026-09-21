@@ -175,7 +175,13 @@ describe('narrowStoreRecord refuses a row from a newer format version (STORE-11)
     );
   });
 
-  /** A row with no `namespace` at all is still not this adapter's to version. */
+  /**
+   * A row carrying none of this release's store attributes is exactly the row
+   * a later format's renaming produces, so the version decides it: above this
+   * reader it is reported, at or below it is the foreign row the narrow exists
+   * to skip. The second half is what keeps one hand-written row on a shared
+   * table from costing a read every item beside it.
+   */
   it('reports a newer row that carries no store attributes at all', () => {
     expect(() => narrowStoreRecord({ PK: 'STORE#n', SK: 'k', v: 99 } as never)).toThrow(
       expect.objectContaining({ code: ErrorCode.FORMAT_UNSUPPORTED }),
