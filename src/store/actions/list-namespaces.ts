@@ -62,7 +62,7 @@ function compareNamespaces(a: string[], b: string[]): number {
  * `op.maxDepth` — at least 1; namespaces are truncated to it and then
  * deduplicated, so `['a','b']` and `['a','c']` list once as `['a']`.
  * `op.offset` and `op.limit` — required non-negative integers, as the operation
- * type declares them.
+ * type declares them; a `limit` of 0 returns an empty listing without reading.
  *
  * Returns: the namespaces, sorted, then `limit` of them from `offset`.
  *
@@ -74,13 +74,21 @@ function compareNamespaces(a: string[], b: string[]): number {
  *
  * Guarantees: every live row is read — the answer is about which namespaces
  * exist, and paging over it must not depend on which rows were read first. That
- * is also why the sort is total (see {@link compareNamespaces}).
+ * is also why the sort is total (see {@link compareNamespaces}), and why a
+ * `limit` of 0 is answered ahead of the read rather than by slicing one.
  */
 export async function listNamespaces(
   context: StoreContext,
   op: ListNamespacesOperation,
 ): Promise<string[][]> {
   assertListOperation(op);
+  /**
+   * A zero page is answered before the read. This listing is the one that can
+   * never stop early — every live row must be seen before the namespaces can
+   * be sorted and sliced — so scanning the whole table to slice nothing out of
+   * it is the entire cost for none of the answer.
+   */
+  if (op.limit === 0) return [];
   const now = nowSeconds();
   const seen = new Set<string>();
   const namespaces: string[][] = [];

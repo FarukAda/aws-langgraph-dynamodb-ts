@@ -175,11 +175,11 @@ DynamoDBChatMessageHistory.forSession | window=null | sync throws ValidationErro
 DynamoDBChatMessageHistory.forSession | window={"foo":1} | sync throws ValidationError/VALIDATION field=window.foo
 DynamoDBChatMessageHistory.forSession | window={"limit":"5"} | sync throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession | window={"limit":-1} | sync throws ValidationError/VALIDATION field=limit
-DynamoDBChatMessageHistory.forSession | window={"limit":0} | OK DynamoDBSessionChatMessageHistory
+DynamoDBChatMessageHistory.forSession | window={"limit":0} | sync throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession | window={"limit":NaN} | sync throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession(...).getMessages | window={"foo":1} | throws ValidationError/VALIDATION field=window.foo
 DynamoDBChatMessageHistory.forSession(...).getMessages | window={"limit":"5"} | throws ValidationError/VALIDATION field=limit
-DynamoDBChatMessageHistory.forSession(...).getMessages | window={"limit":0} | RESOLVED []
+DynamoDBChatMessageHistory.forSession(...).getMessages | window={"limit":0} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.forSession(bad).getMessages | sessionId='a#b' | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | options="x" | throws ValidationError/VALIDATION field=options
 DynamoDBChatMessageHistory.getMessages | options=1 | throws ValidationError/VALIDATION field=options
@@ -194,7 +194,7 @@ DynamoDBChatMessageHistory.getMessages | options={"before":null} | throws Valida
 DynamoDBChatMessageHistory.getMessages | options={"foo":1} | throws ValidationError/VALIDATION field=options.foo
 DynamoDBChatMessageHistory.getMessages | options={"limit":"5"} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"limit":-1} | throws ValidationError/VALIDATION field=limit
-DynamoDBChatMessageHistory.getMessages | options={"limit":0} | RESOLVED []
+DynamoDBChatMessageHistory.getMessages | options={"limit":0} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"limit":1.5} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"limit":1000000000000} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"limit":NaN} | throws ValidationError/VALIDATION field=limit

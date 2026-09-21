@@ -73,24 +73,43 @@ describe('assertMaxBytes', () => {
  * The one rule every `limit` now follows. Before it they disagreed three ways —
  * `saver.list` had no minimum at all, the history reads refused `0` and the
  * store accepted it — and none of them had a ceiling, so `limit: 1e12` resolved
- * on five public methods.
+ * on five public methods. One validator, one wording and one ceiling remain,
+ * with two floors, because an empty listing and an empty conversation are not
+ * the same answer.
  */
 describe('validateLimit', () => {
-  it.each([0, 1, MAX_PAGE_LIMIT])('accepts %p', (value) => {
-    expect(() => validateLimit(value)).not.toThrow();
+  it.each([0, 1, MAX_PAGE_LIMIT])('accepts %p at the page floor', (value) => {
+    expect(() => validateLimit(value, 0)).not.toThrow();
   });
 
   it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '5' as never, null as never])(
     'refuses %p, naming limit',
     (value) => {
-      expectValidationError(() => validateLimit(value), 'limit');
+      expectValidationError(() => validateLimit(value, 0), 'limit');
     },
   );
 
+  /**
+   * The second floor, and the only call site that passes it is the
+   * conversation window. Everything else about the rule — the wording, the
+   * ceiling, the integer test — is shared, so the two differ in one number and
+   * nothing else.
+   */
+  it('refuses zero at the window floor while the ceiling and the wording hold', () => {
+    expectValidationError(() => validateLimit(0, 1), 'limit');
+    expect(() => validateLimit(1, 1)).not.toThrow();
+    expect(() => validateLimit(0, 1)).toThrow('limit must be >= 1');
+    expect(() => validateLimit(MAX_PAGE_LIMIT + 1, 1)).toThrow(
+      `limit must be <= ${MAX_PAGE_LIMIT}`,
+    );
+  });
+
   /** Being told the ceiling exists is no use without being told what it is. */
   it('names the ceiling when it refuses a limit above it', () => {
-    expect(() => validateLimit(MAX_PAGE_LIMIT + 1)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
-    expect(() => validateLimit(1e12)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
+    expect(() => validateLimit(MAX_PAGE_LIMIT + 1, 0)).toThrow(
+      `limit must be <= ${MAX_PAGE_LIMIT}`,
+    );
+    expect(() => validateLimit(1e12, 0)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
   });
 });
 

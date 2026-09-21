@@ -12,10 +12,13 @@ import { NAMESPACE_SEPARATOR, sortKey } from './keys';
  * Validate the paging a `search` or `listNamespaces` asks for.
  *
  * Accepts: `offset` — a non-negative integer. `limit` — the package-wide page
- * rule: a non-negative integer no larger than the page ceiling. `limit: 0`
- * asks for no items and is answered as such, not refused. `offset` carries no
- * ceiling of its own: it selects where a page starts rather than how much one
- * holds, and what it can make a read walk is already bounded by `maxScanItems`.
+ * rule at its zero floor: a non-negative integer no larger than the page
+ * ceiling. `limit: 0` asks for no items and is answered as such, not refused,
+ * and the answer is an empty array the caller holds and can see is empty — a
+ * page, not a conversation window, which is the one place this package refuses
+ * zero. `offset` carries no ceiling of its own: it selects where a page starts
+ * rather than how much one holds, and what it can make a read walk is already
+ * bounded by `maxScanItems`.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
@@ -23,7 +26,8 @@ import { NAMESPACE_SEPARATOR, sortKey } from './keys';
  */
 export function validatePaging(offset: number, limit: number): void {
   validateInteger(offset, 'offset', { min: 0 });
-  validateLimit(limit);
+  /** Zero is a legitimate page here, and `searchItems`/`listNamespaces` answer it without a read. */
+  validateLimit(limit, 0);
 }
 
 /**

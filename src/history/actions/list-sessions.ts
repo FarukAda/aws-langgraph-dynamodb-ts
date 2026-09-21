@@ -155,7 +155,12 @@ function assertScanCap(value: number | undefined, field: string): void {
  * check runs ahead of.
  */
 function assertPageOptions(context: HistoryContext, options: ListSessionsOptions): void {
-  if (options.limit !== undefined) validateLimit(options.limit);
+  /**
+   * Zero floor: a session listing hands back an empty page the caller can see
+   * is empty. The conversation window is the one `limit` that refuses zero,
+   * because there the empty answer is read by a model instead.
+   */
+  if (options.limit !== undefined) validateLimit(options.limit, 0);
   assertScanCap(options.maxItems, 'maxItems');
   assertScanCap(options.maxIterations, 'maxIterations');
   if (options.cursor === undefined) return;

@@ -23,14 +23,16 @@ the newest fifty messages instead of the whole session.
 
 > **new DynamoDBSessionChatMessageHistory**(`backend`, `sessionId`, `window?`): `DynamoDBSessionChatMessageHistory`
 
-Defined in: [history/session-adapter.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L50)
+Defined in: [history/session-adapter.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L52)
 
 Accepts: `backend` — the multi-session adapter this view delegates to,
 checked structurally for [SessionBackend](../interfaces/SessionBackend.md)'s own members. `sessionId`
 — the one session it is bound to, validated the same way every other
 adapter method validates a session id. `window` — bounds every read it
 performs; when given, only the `limit` key `AdapterWindow` declares, an
-integer from 0 to the package's page ceiling.
+integer from 1 to the package's page ceiling. `0` is refused: this window
+is what `RunnableWithMessageHistory` reads on every invocation, and an
+empty one is indistinguishable from a conversation that never happened.
 
 Returns: the view. Normally built through
 `DynamoDBChatMessageHistory.forSession`, which is the supported route.
@@ -83,7 +85,7 @@ Usually should be the same as the entrypoint the class is exported from.
 
 > **addMessage**(`message`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:92](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L92)
+Defined in: [history/session-adapter.ts:94](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L94)
 
 Append one message to this session.
 
@@ -113,7 +115,7 @@ Throws: as [addMessages](#addmessages).
 
 > **addMessages**(`messages`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:111](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L111)
+Defined in: [history/session-adapter.ts:113](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L113)
 
 Append messages to this session.
 
@@ -147,7 +149,7 @@ session keeps every message appended to it.
 
 > **clear**(): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:131](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L131)
+Defined in: [history/session-adapter.ts:133](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L133)
 
 Delete this session's messages, metadata and offloaded objects.
 
@@ -176,7 +178,7 @@ is asking for exactly that.
 
 > **getMessages**(): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/session-adapter.ts:77](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L77)
+Defined in: [history/session-adapter.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L79)
 
 This session's messages in chronological order.
 

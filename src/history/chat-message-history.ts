@@ -52,11 +52,12 @@ export class DynamoDBChatMessageHistory {
   /**
    * Get a session's messages in chronological order.
    *
-   * Accepts: `sessionId` — validated. `options.limit` — an integer from 0 to
-   * `MAX_PAGE_LIMIT` (10,000); only the newest that many messages, and `0` an
-   * empty answer with no query. `options.before` — a valid `Date`; only
-   * messages appended before that instant. Neither given reads the whole
-   * session. `options.signal` — aborts the reads.
+   * Accepts: `sessionId` — validated. `options.limit` — an integer from 1 to
+   * `MAX_PAGE_LIMIT` (10,000); only the newest that many messages. `0` is
+   * refused rather than answered with an empty conversation, which is the one
+   * place this package refuses a `limit` of zero. `options.before` — a valid
+   * `Date`; only messages appended before that instant. Neither given reads
+   * the whole session. `options.signal` — aborts the reads.
    *
    * Returns: the messages, oldest first. A session that does not exist and one
    * whose messages have all expired both return nothing.

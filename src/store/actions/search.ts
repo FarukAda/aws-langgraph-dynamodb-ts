@@ -21,7 +21,8 @@ const DEFAULT_LIMIT = 10;
  * falsy query takes the unscored path). A query without a configured `index`
  * does the same, since there is nothing to embed it with. `op.offset` and
  * `op.limit` — non-negative integers, defaulting to 0 and
- * {@link DEFAULT_LIMIT}, the reference's default page size.
+ * {@link DEFAULT_LIMIT}, the reference's default page size. A `limit` of 0
+ * returns an empty page before any path issues a read.
  *
  * Returns: at most `limit` items from `offset`. With a query and an index every
  * item carries a `score`; without one none does. Scores rank best-first; an item
@@ -31,7 +32,8 @@ const DEFAULT_LIMIT = 10;
  * `offset`, `limit`, `maxSearchCandidates`, `index.dims`, `filter` or `query`;
  * whatever the reads, decodes and the embeddings model throw.
  *
- * Guarantees: only the page's own items are decoded on the unranked path — the
+ * Guarantees: a page of zero costs no request at all, and otherwise only the
+ * page's own items are decoded on the unranked path — the
  * read stops as soon as it is full. A semantic search must read every candidate
  * to rank it, which is why it is capped and why a large corpus belongs in a
  * `vectorBackend`.
@@ -44,6 +46,15 @@ export async function searchItems(
   assertSearchOperation(op);
   const offset = op.offset ?? 0;
   const limit = op.limit ?? DEFAULT_LIMIT;
+  /**
+   * A zero page is answered here, ahead of all three paths below, because each
+   * of them pays for it: `collectCandidates` pulls the first row out of the
+   * paginator before it tests its `offset + limit` bound, so even a page that
+   * needs nothing costs one Query or Scan, and the two ranked paths embed the
+   * query as well. Slicing the result to nothing afterwards hid the cost
+   * rather than avoiding it.
+   */
+  if (limit === 0) return [];
   if (op.query && context.index && context.vectorBackend) {
     const ranked = await searchViaBackend(
       context,

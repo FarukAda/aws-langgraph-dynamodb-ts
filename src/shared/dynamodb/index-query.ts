@@ -147,7 +147,8 @@ function takeNewest(readers: ShardReader[]): DocItem | undefined {
  * held at a time.
  */
 export async function queryRecencyIndex(options: IndexQueryOptions): Promise<IndexPage> {
-  validateLimit(options.limit);
+  /** Zero floor: this is `listSessions`'s index page, and an empty page is exactly what it returns. */
+  validateLimit(options.limit, 0);
   if (options.limit === 0) return { items: [] };
   const before = options.cursor === undefined ? undefined : decodeCursor(options.cursor);
   const readers = indexPartitions(options.tag, options.shards).map((partition) =>

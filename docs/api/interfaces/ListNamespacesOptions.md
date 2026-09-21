@@ -19,9 +19,10 @@ equal to upstream's parameter type.
 
 > `optional` **limit?**: `number`
 
-Defined in: [store/types.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L79)
+Defined in: [store/types.ts:82](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L82)
 
-How many namespaces to return, from 0 to `MAX_PAGE_LIMIT` (10,000); default 100.
+How many namespaces to return, from 0 to `MAX_PAGE_LIMIT` (10,000);
+default 100. `0` returns an empty array without reading the table.
 
 ***
 
@@ -40,7 +41,7 @@ namespaces that truncation makes equal are listed once.
 
 > `optional` **offset?**: `number`
 
-Defined in: [store/types.ts:81](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L81)
+Defined in: [store/types.ts:84](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L84)
 
 How many namespaces to skip first, a non-negative integer; default 0.
 

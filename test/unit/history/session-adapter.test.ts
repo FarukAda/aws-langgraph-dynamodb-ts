@@ -80,10 +80,20 @@ describe('validates its constructor arguments', () => {
     ).toThrow(expect.objectContaining({ code: 'VALIDATION', context: { field: 'window.foo' } }));
   });
 
-  it('refuses a window limit below 0', () => {
-    expect(() => new DynamoDBSessionChatMessageHistory(backend(), 's', { limit: -1 })).toThrow(
-      expect.objectContaining({ code: 'VALIDATION', context: { field: 'limit' } }),
-    );
+  /**
+   * Zero is refused here and answered on every listing in this package,
+   * because the window this adapter carries is what
+   * `RunnableWithMessageHistory` reads: an empty one is a conversation the
+   * model is told never happened, and its answer is persisted as the
+   * transcript. Refusing it at construction reports the mistake where it was
+   * made, not on the first chain invocation.
+   */
+  it('refuses a window limit below 1', () => {
+    for (const limit of [0, -1]) {
+      expect(() => new DynamoDBSessionChatMessageHistory(backend(), 's', { limit })).toThrow(
+        expect.objectContaining({ code: 'VALIDATION', context: { field: 'limit' } }),
+      );
+    }
   });
 
   it('constructs with a valid backend, sessionId and window', () => {

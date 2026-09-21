@@ -128,6 +128,9 @@ function tooManyCandidates(count: number, cap: number): ValidationError {
  *
  * Guarantees: a page closes the paginator as soon as it is full, so a namespace
  * far larger than the page costs neither a full decode nor a truncation error.
+ * The bound is tested after a row is in hand, not before one is asked for, so
+ * a `need` of 0 would still cost one request; `searchItems` answers that case
+ * ahead of this call rather than letting it be paid here.
  * Expired rows, rows of other adapters and rows whose own `namespace` does not
  * match the prefix are skipped — the last matters because a Scan has no
  * key condition at all, so the prefix is enforced here rather than by DynamoDB.

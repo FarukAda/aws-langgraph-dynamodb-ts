@@ -143,7 +143,11 @@ function assertListOptionsShape(options: CheckpointListOptions | undefined): voi
 export function readListScope(config: RunnableConfig, options?: CheckpointListOptions): ListScope {
   const { threadId, checkpointNs, checkpointId } = resolveListIds(config);
   assertListOptionsShape(options);
-  if (options?.limit !== undefined) validateLimit(options.limit);
+  /**
+   * Zero floor: `list` is an iterator a caller drains, so a zero page ends it
+   * immediately and visibly. Only a conversation window refuses zero.
+   */
+  if (options?.limit !== undefined) validateLimit(options.limit, 0);
   return {
     threadId,
     checkpointNs: config.configurable?.checkpoint_ns === undefined ? undefined : checkpointNs,

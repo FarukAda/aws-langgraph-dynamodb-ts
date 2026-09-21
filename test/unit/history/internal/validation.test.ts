@@ -122,14 +122,17 @@ describe('validateMessageWindow (HIST-06)', () => {
   });
 
   /**
-   * `0` used to be refused here alone, on the argument that a zero-length
-   * conversation window is more likely a bug than a request. It now follows the
-   * one page rule every other `limit` follows: `readWindow` answers it with an
-   * empty window and no query.
+   * The one `limit` in this package whose floor is 1 rather than 0. A zero
+   * *page* is answered, because the caller who asked a listing for nothing can
+   * see it got nothing. A zero *window* is refused: this is the window
+   * `forSession` hands `RunnableWithMessageHistory`, and an empty conversation
+   * is indistinguishable from a new one to the model reading it, which answers
+   * as though nothing was ever said and has that answer persisted as the
+   * transcript.
    */
-  it('accepts a limit of zero and the page ceiling', () => {
-    expect(() => validateMessageWindow({ limit: 0 })).not.toThrow();
+  it('accepts the page ceiling and refuses a limit of zero', () => {
     expect(() => validateMessageWindow({ limit: MAX_PAGE_LIMIT })).not.toThrow();
+    expectValidationError(() => validateMessageWindow({ limit: 0 }));
   });
 
   it('rejects a negative, fractional, oversized or non-numeric limit', () => {

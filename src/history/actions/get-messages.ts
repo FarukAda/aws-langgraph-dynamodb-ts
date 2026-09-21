@@ -69,7 +69,9 @@ async function decodeMessage(
  * `'skip'` (the default) reports it at `error` with its sort key and returns
  * the rest. Every other failure propagates regardless of the policy.
  *
- * Accepts: `options.limit` — the newest N; absent asks for the whole session.
+ * Accepts: `options.limit` — the newest N, at least 1; absent asks for the
+ * whole session, and `0` is refused rather than read as an empty conversation
+ * (see {@link validateMessageWindow}).
  * `options.before` — only messages appended before that instant.
  * `options.signal` — aborts the reads.
  *

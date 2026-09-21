@@ -8,6 +8,6 @@
 
 > **GetMessagesOptions** = [`MessageWindow`](../interfaces/MessageWindow.md) & [`CancelOptions`](../interfaces/CancelOptions.md)
 
-Defined in: [history/types.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L44)
+Defined in: [history/types.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L46)
 
 Options for `getMessages`: the read window plus cancellation.

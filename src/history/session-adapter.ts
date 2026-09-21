@@ -37,7 +37,9 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    * — the one session it is bound to, validated the same way every other
    * adapter method validates a session id. `window` — bounds every read it
    * performs; when given, only the `limit` key `AdapterWindow` declares, an
-   * integer from 0 to the package's page ceiling.
+   * integer from 1 to the package's page ceiling. `0` is refused: this window
+   * is what `RunnableWithMessageHistory` reads on every invocation, and an
+   * empty one is indistinguishable from a conversation that never happened.
    *
    * Returns: the view. Normally built through
    * `DynamoDBChatMessageHistory.forSession`, which is the supported route.

@@ -93,7 +93,7 @@ export function validateInteger(
 
 /**
  * Throw {@link ValidationError} unless `value` is a page size this package will
- * serve: an integer from 0 to {@link MAX_PAGE_LIMIT}.
+ * serve: an integer from `min` to {@link MAX_PAGE_LIMIT}.
  *
  * One rule for every `limit` a public method takes. They used to disagree three
  * ways — no minimum on `saver.list`, so `limit: -1` resolved; `0` refused by the
@@ -101,20 +101,32 @@ export function validateInteger(
  * `limit: 1e12` resolved on five methods. The same mistake answered differently
  * depending on which method a caller happened to reach for.
  *
+ * What survives that unification is one message shape, one ceiling and two
+ * floors, because zero does not ask for the same thing on every method. A zero
+ * *page* is answered: the caller asked a listing for nothing, holds the empty
+ * array it returned, and can see that is what it got. A zero *conversation
+ * window* is refused: it feeds a model rather than a caller, an empty
+ * conversation is indistinguishable from one that never happened, and the
+ * answer the model gives is persisted as the transcript. So every call site
+ * passes its floor and says why; `1` is passed from exactly one place,
+ * `validateMessageWindow` in `src/history/internal/validation.ts`, which is the
+ * check behind `history.getMessages` and `history.forSession` alike.
+ *
  * Accepts: `value` — any type; a non-number, a fraction, `NaN` and `Infinity`
- * are all rejected by the integer rule. `0` is accepted and asks for an empty
- * page, which each call site answers without issuing a request. A negative
- * value is refused rather than read as zero: it is a page size that was
+ * are all rejected by the integer rule. `min` — `0` where an empty result is a
+ * request the call site answers without issuing a read, `1` where an empty
+ * result would be mistaken for an empty conversation. A negative value is
+ * refused at either floor rather than read as zero: it is a page size that was
  * computed, and the computation went wrong.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `limit`, quoting {@link MAX_PAGE_LIMIT} when
- * that is the rule broken so the caller is told what the ceiling is rather than
- * only that it exists.
+ * Throws: ValidationError naming `limit`, quoting the bound broken — the floor
+ * or {@link MAX_PAGE_LIMIT} — so the caller is told what the rule is rather
+ * than only that it has one.
  */
-export function validateLimit(value: number): void {
-  validateInteger(value, 'limit', { min: 0, max: MAX_PAGE_LIMIT });
+export function validateLimit(value: number, min: 0 | 1): void {
+  validateInteger(value, 'limit', { min, max: MAX_PAGE_LIMIT });
 }
 
 /**

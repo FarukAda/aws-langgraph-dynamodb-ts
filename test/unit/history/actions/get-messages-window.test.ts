@@ -128,14 +128,18 @@ describe('getMessages window (HIST-06)', () => {
   });
 
   /**
-   * `limit: 0` used to be the one `limit` the history refused. It now means
-   * what it means everywhere else — an empty answer — and is answered before a
-   * query is built, because DynamoDB refuses `Limit: 0` with a raw
-   * `ValidationException`.
+   * The one `limit` this package refuses at zero. Answering it would hand back
+   * an empty conversation, which a model cannot tell from a session that never
+   * happened — and the chain then persists the answer it gives as the
+   * transcript. A zero page elsewhere is visibly empty to the caller who asked
+   * for it; a zero window is not.
    */
-  it('answers a limit of zero with no messages and no query', async () => {
+  it('refuses a limit of zero, naming limit, before reaching DynamoDB', async () => {
     const { client, mock } = createStrictDocumentMock();
-    await expect(getMessages(context(client), 's1', { limit: 0 })).resolves.toEqual([]);
+    await expect(getMessages(context(client), 's1', { limit: 0 })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'limit' },
+    });
     expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
   });
 });

@@ -175,7 +175,7 @@ is correct: a live row still names the object.
 
 > **destroy**(): `void`
 
-Defined in: [store/store.ts:326](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L326)
+Defined in: [store/store.ts:328](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L328)
 
 Release owned resources.
 
@@ -196,7 +196,7 @@ Throws: nothing this adapter raises.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:348](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L348)
+Defined in: [store/store.ts:350](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L350)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -270,14 +270,15 @@ RetryExhaustedError.
 
 > **listNamespaces**(`options?`): `Promise`\<`string`[][]\>
 
-Defined in: [store/store.ts:228](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L228)
+Defined in: [store/store.ts:229](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L229)
 
 List the distinct namespaces, sorted, optionally filtered and truncated.
 
 Accepts: `options.prefix`/`suffix` — labels a namespace can hold, where
 `'*'` matches any one label. `options.maxDepth` — at least 1.
 `options.limit` — an integer from 0 to `MAX_PAGE_LIMIT` (10,000), defaulting
-to 100. `options.offset` — a non-negative integer, defaulting to 0.
+to 100, where `0` returns an empty listing without reading the table.
+`options.offset` — a non-negative integer, defaulting to 0.
 
 Returns: at most `limit` namespaces from `offset`.
 
@@ -356,7 +357,7 @@ Throws: ValidationError naming `namespace`, `namespace element`, `key`,
 
 > **reconcileVectorIndex**(`namespacePrefix`, `options?`): `Promise`\<[`VectorReconcileResult`](../interfaces/VectorReconcileResult.md)\>
 
-Defined in: [store/store.ts:290](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L290)
+Defined in: [store/store.ts:292](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L292)
 
 Repair the configured vector backend against the canonical items under
 `namespacePrefix`. A maintenance tool; see the action of the same name.
@@ -394,7 +395,7 @@ a vector is deleted only on evidence that its item is gone.
 
 > **search**(`namespacePrefix`, `options?`): `Promise`\<`SearchItem`[]\>
 
-Defined in: [store/store.ts:259](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L259)
+Defined in: [store/store.ts:261](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L261)
 
 Search with optional cancellation. Overrides the base implementation, which
 routes through [batch](#batch) and therefore cannot carry a signal.
@@ -404,7 +405,8 @@ whole table. `options.query` —
 absent or empty ranks nothing. `options.filter` — metadata equality on the
 item's value. `options.offset` — a non-negative integer, defaulting to 0.
 `options.limit` — an integer from 0 to `MAX_PAGE_LIMIT` (10,000), defaulting
-to 10. `options.signal` — aborts the reads.
+to 10, where `0` returns an empty page without a read or an embedding.
+`options.signal` — aborts the reads.
 
 Returns: at most `limit` items from `offset`, each carrying a `score` when
 a query and an index are configured.
@@ -443,7 +445,7 @@ the `vectorBackend` when one is configured.
 
 > **stop**(): `void`
 
-Defined in: [store/store.ts:312](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L312)
+Defined in: [store/store.ts:314](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L314)
 
 LangGraph's lifecycle hook.
 

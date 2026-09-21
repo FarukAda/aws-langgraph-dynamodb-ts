@@ -108,14 +108,18 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
  * Validate a `getMessages` window.
  *
  * Accepts: `limit` — absent asks for the whole session; otherwise the
- * package-wide page rule, an integer from 0 to the page ceiling. `0` asks for
- * an empty window and `readWindow` answers it without a query, the same thing
- * it means on every other read here; it used to be refused, on the argument
- * that for a conversation window zero is more likely a bug than a request,
- * which made one option mean two things depending on which adapter a caller
- * held. `before` — absent means up to now; otherwise a `Date` whose time is
- * finite. `null` is refused, naming `before`, rather than read as "up to now".
- * A `Date` is duck-typed, since one from another realm is still a date.
+ * package-wide page rule at the higher of its two floors, an integer from 1 to
+ * the page ceiling. `0` is refused rather than answered with nothing: for a
+ * window into a conversation it is far more likely a bug than a request. That
+ * is the whole reason, and it holds here and nowhere else because of what an
+ * empty result does next. A listing answered with nothing is visibly empty to
+ * the caller that asked for it; this window is what `forSession` hands
+ * `RunnableWithMessageHistory`, so answering it with nothing tells the model
+ * the conversation never happened, and the chain persists the answer it gives
+ * on that basis as the transcript. `before` — absent means up to now;
+ * otherwise a `Date` whose time is finite. `null` is refused, naming `before`,
+ * rather than read as "up to now". A `Date` is duck-typed, since one from
+ * another realm is still a date.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
@@ -124,9 +128,18 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
  * boundary branded `UpstreamError` instead of naming the caller's mistake; an
  * invalid `Date` would otherwise derive a NaN sort key that matches nothing
  * and read as an empty conversation.
+ *
+ * Guarantees: this one check serves both documented promises a conversation
+ * window carries — `getMessages(sessionId, options)` and the `window` a
+ * `forSession` adapter is constructed with — so neither can read a session the
+ * other would refuse to.
  */
 export function validateMessageWindow(window: MessageWindow): void {
-  if (window.limit !== undefined) validateLimit(window.limit);
+  /**
+   * The only floor of 1 in the package: a window feeds a model, and an empty
+   * conversation is not a visibly empty answer but an invented one.
+   */
+  if (window.limit !== undefined) validateLimit(window.limit, 1);
   if (window.before !== undefined) {
     const hasGetTime = window.before !== null && typeof window.before.getTime === 'function';
     const time = hasGetTime ? window.before.getTime() : Number.NaN;

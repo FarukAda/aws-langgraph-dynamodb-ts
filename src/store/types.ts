@@ -75,7 +75,10 @@ export interface ListNamespacesOptions {
    * namespaces that truncation makes equal are listed once.
    */
   maxDepth?: number;
-  /** How many namespaces to return, from 0 to `MAX_PAGE_LIMIT` (10,000); default 100. */
+  /**
+   * How many namespaces to return, from 0 to `MAX_PAGE_LIMIT` (10,000);
+   * default 100. `0` returns an empty array without reading the table.
+   */
   limit?: number;
   /** How many namespaces to skip first, a non-negative integer; default 0. */
   offset?: number;
