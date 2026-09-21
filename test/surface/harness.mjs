@@ -23,6 +23,41 @@ function docMock() {
   mock.rejects(new Error('unstubbed write')); mock.on(GetCommand).resolves({}); mock.on(QueryCommand).resolves({ Items: [] }); mock.on(ScanCommand).resolves({ Items: [] }); mock.on(BatchGetCommand).resolves({ Responses: {} });
   return client;
 }
+
+/**
+ * The same client, answering reads out of `rows` instead of resolving every one
+ * of them empty.
+ *
+ * `docMock` resolves each read with nothing, so every case built on it fuzzes
+ * *arguments* and nothing downstream of a read has ever run — which is why the
+ * commits that changed what a read does with a stored row could not move this
+ * baseline. This serves a crafted row instead, so the classification a read
+ * puts on a payload, and the refusal a descriptor earns, are outcomes the
+ * corpus records rather than claims a unit test makes alone.
+ *
+ * A row is selected the way the server selects it, from the request the code
+ * actually issued: a `Get` matches on the whole key, and a `Query` or `Scan`
+ * on the partition the request names (`:pk` exactly, `:pkp` as a prefix) and
+ * the sort-key prefix it asks for. Serving rows the request did not ask for
+ * would prove only that this mock and the code disagree.
+ */
+function rowMock(served) {
+  const client = ddb.DynamoDBDocument.from(new DynamoDBClient({ region: 'us-east-1' }));
+  const mock = mockClient(client);
+  const selected = (input) => {
+    const values = input.ExpressionAttributeValues || {};
+    return served.filter((row) =>
+      (values[':pk'] === undefined || row.PK === values[':pk']) &&
+      (values[':pkp'] === undefined || String(row.PK).startsWith(values[':pkp'])) &&
+      (values[':skp'] === undefined || String(row.SK).startsWith(values[':skp'])));
+  };
+  mock.rejects(new Error('unstubbed write'));
+  mock.on(GetCommand).callsFake((input) => { const row = served.find((r) => r.PK === input.Key.PK && r.SK === input.Key.SK); return row === undefined ? {} : { Item: row }; });
+  mock.on(QueryCommand).callsFake((input) => ({ Items: selected(input) }));
+  mock.on(ScanCommand).callsFake((input) => ({ Items: selected(input) }));
+  mock.on(BatchGetCommand).resolves({ Responses: {} });
+  return client;
+}
 const rows = [];
 function outcome(e) {
   if (e === undefined) return 'RESOLVED';
@@ -254,6 +289,144 @@ async function fuzzSerde() {
   trySync('JSON_SERDE', 'swap dumpsTyped (refused?)', () => { const before = lib.JSON_SERDE.dumpsTyped; let refused = false; try { lib.JSON_SERDE.dumpsTyped = () => 1; } catch { refused = true; } const after = lib.JSON_SERDE.dumpsTyped; if (!refused) lib.JSON_SERDE.dumpsTyped = before; return refused && after === before; });
 }
 
+const enc = (text) => new TextEncoder().encode(text);
+
+/** An inline payload descriptor in the shape this package writes one, with `extra` last. */
+const inlinePayload = (serdeType, text, extra) => ({ location: 'INLINE', serdeType, compressed: false, bytes: enc(text), ...extra });
+
+/** A descriptor every serializer here reads, so a row carries exactly one fault. */
+const healthyPayload = () => inlinePayload('json', '{}');
+
+const checkpointRows = (payload) => [
+  { PK: 'CHKPT#t', SK: 'META##cp1', v: 1, threadId: 't', checkpointNs: '', checkpointId: 'cp1', metadata: healthyPayload() },
+  { PK: 'CHKPT#t', SK: 'PAYLOAD##cp1', v: 1, threadId: 't', checkpointNs: '', checkpointId: 'cp1', checkpoint: payload },
+];
+const storeItemRows = (payload) => [
+  { PK: 'STORE#ns', SK: 'k', v: 1, namespace: ['ns'], key: 'k', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', value: payload },
+];
+const messageRows = (payload) => [{ PK: 'HIST#s1', SK: 'HISTORY#MSG#01J0', v: 1, sessionId: 's1', message: payload }];
+
+const CKPT_CONFIG = { configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: 'cp1' } };
+
+/**
+ * One read per adapter, each given a row it must decode. The chat-history read
+ * appears under both corruption policies because the policy is exactly what
+ * decides between the two halves of its contract: `skip` drops a payload no
+ * reader could recover and keeps the conversation, while a refusal that is not
+ * payload loss — a serde declining to rebuild intact bytes, a descriptor a
+ * newer release wrote — is reported whatever the policy says.
+ */
+const STORED_ROW_READERS = [
+  ['DynamoDBSaver.getTuple', '', checkpointRows, (o) => new lib.DynamoDBSaver(o), (a) => a.getTuple(CKPT_CONFIG)],
+  ['DynamoDBStore.get', '', storeItemRows, (o) => new lib.DynamoDBStore(o), (a) => a.get(['ns'], 'k')],
+  ['DynamoDBChatMessageHistory.getMessages', ", onCorruptMessage='skip'", messageRows, (o) => new lib.DynamoDBChatMessageHistory({ ...o, onCorruptMessage: 'skip' }), (a) => a.getMessages('s1')],
+  ['DynamoDBChatMessageHistory.getMessages', ", onCorruptMessage='throw'", messageRows, (o) => new lib.DynamoDBChatMessageHistory({ ...o, onCorruptMessage: 'throw' }), (a) => a.getMessages('s1')],
+];
+
+/**
+ * What a read does with a stored payload, as a grid over the adapter, the
+ * serializer and the fault the row carries.
+ *
+ * The distinction being pinned is between bytes that no longer parse as the
+ * form the row declares — nothing can read those, so they are `PAYLOAD_CORRUPT`
+ * — and bytes that are intact while the serializer declines to rebuild the
+ * value they name, which says what *this* reader may do and is a
+ * `ValidationError` naming `serde`. On a row declaring `json` both land the
+ * same way on all three adapters and under either serializer, which is the half
+ * only a grid can show: the two defaults behave differently on the read,
+ * `JsonPlusSerializer` reviving a stored `lc` constructor record where
+ * `JSON_SERDE` parses and reconstructs nothing.
+ *
+ * A `serdeType` this package has no grammar for is a third column, and it is
+ * the column where the two serializers part: the classifier takes the type at
+ * the row's word and never re-reads such a refusal as corruption, but
+ * `JSON_SERDE` never looks at the declared type at all and brands its own parse
+ * failure `PAYLOAD_CORRUPT` before the classifier is consulted. So the same row
+ * is a reported refusal on the checkpointer default and payload loss on the
+ * store and chat-history defaults — where, under `skip`, the message is
+ * dropped. The rows record that as it is.
+ *
+ * A descriptor carrying a forward `schemaVersion` is the fourth column: the
+ * payload is intact and a newer reader serves it, so it is `FORMAT_UNSUPPORTED`
+ * rather than loss, on every adapter and under either corruption policy.
+ */
+async function fuzzStoredRows() {
+  const jsonPlus = new (req('@langchain/langgraph-checkpoint').BaseCheckpointSaver)().serde;
+  const CUSTOM_TYPE = 'x-custom';
+  /** A caller's own serializer, refusing to rebuild what it wrote under its own type. */
+  const customSerde = {
+    async dumpsTyped(value) { return [CUSTOM_TYPE, enc(JSON.stringify(value))]; },
+    async loadsTyped(type, data) {
+      if (type === CUSTOM_TYPE) throw new Error('this serde will not rebuild that value');
+      return JSON.parse(new TextDecoder().decode(data));
+    },
+  };
+  /** An `lc` constructor record naming a namespace LangGraph's own serializer refuses. */
+  const LC_RECORD = '{"lc":1,"type":"constructor","id":["x","Nope"],"kwargs":{}}';
+  const grid = [
+    ['json bytes that no longer parse', 'default serde', undefined, () => inlinePayload('json', '{oops')],
+    ['json bytes that no longer parse', 'JSON_SERDE', lib.JSON_SERDE, () => inlinePayload('json', '{oops')],
+    ['json bytes naming a class the serde will not rebuild', 'JsonPlusSerializer', jsonPlus, () => inlinePayload('json', LC_RECORD)],
+    ['x-msgpack bytes, which are not JSON', 'default serde', undefined, () => inlinePayload('x-msgpack', '{oops')],
+    [`${CUSTOM_TYPE} bytes the serde refuses`, 'a custom serde', customSerde, () => inlinePayload(CUSTOM_TYPE, '{"a":1}')],
+    ['json descriptor carrying schemaVersion 2', 'default serde', undefined, () => inlinePayload('json', '{}', { schemaVersion: 2 })],
+  ];
+  for (const [entry, suffix, rowsFor, build, read] of STORED_ROW_READERS) {
+    for (const [payloadLabel, serdeLabel, serde, payload] of grid) {
+      const options = { tableName: 'fuzz-table', client: rowMock(rowsFor(payload())) };
+      if (serde !== undefined) options.serde = serde;
+      const adapter = build(options);
+      await tryAsync(entry, `served row: ${payloadLabel}, serde=${serdeLabel}${suffix}`, () => read(adapter));
+      adapter.destroy();
+    }
+  }
+}
+
+/**
+ * Teardown with two live resources, which no other case here has: every
+ * adapter the corpus builds either injects its client (so the adapter owns
+ * none) or never resolves the S3 one, and a teardown with a single resource
+ * cannot show a resource that refuses to close stranding the one behind it.
+ *
+ * Making the S3 client refuse is the one thing in this tier that is not a
+ * caller-supplied input: nothing a caller may pass makes a client's own
+ * `destroy` throw, so the SDK's method is replaced for the length of the probe
+ * and restored after it. Everything the library does is its own — the real
+ * offloader, the real release order, the real `destroy` — and the row records
+ * whether the DynamoDB client behind the failing resource was still released.
+ * The refusal is caught inside the probe and reported as the answer, because a
+ * foreign error the adapter deliberately re-raises would otherwise be filed
+ * as a bare escape.
+ */
+async function fuzzTeardown() {
+  const { S3Client } = req('@aws-sdk/client-s3');
+  const s3 = mockClient(S3Client);
+  s3.resolves({});
+  /** Asserted before any S3 client exists: no case in this tier may reach AWS. */
+  trySync('transport-safety', 'S3 send is intercepted before an S3 client is built', () => Boolean(S3Client.prototype.send.isSinonProxy));
+  const realS3Destroy = S3Client.prototype.destroy;
+  const realDdbDestroy = DynamoDBClient.prototype.destroy;
+  let released = 0;
+  DynamoDBClient.prototype.destroy = function () { released += 1; return realDdbDestroy.call(this); };
+  try {
+    for (const [label, hostile] of [['closes cleanly', false], ['refuses to close', true]]) {
+      S3Client.prototype.destroy = hostile ? function () { throw new Error('sockets gone'); } : realS3Destroy;
+      await tryAsync('DynamoDBSaver.destroy', `an offloader whose resolved S3 client ${label}`, async () => {
+        released = 0;
+        const saver = new lib.DynamoDBSaver({ tableName: 'fuzz-table', clientConfig: { region: 'us-east-1' }, ttl: { days: 30 }, s3: { bucketName: 'b' } });
+        await saver.ensureS3LifecycleRule();
+        let raised = 'none';
+        try { saver.destroy(); } catch (e) { raised = e && e.message; }
+        return `raised=${raised} ddbReleased=${released}`;
+      });
+    }
+  } finally {
+    S3Client.prototype.destroy = realS3Destroy;
+    DynamoDBClient.prototype.destroy = realDdbDestroy;
+    s3.restore();
+  }
+}
+
 function fuzzErrors() {
   const E = 'errors';
   trySync(E, 'new ValidationError()', () => new lib.ValidationError());
@@ -306,6 +479,9 @@ export async function collectRows() {
   await fuzzBackfill();
   fuzzRedaction();
   await fuzzSerde();
+  await fuzzStoredRows();
   fuzzErrors();
+  /** Last: it replaces two SDK methods for the length of its probes and restores them after. */
+  await fuzzTeardown();
   return rows.map((row) => [...row]);
 }

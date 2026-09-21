@@ -204,6 +204,18 @@ DynamoDBChatMessageHistory.getMessages | options={"limit":1000000000000} | throw
 DynamoDBChatMessageHistory.getMessages | options={"limit":NaN} | throws ValidationError/VALIDATION field=limit
 DynamoDBChatMessageHistory.getMessages | options={"signal":"x"} | throws ValidationError/VALIDATION field=signal
 DynamoDBChatMessageHistory.getMessages | options={"signal":{"aborted":false,"addEventListener":fn}} | throws ValidationError/VALIDATION field=signal
+DynamoDBChatMessageHistory.getMessages | served row: json bytes naming a class the serde will not rebuild, serde=JsonPlusSerializer, onCorruptMessage='skip' | throws ValidationError/VALIDATION field=serde
+DynamoDBChatMessageHistory.getMessages | served row: json bytes naming a class the serde will not rebuild, serde=JsonPlusSerializer, onCorruptMessage='throw' | throws ValidationError/VALIDATION field=serde
+DynamoDBChatMessageHistory.getMessages | served row: json bytes that no longer parse, serde=JSON_SERDE, onCorruptMessage='skip' | RESOLVED []
+DynamoDBChatMessageHistory.getMessages | served row: json bytes that no longer parse, serde=JSON_SERDE, onCorruptMessage='throw' | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+DynamoDBChatMessageHistory.getMessages | served row: json bytes that no longer parse, serde=default serde, onCorruptMessage='skip' | RESOLVED []
+DynamoDBChatMessageHistory.getMessages | served row: json bytes that no longer parse, serde=default serde, onCorruptMessage='throw' | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+DynamoDBChatMessageHistory.getMessages | served row: json descriptor carrying schemaVersion 2, serde=default serde, onCorruptMessage='skip' | throws DynamoDBLangGraphError/FORMAT_UNSUPPORTED field=schemaVersion
+DynamoDBChatMessageHistory.getMessages | served row: json descriptor carrying schemaVersion 2, serde=default serde, onCorruptMessage='throw' | throws DynamoDBLangGraphError/FORMAT_UNSUPPORTED field=schemaVersion
+DynamoDBChatMessageHistory.getMessages | served row: x-custom bytes the serde refuses, serde=a custom serde, onCorruptMessage='skip' | throws ValidationError/VALIDATION field=serde
+DynamoDBChatMessageHistory.getMessages | served row: x-custom bytes the serde refuses, serde=a custom serde, onCorruptMessage='throw' | throws ValidationError/VALIDATION field=serde
+DynamoDBChatMessageHistory.getMessages | served row: x-msgpack bytes, which are not JSON, serde=default serde, onCorruptMessage='skip' | RESOLVED []
+DynamoDBChatMessageHistory.getMessages | served row: x-msgpack bytes, which are not JSON, serde=default serde, onCorruptMessage='throw' | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
 DynamoDBChatMessageHistory.getMessages | sessionId=" " | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="" | throws ValidationError/VALIDATION field=sessionId
 DynamoDBChatMessageHistory.getMessages | sessionId="a#b" | throws ValidationError/VALIDATION field=sessionId
@@ -432,6 +444,8 @@ DynamoDBSaver.deleteThread | threadId=["a"] | throws ValidationError/VALIDATION 
 DynamoDBSaver.deleteThread | threadId=null | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId=undefined | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId={} | throws ValidationError/VALIDATION field=thread_id
+DynamoDBSaver.destroy | an offloader whose resolved S3 client closes cleanly | RESOLVED "raised=none ddbReleased=1"
+DynamoDBSaver.destroy | an offloader whose resolved S3 client refuses to close | RESOLVED "raised=sockets gone ddbReleased=1"
 DynamoDBSaver.ensureS3LifecycleRule | no s3/ttl configured | RESOLVED undefined
 DynamoDBSaver.getDeltaChannelHistory | options=null | throws ValidationError/VALIDATION field=options
 DynamoDBSaver.getDeltaChannelHistory | options=undefined | throws ValidationError/VALIDATION field=options
@@ -462,6 +476,12 @@ DynamoDBSaver.getTuple | config={"configurable":{"thread_id":"t"},"signal":{}} |
 DynamoDBSaver.getTuple | config={"configurable":{}} | RESOLVED undefined
 DynamoDBSaver.getTuple | config={} | RESOLVED undefined
 DynamoDBSaver.getTuple | extra configurable keys | RESOLVED undefined
+DynamoDBSaver.getTuple | served row: json bytes naming a class the serde will not rebuild, serde=JsonPlusSerializer | throws ValidationError/VALIDATION field=serde
+DynamoDBSaver.getTuple | served row: json bytes that no longer parse, serde=JSON_SERDE | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+DynamoDBSaver.getTuple | served row: json bytes that no longer parse, serde=default serde | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+DynamoDBSaver.getTuple | served row: json descriptor carrying schemaVersion 2, serde=default serde | throws DynamoDBLangGraphError/FORMAT_UNSUPPORTED field=schemaVersion
+DynamoDBSaver.getTuple | served row: x-custom bytes the serde refuses, serde=a custom serde | throws ValidationError/VALIDATION field=serde
+DynamoDBSaver.getTuple | served row: x-msgpack bytes, which are not JSON, serde=default serde | throws ValidationError/VALIDATION field=serde
 DynamoDBSaver.getTuple | thread_id=" " | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.getTuple | thread_id="" | throws ValidationError/VALIDATION field=thread_id
 DynamoDBSaver.getTuple | thread_id="a#b" | throws ValidationError/VALIDATION field=thread_id
@@ -743,6 +763,12 @@ DynamoDBStore.get | namespace=[] | throws ValidationError/VALIDATION field=names
 DynamoDBStore.get | namespace=[null] | throws ValidationError/VALIDATION field=namespace element
 DynamoDBStore.get | namespace=null | throws ValidationError/VALIDATION field=namespace
 DynamoDBStore.get | namespace=undefined | throws ValidationError/VALIDATION field=namespace
+DynamoDBStore.get | served row: json bytes naming a class the serde will not rebuild, serde=JsonPlusSerializer | throws ValidationError/VALIDATION field=serde
+DynamoDBStore.get | served row: json bytes that no longer parse, serde=JSON_SERDE | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+DynamoDBStore.get | served row: json bytes that no longer parse, serde=default serde | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
+DynamoDBStore.get | served row: json descriptor carrying schemaVersion 2, serde=default serde | throws DynamoDBLangGraphError/FORMAT_UNSUPPORTED field=schemaVersion
+DynamoDBStore.get | served row: x-custom bytes the serde refuses, serde=a custom serde | throws ValidationError/VALIDATION field=serde
+DynamoDBStore.get | served row: x-msgpack bytes, which are not JSON, serde=default serde | throws DynamoDBLangGraphError/PAYLOAD_CORRUPT
 DynamoDBStore.listNamespaces | options="x" | throws ValidationError/VALIDATION field=options
 DynamoDBStore.listNamespaces | options=null | throws ValidationError/VALIDATION field=options
 DynamoDBStore.listNamespaces | options={"foo":1} | throws ValidationError/VALIDATION field=options.foo
@@ -989,3 +1015,4 @@ redactSecrets | valuePatterns="x" | sync throws ValidationError/VALIDATION field
 redactSecrets | valuePatterns=["x"] | sync throws ValidationError/VALIDATION field=valuePatterns
 redactSecrets | valuePatterns=[1] | sync throws ValidationError/VALIDATION field=valuePatterns
 redactSecrets | valuePatterns=null | sync throws ValidationError/VALIDATION field=valuePatterns
+transport-safety | S3 send is intercepted before an S3 client is built | OK Boolean
