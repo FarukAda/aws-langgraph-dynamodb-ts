@@ -2,7 +2,7 @@ import { ValidationError } from '../errors/errors';
 import { assertMembers, LOGGER_MEMBERS } from '../validation/collaborators';
 import { assertObjectShape } from '../validation/option-shape';
 import { validateStringArray } from '../validation/primitives';
-import type { LogArgument, Logger } from './logger';
+import { absorbLoggerFailure, type LogArgument, type Logger } from './logger';
 import { type Redactable, walkObject } from './redaction-walk';
 import {
   DEFAULT_SECRET_KEY_PATTERNS,
@@ -171,8 +171,9 @@ function assertRedactionOptions(options: RedactLoggerOptions): void {
  * interpolate a secret into it — and every other argument is redacted before
  * it reaches `inner`. Past the wrap call nothing escapes a log call: an
  * argument whose redaction fails is replaced by a fixed marker, and a failure
- * of `inner` itself is absorbed, because the operation that wrote the line was
- * only observing itself and is commonly reporting some other failure already.
+ * of `inner` itself is absorbed ({@link absorbLoggerFailure}), because the
+ * operation that wrote the line was only observing itself and is commonly
+ * reporting some other failure already.
  */
 export function redactLogger(inner: Logger, options: RedactLoggerOptions = {}): Logger {
   assertMembers(inner, LOGGER_MEMBERS, 'logger');
@@ -185,16 +186,13 @@ export function redactLogger(inner: Logger, options: RedactLoggerOptions = {}): 
     : DEFAULT_SECRET_VALUE_PATTERNS;
   const deliver =
     (method: keyof Logger) =>
-    (message: string, ...args: LogArgument[]): void => {
-      try {
+    (message: string, ...args: LogArgument[]): void =>
+      absorbLoggerFailure(() =>
         inner[method](
           message,
           ...args.map((arg) => redactSecrets(arg, patterns, valuePatterns) as LogArgument),
-        );
-      } catch {
-        /** Nowhere left to say it: the reporting channel is the broken part. */
-      }
-    };
+        ),
+      );
   return {
     info: deliver('info'),
     warn: deliver('warn'),

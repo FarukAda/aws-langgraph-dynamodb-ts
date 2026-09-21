@@ -1,5 +1,5 @@
 import { fullJitter, nextBackoffDelay, sleep } from '../../dynamodb/backoff';
-import type { Logger } from '../../logging/logger';
+import { absorbLoggerFailure, type Logger } from '../../logging/logger';
 import { truncateForLog } from '../../logging/truncate';
 import type { S3Offloader } from './offloader';
 import { isTransientS3Error } from './retry';
@@ -31,30 +31,6 @@ async function backoffSleep(delayMs: number, options: OrphanCleanupOptions): Pro
     return false;
   } catch {
     return true;
-  }
-}
-
-/**
- * Run one log call, absorbing a failure of the caller's own logger.
- *
- * `Logger` is an interface a consumer implements, which makes it the only
- * foreign code this file calls: one that stringifies a circular object, whose
- * transport has closed, or that asserts on a field it did not expect throws
- * from inside the `catch` every caller runs the cleanup in, and its error then
- * replaces the one the caller actually needs to see.
- *
- * Swallowed rather than reported onward, because the only channel a report
- * could use is the logger that just broke, and the alternative — writing to the
- * host's console uninvited — is what {@link Logger}'s silent default exists to
- * refuse. What the line was going to say is an advisory about leaked objects,
- * whose backstop is an S3 lifecycle rule rather than a log line; the error it
- * now protects is the one that says why the write failed.
- */
-function absorbLoggerFailure(emit: () => void): void {
-  try {
-    emit();
-  } catch {
-    /** Nowhere left to say it: the reporting channel is the broken part. */
   }
 }
 
@@ -106,7 +82,10 @@ function selectOrphans(
  * the failing error's *name* — never its message, which can hold a credential
  * fragment. A `logger` that throws is one more thing this absorbs (see
  * {@link absorbLoggerFailure}): the promise covers the caller's own code too,
- * or every call site's `catch` would hand its caller the wrong error.
+ * or every call site's `catch` would hand its caller the wrong error. Every
+ * logger reaching here through an adapter is already contained at
+ * `resolveLogger`; the guard stays because this promise is written without a
+ * precondition, and a `logger` is an argument.
  *
  * Guarantees: an object outside the row's scope is never deleted. Leftovers
  * have no automatic backstop — an S3 lifecycle rule sweeps them only if one was
