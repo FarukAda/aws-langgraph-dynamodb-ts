@@ -10,6 +10,7 @@ import { sessionItemsQuery } from '../../../../src/history/internal/query';
 import { type PayloadDescriptor, PayloadLocation } from '../../../../src/shared/codec/codec';
 import {
   deletePartitionRows,
+  namedDescriptor,
   type NamedDescriptor,
   type PartitionDeleteOptions,
 } from '../../../../src/shared/dynamodb/partition-delete';
@@ -44,10 +45,11 @@ const write = (id: string, writeGroup: string): DocItem => ({
   value: s3(`k-write-${id}`, writeGroup),
 });
 
+/** Exactly what `deleteThread` supplies, down to the narrowing helper. */
 function namedDescriptors(row: DocItem): NamedDescriptor[] {
   return (['metadata', 'checkpoint', 'value'] as const).flatMap((attribute) => {
-    const descriptor = row[attribute] as PayloadDescriptor | undefined;
-    return descriptor === undefined ? [] : [{ attribute, descriptor }];
+    const entry = namedDescriptor(row, attribute);
+    return entry === undefined ? [] : [entry];
   });
 }
 
@@ -90,8 +92,8 @@ function historyOptions(
     operation: 'test.clear',
     ownsSortKey: (sortKey) => sortKey.startsWith('HISTORY#'),
     descriptorsOf: (row) => {
-      const descriptor = row.message as PayloadDescriptor | undefined;
-      return descriptor === undefined ? [] : [{ attribute: 'message', descriptor }];
+      const entry = namedDescriptor(row, 'message');
+      return entry === undefined ? [] : [entry];
     },
     idAttribute: 'writeId',
     scope: ['s'],
@@ -114,6 +116,28 @@ function stage(
   mock.on(DeleteCommand).callsFake(table.handler);
   return { client, mock, table };
 }
+
+/**
+ * The narrowing every `descriptorsOf` goes through. A row this library did not
+ * write can hold `null` where a descriptor belongs, and the type this fills
+ * promises a descriptor, so the `null` has to stop here or be read for a write
+ * id downstream.
+ */
+describe('namedDescriptor', () => {
+  it('names the descriptor a row carries under the attribute', () => {
+    expect(namedDescriptor(meta('c1', 'w1'), 'metadata')).toEqual({
+      attribute: 'metadata',
+      descriptor: s3('k-meta-c1', 'w1'),
+    });
+  });
+
+  it('names nothing for an attribute the row omits or holds null in', () => {
+    expect(namedDescriptor({ PK: 't', SK: 'META##c1' }, 'metadata')).toBeUndefined();
+    expect(
+      namedDescriptor({ PK: 't', SK: 'META##c1', metadata: null }, 'metadata'),
+    ).toBeUndefined();
+  });
+});
 
 describe('deletePartitionRows deletes what the read observed', () => {
   it('deletes every row whose observed id the row still carries', async () => {

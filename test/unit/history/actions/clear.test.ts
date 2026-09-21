@@ -106,6 +106,30 @@ describe('clearSession', () => {
     expect(info).toHaveBeenCalledWith(expect.anything(), { deleted: 1, skipped: 1 });
   });
 
+  /**
+   * A message row carries no top-level write id — only the session row does —
+   * so its pin is looked for on the `message` descriptor. A row holding `null`
+   * there names no payload at all: it is deleted unconditionally, like every
+   * row observed carrying no id, rather than ending the pass before its first
+   * delete is issued.
+   */
+  it('deletes a message row whose message attribute is null', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({
+      Items: [
+        { PK: 'HIST#sess-1', SK: 'HISTORY#MSG#01A', message: null },
+        { PK: 'HIST#sess-1', SK: 'HISTORY#SESSION', writeId: 'w1' },
+      ],
+    });
+    mock.on(DeleteCommand).resolves({});
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]), ownsKey: () => true };
+    await clearSession(context(client, { offloader: offloader as never }), 'sess-1');
+    const calls = mock.commandCalls(DeleteCommand).map((call) => call.args[0].input);
+    expect(calls.map((input) => input.Key?.SK)).toEqual(['HISTORY#MSG#01A', 'HISTORY#SESSION']);
+    expect(calls[0].ConditionExpression).toBeUndefined();
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
   it('cleans up offloaded S3 objects for offloaded messages', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({

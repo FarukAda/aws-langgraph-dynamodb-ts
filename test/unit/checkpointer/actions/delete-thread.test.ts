@@ -108,6 +108,27 @@ describe('deleteThread', () => {
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k-cp']);
   });
 
+  /**
+   * A META or PAYLOAD row carries no `writeGroup`, so its pin is looked for on
+   * the descriptors instead. A `null` payload attribute is no descriptor at
+   * all: it must count as the absent id it is and leave the row deleted
+   * unconditionally, not end the pass by being read for a write id.
+   */
+  it('deletes a row with no write id whose payload attribute is null', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({
+      Items: [
+        { PK: 't', SK: 'META##c1', metadata: null },
+        { PK: 't', SK: 'WRITE##c1#task#0', writeGroup: 'g1' },
+      ],
+    });
+    mock.on(DeleteCommand).resolves({});
+    await deleteThread(context(client), 't');
+    const calls = mock.commandCalls(DeleteCommand).map((call) => call.args[0].input);
+    expect(calls.map((input) => input.Key?.SK)).toEqual(['META##c1', 'WRITE##c1#task#0']);
+    expect(calls[0].ConditionExpression).toBeUndefined();
+  });
+
   it('reads the partition strongly-consistently before deleting', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });

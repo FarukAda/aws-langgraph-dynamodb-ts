@@ -1,6 +1,9 @@
-import type { PayloadDescriptor } from '../../shared/codec/codec';
 import { WRITE_ID_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
-import { deletePartitionRows, type NamedDescriptor } from '../../shared/dynamodb/partition-delete';
+import {
+  deletePartitionRows,
+  namedDescriptor,
+  type NamedDescriptor,
+} from '../../shared/dynamodb/partition-delete';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { isHistorySortKey } from '../internal/keys';
@@ -11,11 +14,12 @@ import { validateSessionId } from '../internal/validation';
 /**
  * The offloaded payload a chat-history row references, named by the attribute
  * holding it, because a message row is pinned through a document path over that
- * name. The session row carries no payload and is pinned top-level instead.
+ * name. The session row carries no payload and is pinned top-level instead, and
+ * a row holding `null` there carries none either — `namedDescriptor` decides.
  */
 function descriptorsOf(row: DocItem): NamedDescriptor[] {
-  const descriptor = row.message as PayloadDescriptor | undefined;
-  return descriptor === undefined ? [] : [{ attribute: 'message', descriptor }];
+  const entry = namedDescriptor(row, 'message');
+  return entry === undefined ? [] : [entry];
 }
 
 /**

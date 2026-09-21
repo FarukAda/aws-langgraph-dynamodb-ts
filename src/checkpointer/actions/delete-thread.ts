@@ -1,5 +1,8 @@
-import type { PayloadDescriptor } from '../../shared/codec/codec';
-import { deletePartitionRows, type NamedDescriptor } from '../../shared/dynamodb/partition-delete';
+import {
+  deletePartitionRows,
+  namedDescriptor,
+  type NamedDescriptor,
+} from '../../shared/dynamodb/partition-delete';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { isCheckpointerSortKey, partitionKey, SORT_KEY_SEPARATOR } from '../internal/keys';
@@ -14,13 +17,14 @@ const PAYLOAD_ATTRIBUTES = ['metadata', 'checkpoint', 'value'] as const;
 /**
  * The offloaded payloads a checkpointer row references, each named by the
  * attribute holding it, because a row is pinned through a document path over
- * that name.
+ * that name. An attribute the row leaves out and one it holds `null` in both
+ * name no payload, which is what `namedDescriptor` decides.
  */
 function descriptorsOf(row: DocItem): NamedDescriptor[] {
   const named: NamedDescriptor[] = [];
   for (const attribute of PAYLOAD_ATTRIBUTES) {
-    const descriptor = row[attribute] as PayloadDescriptor | undefined;
-    if (descriptor !== undefined) named.push({ attribute, descriptor });
+    const entry = namedDescriptor(row, attribute);
+    if (entry !== undefined) named.push(entry);
   }
   return named;
 }

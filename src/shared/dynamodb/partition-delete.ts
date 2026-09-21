@@ -24,6 +24,29 @@ export interface NamedDescriptor {
   descriptor: PayloadDescriptor;
 }
 
+/**
+ * One row attribute read as a named descriptor, which is the only way this
+ * library fills a {@link NamedDescriptor}.
+ *
+ * Accepts: `row` — a row the partition read returned, whose attributes this
+ * library did not necessarily write. `attribute` — the name the payload would
+ * be held under.
+ *
+ * Returns: the named descriptor, or nothing when the row carries no usable one
+ * there. An absent attribute and one holding `null` are the same answer,
+ * because neither names a payload: the row contributes no id to pin on and no
+ * object to release. Narrowing here rather than at each caller is what keeps
+ * `descriptor` the non-null thing the type claims — a `null` cast into the
+ * array by a caller reached `pinFor`, which reads a write id off it.
+ *
+ * Throws: nothing.
+ */
+export function namedDescriptor(row: DocItem, attribute: string): NamedDescriptor | undefined {
+  const descriptor = row[attribute] as PayloadDescriptor | null | undefined;
+  if (descriptor === null || descriptor === undefined) return undefined;
+  return { attribute, descriptor };
+}
+
 /** Collaborators and per-adapter policy for one partition-wide delete. */
 export interface PartitionDeleteOptions {
   client: DynamoDBDocumentLike;
@@ -43,7 +66,11 @@ export interface PartitionDeleteOptions {
    * holding a foreign row would have that row deleted too.
    */
   ownsSortKey: (sortKey: string) => boolean;
-  /** The offloaded payload descriptors a row references, each named by its attribute. */
+  /**
+   * The offloaded payload descriptors a row references, each named by its
+   * attribute, and each read off the row with {@link namedDescriptor} so that
+   * an attribute holding `null` yields no entry rather than an unusable one.
+   */
   descriptorsOf: (row: DocItem) => NamedDescriptor[];
   /**
    * Top-level attribute carrying a row's per-write id, for the row kinds that
