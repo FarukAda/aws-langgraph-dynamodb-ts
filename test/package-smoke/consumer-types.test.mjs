@@ -59,14 +59,22 @@ function installedVersion(packageRoot) {
   return JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).version;
 }
 
-/** Every `tsc` diagnostic that points at the consumer's own file. */
-function consumerTypeErrors(dir) {
+/**
+ * The compile, as an outcome rather than as a filtered list of diagnostics.
+ *
+ * A compile that fails for a reason outside `consumer.ts` — `@types/node`
+ * absent from the install, a flag this compiler does not know, a file that was
+ * never copied — prints no `consumer.ts` line at all, so a check that reads the
+ * absence of such lines as "no errors" passes exactly when it did not run. The
+ * whole output is carried back instead, and both halves are asserted: nothing
+ * against the consumer, and a compiler that reached the end.
+ */
+function compileConsumer(dir) {
   try {
     execSync(TSC, { cwd: dir, stdio: 'pipe' });
-    return [];
+    return { compiled: true, output: '' };
   } catch (error) {
-    const output = error.stdout ? error.stdout.toString() : '';
-    return output.split(/\r?\n/).filter((line) => line.startsWith('consumer.ts'));
+    return { compiled: false, output: `${error.stdout ?? ''}${error.stderr ?? ''}` };
   }
 }
 
@@ -106,7 +114,13 @@ test("a consumer's own DocumentClient type-checks against the packed package", {
     });
 
     await t.test('every documented injection point accepts it', () => {
-      assert.deepEqual(consumerTypeErrors(dir), []);
+      const { compiled, output } = compileConsumer(dir);
+      const refusals = output.split(/\r?\n/).filter((line) => line.startsWith('consumer.ts'));
+      assert.deepEqual(refusals, [], `the injected client was refused:\n${refusals.join('\n')}`);
+      assert.ok(
+        compiled,
+        `tsc failed without naming consumer.ts, so nothing was proved:\n${output}`,
+      );
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
