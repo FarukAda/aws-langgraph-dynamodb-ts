@@ -815,6 +815,8 @@ Every row this release writes carries `v`, its format version. A reader treats a
 
 `ErrorCode` values are append-only in `1.x`; error class names and the `code` each carries are stable, and `ErrorContext` only gains fields. Error *messages* and log *messages* are not covered — branch on `code`, `name` and the structured fields, never on text.
 
+**Text this library did not length-check is cut before it is quoted**, in a log line and in an error message alike: at 256 characters for a string and at 8 labels for a namespace or channel list, each marked `…(len N)` with what it really held. That covers a row's own attributes, an S3 object key or bucket scope, a `namespacePrefix` (checked label by label, never for how many labels), what a `vectorBackend` answers with, and a value off an object you passed in. Identifiers this library validated go in whole — a `sessionId`, a `threadId`, a `namespace` and `key` pair, and any key built from them are capped before a request is made. The structured `context` on an error is **not** cut, so what you branch on or log as data still carries the value in full.
+
 ### Supported runtimes and peers
 
 | Dependency | Supported | Verified by |
