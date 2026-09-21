@@ -5,8 +5,16 @@ import type { HistoryContext } from '../../../../src/history/internal/setup';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { type Logger, SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+
+/** A caller's logger that fails at every level: consumer code this package cannot vet. */
+function throwingLogger(): Logger {
+  const fail = (): never => {
+    throw new TypeError('logger transport closed');
+  };
+  return { info: fail, warn: fail, error: fail, debug: fail };
+}
 
 function context(
   client: HistoryContext['client'],
@@ -141,6 +149,55 @@ describe('compensate', () => {
       ),
     ).rejects.toMatchObject({ code: ErrorCode.COMPENSATION_FAILED });
     expect(spy.deleted).not.toContain('history/s1/a/k.bin');
+  });
+
+  /**
+   * The announcement is the first statement of the rollback, and `Logger` is
+   * consumer code, so a throw there skipped the S3 cleanup, the row deletes,
+   * the count revert and the rethrow in one go: every committed message stayed
+   * in the table with `messageCount` still counting it, and the caller was
+   * handed the logger's own `TypeError` instead of the failure that started it.
+   */
+  it('rolls back and rethrows the trigger even when the announcing log throws', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(BatchWriteCommand).resolves({});
+    mock.on(TransactWriteCommand).resolves({});
+    const spy = offloaderSpy();
+    const committed = [{ keys: [{ PK: 'HIST#s1', SK: 'HISTORY#MSG#a' }], count: 1 }];
+    await expect(
+      compensate(
+        context(client, { offloader: spy.offloader as never, logger: throwingLogger() }),
+        's1',
+        [[item('a')], [item('b')]],
+        committed,
+        trigger,
+        'now',
+        undefined,
+        false,
+      ),
+    ).rejects.toBe(trigger);
+    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
+    expect(spy.deleted).toContain('history/s1/a/k.bin');
+  });
+
+  /** The second line reports the drift; a throw there replaced the error whose job is to name it. */
+  it('still raises CompensationFailedError when the rollback s own log throws', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(BatchWriteCommand).rejects(new Error('throttled'));
+    mock.on(TransactWriteCommand).resolves({});
+    const committed = [{ keys: [{ PK: 'HIST#s1', SK: 'HISTORY#MSG#a' }], count: 1 }];
+    await expect(
+      compensate(
+        context(client, { logger: throwingLogger() }),
+        's1',
+        [[item('a')]],
+        committed,
+        trigger,
+        'now',
+        undefined,
+        false,
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.COMPENSATION_FAILED });
   });
 
   it('does nothing with S3 when no offloader is configured', async () => {
