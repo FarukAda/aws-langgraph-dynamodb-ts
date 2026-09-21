@@ -148,16 +148,25 @@ export class DynamoDBStore extends BaseStore {
    * at most 256 bytes, free of `#` and control characters and well-formed
    * UTF-16. A `.` and a `"langgraph"` root are accepted, as the reference store
    * accepts them. `key` — an identifier by the same rules. Together they may
-   * compose a sort key of at most 1024 bytes.
+   * compose a sort key of at most 1024 bytes. **No signal**: upstream's
+   * `BaseStore.get` takes no parameter for one, so the S3 download an
+   * offloaded value costs is not cancellable here. `store.search` is the read
+   * that takes one.
    *
    * Returns: the item, or `null` for one that does not exist or has expired.
    *
    * Throws: ValidationError naming `namespace`, `namespace element`, `key` or
-   * `sortKey`; `FORMAT_UNSUPPORTED` for an item, or its payload, written by a
-   * newer version, which is reported rather than hidden as absent;
-   * `PAYLOAD_CORRUPT` for a payload that is no longer the form its row
-   * declares; AbortError; UpstreamError;
-   * RetryExhaustedError.
+   * `sortKey`, and — from the row rather than from the call — `descriptor` for
+   * a payload descriptor no reader could make sense of, `s3` for an offloaded
+   * row with no offloader configured, `s3Key` for a row addressing an object
+   * outside its own path, or `serde` for a payload the configured serializer
+   * refuses to reconstruct; `FORMAT_UNSUPPORTED` for an item, or its payload,
+   * written by a newer version, which is reported rather than hidden as
+   * absent; `PAYLOAD_CORRUPT` for a payload that is no longer the form its row
+   * declares; `S3_OFFLOAD_FAILED` for an offloaded payload that cannot be
+   * downloaded; `COMPRESSION_LIMIT` for one whose decompressed size would pass
+   * the cap; UpstreamError; RetryExhaustedError. Not AbortError: there is no
+   * signal to fire.
    */
   override async get(namespace: string[], key: string): Promise<Item | null> {
     return guardPublic('store.get', async () => (await this.run([{ namespace, key }]))[0]);

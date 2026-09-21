@@ -79,9 +79,16 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * is not an object, `configurable` for a `configurable` that is present and
    * not an object, `signal` for a signal that is not `AbortSignal`-shaped, or
    * `thread_id`, `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a
-   * malformed identifier; `FORMAT_UNSUPPORTED` for a row, or a payload, a newer
-   * release wrote;
-   * UpstreamError; RetryExhaustedError; AbortError.
+   * malformed identifier, and — from a row rather than from the call —
+   * `descriptor` for a payload descriptor no reader could make sense of, `s3`
+   * for an offloaded row with no offloader configured, `s3Key` for a row
+   * addressing an object outside the thread's own path, or `serde` for a
+   * payload the configured serializer refuses to reconstruct;
+   * `FORMAT_UNSUPPORTED` for a row, or a payload, a newer release wrote;
+   * `PAYLOAD_CORRUPT` for a payload that is no longer the form its row
+   * declares; `S3_OFFLOAD_FAILED` for an offloaded payload that cannot be
+   * downloaded; `COMPRESSION_LIMIT` for one whose decompressed size would pass
+   * the cap; UpstreamError; RetryExhaustedError; AbortError.
    *
    * Guarantees: strongly consistent, so a checkpoint just written is always
    * seen.
