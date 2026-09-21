@@ -8,6 +8,7 @@ import {
   type ShardReader,
   shardReader,
 } from './index-shard';
+import { compareSortKeys } from './sort-key-order';
 import type { DocItem } from './types';
 
 /** One page of a recency listing, and where the next one resumes. */
@@ -25,6 +26,13 @@ export interface IndexPage {
  * is also why the cursor is not a `LastEvaluatedKey` — one per shard would have
  * to be carried, and a shard count change would silently invalidate them.
  * Opaque to the caller all the same: its shape is not a promise.
+ *
+ * The key handed here is always the last row {@link takeNewest} chose, and
+ * that is the only reason the cursor is sound: the merge hands rows out in
+ * descending {@link compareSortKeys} order, so the last one is the smallest
+ * key on the page in the server's own order, which is exactly what
+ * `#sk < :before` resumes below. There is no second comparison to keep in step
+ * — one comparator decides the order, and the cursor is a row it chose.
  */
 function encodeCursor(sortKey: string): string {
   return Buffer.from(sortKey, 'utf8').toString('base64url');
@@ -87,13 +95,21 @@ async function refillDryShards(
   }
 }
 
-/** Move the newest buffered row off its shard; undefined when every buffer is empty. */
+/**
+ * Move the newest buffered row off its shard; undefined when every buffer is
+ * empty.
+ *
+ * "Newest" is {@link compareSortKeys}, not `>`: the row this picks is the one
+ * the resumed `#sk < :before` query will agree is newest, and the two orders
+ * part company at an astral id. `''` is a safe starting bound because a
+ * DynamoDB key attribute is never the empty string, so no row can lose to it.
+ */
 function takeNewest(readers: ShardReader[]): DocItem | undefined {
   let newest: ShardReader | undefined;
   let newestKey = '';
   for (const reader of readers) {
     const head = reader.buffer[reader.buffer.length - 1];
-    if (head !== undefined && (head.gsi1sk as string) > newestKey) {
+    if (head !== undefined && compareSortKeys(head.gsi1sk as string, newestKey) > 0) {
       newest = reader;
       newestKey = head.gsi1sk as string;
     }
