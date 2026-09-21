@@ -79,12 +79,15 @@ export async function fetchTargetMeta(
   const now = nowSeconds();
   if (checkpointId !== undefined) {
     const result = await withDynamoDBRetry(
-      () =>
-        context.client.get({
-          TableName: context.tableName,
-          Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
-          ConsistentRead: true,
-        }),
+      (request) =>
+        context.client.get(
+          {
+            TableName: context.tableName,
+            Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
+            ConsistentRead: true,
+          },
+          request,
+        ),
       retryFor(context, signal),
     );
     const meta = narrowHead(context, result.Item as DocItem | undefined);
@@ -147,12 +150,15 @@ export async function fetchPayload(
   read: ReadOptions = {},
 ): Promise<CheckpointPayloadItem | undefined> {
   const result = await withDynamoDBRetry(
-    () =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: partitionKey(threadId), SK: payloadSortKey(checkpointNs, checkpointId) },
-        ConsistentRead: read.consistent ?? true,
-      }),
+    (request) =>
+      context.client.get(
+        {
+          TableName: context.tableName,
+          Key: { PK: partitionKey(threadId), SK: payloadSortKey(checkpointNs, checkpointId) },
+          ConsistentRead: read.consistent ?? true,
+        },
+        request,
+      ),
     retryFor(context, read.signal),
   );
   const item = result.Item as CheckpointPayloadItem | undefined;

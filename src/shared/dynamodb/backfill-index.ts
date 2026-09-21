@@ -59,32 +59,35 @@ async function writeIndexKeys(
   keys: IndexKeys,
 ): Promise<void> {
   await withDynamoDBRetry(
-    () =>
-      options.client.update({
-        TableName: options.tableName,
-        Key: { PK: row.PK, SK: row.SK },
-        UpdateExpression: 'SET #gpk = :gpk, #gsk = :gsk',
-        ExpressionAttributeNames: { '#gpk': 'gsi1pk', '#gsk': 'gsi1sk' },
-        ExpressionAttributeValues: { ':gpk': keys.gsi1pk, ':gsk': keys.gsi1sk },
-        /**
-         * Two clauses, and both are load-bearing.
-         *
-         * `attribute_not_exists(#gpk)` never overwrites keys a row already has:
-         * a row a running adapter wrote carries its true timestamp, and
-         * replacing it with the pre-index epoch would move a live row to the
-         * bottom of every listing.
-         *
-         * `attribute_exists(PK)` is what makes this an update rather than an
-         * upsert, which is what `UpdateItem` is by default. A condition naming
-         * only the index attribute is satisfied by a key holding *nothing at
-         * all*, so a row deleted between the scan that found it and this update
-         * was re-created — as a stub carrying nothing but `PK`, `SK` and the
-         * two index keys, and carrying them it landed in the recency index that
-         * the cross-partition listings read. The tool exists to give keys to
-         * rows that are already there, so nothing legitimate is refused.
-         */
-        ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(#gpk)',
-      }),
+    (request) =>
+      options.client.update(
+        {
+          TableName: options.tableName,
+          Key: { PK: row.PK, SK: row.SK },
+          UpdateExpression: 'SET #gpk = :gpk, #gsk = :gsk',
+          ExpressionAttributeNames: { '#gpk': 'gsi1pk', '#gsk': 'gsi1sk' },
+          ExpressionAttributeValues: { ':gpk': keys.gsi1pk, ':gsk': keys.gsi1sk },
+          /**
+           * Two clauses, and both are load-bearing.
+           *
+           * `attribute_not_exists(#gpk)` never overwrites keys a row already has:
+           * a row a running adapter wrote carries its true timestamp, and
+           * replacing it with the pre-index epoch would move a live row to the
+           * bottom of every listing.
+           *
+           * `attribute_exists(PK)` is what makes this an update rather than an
+           * upsert, which is what `UpdateItem` is by default. A condition naming
+           * only the index attribute is satisfied by a key holding *nothing at
+           * all*, so a row deleted between the scan that found it and this update
+           * was re-created — as a stub carrying nothing but `PK`, `SK` and the
+           * two index keys, and carrying them it landed in the recency index that
+           * the cross-partition listings read. The tool exists to give keys to
+           * rows that are already there, so nothing legitimate is refused.
+           */
+          ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(#gpk)',
+        },
+        request,
+      ),
     runRetry(options),
   );
 }
@@ -96,15 +99,18 @@ async function backfillPage(
   startKey: DocItem | undefined,
 ): Promise<{ rows: number; indexed: number; nextKey: DocItem | undefined }> {
   const result = await withDynamoDBRetry(
-    () =>
-      options.client.scan({
-        TableName: options.tableName,
-        Limit: options.pageSize ?? 100,
-        ExclusiveStartKey: startKey,
-        /** Rows that already carry keys are not read into memory at all. */
-        FilterExpression: 'attribute_not_exists(#gpk)',
-        ExpressionAttributeNames: { '#gpk': 'gsi1pk' },
-      }),
+    (request) =>
+      options.client.scan(
+        {
+          TableName: options.tableName,
+          Limit: options.pageSize ?? 100,
+          ExclusiveStartKey: startKey,
+          /** Rows that already carry keys are not read into memory at all. */
+          FilterExpression: 'attribute_not_exists(#gpk)',
+          ExpressionAttributeNames: { '#gpk': 'gsi1pk' },
+        },
+        request,
+      ),
     runRetry(options),
   );
   const rows = (result.Items ?? []) as DocItem[];

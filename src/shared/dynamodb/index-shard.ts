@@ -115,7 +115,7 @@ export async function readShardPage(
     throw new ResultTruncatedError('maxIterations', MAX_LOOP_ITERATIONS);
   }
   const result = await withDynamoDBRetry(
-    () => options.client.query(shardQuery(options, reader, before, limit)),
+    (request) => options.client.query(shardQuery(options, reader, before, limit), request),
     { ...options.retry, signal: options.signal },
   );
   reader.pages += 1;

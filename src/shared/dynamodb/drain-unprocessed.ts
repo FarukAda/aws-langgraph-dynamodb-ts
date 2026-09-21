@@ -91,7 +91,7 @@ export async function drainUnprocessedWrites(
   while (pending.length > 0) {
     try {
       const result = await withDynamoDBRetry(
-        () => client.batchWrite({ RequestItems: { [tableName]: pending } }),
+        (request) => client.batchWrite({ RequestItems: { [tableName]: pending } }, request),
         { ...options.retry, signal: options.signal },
       );
       const leftover = (result.UnprocessedItems?.[tableName] as WriteRequest[] | undefined) ?? [];

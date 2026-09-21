@@ -28,7 +28,8 @@ export interface PaginateOptions extends PaginateCoreOptions {
 export function paginateQuery(options: PaginateOptions): AsyncGenerator<DocItem> {
   return paginatePages(async (startKey) => {
     const page = await withDynamoDBRetry(
-      () => options.client.query({ ...options.params, ExclusiveStartKey: startKey }),
+      (request) =>
+        options.client.query({ ...options.params, ExclusiveStartKey: startKey }, request),
       { ...options.retry, signal: options.signal },
     );
     return {

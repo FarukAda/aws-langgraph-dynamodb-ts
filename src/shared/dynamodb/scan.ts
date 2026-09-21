@@ -28,7 +28,7 @@ export interface ScanOptions extends PaginateCoreOptions {
 export function paginateScan(options: ScanOptions): AsyncGenerator<DocItem> {
   return paginatePages(async (startKey) => {
     const page = await withDynamoDBRetry(
-      () => options.client.scan({ ...options.params, ExclusiveStartKey: startKey }),
+      (request) => options.client.scan({ ...options.params, ExclusiveStartKey: startKey }, request),
       { ...options.retry, signal: options.signal },
     );
     return {

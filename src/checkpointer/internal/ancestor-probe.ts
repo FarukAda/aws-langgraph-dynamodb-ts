@@ -51,12 +51,15 @@ export async function probeAncestor(
   if (typeof threadId !== 'string' || typeof checkpointId !== 'string') return undefined;
   const checkpointNs: string = ids?.checkpoint_ns ?? '';
   const result = await withDynamoDBRetry(
-    () =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
-        ConsistentRead: true,
-      }),
+    (request) =>
+      context.client.get(
+        {
+          TableName: context.tableName,
+          Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
+          ConsistentRead: true,
+        },
+        request,
+      ),
     retryFor(context),
   );
   const row = result.Item as DocItem | undefined;

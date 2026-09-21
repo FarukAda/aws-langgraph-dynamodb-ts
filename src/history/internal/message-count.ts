@@ -51,7 +51,7 @@ export async function countLiveMessages(
   let startKey: Record<string, NativeAttributeValue> | undefined;
   do {
     const page = await withDynamoDBRetry(
-      () => context.client.query({ ...base, ExclusiveStartKey: startKey }),
+      (request) => context.client.query({ ...base, ExclusiveStartKey: startKey }, request),
       retryFor(context, signal),
     );
     for (const row of (page.Items ?? []) as (VersionedRow & { ttl?: number })[]) {

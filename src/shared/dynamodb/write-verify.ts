@@ -158,14 +158,17 @@ function projectionOf(read: RowRead): { expression: string; names: Record<string
 export async function readRow(deps: VerifyDeps, read: RowRead): Promise<DocItem | undefined> {
   const { expression, names } = projectionOf(read);
   const result = await withDynamoDBRetry(
-    () =>
-      deps.client.get({
-        TableName: deps.tableName,
-        Key: read.key,
-        ConsistentRead: true,
-        ProjectionExpression: expression,
-        ExpressionAttributeNames: names,
-      }),
+    (request) =>
+      deps.client.get(
+        {
+          TableName: deps.tableName,
+          Key: read.key,
+          ConsistentRead: true,
+          ProjectionExpression: expression,
+          ExpressionAttributeNames: names,
+        },
+        request,
+      ),
     deps.retry,
   );
   return result.Item as DocItem | undefined;

@@ -72,7 +72,8 @@ async function put(
     return;
   }
   await withDynamoDBRetry(
-    () => context.client.put({ TableName: context.tableName, Item: record, ...guard }),
+    (request) =>
+      context.client.put({ TableName: context.tableName, Item: record, ...guard }, request),
     context.retry,
   );
 }

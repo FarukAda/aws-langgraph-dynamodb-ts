@@ -29,12 +29,15 @@ async function readRow(
   signal?: AbortSignal,
 ): Promise<StoreItemRecord | undefined> {
   const result = await withDynamoDBRetry(
-    () =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: partitionKey(namespace), SK: sortKey(namespace, key) },
-        ConsistentRead: true,
-      }),
+    (request) =>
+      context.client.get(
+        {
+          TableName: context.tableName,
+          Key: { PK: partitionKey(namespace), SK: sortKey(namespace, key) },
+          ConsistentRead: true,
+        },
+        request,
+      ),
     retryFor(context, signal),
   );
   if (!result.Item) return undefined;

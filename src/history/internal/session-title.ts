@@ -40,15 +40,18 @@ export async function removeRolledBackTitle(
 ): Promise<void> {
   try {
     await withDynamoDBRetry(
-      () =>
-        context.client.update({
-          TableName: context.tableName,
-          Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
-          UpdateExpression: 'REMOVE #title',
-          ConditionExpression: '#c = :now AND #title = :title',
-          ExpressionAttributeNames: { '#title': 'title', '#c': 'createdAt' },
-          ExpressionAttributeValues: { ':now': createdAt, ':title': title },
-        }),
+      (request) =>
+        context.client.update(
+          {
+            TableName: context.tableName,
+            Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+            UpdateExpression: 'REMOVE #title',
+            ConditionExpression: '#c = :now AND #title = :title',
+            ExpressionAttributeNames: { '#title': 'title', '#c': 'createdAt' },
+            ExpressionAttributeValues: { ':now': createdAt, ':title': title },
+          },
+          request,
+        ),
       context.retry,
     );
   } catch (error) {

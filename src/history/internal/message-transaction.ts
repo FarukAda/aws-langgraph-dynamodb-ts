@@ -79,7 +79,7 @@ async function attempt(
    * the send made after a race has already been lost.
    */
   const deadlineAt = nowMs() + MAX_WRITE_LIFETIME_MS;
-  await withDynamoDBRetry(() => context.client.transactWrite(input), {
+  await withDynamoDBRetry((request) => context.client.transactWrite(input, request), {
     ...context.retry,
     /** The contention floor: a caller policy may raise the budget, never lower it. */
     maxAttempts: Math.max(MESSAGE_APPEND_RETRY_MAX_ATTEMPTS, context.retry?.maxAttempts ?? 0),

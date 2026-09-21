@@ -74,7 +74,8 @@ async function commitSpecialRow(
     return;
   }
   await withDynamoDBRetry(
-    () => context.client.put({ TableName: context.tableName, Item: item, ...guard }),
+    (request) =>
+      context.client.put({ TableName: context.tableName, Item: item, ...guard }, request),
     retryFor(context, signal),
   );
 }
@@ -176,7 +177,7 @@ async function writeWithoutOffloader(
 ): Promise<SpecialWriteOutcome> {
   try {
     await withDynamoDBRetry(
-      () => context.client.put({ TableName: context.tableName, Item: item }),
+      (request) => context.client.put({ TableName: context.tableName, Item: item }, request),
       retryFor(context, signal),
     );
     return { committed: true };

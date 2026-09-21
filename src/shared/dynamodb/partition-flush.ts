@@ -73,12 +73,15 @@ function recordRefusal(deps: FlushDeps, row: PendingDelete, tally: FlushTally): 
 async function deleteRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally): Promise<void> {
   try {
     await withDynamoDBRetry(
-      () =>
-        deps.client.delete({
-          TableName: deps.tableName,
-          Key: row.key,
-          ...row.guard,
-        }),
+      (request) =>
+        deps.client.delete(
+          {
+            TableName: deps.tableName,
+            Key: row.key,
+            ...row.guard,
+          },
+          request,
+        ),
       deps.retry,
     );
   } catch (error) {

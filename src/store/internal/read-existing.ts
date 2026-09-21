@@ -40,20 +40,23 @@ export async function readExisting(
   sk: string,
 ): Promise<ExistingRecordMeta> {
   const existing = await withDynamoDBRetry(
-    () =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: pk, SK: sk },
-        ConsistentRead: true,
-        ProjectionExpression: '#c, #r, #v.#loc, #v.#s3k',
-        ExpressionAttributeNames: {
-          '#c': 'createdAt',
-          '#r': REVISION_ATTRIBUTE,
-          '#v': 'value',
-          '#loc': 'location',
-          '#s3k': 's3Key',
+    (request) =>
+      context.client.get(
+        {
+          TableName: context.tableName,
+          Key: { PK: pk, SK: sk },
+          ConsistentRead: true,
+          ProjectionExpression: '#c, #r, #v.#loc, #v.#s3k',
+          ExpressionAttributeNames: {
+            '#c': 'createdAt',
+            '#r': REVISION_ATTRIBUTE,
+            '#v': 'value',
+            '#loc': 'location',
+            '#s3k': 's3Key',
+          },
         },
-      }),
+        request,
+      ),
     context.retry,
   );
   return existingFrom(existing.Item as DocItem | undefined);

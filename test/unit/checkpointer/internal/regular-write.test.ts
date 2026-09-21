@@ -143,4 +143,23 @@ describe('writeRegularItems', () => {
       deadUploads: [],
     });
   });
+
+  /**
+   * The cancellation guarantee, at the site it protects. The caller's signal
+   * reaches the put and ends it, and the verification read that follows the
+   * failure is issued all the same — it runs on the adapter's own retry
+   * options, which carry no signal, so a cancel can never leave a live row
+   * pointing at an object the cleanup then released.
+   */
+  it('cancels the put but not the verification read that follows it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    controller.abort();
+    rejectRowWrites(mock, timeout());
+    mock.on(GetCommand).resolves({ Item: { writeGroup: 'OTHER' } });
+    const outcome = await writeRegularItems(context(client), [item('G1')], controller.signal);
+    expect(outcome.error).toMatchObject({ name: 'AbortError', code: 'ABORTED' });
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+    expect(outcome.deadUploads).toEqual([item('G1')]);
+  });
 });

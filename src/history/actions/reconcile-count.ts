@@ -20,14 +20,17 @@ async function observeCount(
   signal?: AbortSignal,
 ): Promise<ObservedCount> {
   const result = await withDynamoDBRetry(
-    () =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
-        ConsistentRead: true,
-        ProjectionExpression: '#count',
-        ExpressionAttributeNames: { '#count': 'messageCount' },
-      }),
+    (request) =>
+      context.client.get(
+        {
+          TableName: context.tableName,
+          Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+          ConsistentRead: true,
+          ProjectionExpression: '#count',
+          ExpressionAttributeNames: { '#count': 'messageCount' },
+        },
+        request,
+      ),
     retryFor(context, signal),
   );
   if (!result.Item) return { exists: false };
@@ -63,15 +66,18 @@ async function writeCount(
 ): Promise<void> {
   const guard = countGuard(observed);
   await withDynamoDBRetry(
-    () =>
-      context.client.update({
-        TableName: context.tableName,
-        Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
-        UpdateExpression: 'SET #count = :count',
-        ExpressionAttributeNames: { '#count': 'messageCount' },
-        ExpressionAttributeValues: { ':count': count, ...guard.ExpressionAttributeValues },
-        ConditionExpression: guard.ConditionExpression,
-      }),
+    (request) =>
+      context.client.update(
+        {
+          TableName: context.tableName,
+          Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+          UpdateExpression: 'SET #count = :count',
+          ExpressionAttributeNames: { '#count': 'messageCount' },
+          ExpressionAttributeValues: { ':count': count, ...guard.ExpressionAttributeValues },
+          ConditionExpression: guard.ConditionExpression,
+        },
+        request,
+      ),
     retryFor(context, signal),
   );
 }

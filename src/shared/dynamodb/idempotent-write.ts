@@ -152,7 +152,7 @@ export async function transactIdempotently(
 ): Promise<void> {
   const input = { TransactItems: actions, ClientRequestToken: randomUUID() };
   const deadlineAt = nowMs() + MAX_WRITE_LIFETIME_MS;
-  await withDynamoDBRetry(() => deps.client.transactWrite(input), {
+  await withDynamoDBRetry((request) => deps.client.transactWrite(input, request), {
     ...retryFor(deps, signal),
     deadlineAt,
   });

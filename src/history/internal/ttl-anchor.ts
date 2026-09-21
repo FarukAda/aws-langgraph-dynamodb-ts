@@ -50,14 +50,17 @@ export async function resolveTtlAnchor(
   signal?: AbortSignal,
 ): Promise<TtlAnchorResult> {
   const result = await withDynamoDBRetry(
-    () =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
-        ConsistentRead: true,
-        ProjectionExpression: '#ttl',
-        ExpressionAttributeNames: { '#ttl': 'ttl' },
-      }),
+    (request) =>
+      context.client.get(
+        {
+          TableName: context.tableName,
+          Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+          ConsistentRead: true,
+          ProjectionExpression: '#ttl',
+          ExpressionAttributeNames: { '#ttl': 'ttl' },
+        },
+        request,
+      ),
     retryFor(context, signal),
   );
   const ttl = (result.Item as { ttl?: number } | undefined)?.ttl;

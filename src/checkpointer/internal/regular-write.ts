@@ -93,7 +93,11 @@ async function commitItem(
     return;
   }
   await withDynamoDBRetry(
-    () => context.client.put({ TableName: context.tableName, Item: item, ...FIRST_WRITE_WINS }),
+    (request) =>
+      context.client.put(
+        { TableName: context.tableName, Item: item, ...FIRST_WRITE_WINS },
+        request,
+      ),
     retryFor(context, signal),
   );
 }

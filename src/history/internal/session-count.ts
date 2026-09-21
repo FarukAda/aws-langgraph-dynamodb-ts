@@ -96,7 +96,7 @@ export async function revertSessionCount(
   };
   const input = { TransactItems: [{ Update: update }], ClientRequestToken: randomUUID() };
   try {
-    await withDynamoDBRetry(() => context.client.transactWrite(input), {
+    await withDynamoDBRetry((request) => context.client.transactWrite(input, request), {
       /** Spread, never assigned onto: `context.retry` is the adapter's own object. */
       ...context.retry,
       deadlineAt: nowMs() + MAX_WRITE_LIFETIME_MS,
@@ -178,7 +178,7 @@ export async function revertSessionCreation(
     ClientRequestToken: randomUUID(),
   };
   try {
-    await withDynamoDBRetry(() => context.client.transactWrite(input), {
+    await withDynamoDBRetry((request) => context.client.transactWrite(input, request), {
       ...context.retry,
       /** The delete carries a token too; this is what keeps its retrying inside the window. */
       deadlineAt: nowMs() + MAX_WRITE_LIFETIME_MS,
