@@ -231,7 +231,16 @@ describe('persisted descriptor shape (CODEC-16)', () => {
     await expect(decodePayload(legacy, { serde }, [])).resolves.toEqual({ a: 1 });
   });
 
-  it('refuses a descriptor written by a newer schema version', async () => {
+  /**
+   * The code is `FORMAT_UNSUPPORTED`, not the `descriptor` validation this
+   * once asserted: a forward `schemaVersion` says the payload is intact and the
+   * release that wrote it reads it, which is the same thing a forward `v` on
+   * the row around it says and is answered the same way. Under the old code it
+   * fell into the permanent-loss bucket, where history's default `skip` dropped
+   * it while the store and the saver refused the identical row — the one
+   * descriptor refusal for which "no other reader would fare better" is false.
+   */
+  it('refuses a descriptor written by a newer schema version as an unsupported format', async () => {
     const future = {
       schemaVersion: 2,
       location: PayloadLocation.INLINE,
@@ -240,9 +249,9 @@ describe('persisted descriptor shape (CODEC-16)', () => {
       bytes: new Uint8Array(),
     } as const;
     await expect(decodePayload(future, { serde }, [])).rejects.toMatchObject({
-      code: ErrorCode.VALIDATION,
-      context: { field: 'descriptor' },
-      message: expect.stringContaining('newer'),
+      code: ErrorCode.FORMAT_UNSUPPORTED,
+      context: { field: 'schemaVersion' },
+      message: expect.stringContaining('upgrade'),
     });
   });
 

@@ -137,9 +137,10 @@ export class DynamoDBStore extends BaseStore {
    * Returns: the item, or `null` for one that does not exist or has expired.
    *
    * Throws: ValidationError naming `namespace`, `namespace element`, `key` or
-   * `sortKey`; `FORMAT_UNSUPPORTED` for an item written by a newer version,
-   * which is reported rather than hidden as absent; `PAYLOAD_CORRUPT` for a
-   * payload that cannot be read; AbortError; UpstreamError;
+   * `sortKey`; `FORMAT_UNSUPPORTED` for an item, or its payload, written by a
+   * newer version, which is reported rather than hidden as absent;
+   * `PAYLOAD_CORRUPT` for a payload that is no longer the form its row
+   * declares; AbortError; UpstreamError;
    * RetryExhaustedError.
    */
   override async get(namespace: string[], key: string): Promise<Item | null> {

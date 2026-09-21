@@ -98,10 +98,10 @@ function sameObject(read: StoreItemRecord, reread: StoreItemRecord): boolean {
  *
  * Throws: ValidationError naming `namespace`, `key` or — for a row whose
  * descriptor is not one — `descriptor`; `FORMAT_UNSUPPORTED` for
- * a row written by a newer version, which is *not* reported as absent — hiding
- * an item that exists is worse than failing; `PAYLOAD_CORRUPT` or the download's
- * own error for a payload that cannot be read; `AbortError` when the signal
- * fires.
+ * a row, or a payload, written by a newer version, which is *not* reported as
+ * absent — hiding an item that exists is worse than failing; `PAYLOAD_CORRUPT`
+ * or the download's own error for a payload that cannot be read; `AbortError`
+ * when the signal fires.
  *
  * Guarantees: strongly consistent — an item just written is always seen, and
  * the ttl is honoured here rather than waited for.

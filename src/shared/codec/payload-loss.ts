@@ -22,14 +22,20 @@ export function isMissingObjectError(error: Error): boolean {
 }
 
 /**
- * True when a row's payload descriptor is not one this adapter can read: it is
- * absent, it is not an object, or its shape is one this version does not
- * understand. The row condemns its own payload — no retry and no configuration
- * change makes those bytes readable, and no other reader would fare better.
+ * True when a row's payload descriptor is not one *any* reader could make sense
+ * of: it is absent, it is not an object, or it names a location no release of
+ * this library ever wrote at the schema it declares. The row condemns its own
+ * payload — no retry and no configuration change makes those bytes readable,
+ * and no other reader would fare better.
  *
- * A `ValidationError` naming `s3Key` is deliberately *not* matched here: it
- * says the reader may not follow the key, not that the payload is unreadable
- * (see `assertKeyInScope`).
+ * Two refusals from the same guard are deliberately *not* matched here, both
+ * because the sentence above would be false of them. A `ValidationError` naming
+ * `s3Key` says the reader may not follow the key, not that the payload is
+ * unreadable (see `assertKeyInScope`). A `FORMAT_UNSUPPORTED` naming
+ * `schemaVersion` says the payload was written by a newer release — which reads
+ * it perfectly — so it is the one descriptor refusal a newer reader *does* fare
+ * better on, and writing it off silently dropped turns during a rollback or a
+ * canary (see `assertReadableDescriptor`).
  */
 function isUnreadableDescriptor(error: Error): boolean {
   const coded = error as { code?: string; context?: { field?: string } } | undefined;
@@ -46,13 +52,14 @@ function isUnreadableDescriptor(error: Error): boolean {
  * (`PAYLOAD_CORRUPT`), it trips the decompression guard (`COMPRESSION_LIMIT`),
  * or the row's own descriptor is unreadable ({@link isUnreadableDescriptor}).
  * Everything else is false, including an error that carries no code at all, and
- * including two refusals that look like loss and are not. The `s3Key` scope
+ * including three refusals that look like loss and are not. The `s3Key` scope
  * refusal: a row pointing outside its own path is a configuration or tenancy
  * fault to report, not a payload to write off. The `serde` refusal, on the same
  * reasoning: the bytes are checked against the form the row declares before
  * that code is chosen, so reaching it means they are undamaged and a serializer
  * declining to reconstruct the class they name says what *this* reader may do,
- * not what the payload is (see `loadPayloadValue`).
+ * not what the payload is (see `loadPayloadValue`). And `FORMAT_UNSUPPORTED`,
+ * on a row or on a payload: newer is not lost.
  *
  * Returns: whether a caller should report rather than retry.
  *

@@ -78,7 +78,8 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * is not an object, `configurable` for a `configurable` that is present and
    * not an object, `signal` for a signal that is not `AbortSignal`-shaped, or
    * `thread_id`, `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a
-   * malformed identifier; `FORMAT_UNSUPPORTED` for a row a newer release wrote;
+   * malformed identifier; `FORMAT_UNSUPPORTED` for a row, or a payload, a newer
+   * release wrote;
    * UpstreamError; RetryExhaustedError; AbortError.
    *
    * Guarantees: strongly consistent, so a checkpoint just written is always

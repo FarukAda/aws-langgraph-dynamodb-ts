@@ -47,8 +47,8 @@ function warnOnNonDescendingScores(
  * `ValidationError` over one bad key. The address is checked here rather than
  * read back off the error `getItem` raises: the read raises a `ValidationError`
  * of its own for a payload it cannot honour — an offloaded row read with no
- * `s3` configured, a descriptor from a newer library, an `s3Key` outside the
- * row's path — and those are reads that did not happen, not items that are not
+ * `s3` configured, a descriptor that is not one, an `s3Key` outside the row's
+ * path — and those are reads that did not happen, not items that are not
  * there, so telling them apart by code alone dropped them as well.
  */
 function addressable(context: StoreContext, match: VectorMatch): boolean {

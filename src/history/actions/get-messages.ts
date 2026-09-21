@@ -38,8 +38,10 @@ function corruptOrRethrow(error: Error): Decoded {
  * a transport, throttling or permission failure there is rethrown. Only a
  * *permanent* loss at that stage — the object is gone, or the decompression
  * guard tripped — is corruption; a row whose `s3Key` lies outside the session's
- * own path is a configuration or tenancy fault, so it is rethrown like any
- * other infrastructure failure (see `assertKeyInScope`).
+ * own path is a configuration or tenancy fault, and a payload whose
+ * `schemaVersion` is newer than this release reads is a turn a newer reader
+ * still serves, so both are rethrown like any other infrastructure failure (see
+ * `assertKeyInScope` and `assertReadableDescriptor`).
  *
  * Deserializing is classified the same way, through the same predicate: bytes
  * that are no longer the form the row declares are this message's own loss, but
@@ -109,8 +111,10 @@ async function decodeMessage(
  *
  * Throws: ValidationError naming `sessionId`, `limit`, `before`, `signal`, or
  * `options.<key>` for a key this package does not read;
- * `FORMAT_UNSUPPORTED` for a row a newer version wrote; the decode error of a
- * corrupt row under `onCorruptMessage: 'throw'`; ValidationError naming
+ * `FORMAT_UNSUPPORTED` for a row, or a payload, a newer version wrote — the
+ * payload half whatever the policy, because a newer reader reads it and
+ * dropping it would lose a turn a rollback could still serve; the decode error
+ * of a corrupt row under `onCorruptMessage: 'throw'`; ValidationError naming
  * `s3Key` for a row addressing an object outside the session's own path, and
  * naming `serde` for a row whose payload the serializer refuses to
  * reconstruct, both whatever the policy; any infrastructure failure — a

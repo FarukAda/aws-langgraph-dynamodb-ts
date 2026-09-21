@@ -83,6 +83,18 @@ function requireOffloader(deps: CodecDeps): S3Offloader {
  * all, one whose schema is newer, or one whose location is unknown. A row can
  * hold anything its writer stored, and reading `.schemaVersion` off `null`
  * raised a raw `TypeError` out of a public method.
+ *
+ * The newer schema is the one of the three that is **not** the payload's own
+ * fault, and it is coded apart from the other two for that reason. A descriptor
+ * that is not an object, and one naming a location no release ever wrote at
+ * this schema, condemn themselves: no upgrade and no configuration makes those
+ * bytes readable, so a reader may write them off. A forward `schemaVersion`
+ * says the opposite — the payload is intact and the release that wrote it reads
+ * it perfectly — so it is `FORMAT_UNSUPPORTED`, exactly as a forward `v` on the
+ * row around it is, naming the attribute that carried the version. Sharing the
+ * `descriptor` field put it in the permanent-loss bucket, where history's
+ * default `skip` silently dropped during a rollback or a canary the very turns
+ * the store and the saver refused to serve.
  */
 function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   if (descriptor === null || typeof descriptor !== 'object') {
@@ -94,10 +106,11 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   }
   const version = descriptor.schemaVersion ?? DESCRIPTOR_SCHEMA_VERSION;
   if (version > DESCRIPTOR_SCHEMA_VERSION) {
-    throw new ValidationError(
-      `payload descriptor schemaVersion ${version} was written by a newer version of this ` +
-        'library; upgrade to read it',
-      'descriptor',
+    throw new DynamoDBLangGraphError(
+      `this payload was written in descriptor schema version ${version}; this version of the ` +
+        `library reads up to ${DESCRIPTOR_SCHEMA_VERSION} — upgrade to read it`,
+      ErrorCode.FORMAT_UNSUPPORTED,
+      { field: 'schemaVersion' },
     );
   }
   const locations: string[] = Object.values(PayloadLocation);
@@ -126,10 +139,13 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
  *
  * Returns: the decoded bytes.
  *
- * Throws: ValidationError naming `descriptor` for an unreadable shape and `s3`
- * for an offloaded row with no offloader configured; ValidationError naming
- * `s3Key` when the key lies outside `scope`; `AbortError` when the signal
- * fires during the download; `S3_OFFLOAD_FAILED` from the download; `COMPRESSION_LIMIT` or `PAYLOAD_CORRUPT` from decompression.
+ * Throws: ValidationError naming `descriptor` for a shape no reader could
+ * make sense of and `s3` for an offloaded row with no offloader configured;
+ * `FORMAT_UNSUPPORTED` naming `schemaVersion` for a payload a newer release
+ * wrote, which a newer reader reads fine; ValidationError naming `s3Key` when
+ * the key lies outside `scope`; `AbortError` when the signal fires during the
+ * download; `S3_OFFLOAD_FAILED` from the download; `COMPRESSION_LIMIT` or
+ * `PAYLOAD_CORRUPT` from decompression.
  *
  * Guarantees: an offloaded object is downloaded only when its key lies under
  * the path `scope` produces, so a row can never point this adapter at an

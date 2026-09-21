@@ -221,8 +221,22 @@ describe('isPermanentPayloadLoss', () => {
 
 describe('isPermanentPayloadLoss on descriptor rejections (SEC-03, CODEC-16, M-03)', () => {
   it('treats an unreadable descriptor as permanent and other validation, s3Key included, as not', () => {
-    expect(isPermanentPayloadLoss(new ValidationError('newer', 'descriptor'))).toBe(true);
+    expect(isPermanentPayloadLoss(new ValidationError('not a descriptor', 'descriptor'))).toBe(
+      true,
+    );
     expect(isPermanentPayloadLoss(new ValidationError('bad option', 's3'))).toBe(false);
+  });
+
+  /**
+   * The one descriptor refusal that is not the payload's own fault. A newer
+   * release wrote it and reads it, so it carries the format code rather than
+   * the descriptor validation, and no policy may drop it.
+   */
+  it('does not treat a payload a newer release wrote as payload loss', () => {
+    const forward = new DynamoDBLangGraphError('newer', ErrorCode.FORMAT_UNSUPPORTED, {
+      field: 'schemaVersion',
+    });
+    expect(isPermanentPayloadLoss(forward)).toBe(false);
   });
 
   /**
