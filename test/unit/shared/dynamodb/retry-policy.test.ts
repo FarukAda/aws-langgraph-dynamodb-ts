@@ -1,9 +1,11 @@
 import {
+  MAX_LOGGED_VALUE_CHARS,
   MAX_WRITE_LIFETIME_MS,
   MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
 } from '../../../../src/shared/constants';
 import { withRetry } from '../../../../src/shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../../../src/shared/dynamodb/retry-policy';
+import { truncateForLog } from '../../../../src/shared/logging/truncate';
 
 const fakeLogger = () => ({ debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() });
 
@@ -130,5 +132,34 @@ describe('the attempt floor an adapter applies', () => {
     resolveRetryPolicy(undefined, logger, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS);
 
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The retry line names the transient failure rather than repeating its text.
+ * That name comes from the SDK, the transport or a caller's own collaborator
+ * and nothing this package ran checked its length, and the line fires once per
+ * attempt — so an unbounded name is paid for per retry.
+ */
+describe('the debug line a retry emits', () => {
+  it('cuts the error name it quotes at the log cap', async () => {
+    const name = 'T'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const logger = fakeLogger();
+    const options = resolveRetryPolicy({ maxAttempts: 2, baseDelayMs: 0 }, logger);
+    let attempts = 0;
+
+    await withRetry(async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        /** Retryable by its , so the line under test is the one that fires. */
+        throw Object.assign(new Error('slow'), { name, code: 'ThrottlingException' });
+      }
+      return 'ok';
+    }, options);
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      'retrying after a transient error',
+      expect.objectContaining({ error: truncateForLog(name) }),
+    );
   });
 });

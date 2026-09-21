@@ -6,6 +6,7 @@ import { s3ClientOptions } from '../shared/codec/s3/client-types';
 import type { S3OffloadConfig } from '../shared/codec/s3/config';
 import { resolveDynamoDBClient } from '../shared/dynamodb/client';
 import { type Logger, resolveLogger } from '../shared/logging/logger';
+import { truncateForLog } from '../shared/logging/truncate';
 import { assertMembers, LOGGER_MEMBERS } from '../shared/validation/collaborators';
 import {
   allKeysOf,
@@ -65,8 +66,15 @@ function release(logger: Logger, close: () => void): void {
   try {
     close();
   } catch (error) {
+    /**
+     * The name, never the message — and bounded, because a name is a string an
+     * adapter's own `close` threw and nothing this package ran checked its
+     * length. `message` is bounded at `redactedMessage`, and relaying the two
+     * halves of "what the failure was" under different rules is the split that
+     * rule exists to remove.
+     */
     logger.warn('factory.destroy: an adapter did not release its resources', {
-      reason: (error as Error).name,
+      reason: truncateForLog((error as Error).name),
     });
   }
 }

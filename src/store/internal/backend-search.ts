@@ -55,7 +55,14 @@ function warnOnNonDescendingScores(
  * The line quotes the address the backend gave, bounded: this fires in the
  * branch where `validateStoreKey` refused it, one line per bad match, and
  * nothing this package ran bounded either the labels or how many of them there
- * are.
+ * are. The `reason` goes through the same cap, though it is the only one of
+ * these that cannot exceed it: what this `catch` binds is always
+ * `validateStoreKey`'s own `ValidationError`, whose name is a literal of this
+ * package's. It is cut anyway so the rule reads the same at every site that
+ * names a failure — a name and a message are the two halves of what the
+ * failure was, and `message` is bounded where `redactedMessage` relays it —
+ * and so that a later refusal thrown from somewhere else does not arrive
+ * unbounded because this one site was reasoned about individually.
  */
 function addressable(context: StoreContext, match: VectorMatch): boolean {
   try {
@@ -65,7 +72,7 @@ function addressable(context: StoreContext, match: VectorMatch): boolean {
     context.logger.warn('search: skipped an unusable vectorBackend match', {
       namespace: truncateLabelsForLog(match.namespace),
       key: truncateForLog(match.key),
-      reason: (error as Error).name,
+      reason: truncateForLog((error as Error).name),
     });
     return false;
   }

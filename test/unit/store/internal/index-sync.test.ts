@@ -1,3 +1,5 @@
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
+import { truncateForLog } from '../../../../src/shared/logging/truncate';
 import { syncVectorIndex } from '../../../../src/store/internal/index-sync';
 
 function fakeLogger() {
@@ -42,6 +44,27 @@ describe('syncVectorIndex', () => {
        * identifiers and counts only, and a backend's message is neither.
        */
       expect.objectContaining({ key: 'k', reason: 'Error' }),
+    );
+  });
+
+  /**
+   * The name is the backend's own and nothing this package ran checked its
+   * length. `message` is bounded where `redactedMessage` relays it, so
+   * relaying the name whole would split what is one value — and this line
+   * fires once per failed item.
+   */
+  it('cuts a backend error name past the log cap', async () => {
+    const reason = 'B'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const backend = {
+      upsert: jest.fn().mockRejectedValue(Object.assign(new Error('down'), { name: reason })),
+      delete: jest.fn(),
+      query: jest.fn(),
+    };
+    const logger = fakeLogger();
+    await syncVectorIndex(backend, ['n'], 'k', [1], logger);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ reason: truncateForLog(reason) }),
     );
   });
 });

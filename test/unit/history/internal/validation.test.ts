@@ -7,9 +7,13 @@ import {
   validateSessionId,
   validateStorableMessages,
 } from '../../../../src/history/internal/validation';
-import { MAX_LOGGED_VALUE_CHARS, MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
+import {
+  MAX_LOGGED_VALUE_CHARS,
+  MAX_PAGE_LIMIT,
+  MAX_RELAYED_MESSAGE_CHARS,
+} from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import { truncateForLog, truncateRelayedText } from '../../../../src/shared/logging/truncate';
 import { ULID_TIME_RANGE_MS } from '../../../../src/shared/ulid';
 
 function expectValidationError(fn: () => void): void {
@@ -84,10 +88,11 @@ describe('toStoredMessages', () => {
 
   /**
    * LangChain renders the value it refused into the text it throws, so the
-   * relayed half is as long as the caller's own object makes it.
+   * relayed half is as long as the caller's own object makes it. It is prose
+   * rather than an identifier, so it takes the relay cap.
    */
   it('bounds what LangChain says about the value it refused', () => {
-    const detail = 'n'.repeat(MAX_LOGGED_VALUE_CHARS * 8);
+    const detail = 'n'.repeat(MAX_RELAYED_MESSAGE_CHARS * 2);
     const shape = {
       toDict: () => {
         throw new Error(detail);
@@ -100,7 +105,7 @@ describe('toStoredMessages', () => {
       const coded = error as { context?: { field?: string }; message: string };
       expect(coded.context?.field).toBe('messages');
       expect(coded.message).not.toContain(detail);
-      expect(coded.message).toContain(truncateForLog(detail));
+      expect(coded.message).toContain(truncateRelayedText(detail));
     }
   });
 });
@@ -143,10 +148,14 @@ describe('validateStorableMessages (HIST-04)', () => {
    * so the message names it bounded — and so is what LangChain says about it,
    * because that text renders the same unchecked value into itself and
    * bounding only the type left the message as long as it ever was.
-   * `context.field` stays `messages`, which is what a caller branches on.
+   * `context.field` stays `messages`, which is what a caller branches on. The
+   * two halves take different caps: the type is an identifier, while what
+   * LangChain threw is prose, cut once by `redactedMessage` and not again
+   * here — a second cut would state the length of the first cut's output
+   * rather than the length the caller's text really had.
    */
   it('bounds the type it quotes and the text LangChain renders it into', () => {
-    const type = 'r'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const type = 'r'.repeat(MAX_RELAYED_MESSAGE_CHARS * 4);
     try {
       validateStorableMessages([stored(type, { id: 'x' })]);
       throw new Error('should have thrown');
@@ -156,6 +165,30 @@ describe('validateStorableMessages (HIST-04)', () => {
       expect(coded.message).not.toContain(type);
       expect(coded.message).toContain(truncateForLog(type));
       expect(coded.message.length).toBeLessThan(type.length);
+      expect(coded.message.length).toBeLessThan(
+        MAX_LOGGED_VALUE_CHARS + MAX_RELAYED_MESSAGE_CHARS + 200,
+      );
+    }
+  });
+
+  /**
+   * The relayed half is marked with the length the caller's text really had.
+   * Cutting it twice — once in `redactedMessage`, once again at the call site —
+   * would mark the intermediate length instead, which is exactly what the mark
+   * exists to prevent.
+   */
+  it('marks the relayed text with the length it really had, never a cut one', () => {
+    const type = 'r'.repeat(MAX_RELAYED_MESSAGE_CHARS * 4);
+    try {
+      validateStorableMessages([stored(type, { id: 'x' })]);
+      throw new Error('should have thrown');
+    } catch (error) {
+      const marks = [...(error as Error).message.matchAll(/…\(len (\d+)\)/g)].map((match) =>
+        Number(match[1]),
+      );
+      expect(marks).toHaveLength(2);
+      expect(marks[0]).toBe(type.length);
+      expect(marks[1]).toBeGreaterThan(type.length);
     }
   });
 });

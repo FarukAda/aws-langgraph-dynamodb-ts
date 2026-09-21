@@ -356,3 +356,40 @@ export const MAX_LOGGED_VALUE_CHARS = 256;
  * and a backend's own answer is unchecked in both.
  */
 export const MAX_LOGGED_LABELS = 8;
+
+/**
+ * Characters of a relayed *cause's* text one public error message or one log
+ * line carries, past which it is cut and marked with its real length.
+ *
+ * Its own cap rather than {@link MAX_LOGGED_VALUE_CHARS} because the two bound
+ * different things. That one bounds an **identifier** — a sort key, an S3
+ * object key, a namespace label — and 256 is this package's own budget for one
+ * identifier inside a key, so a value past it is already abnormal and the line
+ * only has to say which row to go and look at. This one bounds **prose**: the
+ * sentence an AWS SDK error, a consumer's `VectorBackend` or a caller's own
+ * `serde` wrote to explain a failure, which `redactedMessage` relays into
+ * `err.message`. Cutting that at an identifier's budget would throw away the
+ * half of a diagnostic that says what to do about it, and a diagnostic is the
+ * entire value of relaying it at all.
+ *
+ * 1024 is measured against the longest text this package actually relays: an
+ * IAM `AccessDenied`, which names the calling principal's ARN, the action and
+ * the resource ARN and then says why no policy allows it, runs to the mid
+ * hundreds of characters, and a role ARN with a long path and a session name
+ * pushes it further. 1024 clears that whole, so the case an operator most
+ * needs to read arrives intact.
+ *
+ * What it is *for* is the other direction. `redactedMessage` also relays a
+ * **caller's own** thrown error — a `serde` refusing a value, a `vectorBackend`
+ * rejecting a query — whose length the caller controls entirely, and those
+ * messages are quoted once per row on paths that walk a whole prefix or table.
+ * Unbounded, one such error fills a log; at 1024 a thousand of them are a
+ * megabyte rather than an unbounded amount.
+ *
+ * Its own literal at the same value as {@link MAX_SORT_KEY_BYTES} and
+ * {@link MAX_S3_KEY_BYTES} rather than an alias of either, for the reason
+ * {@link LIST_SCAN_WARN_THRESHOLD} records: aliasing two caps has already
+ * meant that retuning one silently moved the other, and these three answer
+ * unrelated questions.
+ */
+export const MAX_RELAYED_MESSAGE_CHARS = 1024;

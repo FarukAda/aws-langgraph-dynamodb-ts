@@ -63,6 +63,16 @@ export function assertObjectShape(value: object, field: string): void {
  * Throws: ValidationError naming `field` for a value that is not an object, and
  * `field.key` for an unknown key. A misspelt key is otherwise accepted and
  * ignored, and the caller runs on a default they believe they overrode.
+ *
+ * `field.key` is **deliberately not cut**, where the rule that bounds an
+ * unchecked string before a message quotes it would otherwise reach it. The
+ * same string is the message *and* `context.field`, and `context.field` is the
+ * compatibility surface a caller branches on, so cutting one and not the other
+ * would make an error disagree with itself about which option it refused.
+ * Cutting both would bound a field callers match on, which this package does
+ * not do. The value is also the caller's own key off the caller's own options
+ * object — neither row-sourced nor third-party — so the only person who can
+ * make it enormous is the person reading the error.
  */
 export function assertShape(value: object, allowed: readonly string[], field: string): void {
   assertObjectShape(value, field);

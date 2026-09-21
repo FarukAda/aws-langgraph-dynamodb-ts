@@ -1,4 +1,5 @@
 import { toError } from '../errors/wrap-error';
+import { truncateRelayedText } from './truncate';
 
 /** Marker substituted for anything recognised as secret. */
 export const REDACTED = '[REDACTED]';
@@ -107,11 +108,22 @@ export function isSecretKey(key: string, patterns: readonly string[]): boolean {
  * first and the description is what is redacted, so a secret it carries in its
  * own text is still caught.
  *
- * Returns: the message, redacted with the default value patterns — for
- * embedding in another error's message, since a wrapper that quotes its cause
- * must not leak a `password=` or token the cause happened to carry. That text
- * reaches `err.message`, which an application may print without a redacting
- * logger.
+ * Returns: the message, redacted with the default value patterns and then
+ * bounded by `truncateRelayedText` — for embedding in another error's
+ * message, since a wrapper that quotes its cause must not leak a `password=`
+ * or token the cause happened to carry. That text reaches `err.message`, which
+ * an application may print without a redacting logger.
+ *
+ * The bound is here rather than at the sites that quote the result, so no call
+ * site can get it wrong and no future one has to remember: a `RetryExhausted`
+ * report, an `UpstreamError`, a compensation failure and both S3 transfer
+ * errors all inherit it from this one line. Redaction runs **before** the cut,
+ * because cutting first could split a credential shape past the pattern that
+ * would have caught it. Its own cap rather than the identifier cap: this is
+ * prose, and `MAX_RELAYED_MESSAGE_CHARS` records what that number is
+ * measured against. The value worth bounding is not the AWS SDK's own text but
+ * a **caller's** — a `serde` refusal or a `vectorBackend` rejection, whose
+ * length the caller controls entirely and which some paths quote once per row.
  *
  * Throws: **nothing**, for any value. Reading `.message` off a thrown
  * primitive yielded `undefined` and the redaction then raised a `TypeError` —
@@ -121,7 +133,7 @@ export function isSecretKey(key: string, patterns: readonly string[]): boolean {
  * the guard concentrates every site into a function that is not safe.
  */
 export function redactedMessage(error: Error): string {
-  return redactText(toError(error).message, DEFAULT_SECRET_VALUE_PATTERNS);
+  return truncateRelayedText(redactText(toError(error).message, DEFAULT_SECRET_VALUE_PATTERNS));
 }
 
 /**

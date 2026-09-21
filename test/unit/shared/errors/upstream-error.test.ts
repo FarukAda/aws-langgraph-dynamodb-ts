@@ -1,6 +1,11 @@
+import {
+  MAX_LOGGED_VALUE_CHARS,
+  MAX_RELAYED_MESSAGE_CHARS,
+} from '../../../../src/shared/constants';
 import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { UpstreamError } from '../../../../src/shared/errors/upstream-error';
+import { truncateForLog, truncateRelayedText } from '../../../../src/shared/logging/truncate';
 
 describe('UpstreamError', () => {
   it('wraps an SDK error, keeping its name, request id and HTTP status for support tickets', () => {
@@ -51,6 +56,29 @@ describe('UpstreamError redacts the cause it quotes (SEC-05)', () => {
     expect(error.message).toBe('store.put: Error: throttled');
     expect(error.upstreamName).toBe('Error');
     expect(error.cause).toBe(cause);
+  });
+
+  /**
+   * A name and a message are the two halves of what the failure was, and both
+   * come from below this library — an SDK, a transport, a consumer's
+   * `VectorBackend` — with nothing this package ran checking either length.
+   * The name takes the identifier cap because it is one; the text takes the
+   * relay cap because it is prose. `upstreamName` and `cause` keep both whole,
+   * since the structured fields are what a caller branches on.
+   */
+  it('cuts both halves of the failure it quotes, and keeps the fields whole', () => {
+    const name = 'N'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const text = 'm'.repeat(MAX_RELAYED_MESSAGE_CHARS * 4);
+    const cause = Object.assign(new Error(text), { name });
+    const error = new UpstreamError(cause, 'store.get');
+
+    expect(error.message).toBe(`store.get: ${truncateForLog(name)}: ${truncateRelayedText(text)}`);
+    expect(error.message.length).toBeLessThan(text.length);
+    expect(error.message.length).toBeLessThan(
+      MAX_LOGGED_VALUE_CHARS + MAX_RELAYED_MESSAGE_CHARS + 100,
+    );
+    expect(error.upstreamName).toBe(name);
+    expect((error.cause as Error).message).toBe(text);
   });
 });
 

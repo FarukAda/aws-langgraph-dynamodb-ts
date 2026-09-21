@@ -155,7 +155,7 @@ export async function getMessages(
     context.logger.error('getMessages: skipped a corrupt message item', {
       sessionId,
       sortKey: truncateForLog(items[index].SK),
-      reason: result.error.name,
+      reason: truncateForLog(result.error.name),
     });
   });
   return messages;

@@ -1,4 +1,5 @@
 import type { Logger } from '../../shared/logging/logger';
+import { truncateForLog } from '../../shared/logging/truncate';
 import type { VectorBackend } from '../vector-backend';
 
 /**
@@ -28,15 +29,19 @@ export async function syncVectorIndex(
   } catch (error) {
     /**
      * The name, not the message: a backend's error text is not an identifier.
-     * The literal does not name a method, because both `store.put` and
-     * `store.delete` reach here and reporting a failed delete as a failed put
-     * sends an operator to the wrong call site; `operation` carries which one.
+     * Bounded all the same — the name is the backend's own and nothing this
+     * package ran checked its length, and `message` is bounded where
+     * `redactedMessage` relays it, so relaying the name whole would split what
+     * is one value. The literal does not name a method, because both
+     * `store.put` and `store.delete` reach here and reporting a failed delete
+     * as a failed put sends an operator to the wrong call site; `operation`
+     * carries which one.
      */
     logger.warn('store vector-index sync failed; reconcileVectorIndex will repair', {
       namespace,
       key,
       operation: embedding ? 'upsert' : 'delete',
-      reason: (error as Error).name,
+      reason: truncateForLog((error as Error).name),
     });
   }
 }

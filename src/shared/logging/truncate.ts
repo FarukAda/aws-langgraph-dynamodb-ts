@@ -1,8 +1,23 @@
-import { MAX_LOGGED_LABELS, MAX_LOGGED_VALUE_CHARS } from '../constants';
+import { MAX_LOGGED_LABELS, MAX_LOGGED_VALUE_CHARS, MAX_RELAYED_MESSAGE_CHARS } from '../constants';
 
 /** True for the high half of a surrogate pair, whose low half follows it. */
 function isHighSurrogate(unit: number): boolean {
   return unit >= 0xd800 && unit <= 0xdbff;
+}
+
+/**
+ * The cut itself, shared by both caps so one value can never be marked twice
+ * with two different lengths.
+ *
+ * `max` is a character count. A value at or under it comes back identical; a
+ * longer one comes back as `max` characters — one fewer when that would split
+ * a surrogate pair — followed by `…(len N)` giving the length it really had.
+ */
+function cutTo(value: string, max: number): string {
+  if (typeof value !== 'string' || value.length <= max) return value;
+  const last = value.charCodeAt(max - 1);
+  const kept = isHighSurrogate(last) ? max - 1 : max;
+  return `${value.slice(0, kept)}…(len ${value.length})`;
 }
 
 /**
@@ -49,10 +64,36 @@ function isHighSurrogate(unit: number): boolean {
  * log transport rewrites one to U+FFFD without saying so.
  */
 export function truncateForLog(value: string): string {
-  if (typeof value !== 'string' || value.length <= MAX_LOGGED_VALUE_CHARS) return value;
-  const last = value.charCodeAt(MAX_LOGGED_VALUE_CHARS - 1);
-  const kept = isHighSurrogate(last) ? MAX_LOGGED_VALUE_CHARS - 1 : MAX_LOGGED_VALUE_CHARS;
-  return `${value.slice(0, kept)}…(len ${value.length})`;
+  return cutTo(value, MAX_LOGGED_VALUE_CHARS);
+}
+
+/**
+ * Bound the **prose** of a relayed cause, which takes its own cap.
+ *
+ * {@link truncateForLog} bounds an identifier, where 256 characters is this
+ * package's own budget for one and anything past it is already abnormal. The
+ * text an AWS SDK error, a consumer's `VectorBackend` or a caller's own
+ * `serde` wrote is a sentence rather than a name: cut at an identifier's
+ * budget it loses the half that says what to do, which is the only reason to
+ * relay it. {@link MAX_RELAYED_MESSAGE_CHARS} records what the larger number
+ * is measured against, and why the two differ.
+ *
+ * It has exactly one caller — `redactedMessage`, the funnel every `catch` in
+ * this package goes through — so no call site can get the cap wrong and no
+ * future one has to remember it. That also means a site must not cut the
+ * result again: a second cut marks the length of the first cut's output rather
+ * than of the original, which is the one thing the mark exists to prevent.
+ *
+ * Accepts: `value` — the redacted text. Redaction runs first, so a credential
+ * shape can never be half-cut past the pattern that would have caught it.
+ *
+ * Returns: the value unchanged at or under the cap, otherwise that many
+ * characters followed by `…(len N)`.
+ *
+ * Throws: nothing.
+ */
+export function truncateRelayedText(value: string): string {
+  return cutTo(value, MAX_RELAYED_MESSAGE_CHARS);
 }
 
 /**

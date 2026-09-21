@@ -129,12 +129,15 @@ export async function cleanUpS3Orphans(
   /**
    * The error's *name*, never its message: an underlying failure can carry a
    * credential fragment in its text, and this package promises that its logs
-   * hold identifiers and counts only.
+   * hold identifiers and counts only. Bounded all the same — a name is an
+   * identifier this package did not length-check, and `message` is bounded
+   * where `redactedMessage` relays it, so bounding one and relaying the other
+   * whole would split what is one value.
    */
   absorbLoggerFailure(() =>
     logger.warn(
       `Failed to clean up orphaned S3 objects after ${context}; a lifecycle rule from ensureS3LifecycleRule() would sweep them, otherwise clean up manually`,
-      { reason: lastError.name },
+      { reason: truncateForLog(lastError.name) },
     ),
   );
 }

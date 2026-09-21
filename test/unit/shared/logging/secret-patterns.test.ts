@@ -1,4 +1,8 @@
 import {
+  MAX_LOGGED_VALUE_CHARS,
+  MAX_RELAYED_MESSAGE_CHARS,
+} from '../../../../src/shared/constants';
+import {
   binaryLabel,
   DEFAULT_SECRET_KEY_PATTERNS,
   DEFAULT_SECRET_VALUE_PATTERNS,
@@ -10,6 +14,7 @@ import {
   redactText,
   redactedMessage,
 } from '../../../../src/shared/logging/secret-patterns';
+import { truncateRelayedText } from '../../../../src/shared/logging/truncate';
 
 describe('normaliseKey', () => {
   it('folds case and drops every separator, so one pattern covers every spelling', () => {
@@ -75,6 +80,39 @@ describe('redactedMessage', () => {
     expect(redactedMessage(new Error('ProvisionedThroughputExceeded on table app'))).toBe(
       'ProvisionedThroughputExceeded on table app',
     );
+  });
+
+  /**
+   * The bound lives here rather than at the sites that quote the result, so
+   * every relay inherits it. The value worth bounding is not the SDK's text
+   * but a caller's own: a `serde` refusal or a `vectorBackend` rejection whose
+   * length the caller controls entirely, quoted on paths that walk a whole
+   * prefix or table.
+   */
+  it('cuts a caller-controlled message at the relay cap and states its real length', () => {
+    const caller = 'z'.repeat(MAX_RELAYED_MESSAGE_CHARS * 4);
+    const out = redactedMessage(new Error(caller));
+    expect(out).toBe(truncateRelayedText(caller));
+    expect(out).toContain(`…(len ${caller.length})`);
+    expect(out.length).toBeLessThan(caller.length);
+  });
+
+  /**
+   * Cutting before redacting would split a credential shape past the pattern
+   * that catches it and print the head verbatim, so the order is load-bearing.
+   */
+  it('redacts before it cuts, so a secret past the cap cannot survive the cut', () => {
+    const error = new Error(`AKIAIOSFODNN7EXAMPLE ${'padding '.repeat(MAX_RELAYED_MESSAGE_CHARS)}`);
+    const out = redactedMessage(error);
+    expect(out).toContain(REDACTED);
+    expect(out).not.toContain('AKIAIOSFODNN7EXAMPLE');
+  });
+
+  /** Prose, not an identifier: a real AWS diagnostic is longer than a key and survives whole. */
+  it('relays a diagnostic past the identifier cap intact', () => {
+    const denied = `AccessDenied: ${'arn:aws:iam::123456789012:role/App '.repeat(8)}`;
+    expect(denied.length).toBeGreaterThan(MAX_LOGGED_VALUE_CHARS);
+    expect(redactedMessage(new Error(denied))).toBe(denied);
   });
 });
 

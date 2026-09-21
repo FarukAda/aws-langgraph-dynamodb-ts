@@ -5,6 +5,7 @@ import {
   MAX_WRITE_LIFETIME_MS,
 } from '../constants';
 import type { Logger } from '../logging/logger';
+import { truncateForLog } from '../logging/truncate';
 import type { RetryOptions } from './retry';
 
 /**
@@ -125,8 +126,18 @@ export function resolveRetryPolicy(
   );
   return {
     ...resolved,
+    /**
+     * The name, never the message — and bounded: the transient failure came
+     * from the SDK, the transport or a caller's own collaborator, and nothing
+     * this package ran checked how long its name is. This line fires once per
+     * retry, so an unbounded one is paid for per attempt.
+     */
     onRetry: ({ attempt, delayMs, error }) =>
-      logger.debug('retrying after a transient error', { attempt, delayMs, error: error.name }),
+      logger.debug('retrying after a transient error', {
+        attempt,
+        delayMs,
+        error: truncateForLog(error.name),
+      }),
   };
 }
 

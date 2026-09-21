@@ -94,3 +94,38 @@ describe('the refusal names the row an operator has to go and look at', () => {
     });
   });
 });
+
+/**
+ * The `error` line names what the failure was rather than repeating what it
+ * said. That name is whatever the rebuild threw, and the rebuild runs on what
+ * a caller's own `serde` handed back, so nothing this package ran checked its
+ * length — while `message` is already bounded where `redactedMessage` relays
+ * it. One line per corrupt row, on a read that walks a whole session.
+ */
+describe('the corrupt-row line bounds the failure it names', () => {
+  it('cuts a reason a caller-supplied serde produced', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const name = 'C'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const error = jest.fn();
+    const serde = {
+      dumpsTyped: JSON_SERDE.dumpsTyped,
+      loadsTyped: async (): Promise<unknown> => ({
+        get type(): string {
+          throw Object.assign(new Error('cannot rebuild'), { name });
+        },
+      }),
+    };
+    mock.on(QueryCommand).resolves({ Items: [await realRow(client, '01A')] });
+
+    const messages = await getMessages(
+      context(client, { serde, logger: { ...SILENT_LOGGER, error } }),
+      's1',
+    );
+
+    expect(messages).toEqual([]);
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('corrupt'),
+      expect.objectContaining({ reason: truncateForLog(name) }),
+    );
+  });
+});

@@ -1,5 +1,13 @@
-import { MAX_LOGGED_LABELS, MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
-import { truncateForLog, truncateLabelsForLog } from '../../../../src/shared/logging/truncate';
+import {
+  MAX_LOGGED_LABELS,
+  MAX_LOGGED_VALUE_CHARS,
+  MAX_RELAYED_MESSAGE_CHARS,
+} from '../../../../src/shared/constants';
+import {
+  truncateForLog,
+  truncateLabelsForLog,
+  truncateRelayedText,
+} from '../../../../src/shared/logging/truncate';
 
 /** The lone high half of the surrogate pair that spells the grinning-face emoji. */
 const HIGH = String.fromCharCode(0xd83d);
@@ -48,6 +56,44 @@ describe('truncateForLog', () => {
 
   it('leaves a lone surrogate already in the value alone', () => {
     expect(truncateForLog(`a${HIGH}b`)).toBe(`a${HIGH}b`);
+  });
+});
+
+/**
+ * Prose takes its own cap. An identifier past 256 characters is already
+ * abnormal and the line only has to say which row to look at, but the sentence
+ * an AWS SDK error wrote is the whole value of relaying it — an IAM
+ * `AccessDenied` naming a principal ARN, an action and a resource ARN runs to
+ * the mid hundreds and must arrive intact.
+ */
+describe('truncateRelayedText', () => {
+  it('lets a real AWS diagnostic through whole, where the identifier cap would cut it', () => {
+    const denied =
+      `User: arn:aws:sts::123456789012:assumed-role/${'Service'.repeat(20)}/session-name ` +
+      'is not authorized to perform: dynamodb:PutItem on resource: ' +
+      'arn:aws:dynamodb:eu-west-1:123456789012:table/app-table because no identity-based ' +
+      'policy allows the dynamodb:PutItem action';
+    expect(denied.length).toBeGreaterThan(MAX_LOGGED_VALUE_CHARS);
+    expect(truncateRelayedText(denied)).toBe(denied);
+    expect(truncateForLog(denied)).not.toBe(denied);
+  });
+
+  it('cuts past its own cap and states the length the text really had', () => {
+    const value = `${'a'.repeat(MAX_RELAYED_MESSAGE_CHARS)}bbbb`;
+    expect(truncateRelayedText(value)).toBe(
+      `${'a'.repeat(MAX_RELAYED_MESSAGE_CHARS)}…(len ${MAX_RELAYED_MESSAGE_CHARS + 4})`,
+    );
+  });
+
+  it('never cuts a surrogate pair in half, as the identifier cap does not', () => {
+    const value = `${'a'.repeat(MAX_RELAYED_MESSAGE_CHARS - 1)}😀tail`;
+    const out = truncateRelayedText(value);
+    expect(out.isWellFormed()).toBe(true);
+    expect(out).toBe(`${'a'.repeat(MAX_RELAYED_MESSAGE_CHARS - 1)}…(len ${value.length})`);
+  });
+
+  it('passes a non-string through rather than throwing inside a report', () => {
+    expect(truncateRelayedText(undefined as unknown as string)).toBeUndefined();
   });
 });
 

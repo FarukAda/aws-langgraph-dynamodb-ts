@@ -1,4 +1,5 @@
 import { redactedMessage } from '../logging/secret-patterns';
+import { truncateForLog } from '../logging/truncate';
 import { DynamoDBLangGraphError } from './base-error';
 import { ErrorCode } from './error-code';
 import { toError } from './wrap-error';
@@ -34,7 +35,11 @@ export class UpstreamError extends DynamoDBLangGraphError {
    * them. Absent metadata leaves no `undefined`-valued own property behind, so
    * a serialized error carries only what is real. A cause that is not
    * error-shaped is described through `toError`, so `cause` is always an
-   * `Error` and `upstreamName` always a string.
+   * `Error` and `upstreamName` always a string. The **message** quotes that
+   * name cut at the log cap and the cause's text cut at the relay cap — the
+   * two halves of "what the failure was", bounded alike — while
+   * `upstreamName` and `cause` keep both whole, because the structured fields
+   * are what a caller branches on and the text never was.
    *
    * Throws: nothing; building an error may not fail. Reading `.name` off a
    * thrown string, `null` or plain object crashed here — inside the `catch`
@@ -51,7 +56,7 @@ export class UpstreamError extends DynamoDBLangGraphError {
      */
     const below = toError(cause);
     super(
-      `${operation}: ${below.name}: ${redactedMessage(below)}`,
+      `${operation}: ${truncateForLog(below.name)}: ${redactedMessage(below)}`,
       ErrorCode.UPSTREAM,
       { operation },
       below,

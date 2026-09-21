@@ -1,7 +1,9 @@
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { DynamoDBFactory } from '../../../src/factory/factory';
 import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-history';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../src/shared/constants';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
+import { truncateForLog } from '../../../src/shared/logging/truncate';
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 
@@ -210,5 +212,35 @@ describe('createAll leaves a malformed shared s3 for the adapter to refuse', () 
     });
     f.createAll({ saver: { tableName: 'tbl' } }).destroy();
     expect(f.createSaver({ tableName: 'tbl' })).toBeInstanceOf(DynamoDBSaver);
+  });
+});
+
+/**
+ * Teardown reports the name of whatever an adapter's `close` threw rather than
+ * its text. That close is a caller-supplied client's own `destroy`, so nothing
+ * this package ran checked how long the name is, while `message` is already
+ * bounded where `redactedMessage` relays it — and relaying one half whole
+ * would split what is one value.
+ */
+describe('factory.destroy bounds the failure it names', () => {
+  it('cuts an adapter teardown error name past the log cap', () => {
+    const name = 'D'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    const client = {
+      destroy: () => {
+        throw Object.assign(new Error('socket already closed'), { name });
+      },
+      config: {},
+      middlewareStack: fakeMiddlewareStack(),
+      send: jest.fn(),
+    };
+    const factory = new DynamoDBFactory({ createClient: () => client as never, logger });
+
+    const all = factory.createAll({ saver: { tableName: 'ckpt' } });
+    expect(() => all.destroy()).not.toThrow();
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('did not release'), {
+      reason: truncateForLog(name),
+    });
   });
 });

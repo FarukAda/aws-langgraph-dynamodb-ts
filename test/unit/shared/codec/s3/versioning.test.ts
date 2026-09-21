@@ -2,6 +2,8 @@ import { GetBucketVersioningCommand, S3Client } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { reportBucketVersioning } from '../../../../../src/shared/codec/s3/versioning';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
+import { truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 const s3Mock = mockClient(S3Client);
 
@@ -115,5 +117,40 @@ describe('reportBucketVersioning', () => {
     const [message, fields] = warning(logger);
     expect(message).not.toContain('AKIA');
     expect(fields).toEqual({ bucket: 'b', reason: 'X' });
+  });
+
+  /**
+   * `s3.bucketName` is checked for being a non-empty string and never for
+   * length, and the name of whatever rejected is the SDK's or a client seam's.
+   * Both are quoted here, so both are cut at the log cap and marked with what
+   * they really held.
+   */
+  it('cuts the bucket it names and the reason beside it', async () => {
+    const bucket = 'b'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const reason = 'R'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    s3Mock
+      .on(GetBucketVersioningCommand)
+      .rejects(Object.assign(new Error('denied'), { name: reason }));
+    const logger = fakeLogger();
+    await reportBucketVersioning(client(), bucket, logger);
+    expect(warning(logger)[1]).toEqual({
+      bucket: truncateForLog(bucket),
+      reason: truncateForLog(reason),
+    });
+  });
+
+  /** The same bucket, cut the same way, on the line that reports versioning off. */
+  it('cuts the bucket on the state lines too', async () => {
+    const bucket = 'b'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    s3Mock.on(GetBucketVersioningCommand).resolves({});
+    const off = fakeLogger();
+    await reportBucketVersioning(client(), bucket, off);
+    expect(warning(off)[1]).toEqual({ bucket: truncateForLog(bucket) });
+
+    s3Mock.reset();
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Suspended' });
+    const suspended = fakeLogger();
+    await reportBucketVersioning(client(), bucket, suspended);
+    expect(warning(suspended)[1]).toEqual({ bucket: truncateForLog(bucket) });
   });
 });

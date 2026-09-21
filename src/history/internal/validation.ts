@@ -63,10 +63,12 @@ export function validateMessageList(messages: BaseMessage[]): void {
  * one message at a time is what makes that index knowable: mapping the array in
  * one call failed with `TypeError: message.toDict is not a function` from inside
  * LangChain, naming neither the message nor this library. What LangChain says
- * is quoted bounded by {@link truncateForLog}: that text renders the offending
- * value into itself, so it is exactly as long as the caller's own object makes
- * it, and bounding the index and the type while relaying it whole would bound
- * nothing at all.
+ * is quoted bounded: that text renders the offending value into itself, so it
+ * is exactly as long as the caller's own object makes it, and bounding the
+ * index while relaying it whole would bound nothing at all. The bound is
+ * `redactedMessage`'s own and is not applied again here — a second cut would
+ * mark the length of the first cut's output instead of the length the caller's
+ * text really had, which is the one thing the mark exists to state.
  */
 export function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
   return messages.map((message, index) => {
@@ -74,8 +76,7 @@ export function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
       return mapChatMessagesToStoredMessages([message])[0];
     } catch (error) {
       throw new ValidationError(
-        `messages[${index}] is not a LangChain message: ` +
-          truncateForLog(redactedMessage(error as Error)),
+        `messages[${index}] is not a LangChain message: ` + redactedMessage(error as Error),
         'messages',
       );
     }
@@ -96,7 +97,10 @@ export function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
  * type. The type comes off the caller's own object and nothing length-checked
  * it, so the message names it bounded by {@link truncateForLog}, and so is
  * what LangChain says about it — that text renders the same unchecked value
- * into itself, so bounding only the type bounds nothing. `context` still names
+ * into itself, so bounding only the type bounds nothing. The two take
+ * different caps because they are different things: the type is an identifier,
+ * while what LangChain threw is prose, cut once by `redactedMessage` and not
+ * again here. `context` still names
  * `messages`, which is what a caller branches on. A
  * `RemoveMessage`, or a tool, function or generic message missing its
  * required field, fails here instead of being persisted and then skipped or
@@ -109,7 +113,7 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
     } catch (error) {
       throw new ValidationError(
         `messages[${index}] of type "${truncateForLog(message.type)}" cannot be stored: ` +
-          truncateForLog(redactedMessage(error as Error)),
+          redactedMessage(error as Error),
         'messages',
       );
     }

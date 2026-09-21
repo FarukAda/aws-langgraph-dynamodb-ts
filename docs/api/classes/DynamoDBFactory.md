@@ -6,7 +6,7 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory/factory.ts:98](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L98)
+Defined in: [factory/factory.ts:106](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L106)
 
 Convenience constructors for the adapters.
 
@@ -29,7 +29,7 @@ field names (`options.<key>`, `tableName`, …) for anything inside one.
 
 > **new DynamoDBFactory**(`base?`): `DynamoDBFactory`
 
-Defined in: [factory/factory.ts:117](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L117)
+Defined in: [factory/factory.ts:125](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L125)
 
 Accepts: `base` — the defaults every adapter inherits. Checked here, where
 the caller wrote them: an unknown key would otherwise be ignored, and a
@@ -64,7 +64,7 @@ itself, since a per-adapter value may still replace it.
 
 > **createAll**\<`O`\>(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
-Defined in: [factory/factory.ts:241](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L241)
+Defined in: [factory/factory.ts:249](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L249)
 
 Build the adapters whose sections are given, all on one shared client.
 
@@ -113,7 +113,7 @@ others.
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:210](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L210)
+Defined in: [factory/factory.ts:218](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L218)
 
 A chat history on its own client.
 
@@ -139,7 +139,7 @@ Throws: as [createSaver](#createsaver).
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:182](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L182)
+Defined in: [factory/factory.ts:190](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L190)
 
 A saver on its own client.
 
@@ -171,7 +171,7 @@ off it, and a string was spread into its characters.
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:196](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L196)
+Defined in: [factory/factory.ts:204](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L204)
 
 A store on its own client.
 
