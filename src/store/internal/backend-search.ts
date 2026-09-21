@@ -7,7 +7,6 @@ import type {
 
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { ErrorCode } from '../../shared/errors/error-code';
 import { ValidationError } from '../../shared/errors/errors';
 import { getItem } from '../actions/get';
 import type { VectorBackend, VectorMatch } from '../vector-backend';
@@ -16,6 +15,7 @@ import { toRelevanceScores } from './score-direction';
 import { passesFilter } from './search-filter';
 import { assertVectorDims } from './semantic-search';
 import type { StoreContext } from './setup';
+import { validateStoreKey } from './validation';
 
 /**
  * Warn when a backend's own ordering disagrees with its scores. A backend
@@ -41,35 +41,47 @@ function warnOnNonDescendingScores(
 }
 
 /**
+ * Whether the match names an address this store can form at all — the one case
+ * a match is dropped for, because a backend returning a namespace element that
+ * holds the reserved separator would otherwise turn a whole search into a
+ * `ValidationError` over one bad key. The address is checked here rather than
+ * read back off the error `getItem` raises: the read raises a `ValidationError`
+ * of its own for a payload it cannot honour — an offloaded row read with no
+ * `s3` configured, a descriptor from a newer library, an `s3Key` outside the
+ * row's path — and those are reads that did not happen, not items that are not
+ * there, so telling them apart by code alone dropped them as well.
+ */
+function addressable(context: StoreContext, match: VectorMatch): boolean {
+  try {
+    validateStoreKey(match.namespace, match.key);
+    return true;
+  } catch (error) {
+    context.logger.warn('search: skipped an unusable vectorBackend match', {
+      namespace: match.namespace,
+      key: match.key,
+      reason: (error as Error).name,
+    });
+    return false;
+  }
+}
+
+/**
  * Read the canonical item a backend match points at, or `null` when the match
- * names an address this store cannot form. `getItem` validates, so a backend
- * returning a namespace element containing the reserved separator would
- * otherwise turn the whole search into a `ValidationError` instead of dropping
- * the one bad match — which is the one case this exists for.
+ * names an address this store cannot form (see {@link addressable}).
  *
- * Every other failure is the read itself not happening, and it is rethrown. A
- * throttled or cancelled read says nothing about whether the item is there, so
- * treating it as an absent match handed back a page silently one item short,
- * with only a `warn` the default logger never prints to say so — while the
- * in-DynamoDB path fails the same search outright.
+ * Every failure of the read itself reaches the caller. A throttled or cancelled
+ * read says nothing about whether the item is there, so treating it as an
+ * absent match handed back a page silently one item short, with only a `warn`
+ * the default logger never prints to say so — while the in-DynamoDB path fails
+ * the same search outright.
  */
 async function fetchMatch(
   context: StoreContext,
   match: VectorMatch,
   signal?: AbortSignal,
 ): Promise<Item | null> {
-  try {
-    return await getItem(context, match.namespace, match.key, signal);
-  } catch (error) {
-    const failure = error as Error;
-    if ((failure as { code?: string }).code !== ErrorCode.VALIDATION) throw failure;
-    context.logger.warn('search: skipped an unusable vectorBackend match', {
-      namespace: match.namespace,
-      key: match.key,
-      reason: failure.name,
-    });
-    return null;
-  }
+  if (!addressable(context, match)) return null;
+  return getItem(context, match.namespace, match.key, signal);
 }
 
 /** Stable, collision-free identity for a match, so one call reads each item once. */
@@ -129,10 +141,10 @@ async function fetchUnseen(
  * different width than the index declares, and naming `maxSearchCandidates`
  * either for a page larger than the cap or when the filter leaves the page short
  * at the cap — the same answer the in-DynamoDB ranker gives, rather than a
- * silently short page. Whatever a canonical read throws, apart from the
- * `ValidationError` a backend key this store cannot address raises (see
- * {@link fetchMatch}): a read that did not happen is not an item that is not
- * there. Whatever the embeddings model and the backend throw.
+ * silently short page. Whatever a canonical read throws — a read that did not
+ * happen is not an item that is not there — since a match this store cannot
+ * address is dropped before its read rather than caught after it (see
+ * {@link addressable}). Whatever the embeddings model and the backend throw.
  *
  * Guarantees: DynamoDB stays canonical. A match whose item has since been
  * deleted or lies outside the prefix is dropped and the search asks the backend
