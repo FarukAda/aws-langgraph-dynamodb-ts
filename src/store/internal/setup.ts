@@ -1,5 +1,4 @@
 import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { CompressionConfig } from '../../shared/codec/compression';
@@ -12,6 +11,7 @@ import {
   MAX_TOTAL_ITEMS_IN_MEMORY,
 } from '../../shared/constants';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
+import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client-types';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
@@ -31,7 +31,7 @@ import type { VectorScoreDirection } from './score-direction';
 
 /** Resolved collaborators shared by every store action. */
 export interface StoreContext {
-  client: DynamoDBDocument;
+  client: DynamoDBDocumentLike;
   tableName: string;
   serde: SerializerProtocol;
   compression?: CompressionConfig;

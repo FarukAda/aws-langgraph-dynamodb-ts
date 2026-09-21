@@ -1,4 +1,4 @@
-import type { DynamoDBDocument, QueryCommandInput } from '@aws-sdk/lib-dynamodb';
+import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import type { PayloadDescriptor } from '../codec/codec';
 import type { S3Offloader } from '../codec/s3/offloader';
@@ -6,6 +6,7 @@ import { BATCH_WRITE_MAX } from '../constants';
 import { ErrorCode } from '../errors/error-code';
 import { BatchWriteAllIncompleteError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
+import type { DynamoDBDocumentLike } from './client-types';
 import { type RevisionGuard, WRITE_ID_ATTRIBUTE, writeIdGuard } from './conditional-put';
 import { paginateQuery } from './paginate';
 import { flushPendingDeletes, type PendingDelete } from './partition-flush';
@@ -24,7 +25,7 @@ export interface NamedDescriptor {
 
 /** Collaborators and per-adapter policy for one partition-wide delete. */
 export interface PartitionDeleteOptions {
-  client: DynamoDBDocument;
+  client: DynamoDBDocumentLike;
   tableName: string;
   params: QueryCommandInput;
   logger: Logger;

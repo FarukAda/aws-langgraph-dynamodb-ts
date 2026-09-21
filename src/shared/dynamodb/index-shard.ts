@@ -1,7 +1,8 @@
-import type { DynamoDBDocument, QueryCommandInput } from '@aws-sdk/lib-dynamodb';
+import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { MAX_LOOP_ITERATIONS } from '../constants';
 import { ResultTruncatedError } from '../errors/errors';
+import type { DynamoDBDocumentLike } from './client-types';
 import type { IndexTag } from './index-keys';
 import { withDynamoDBRetry } from './retry';
 import type { RetryOptions } from './retry';
@@ -9,7 +10,7 @@ import type { DocItem } from './types';
 
 /** What a recency listing needs to read one page. */
 export interface IndexQueryOptions {
-  client: DynamoDBDocument;
+  client: DynamoDBDocumentLike;
   tableName: string;
   indexName: string;
   tag: IndexTag;

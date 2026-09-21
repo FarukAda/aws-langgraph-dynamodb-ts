@@ -1,0 +1,15 @@
+{
+  "name": "consumer-types",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A consumer pinned to an older AWS SDK than this package depends on, so npm gives the package a nested copy and the injected client crosses a version boundary.",
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.901.0",
+    "@aws-sdk/lib-dynamodb": "3.901.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "typescript": "^5.9.3"
+  }
+}

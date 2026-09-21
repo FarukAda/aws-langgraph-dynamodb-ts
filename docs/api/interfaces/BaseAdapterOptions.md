@@ -15,7 +15,7 @@ either reuses an injected `client` or builds one from `clientConfig`.
 
 ### client?
 
-> `optional` **client?**: `DynamoDBDocument`
+> `optional` **client?**: [`DynamoDBDocumentLike`](../type-aliases/DynamoDBDocumentLike.md)
 
 Defined in: [shared/options.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L18)
 

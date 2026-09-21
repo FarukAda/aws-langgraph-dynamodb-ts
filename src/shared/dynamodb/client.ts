@@ -3,17 +3,18 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
 import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_SOCKET_TIMEOUT_MS } from '../constants';
 import type { Logger } from '../logging/logger';
+import type { DynamoDBDocumentLike } from './client-types';
 
 /** A resolved DynamoDB client plus its ownership flag. */
 export interface ResolvedDynamoDBClient {
   ddbClient: DynamoDBClient | undefined;
-  client: DynamoDBDocument;
+  client: DynamoDBDocumentLike;
   ownsClient: boolean;
 }
 
 /** Options for {@link resolveDynamoDBClient}. */
 export interface ResolveClientOptions {
-  client?: DynamoDBDocument;
+  client?: DynamoDBDocumentLike;
   clientConfig?: DynamoDBClientConfig;
   /** @internal Test seam and dependency-injection hook for constructing the client. */
   createClient?: (config: DynamoDBClientConfig) => DynamoDBClient;
@@ -111,7 +112,7 @@ export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDy
  * unbounded even with the SDK's retries switched off.
  */
 export async function warnOnStackedRetries(
-  client: DynamoDBDocument,
+  client: DynamoDBDocumentLike,
   logger: Logger,
 ): Promise<void> {
   const report = (client as { config?: { maxAttempts?: () => Promise<number> } }).config

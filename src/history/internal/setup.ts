@@ -1,5 +1,4 @@
 import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { CompressionConfig } from '../../shared/codec/compression';
@@ -11,6 +10,7 @@ import {
   MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
 } from '../../shared/constants';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
+import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client-types';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
@@ -28,7 +28,7 @@ const CORRUPT_MESSAGE_POLICIES: readonly CorruptMessagePolicy[] = ['skip', 'thro
 
 /** Resolved collaborators shared by every chat-history action. */
 export interface HistoryContext {
-  client: DynamoDBDocument;
+  client: DynamoDBDocumentLike;
   tableName: string;
   serde: SerializerProtocol;
   compression?: CompressionConfig;

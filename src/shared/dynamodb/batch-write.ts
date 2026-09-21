@@ -1,8 +1,7 @@
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-
 import { BATCH_WRITE_MAX } from '../constants';
 import { ErrorCode } from '../errors/error-code';
 import { BatchWriteAllIncompleteError, BatchWriteIncompleteError } from '../errors/errors';
+import type { DynamoDBDocumentLike } from './client-types';
 import { DrainOptions, drainUnprocessedWrites } from './drain-unprocessed';
 import type { WriteRequest } from './types';
 
@@ -50,7 +49,7 @@ function isBatchWriteIncomplete(error: Error): error is BatchWriteIncompleteErro
  * carried no count of its own.
  */
 export async function batchWriteAll(
-  client: DynamoDBDocument,
+  client: DynamoDBDocumentLike,
   tableName: string,
   requests: WriteRequest[],
   options: DrainOptions = {},

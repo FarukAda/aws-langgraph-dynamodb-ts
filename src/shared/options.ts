@@ -1,8 +1,8 @@
 import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
 import type { CompressionConfig } from './codec/compression';
 import type { S3OffloadConfig } from './codec/s3/config';
+import type { DynamoDBDocumentLike } from './dynamodb/client-types';
 import type { RetryPolicy } from './dynamodb/retry-policy';
 import type { Logger } from './logging/logger';
 import type { TtlOption } from './validation/ttl';
@@ -15,7 +15,7 @@ export interface BaseAdapterOptions {
   /** DynamoDB table name. */
   tableName: string;
   /** Pre-built DocumentClient to reuse; when set, the adapter does not own it. */
-  client?: DynamoDBDocument;
+  client?: DynamoDBDocumentLike;
   /** Config used to build a client when `client` is not provided. */
   clientConfig?: DynamoDBClientConfig;
   /**

@@ -65,6 +65,7 @@
 - [AdapterWindow](type-aliases/AdapterWindow.md)
 - [CorruptMessagePolicy](type-aliases/CorruptMessagePolicy.md)
 - [DynamoDBChatMessageHistoryOptions](type-aliases/DynamoDBChatMessageHistoryOptions.md)
+- [DynamoDBDocumentLike](type-aliases/DynamoDBDocumentLike.md)
 - [DynamoDBSaverOptions](type-aliases/DynamoDBSaverOptions.md)
 - [DynamoDBStoreOptions](type-aliases/DynamoDBStoreOptions.md)
 - [GetMessagesOptions](type-aliases/GetMessagesOptions.md)

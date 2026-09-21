@@ -16,7 +16,7 @@ across its checkpointer, store and history. A per-adapter option wins.
 
 ### client?
 
-> `optional` **client?**: `DynamoDBDocument`
+> `optional` **client?**: [`DynamoDBDocumentLike`](../type-aliases/DynamoDBDocumentLike.md)
 
 Defined in: [factory/types.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L27)
 

@@ -339,3 +339,6 @@ jobs:
 
       - name: Pack and smoke-test the tarball
         run: npm run test:package-smoke
+
+      - name: Type-check a consumer pinned to an older AWS SDK
+        run: npm run test:consumer-types

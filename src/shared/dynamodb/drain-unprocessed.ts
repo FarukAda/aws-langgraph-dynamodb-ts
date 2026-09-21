@@ -1,5 +1,3 @@
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-
 import {
   INITIAL_BACKOFF_DELAY_MS,
   MAX_BACKOFF_DELAY_MS,
@@ -8,6 +6,7 @@ import {
 import { ErrorCode } from '../errors/error-code';
 import { BatchWriteIncompleteError } from '../errors/errors';
 import { fullJitter, nextBackoffDelay, sleep } from './backoff';
+import type { DynamoDBDocumentLike } from './client-types';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
 import type { WriteRequest } from './types';
 
@@ -77,7 +76,7 @@ function drainFailure(
  * depends on it.
  */
 export async function drainUnprocessedWrites(
-  client: DynamoDBDocument,
+  client: DynamoDBDocumentLike,
   tableName: string,
   requests: WriteRequest[],
   options: DrainOptions = {},

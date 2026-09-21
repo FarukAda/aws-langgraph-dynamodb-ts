@@ -25,6 +25,7 @@ import type {
   DeltaChannelHistoryOptions,
   DynamoDBChatMessageHistory,
   DynamoDBChatMessageHistoryOptions,
+  DynamoDBDocumentLike,
   DynamoDBFactory,
   DynamoDBSaver,
   DynamoDBSaverOptions,
@@ -128,6 +129,11 @@ describe('public type exports (CORE-12, TEST-10)', () => {
     expectTypeOf<DeltaChannelHistoryOptions>().toEqualTypeOf<
       Parameters<BaseCheckpointSaver['getDeltaChannelHistory']>[0]
     >();
+    /**
+     * Named rather than aliased to the SDK's own class: an option typed by
+     * identity is unusable for a consumer whose SDK copy is not this one.
+     */
+    expectTypeOf<DynamoDBDocumentLike>().toHaveProperty('transactWrite');
     expectTypeOf<ErrorContext>().toHaveProperty('operation');
     expectTypeOf<FactoryBaseOptions>().toHaveProperty('logger');
     expectTypeOf<GetMessagesOptions>().toEqualTypeOf<MessageWindow & CancelOptions>();

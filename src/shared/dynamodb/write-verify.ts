@@ -1,6 +1,5 @@
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-
 import { type PayloadDescriptor, PayloadLocation } from '../codec/codec';
+import type { DynamoDBDocumentLike } from './client-types';
 import { withDynamoDBRetry } from './retry';
 import type { RetryOptions } from './retry';
 import type { DocItem } from './types';
@@ -24,7 +23,7 @@ export type WriteVerdict = 'landed' | 'not-landed' | 'unverified';
 
 /** The collaborators a verification read needs. */
 export interface VerifyDeps {
-  client: DynamoDBDocument;
+  client: DynamoDBDocumentLike;
   tableName: string;
   retry?: RetryOptions;
 }

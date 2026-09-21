@@ -1,5 +1,4 @@
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-
+import type { DynamoDBDocumentLike } from './client-types';
 import type { RetryOptions } from './retry';
 
 /** What one pass of the backfill did, and where to resume. */
@@ -28,7 +27,7 @@ export interface BackfillResult {
  * without that module and `backfill-index.ts` importing each other.
  */
 export interface BackfillOptions {
-  client: DynamoDBDocument;
+  client: DynamoDBDocumentLike;
   tableName: string;
   /** Must equal the adapters' `indexShards`, or rows land on shards no listing queries. */
   indexShards?: number;

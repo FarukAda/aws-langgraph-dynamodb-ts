@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
-import type { DynamoDBDocument, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
+import type { TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { nowMs } from '../clock';
 import { PayloadLocation } from '../codec/codec';
 import type { DescriptorRef } from '../codec/descriptor-keys';
 import { MAX_WRITE_LIFETIME_MS } from '../constants';
+import type { DynamoDBDocumentLike } from './client-types';
 import type { RevisionGuard } from './conditional-put';
 import { withDynamoDBRetry } from './retry';
 import type { RetryOptions } from './retry';
@@ -18,7 +19,7 @@ import type { DocItem } from './types';
  * carries these three, so a call site passes itself.
  */
 export interface IdempotentWriteDeps {
-  client: DynamoDBDocument;
+  client: DynamoDBDocumentLike;
   tableName: string;
   retry?: RetryOptions;
 }

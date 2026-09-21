@@ -1,11 +1,10 @@
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-
 import { collectS3Keys, type DescriptorRef } from '../codec/descriptor-keys';
 import type { S3Offloader } from '../codec/s3/offloader';
 import { cleanUpS3Orphans } from '../codec/s3/orphans';
 import { mapWithConcurrency } from '../concurrency';
 import { DELETE_CONCURRENCY } from '../constants';
 import type { Logger } from '../logging/logger';
+import type { DynamoDBDocumentLike } from './client-types';
 import { isConditionalCheckFailed, rejectedItem, type RevisionGuard } from './conditional-put';
 import { withDynamoDBRetry, type RetryOptions } from './retry';
 import type { DocItem } from './types';
@@ -27,7 +26,7 @@ export interface PendingDelete {
  * small as what crosses it.
  */
 export interface FlushDeps {
-  client: DynamoDBDocument;
+  client: DynamoDBDocumentLike;
   tableName: string;
   logger: Logger;
   /** Names the pass in every log line, e.g. `deleteThread`. */

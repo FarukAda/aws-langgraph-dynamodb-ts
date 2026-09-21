@@ -1,5 +1,4 @@
 import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { CompressionConfig } from '../../shared/codec/compression';
@@ -7,6 +6,7 @@ import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
+import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client-types';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
@@ -20,7 +20,7 @@ import type { DynamoDBSaverOptions } from '../types';
 
 /** Resolved collaborators shared by every checkpointer action. */
 export interface CheckpointerContext {
-  client: DynamoDBDocument;
+  client: DynamoDBDocumentLike;
   tableName: string;
   serde: SerializerProtocol;
   compression?: CompressionConfig;
