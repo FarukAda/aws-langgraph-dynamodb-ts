@@ -116,9 +116,11 @@ async function decodeMessage(
  * payload half whatever the policy, because a newer reader reads it and
  * dropping it would lose a turn a rollback could still serve; the decode error
  * of a corrupt row under `onCorruptMessage: 'throw'`; ValidationError naming
+ * `message` for a row in this session's message key space that this adapter
+ * did not write, naming
  * `s3Key` for a row addressing an object outside the session's own path, and
  * naming `serde` for a row whose payload the serializer refuses to
- * reconstruct, both whatever the policy; any infrastructure failure — a
+ * reconstruct, all three whatever the policy; any infrastructure failure — a
  * throttle, a permission, a transport error — whatever the policy, because
  * dropping a message for one of those would hand back a silently truncated
  * conversation that the chain then re-persists as the truth.
