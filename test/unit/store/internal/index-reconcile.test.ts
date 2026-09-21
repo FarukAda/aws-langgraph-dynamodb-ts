@@ -1,7 +1,9 @@
 import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { truncateForLog } from '../../../../src/shared/logging/truncate';
 import {
   collectReconcileTargets,
   pruneOrphans,
@@ -210,5 +212,25 @@ describe('collectReconcileTargets', () => {
       expect.stringContaining('skipped a row'),
       expect.objectContaining({ sortKey: 'foreign' }),
     );
+  });
+
+  /**
+   * This pass walks a whole prefix, so one line per foreign row on a shared
+   * table is where an unbounded key costs megabytes of log. Every other
+   * row-sourced string a log line quotes is cut at the same cap.
+   */
+  it('bounds the sort key it reports', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const warn = jest.fn();
+    const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });
+    const sortKey = 'z'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    mock.on(QueryCommand).resolves({
+      Items: [{ PK: 'STORE#n', SK: sortKey, namespace: 'not-an-array', key: 'k' }],
+    });
+
+    await expect(collectReconcileTargets(ctx, ['n'])).resolves.toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('skipped a row'), {
+      sortKey: truncateForLog(sortKey),
+    });
   });
 });

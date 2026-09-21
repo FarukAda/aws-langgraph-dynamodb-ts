@@ -8,6 +8,17 @@ function isHighSurrogate(unit: number): boolean {
 /**
  * Bound a row-sourced string a log line quotes.
  *
+ * **The rule, in one sentence:** a string a log line quotes goes through here
+ * when it came off a row, and goes in as it is when this package composed it
+ * from identifiers it validated. A caller's `sessionId`, `threadId`,
+ * `namespace` and `key`, and every key built from them, are already capped by
+ * `MAX_PARTITION_ID_BYTES`, `MAX_KEY_SEGMENT_BYTES` and `MAX_SORT_KEY_BYTES`
+ * before a request is made; a row's own `SK`, an offloaded object's key, and
+ * an attribute read back off a row that turned a write away are bounded by
+ * nothing this package ran. The lines that quote those are the ones that fire
+ * per row on a foreign or hand-written table, so they are the ones that can
+ * fill a log.
+ *
  * Accepts: `value` — the attribute as the row carried it. Declared `string`
  * because a table's own key attributes always are; anything else is returned
  * untouched rather than coerced or refused, since a warning about a row that

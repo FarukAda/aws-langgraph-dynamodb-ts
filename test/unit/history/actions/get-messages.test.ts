@@ -8,9 +8,11 @@ import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { buildS3Key } from '../../../../src/shared/codec/s3/config';
 import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { truncateForLog } from '../../../../src/shared/logging/truncate';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
@@ -88,6 +90,31 @@ describe('getMessages', () => {
     expect(error).toHaveBeenCalledWith(
       expect.stringContaining('corrupt'),
       expect.objectContaining({ sortKey: 'HISTORY#MSG#01B' }),
+    );
+  });
+
+  /**
+   * The sort key comes off the row, so nothing this package validated bounds
+   * it — a hand-written row under the message prefix can carry any length.
+   * Every other row-sourced string a log line quotes is cut at the same cap.
+   */
+  it('bounds the sort key it reports for a corrupt item', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
+    const corrupt = await buildMessageItem(context(client), 's1', '01B', human);
+    corrupt.SK = `HISTORY#MSG#${'0'.repeat(MAX_LOGGED_VALUE_CHARS * 4)}`;
+    corrupt.message = {
+      location: PayloadLocation.INLINE,
+      serdeType: 'json',
+      compressed: false,
+      bytes: new TextEncoder().encode('{not valid json'),
+    };
+    mock.on(QueryCommand).resolves({ Items: [corrupt] });
+    const error = jest.fn();
+    await getMessages({ ...context(client), logger: { ...SILENT_LOGGER, error } }, 's1');
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('corrupt'),
+      expect.objectContaining({ sortKey: truncateForLog(corrupt.SK) }),
     );
   });
 

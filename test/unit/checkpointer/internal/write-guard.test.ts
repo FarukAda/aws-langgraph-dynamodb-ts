@@ -3,6 +3,8 @@ import {
   reportGuardRejection,
 } from '../../../../src/checkpointer/internal/write-guard';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
+import { truncateForLog } from '../../../../src/shared/logging/truncate';
 
 describe('rejectionProvesForeignRow', () => {
   const item = { writeGroup: 'G1' } as CheckpointWriteItem;
@@ -47,6 +49,23 @@ describe('reportGuardRejection', () => {
       sortKey: row.SK,
       expected: 'ch',
       found: 'other',
+    });
+  });
+
+  /**
+   * The channel it reports came off the row that won, so nothing this package
+   * validated bounds it. Every other row-sourced string a log line quotes is
+   * cut at the same cap.
+   */
+  it('bounds the channel it read off the winning row', () => {
+    const log = logger();
+    const found = 'x'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const error = Object.assign(new Error('c'), { Item: { channel: { S: found } } });
+    reportGuardRejection({ logger: log } as never, row, error);
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('unexpected channel'), {
+      sortKey: row.SK,
+      expected: 'ch',
+      found: truncateForLog(found),
     });
   });
 

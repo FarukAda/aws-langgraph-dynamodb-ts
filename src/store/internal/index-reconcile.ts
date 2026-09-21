@@ -4,6 +4,7 @@ import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { truncateForLog } from '../../shared/logging/truncate';
 import type { StoreItemRecord } from '../types';
 import type { VectorBackend, VectorRef } from '../vector-backend';
 import type { JsonValue } from './filter';
@@ -94,7 +95,7 @@ export async function collectReconcileTargets(
     const record = narrowWholeRecord(raw);
     if (!record) {
       context.logger.warn('reconcileVectorIndex: skipped a row that is not a store item', {
-        sortKey: raw.SK as string,
+        sortKey: truncateForLog(raw.SK as string),
       });
       continue;
     }

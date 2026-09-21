@@ -1,4 +1,5 @@
 import { rejectedItem } from '../../shared/dynamodb/conditional-put';
+import { truncateForLog } from '../../shared/logging/truncate';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
 
@@ -39,7 +40,7 @@ export function reportGuardRejection(
     context.logger.warn('putWrites: write row held by an unexpected channel; write not persisted', {
       sortKey: item.SK,
       expected: item.channel,
-      found,
+      found: truncateForLog(found),
     });
     return;
   }

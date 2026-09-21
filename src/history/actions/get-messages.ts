@@ -9,6 +9,7 @@ import { isPermanentPayloadLoss } from '../../shared/codec/payload-loss';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { toError } from '../../shared/errors/wrap-error';
+import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';
 import { assertSignalLike } from '../../shared/validation/collaborators';
 import { GET_MESSAGES_KEYS } from '../../shared/validation/method-keys';
@@ -151,7 +152,7 @@ export async function getMessages(
     if (context.onCorruptMessage === 'throw') throw result.error;
     context.logger.error('getMessages: skipped a corrupt message item', {
       sessionId,
-      sortKey: items[index].SK,
+      sortKey: truncateForLog(items[index].SK),
       reason: result.error.name,
     });
   });
