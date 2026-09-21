@@ -67,6 +67,27 @@ describe('JSON_SERDE.dumpsTyped', () => {
       context: { field: 'value' },
     });
   });
+
+  /**
+   * V8 writes the path it walked into the message it throws for a circular
+   * structure, quoting the caller's own property names and constructor names.
+   * Interpolating that put them on `err.message` of a public error, which an
+   * application may print, log or return in a response — and this package
+   * treats a caller's identifiers as structured data, never as text to compose
+   * a message out of. `redactedMessage` removes credential *shapes*, not
+   * names, so it never covered this. The refusal is kept as `cause`, where a
+   * caller who wants the path can still read it.
+   */
+  it('never quotes a property or class name off the value it refused', async () => {
+    class PatientRecord {
+      readonly socialSecurityNumberRef: Record<string, unknown> = {};
+    }
+    const node = new PatientRecord();
+    node.socialSecurityNumberRef.backToPatient = node;
+    const error = await JSON_SERDE.dumpsTyped(node).catch((e: Error) => e);
+    expect((error as Error).message).not.toMatch(/socialSecurityNumberRef|backToPatient|Patient/);
+    expect((error as Error).cause).toMatchObject({ name: 'TypeError' });
+  });
 });
 
 describe('JSON_SERDE.loadsTyped', () => {

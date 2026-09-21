@@ -3,7 +3,7 @@ import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 import { DynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { ValidationError } from '../errors/errors';
-import { redactedMessage } from '../logging/secret-patterns';
+import { toError } from '../errors/wrap-error';
 
 /**
  * A plain JSON serializer implementing LangGraph's `SerializerProtocol`:
@@ -23,7 +23,9 @@ import { redactedMessage } from '../logging/secret-patterns';
  * stringifies to `undefined` and would be stored as **zero bytes**, which reads
  * back as a parse error; a circular structure or a `BigInt` makes it throw. Both
  * are reported as `ValidationError` naming `value`, at the write, rather than
- * as an unreadable row later.
+ * as an unreadable row later — with the refusal attached as `cause` and never
+ * quoted into the message, which for a circular structure names the caller's
+ * own properties and classes.
  *
  * What it represents, it represents as JSON, which is lossy in ways nothing
  * records: a `Map` or `Set` stores as `{}`, an object key whose value is
@@ -49,9 +51,20 @@ export const JSON_SERDE: SerializerProtocol = {
     try {
       text = JSON.stringify(value);
     } catch (error) {
+      /**
+       * The refusal travels as `cause`, never as text. V8 writes the path it
+       * walked into the message it throws for a circular structure, quoting
+       * the caller's own property names and constructor names — and this
+       * package does not compose a public `err.message` out of a caller's
+       * identifiers, which an application may print, log or return in a
+       * response. `redactedMessage` removes credential shapes, not names, so
+       * it never covered this. A caller who wants the path reads `cause`.
+       */
       throw new ValidationError(
-        `value cannot be serialized as JSON: ${redactedMessage(error as Error)}`,
+        'value cannot be serialized as JSON — a circular structure, or a value JSON has no ' +
+          'encoding for such as a BigInt; the refusal itself is attached as `cause`',
         'value',
+        toError(error as Error),
       );
     }
     if (text === undefined) {
