@@ -1,6 +1,6 @@
 import { mapWithConcurrency } from '../concurrency';
 import { ValidationError } from '../errors/errors';
-import { validateInteger } from '../validation/primitives';
+import { validateLimit } from '../validation/primitives';
 import { indexPartitions } from './index-keys';
 import {
   type IndexQueryOptions,
@@ -61,6 +61,18 @@ function isDry(reader: ShardReader): boolean {
  * no shard is dry. A page can hold no rows and still carry a key, and a shard
  * in that state may hold the newest row of all, so choosing a row before it is
  * read again could put an older row on the page first.
+ *
+ * The loop carries no iteration cap of its own, and that is a decision rather
+ * than an omission. Every pass calls {@link readShardPage} on every dry shard,
+ * and that call either advances the shard or, once the shard has read
+ * `MAX_LOOP_ITERATIONS` pages, throws `ResultTruncatedError` without issuing a
+ * query — so a shard that answers with empty pages forever ends the listing
+ * there. A second cap here could only ever fire after that one, which makes it
+ * a branch no test could reach. What did once spin was a `mapWithConcurrency`
+ * that started zero workers for a non-integer `concurrency`: the call returned
+ * having read nothing, so no shard advanced and no page count grew. The fix
+ * belongs there, in the floor that now cannot yield zero workers, and not in a
+ * cap papering over a collaborator that silently did nothing.
  */
 async function refillDryShards(
   options: IndexQueryOptions,
@@ -109,9 +121,13 @@ function takeNewest(readers: ShardReader[]): DocItem | undefined {
  * read capacity for every row *evaluated*, collected the whole table in memory
  * and sorted it there.
  *
- * Accepts: `limit` — a positive integer; rows per page. `cursor` — from a
- * previous page, or none to start at the newest. `shards` — must match what the
- * writers used. `concurrency` — how many shards are queried at once.
+ * Accepts: `limit` — the package-wide page rule, an integer from 0 to the page
+ * ceiling; rows per page. `0` returns an empty page with no cursor and issues
+ * no query — and is answered here rather than left to the merge, where an
+ * empty page with shards still unread would have read `items[items.length - 1]`
+ * off an empty array to build the cursor. `cursor` — from a previous page, or
+ * none to start at the newest. `shards` — must match what the writers used.
+ * `concurrency` — how many shards are queried at once.
  *
  * Returns: the page, newest first, and a `nextCursor` exactly while rows may
  * remain: a shard still buffers a row the page did not take, or has not
@@ -131,7 +147,8 @@ function takeNewest(readers: ShardReader[]): DocItem | undefined {
  * held at a time.
  */
 export async function queryRecencyIndex(options: IndexQueryOptions): Promise<IndexPage> {
-  validateInteger(options.limit, 'limit', { min: 1 });
+  validateLimit(options.limit);
+  if (options.limit === 0) return { items: [] };
   const before = options.cursor === undefined ? undefined : decodeCursor(options.cursor);
   const readers = indexPartitions(options.tag, options.shards).map((partition) =>
     shardReader(partition),

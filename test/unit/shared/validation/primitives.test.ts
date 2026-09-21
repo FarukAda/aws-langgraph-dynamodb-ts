@@ -1,3 +1,4 @@
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
   assertMaxBytes,
@@ -6,6 +7,7 @@ import {
   assertWellFormed,
   validateIdentifier,
   validateInteger,
+  validateLimit,
   validateNonEmptyArray,
   validateNonEmptyString,
   validateStringArray,
@@ -64,6 +66,31 @@ describe('assertMaxBytes', () => {
   it('measures UTF-8 bytes, not UTF-16 code units', () => {
     expect(() => assertMaxBytes('é', 'key', 2)).not.toThrow();
     expectValidationError(() => assertMaxBytes('é', 'key', 1), 'key');
+  });
+});
+
+/**
+ * The one rule every `limit` now follows. Before it they disagreed three ways —
+ * `saver.list` had no minimum at all, the history reads refused `0` and the
+ * store accepted it — and none of them had a ceiling, so `limit: 1e12` resolved
+ * on five public methods.
+ */
+describe('validateLimit', () => {
+  it.each([0, 1, MAX_PAGE_LIMIT])('accepts %p', (value) => {
+    expect(() => validateLimit(value)).not.toThrow();
+  });
+
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '5' as never, null as never])(
+    'refuses %p, naming limit',
+    (value) => {
+      expectValidationError(() => validateLimit(value), 'limit');
+    },
+  );
+
+  /** Being told the ceiling exists is no use without being told what it is. */
+  it('names the ceiling when it refuses a limit above it', () => {
+    expect(() => validateLimit(MAX_PAGE_LIMIT + 1)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
+    expect(() => validateLimit(1e12)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
   });
 });
 

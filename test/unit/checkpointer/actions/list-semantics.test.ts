@@ -8,6 +8,7 @@ import type {
 import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
 import { buildCheckpointItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -294,25 +295,35 @@ describe('list() skips expired checkpoints (CKPT-10)', () => {
   });
 });
 
-describe('list() with a non-positive limit', () => {
+describe('list() with a limit of zero', () => {
   const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
 
   /**
    * The reference saver returns nothing for a limit of zero
    * (@langchain/langgraph-checkpoint@1.1.5 dist/memory.js:172). Passing the
    * value through reached DynamoDB as `Limit: 0`, which the service rejects,
-   * and the scan path yielded one tuple before testing the limit at all.
+   * and the scan path yielded one tuple before testing the limit at all. A
+   * *negative* limit used to be answered the same way and is now refused, so
+   * zero is the only value that asks for nothing.
    */
   it('yields nothing and issues no request', async () => {
-    for (const limit of [0, -1]) {
-      const { client, mock } = createStrictDocumentMock();
-      const tuples = await collect(
-        listCheckpoints(context(client), { configurable: { thread_id: 't' } }, { limit }),
-      );
-      expect(tuples).toEqual([]);
-      expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
-      expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+    const { client, mock } = createStrictDocumentMock();
+    const tuples = await collect(
+      listCheckpoints(context(client), { configurable: { thread_id: 't' } }, { limit: 0 }),
+    );
+    expect(tuples).toEqual([]);
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+
+  it('refuses a negative limit and one above the ceiling, before any request', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    for (const limit of [-1, MAX_PAGE_LIMIT + 1]) {
+      await expect(
+        collect(listCheckpoints(context(client), { configurable: { thread_id: 't' } }, { limit })),
+      ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'limit' } });
     }
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
   });
 
   it('never sends a Limit below 1 when one row is asked for', async () => {

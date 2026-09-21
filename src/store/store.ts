@@ -215,8 +215,8 @@ export class DynamoDBStore extends BaseStore {
    *
    * Accepts: `options.prefix`/`suffix` — labels a namespace can hold, where
    * `'*'` matches any one label. `options.maxDepth` — at least 1.
-   * `options.limit`/`offset` —
-   * non-negative integers, defaulting to 100 and 0.
+   * `options.limit` — an integer from 0 to `MAX_PAGE_LIMIT` (10,000), defaulting
+   * to 100. `options.offset` — a non-negative integer, defaulting to 0.
    *
    * Returns: at most `limit` namespaces from `offset`.
    *
@@ -239,8 +239,9 @@ export class DynamoDBStore extends BaseStore {
    * Accepts: `namespacePrefix` — labels a namespace can hold; empty spans the
    * whole table. `options.query` —
    * absent or empty ranks nothing. `options.filter` — metadata equality on the
-   * item's value. `options.offset`/`limit` — non-negative integers, defaulting
-   * to 0 and 10. `options.signal` — aborts the reads.
+   * item's value. `options.offset` — a non-negative integer, defaulting to 0.
+   * `options.limit` — an integer from 0 to `MAX_PAGE_LIMIT` (10,000), defaulting
+   * to 10. `options.signal` — aborts the reads.
    *
    * Returns: at most `limit` items from `offset`, each carrying a `score` when
    * a query and an index are configured.

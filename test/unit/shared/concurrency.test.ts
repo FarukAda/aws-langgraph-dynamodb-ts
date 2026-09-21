@@ -80,6 +80,58 @@ describe('mapWithConcurrency', () => {
     expect(fn).not.toHaveBeenCalled();
   });
 
+  /**
+   * `Math.min(NaN, items.length)` is `NaN`, so the worker count was
+   * `Array.from({ length: NaN })` — zero workers. The call resolved to an empty
+   * array having invoked `fn` on nothing, and `refillDryShards`, which loops
+   * while any shard is dry around exactly this call, then span forever with no
+   * I/O and no way out.
+   */
+  it('starts one worker, not none, for a concurrency that is not a whole number', async () => {
+    for (const limit of [Number.NaN, 0.5, -3]) {
+      const seen: number[] = [];
+      await expect(
+        mapWithConcurrency([1, 2, 3], limit, async (item) => {
+          seen.push(item);
+          return item * 2;
+        }),
+      ).resolves.toEqual([2, 4, 6]);
+      expect(seen).toEqual([1, 2, 3]);
+    }
+  });
+
+  /** `Infinity` still means "as many as there are items", as it always did. */
+  it('lets an infinite concurrency start one worker per item', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    await mapWithConcurrency([1, 2, 3], Number.POSITIVE_INFINITY, async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await tick();
+      inFlight -= 1;
+    });
+    expect(maxInFlight).toBe(3);
+  });
+
+  /**
+   * `failure ??= error` cannot tell "nothing has failed yet" from a rejection
+   * whose value *is* `undefined`, so such a rejection was swallowed: the call
+   * resolved, and the failed item's slot in the results stayed a hole. A
+   * third-party backend that rejects with `undefined` is the reachable case.
+   */
+  it('throws a rejection whose value is undefined instead of leaving a hole', async () => {
+    let caught: unknown = 'nothing was thrown';
+    const run = mapWithConcurrency([1, 2], 1, (item) =>
+      item === 1 ? Promise.reject(undefined) : Promise.resolve(item),
+    );
+    try {
+      await run;
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeUndefined();
+  });
+
   it('treats a limit below one as one', async () => {
     let inFlight = 0;
     let maxInFlight = 0;

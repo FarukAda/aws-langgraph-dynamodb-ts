@@ -1,3 +1,4 @@
+import { MAX_PAGE_LIMIT } from '../constants';
 import { ValidationError } from '../errors/errors';
 
 /**
@@ -88,6 +89,32 @@ export function validateInteger(
   if (bounds.max !== undefined && value > bounds.max) {
     throw new ValidationError(`${field} must be <= ${bounds.max}`, field);
   }
+}
+
+/**
+ * Throw {@link ValidationError} unless `value` is a page size this package will
+ * serve: an integer from 0 to {@link MAX_PAGE_LIMIT}.
+ *
+ * One rule for every `limit` a public method takes. They used to disagree three
+ * ways — no minimum on `saver.list`, so `limit: -1` resolved; `0` refused by the
+ * history reads and accepted by the store — and none of them had a ceiling, so
+ * `limit: 1e12` resolved on five methods. The same mistake answered differently
+ * depending on which method a caller happened to reach for.
+ *
+ * Accepts: `value` — any type; a non-number, a fraction, `NaN` and `Infinity`
+ * are all rejected by the integer rule. `0` is accepted and asks for an empty
+ * page, which each call site answers without issuing a request. A negative
+ * value is refused rather than read as zero: it is a page size that was
+ * computed, and the computation went wrong.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `limit`, quoting {@link MAX_PAGE_LIMIT} when
+ * that is the rule broken so the caller is told what the ceiling is rather than
+ * only that it exists.
+ */
+export function validateLimit(value: number): void {
+  validateInteger(value, 'limit', { min: 0, max: MAX_PAGE_LIMIT });
 }
 
 /**

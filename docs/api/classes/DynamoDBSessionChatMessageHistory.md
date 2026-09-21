@@ -30,7 +30,7 @@ checked structurally for [SessionBackend](../interfaces/SessionBackend.md)'s own
 — the one session it is bound to, validated the same way every other
 adapter method validates a session id. `window` — bounds every read it
 performs; when given, only the `limit` key `AdapterWindow` declares, an
-integer of at least 1.
+integer from 0 to the package's page ceiling.
 
 Returns: the view. Normally built through
 `DynamoDBChatMessageHistory.forSession`, which is the supported route.

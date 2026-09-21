@@ -52,8 +52,9 @@ export class DynamoDBChatMessageHistory {
   /**
    * Get a session's messages in chronological order.
    *
-   * Accepts: `sessionId` — validated. `options.limit` — a positive integer;
-   * only the newest that many messages. `options.before` — a valid `Date`; only
+   * Accepts: `sessionId` — validated. `options.limit` — an integer from 0 to
+   * `MAX_PAGE_LIMIT` (10,000); only the newest that many messages, and `0` an
+   * empty answer with no query. `options.before` — a valid `Date`; only
    * messages appended before that instant. Neither given reads the whole
    * session. `options.signal` — aborts the reads.
    *
@@ -160,8 +161,9 @@ export class DynamoDBChatMessageHistory {
    * bounded by `maxItems` / `maxIterations`, and returning the newest `limit`
    * sessions, or every session when no limit is given, with no cursor.
    *
-   * Accepts: `options.limit` — a positive integer; the page size with the
-   * index, the newest N without it. `options.cursor` — from a previous page,
+   * Accepts: `options.limit` — an integer from 0 to `MAX_PAGE_LIMIT` (10,000);
+   * the page size with the index, the newest N without it, and `0` an empty
+   * page read from neither. `options.cursor` — from a previous page,
    * and only with a configured `indexName`. `options.maxItems` /
    * `maxIterations` — caps on the scan path. `options.signal` — aborts the
    * reads.
@@ -183,8 +185,9 @@ export class DynamoDBChatMessageHistory {
    * page at a time, and its next page whenever it has no row buffered and the
    * page still needs one, so a shard can cost a query whose rows the page never
    * takes; at most `readConcurrency` shards are queried at once. Memory is the
-   * page being built, up to `limit` rows with no ceiling on `limit`, plus at
-   * most one DynamoDB page per shard, whatever the table holds.
+   * page being built, up to `limit` rows and so bounded by
+   * `MAX_PAGE_LIMIT` (10,000), plus at most one DynamoDB page per shard,
+   * whatever the table holds.
    */
   listSessions(options?: ListSessionsOptions): Promise<SessionPage> {
     return guardPublic('history.listSessions', () => listSessionsAction(this.context, options));

@@ -3,6 +3,7 @@ import { ValidationError } from '../../shared/errors/errors';
 import {
   validateIdentifier,
   validateInteger,
+  validateLimit,
   validateNonEmptyArray,
 } from '../../shared/validation/primitives';
 import { NAMESPACE_SEPARATOR, sortKey } from './keys';
@@ -10,8 +11,11 @@ import { NAMESPACE_SEPARATOR, sortKey } from './keys';
 /**
  * Validate the paging a `search` or `listNamespaces` asks for.
  *
- * Accepts: `offset` and `limit` — non-negative integers. `limit: 0` asks for no
- * items and is answered as such, not refused.
+ * Accepts: `offset` — a non-negative integer. `limit` — the package-wide page
+ * rule: a non-negative integer no larger than the page ceiling. `limit: 0`
+ * asks for no items and is answered as such, not refused. `offset` carries no
+ * ceiling of its own: it selects where a page starts rather than how much one
+ * holds, and what it can make a read walk is already bounded by `maxScanItems`.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
@@ -19,7 +23,7 @@ import { NAMESPACE_SEPARATOR, sortKey } from './keys';
  */
 export function validatePaging(offset: number, limit: number): void {
   validateInteger(offset, 'offset', { min: 0 });
-  validateInteger(limit, 'limit', { min: 0 });
+  validateLimit(limit);
 }
 
 /**

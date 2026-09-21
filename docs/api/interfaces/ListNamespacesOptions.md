@@ -21,7 +21,7 @@ equal to upstream's parameter type.
 
 Defined in: [store/types.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L79)
 
-How many namespaces to return, a non-negative integer; default 100.
+How many namespaces to return, from 0 to `MAX_PAGE_LIMIT` (10,000); default 100.
 
 ***
 

@@ -11,7 +11,7 @@ import { ValidationError } from '../../shared/errors/errors';
 import { assertSignalLike } from '../../shared/validation/collaborators';
 import { LIST_SESSIONS_KEYS } from '../../shared/validation/method-keys';
 import { assertShape } from '../../shared/validation/option-shape';
-import { validateInteger } from '../../shared/validation/primitives';
+import { validateInteger, validateLimit } from '../../shared/validation/primitives';
 import { SESSION_SORT_KEY } from '../internal/keys';
 import type { HistoryContext } from '../internal/setup';
 import type { ChatSessionItem, ListSessionsOptions, SessionMetadata, SessionPage } from '../types';
@@ -155,7 +155,7 @@ function assertScanCap(value: number | undefined, field: string): void {
  * check runs ahead of.
  */
 function assertPageOptions(context: HistoryContext, options: ListSessionsOptions): void {
-  if (options.limit !== undefined) validateInteger(options.limit, 'limit', { min: 1 });
+  if (options.limit !== undefined) validateLimit(options.limit);
   assertScanCap(options.maxItems, 'maxItems');
   assertScanCap(options.maxIterations, 'maxIterations');
   if (options.cursor === undefined) return;
@@ -174,9 +174,14 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
 /**
  * List sessions as metadata summaries, most recently updated first.
  *
- * Accepts: `options.limit` — a positive integer; absent means one index page
- * (100) with the index, and every session without it, since a scan has no
- * cursor to fetch the rest with. `options.cursor` — from a previous page, and
+ * Accepts: `options.limit` — the package-wide page rule, an integer from 0 to
+ * the page ceiling; absent means one index page (100) with the index, and
+ * every session without it, since a scan has no cursor to fetch the rest with.
+ * `0` returns an empty page on either path without reading the table, which
+ * matters most on the scan path: a scan has to finish before the newest can be
+ * known, so answering `limit: 0` by scanning and then slicing to nothing would
+ * have paid for the whole table to return an empty page.
+ * `options.cursor` — from a previous page, and
  * only with a configured `indexName`. `options.maxItems` and
  * `maxIterations` — caps on the scan path; with the index the page size is the
  * bound and they do nothing. Each must be a positive integer or `Infinity`
@@ -201,7 +206,7 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
  * no row buffered and the page still needs one, which can cost a query per
  * shard per page whose rows the page never takes; at most `readConcurrency`
  * shards are queried at once. Memory is the page being built, up to `limit`
- * rows with no ceiling on `limit`, plus at most one DynamoDB page per shard,
+ * rows and so bounded by the page ceiling, plus at most one DynamoDB page per shard,
  * whatever the table holds. Without one it is a filtered table scan that holds
  * every session at once and returns no cursor, as earlier releases did.
  */
@@ -212,6 +217,7 @@ export async function listSessions(
   assertShape(options, LIST_SESSIONS_KEYS, 'options');
   assertSignalLike(options.signal);
   assertPageOptions(context, options);
+  if (options.limit === 0) return { sessions: [] };
   return context.indexName === undefined
     ? allByScan(context, options)
     : pageFromIndex(context, context.indexName, options);

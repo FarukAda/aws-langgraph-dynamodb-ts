@@ -6,6 +6,7 @@ import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { ulidTimePrefix } from '../../../../src/shared/ulid';
@@ -113,8 +114,9 @@ describe('getMessages window (HIST-06)', () => {
   it('rejects an invalid window before reaching DynamoDB', async () => {
     const { client, mock } = createStrictDocumentMock();
     for (const window of [
-      { limit: 0 },
+      { limit: -1 },
       { limit: 1.5 },
+      { limit: MAX_PAGE_LIMIT + 1 },
       { before: new Date('nope') },
       { before: '2024-01-01' as never },
     ]) {
@@ -122,6 +124,18 @@ describe('getMessages window (HIST-06)', () => {
         code: ErrorCode.VALIDATION,
       });
     }
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
+  });
+
+  /**
+   * `limit: 0` used to be the one `limit` the history refused. It now means
+   * what it means everywhere else — an empty answer — and is answered before a
+   * query is built, because DynamoDB refuses `Limit: 0` with a raw
+   * `ValidationException`.
+   */
+  it('answers a limit of zero with no messages and no query', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    await expect(getMessages(context(client), 's1', { limit: 0 })).resolves.toEqual([]);
     expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
   });
 });

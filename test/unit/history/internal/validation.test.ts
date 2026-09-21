@@ -7,6 +7,7 @@ import {
   validateSessionId,
   validateStorableMessages,
 } from '../../../../src/history/internal/validation';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
 function expectValidationError(fn: () => void): void {
@@ -120,9 +121,21 @@ describe('validateMessageWindow (HIST-06)', () => {
     expect(() => validateMessageWindow({ limit: 1, before: new Date(0) })).not.toThrow();
   });
 
-  it('rejects a non-positive, fractional or non-numeric limit', () => {
-    expectValidationError(() => validateMessageWindow({ limit: 0 }));
+  /**
+   * `0` used to be refused here alone, on the argument that a zero-length
+   * conversation window is more likely a bug than a request. It now follows the
+   * one page rule every other `limit` follows: `readWindow` answers it with an
+   * empty window and no query.
+   */
+  it('accepts a limit of zero and the page ceiling', () => {
+    expect(() => validateMessageWindow({ limit: 0 })).not.toThrow();
+    expect(() => validateMessageWindow({ limit: MAX_PAGE_LIMIT })).not.toThrow();
+  });
+
+  it('rejects a negative, fractional, oversized or non-numeric limit', () => {
+    expectValidationError(() => validateMessageWindow({ limit: -1 }));
     expectValidationError(() => validateMessageWindow({ limit: 2.5 }));
+    expectValidationError(() => validateMessageWindow({ limit: MAX_PAGE_LIMIT + 1 }));
     expectValidationError(() => validateMessageWindow({ limit: '3' as never }));
   });
 

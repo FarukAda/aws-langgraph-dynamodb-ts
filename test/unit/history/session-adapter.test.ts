@@ -80,8 +80,8 @@ describe('validates its constructor arguments', () => {
     ).toThrow(expect.objectContaining({ code: 'VALIDATION', context: { field: 'window.foo' } }));
   });
 
-  it('refuses a window limit below 1', () => {
-    expect(() => new DynamoDBSessionChatMessageHistory(backend(), 's', { limit: 0 })).toThrow(
+  it('refuses a window limit below 0', () => {
+    expect(() => new DynamoDBSessionChatMessageHistory(backend(), 's', { limit: -1 })).toThrow(
       expect.objectContaining({ code: 'VALIDATION', context: { field: 'limit' } }),
     );
   });

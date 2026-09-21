@@ -1,3 +1,4 @@
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { ValidationError } from '../../../../src/shared/errors/errors';
 import {
@@ -114,5 +115,24 @@ describe('validatePaging', () => {
 
   it('throws on a non-integer limit', () => {
     expect(() => validatePaging(0, 1.5)).toThrow(ValidationError);
+  });
+
+  /**
+   * The store was the only `limit` already bounded below and, like every other,
+   * bounded nowhere above: `store.search({ limit: 1e12 })` resolved.
+   */
+  it('throws on a limit above the page ceiling and names it', () => {
+    expect(() => validatePaging(0, MAX_PAGE_LIMIT)).not.toThrow();
+    expect(() => validatePaging(0, MAX_PAGE_LIMIT + 1)).toThrow(refusal('limit'));
+    expect(() => validatePaging(0, 1e12)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
+  });
+
+  /**
+   * `offset` carries no ceiling of its own: it says where a page starts rather
+   * than how much one holds, and `maxScanItems` already bounds what it can make
+   * a read walk.
+   */
+  it('leaves a large offset alone', () => {
+    expect(() => validatePaging(1e12, 10)).not.toThrow();
   });
 });

@@ -8,7 +8,7 @@ import {
 import { MAX_PARTITION_ID_BYTES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
 import { redactedMessage } from '../../shared/logging/secret-patterns';
-import { validateIdentifier, validateInteger } from '../../shared/validation/primitives';
+import { validateIdentifier, validateLimit } from '../../shared/validation/primitives';
 import type { MessageWindow } from '../types';
 import { SORT_KEY_SEPARATOR } from './keys';
 
@@ -107,12 +107,15 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
 /**
  * Validate a `getMessages` window.
  *
- * Accepts: `limit` — absent asks for the whole session; otherwise a positive
- * integer. `0` is refused rather than answered with nothing: for a window into
- * a conversation it is far more likely a bug than a request. `before` —
- * absent means up to now; otherwise a `Date` whose time is finite. `null` is
- * refused, naming `before`, rather than read as "up to now". A `Date` is
- * duck-typed, since one from another realm is still a date.
+ * Accepts: `limit` — absent asks for the whole session; otherwise the
+ * package-wide page rule, an integer from 0 to the page ceiling. `0` asks for
+ * an empty window and `readWindow` answers it without a query, the same thing
+ * it means on every other read here; it used to be refused, on the argument
+ * that for a conversation window zero is more likely a bug than a request,
+ * which made one option mean two things depending on which adapter a caller
+ * held. `before` — absent means up to now; otherwise a `Date` whose time is
+ * finite. `null` is refused, naming `before`, rather than read as "up to now".
+ * A `Date` is duck-typed, since one from another realm is still a date.
  *
  * Returns: nothing; validity is the absence of a throw.
  *
@@ -123,7 +126,7 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
  * and read as an empty conversation.
  */
 export function validateMessageWindow(window: MessageWindow): void {
-  if (window.limit !== undefined) validateInteger(window.limit, 'limit', { min: 1 });
+  if (window.limit !== undefined) validateLimit(window.limit);
   if (window.before !== undefined) {
     const hasGetTime = window.before !== null && typeof window.before.getTime === 'function';
     const time = hasGetTime ? window.before.getTime() : Number.NaN;

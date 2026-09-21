@@ -3,6 +3,7 @@ import { QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { listSessions } from '../../../../src/history/actions/list-sessions';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { DEFAULT_INDEX_SHARDS } from '../../../../src/shared/dynamodb/index-keys';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { ResultTruncatedError } from '../../../../src/shared/errors/errors';
@@ -48,13 +49,27 @@ describe('listSessions', () => {
     const page = await listSessions(context(client), { limit: 2 });
     expect(page.sessions.map((s) => s.sessionId)).toEqual(['a', 'b']);
     expect(page.nextCursor).toBeUndefined();
-    await expect(listSessions(context(client), { limit: 0 })).rejects.toMatchObject({
+    await expect(listSessions(context(client), { limit: -1 })).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 'limit' },
     });
     await expect(listSessions(context(client), { limit: 1.5 })).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
     });
+    await expect(listSessions(context(client), { limit: 1e12 })).rejects.toThrow(
+      `limit must be <= ${MAX_PAGE_LIMIT}`,
+    );
+  });
+
+  /**
+   * A scan has to finish before the newest can be known, so answering
+   * `limit: 0` by scanning and slicing to nothing would have paid for the whole
+   * table to return an empty page. `limit: 0` used to be refused here.
+   */
+  it('answers a limit of zero with an empty page and reads nothing', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    await expect(listSessions(context(client), { limit: 0 })).resolves.toEqual({ sessions: [] });
+    expect(mock.commandCalls(ScanCommand)).toHaveLength(0);
   });
 
   /** A cursor names a position in an index that is not there; page one is the wrong answer. */

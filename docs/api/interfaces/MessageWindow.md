@@ -18,7 +18,7 @@ and combine: `{ limit: 50, before }` is the fifty messages just before
 
 > `optional` **before?**: `Date`
 
-Defined in: [history/types.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L39)
+Defined in: [history/types.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L40)
 
 Return only messages appended before this instant (millisecond precision).
 
@@ -28,8 +28,9 @@ Return only messages appended before this instant (millisecond precision).
 
 > `optional` **limit?**: `number`
 
-Defined in: [history/types.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L37)
+Defined in: [history/types.ts:38](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L38)
 
-Return only the newest `limit` messages — still in chronological order. A
-positive integer; `0` is refused rather than answered with nothing, since
-for a window into a conversation it is far more likely a bug.
+Return only the newest `limit` messages — still in chronological order. An
+integer from 0 to `MAX_PAGE_LIMIT` (10,000), the rule every `limit` in this
+package follows; `0` asks for an empty window and is answered with one
+before a query is built.

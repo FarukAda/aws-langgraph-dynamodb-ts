@@ -347,7 +347,7 @@ describe('forSession checks its arguments when it is called', () => {
     const h = history(createStrictDocumentMock().client);
     expect(() => h.forSession('s1', 'x' as never)).toThrow(refusal('window'));
     expect(() => h.forSession('s1', { limt: 5 } as never)).toThrow(refusal('window.limt'));
-    expect(() => h.forSession('s1', { limit: 0 })).toThrow(refusal('limit'));
+    expect(() => h.forSession('s1', { limit: -1 })).toThrow(refusal('limit'));
   });
 });
 

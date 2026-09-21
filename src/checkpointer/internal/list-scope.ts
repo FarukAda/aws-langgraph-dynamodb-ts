@@ -4,7 +4,7 @@ import type { CheckpointListOptions, CheckpointMetadata } from '@langchain/langg
 
 import { SAVER_LIST_KEYS } from '../../shared/validation/method-keys';
 import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
-import { validateInteger } from '../../shared/validation/primitives';
+import { validateLimit } from '../../shared/validation/primitives';
 import type { CheckpointMetaItem } from '../types';
 import {
   isAbsentId,
@@ -117,9 +117,12 @@ function assertListOptionsShape(options: CheckpointListOptions | undefined): voi
  * read off it. `config.configurable` — absent or an object, refused naming
  * `configurable` otherwise; `thread_id` omitted lists every thread and
  * `checkpoint_ns` omitted every namespace, as the reference savers do; every
- * identifier that *is* given is validated either way. `options.limit` —
- * any integer; `0` and below ask for nothing, which `asksForNothing` answers
- * before a request is built, so they are not refused here. `options.before` —
+ * identifier that *is* given is validated either way. `options.limit` — an
+ * integer from 0 to the page ceiling; `0` asks for nothing, which
+ * `asksForNothing` answers before a request is built, so it is not refused
+ * here, while a negative value is refused rather than read as zero — it can
+ * only be a page size whose computation went wrong, and answering it with an
+ * empty listing hides that. `options.before` —
  * an object naming, at most, a `checkpoint_id`; see {@link beforeCheckpointId}.
  * `options.filter` — metadata equality clauses, applied in process; must be an
  * object when given. `config.signal` — absent or `AbortSignal`-shaped.
@@ -130,16 +133,17 @@ function assertListOptionsShape(options: CheckpointListOptions | undefined): voi
  * non-object config, `configurable` for a non-object `configurable` and
  * `signal` for a signal that is not `AbortSignal`-shaped — all checked before
  * `options`, so a call with both malformed (e.g. `list('x', { bogus: 1 })`)
- * names `config`, not `options.bogus`; naming `limit` for a non-integer —
- * which DynamoDB would otherwise refuse with a raw `ValidationException` after
- * the round trip; naming `before` for a non-object `before` or a malformed
+ * names `config`, not `options.bogus`; naming `limit` for anything that is not
+ * an integer in range — a non-integer is one DynamoDB would otherwise refuse
+ * with a raw `ValidationException` after the round trip, and a value above the
+ * ceiling names the ceiling; naming `before` for a non-object `before` or a malformed
  * `checkpoint_id` (H-10); naming `filter` for a non-object filter; naming
  * `options.<key>` for a key this package does not read.
  */
 export function readListScope(config: RunnableConfig, options?: CheckpointListOptions): ListScope {
   const { threadId, checkpointNs, checkpointId } = resolveListIds(config);
   assertListOptionsShape(options);
-  if (options?.limit !== undefined) validateInteger(options.limit, 'limit', {});
+  if (options?.limit !== undefined) validateLimit(options.limit);
   return {
     threadId,
     checkpointNs: config.configurable?.checkpoint_ns === undefined ? undefined : checkpointNs,

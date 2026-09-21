@@ -95,8 +95,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * `checkpoint_ns` is omitted, or every thread in the table when `thread_id`
    * is omitted, which is a table scan, or a read of the recency index when
    * `indexName` is set. `options.before`, `options.filter` and
-   * `options.limit` follow the reference savers; a limit of 0 or less yields
-   * nothing.
+   * `options.limit` follow the reference savers; `limit: 0` yields nothing,
+   * and a negative one is refused rather than answered with nothing, so that a
+   * page size whose computation went wrong is reported instead of hidden.
    *
    * Returns: an async generator over the tuples. Abandoning it stops the read,
    * so a consumer that breaks early pays for no further page.
@@ -108,8 +109,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * `thread_ts` for a malformed identifier — all checked before `options`;
    * then `options` for options that are not an object, `options.<key>` for a
    * key this package does not read, `filter` for a filter that is not an
-   * object, `limit` for a limit that is not an integer, and `before` for a
-   * `before` that is not an object or whose `configurable.checkpoint_id` is
+   * object, `limit` for a limit that is not an integer from 0 to
+   * `MAX_PAGE_LIMIT` (10,000), and `before` for a `before` that is not an
+   * object or whose `configurable.checkpoint_id` is
    * neither absent (`undefined`, `null` or `''`) nor a well-formed checkpoint
    * id. `FORMAT_UNSUPPORTED`; ResultTruncatedError, without a `thread_id` and
    * with `indexName`, for an index shard whose pages do not end; UpstreamError;

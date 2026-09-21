@@ -23,8 +23,11 @@ import type { HistoryContext } from './setup';
  * instant, which every message id from that millisecond onwards sorts after.
  *
  * Accepts: `options.limit` — absent asks for the whole session, which is what
- * `getMessages()` with no arguments means. `options.before` — already validated
- * as a real date. `options.signal` — aborts between pages.
+ * `getMessages()` with no arguments means. `0` asks for an empty window and is
+ * answered with one before a query is built: DynamoDB refuses `Limit: 0` with a
+ * raw `ValidationException`, the same round trip `saver.list` stopped paying.
+ * `options.before` — already validated as a real date. `options.signal` —
+ * aborts between pages.
  *
  * Returns: the live messages in chronological order, oldest first, whichever
  * direction the query walked.
@@ -45,6 +48,7 @@ export async function readWindow(
   sessionId: string,
   options: MessageWindow & CancelOptions,
 ): Promise<ChatMessageItem[]> {
+  if (options.limit === 0) return [];
   const now = nowSeconds();
   const limit = options.limit ?? Number.POSITIVE_INFINITY;
   const items: ChatMessageItem[] = [];

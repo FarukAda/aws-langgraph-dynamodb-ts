@@ -112,7 +112,7 @@ describe('queryRecencyIndex', () => {
     expect(input.ScanIndexForward).toBe(false);
   });
 
-  it.each([0, -1, 1.5])('refuses a limit of %p', async (limit) => {
+  it.each([-1, 1.5])('refuses a limit of %p', async (limit) => {
     const { client } = createStrictDocumentMock();
     await expect(queryRecencyIndex(base(client, limit))).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,

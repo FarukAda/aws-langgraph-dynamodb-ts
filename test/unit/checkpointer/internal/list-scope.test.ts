@@ -9,6 +9,7 @@ import {
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import type { CheckpointMetaItem } from '../../../../src/checkpointer/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 
@@ -93,12 +94,25 @@ describe('readListScope', () => {
   });
 
   /**
-   * M-10 site 1: `limit` here is *any* integer, unlike the `>= 1` and `>= 0`
-   * sites elsewhere — 0 and negative ask for nothing, which `asksForNothing`
-   * answers before a request is built, so they are not refused here.
+   * This site used to bound `limit` at neither end, which is what let
+   * `list({ limit: -1 })` and `list({ limit: 1e12 })` both resolve. `0` still
+   * asks for nothing — `asksForNothing` answers it before a request is built —
+   * but a negative value is a page size whose computation went wrong, and an
+   * empty listing would hide that.
    */
-  it('accepts a negative limit, which asks for nothing rather than being refused', () => {
-    expect(() => readListScope({ configurable: { thread_id: 't' } }, { limit: -5 })).not.toThrow();
+  it('refuses a negative limit rather than reading it as a request for nothing', () => {
+    expect(() => readListScope({ configurable: { thread_id: 't' } }, { limit: -5 })).toThrow(
+      /limit/,
+    );
+  });
+
+  it('refuses a limit above the page ceiling, naming the ceiling', () => {
+    expect(() =>
+      readListScope({ configurable: { thread_id: 't' } }, { limit: MAX_PAGE_LIMIT + 1 }),
+    ).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
+    expect(() =>
+      readListScope({ configurable: { thread_id: 't' } }, { limit: MAX_PAGE_LIMIT }),
+    ).not.toThrow();
   });
 
   /**

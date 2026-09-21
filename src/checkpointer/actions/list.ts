@@ -60,9 +60,13 @@ async function* listOne(
  * testing the limit returns a result the caller did not ask for. The reference
  * saver returns nothing here (`@langchain/langgraph-checkpoint@1.1.5`
  * `dist/memory.js:172`).
+ *
+ * Exactly `0`, not "zero or less": a negative limit is refused by
+ * {@link readListScope} before this runs, so treating one as a request for
+ * nothing would be a branch no call could reach.
  */
 function asksForNothing(scope: ListScope): boolean {
-  return scope.limit !== undefined && scope.limit <= 0;
+  return scope.limit === 0;
 }
 
 /** A scope that names one row: a thread, a namespace and a checkpoint. */
@@ -98,8 +102,9 @@ function addressesOneRow(scope: ListScope): scope is OneRowScope {
  * through the recency index when `indexName` is set; `checkpoint_ns` scopes to
  * one namespace and its absence spans every namespace of the thread.
  * `options.before` — only checkpoints older than that id. `options.filter` —
- * metadata equality. `options.limit` — at most this many tuples; `0` or less
- * yields nothing, which is what the reference returns.
+ * metadata equality. `options.limit` — at most this many tuples, up to the
+ * package's page ceiling; `0` yields nothing, which is what the reference
+ * returns, and a negative value is refused.
  *
  * Returns: an async generator over the tuples, newest first within a namespace,
  * unordered across threads on the scan path. The read stops right after the
