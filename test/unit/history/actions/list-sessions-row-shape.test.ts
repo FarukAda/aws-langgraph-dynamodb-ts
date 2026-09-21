@@ -104,6 +104,26 @@ describe.each([
     expect(ids).toEqual(['healthy']);
   });
 
+  /**
+   * Neither read selects rows by partition — the scan filters on the sort key
+   * and the index query reads a shard — so a row planted anywhere in the table
+   * under this adapter's SESSION sort key reaches the summary. Binding its
+   * `sessionId` to the partition it lives in is what keeps it from being
+   * handed back as a session whose messages live somewhere else entirely.
+   */
+  it.each([
+    ['a partition belonging to another session', { PK: 'HIST#other' }],
+    ['a partition belonging to another adapter', { PK: 'CHKPT#t1' }],
+    ['no partition key at all', { PK: undefined }],
+  ])('skips a row claiming a sessionId that disagrees with %s', async (_label, over) => {
+    const ids = await idsOver(indexed, [
+      sessionRow('planted', '2026-01-02T00:00:00Z', over),
+      sessionRow('healthy', '2026-01-01T00:00:00Z'),
+    ]);
+
+    expect(ids).toEqual(['healthy']);
+  });
+
   /** The ttl this package does write still resolves to the instant it names. */
   it('still renders a well-formed ttl as an ISO instant', async () => {
     const { client, mock } = createStrictDocumentMock();

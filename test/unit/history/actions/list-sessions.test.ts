@@ -21,8 +21,9 @@ function context(client: HistoryContext['client']): HistoryContext {
   };
 }
 
+/** A SESSION row keyed the way the adapter writes one: the partition carries the `HIST#` tag. */
 const session = (sessionId: string, updatedAt: string, extra = {}) => ({
-  PK: sessionId,
+  PK: `HIST#${sessionId}`,
   SK: 'HISTORY#SESSION',
   sessionId,
   messageCount: 1,
@@ -279,7 +280,7 @@ describe('listSessions uses the recency index when the table has one (HIST-10)',
   }
 
   const sessionRow = (id: string, at: string) => ({
-    PK: `SESS#${id}`,
+    PK: `HIST#${id}`,
     SK: 'HISTORY#SESSION',
     sessionId: id,
     messageCount: 1,

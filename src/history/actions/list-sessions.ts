@@ -12,7 +12,7 @@ import { assertSignalLike } from '../../shared/validation/collaborators';
 import { LIST_SESSIONS_KEYS } from '../../shared/validation/method-keys';
 import { assertShape } from '../../shared/validation/option-shape';
 import { validateInteger, validateLimit } from '../../shared/validation/primitives';
-import { SESSION_SORT_KEY } from '../internal/keys';
+import { SESSION_SORT_KEY, sessionPartition } from '../internal/keys';
 import type { HistoryContext } from '../internal/setup';
 import type { ChatSessionItem, ListSessionsOptions, SessionMetadata, SessionPage } from '../types';
 
@@ -59,6 +59,15 @@ function isSummarisable(raw: DocItem): boolean {
  * The session a row describes, or undefined for a foreign, malformed or expired
  * row.
  *
+ * The `sessionId` is bound to the partition the row was found in, as
+ * `narrowMetaItem`, `narrowStoreRecord` and `narrowMessageItem` bind theirs.
+ * Both reads that reach here select rows by something other than the partition
+ * — a table scan filtered on the sort key, and a recency-index query — so
+ * without the binding a row planted anywhere in the table under this adapter's
+ * SESSION sort key was summarised under whatever `sessionId` it claimed, and a
+ * caller taking that id to `getMessages` read a partition the row never lived
+ * in.
+ *
  * Throws: `FORMAT_UNSUPPORTED` for a SESSION row a newer release wrote. It is
  * not a foreign row to skip, and summarising it under this release's rules
  * could return its attributes with a meaning they no longer have. Checked
@@ -69,6 +78,7 @@ function isSummarisable(raw: DocItem): boolean {
 function summarise(raw: DocItem, nowSeconds: number): SessionMetadata | undefined {
   const item = raw as ChatSessionItem;
   if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') return undefined;
+  if (item.PK !== sessionPartition(item.sessionId)) return undefined;
   assertReadableRow(item, 'session');
   if (!isSummarisable(raw) || isExpiredRow(item, nowSeconds)) return undefined;
   return {

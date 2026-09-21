@@ -66,7 +66,7 @@ describe('DynamoDBChatMessageHistory', () => {
     mock.on(ScanCommand).resolves({
       Items: [
         {
-          PK: 's',
+          PK: 'HIST#s',
           SK: 'HISTORY#SESSION',
           sessionId: 's',
           messageCount: 1,
@@ -83,7 +83,8 @@ describe('DynamoDBChatMessageHistory', () => {
     const { client, mock } = createStrictDocumentMock();
     /** The repair pins its write to the count the row held, so it reads that first. */
     mock.on(GetCommand).resolves({ Item: { messageCount: 0 } });
-    mock.on(QueryCommand).resolves({ Items: [{ v: 1 }, {}] });
+    const counted = { PK: 'HIST#sess-1', sessionId: 'sess-1', message: { location: 'INLINE' } };
+    mock.on(QueryCommand).resolves({ Items: [{ ...counted, v: 1 }, counted] });
     mock.on(UpdateCommand).resolves({});
     await expect(history(client).reconcileMessageCount('sess-1')).resolves.toBe(2);
   });
