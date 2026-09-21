@@ -30,22 +30,44 @@ function namespaceSource(context: StoreContext, op: ListNamespacesOperation, now
 }
 
 /**
- * Order two namespaces as the reference store does, with its ties settled.
+ * The collation namespaces are sorted by, pinned to one locale.
  *
- * The collation is `localeCompare` on the joined namespace, which is what
- * `InMemoryStore` sorts by (`@langchain/langgraph-checkpoint@1.1.5`
- * `dist/store/memory.js:119`). Collation calls some *distinct* strings equal —
- * `'café'` written precomposed and decomposed is one such pair — and the
- * reference then leaves their order to insertion order. Here that would be the
- * order DynamoDB happened to return the rows in, so the same listing could
- * place a page boundary between them differently on two calls and a page could
- * skip one namespace while repeating another. The tie-break settles exactly
- * those pairs and never reorders a pair the collation itself orders.
+ * `InMemoryStore` sorts with bare `localeCompare`
+ * (`@langchain/langgraph-checkpoint@1.1.5` `dist/store/memory.js:119`), which
+ * means "in the host's default locale" — and locales disagree: `'ä'` sorts
+ * before `'z'` in German and after it in Swedish. A listing paged by `offset`
+ * is a position a caller holds between two calls, so an order that changes
+ * with the host answering the call cuts the same listing in two places and the
+ * caller misses one namespace and sees another twice. Matching the reference
+ * there is not possible anyway, because the reference's own order varies with
+ * its host; what is possible is matching it on every host that agrees with
+ * this locale, and being deterministic on the rest.
+ *
+ * `en` is the locale to pin because ICU applies no tailoring to it — its order
+ * is the untailored root order — and because it is the one locale a Node built
+ * with small ICU still carries, so this cannot degrade to a different order on
+ * a minimal runtime.
+ */
+const NAMESPACE_COLLATOR = new Intl.Collator('en');
+
+/**
+ * Order two namespaces by the reference store's collation, pinned, with its
+ * ties settled.
+ *
+ * The collation is {@link NAMESPACE_COLLATOR} on the joined namespace — the
+ * comparison `InMemoryStore` makes, held to one locale. Collation calls some
+ * *distinct* strings equal — `'café'` written precomposed and decomposed is
+ * one such pair — and the reference then leaves their order to insertion
+ * order. Here that would be the order DynamoDB happened to return the rows in,
+ * so the same listing could place a page boundary between them differently on
+ * two calls and a page could skip one namespace while repeating another. The
+ * tie-break settles exactly those pairs and never reorders a pair the
+ * collation itself orders.
  */
 function compareNamespaces(a: string[], b: string[]): number {
   const left = a.join(NAMESPACE_SEPARATOR);
   const right = b.join(NAMESPACE_SEPARATOR);
-  const collated = left.localeCompare(right);
+  const collated = NAMESPACE_COLLATOR.compare(left, right);
   /** `Number(left > right)` keeps the comparator total: 0 for a pair that really is equal. */
   return collated !== 0 ? collated : left < right ? -1 : Number(left > right);
 }
