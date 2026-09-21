@@ -272,16 +272,23 @@ const SAME_OPERATIONS: [string, (store: BaseStore) => Promise<unknown>][] = [
   ],
 ];
 
+/**
+ * The private runner the four overrides share with `batch`. They call it
+ * rather than the public `batch` so each keeps its own `context.operation`
+ * brand, which is why this spy reaches past the public method.
+ */
+type Runner = { run: (operations: Operation[]) => Promise<unknown[]> };
+
 describe('the overrides build exactly the operations upstream BaseStore builds', () => {
   it.each(SAME_OPERATIONS)('%s', async (_, call) => {
     const reference = new ReferenceStore();
     await call(reference);
     const { store } = storeWithMock();
-    const batch = jest
-      .spyOn(store, 'batch')
-      .mockImplementation(async (operations) => operations.map(() => null) as never);
+    const run = jest
+      .spyOn(store as unknown as Runner, 'run')
+      .mockImplementation(async (operations) => operations.map(() => null));
     await call(store);
-    expect(batch.mock.calls.flatMap(([operations]) => operations)).toStrictEqual(
+    expect(run.mock.calls.flatMap(([operations]) => operations)).toStrictEqual(
       reference.operations,
     );
   });

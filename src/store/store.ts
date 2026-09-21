@@ -32,9 +32,9 @@ type SingleResult = Item | null | SearchItem[] | string[][];
 /**
  * DynamoDB-backed LangGraph store for long-term memory with optional semantic
  * search. A thin orchestrator: get/put/delete/listNamespaces build the same
- * operations the base class builds and funnel them into {@link batch}, which
- * validates every operation and then dispatches each one; they are overridden
- * so each call is guarded in this package, and so `put` keeps upstream's own
+ * operations the base class builds and funnel them into the same validation
+ * and dispatch {@link batch} runs; they are overridden so each call is guarded
+ * in this package under its own name, and so `put` keeps upstream's own
  * namespace rules.
  */
 export class DynamoDBStore extends BaseStore {
@@ -79,17 +79,40 @@ export class DynamoDBStore extends BaseStore {
   }
 
   /**
+   * Validate and run a batch, with no boundary of its own.
+   *
+   * The guard is the caller's method, not this: a nested `guardPublic` keeps
+   * the brand the *inner* one assigned, so routing `get`, `put`, `delete` and
+   * `listNamespaces` through the public {@link batch} reported all four as
+   * `store.batch` and left an operator counting `UpstreamError` by
+   * `context.operation` unable to tell them apart. What each method validates
+   * is unchanged: every rule still lives here, where LangGraph's own calls
+   * arrive too.
+   */
+  private async run<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
+    assertOperations(operations);
+    const results = await runBatch(
+      operations,
+      (operation) => this.dispatch(operation),
+      this.context.readConcurrency,
+    );
+    return results as OperationResults<Op>;
+  }
+
+  /**
    * Execute a batch of operations and return their results in operation
    * order.
    *
    * Accepts: `operations` — an array of operation objects, in the order they
    * are to be observed; an empty batch does nothing and returns `[]`. `get`,
-   * `put`, `delete` and `listNamespaces` build their operation and send it
-   * here, as upstream's implementations do: `get` and
-   * `delete` check nothing first, `listNamespaces` checks only its options
-   * object, and `put` checks only what is about the method (upstream's `.` and
-   * `"langgraph"` namespace rules, and a `null` value). Every other rule is
-   * checked here, where LangGraph's own calls arrive too.
+   * `put`, `delete` and `listNamespaces` build their operation and run it
+   * through the same validation and dispatch, as upstream's implementations
+   * do: `get` and `delete` check nothing first, `listNamespaces` checks only
+   * its options object, and `put` checks only what is about the method
+   * (upstream's `.` and `"langgraph"` namespace rules, and a `null` value).
+   * Every other rule is checked here, where LangGraph's own calls arrive too.
+   * Each of the four keeps its own name in `context.operation`, so a failure
+   * says which method the caller called rather than reporting all five alike.
    *
    * Returns: the results in operation order — an item or `null` for a get,
    * matches for a search, namespaces for a listing, `null` for a put or a
@@ -114,15 +137,7 @@ export class DynamoDBStore extends BaseStore {
    * about one round trip rather than ten (see `runBatch`).
    */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
-    return guardPublic('store.batch', async () => {
-      assertOperations(operations);
-      const results = await runBatch(
-        operations,
-        (operation) => this.dispatch(operation),
-        this.context.readConcurrency,
-      );
-      return results as OperationResults<Op>;
-    });
+    return guardPublic('store.batch', () => this.run(operations));
   }
 
   /**
@@ -145,7 +160,7 @@ export class DynamoDBStore extends BaseStore {
    * RetryExhaustedError.
    */
   override async get(namespace: string[], key: string): Promise<Item | null> {
-    return guardPublic('store.get', async () => (await this.batch([{ namespace, key }]))[0]);
+    return guardPublic('store.get', async () => (await this.run([{ namespace, key }]))[0]);
   }
 
   /**
@@ -173,7 +188,7 @@ export class DynamoDBStore extends BaseStore {
   ): Promise<void> {
     return guardPublic('store.put', async () => {
       assertPutArguments(namespace, key, value);
-      await this.batch([{ namespace, key, value, index }]);
+      await this.run([{ namespace, key, value, index }]);
     });
   }
 
@@ -208,7 +223,7 @@ export class DynamoDBStore extends BaseStore {
    */
   override async delete(namespace: string[], key: string): Promise<void> {
     return guardPublic('store.delete', async () => {
-      await this.batch([{ namespace, key, value: null }]);
+      await this.run([{ namespace, key, value: null }]);
     });
   }
 
@@ -231,7 +246,7 @@ export class DynamoDBStore extends BaseStore {
   override async listNamespaces(options: ListNamespacesOptions = {}): Promise<string[][]> {
     return guardPublic(
       'store.listNamespaces',
-      async () => (await this.batch([listNamespacesOperation(options)]))[0],
+      async () => (await this.run([listNamespacesOperation(options)]))[0],
     );
   }
 
