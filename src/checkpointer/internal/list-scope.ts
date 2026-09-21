@@ -2,6 +2,7 @@ import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb'
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
+import { compareSortKeys } from '../../shared/dynamodb/sort-key-order';
 import { SAVER_LIST_KEYS } from '../../shared/validation/method-keys';
 import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
 import { validateLimit } from '../../shared/validation/primitives';
@@ -229,11 +230,19 @@ export function listScan(context: CheckpointerContext, scope: ListScope): ScanCo
  * when one is given, the requested checkpoint. Applied to query results too,
  * which is redundant there and free: one rule, one place.
  *
+ * "Older" is {@link compareSortKeys}, because on the query path the same bound
+ * is already a `BETWEEN` on the composed sort key, which DynamoDB evaluates in
+ * UTF-8 byte order. JavaScript's `<` orders UTF-16 code units instead, and at
+ * an astral id the two disagree — which turned the redundant pass into a
+ * second, different filter that dropped rows the query had rightly returned.
+ * Every id in one namespace shares its sort key's prefix, so comparing the id
+ * is comparing the sort key.
+ *
  * Throws: nothing.
  */
 export function passesKeyFilters(meta: CheckpointMetaItem, scope: ListScope): boolean {
   return (
-    (scope.before === undefined || meta.checkpointId < scope.before) &&
+    (scope.before === undefined || compareSortKeys(meta.checkpointId, scope.before) < 0) &&
     (scope.checkpointNs === undefined || meta.checkpointNs === scope.checkpointNs) &&
     (scope.checkpointId === undefined || meta.checkpointId === scope.checkpointId)
   );
