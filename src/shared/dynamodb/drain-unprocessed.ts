@@ -3,8 +3,8 @@ import {
   MAX_BACKOFF_DELAY_MS,
   MAX_UNPROCESSED_RETRIES,
 } from '../constants';
-import { ErrorCode } from '../errors/error-code';
 import { BatchWriteIncompleteError } from '../errors/errors';
+import { isAbortError } from './abort';
 import { fullJitter, nextBackoffDelay, sleep } from './backoff';
 import type { DynamoDBDocumentLike } from './client-types';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
@@ -47,7 +47,7 @@ function drainFailure(
   pending: WriteRequest[],
   retries: number,
 ): Error {
-  if ((error as { code?: string }).code === ErrorCode.ABORTED) return error;
+  if (isAbortError(error)) return error;
   return new BatchWriteIncompleteError(succeededCount, pending, retries, error);
 }
 

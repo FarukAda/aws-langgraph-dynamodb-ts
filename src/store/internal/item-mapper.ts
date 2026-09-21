@@ -77,9 +77,18 @@ export function narrowWholeRecord(raw: DocItem): StoreItemRecord | undefined {
   return stamped ? record : undefined;
 }
 
-/** Map a store context to the codec collaborators. */
-function storeCodecDeps(context: StoreContext): CodecDeps {
-  return { serde: context.serde, compression: context.compression, offloader: context.offloader };
+/**
+ * Map a store context to the codec collaborators, plus the caller's `signal`
+ * where the call takes one. The write path passes none, because no store write
+ * accepts a signal.
+ */
+function storeCodecDeps(context: StoreContext, signal?: AbortSignal): CodecDeps {
+  return {
+    serde: context.serde,
+    compression: context.compression,
+    offloader: context.offloader,
+    signal,
+  };
 }
 
 /** Fields controlling a stored item's timestamps, embeddings, ttl and revision token. */
@@ -161,7 +170,8 @@ export async function buildStoreItem(
  * Accepts: `record` — a whole row, never a projection: the value and the
  * timestamps are read from it, and `projectKeys` rows exist only to establish
  * identity for a namespace listing. {@link narrowWholeRecord} is what proves a
- * raw row is one of those, timestamps included.
+ * raw row is one of those, timestamps included. `signal` — cancels the
+ * download an offloaded value costs.
  *
  * Returns: the item, with the timestamps this library stamped at write time.
  *
@@ -169,10 +179,14 @@ export async function buildStoreItem(
  * the download throws for an offloaded one — including the missing-object error
  * `getItem` resolves against a concurrent overwrite.
  */
-export async function readStoreItem(context: StoreContext, record: StoreItemRecord): Promise<Item> {
+export async function readStoreItem(
+  context: StoreContext,
+  record: StoreItemRecord,
+  signal?: AbortSignal,
+): Promise<Item> {
   const value = await decodePayload<Record<string, JsonValue>>(
     record.value,
-    storeCodecDeps(context),
+    storeCodecDeps(context, signal),
     [...record.namespace, record.key],
   );
   return {

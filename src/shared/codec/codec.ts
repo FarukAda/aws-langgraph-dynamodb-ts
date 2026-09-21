@@ -52,6 +52,15 @@ export interface CodecDeps {
   serde: SerializerProtocol;
   compression?: CompressionConfig;
   offloader?: S3Offloader;
+  /**
+   * The caller's cancellation, carried into the S3 upload or download a
+   * payload costs. It belongs here rather than on a parameter of its own for
+   * the same reason `RetryOptions.signal` does: the deps object is built per
+   * call at every use site, so "these options carry a signal" is already how
+   * this package decides what a cancel may interrupt — and a path that must
+   * not be interrupted keeps building its deps without one.
+   */
+  signal?: AbortSignal;
 }
 
 function requireOffloader(deps: CodecDeps): S3Offloader {
@@ -107,14 +116,15 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
  * refused rather than guessed at. `deps.offloader` — required only for an `S3`
  * descriptor. `scope` — the row's own leading key parts (`[threadId]`,
  * `[...namespace, key]`, `[sessionId]`); `[]` degrades the check to the
- * configured prefix.
+ * configured prefix. `deps.signal` — cancels the download of an offloaded
+ * payload, request and all; an inline one reads no bytes and ignores it.
  *
  * Returns: the decoded bytes.
  *
  * Throws: ValidationError naming `descriptor` for an unreadable shape and `s3`
  * for an offloaded row with no offloader configured; ValidationError naming
- * `s3Key` when the key lies outside `scope`; `S3_OFFLOAD_FAILED` from the
- * download; `COMPRESSION_LIMIT` or `PAYLOAD_CORRUPT` from decompression.
+ * `s3Key` when the key lies outside `scope`; `AbortError` when the signal
+ * fires during the download; `S3_OFFLOAD_FAILED` from the download; `COMPRESSION_LIMIT` or `PAYLOAD_CORRUPT` from decompression.
  *
  * Guarantees: an offloaded object is downloaded only when its key lies under
  * the path `scope` produces, so a row can never point this adapter at an
@@ -130,7 +140,7 @@ export async function readPayloadBytes(
   if (descriptor.location === PayloadLocation.S3) {
     const offloader = requireOffloader(deps);
     offloader.assertOwnedKey(descriptor.s3Key, scope);
-    raw = await offloader.download(descriptor.s3Key);
+    raw = await offloader.download(descriptor.s3Key, deps.signal);
   } else {
     raw = descriptor.bytes;
   }

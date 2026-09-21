@@ -77,7 +77,40 @@ describe('readPayloadBytes', () => {
     });
     const bytes = await readPayloadBytes(descriptor, deps, []);
     expect(new TextDecoder().decode(bytes)).toBe('{"b":2}');
-    expect(offloader.download).toHaveBeenCalledWith((descriptor as { s3Key: string }).s3Key);
+    expect(offloader.download).toHaveBeenCalledWith(
+      (descriptor as { s3Key: string }).s3Key,
+      undefined,
+    );
+  });
+
+  /**
+   * The codec is the only thing between a public method and an S3 request, so
+   * the deps object is where a cancel has to arrive. An inline payload sends
+   * nothing and reads the field not at all.
+   */
+  it('carries the deps signal into the upload and the download', async () => {
+    const controller = new AbortController();
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
+      upload: jest.fn(async (key: string) => key),
+      download: jest.fn(async () => new TextEncoder().encode('{"c":3}')),
+      assertOwnedKey: () => undefined,
+    };
+    const deps = { serde, offloader: offloader as never, signal: controller.signal };
+    const descriptor = await encodePayload({ c: 3 }, deps, {
+      keyParts: ['k'],
+      objectId: 'ID',
+      row: { pk: 'PK', sk: 'SK' },
+    });
+    await readPayloadBytes(descriptor, deps, []);
+    expect(offloader.upload).toHaveBeenCalledWith(
+      'k/ID',
+      expect.any(Uint8Array),
+      { pk: 'PK', sk: 'SK' },
+      controller.signal,
+    );
+    expect(offloader.download).toHaveBeenCalledWith('k/ID', controller.signal);
   });
 });
 

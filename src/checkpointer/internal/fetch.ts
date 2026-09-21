@@ -235,5 +235,5 @@ export async function fetchPendingWrites(
       },
     );
   }
-  return toPendingWrites(context, items, threadId);
+  return toPendingWrites(context, items, threadId, read.signal);
 }

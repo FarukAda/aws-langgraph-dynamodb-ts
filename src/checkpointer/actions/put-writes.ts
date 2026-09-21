@@ -103,6 +103,7 @@ export async function putWrites(
     writes,
     nextWriteGroup(),
     ttlTimestamp,
+    signal,
   );
   const special = items.filter((item) => item.index < 0);
   const regular = items.filter((item) => item.index >= 0);

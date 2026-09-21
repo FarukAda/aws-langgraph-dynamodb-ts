@@ -97,7 +97,8 @@ export function narrowHead(
  * Accepts: `threadId` — the **caller's**, from the config, never the row's: it
  * scopes which S3 object the row may point at, so it must come from the
  * partition the caller asked for. A row that names an object outside that scope
- * is refused by the codec rather than downloaded.
+ * is refused by the codec rather than downloaded. `signal` — cancels the
+ * download an offloaded payload costs.
  *
  * Returns: the checkpoint.
  *
@@ -109,8 +110,9 @@ export async function readCheckpoint(
   context: CheckpointerContext,
   item: CheckpointPayloadItem,
   threadId: string,
+  signal?: AbortSignal,
 ): Promise<Checkpoint> {
-  return decodePayload<Checkpoint>(item.checkpoint, codecDeps(context), [threadId]);
+  return decodePayload<Checkpoint>(item.checkpoint, codecDeps(context, signal), [threadId]);
 }
 
 /**
@@ -127,15 +129,17 @@ export async function readMetadata(
   context: CheckpointerContext,
   item: CheckpointMetaItem,
   threadId: string,
+  signal?: AbortSignal,
 ): Promise<CheckpointMetadata> {
-  return decodePayload<CheckpointMetadata>(item.metadata, codecDeps(context), [threadId]);
+  return decodePayload<CheckpointMetadata>(item.metadata, codecDeps(context, signal), [threadId]);
 }
 
 /**
  * Decode WRITE items into `[taskId, channel, value]` pending-write tuples.
  *
  * Accepts: `items` — one checkpoint's WRITE rows, in any order; empty is empty.
- * `threadId` — the caller's, as in {@link readCheckpoint}.
+ * `threadId` — the caller's, as in {@link readCheckpoint}. `signal` — cancels
+ * the downloads, all of which share it.
  *
  * Returns: the writes LangGraph replays, first-write-wins already resolved by
  * `dropSupersededWrites`, in the order the surviving rows were read.
@@ -150,8 +154,9 @@ export async function toPendingWrites(
   context: CheckpointerContext,
   items: CheckpointWriteItem[],
   threadId: string,
+  signal?: AbortSignal,
 ): Promise<CheckpointPendingWrite[]> {
-  const deps = codecDeps(context);
+  const deps = codecDeps(context, signal);
   const live = dropSupersededWrites(items);
   const values = await mapWithConcurrency(
     live,

@@ -39,11 +39,13 @@ async function decodeMessage(
   context: HistoryContext,
   item: ChatMessageItem,
   sessionId: string,
+  signal: AbortSignal | undefined,
 ): Promise<Decoded> {
   const deps: CodecDeps = {
     serde: context.serde,
     compression: context.compression,
     offloader: context.offloader,
+    signal,
   };
   let bytes: Uint8Array;
   try {
@@ -110,7 +112,7 @@ export async function getMessages(
   const decoded = await mapWithConcurrency(
     items,
     context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
-    (item) => decodeMessage(context, item, sessionId),
+    (item) => decodeMessage(context, item, sessionId, options.signal),
   );
   const messages: BaseMessage[] = [];
   decoded.forEach((result, index) => {

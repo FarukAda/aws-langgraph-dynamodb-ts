@@ -96,16 +96,18 @@ function assertSerialisedToBytes(raw: Uint8Array): void {
  * nothing is refused here (see {@link assertSerialisedToBytes}), whichever
  * serde is configured. `deps.compression` — absent or `enabled: false` stores the
  * serialized bytes as they are. `deps.offloader` — absent stores every payload
- * inline. `options` — the row's identity, the write's object id and the row's
- * DynamoDB key (see {@link EncodeOptions}).
+ * inline. `deps.signal` — cancels the upload of an offloaded payload; an
+ * inline one is never sent anywhere and ignores it. `options` — the row's
+ * identity, the write's object id and the row's DynamoDB key (see
+ * {@link EncodeOptions}).
  *
  * Returns: an `S3` descriptor when an offloader is configured and
  * `shouldOffload` accepts the compressed size, otherwise an `INLINE`
  * descriptor carrying the bytes. Both record `serdeType` and `compressed`, so
  * neither is ever inferred from the bytes on read.
  *
- * Throws: whatever `serde.dumpsTyped` throws; `S3_OFFLOAD_FAILED` from the
- * upload; and two distinguishable ValidationErrors. One names `payload` — the
+ * Throws: whatever `serde.dumpsTyped` throws; `AbortError` when the signal
+ * fires during the upload; `S3_OFFLOAD_FAILED` from the upload; and two distinguishable ValidationErrors. One names `payload` — the
  * bytes are too large to store inline — and is raised only when there is **no**
  * offloader and they exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that
  * cell cannot arise: `s3.thresholdBytes` is itself capped at that limit
@@ -140,7 +142,7 @@ export async function encodePayload<T>(
   };
   if (deps.offloader && deps.offloader.shouldOffload(bytes)) {
     const s3Key = deps.offloader.buildKey(options.keyParts, options.objectId);
-    await deps.offloader.upload(s3Key, bytes, options.row);
+    await deps.offloader.upload(s3Key, bytes, options.row, deps.signal);
     return { ...base, location: PayloadLocation.S3, s3Key };
   }
   if (!deps.offloader) assertInlinePayloadFits(bytes, deps);

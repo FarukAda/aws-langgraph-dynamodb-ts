@@ -34,13 +34,14 @@ async function drainPending(
   context: StoreContext,
   pending: StoreItemRecord[],
   live: LiveItem[],
+  signal: AbortSignal | undefined,
 ): Promise<void> {
   if (pending.length === 0) return;
   const batch = pending.splice(0, pending.length);
   const items = await mapWithConcurrency(
     batch,
     context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
-    (record) => readStoreItem(context, record),
+    (record) => readStoreItem(context, record, signal),
   );
   batch.forEach((record, index) => {
     live.push({
@@ -99,9 +100,9 @@ export async function collectReconcileTargets(
     }
     if (isExpiredRow(record, now) || !namespaceMatchesPrefix(record.namespace, prefix)) continue;
     pending.push(record);
-    if (pending.length >= batchLimit) await drainPending(context, pending, live);
+    if (pending.length >= batchLimit) await drainPending(context, pending, live, signal);
   }
-  await drainPending(context, pending, live);
+  await drainPending(context, pending, live, signal);
   const embeddings = await embedValues(
     context,
     live.map((entry) => entry.value),

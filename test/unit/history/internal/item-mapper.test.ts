@@ -55,9 +55,11 @@ describe('history item-mapper', () => {
     );
     const key = `p/${Buffer.from('s1', 'utf8').toString('base64url')}/${ulid}.bin`;
     expect(item.message).toMatchObject({ location: PayloadLocation.S3, s3Key: key });
-    expect(upload).toHaveBeenCalledWith(key, expect.any(Uint8Array), {
-      pk: 'HIST#s1',
-      sk: `HISTORY#MSG#${ulid}`,
-    });
+    expect(upload).toHaveBeenCalledWith(
+      key,
+      expect.any(Uint8Array),
+      { pk: 'HIST#s1', sk: `HISTORY#MSG#${ulid}` },
+      undefined,
+    );
   });
 });

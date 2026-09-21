@@ -50,10 +50,10 @@ export async function assembleTuple(
   const payload = await fetchPayload(context, threadId, checkpointNs, meta.checkpointId, read);
   if (!payload) return undefined;
   const [checkpoint, metadata, pendingWrites] = await Promise.all([
-    readCheckpoint(context, payload, threadId).then((stored) =>
+    readCheckpoint(context, payload, threadId, options.signal).then((stored) =>
       migratePendingSends(context, stored, threadId, checkpointNs, meta.parentCheckpointId, read),
     ),
-    options.metadata ?? readMetadata(context, meta, threadId),
+    options.metadata ?? readMetadata(context, meta, threadId, options.signal),
     fetchPendingWrites(context, threadId, checkpointNs, meta.checkpointId, read),
   ]);
   const tuple: CheckpointTuple = {

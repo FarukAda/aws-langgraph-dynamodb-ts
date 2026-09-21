@@ -72,14 +72,19 @@ function liveRecord(raw: DocItem, op: SearchOperation, now: number): StoreItemRe
 }
 
 /** Decode the pending rows concurrently (each offloaded row is one S3 GET) and keep the ones passing the filter. */
-async function flush(context: StoreContext, op: SearchOperation, state: Collector): Promise<void> {
+async function flush(
+  context: StoreContext,
+  op: SearchOperation,
+  state: Collector,
+  signal: AbortSignal | undefined,
+): Promise<void> {
   if (state.pending.length === 0) return;
   const batch = state.pending;
   state.pending = [];
   const items = await mapWithConcurrency(
     batch,
     context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
-    (record) => readStoreItem(context, record),
+    (record) => readStoreItem(context, record, signal),
   );
   batch.forEach((record, index) => {
     if (passesFilter(items[index], op)) {
@@ -156,9 +161,9 @@ export async function collectCandidates(
       continue;
     }
     if (state.pending.length < batchSize(op, bound.need, state.collected.length, limit)) continue;
-    await flush(context, op, state);
+    await flush(context, op, state, signal);
     if (state.collected.length >= bound.need) return state.collected;
   }
-  await flush(context, op, state);
+  await flush(context, op, state, signal);
   return state.collected;
 }

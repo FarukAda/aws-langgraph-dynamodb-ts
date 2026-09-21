@@ -7,8 +7,13 @@ import type { ChatMessageItem } from '../types';
 import { messageSortKey, sessionPartition } from './keys';
 import type { HistoryContext } from './setup';
 
-function codecDeps(context: HistoryContext): CodecDeps {
-  return { serde: context.serde, compression: context.compression, offloader: context.offloader };
+function codecDeps(context: HistoryContext, signal?: AbortSignal): CodecDeps {
+  return {
+    serde: context.serde,
+    compression: context.compression,
+    offloader: context.offloader,
+    signal,
+  };
 }
 
 /**
@@ -18,7 +23,8 @@ function codecDeps(context: HistoryContext): CodecDeps {
  * offloaded object; the caller allocates one per message from a monotonic
  * factory. `ttlTimestamp` — the uniform whole-conversation expiry every
  * message in the session shares, so a conversation expires as one thing rather
- * than losing its oldest turns first.
+ * than losing its oldest turns first. `signal` — cancels the upload an
+ * offloaded message costs.
  *
  * Returns: the row, keyed by the session partition and a `MSG#<ulid>` sort key,
  * its payload inline or offloaded to `<keyPrefix><sessionId, base64url>/<ulid>.bin`.
@@ -34,10 +40,11 @@ export async function buildMessageItem(
   ulid: string,
   message: StoredMessage,
   ttlTimestamp?: number,
+  signal?: AbortSignal,
 ): Promise<ChatMessageItem> {
   const pk = sessionPartition(sessionId);
   const sk = messageSortKey(ulid);
-  const descriptor = await encodePayload(message, codecDeps(context), {
+  const descriptor = await encodePayload(message, codecDeps(context, signal), {
     keyParts: [sessionId],
     objectId: ulid,
     row: { pk, sk },

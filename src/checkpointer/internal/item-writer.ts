@@ -17,16 +17,23 @@ import { resolveWriteIndices } from './write-index';
 /**
  * Map a context to the codec collaborators.
  *
- * Accepts: the adapter's context.
+ * Accepts: the adapter's context, and the caller's `signal` when the call has
+ * one — a cleanup or verification path deliberately passes none.
  *
- * Returns: the three the codec needs — the serializer, the compression config
- * and the offloader — so a codec call names what it uses rather than taking the
- * whole context.
+ * Returns: the three collaborators the codec needs — the serializer, the
+ * compression config and the offloader — so a codec call names what it uses
+ * rather than taking the whole context, plus the signal that decides whether
+ * an offloaded payload's request may be cancelled.
  *
  * Throws: nothing.
  */
-export function codecDeps(context: CheckpointerContext): CodecDeps {
-  return { serde: context.serde, compression: context.compression, offloader: context.offloader };
+export function codecDeps(context: CheckpointerContext, signal?: AbortSignal): CodecDeps {
+  return {
+    serde: context.serde,
+    compression: context.compression,
+    offloader: context.offloader,
+    signal,
+  };
 }
 
 function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T {
@@ -82,7 +89,7 @@ const nextPutObjectId = createUlidFactory();
  * Accepts: `checkpoint` — every channel value it carries is stored; see
  * `putCheckpoint` for why nothing is narrowed away. `parentCheckpointId` — the
  * checkpoint this one continues, absent for a root. `ttlTimestamp` — stamped on
- * both rows so they expire together.
+ * both rows so they expire together. `signal` — cancels the uploads.
  *
  * Returns: the META row (light: ids, metadata, index keys) and the PAYLOAD row
  * (heavy: the checkpoint itself), which the caller writes in that order —
@@ -103,8 +110,9 @@ export async function buildCheckpointItems(
   metadata: CheckpointMetadata,
   parentCheckpointId?: string,
   ttlTimestamp?: number,
+  signal?: AbortSignal,
 ): Promise<{ meta: CheckpointMetaItem; payload: CheckpointPayloadItem }> {
-  const deps = codecDeps(context);
+  const deps = codecDeps(context, signal);
   const pk = partitionKey(threadId);
   const objectId = nextPutObjectId();
   const checkpointDescriptor = await encodePayload(checkpoint, deps, {
@@ -175,6 +183,8 @@ export async function buildCheckpointItems(
  * Two calls writing the same bytes for the same row therefore upload two
  * objects, and each row names only its own call's.
  *
+ * `signal` — cancels the uploads.
+ *
  * Returns: one row per write, special channels first, each carrying its
  * `occurrence` so a channel emitted twice by one call keeps both values.
  *
@@ -192,10 +202,11 @@ export async function buildWriteItems(
   writes: PendingWrite[],
   writeGroup: string,
   ttlTimestamp?: number,
+  signal?: AbortSignal,
 ): Promise<CheckpointWriteItem[]> {
   /** Reject a bad channel before any payload is encoded or uploaded. */
   for (const [channel] of writes) validateChannel(channel);
-  const deps = codecDeps(context);
+  const deps = codecDeps(context, signal);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];
   /**

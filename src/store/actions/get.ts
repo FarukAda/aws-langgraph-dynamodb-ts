@@ -116,12 +116,12 @@ export async function getItem(
   const record = await readRow(context, namespace, key, signal);
   if (!record) return null;
   try {
-    return await readStoreItem(context, record);
+    return await readStoreItem(context, record, signal);
   } catch (error) {
     if (!isMissingObjectError(error as Error)) throw error;
     const fresh = await readRow(context, namespace, key, signal);
     if (!fresh) return null;
     if (sameObject(record, fresh)) throw error;
-    return readStoreItem(context, fresh);
+    return readStoreItem(context, fresh, signal);
   }
 }

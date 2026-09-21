@@ -1,6 +1,6 @@
-import { abortErrorFrom } from '../../../../src/shared/dynamodb/abort';
+import { abortErrorFrom, isAbortError } from '../../../../src/shared/dynamodb/abort';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { AbortError } from '../../../../src/shared/errors/errors';
+import { AbortError, ValidationError } from '../../../../src/shared/errors/errors';
 
 describe('abortErrorFrom (DDB-05)', () => {
   it('wraps the DOMException a bare abort() produces as the cause of a library AbortError', () => {
@@ -24,5 +24,27 @@ describe('abortErrorFrom (DDB-05)', () => {
     expect((abortErrorFrom(controller.signal).cause as Error).message).toBe('shutting down');
     const reasonless = { aborted: true, reason: undefined } as unknown as AbortSignal;
     expect(abortErrorFrom(reasonless).cause).toBeUndefined();
+  });
+});
+
+describe('isAbortError', () => {
+  /**
+   * The question every wrapper asks before it rebrands a failure: is this the
+   * caller's own stop? It is answered on the code alone, because that is the
+   * only thing a caller branches on and the only thing that survives a second
+   * copy of this package in the same process.
+   */
+  it('recognises a cancel by its code, whatever produced it', () => {
+    const controller = new AbortController();
+    controller.abort();
+    expect(isAbortError(abortErrorFrom(controller.signal))).toBe(true);
+    expect(isAbortError(new AbortError('cancelled'))).toBe(true);
+    expect(isAbortError(Object.assign(new Error('x'), { code: ErrorCode.ABORTED }))).toBe(true);
+  });
+
+  it('says no to every other error, branded or not', () => {
+    expect(isAbortError(new ValidationError('bad', 'field'))).toBe(false);
+    expect(isAbortError(Object.assign(new Error('x'), { name: 'AbortError' }))).toBe(false);
+    expect(isAbortError(new Error('plain'))).toBe(false);
   });
 });

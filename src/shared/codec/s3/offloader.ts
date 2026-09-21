@@ -183,15 +183,22 @@ export class S3Offloader {
    *
    * Accepts: `key` — built by {@link buildKey} for the write uploading `data`,
    * so no other write uploads to it. `row` — written to the object as the
-   * DynamoDB backlink, for an out-of-band sweeper.
+   * DynamoDB backlink, for an out-of-band sweeper. `signal` — cancels the
+   * request itself, not merely the wait before the next attempt.
    *
    * Returns: the key, whether this request stored the object or an earlier
    * attempt of this upload did (see `uploadObject`); the caller's obligation is
    * the same either way.
    *
-   * Throws: `S3_OFFLOAD_FAILED` carrying the key.
+   * Throws: `S3_OFFLOAD_FAILED` carrying the key; `AbortError` when the signal
+   * fires, which is the caller's own stop rather than a failed offload.
    */
-  async upload(key: string, data: Uint8Array, row: BacklinkRow): Promise<string> {
+  async upload(
+    key: string,
+    data: Uint8Array,
+    row: BacklinkRow,
+    signal?: AbortSignal,
+  ): Promise<string> {
     await uploadObject(await this.getClient(), {
       bucket: this.bucketName,
       key,
@@ -199,6 +206,7 @@ export class S3Offloader {
       serverSideEncryption: this.sse,
       sseKmsKeyId: this.sseKmsKeyId,
       metadata: backlinkMetadata(row),
+      signal,
     });
     return key;
   }
@@ -207,16 +215,26 @@ export class S3Offloader {
    * Download the bytes stored under `key`.
    *
    * Accepts: `key` — already checked against the reading row's scope.
+   * `signal` — cancels the request, including a body already streaming: the
+   * handler's abort listener outlives the response headers and destroys the
+   * socket, which is the one bound a stalled transfer has that the request
+   * timeout provably does not give it.
    *
    * Returns: the object's bytes.
    *
    * Throws: `S3_OFFLOAD_FAILED` for an object over `maxDownloadBytes` — the cap
    * is enforced on the declared length and again while reading, so a lying
    * `Content-Length` does not get past it — and for a missing object or a
-   * transport failure.
+   * transport failure; `AbortError` when the signal fires.
    */
-  async download(key: string): Promise<Uint8Array> {
-    return downloadObject(await this.getClient(), this.bucketName, key, this.maxDownloadBytes);
+  async download(key: string, signal?: AbortSignal): Promise<Uint8Array> {
+    return downloadObject(
+      await this.getClient(),
+      this.bucketName,
+      key,
+      this.maxDownloadBytes,
+      signal,
+    );
   }
 
   /**

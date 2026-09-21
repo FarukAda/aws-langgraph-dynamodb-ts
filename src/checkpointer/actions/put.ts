@@ -88,6 +88,7 @@ export async function putCheckpoint(
     metadata,
     parentCheckpointId,
     ttlTimestamp,
+    signal,
   );
   const stored: RunnableConfig = {
     configurable: {

@@ -14,6 +14,24 @@ function isLibraryAbort(reason: Error | undefined): reason is AbortError {
 }
 
 /**
+ * Whether `error` is a cancellation rather than a failure.
+ *
+ * Accepts: `error` — any error, from any layer.
+ *
+ * Returns: whether it carries `code: 'ABORTED'`, which is the contract every
+ * cancellable method documents and the only thing a caller branches on. It is
+ * deliberately weaker than {@link isLibraryAbort}: that one decides whether a
+ * value may be *returned* as an `AbortError`, so it must also be branded,
+ * while this one only decides whether an error a wrapper caught is the
+ * caller's own stop and must be re-thrown as it is.
+ *
+ * Throws: nothing.
+ */
+export function isAbortError(error: Error): boolean {
+  return (error as { code?: string }).code === ErrorCode.ABORTED;
+}
+
+/**
  * This library's error for an aborted `signal`.
  *
  * Accepts: `signal` — aborted; its `reason` may be this library's own

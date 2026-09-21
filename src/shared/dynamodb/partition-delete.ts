@@ -3,10 +3,10 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { PayloadDescriptor } from '../codec/codec';
 import type { S3Offloader } from '../codec/s3/offloader';
 import { BATCH_WRITE_MAX } from '../constants';
-import { ErrorCode } from '../errors/error-code';
 import { BatchWriteAllIncompleteError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
 import { truncateForLog } from '../logging/truncate';
+import { isAbortError } from './abort';
 import type { DynamoDBDocumentLike } from './client-types';
 import { type RevisionGuard, WRITE_ID_ATTRIBUTE, writeIdGuard } from './conditional-put';
 import { paginateQuery } from './paginate';
@@ -157,7 +157,7 @@ function unitRefused(options: PartitionDeleteOptions, row: DocItem, state: PassS
  * own stop was a fault.
  */
 function cancelAmong(failures: readonly Error[]): Error | undefined {
-  return failures.find((failure) => (failure as { code?: string }).code === ErrorCode.ABORTED);
+  return failures.find(isAbortError);
 }
 
 /** Delete the buffered rows, fold what they settled into the pass, and empty the buffer. */
