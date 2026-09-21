@@ -7,8 +7,10 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { rowWrite } from '../../../shared/helpers/ddb-mock';
 
+/** The bytes are immaterial here, but they may not be none: a payload that
+ * serialises to nothing is refused at the encoder. */
 const serde = {
-  dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new Uint8Array()],
+  dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new TextEncoder().encode('{}')],
   loadsTyped: async (): Promise<unknown> => undefined,
 };
 

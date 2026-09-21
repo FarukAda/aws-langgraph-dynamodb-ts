@@ -60,6 +60,25 @@ function assertInlinePayloadFits(bytes: Uint8Array, deps: CodecDeps): void {
 }
 
 /**
+ * Reject a value the serde turned into no bytes at all. Zero bytes is not a
+ * small payload: it is not a document in any format a reader can parse, so the
+ * row is written happily and every later read of it fails — under the default
+ * `JsonPlusSerializer` a function, a symbol and anything else `JSON.stringify`
+ * answers `undefined` for encode this way. Checked before compression, so an
+ * inline and an offloaded payload are refused identically and nothing is
+ * uploaded for a payload no reader could ever use.
+ */
+function assertSerialisedToBytes(raw: Uint8Array): void {
+  if (raw.length > 0) return;
+  throw new ValidationError(
+    'value serialises to zero bytes, which no reader can parse back: a function, a symbol ' +
+      'or any value the configured serde drops encodes to nothing. Store a value the serde ' +
+      'can represent, or configure one that refuses it.',
+    'value',
+  );
+}
+
+/**
  * The descriptor recording how to read `value` back: serialized, compressed if
  * configured, and offloaded to S3 if large enough.
  *
@@ -75,11 +94,15 @@ function assertInlinePayloadFits(bytes: Uint8Array, deps: CodecDeps): void {
  * neither is ever inferred from the bytes on read.
  *
  * Throws: whatever `serde.dumpsTyped` throws; `S3_OFFLOAD_FAILED` from the
- * upload; and ValidationError naming `payload` when there is **no** offloader
- * and the bytes exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that cell
- * cannot arise: `s3.thresholdBytes` is itself capped at that limit
+ * upload; and two distinguishable ValidationErrors. One names `payload` — the
+ * bytes are too large to store inline — and is raised only when there is **no**
+ * offloader and they exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that
+ * cell cannot arise: `s3.thresholdBytes` is itself capped at that limit
  * (`src/shared/validation/codec-options.ts`, `validateS3`), so bytes too large
  * to store inline are always at or above the threshold and offload instead.
+ * The other names `value` — it serialises to nothing (see
+ * {@link assertSerialisedToBytes}) — and is raised for an offloaded payload
+ * and an inline one alike, before either is stored.
  */
 export async function encodePayload<T>(
   value: T,
@@ -87,6 +110,7 @@ export async function encodePayload<T>(
   options: EncodeOptions,
 ): Promise<PayloadDescriptor> {
   const [serdeType, raw] = await deps.serde.dumpsTyped(value);
+  assertSerialisedToBytes(raw);
   const { bytes, compressed }: CompressionResult = deps.compression
     ? await compress(raw, deps.compression)
     : { bytes: raw, compressed: false };
