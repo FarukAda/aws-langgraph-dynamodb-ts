@@ -8,12 +8,15 @@ import { canonicalLines, countBare, countUpstream, duplicateLabels } from './nor
 const BASELINE = 'test/surface/baseline.txt';
 
 /**
- * The count of cases that still let a non-library error escape. A ratchet, not
- * a target: every fix lowers it and nothing may raise it. A flat `=== 0` would
- * leave this tier red for the whole hardening pass and report nothing useful on
- * any intermediate commit. It becomes 0 when the pass completes.
+ * The count of cases that still let a non-library error escape. It is 0: every
+ * public entry point now answers a caller's mistake with a branded error, so
+ * this is the flat assertion the tier was always meant to carry rather than a
+ * count still on its way down. It spent the hardening pass as a ratchet, since
+ * a flat `=== 0` would have left this tier red throughout and reported nothing
+ * useful on any intermediate commit; the `<=` is what it kept from that, and at
+ * 0 it says exactly what `=== 0` says. Nothing may raise it.
  */
-const EXPECTED_BARE = 10;
+const EXPECTED_BARE = 0;
 
 /**
  * The count of cases ending in `UpstreamError/UPSTREAM` or
@@ -60,7 +63,7 @@ test('no case regresses into letting a bare error escape', async () => {
   const bare = countBare(lines);
   assert.ok(
     bare <= EXPECTED_BARE,
-    `${bare} cases let a bare error escape, up from ${EXPECTED_BARE}; lower EXPECTED_BARE as fixes land, never raise it`,
+    `${bare} cases let a bare error escape, up from ${EXPECTED_BARE}; every public entry point must answer a caller's mistake with a branded error, and nothing may raise this count`,
   );
 });
 

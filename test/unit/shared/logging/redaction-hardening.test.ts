@@ -10,6 +10,23 @@ import { redactText } from '../../../../src/shared/logging/secret-patterns';
 
 type Redacted = Record<string, unknown>;
 
+/**
+ * Assert the refusal a caller can actually branch on: this package's own
+ * `ValidationError`, naming the argument at fault — not merely "it did not
+ * raise a `TypeError`".
+ */
+function expectRedactionRefusal(run: () => void, field: string): void {
+  try {
+    run();
+    throw new Error(`expected a refusal naming ${field}`);
+  } catch (error) {
+    const refusal = error as { name?: string; code?: string; context?: { field?: string } };
+    expect(refusal.name).toBe('ValidationError');
+    expect(refusal.code).toBe(ErrorCode.VALIDATION);
+    expect(refusal.context?.field).toBe(field);
+  }
+}
+
 describe('redactSecrets key matching (CORE-03, CORE-13)', () => {
   it('redacts snake_case, kebab-case and upper-case credential names', () => {
     const out = redactSecrets({
@@ -131,21 +148,22 @@ describe('redactSecrets on a structure deeper than the stack', () => {
 });
 
 /**
- * Only the stack-depth failure is answered with a marker: it is a property of
- * the walk, not of the data. Anything the caller's own accessors throw is the
- * caller's to see — `redactLogger` is what keeps it out of a log call.
+ * A failure of the data is answered with the same marker as a failure of the
+ * walk. The caller asked for a value it could log, and it is about to log it
+ * from a `catch`: a redactor that throws there replaces the failure being
+ * reported with a `TypeError` about a getter.
  */
-describe('redactSecrets propagates a failure that is not stack exhaustion', () => {
+describe('redactSecrets on a value whose own accessors fail', () => {
   it.each([
     ['an Error', new TypeError('getter exploded')],
     ['a thrown non-object', null],
-  ])('rethrows %s raised by a getter', (_name, thrown) => {
+  ])('yields the marker for %s raised by a getter', (_name, thrown) => {
     const hostile = {
       get secret(): string {
         throw thrown;
       },
     };
-    expect(() => redactSecrets(hostile)).toThrow();
+    expect(redactSecrets(hostile)).toBe('[UNREDACTABLE]');
   });
 });
 
@@ -172,6 +190,98 @@ describe('redactLogger refuses options that would not redact', () => {
     expect(() =>
       redactLogger(inner, { extraKeys: ['ssn'], extraValuePatterns: [/x-\d+/g] }),
     ).not.toThrow();
+  });
+
+  /**
+   * Each of these reached a string or array method and raised a bare
+   * `TypeError` — or, for the two that are merely falsy, was read as "no
+   * options given" and left the caller running unredacted on a default it
+   * believed it had overridden.
+   */
+  it.each([null, 'x', 1])('names options for %p, which carries no rule at all', (options) => {
+    expectRedactionRefusal(() => redactLogger(inner, options as never), 'options');
+  });
+
+  it.each([
+    ['extraKeys', { extraKeys: 'ssn' }],
+    ['extraKeys', { extraKeys: null }],
+  ])('names %s for a list that is not an array of strings', (field, options) => {
+    expectRedactionRefusal(() => redactLogger(inner, options as never), field);
+  });
+
+  it('names extraValuePatterns for a list that is not an array', () => {
+    expectRedactionRefusal(
+      () => redactLogger(inner, { extraValuePatterns: 'x' } as never),
+      'extraValuePatterns',
+    );
+  });
+});
+
+/**
+ * The wrapper delegates to a `Logger` a consumer implements. A missing method
+ * is a wiring mistake, and finding it at the wrap call names it once, where it
+ * was made, instead of raising `inner.info is not a function` at the first log
+ * line — which is typically inside a `catch`, reporting something else.
+ */
+describe('redactLogger refuses a logger it cannot delegate to', () => {
+  it.each([undefined, null, 'x', 1])('names logger for %p', (value) => {
+    expectRedactionRefusal(() => redactLogger(value as never), 'logger');
+  });
+
+  it.each([
+    [{}, 'logger.debug'],
+    [{ info(): void {} }, 'logger.debug'],
+    [{ debug(): void {}, info(): void {}, warn(): void {} }, 'logger.error'],
+  ])('names the first missing method of %p', (value, field) => {
+    expectRedactionRefusal(() => redactLogger(value as never), field);
+  });
+});
+
+/**
+ * Past the wrap call the wrapper promises to throw nothing, and the wrapped
+ * logger is foreign code: one whose transport has closed, or that asserts on a
+ * field it did not expect, threw straight through the wrapper and became the
+ * error the caller saw instead of the one it was reporting.
+ */
+describe('redactLogger absorbs a failure of the logger it wraps', () => {
+  it('does not let the wrapped logger throw into the log call', () => {
+    const inner = {
+      info(): void {
+        throw new Error('transport closed');
+      },
+      warn: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn(),
+    };
+    const logger = redactLogger(inner);
+    expect(() => logger.info('m', { a: 1 })).not.toThrow();
+    expect(() => logger.warn('m', { password: 'p' })).not.toThrow();
+    expect(inner.warn).toHaveBeenCalledWith('m', { password: '[REDACTED]' });
+  });
+});
+
+/**
+ * Both lists are applied to every string the walk reaches. A key list holding
+ * a `RegExp` reached `String.prototype.endsWith`, which refuses one outright;
+ * a value list holding a string was silently skipped, protecting nothing while
+ * the caller believed it did. `redactLogger` already refused both for its own
+ * options; the public function they are passed to did not.
+ */
+describe('redactSecrets refuses a pattern list it cannot apply', () => {
+  it.each(['x', null, [/x/], [1]])('names patterns for %p', (patterns) => {
+    expectRedactionRefusal(() => redactSecrets({ a: 1 }, patterns as never), 'patterns');
+  });
+
+  it.each(['x', null, ['x'], [1]])('names valuePatterns for %p', (valuePatterns) => {
+    expectRedactionRefusal(
+      () => redactSecrets({ a: 'b' }, undefined, valuePatterns as never),
+      'valuePatterns',
+    );
+  });
+
+  it('accepts an empty list, which is how a caller turns a rule off', () => {
+    expect(redactSecrets({ password: 'p' }, [])).toEqual({ password: 'p' });
+    expect(redactSecrets({ note: 'token=abc' }, [], [])).toEqual({ note: 'token=abc' });
   });
 });
 

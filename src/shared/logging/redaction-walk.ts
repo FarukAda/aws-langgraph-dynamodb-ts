@@ -128,8 +128,10 @@ function redactError(
  * the error path, which preserves the non-enumerable text a plain walk cannot
  * see.
  *
- * Throws: whatever a property getter on the value throws; the caller's walk
- * catches it and substitutes `[UNREDACTABLE]`.
+ * Throws: whatever a property getter on the value throws. `redactSecrets`, the
+ * only caller, catches it and returns `[UNREDACTABLE]` in place of the whole
+ * value it was given, rather than raising a getter's error at a caller who
+ * asked only for a copy it could log.
  */
 export function walkObject(current: RedactableObject, deps: WalkDeps): Redactable {
   if (Array.isArray(current)) return current.map(deps.walk);

@@ -883,27 +883,27 @@ isDynamoDBLangGraphError | value=undefined | OK false
 isDynamoDBLangGraphError | value={} | OK false
 prototype-safety | Object.prototype.polluted after redactSecrets | undefined
 prototype-safety | Object.prototype.x after backfillRecencyIndex cursor | undefined
-redactLogger | inner="x" | OK Object
-redactLogger | inner=null | OK Object
-redactLogger | inner=undefined | OK Object
-redactLogger | inner={"info":fn} | OK Object
-redactLogger | inner={} | OK Object
-redactLogger | options="x" | OK Object
-redactLogger | options=1 | OK Object
-redactLogger | options=null | sync BARE TypeError
-redactLogger | options={"extraKeys":"x"} | sync BARE TypeError
+redactLogger | inner="x" | sync throws ValidationError/VALIDATION field=logger
+redactLogger | inner=null | sync throws ValidationError/VALIDATION field=logger
+redactLogger | inner=undefined | sync throws ValidationError/VALIDATION field=logger
+redactLogger | inner={"info":fn} | sync throws ValidationError/VALIDATION field=logger.debug
+redactLogger | inner={} | sync throws ValidationError/VALIDATION field=logger.debug
+redactLogger | options="x" | sync throws ValidationError/VALIDATION field=options
+redactLogger | options=1 | sync throws ValidationError/VALIDATION field=options
+redactLogger | options=null | sync throws ValidationError/VALIDATION field=options
+redactLogger | options={"extraKeys":"x"} | sync throws ValidationError/VALIDATION field=extraKeys
 redactLogger | options={"extraKeys":[1]} | sync throws ValidationError/VALIDATION field=extraKeys
-redactLogger | options={"extraKeys":null} | OK Object
+redactLogger | options={"extraKeys":null} | sync throws ValidationError/VALIDATION field=extraKeys
 redactLogger | options={"extraValuePatterns":"x"} | sync throws ValidationError/VALIDATION field=extraValuePatterns
 redactLogger | options={"extraValuePatterns":["x"]} | sync throws ValidationError/VALIDATION field=extraValuePatterns
 redactLogger | options={"extraValuePatterns":[RegExp(/x/)]} | OK Object
 redactLogger | options={"foo":1} | OK Object
-redactLogger(...).info | inner.info throws | sync BARE Error
-redactLogger(...).info | inner={} (missing methods) then .info | sync BARE TypeError
-redactSecrets | patterns="x" | sync BARE TypeError
-redactSecrets | patterns=[1] | OK Object
-redactSecrets | patterns=[RegExp(/x/)] | sync BARE TypeError
-redactSecrets | patterns=null | sync BARE TypeError
+redactLogger(...).info | inner.info throws | OK undefined
+redactLogger(...).info | inner={} (missing methods) then .info | sync throws ValidationError/VALIDATION field=logger.debug
+redactSecrets | patterns="x" | sync throws ValidationError/VALIDATION field=patterns
+redactSecrets | patterns=[1] | sync throws ValidationError/VALIDATION field=patterns
+redactSecrets | patterns=[RegExp(/x/)] | sync throws ValidationError/VALIDATION field=patterns
+redactSecrets | patterns=null | sync throws ValidationError/VALIDATION field=patterns
 redactSecrets | value="AKIAIOSFODNN7EXAMPLE" | OK String
 redactSecrets | value="Bearer abc.def.ghi" | OK String
 redactSecrets | value=1 | OK Number
@@ -925,11 +925,11 @@ redactSecrets | value=null | OK null
 redactSecrets | value=true | OK Boolean
 redactSecrets | value=undefined | OK undefined
 redactSecrets | value={"__proto__":{"polluted":1}} | OK Object
-redactSecrets | value={"boom":<throws>} | sync BARE Error
+redactSecrets | value={"boom":<throws>} | OK String
 redactSecrets | value={"constructor":{"prototype":{"polluted":1}}} | OK undefined
 redactSecrets | value={"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":{"n":…#0f666204 | OK String
 redactSecrets | value={"self":<cycle^1>} | OK Object
-redactSecrets | valuePatterns="x" | sync BARE TypeError
-redactSecrets | valuePatterns=["x"] | OK Object
-redactSecrets | valuePatterns=[1] | OK Object
-redactSecrets | valuePatterns=null | sync BARE TypeError
+redactSecrets | valuePatterns="x" | sync throws ValidationError/VALIDATION field=valuePatterns
+redactSecrets | valuePatterns=["x"] | sync throws ValidationError/VALIDATION field=valuePatterns
+redactSecrets | valuePatterns=[1] | sync throws ValidationError/VALIDATION field=valuePatterns
+redactSecrets | valuePatterns=null | sync throws ValidationError/VALIDATION field=valuePatterns

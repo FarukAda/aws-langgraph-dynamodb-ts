@@ -151,8 +151,10 @@ export function isRegExp(value: RegExp): boolean {
  * is not a `RegExp` is skipped: reading `.source` off one produced
  * `new RegExp(undefined)` — that is `/(?:)/`, which matches the empty string
  * and prefixed the marker to every value while catching no secret at all.
- * {@link redactLogger} refuses such an entry outright; skipping keeps a direct
- * caller from silently corrupting its output instead.
+ * Both public entry points — `redactSecrets` and {@link redactLogger} — now
+ * refuse such an entry where it is supplied, since a skipped pattern protects
+ * nothing while its caller believes it does; skipping remains the last-ditch
+ * guard for a list this package assembles internally.
  *
  * Returns: the text with every match replaced. A pattern may capture a leading
  * group it wants **preserved**: only the rest of the match is replaced, which
