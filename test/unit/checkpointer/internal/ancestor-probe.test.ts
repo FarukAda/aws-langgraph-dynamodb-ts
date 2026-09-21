@@ -6,8 +6,10 @@ import {
 } from '../../../../src/checkpointer/internal/ancestor-probe';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { MAX_LOGGED_LABELS, MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { truncateForLog } from '../../../../src/shared/logging/truncate';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {
@@ -85,5 +87,26 @@ describe('ancestorExpired', () => {
   it('names the channels and the setting that prevents it', () => {
     expect(error.message).toContain('"messages"');
     expect(error.message).toContain('snapshotFrequency');
+  });
+
+  /**
+   * The walk's cursor is a row's own `parentConfig` after the first hop, so
+   * the checkpoint and thread it names come off a row. `channels` is checked
+   * for being an array of strings and for nothing else. `context` keeps both
+   * identifiers whole, because that is what a caller branches on.
+   */
+  it('bounds the identifiers and the channel list it quotes', () => {
+    const checkpointId = 'c'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const threadId = 't'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const channels = Array.from({ length: MAX_LOGGED_LABELS + 5 }, (_unused, at) => `ch${at}`);
+    const bounded = ancestorExpired({ checkpointId, threadId, expired: true }, channels);
+    expect(bounded.context).toMatchObject({ threadId, checkpointId });
+    expect(bounded.message).not.toContain(checkpointId);
+    expect(bounded.message).not.toContain(threadId);
+    expect(bounded.message).toContain(truncateForLog(checkpointId));
+    expect(bounded.message).toContain(truncateForLog(threadId));
+    expect(bounded.message).toContain(`"ch${MAX_LOGGED_LABELS - 1}"`);
+    expect(bounded.message).not.toContain(`"ch${MAX_LOGGED_LABELS}"`);
+    expect(bounded.message).toContain(`…(len ${channels.length})`);
   });
 });

@@ -2,7 +2,9 @@ import { decodePayload, PayloadLocation } from '../../../../src/shared/codec/cod
 import { encodePayload } from '../../../../src/shared/codec/encode';
 import { buildS3Key } from '../../../../src/shared/codec/s3/config';
 import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { truncateForLog } from '../../../../src/shared/logging/truncate';
 
 const serde = {
   dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
@@ -255,6 +257,32 @@ describe('persisted descriptor shape (CODEC-16)', () => {
     });
   });
 
+  /**
+   * The version is whatever the row holds. It is declared a number, and the
+   * comparison coerces, so a row carrying a thousand digits as a string passes
+   * it and reaches the message — a row-sourced value in a public error.
+   */
+  it('bounds a row-sourced schemaVersion it quotes', async () => {
+    const version = '9'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const future = {
+      schemaVersion: version,
+      location: PayloadLocation.INLINE,
+      serdeType: 'json',
+      compressed: false,
+      bytes: new Uint8Array(),
+    } as never;
+    const refusal = await decodePayload(future, { serde }, []).then(
+      () => new Error('should have thrown'),
+      (error: Error) => error,
+    );
+    expect(refusal).toMatchObject({
+      code: ErrorCode.FORMAT_UNSUPPORTED,
+      context: { field: 'schemaVersion' },
+    });
+    expect(refusal.message).not.toContain(version);
+    expect(refusal.message).toContain(truncateForLog(version));
+  });
+
   it('refuses a descriptor with an unknown location without touching S3', async () => {
     const offloader = { download: jest.fn(), assertOwnedKey: jest.fn() };
     const odd = {
@@ -267,5 +295,26 @@ describe('persisted descriptor shape (CODEC-16)', () => {
       decodePayload(odd, { serde, offloader: offloader as never }, []),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'descriptor' } });
     expect(offloader.download).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The location is whatever the row carries, so the message that quotes it is
+   * as long as the row makes it. `context.field` is what a caller branches on
+   * and does not move.
+   */
+  it('bounds the row-sourced location it quotes', async () => {
+    const location = 'T'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const odd = { location, serdeType: 'json', compressed: false } as never;
+    const refusal = await decodePayload(odd, { serde }, []).then(
+      () => new Error('should have thrown'),
+      (error: Error) => error,
+    );
+    expect(refusal).toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'descriptor' },
+    });
+    expect(refusal.message).not.toContain(location);
+    expect(refusal.message).toContain(location.slice(0, MAX_LOGGED_VALUE_CHARS - 1));
+    expect(refusal.message.length).toBeLessThan(location.length);
   });
 });

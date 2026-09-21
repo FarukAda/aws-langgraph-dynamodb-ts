@@ -1,5 +1,6 @@
 import { DynamoDBLangGraphError } from '../../errors/base-error';
 import { ErrorCode } from '../../errors/error-code';
+import { truncateForLog } from '../../logging/truncate';
 
 /** The part of an S3 `GetObject` body this module relies on. */
 export interface S3Body {
@@ -19,7 +20,10 @@ interface StreamingBody {
  * cap was passed; the message says which is not distinguished, because either
  * way the download stops.
  *
- * Returns: the error, coded `S3_OFFLOAD_FAILED` and carrying the key.
+ * Returns: the error, coded `S3_OFFLOAD_FAILED` and carrying the key. The
+ * message names the key bounded by {@link truncateForLog}, since it came off
+ * a row; `context.key` carries it whole, because that is the field a caller
+ * reads and it is one value per failed download rather than one per row.
  *
  * Throws: nothing — it builds the error, the caller throws it.
  */
@@ -29,7 +33,7 @@ export function oversizedObjectError(
   maxBytes: number,
 ): DynamoDBLangGraphError {
   return new DynamoDBLangGraphError(
-    `S3 object ${key} exceeds the ${maxBytes}-byte maxDownloadBytes cap ` +
+    `S3 object ${truncateForLog(key)} exceeds the ${maxBytes}-byte maxDownloadBytes cap ` +
       `(${bytes} bytes declared or read)`,
     ErrorCode.S3_OFFLOAD_FAILED,
     { operation: 'download', key },

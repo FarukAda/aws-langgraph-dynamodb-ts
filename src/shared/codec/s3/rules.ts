@@ -2,6 +2,7 @@ import type { LifecycleRule } from '@aws-sdk/client-s3';
 
 import { S3_RELEASE_GRACE_DAYS } from '../../constants';
 import { ValidationError } from '../../errors/errors';
+import { truncateForLog } from '../../logging/truncate';
 
 /**
  * The prefix a rule governs, wherever it names one: in its filter, nested
@@ -159,7 +160,10 @@ export function markerRule(id: string, prefix: string, existing?: LifecycleRule)
  * scope anywhere is taken over, and so is one already scoping this prefix —
  * including in the older schema, which is then upgraded to a filter.
  *
- * Throws: ValidationError naming `s3.keyPrefix`.
+ * Throws: ValidationError naming `s3.keyPrefix`. The id and the scope are
+ * both bounded by {@link truncateForLog}: the scope is whatever the bucket's
+ * lifecycle configuration holds, and the id is composed from an
+ * `s3.keyPrefix` checked for shape and never for length.
  *
  * Guarantees: the scope is read wherever the rule names it, through the same
  * {@link scopeOf} the floor uses. Reading only `Filter.Prefix` let a rule in
@@ -176,7 +180,8 @@ export function assertNoIdCollision(
   const found = scopeOf(rule);
   if (found === undefined || found === prefix) return;
   throw new ValidationError(
-    `the S3 lifecycle rule id "${id}" is already used by the prefix "${found}"; an id is the key ` +
+    `the S3 lifecycle rule id "${truncateForLog(id)}" is already used by the prefix ` +
+      `"${truncateForLog(found)}"; an id is the key ` +
       'prefix with every non-alphanumeric character replaced by "-", and the marker rule appends ' +
       '"-markers" to that, so "a/b/" takes the id of "a-b/" and "app/" takes the marker id of ' +
       '"app-markers/" — choose an s3.keyPrefix that produces neither id of any other prefix on ' +

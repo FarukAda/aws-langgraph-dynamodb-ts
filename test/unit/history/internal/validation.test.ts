@@ -7,8 +7,9 @@ import {
   validateSessionId,
   validateStorableMessages,
 } from '../../../../src/history/internal/validation';
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
+import { MAX_LOGGED_VALUE_CHARS, MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { truncateForLog } from '../../../../src/shared/logging/truncate';
 import { ULID_TIME_RANGE_MS } from '../../../../src/shared/ulid';
 
 function expectValidationError(fn: () => void): void {
@@ -80,6 +81,28 @@ describe('toStoredMessages', () => {
   it('accepts an empty list', () => {
     expect(toStoredMessages([])).toEqual([]);
   });
+
+  /**
+   * LangChain renders the value it refused into the text it throws, so the
+   * relayed half is as long as the caller's own object makes it.
+   */
+  it('bounds what LangChain says about the value it refused', () => {
+    const detail = 'n'.repeat(MAX_LOGGED_VALUE_CHARS * 8);
+    const shape = {
+      toDict: () => {
+        throw new Error(detail);
+      },
+    };
+    try {
+      toStoredMessages([shape as never]);
+      throw new Error('should have thrown');
+    } catch (error) {
+      const coded = error as { context?: { field?: string }; message: string };
+      expect(coded.context?.field).toBe('messages');
+      expect(coded.message).not.toContain(detail);
+      expect(coded.message).toContain(truncateForLog(detail));
+    }
+  });
 });
 
 describe('validateStorableMessages (HIST-04)', () => {
@@ -113,6 +136,27 @@ describe('validateStorableMessages (HIST-04)', () => {
 
   it('accepts an empty list', () => {
     expect(() => validateStorableMessages([])).not.toThrow();
+  });
+
+  /**
+   * The type comes off the caller's own object and nothing length-checked it,
+   * so the message names it bounded — and so is what LangChain says about it,
+   * because that text renders the same unchecked value into itself and
+   * bounding only the type left the message as long as it ever was.
+   * `context.field` stays `messages`, which is what a caller branches on.
+   */
+  it('bounds the type it quotes and the text LangChain renders it into', () => {
+    const type = 'r'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    try {
+      validateStorableMessages([stored(type, { id: 'x' })]);
+      throw new Error('should have thrown');
+    } catch (error) {
+      const coded = error as { context?: { field?: string }; message: string };
+      expect(coded.context?.field).toBe('messages');
+      expect(coded.message).not.toContain(type);
+      expect(coded.message).toContain(truncateForLog(type));
+      expect(coded.message.length).toBeLessThan(type.length);
+    }
   });
 });
 

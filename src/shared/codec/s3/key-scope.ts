@@ -1,4 +1,5 @@
 import { ValidationError } from '../../errors/errors';
+import { truncateForLog } from '../../logging/truncate';
 
 /**
  * One key part, base64url-encoded.
@@ -62,8 +63,12 @@ export function isKeyInScope(key: string, prefix: string, parts: readonly string
  *
  * Returns: nothing; acceptance is the absence of a throw.
  *
- * Throws: ValidationError naming `s3Key`, quoting the path the row may
- * reference. It reaches the caller on all three adapters, including
+ * Throws: ValidationError naming `s3Key`, quoting the key and the path the
+ * row may reference, each bounded by {@link truncateForLog}: the key comes off
+ * the row and the path is composed from an `s3.keyPrefix` checked for shape
+ * and never for length, so neither is bounded by anything this package ran.
+ * The key stays named — a bounded prefix still says which object to go and
+ * look at. It reaches the caller on all three adapters, including
  * `history.getMessages` under `onCorruptMessage: 'skip'`, because
  * `isPermanentPayloadLoss` does **not** classify it — an out-of-scope key is
  * not the same kind of thing as an unreadable descriptor. An unreadable
@@ -86,8 +91,9 @@ export function isKeyInScope(key: string, prefix: string, parts: readonly string
 export function assertKeyInScope(key: string, prefix: string, parts: readonly string[]): void {
   if (isKeyInScope(key, prefix, parts)) return;
   throw new ValidationError(
-    `s3Key "${key}" lies outside the S3 path this row may reference ` +
-      `("${s3KeyScope(prefix, parts)}"); refusing to touch an object the row does not own`,
+    `s3Key "${truncateForLog(key)}" lies outside the S3 path this row may reference ` +
+      `("${truncateForLog(s3KeyScope(prefix, parts))}"); refusing to touch an object the row ` +
+      'does not own',
     's3Key',
   );
 }

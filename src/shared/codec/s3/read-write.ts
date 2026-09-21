@@ -5,6 +5,7 @@ import { withRetry } from '../../dynamodb/retry';
 import { DynamoDBLangGraphError } from '../../errors/base-error';
 import { ErrorCode } from '../../errors/error-code';
 import { redactedMessage } from '../../logging/secret-patterns';
+import { truncateForLog } from '../../logging/truncate';
 import { oversizedObjectError, readBodyBounded } from './bounded-body';
 import { loadS3Sdk } from './client';
 import { isTransientS3Error } from './retry';
@@ -165,7 +166,7 @@ export async function downloadObject(
           throw oversizedObjectError(key, response.ContentLength, maxBytes);
         }
         if (!response.Body) {
-          throw new Error(`S3 object body is empty for key: ${key}`);
+          throw new Error(`S3 object body is empty for key: ${truncateForLog(key)}`);
         }
         return readBodyBounded(response.Body, key, maxBytes);
       },

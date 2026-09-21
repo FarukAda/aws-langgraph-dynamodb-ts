@@ -5,7 +5,9 @@ import {
   defaultAdapterKeyPrefix,
 } from '../../../../../src/shared/codec/s3/config';
 import { encodeKeyPart } from '../../../../../src/shared/codec/s3/key-scope';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
+import { truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 describe('oversizedObjectError', () => {
   const error = oversizedObjectError('ckpt/t/x.bin', 2_000, 1_000);
@@ -18,6 +20,20 @@ describe('oversizedObjectError', () => {
   it('quotes both sizes, so the cap to raise is obvious', () => {
     expect(error.message).toContain('1000');
     expect(error.message).toContain('2000');
+  });
+
+  /**
+   * The key comes off a row and nothing bounded it, so the message that names
+   * it is cut at the same cap a log line uses. `context.key` keeps it whole:
+   * that is the structured field a caller reads, and it is one value per
+   * failure rather than one per row.
+   */
+  it('bounds the key in the message and keeps it whole in the context', () => {
+    const key = `ckpt/${'y'.repeat(MAX_LOGGED_VALUE_CHARS * 4)}.bin`;
+    const oversized = oversizedObjectError(key, 2_000, 1_000);
+    expect(oversized.context).toMatchObject({ operation: 'download', key });
+    expect(oversized.message).not.toContain(key);
+    expect(oversized.message).toContain(truncateForLog(key));
   });
 });
 

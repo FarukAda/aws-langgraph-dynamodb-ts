@@ -4,6 +4,7 @@ import { DynamoDBLangGraphError, isDynamoDBLangGraphError } from '../errors/base
 import { ErrorCode } from '../errors/error-code';
 import { ValidationError } from '../errors/errors';
 import { toError } from '../errors/wrap-error';
+import { truncateForLog } from '../logging/truncate';
 import { CompressionConfig, decompress } from './compression';
 import { bytesHoldDeclaredForm } from './declared-form';
 import type { S3Offloader } from './s3/offloader';
@@ -95,6 +96,12 @@ function requireOffloader(deps: CodecDeps): S3Offloader {
  * `descriptor` field put it in the permanent-loss bucket, where history's
  * default `skip` silently dropped during a rollback or a canary the very turns
  * the store and the saver refused to serve.
+ *
+ * Both of the values these messages quote come off the row, so both go through
+ * `truncateForLog`. The version is declared a number and the comparison
+ * coerces, so a row carrying a thousand digits as a string passes it and
+ * reaches the message; the location is quoted as JSON, which a row can make
+ * any length at all.
  */
 function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   if (descriptor === null || typeof descriptor !== 'object') {
@@ -106,8 +113,10 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   }
   const version = descriptor.schemaVersion ?? DESCRIPTOR_SCHEMA_VERSION;
   if (version > DESCRIPTOR_SCHEMA_VERSION) {
+    /** Declared a number, read off a row, and the comparison coerces a string. */
+    const written = truncateForLog(String(version));
     throw new DynamoDBLangGraphError(
-      `this payload was written in descriptor schema version ${version}; this version of the ` +
+      `this payload was written in descriptor schema version ${written}; this version of the ` +
         `library reads up to ${DESCRIPTOR_SCHEMA_VERSION} — upgrade to read it`,
       ErrorCode.FORMAT_UNSUPPORTED,
       { field: 'schemaVersion' },
@@ -115,8 +124,10 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   }
   const locations: string[] = Object.values(PayloadLocation);
   if (!locations.includes(descriptor.location)) {
+    /** The location is whatever the row holds, and the row is what this refuses. */
+    const location = truncateForLog(String(JSON.stringify(descriptor.location)));
     throw new ValidationError(
-      `payload descriptor has an unknown location ${JSON.stringify(descriptor.location)}`,
+      `payload descriptor has an unknown location ${location}`,
       'descriptor',
     );
   }

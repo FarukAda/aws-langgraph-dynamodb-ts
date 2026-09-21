@@ -8,6 +8,7 @@ import {
 import { MAX_PARTITION_ID_BYTES } from '../../shared/constants';
 import { ValidationError } from '../../shared/errors/errors';
 import { redactedMessage } from '../../shared/logging/secret-patterns';
+import { truncateForLog } from '../../shared/logging/truncate';
 import { ULID_TIME_RANGE_MS } from '../../shared/ulid';
 import { validateIdentifier, validateLimit } from '../../shared/validation/primitives';
 import type { MessageWindow } from '../types';
@@ -61,7 +62,11 @@ export function validateMessageList(messages: BaseMessage[]): void {
  * Throws: ValidationError naming `messages` and the offending index. Serializing
  * one message at a time is what makes that index knowable: mapping the array in
  * one call failed with `TypeError: message.toDict is not a function` from inside
- * LangChain, naming neither the message nor this library.
+ * LangChain, naming neither the message nor this library. What LangChain says
+ * is quoted bounded by {@link truncateForLog}: that text renders the offending
+ * value into itself, so it is exactly as long as the caller's own object makes
+ * it, and bounding the index and the type while relaying it whole would bound
+ * nothing at all.
  */
 export function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
   return messages.map((message, index) => {
@@ -69,7 +74,8 @@ export function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
       return mapChatMessagesToStoredMessages([message])[0];
     } catch (error) {
       throw new ValidationError(
-        `messages[${index}] is not a LangChain message: ${redactedMessage(error as Error)}`,
+        `messages[${index}] is not a LangChain message: ` +
+          truncateForLog(redactedMessage(error as Error)),
         'messages',
       );
     }
@@ -87,7 +93,12 @@ export function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
  * Returns: nothing; validity is the absence of a throw.
  *
  * Throws: ValidationError naming `messages`, carrying the offending index and
- * type. A `RemoveMessage`, or a tool, function or generic message missing its
+ * type. The type comes off the caller's own object and nothing length-checked
+ * it, so the message names it bounded by {@link truncateForLog}, and so is
+ * what LangChain says about it — that text renders the same unchecked value
+ * into itself, so bounding only the type bounds nothing. `context` still names
+ * `messages`, which is what a caller branches on. A
+ * `RemoveMessage`, or a tool, function or generic message missing its
  * required field, fails here instead of being persisted and then skipped or
  * thrown by `getMessages`.
  */
@@ -97,8 +108,8 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
       mapStoredMessagesToChatMessages([message]);
     } catch (error) {
       throw new ValidationError(
-        `messages[${index}] of type "${message.type}" cannot be stored: ` +
-          redactedMessage(error as Error),
+        `messages[${index}] of type "${truncateForLog(message.type)}" cannot be stored: ` +
+          truncateForLog(redactedMessage(error as Error)),
         'messages',
       );
     }

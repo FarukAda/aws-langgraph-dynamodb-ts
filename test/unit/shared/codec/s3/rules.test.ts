@@ -5,8 +5,9 @@ import {
   assertNoIdCollision,
   ttlRule,
 } from '../../../../../src/shared/codec/s3/rules';
-import { S3_RELEASE_GRACE_DAYS } from '../../../../../src/shared/constants';
+import { MAX_LOGGED_VALUE_CHARS, S3_RELEASE_GRACE_DAYS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
+import { truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 const PREFIX = 'langgraph-checkpoints/';
 const TTL_ID = 'langgraph-ttl-langgraph-checkpoints';
@@ -226,5 +227,26 @@ describe('assertNoIdCollision', () => {
     expect(() => assertNoIdCollision({ ID, Prefix: '', Status: 'Enabled' }, PREFIX, ID)).toThrow(
       'is already used by the prefix ""',
     );
+  });
+
+  /**
+   * The scope is read off whatever the bucket's lifecycle configuration holds
+   * and the id is composed from an `s3.keyPrefix` checked for shape and never
+   * for length, so neither is bounded by anything this package ran.
+   */
+  it('bounds the id and the scope it quotes', () => {
+    const found = 'f'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const id = `langgraph-ttl-${'i'.repeat(MAX_LOGGED_VALUE_CHARS * 4)}`;
+    try {
+      assertNoIdCollision({ ID: id, Prefix: found, Status: 'Enabled' }, PREFIX, id);
+      throw new Error('should have thrown');
+    } catch (error) {
+      const coded = error as { context?: { field?: string }; message: string };
+      expect(coded.context?.field).toBe('s3.keyPrefix');
+      expect(coded.message).not.toContain(found);
+      expect(coded.message).not.toContain(id);
+      expect(coded.message).toContain(truncateForLog(found));
+      expect(coded.message).toContain(truncateForLog(id));
+    }
   });
 });

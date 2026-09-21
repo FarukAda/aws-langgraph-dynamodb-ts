@@ -7,6 +7,7 @@ import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
+import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
 import { metaSortKey, partitionKey } from './keys';
 import type { CheckpointerContext } from './setup';
 
@@ -85,7 +86,11 @@ export async function probeAncestor(
  * knows what was lost.
  *
  * Returns: the error, coded `ANCESTOR_EXPIRED` and carrying the thread and
- * checkpoint.
+ * checkpoint. The message bounds all three: after the first hop the walk's
+ * cursor is a row's own `parentConfig`, so the identifiers it names come off a
+ * row, and `channels` is checked for being an array of strings and for nothing
+ * else — neither how many nor how long. `context` carries both identifiers
+ * whole, which is what a caller branches on.
  *
  * Throws: nothing — it builds the error, the caller throws it.
  *
@@ -96,9 +101,13 @@ export async function probeAncestor(
  * is the only honest answer.
  */
 export function ancestorExpired(stop: WalkStop, channels: string[]): DynamoDBLangGraphError {
+  const named = truncateLabelsForLog(channels)
+    .map((channel) => `"${channel}"`)
+    .join(', ');
   return new DynamoDBLangGraphError(
-    `checkpoint "${stop.checkpointId}" of thread "${stop.threadId}" has expired, but later ` +
-      `checkpoints still need it to reconstruct ${channels.map((c) => `"${c}"`).join(', ')}. ` +
+    `checkpoint "${truncateForLog(stop.checkpointId)}" of thread ` +
+      `"${truncateForLog(stop.threadId)}" has expired, but later ` +
+      `checkpoints still need it to reconstruct ${named}. ` +
       'A delta channel writes a full snapshot only every `snapshotFrequency` updates and leaves ' +
       'itself out of the checkpoints in between, so its value is rebuilt from an earlier ' +
       'ancestor — which a per-checkpoint ttl expires while its descendants live on. Lower ' +

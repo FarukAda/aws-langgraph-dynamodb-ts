@@ -4,7 +4,9 @@ import {
   isKeyInScope,
   s3KeyScope,
 } from '../../../../../src/shared/codec/s3/key-scope';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
+import { truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 const enc = (value: string): string => Buffer.from(value, 'utf8').toString('base64url');
 const ID = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';
@@ -63,4 +65,45 @@ describe('assertKeyInScope', () => {
       expect(coded.message).toContain(`p/${enc('t')}`);
     }
   });
+
+  /**
+   * The same value, from the same row: cut at the cap for the `warn` that
+   * reports an object outside the scope and quoted whole by the error that
+   * refuses it. The key stays named — a bounded prefix still identifies the
+   * object — and `context` keeps nothing, because this error carries the field
+   * name alone, which is what a caller branches on.
+   */
+  it('bounds the row-sourced key and the path it quotes', () => {
+    const key = `p/${'z'.repeat(MAX_LOGGED_VALUE_CHARS * 4)}.bin`;
+    try {
+      assertKeyInScope(key, 'p/', ['t']);
+      throw new Error('should have thrown');
+    } catch (error) {
+      const coded = error as { context?: { field?: string }; message: string };
+      expect(coded.context?.field).toBe('s3Key');
+      expect(coded.message).toContain(truncateForLog(key));
+      expect(coded.message).not.toContain(key);
+      expect(coded.message.length).toBeLessThan(key.length);
+    }
+  });
+
+  /**
+   * `s3.keyPrefix` is checked for shape and never for length, so the path the
+   * message names is no more bounded than the key it refuses.
+   */
+  it('bounds the scope when a long keyPrefix composed it', () => {
+    const prefix = `${'q'.repeat(MAX_LOGGED_VALUE_CHARS * 4)}/`;
+    const { message } = capture(() => assertKeyInScope('p/elsewhere.bin', prefix, ['t']));
+    expect(message).toContain(truncateForLog(s3KeyScope(prefix, ['t'])));
+    expect(message.length).toBeLessThan(prefix.length);
+  });
 });
+
+function capture(fn: () => void): { message: string } {
+  try {
+    fn();
+    throw new Error('should have thrown');
+  } catch (error) {
+    return { message: (error as Error).message };
+  }
+}
