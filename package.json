@@ -15,11 +15,12 @@
   "homepage": "https://github.com/FarukAda/aws-langgraph-dynamodb-ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/FarukAda/aws-langgraph-dynamodb-ts"
+    "url": "git+https://github.com/FarukAda/aws-langgraph-dynamodb-ts.git"
   },
   "bugs": {
     "url": "https://github.com/FarukAda/aws-langgraph-dynamodb-ts/issues"
   },
+  "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
