@@ -6,6 +6,7 @@ import {
   CompensationFailedError,
 } from '../../shared/errors/errors';
 import { toError } from '../../shared/errors/wrap-error';
+import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { ChatMessageItem } from '../types';
 import { revertSessionCount, revertSessionCreation } from './session-count';
 import type { HistoryContext } from './setup';
@@ -25,15 +26,15 @@ export interface CommittedChunk {
  * throw out of either used to take the rollback with it — the first skipping
  * the S3 cleanup, every committed chunk's deletes, the count revert and the
  * rethrow in one go; the second replacing the one error whose job is to say
- * that `messageCount` drifted. Swallowed rather than reported onward, because
- * the only channel a report could use is the one that just broke, and what the
- * line was going to say is an observation about work that is already failing
- * for a reason of its own.
+ * that `messageCount` drifted.
  *
- * Held at this call site rather than left to the seam the context's logger was
- * resolved at, because this is the package's least forgiving path: it runs once
- * per rolled-back append, and what it loses if it stops early is a caller's
- * "all messages or none".
+ * The guard itself is {@link absorbLoggerFailure}, which this held an inline
+ * copy of while that helper belonged to another change. Swallowing is still
+ * the answer for the reason it gives: the only channel a report could use is
+ * the one that just broke. Guarded here rather than left to the seam the
+ * context's logger was resolved at, because this is the package's least
+ * forgiving path — it runs once per rolled-back append, and what it loses if
+ * it stops early is a caller's "all messages or none".
  */
 function reportStep(
   context: HistoryContext,
@@ -42,11 +43,7 @@ function reportStep(
   sessionId: string,
   committedChunks: number,
 ): void {
-  try {
-    context.logger[level](message, { sessionId, committedChunks });
-  } catch {
-    /** Nowhere left to say it: the reporting channel is the broken part. */
-  }
+  absorbLoggerFailure(() => context.logger[level](message, { sessionId, committedChunks }));
 }
 
 /**

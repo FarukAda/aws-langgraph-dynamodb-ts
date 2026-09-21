@@ -75,10 +75,11 @@ export function absorbLoggerFailure(emit: () => void): void {
  * Wrapped once per adapter, here, rather than remembered at each of the three
  * dozen call sites: a site that forgets is a site whose failure path reports
  * the wrong error, and those sites are exactly the ones a test suite exercises
- * least. `absorbLoggerFailure` stays for the two places that take a
- * `Logger` as an argument and promise, with no precondition on which one,
- * never to throw: `redactLogger`, which a caller may wrap any logger with, and
- * the S3 orphan cleanup.
+ * least. `absorbLoggerFailure` stays for the places that promise,
+ * with no precondition on the logger they were handed, never to throw:
+ * `redactLogger`, which a caller may wrap any logger with, the S3 orphan
+ * cleanup, and the chat history's append compensation, whose announcement must
+ * not be able to stop the rollback it announces.
  */
 function containedLogger(inner: Logger): Logger {
   const deliver =
