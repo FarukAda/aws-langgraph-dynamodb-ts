@@ -6,7 +6,7 @@
 
 # Interface: RetryOptions
 
-Defined in: [shared/dynamodb/retry.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L22)
+Defined in: [shared/dynamodb/retry.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L39)
 
 Options controlling withRetry.
 
@@ -16,7 +16,7 @@ Options controlling withRetry.
 
 > `optional` **baseDelayMs?**: `number`
 
-Defined in: [shared/dynamodb/retry.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L24)
+Defined in: [shared/dynamodb/retry.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L41)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [shared/dynamodb/retry.ts:24](https://github.com/FarukAda/aws-langgr
 
 > `optional` **isRetryable?**: (`error`) => `boolean`
 
-Defined in: [shared/dynamodb/retry.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L32)
+Defined in: [shared/dynamodb/retry.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L49)
 
 Decides retryability instead of `retryableErrors`, so a call site can
 share one classifier (see `isTransientS3Error`) with paths that do not
@@ -46,7 +46,7 @@ go through `withRetry`.
 
 > `optional` **maxAttempts?**: `number`
 
-Defined in: [shared/dynamodb/retry.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L23)
+Defined in: [shared/dynamodb/retry.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L40)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [shared/dynamodb/retry.ts:23](https://github.com/FarukAda/aws-langgr
 
 > `optional` **maxDelayMs?**: `number`
 
-Defined in: [shared/dynamodb/retry.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L25)
+Defined in: [shared/dynamodb/retry.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L42)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [shared/dynamodb/retry.ts:25](https://github.com/FarukAda/aws-langgr
 
 > `optional` **onRetry?**: (`info`) => `void`
 
-Defined in: [shared/dynamodb/retry.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L34)
+Defined in: [shared/dynamodb/retry.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L51)
 
 Called before every backoff sleep, so retries are visible before the budget is exhausted.
 
@@ -82,7 +82,7 @@ Called before every backoff sleep, so retries are visible before the budget is e
 
 > `optional` **retryableErrors?**: readonly `string`[]
 
-Defined in: [shared/dynamodb/retry.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L26)
+Defined in: [shared/dynamodb/retry.ts:43](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L43)
 
 ***
 
@@ -90,7 +90,7 @@ Defined in: [shared/dynamodb/retry.ts:26](https://github.com/FarukAda/aws-langgr
 
 > `optional` **rng?**: () => `number`
 
-Defined in: [shared/dynamodb/retry.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L36)
+Defined in: [shared/dynamodb/retry.ts:53](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L53)
 
 #### Returns
 
@@ -102,4 +102,4 @@ Defined in: [shared/dynamodb/retry.ts:36](https://github.com/FarukAda/aws-langgr
 
 > `optional` **signal?**: `AbortSignal`
 
-Defined in: [shared/dynamodb/retry.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L35)
+Defined in: [shared/dynamodb/retry.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L52)
