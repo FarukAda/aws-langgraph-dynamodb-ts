@@ -190,4 +190,33 @@ describe('addMessages', () => {
     ).rejects.toThrow('boom');
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['s1/U0']);
   });
+
+  /**
+   * The signal has to reach the upload, not only the transaction: an offloaded
+   * append spends an S3 request per message before a single row is written, so
+   * a cancel that only reached the write would sit through all of them.
+   */
+  it("carries the caller's signal into each message's upload", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    const controller = new AbortController();
+    const upload = jest.fn(async (key: string) => key);
+    const offloader = {
+      shouldOffload: () => true,
+      buildKey: (parts: string[], objectId: string) => [...parts, objectId].join('/'),
+      upload,
+    };
+    await addMessages(
+      context(client, { offloader: offloader as never }),
+      's1',
+      [new HumanMessage('a')],
+      controller.signal,
+    );
+    expect(upload).toHaveBeenCalledWith(
+      's1/U0',
+      expect.any(Uint8Array),
+      expect.any(Object),
+      controller.signal,
+    );
+  });
 });

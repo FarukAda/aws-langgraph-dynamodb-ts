@@ -42,12 +42,15 @@ async function buildItems(
   context: HistoryContext,
   sessionId: string,
   stored: StoredMessage[],
-  ttlTimestamp?: number,
+  ttlTimestamp: number | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<ChatMessageItem[]> {
   const items: ChatMessageItem[] = [];
   try {
     for (const message of stored) {
-      items.push(await buildMessageItem(context, sessionId, context.ulid(), message, ttlTimestamp));
+      items.push(
+        await buildMessageItem(context, sessionId, context.ulid(), message, ttlTimestamp, signal),
+      );
     }
   } catch (error) {
     if (context.offloader) {
@@ -107,7 +110,7 @@ export async function addMessages(
   const anchor = context.ttl
     ? await resolveTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl), signal)
     : undefined;
-  const items = await buildItems(context, sessionId, stored, anchor?.ttlTimestamp);
+  const items = await buildItems(context, sessionId, stored, anchor?.ttlTimestamp, signal);
   const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
   await appendChunks(
     context,
