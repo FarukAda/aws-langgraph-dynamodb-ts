@@ -113,6 +113,14 @@ export default defineConfig([
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       'no-restricted-syntax': ['error', NO_EXPORT_ALL, NO_REEXPORT],
+      /**
+       * Every hit here is a test deliberately proving this library normalises
+       * a rejection whatever its value — `throw 'boom'`, `throw null`, a
+       * getter that throws a string — because a caller's own `serde`,
+       * `embeddings` or resource can throw anything a `throw` statement
+       * accepts. That is the behaviour under test, not a bug.
+       */
+      '@typescript-eslint/only-throw-error': 'off',
     },
   },
   {
