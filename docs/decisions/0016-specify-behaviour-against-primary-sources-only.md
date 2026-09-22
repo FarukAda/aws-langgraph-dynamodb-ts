@@ -13,10 +13,13 @@ copied without its source cannot be re-derived when the service changes,
 and a behaviour copied from another implementation may be that
 implementation's own bug rather than a fact about the service. DynamoDB
 Local, which the unit and integration tiers run against for speed, is
-itself such a source to be wary of: `docs/evidence/cancelled-transaction-token.md`
-records that it does not reserve a cancelled transaction's token
-parameters the way the real service does, so a behaviour observed only
-there is not a fact about DynamoDB at all.
+itself such a source to be wary of: `transactIdempotently`'s own doc
+comment (`src/shared/dynamodb/idempotent-write.ts`) records that the
+`IdempotentParameterMismatchException` a cancelled token's reused
+parameters draw against real DynamoDB is "only observable against real
+DynamoDB" — the local image re-evaluates the changed body instead of
+reserving the parameters — so a behaviour observed only against the local
+image is not a fact about DynamoDB at all.
 
 Parts of both services are undocumented. For those there is no page to
 cite — only what the service actually does, which can be observed but goes

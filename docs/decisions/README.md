@@ -26,7 +26,7 @@ the numbering, and that no number is used twice.
 | [9](0009-treat-the-in-memory-reference-implementations-as-the-oracle.md) | Treat the in-memory reference implementations as the oracle | Accepted |
 | [10](0010-store-every-channel-value-regardless-of-new-versions.md) | Store every channel value regardless of `newVersions` | Accepted |
 | [11](0011-default-the-serializers-and-report-serde-refusals-as-validation.md) | Default the serializers, and report serde refusals as validation | Accepted |
-| [12](0012-drop-a-corrupt-message-only-when-the-caller-asks.md) | Drop a corrupt stored message by default, and fail the read only when asked | Accepted |
+| [12](0012-drop-a-corrupt-message-by-default-and-fail-only-when-asked.md) | Drop a corrupt stored message by default, and fail the read only when asked | Accepted |
 | [13](0013-let-only-library-errors-cross-the-public-boundary.md) | Let only library errors cross the public boundary | Accepted |
 | [14](0014-retry-through-one-classifier-and-bound-every-loop.md) | Retry through one classifier and bound every loop | Accepted |
 | [15](0015-gate-the-build-on-complete-coverage.md) | Gate the build on complete coverage | Accepted |
