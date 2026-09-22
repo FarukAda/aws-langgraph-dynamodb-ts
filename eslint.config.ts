@@ -114,6 +114,14 @@ export default defineConfig([
       '@typescript-eslint/no-explicit-any': 'off',
       'no-restricted-syntax': ['error', NO_EXPORT_ALL, NO_REEXPORT],
       /**
+       * Every hit here is `expect(mock.fn)` or `expect(Class.prototype.method)`
+       * (Jest reads the reference, never calls it against a `this`) or a plain
+       * function copied onto a fake `serde`/logger object (nothing in this
+       * codebase's methods reads `this`). Both are idiomatic test code, not the
+       * unbound-`this` bug the rule exists to catch.
+       */
+      '@typescript-eslint/unbound-method': 'off',
+      /**
        * Every hit here is a test deliberately proving this library normalises
        * a rejection whatever its value — `throw 'boom'`, `throw null`, a
        * getter that throws a string — because a caller's own `serde`,
