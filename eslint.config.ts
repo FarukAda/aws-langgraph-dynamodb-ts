@@ -22,15 +22,18 @@ const plugins: Record<string, ESLint.Plugin> = {
 
 const NO_UNKNOWN = {
   selector: 'TSUnknownKeyword',
-  message: 'The `unknown` type is banned (CLAUDE.md Types rule). Model the shape explicitly.',
+  message:
+    'The `unknown` type is banned in src. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
 };
 const NO_EXPORT_ALL = {
   selector: 'ExportAllDeclaration',
-  message: 'Barrel re-exports are banned except in src/index.ts (CLAUDE.md Exports rule).',
+  message:
+    'Barrel re-exports are banned except in src/index.ts, so the public surface is declared in one place (see CONTRIBUTING.md).',
 };
 const NO_REEXPORT = {
   selector: 'ExportNamedDeclaration[source]',
-  message: 'Re-exports are banned except in src/index.ts (CLAUDE.md Exports rule).',
+  message:
+    'Re-exports are banned except in src/index.ts, so the public surface is declared in one place (see CONTRIBUTING.md).',
 };
 
 export default defineConfig([
