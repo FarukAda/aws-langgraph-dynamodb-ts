@@ -24,7 +24,7 @@ function s3Offload() {
 }
 
 /**
- * Split out of `saver.test.ts`, which sits at its line cap. Every case here
+ * The saver's S3 lifecycle provisioning, kept apart from `saver.test.ts`. Every case here
  * passes a logger and asserts on it: an unstubbed `GetBucketVersioning`
  * resolves as nothing through `aws-sdk-client-mock`, which this package reads
  * as a failed versioning check and warns about — so without that assertion a

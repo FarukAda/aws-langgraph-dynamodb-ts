@@ -44,6 +44,9 @@ jobs:
   integration:
     name: live-aws integration
     runs-on: ubuntu-latest
+    # release.yml waits 45 minutes for this check, so a run past that is lost
+    # anyway; stopping it here keeps each tag's cost bounded (record 18).
+    timeout-minutes: 45
     permissions:
       contents: read
       # Only to assume the AWS role below. See the note above for why this

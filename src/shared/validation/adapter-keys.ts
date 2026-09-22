@@ -6,8 +6,8 @@ import { allKeysOf } from './option-shape';
 /**
  * The keys of each adapter's option bag, exhaustive in both directions.
  *
- * These live apart from `options.ts` because that file is near the 150-line
- * cap, and because a drifted list is what decides that a key is *unknown* —
+ * These live apart from `options.ts`, which holds the checks rather than the
+ * lists, and a drifted list is what decides that a key is *unknown* —
  * `allKeysOf<T>` makes omitting or inventing one a compile error, so the lists
  * cannot rot away from the types they guard.
  */

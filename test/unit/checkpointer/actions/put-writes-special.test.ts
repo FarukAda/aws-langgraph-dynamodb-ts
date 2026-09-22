@@ -37,8 +37,8 @@ function trackingOffloader(
 }
 
 /**
- * Special (negative-index) write behavior split out of put-writes.test.ts to
- * stay under the test file line cap. Covers the compare-and-swap path
+ * Special (negative-index) write behavior, kept apart from put-writes.test.ts
+ * because it takes a different path. Covers the compare-and-swap path
  * (`special-write-cas.ts`) as exercised through the public `putWrites` entry
  * point, alongside `special-write-cas.test.ts`'s unit-level coverage.
  */

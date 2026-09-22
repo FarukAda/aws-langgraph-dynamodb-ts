@@ -67,9 +67,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # No --omit=dev: the peers (@langchain/core, @langchain/langgraph-checkpoint,
-      # @aws-sdk/client-s3) install as devDependencies, so omitting dev never
-      # audited them.
+      # No --omit=dev. @langchain/core and @langchain/langgraph-checkpoint are
+      # peers npm installs itself, which --omit=dev still audits, but the
+      # optional peer @aws-sdk/client-s3 is installed here only because it is
+      # also a devDependency, so --omit=dev dropped it and everything under it,
+      # though a consumer who turns on S3 offload runs that code in production.
       - name: Audit dependencies (high+)
         run: npm audit --audit-level=high
 

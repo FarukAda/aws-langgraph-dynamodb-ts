@@ -28,13 +28,14 @@ file-length guard. A module is as large as the one decision it hides.
 
 ## Consequences
 
-Positive. Modules can be merged back along the decisions they hide, which
-the design phases of this alignment depend on. Documentation no longer
-competes with code for a budget.
+Positive. Modules can be merged back along the decisions they hide, where
+a cap used to force them apart. Documentation no longer competes with code
+for a budget.
 
 Negative. Nothing mechanical now stops a file or a function from growing
 without bound; review has to. A reviewer judging complexity has the
 guidelines' symptoms (rule 20) to go by, not a number.
 
 Neutral. No source changes in the same change: existing files keep their
-current size until the module-depth phase consolidates them.
+current size until the modules are consolidated along the decisions they
+hide.

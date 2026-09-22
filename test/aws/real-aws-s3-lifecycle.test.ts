@@ -116,8 +116,8 @@ function countingClient(counter: { puts: number }): S3Client {
 
 /**
  * Real-AWS verification of S3 lifecycle-rule provisioning and the S3 error
- * taxonomy — split out from real-aws-s3.test.ts (which owns the core offload
- * CRUD path) to stay under this repo's per-file line cap. Also carries the one
+ * taxonomy, kept apart from real-aws-s3.test.ts, which owns the core offload
+ * CRUD path. Also carries the one
  * raw-SDK lifecycle probe this package's own provisioning code never
  * exercises (E-11 of `docs/evidence`). Creates and tears down a unique table
  * and bucket per run.

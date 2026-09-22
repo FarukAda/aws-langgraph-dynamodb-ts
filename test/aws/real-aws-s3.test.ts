@@ -57,8 +57,7 @@ async function offloadedObjectCount(s3: S3Client): Promise<number> {
  * DeleteObject / ListBucket against a real bucket — round-trip fidelity,
  * object placement, and orphan cleanup that mocked unit tests cannot prove.
  * Creates and tears down a unique table and bucket per run. Lifecycle-rule
- * provisioning and the S3 error taxonomy live in real-aws-s3-lifecycle.test.ts,
- * split out to stay under this repo's per-file line cap.
+ * provisioning and the S3 error taxonomy live in real-aws-s3-lifecycle.test.ts.
  */
 describe('S3 offload against real AWS', () => {
   let admin: DynamoDBClient;

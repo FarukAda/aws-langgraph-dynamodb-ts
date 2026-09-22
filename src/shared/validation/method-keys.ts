@@ -11,8 +11,8 @@ import { allKeysOf, assertShape } from './option-shape';
  * The keys of each public method's option bag, exhaustive in both directions.
  *
  * These guard a *call*, not a constructor — `adapter-keys.ts` is the
- * constructor-options counterpart — and live apart from `options.ts`, which is
- * already near the 150-line cap. `allKeysOf<T>` keeps each list from drifting
+ * constructor-options counterpart — and live apart from `options.ts`, which
+ * holds the checks rather than the lists. `allKeysOf<T>` keeps each list from drifting
  * from the type it guards the same way theirs do: an exhaustive list compiles,
  * omitting or inventing a key does not.
  */

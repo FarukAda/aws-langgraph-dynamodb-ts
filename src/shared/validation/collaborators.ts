@@ -77,8 +77,7 @@ export function assertMembers(value: object, members: readonly string[], field: 
 /**
  * Validate the collaborators every adapter shares: `client`, `logger` and
  * `serde`. Pulled out of each `setUp*` as one call rather than three inline
- * checks, which is also what keeps `setUpStore`/`setUpHistory` under the
- * complexity cap.
+ * checks, so the three adapters check them the same way.
  *
  * Accepts: `options` — the adapter options, narrowed to the three shared
  * collaborator fields. Every field here is typed as `object`, which a real
