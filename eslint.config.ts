@@ -121,6 +121,13 @@ export default defineConfig([
        * accepts. That is the behaviour under test, not a bug.
        */
       '@typescript-eslint/only-throw-error': 'off',
+      /**
+       * Same reasoning as `only-throw-error` above: every hit here is a
+       * `Promise.reject(...)` deliberately given a non-Error value — a plain
+       * object, `null`, `undefined` — to prove this library's own rejection
+       * handling does not assume the rejection is an `Error`.
+       */
+      '@typescript-eslint/prefer-promise-reject-errors': 'off',
     },
   },
   {
