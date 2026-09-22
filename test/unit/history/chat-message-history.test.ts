@@ -33,10 +33,12 @@ describe('DynamoDBChatMessageHistory', () => {
   it('addMessage then getMessages round-trips through DynamoDB', async () => {
     const { client, mock } = createStrictDocumentMock();
     let written: unknown[] = [];
-    mock.on(TransactWriteCommand).callsFake((input) => {
-      written = input.TransactItems.slice(1).map((t: { Put: { Item: unknown } }) => t.Put.Item);
-      return {};
-    });
+    mock
+      .on(TransactWriteCommand)
+      .callsFake((input: { TransactItems: { Put: { Item: unknown } }[] }) => {
+        written = input.TransactItems.slice(1).map((t) => t.Put.Item);
+        return {};
+      });
     mock.on(QueryCommand).callsFake(() => ({ Items: written }));
     const h = history(client);
     await h.addMessage('sess-1', new HumanMessage('hello'));
