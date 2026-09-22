@@ -24,6 +24,7 @@ describe('the request options withRetry hands each attempt', () => {
     const seen: SdkRequestOptions[] = [];
     await withRetry(
       async (request) => {
+        await Promise.resolve();
         seen.push(request);
         return 'ok';
       },
@@ -44,6 +45,7 @@ describe('the request options withRetry hands each attempt', () => {
     let calls = 0;
     await withRetry(
       async (request) => {
+        await Promise.resolve();
         seen.push(request);
         calls += 1;
         if (calls < 3) throw throttled();
@@ -64,6 +66,7 @@ describe('the request options withRetry hands each attempt', () => {
   it('carries an undefined signal when the caller gave none', async () => {
     const seen: SdkRequestOptions[] = [];
     await withRetry(async (request) => {
+      await Promise.resolve();
       seen.push(request);
       return 1;
     });
@@ -72,7 +75,9 @@ describe('the request options withRetry hands each attempt', () => {
 
   /** A call site that makes no cancellable call still compiles and still runs. */
   it('leaves an attempt that ignores it exactly as it was', async () => {
-    await expect(withRetry(async () => 'unchanged')).resolves.toBe('unchanged');
+    await expect(withRetry(async () => await Promise.resolve('unchanged'))).resolves.toBe(
+      'unchanged',
+    );
   });
 });
 
@@ -81,6 +86,7 @@ describe('an attempt that fails while the signal is set', () => {
     const controller = new AbortController();
     const error = (await withRetry(
       async () => {
+        await Promise.resolve();
         controller.abort();
         throw sdkAbort();
       },
@@ -101,6 +107,7 @@ describe('an attempt that fails while the signal is set', () => {
     let calls = 0;
     const error = (await withRetry(
       async () => {
+        await Promise.resolve();
         calls += 1;
         controller.abort();
         throw Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
@@ -119,6 +126,7 @@ describe('an attempt that fails while the signal is set', () => {
     await expect(
       withRetry(
         async () => {
+          await Promise.resolve();
           calls += 1;
           throw throttled();
         },

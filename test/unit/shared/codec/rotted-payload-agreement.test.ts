@@ -269,6 +269,7 @@ describe('loadPayloadValue', () => {
     const serde = {
       dumpsTyped: JSON_SERDE.dumpsTyped,
       loadsTyped: async (): Promise<never> => {
+        await Promise.resolve();
         throw new SyntaxError('unexpected byte');
       },
     };
@@ -283,6 +284,7 @@ describe('loadPayloadValue', () => {
     const serde = {
       dumpsTyped: JSON_SERDE.dumpsTyped,
       loadsTyped: async (): Promise<never> => {
+        await Promise.resolve();
         throw 'refused';
       },
     };

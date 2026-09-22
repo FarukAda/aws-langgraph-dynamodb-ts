@@ -114,7 +114,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     return {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-      upload: async (key: string) => key,
+      upload: (key: string) => key,
       download: jest.fn(async (key: string) => downloads[key]()),
       assertOwnedKey: () => undefined,
       deleteBatch: jest.fn(),
@@ -126,11 +126,19 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     return (record.value as { s3Key: string }).s3Key;
   }
 
+  /**
+   * `downloads[key]` is typed `() => Promise<Uint8Array>`; both fakes below
+   * are synchronous. The `await` resolves an already-resolved value (or, for
+   * `gone`, still throws synchronously before any resolution) — it costs one
+   * microtask and changes nothing a caller can observe — and keeps each a
+   * real `async` function whose return type still matches.
+   */
   const gone = async (): Promise<Uint8Array> => {
+    await Promise.resolve();
     throw s3Failure('NoSuchKey');
   };
   const fresh = async (): Promise<Uint8Array> =>
-    new TextEncoder().encode(JSON.stringify({ name: 'fresh' }));
+    await Promise.resolve(new TextEncoder().encode(JSON.stringify({ name: 'fresh' })));
 
   async function records(ctx: StoreContext) {
     const old = await buildStoreItem(
@@ -215,7 +223,9 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
 
   it('does not re-read for a failure that is not a missing object', async () => {
     const { client, mock } = createStrictDocumentMock();
+    /** Same reasoning as `gone` above: `downloads[key]` is `Promise<Uint8Array>`. */
     const throttled = async (): Promise<Uint8Array> => {
+      await Promise.resolve();
       throw s3Failure('SlowDown');
     };
     const downloads: Record<string, () => Promise<Uint8Array>> = {};

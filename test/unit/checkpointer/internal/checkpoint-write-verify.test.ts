@@ -8,8 +8,9 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new Uint8Array()],
-  loadsTyped: async (): Promise<unknown> => ({}),
+  dumpsTyped: async (): Promise<[string, Uint8Array]> =>
+    await Promise.resolve(['json', new Uint8Array()]),
+  loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
 };
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {
@@ -62,7 +63,7 @@ function answerBySortKey(
   meta: Answer,
   payload: Answer,
 ): void {
-  mock.on(GetCommand).callsFake(async (input: { Key: { SK: string } }) => {
+  mock.on(GetCommand).callsFake((input: { Key: { SK: string } }) => {
     const answer = input.Key.SK.startsWith('META#') ? meta : payload;
     if (answer === 'fails') {
       throw Object.assign(new Error('denied'), { name: 'AccessDeniedException' });

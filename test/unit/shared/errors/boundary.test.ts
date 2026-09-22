@@ -35,18 +35,20 @@ describe('toPublicError', () => {
 
 describe('guardPublic', () => {
   it('passes a resolved value through', async () => {
-    await expect(guardPublic('op', async () => 42)).resolves.toBe(42);
+    await expect(guardPublic('op', async () => await Promise.resolve(42))).resolves.toBe(42);
   });
 
   it('wraps a raw rejection and passes a library rejection through', async () => {
     await expect(
       guardPublic('op', async () => {
+        await Promise.resolve();
         throw raw('ThrottlingException');
       }),
     ).rejects.toMatchObject({ name: 'UpstreamError', upstreamName: 'ThrottlingException' });
     const validation = new ValidationError('bad');
     await expect(
       guardPublic('op', async () => {
+        await Promise.resolve();
         throw validation;
       }),
     ).rejects.toBe(validation);
@@ -55,7 +57,15 @@ describe('guardPublic', () => {
 
 describe('guardPublicIterable', () => {
   it('yields every item and wraps a failure raised mid-iteration', async () => {
+    /**
+     * `guardPublicIterable`'s `source` parameter is typed `AsyncGenerator`;
+     * this fake never actually suspends. `await Promise.resolve()` resolves
+     * an already-resolved value — it costs one microtask and changes nothing
+     * a caller can observe — and is what makes this a real async generator
+     * rather than a sync one the type would reject.
+     */
     async function* source(): AsyncGenerator<number> {
+      await Promise.resolve();
       yield 1;
       yield 2;
       throw raw('ThrottlingException', 'late');
@@ -75,7 +85,9 @@ describe('guardPublicIterable', () => {
 
   it('closes the source when the consumer stops early', async () => {
     let finished = false;
+    /** Same reasoning as the `source` above: the parameter type is `AsyncGenerator`. */
     async function* source(): AsyncGenerator<number> {
+      await Promise.resolve();
       try {
         yield 1;
         yield 2;

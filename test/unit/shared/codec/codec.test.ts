@@ -7,12 +7,12 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { truncateForLog } from '../../../../src/shared/logging/truncate';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
+  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
+    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
   loadsTyped: async (_type: string, data: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data)),
+    await Promise.resolve(
+      JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data)),
+    ),
 };
 
 describe('encodePayload / decodePayload', () => {
@@ -30,12 +30,12 @@ describe('encodePayload / decodePayload', () => {
 
   it('round-trips an inline payload whose serialized bytes start with 0x4C 0x47 0x43', async () => {
     const lgcSerde = {
-      dumpsTyped: async (): Promise<[string, Uint8Array]> => [
-        'raw',
-        new Uint8Array([0x4c, 0x47, 0x43, 1, 2, 3]),
-      ],
+      dumpsTyped: async (): Promise<[string, Uint8Array]> =>
+        await Promise.resolve(['raw', new Uint8Array([0x4c, 0x47, 0x43, 1, 2, 3])]),
       loadsTyped: async (_type: string, data: Uint8Array | string): Promise<unknown> =>
-        Array.from(typeof data === 'string' ? new TextEncoder().encode(data) : data),
+        await Promise.resolve(
+          Array.from(typeof data === 'string' ? new TextEncoder().encode(data) : data),
+        ),
     };
     const descriptor = await encodePayload(
       'ignored',
@@ -54,11 +54,11 @@ describe('encodePayload / decodePayload', () => {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) =>
         `pfx/${[...parts, objectId].join('/')}.bin`,
-      upload: jest.fn(async (key: string, data: Uint8Array) => {
+      upload: jest.fn((key: string, data: Uint8Array) => {
         stored = data;
         return key;
       }),
-      download: jest.fn(async () => stored),
+      download: jest.fn(() => stored),
       assertOwnedKey: () => undefined,
     };
     const descriptor = await encodePayload(
@@ -85,7 +85,7 @@ describe('encodePayload / decodePayload', () => {
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) => buildS3Key('p/', parts, objectId),
-      upload: jest.fn(async (key: string) => key),
+      upload: jest.fn((key: string) => key),
     };
     const deps = { serde, offloader: offloader as never };
     const keyOf = async (value: object, objectId: string) =>
@@ -156,8 +156,8 @@ describe('row-sourced key binding (SEC-03)', () => {
   const scoped = (prefix: string) => ({
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => buildS3Key(prefix, parts, objectId),
-    upload: jest.fn(async (key: string) => key),
-    download: jest.fn(async () => new TextEncoder().encode('{"a":1}')),
+    upload: jest.fn((key: string) => key),
+    download: jest.fn(() => new TextEncoder().encode('{"a":1}')),
     assertOwnedKey: (key: string, scope: readonly string[]) => assertKeyInScope(key, prefix, scope),
   });
 
@@ -209,7 +209,7 @@ describe('persisted descriptor shape (CODEC-16)', () => {
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-      upload: async (key: string) => key,
+      upload: (key: string) => key,
     };
     const inline = await encodePayload({ a: 1 }, { serde }, options);
     const offloaded = await encodePayload(

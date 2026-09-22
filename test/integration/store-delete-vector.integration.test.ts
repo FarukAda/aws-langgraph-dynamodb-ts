@@ -43,11 +43,20 @@ class RecordingBackend implements VectorBackend {
     return `${namespace.join('/')}/${key}`;
   }
 
+  /**
+   * `VectorBackend` methods are typed `Promise<...>`; every body below is
+   * synchronous. Each `await Promise.resolve()` resolves an already-resolved
+   * value — it costs one microtask and changes nothing a caller can observe —
+   * and keeps the method a real `async` function whose return type still
+   * matches the interface.
+   */
   async upsert(namespace: string[], key: string): Promise<void> {
     this.vectors.set(this.id(namespace, key), { namespace, key });
+    await Promise.resolve();
   }
 
   async query(prefix: string[], _vector: number[], topK: number): Promise<VectorMatch[]> {
+    await Promise.resolve();
     const head = prefix.join('/');
     return [...this.vectors.values()]
       .filter((ref) => ref.namespace.join('/').startsWith(head))
@@ -58,6 +67,7 @@ class RecordingBackend implements VectorBackend {
   async delete(namespace: string[], key: string): Promise<void> {
     this.deleted.push(this.id(namespace, key));
     this.vectors.delete(this.id(namespace, key));
+    await Promise.resolve();
   }
 }
 

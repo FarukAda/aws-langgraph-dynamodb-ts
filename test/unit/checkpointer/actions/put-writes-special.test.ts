@@ -12,18 +12,19 @@ import {
 } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (): Promise<unknown> => ({}),
+  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
+    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
 };
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {
   return { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
 }
 
-function trackingOffloader(upload: (key: string) => Promise<string> = async (key) => key) {
+/** Same reasoning as `serde` above: the default resolves an already-resolved key. */
+function trackingOffloader(
+  upload: (key: string) => Promise<string> = async (key) => await Promise.resolve(key),
+) {
   return {
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
@@ -72,7 +73,7 @@ describe('putWrites special (negative-index) writes', () => {
     // absent) for its upload to count as confirmed dead, so only the special
     // row's read is failed.
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).callsFake(async (input: { Key: { SK: string } }) => {
+    mock.on(GetCommand).callsFake((input: { Key: { SK: string } }) => {
       if (input.Key.SK.includes('#0000000007#')) {
         throw Object.assign(new Error('get'), { name: 'ValidationException' });
       }
@@ -187,7 +188,7 @@ describe('putWrites special (negative-index) writes', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     resolveRowWrites(mock);
-    const upload = jest.fn(async (key: string) => key);
+    const upload = jest.fn(async (key: string) => await Promise.resolve(key));
     const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     await putWrites(
       ctx,
@@ -210,7 +211,7 @@ describe('putWrites special (negative-index) writes', () => {
     // non-commit deleted the object the now-live row points at, making every
     // later getTuple() on the checkpoint fail with S3 NoSuchKey, permanently.
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).callsFake(async () => {
+    mock.on(GetCommand).callsFake(() => {
       const rows = committedRows(mock);
       if (rows.length === 0) return {};
       const written = rows[rows.length - 1] as { writeGroup: string; value: unknown };

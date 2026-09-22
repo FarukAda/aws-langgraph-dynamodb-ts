@@ -10,8 +10,9 @@ import { rowWrite } from '../../../shared/helpers/ddb-mock';
 /** The bytes are immaterial here, but they may not be none: a payload that
  * serialises to nothing is refused at the encoder. */
 const serde = {
-  dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new TextEncoder().encode('{}')],
-  loadsTyped: async (): Promise<unknown> => undefined,
+  dumpsTyped: async (): Promise<[string, Uint8Array]> =>
+    await Promise.resolve(['json', new TextEncoder().encode('{}')]),
+  loadsTyped: async (): Promise<unknown> => await Promise.resolve(undefined),
 };
 
 const descriptor = (s3Key: string) => ({
@@ -42,7 +43,7 @@ function trackingOffloader() {
   return {
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-    upload: async (key: string) => key,
+    upload: (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: jest.fn(() => true),
   };
@@ -72,8 +73,8 @@ function context(client: ClientStub, offloader?: ReturnType<typeof trackingOfflo
 describe('writeSpecialItemsWithCleanup', () => {
   it('is a no-op for an empty items list', async () => {
     const client: ClientStub = {
-      get: async () => ({}),
-      put: async () => ({}),
+      get: async () => await Promise.resolve({}),
+      put: async () => await Promise.resolve({}),
     };
     const offloader = trackingOffloader();
     const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', []);
@@ -83,8 +84,9 @@ describe('writeSpecialItemsWithCleanup', () => {
 
   it('a committed item deletes the descriptor it superseded', async () => {
     const client: ClientStub = {
-      get: async () => ({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
-      put: async () => ({}),
+      get: async () =>
+        await Promise.resolve({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
+      put: async () => await Promise.resolve({}),
     };
     const offloader = trackingOffloader();
     const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
@@ -97,8 +99,9 @@ describe('writeSpecialItemsWithCleanup', () => {
 
   it('an item that definitely never committed deletes its own new upload', async () => {
     const client: ClientStub = {
-      get: async () => ({}),
+      get: async () => await Promise.resolve({}),
       put: async () => {
+        await Promise.resolve();
         throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
       },
     };
@@ -113,8 +116,9 @@ describe('writeSpecialItemsWithCleanup', () => {
 
   it('returns (never throws) the first error when more than one item fails', async () => {
     const client: ClientStub = {
-      get: async () => ({}),
+      get: async () => await Promise.resolve({}),
       put: async (input) => {
+        await Promise.resolve();
         const item = input.Item as CheckpointWriteItem;
         if (item.SK.endsWith('one')) {
           throw Object.assign(new Error('first'), { name: 'ResourceNotFoundException' });
@@ -132,8 +136,9 @@ describe('writeSpecialItemsWithCleanup', () => {
 
   it('with no offloader configured nothing is deleted', async () => {
     const client: ClientStub = {
-      get: async () => ({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
-      put: async () => ({}),
+      get: async () =>
+        await Promise.resolve({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
+      put: async () => await Promise.resolve({}),
     };
     await expect(
       writeSpecialItemsWithCleanup(context(client), 't', [specialItem('new.bin')]),
@@ -142,8 +147,8 @@ describe('writeSpecialItemsWithCleanup', () => {
 
   it('deletes nothing for a committed item that had no previous row to supersede', async () => {
     const client: ClientStub = {
-      get: async () => ({}),
-      put: async () => ({}),
+      get: async () => await Promise.resolve({}),
+      put: async () => await Promise.resolve({}),
     };
     const offloader = trackingOffloader();
     const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
@@ -156,6 +161,7 @@ describe('writeSpecialItemsWithCleanup', () => {
   it('cleans up each side of a mixed outcome: the previous object for the committed item, the new upload for the failed one', async () => {
     const client: ClientStub = {
       get: async (input) => {
+        await Promise.resolve();
         const key = input.Key as { SK: string };
         if (key.SK.endsWith('committed')) {
           return { Item: { value: descriptor('committed-old.bin'), writeGroup: 'g0' } };
@@ -163,6 +169,7 @@ describe('writeSpecialItemsWithCleanup', () => {
         return {};
       },
       put: async (input) => {
+        await Promise.resolve();
         const item = input.Item as CheckpointWriteItem;
         if (item.SK.endsWith('failed')) {
           throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
@@ -186,7 +193,10 @@ describe('writeSpecialItemsWithCleanup', () => {
  * upload gets: the real item builder, so the key is the one the call would use.
  */
 async function builtItem(value: unknown, writeGroup: string): Promise<CheckpointWriteItem> {
-  const offloading = context({ get: async () => ({}), put: async () => ({}) }, trackingOffloader());
+  const offloading = context(
+    { get: async () => await Promise.resolve({}), put: async () => await Promise.resolve({}) },
+    trackingOffloader(),
+  );
   const [built] = await buildWriteItems(
     offloading,
     't',
@@ -218,8 +228,9 @@ async function raceOnSpecialRow(racerValue: object | null) {
   const own = await builtItem({ error: 'boom' }, 'group-1');
   const reads = [{}, { Item: { writeGroup: 'group-racer', value: racerValue } }];
   const client: ClientStub = {
-    get: async () => reads.shift() ?? {},
+    get: async () => await Promise.resolve(reads.shift() ?? {}),
     put: async () => {
+      await Promise.resolve();
       throw Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
     },
   };
@@ -264,9 +275,11 @@ describe("writeSpecialItemsWithCleanup never releases a racer's committed object
     let puts = 0;
     const client: ClientStub = {
       get: async () => {
+        await Promise.resolve();
         throw Object.assign(new Error('read down'), { name: 'ValidationException' });
       },
       put: async () => {
+        await Promise.resolve();
         puts += 1;
         return {};
       },
@@ -302,10 +315,11 @@ describe('writeSpecialItemsWithCleanup releases a superseded object without read
     let reads = 0;
     const client: ClientStub = {
       get: async () => {
+        await Promise.resolve();
         reads += 1;
         return { Item: { value: superseded.value, writeGroup: 'g0' } };
       },
-      put: async () => ({}),
+      put: async () => await Promise.resolve({}),
     };
     const offloader = trackingOffloader();
 
@@ -322,8 +336,9 @@ describe('writeSpecialItemsWithCleanup releases a superseded object without read
 describe('writeSpecialItemsWithCleanup S3 key binding (SEC-03)', () => {
   it("never deletes a superseded object outside the thread's own path", async () => {
     const client: ClientStub = {
-      get: async () => ({ Item: { value: descriptor('foreign/old.bin'), writeGroup: 'g0' } }),
-      put: async () => ({}),
+      get: async () =>
+        await Promise.resolve({ Item: { value: descriptor('foreign/old.bin'), writeGroup: 'g0' } }),
+      put: async () => await Promise.resolve({}),
     };
     const offloader = { ...trackingOffloader(), ownsKey: jest.fn(() => false) };
     const warn = jest.fn();

@@ -22,12 +22,19 @@ const EMBED_DIMS = 8;
 class DeterministicEmbeddings implements EmbeddingsInterface {
   caller = new AsyncCaller({});
 
+  /**
+   * `EmbeddingsInterface.embedQuery` is typed `Promise<number[]>`; the
+   * computation itself is synchronous. `await Promise.resolve(...)` resolves
+   * an already-resolved value — it costs one microtask and changes nothing a
+   * caller can observe — and is what keeps this a real `async` method whose
+   * return type still matches the interface.
+   */
   async embedQuery(text: string): Promise<number[]> {
     const vector = new Array(EMBED_DIMS).fill(0);
     for (const char of text.toLowerCase()) {
       vector[char.charCodeAt(0) % EMBED_DIMS] += 1;
     }
-    return vector;
+    return await Promise.resolve(vector);
   }
 
   async embedDocuments(texts: string[]): Promise<number[][]> {
@@ -44,26 +51,31 @@ class FlakyMemoryBackend implements VectorBackend {
     return `${namespace.join(REF_SEPARATOR)}${REF_SEPARATOR}${key}`;
   }
 
+  /** `VectorBackend` methods are typed `Promise<...>`; see `embedQuery` above. */
   async upsert(namespace: string[], key: string): Promise<void> {
     if (this.failNextUpsert) {
       this.failNextUpsert = false;
       throw new Error('backend upsert unavailable');
     }
     this.vectors.set(this.id(namespace, key), { namespace, key });
+    await Promise.resolve();
   }
 
   async query(): Promise<never[]> {
-    return [];
+    return await Promise.resolve([]);
   }
 
   async delete(namespace: string[], key: string): Promise<void> {
     this.vectors.delete(this.id(namespace, key));
+    await Promise.resolve();
   }
 
   async listKeys(prefix: string[]): Promise<VectorRef[]> {
     const head = prefix.join(REF_SEPARATOR);
-    return [...this.vectors.values()].filter((ref) =>
-      ref.namespace.join(REF_SEPARATOR).startsWith(head),
+    return await Promise.resolve(
+      [...this.vectors.values()].filter((ref) =>
+        ref.namespace.join(REF_SEPARATOR).startsWith(head),
+      ),
     );
   }
 }

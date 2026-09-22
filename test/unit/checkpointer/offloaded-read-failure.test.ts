@@ -19,12 +19,10 @@ import {
 } from '../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
+  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
+    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
   loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+    await Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 const s3Mock = mockClient(S3Client);
@@ -105,7 +103,7 @@ function stubS3(failure?: Failure): void {
     if (failure !== undefined && input.Key === failure.key) throw failure.error();
     const bytes = stored.get(input.Key);
     if (bytes === undefined) throw noSuchKey();
-    return { ContentLength: bytes.length, Body: { transformToByteArray: async () => bytes } };
+    return { ContentLength: bytes.length, Body: { transformToByteArray: () => bytes } };
   });
 }
 

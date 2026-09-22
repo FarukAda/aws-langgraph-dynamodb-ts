@@ -13,7 +13,15 @@ describe('runBatch preserves the order the caller wrote (STORE-09)', () => {
   function recorder() {
     const store = new Map<string, unknown>();
     const order: string[] = [];
+    /**
+     * `runBatch`'s dispatch parameter is typed `Promise<unknown>`; this fake's
+     * own computation is synchronous. The `await` resolves an already-resolved
+     * value — it costs one microtask and changes nothing a caller can
+     * observe — and is what keeps this a real `async` function whose return
+     * type still matches.
+     */
     const dispatch = async (op: Operation): Promise<unknown> => {
+      await Promise.resolve();
       if ('value' in op) {
         order.push(`put:${op.key}`);
         if (op.value === null) store.delete(op.key);

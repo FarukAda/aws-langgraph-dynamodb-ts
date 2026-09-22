@@ -25,7 +25,15 @@ export class MemoryS3 implements S3ClientLike {
   readonly objects = new Map<string, Uint8Array>();
   lifecycle: { Rules?: object[] } | undefined;
 
+  /**
+   * `S3ClientLike.send` is typed `Promise<object>`; every branch below is
+   * synchronous. The `await` resolves an already-resolved value — it costs
+   * one microtask and changes nothing a caller can observe — and is what
+   * keeps this a real `async` method whose return type still matches the
+   * interface, without wrapping every branch's return individually.
+   */
   async send(command: SdkCommand): Promise<object> {
+    await Promise.resolve();
     const input = command.input as CommandInput;
     switch (command.constructor.name) {
       case 'PutObjectCommand':
@@ -39,7 +47,10 @@ export class MemoryS3 implements S3ClientLike {
             $metadata: { httpStatusCode: 404 },
           });
         }
-        return { ContentLength: data.length, Body: { transformToByteArray: async () => data } };
+        return {
+          ContentLength: data.length,
+          Body: { transformToByteArray: async () => await Promise.resolve(data) },
+        };
       }
       case 'DeleteObjectsCommand':
         for (const object of input.Delete?.Objects ?? []) this.objects.delete(object.Key);

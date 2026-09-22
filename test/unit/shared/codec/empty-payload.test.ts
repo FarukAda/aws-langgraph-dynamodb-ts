@@ -7,8 +7,9 @@ import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 /** A serde that serialises everything to nothing, as the default one does for a function. */
 const emptySerde = {
-  dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new Uint8Array()],
-  loadsTyped: async (): Promise<unknown> => ({}),
+  dumpsTyped: async (): Promise<[string, Uint8Array]> =>
+    await Promise.resolve(['json', new Uint8Array()]),
+  loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
 };
 
 const options = { keyParts: ['t', 'c'], objectId: 'ID', row: { pk: 'PK', sk: 'SK' } };

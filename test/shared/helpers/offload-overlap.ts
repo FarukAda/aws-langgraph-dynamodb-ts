@@ -22,9 +22,15 @@ export function overlapOffloader(): { offloader: OverlapOffloader; maxInFlight: 
   const offloader: OverlapOffloader = {
     shouldOffload: () => true,
     buildKey: (parts, objectId) => [...parts, objectId].join('/'),
+    /**
+     * `OverlapOffloader.upload` is typed `Promise<string>`; the body is
+     * synchronous. The `await` resolves an already-resolved value, costing
+     * one microtask and changing nothing a caller can observe, and keeps
+     * this a real `async` function whose return type still matches.
+     */
     upload: async (key, data) => {
       objects.set(key, data);
-      return key;
+      return await Promise.resolve(key);
     },
     download: async (key) => {
       inFlight += 1;
@@ -35,7 +41,8 @@ export function overlapOffloader(): { offloader: OverlapOffloader; maxInFlight: 
       if (!data) throw new Error(`no object stored under ${key}`);
       return data;
     },
-    deleteBatch: async () => [],
+    /** Same reasoning as `upload` above: the interface is `Promise<string[]>`. */
+    deleteBatch: async () => await Promise.resolve([]),
     ownsKey: () => true,
     assertOwnedKey: () => undefined,
   };

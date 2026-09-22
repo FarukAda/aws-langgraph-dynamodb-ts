@@ -41,7 +41,7 @@ describe('setUpHistory', () => {
   it('does not own an injected client and builds an offloader + ttl/compression', () => {
     const setup = setUpHistory({
       tableName: 'history',
-      client: fakeClientMethods() as never,
+      client: fakeClientMethods(),
       s3: { bucketName: 'b' },
       compression: { enabled: true },
       ttl: { days: 1 },
@@ -56,14 +56,14 @@ describe('setUpHistory', () => {
   it('defaults the S3 key prefix to an adapter-scoped segment, but honors an explicit override', () => {
     const defaulted = setUpHistory({
       tableName: 'history',
-      client: fakeClientMethods() as never,
+      client: fakeClientMethods(),
       s3: { bucketName: 'b' },
     });
     expect(defaulted.context.offloader?.getKeyPrefix()).toBe('langgraph-checkpoints/history/');
 
     const overridden = setUpHistory({
       tableName: 'history',
-      client: fakeClientMethods() as never,
+      client: fakeClientMethods(),
       s3: { bucketName: 'b', keyPrefix: 'custom/' },
     });
     expect(overridden.context.offloader?.getKeyPrefix()).toBe('custom/');
@@ -81,7 +81,7 @@ describe('collaborator shape (DDB-09)', () => {
     expect(() =>
       setUpHistory({
         tableName: 'history',
-        client: fakeClientMethods() as never,
+        client: fakeClientMethods(),
         logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       }),
     ).toThrow(expect.objectContaining({ code: 'VALIDATION', context: { field: 'logger.debug' } }));
@@ -91,8 +91,10 @@ describe('collaborator shape (DDB-09)', () => {
     expect(() =>
       setUpHistory({
         tableName: 'history',
-        client: fakeClientMethods() as never,
-        serde: { dumpsTyped: async () => ['json', new Uint8Array()] } as never,
+        client: fakeClientMethods(),
+        serde: {
+          dumpsTyped: async () => await Promise.resolve(['json', new Uint8Array()]),
+        } as never,
       }),
     ).toThrow(
       expect.objectContaining({ code: 'VALIDATION', context: { field: 'serde.loadsTyped' } }),
@@ -111,7 +113,7 @@ describe('S3 region inheritance (CODEC-15)', () => {
     };
     const s3Client = {
       destroy: jest.fn(),
-      send: jest.fn(async () => ({})),
+      send: jest.fn(() => ({})),
       config: {},
       middlewareStack: fakeMiddlewareStack(),
     };

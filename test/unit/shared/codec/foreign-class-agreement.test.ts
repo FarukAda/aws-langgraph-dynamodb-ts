@@ -233,6 +233,7 @@ describe('loadPayloadValue', () => {
     const serde = {
       dumpsTyped: JSON_SERDE.dumpsTyped,
       loadsTyped: async (): Promise<never> => {
+        await Promise.resolve();
         throw refusal;
       },
     };
@@ -246,6 +247,7 @@ describe('loadPayloadValue', () => {
     const serde = {
       dumpsTyped: JSON_SERDE.dumpsTyped,
       loadsTyped: async (): Promise<never> => {
+        await Promise.resolve();
         throw 'refused';
       },
     };

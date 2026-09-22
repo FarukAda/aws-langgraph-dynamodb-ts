@@ -15,13 +15,18 @@ import { ErrorCode } from '../../../src/shared/errors/error-code';
 import type { BatchWriteAllIncompleteError } from '../../../src/shared/errors/errors';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 
+/**
+ * `SerializerProtocol` is typed `Promise<...>`; this fake's own computation is
+ * synchronous. Each `await Promise.resolve(...)` resolves an already-resolved
+ * value — it costs one microtask and changes nothing a caller can observe —
+ * and keeps both methods real `async` functions whose return types still
+ * match the interface.
+ */
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
+  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
+    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
   loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+    await Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 const checkpoint: Checkpoint = {

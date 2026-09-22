@@ -248,9 +248,16 @@ describe('what stays legal', () => {
 class ReferenceStore extends BaseStore {
   readonly operations: Operation[] = [];
 
+  /**
+   * `BaseStore.batch` is typed `Promise<...>`; this override is synchronous.
+   * `await Promise.resolve(...)` resolves an already-resolved value — it
+   * costs one microtask and changes nothing a caller can observe — and keeps
+   * this a real `async` method whose return type still matches the base
+   * class.
+   */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
     this.operations.push(...operations);
-    return operations.map(() => null) as OperationResults<Op>;
+    return await Promise.resolve(operations.map(() => null) as OperationResults<Op>);
   }
 }
 
@@ -286,7 +293,7 @@ describe('the overrides build exactly the operations upstream BaseStore builds',
     const { store } = storeWithMock();
     const run = jest
       .spyOn(store as unknown as Runner, 'run')
-      .mockImplementation(async (operations) => operations.map(() => null));
+      .mockImplementation(async (operations) => await Promise.resolve(operations.map(() => null)));
     await call(store);
     expect(run.mock.calls.flatMap(([operations]) => operations)).toStrictEqual(
       reference.operations,

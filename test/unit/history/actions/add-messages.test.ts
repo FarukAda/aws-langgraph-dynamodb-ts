@@ -54,7 +54,7 @@ describe('addMessages', () => {
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-      upload: async (key: string) => {
+      upload: (key: string) => {
         uploads += 1;
         if (uploads === 2) throw new Error('upload failed');
         return key;
@@ -76,9 +76,10 @@ describe('addMessages', () => {
     mock.on(TransactWriteCommand).resolves({});
     const serde = {
       dumpsTyped: async (): Promise<[string, Uint8Array]> => {
+        await Promise.resolve();
         throw new Error('serde failed');
       },
-      loadsTyped: async (): Promise<unknown> => ({}),
+      loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
     };
     await expect(
       addMessages(context(client, { serde }), 's1', [new HumanMessage('a')]),
@@ -180,7 +181,7 @@ describe('addMessages', () => {
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: string[], objectId: string) => [...parts, objectId].join('/'),
-      upload: async (key: string) => key,
+      upload: (key: string) => key,
       deleteBatch: jest.fn().mockResolvedValue([]),
     };
     await expect(
@@ -200,7 +201,7 @@ describe('addMessages', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
     const controller = new AbortController();
-    const upload = jest.fn(async (key: string) => key);
+    const upload = jest.fn((key: string) => key);
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: string[], objectId: string) => [...parts, objectId].join('/'),

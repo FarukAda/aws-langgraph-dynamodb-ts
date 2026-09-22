@@ -30,6 +30,7 @@ describe('resolveRetryPolicy (DDB-03, DDB-10)', () => {
     let calls = 0;
     await withRetry(
       async () => {
+        await Promise.resolve();
         calls += 1;
         if (calls < 2) throw Object.assign(new Error('slow'), { name: 'ThrottlingException' });
         return calls;
@@ -149,6 +150,7 @@ describe('the debug line a retry emits', () => {
     let attempts = 0;
 
     await withRetry(async () => {
+      await Promise.resolve();
       attempts += 1;
       if (attempts === 1) {
         /** Retryable by its , so the line under test is the one that fires. */

@@ -79,7 +79,15 @@ export const JSON_SERDE: SerializerProtocol = {
         'value',
       );
     }
-    return [JSON_SERDE_TYPE, new TextEncoder().encode(text)];
+    /**
+     * `SerializerProtocol.dumpsTyped` is typed `Promise<[string, Uint8Array]>`,
+     * and this method's whole computation is synchronous. The `await` below
+     * resolves an already-resolved value — it costs one microtask, changes
+     * nothing a caller can observe, and is what keeps the method a real
+     * `async` function rather than one whose return type would stop matching
+     * the interface if `async` were dropped.
+     */
+    return await Promise.resolve([JSON_SERDE_TYPE, new TextEncoder().encode(text)]);
   },
   async loadsTyped(type, data) {
     /**
@@ -131,7 +139,13 @@ export const JSON_SERDE: SerializerProtocol = {
       );
     }
     try {
-      return JSON.parse(text);
+      /**
+       * Same reasoning as `dumpsTyped`: `SerializerProtocol.loadsTyped` is
+       * typed `Promise<any>`, `JSON.parse` is synchronous, and this `await`
+       * resolves an already-resolved value so the method stays a real
+       * `async` function that returns the interface's declared type.
+       */
+      return await Promise.resolve(JSON.parse(text));
     } catch (error) {
       throw new DynamoDBLangGraphError(
         'the stored payload is not the JSON this serializer wrote, so it cannot be decoded',

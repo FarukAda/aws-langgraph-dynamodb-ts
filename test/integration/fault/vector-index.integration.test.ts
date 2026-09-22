@@ -16,16 +16,24 @@ class FlakyMemoryBackend implements VectorBackend {
     return `${namespace.join(REF_SEPARATOR)}${REF_SEPARATOR}${key}`;
   }
 
+  /**
+   * `VectorBackend` methods are typed `Promise<...>`; every body below is
+   * synchronous. `await Promise.resolve(...)` resolves an already-resolved
+   * value — it costs one microtask and changes nothing a caller can observe —
+   * and keeps each method a real `async` function whose return type still
+   * matches the interface.
+   */
   async upsert(namespace: string[], key: string): Promise<void> {
     if (this.failNextUpsert) {
       this.failNextUpsert = false;
       throw new Error('backend upsert unavailable');
     }
     this.vectors.set(this.id(namespace, key), { namespace, key });
+    await Promise.resolve();
   }
 
   async query(): Promise<never[]> {
-    return [];
+    return await Promise.resolve([]);
   }
 
   async delete(namespace: string[], key: string): Promise<void> {
@@ -34,12 +42,15 @@ class FlakyMemoryBackend implements VectorBackend {
       throw new Error('backend delete unavailable');
     }
     this.vectors.delete(this.id(namespace, key));
+    await Promise.resolve();
   }
 
   async listKeys(prefix: string[]): Promise<VectorRef[]> {
     const head = prefix.join(REF_SEPARATOR);
-    return [...this.vectors.values()].filter((ref) =>
-      ref.namespace.join(REF_SEPARATOR).startsWith(head),
+    return await Promise.resolve(
+      [...this.vectors.values()].filter((ref) =>
+        ref.namespace.join(REF_SEPARATOR).startsWith(head),
+      ),
     );
   }
 }

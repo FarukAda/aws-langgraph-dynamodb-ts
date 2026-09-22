@@ -13,8 +13,9 @@ import {
 } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new Uint8Array()],
-  loadsTyped: async (): Promise<unknown> => ({}),
+  dumpsTyped: async (): Promise<[string, Uint8Array]> =>
+    await Promise.resolve(['json', new Uint8Array()]),
+  loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
 };
 
 function context(client: CheckpointerContext['client'], offloader = true): CheckpointerContext {

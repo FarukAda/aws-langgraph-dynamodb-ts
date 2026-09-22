@@ -134,7 +134,17 @@ describe('the request-handler bound on an S3 client this library builds', () => 
 });
 
 describe('the same bound on an injected S3 client factory', () => {
-  const fakeClient = () => ({ send: jest.fn(async () => ({})), destroy: jest.fn() });
+  /**
+   * `S3ClientLike.send` is typed `Promise<object>`; this fake never actually
+   * calls S3. `await Promise.resolve(...)` resolves an already-resolved
+   * value — it costs one microtask and changes nothing a caller can
+   * observe — and keeps `send` a real `async` function whose return type
+   * still matches the interface.
+   */
+  const fakeClient = () => ({
+    send: jest.fn(async () => await Promise.resolve({})),
+    destroy: jest.fn(),
+  });
 
   /**
    * A caller who passes `createS3Client` is supplying a constructor, not a
@@ -175,7 +185,7 @@ describe('a download that stalls after its response headers have arrived', () =>
   /** One chunk, then the read dies the way a destroyed socket kills it. */
   function abortingBody(): object {
     return {
-      async *[Symbol.asyncIterator]() {
+      *[Symbol.asyncIterator]() {
         yield new Uint8Array([1]);
         throw Object.assign(new Error('aborted'), { code: 'ECONNRESET' });
       },
@@ -186,7 +196,7 @@ describe('a download that stalls after its response headers have arrived', () =>
   function clientYielding(bodies: object[]): { client: S3Client; calls: () => number } {
     let sent = 0;
     const client = {
-      send: async () => {
+      send: () => {
         sent += 1;
         return { Body: bodies[sent - 1] };
       },
@@ -205,7 +215,7 @@ describe('a download that stalls after its response headers have arrived', () =>
    * than the download.
    */
   it('retries the aborted read the destroy produces, which carries no TimeoutError', async () => {
-    const whole = { transformToByteArray: async () => new Uint8Array([7, 8]) };
+    const whole = { transformToByteArray: () => new Uint8Array([7, 8]) };
     const { client, calls } = clientYielding([abortingBody(), whole]);
     await expect(downloadObject(client, 'b', 'k.bin', 1024)).resolves.toEqual(
       new Uint8Array([7, 8]),

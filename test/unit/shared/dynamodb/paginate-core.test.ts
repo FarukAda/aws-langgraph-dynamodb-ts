@@ -14,7 +14,14 @@ async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {
  * yielding one. Either way the cap it was given was exceeded.
  */
 describe('paginatePages cap validation', () => {
-  const onePage = async () => ({ items: [{ n: 1 }], lastKey: undefined });
+  /**
+   * `paginatePages`'s `fetchPage` parameter is typed `Promise<PageResult>`;
+   * every fake page below is built synchronously. `await Promise.resolve(...)`
+   * resolves an already-resolved value — it costs one microtask and changes
+   * nothing a caller can observe — and keeps each fake a real `async`
+   * function whose return type still matches.
+   */
+  const onePage = async () => await Promise.resolve({ items: [{ n: 1 }], lastKey: undefined });
 
   it.each([0, -1, Number.NaN])('refuses maxItems %p before reading anything', async (maxItems) => {
     const read = jest.fn(onePage);
@@ -57,15 +64,18 @@ describe('paginatePages', () => {
       { items: [{ id: 2 }], lastKey: undefined },
     ];
     let call = 0;
-    const result = await collect(paginatePages(async () => pages[call++]));
+    const result = await collect(paginatePages(async () => await Promise.resolve(pages[call++])));
     expect(result).toEqual([{ id: 1 }, { id: 2 }]);
   });
 
   it('yields exactly maxItems without truncating when no more data remains', async () => {
     const result = await collect(
-      paginatePages(async () => ({ items: [{ id: 1 }, { id: 2 }], lastKey: undefined }), {
-        maxItems: 2,
-      }),
+      paginatePages(
+        async () => await Promise.resolve({ items: [{ id: 1 }, { id: 2 }], lastKey: undefined }),
+        {
+          maxItems: 2,
+        },
+      ),
     );
     expect(result).toEqual([{ id: 1 }, { id: 2 }]);
   });
@@ -74,7 +84,8 @@ describe('paginatePages', () => {
     await expect(
       collect(
         paginatePages(
-          async () => ({ items: [{ id: 1 }, { id: 2 }, { id: 3 }], lastKey: undefined }),
+          async () =>
+            await Promise.resolve({ items: [{ id: 1 }, { id: 2 }, { id: 3 }], lastKey: undefined }),
           { maxItems: 2 },
         ),
       ),
@@ -84,9 +95,12 @@ describe('paginatePages', () => {
   it('throws ResultTruncatedError when maxItems is hit and another page follows', async () => {
     await expect(
       collect(
-        paginatePages(async () => ({ items: [{ id: 1 }, { id: 2 }], lastKey: { k: 1 } }), {
-          maxItems: 2,
-        }),
+        paginatePages(
+          async () => await Promise.resolve({ items: [{ id: 1 }, { id: 2 }], lastKey: { k: 1 } }),
+          {
+            maxItems: 2,
+          },
+        ),
       ),
     ).rejects.toBeInstanceOf(ResultTruncatedError);
   });
@@ -96,7 +110,7 @@ describe('paginatePages', () => {
     controller.abort();
     await expect(
       collect(
-        paginatePages(async () => ({ items: [], lastKey: undefined }), {
+        paginatePages(async () => await Promise.resolve({ items: [], lastKey: undefined }), {
           signal: controller.signal,
         }),
       ),
@@ -106,9 +120,12 @@ describe('paginatePages', () => {
   it('throws ResultTruncatedError when the iteration cap is hit with data remaining', async () => {
     await expect(
       collect(
-        paginatePages(async () => ({ items: [{ id: 1 }], lastKey: { k: 1 } }), {
-          maxIterations: 3,
-        }),
+        paginatePages(
+          async () => await Promise.resolve({ items: [{ id: 1 }], lastKey: { k: 1 } }),
+          {
+            maxIterations: 3,
+          },
+        ),
       ),
     ).rejects.toBeInstanceOf(ResultTruncatedError);
   });
@@ -120,7 +137,7 @@ describe('paginatePages', () => {
     ];
     let call = 0;
     const result = await collect(
-      paginatePages(async () => pages[call++], {
+      paginatePages(async () => await Promise.resolve(pages[call++]), {
         maxItems: Number.POSITIVE_INFINITY,
         maxIterations: Number.POSITIVE_INFINITY,
       }),
@@ -133,9 +150,12 @@ describe('paginatePages abort normalisation (DDB-05)', () => {
   it('throws the library AbortError with the raw reason as cause when already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
-    const pages = paginatePages(async () => ({ items: [], lastKey: undefined }), {
-      signal: controller.signal,
-    });
+    const pages = paginatePages(
+      async () => await Promise.resolve({ items: [], lastKey: undefined }),
+      {
+        signal: controller.signal,
+      },
+    );
     await expect(pages.next()).rejects.toMatchObject({
       code: ErrorCode.ABORTED,
       cause: expect.objectContaining({ name: 'AbortError' }),
@@ -147,7 +167,7 @@ describe('paginatePages cap on a page with a trailing key (DDB-06)', () => {
   type Page = { items: object[]; lastKey?: object };
   const pagesFrom = (pages: Page[]) => {
     let next = 0;
-    return async () => pages[next++] as never;
+    return () => pages[next++] as never;
   };
   async function collectAll(source: AsyncGenerator<object>): Promise<object[]> {
     const out: object[] = [];
@@ -181,7 +201,7 @@ describe('paginatePages cap on a page with a trailing key (DDB-06)', () => {
 
   it('charges the probe against the iteration cap', async () => {
     let calls = 0;
-    const fetchPage = async () => {
+    const fetchPage = () => {
       calls += 1;
       return (
         calls === 1
@@ -200,7 +220,7 @@ describe('paginatePages cap on a page with a trailing key (DDB-06)', () => {
   it('honours the signal while probing', async () => {
     const controller = new AbortController();
     let calls = 0;
-    const fetchPage = async () => {
+    const fetchPage = () => {
       calls += 1;
       if (calls === 1) return { items: [{ id: 1 }], lastKey: { k: 0 } } as never;
       controller.abort();

@@ -88,7 +88,7 @@ describe('semantic search fails fast at the candidate cap (STORE-09)', () => {
   it('rejects before decoding a row or embedding the query when the namespace exceeds maxSearchCandidates', async () => {
     const { client, mock } = createStrictDocumentMock();
     const { serde, loads } = countingSerde();
-    const embeddings = { embedQuery: jest.fn(async () => [1, 0]), embedDocuments: jest.fn() };
+    const embeddings = { embedQuery: jest.fn(() => [1, 0]), embedDocuments: jest.fn() };
     const ctx = context(client, {
       serde,
       maxSearchCandidates: 1,
@@ -117,15 +117,25 @@ describe('backend refill hitting the cap (STORE-05)', () => {
     const backend = {
       upsert: jest.fn(),
       delete: jest.fn(),
-      query: jest.fn(async (_ns: string[], _v: number[], topK: number) =>
-        Array.from({ length: topK }, (_, i) => ({
-          namespace: ['users', 'u1'],
-          key: `k${i}`,
-          score: 1 - i / 10,
-        })),
+      /**
+       * `VectorBackend.query` is typed `Promise<VectorMatch[]>`; this fake's
+       * own computation is synchronous. `await Promise.resolve(...)` resolves
+       * an already-resolved value — it costs one microtask and changes
+       * nothing a caller can observe — and is what keeps this a real `async`
+       * function whose return type still matches the interface.
+       */
+      query: jest.fn(
+        async (_ns: string[], _v: number[], topK: number) =>
+          await Promise.resolve(
+            Array.from({ length: topK }, (_, i) => ({
+              namespace: ['users', 'u1'],
+              key: `k${i}`,
+              score: 1 - i / 10,
+            })),
+          ),
       ),
     };
-    const embeddings = { embedQuery: jest.fn(async () => [1, 0]), embedDocuments: jest.fn() };
+    const embeddings = { embedQuery: jest.fn(() => [1, 0]), embedDocuments: jest.fn() };
     const ctx = context(client, {
       maxSearchCandidates: 8,
       index: { dims: 2, embeddings: embeddings as never },
@@ -173,7 +183,7 @@ describe('empty namespace on both paths', () => {
   it('returns nothing without decoding for a plain page and a semantic ranking alike', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });
-    const embeddings = { embedQuery: jest.fn(async () => [1, 0]), embedDocuments: jest.fn() };
+    const embeddings = { embedQuery: jest.fn(() => [1, 0]), embedDocuments: jest.fn() };
     const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
     await expect(searchItems(ctx, { namespacePrefix: ['users'] })).resolves.toEqual([]);
     await expect(searchItems(ctx, { namespacePrefix: ['users'], query: 'q' })).resolves.toEqual([]);
@@ -193,7 +203,7 @@ describe('a page of zero costs no read (STORE-02)', () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx0 = context(client);
     mock.on(QueryCommand).resolves({ Items: await rows(ctx0, 3, () => 'note') });
-    const embeddings = { embedQuery: jest.fn(async () => [1, 0]), embedDocuments: jest.fn() };
+    const embeddings = { embedQuery: jest.fn(() => [1, 0]), embedDocuments: jest.fn() };
     const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
     await expect(searchItems(ctx, { namespacePrefix: ['users'], limit: 0 })).resolves.toEqual([]);
     await expect(

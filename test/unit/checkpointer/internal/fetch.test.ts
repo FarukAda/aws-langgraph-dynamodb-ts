@@ -14,12 +14,10 @@ import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
+  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
+    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
   loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+    await Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {

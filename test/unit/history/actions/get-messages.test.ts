@@ -36,7 +36,7 @@ function offloaderStub(download: () => Promise<Uint8Array>) {
   return {
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-    upload: async (key: string) => key,
+    upload: (key: string) => key,
     download: jest.fn(download),
     deleteBatch: jest.fn(),
     assertOwnedKey: () => undefined,
@@ -137,7 +137,7 @@ describe('getMessages', () => {
   describe('failure classification under the skip policy (HIST-01, HIST-04, CODEC-03)', () => {
     async function offloadedHuman(client: HistoryContext['client']) {
       const writer = context(client, {
-        offloader: offloaderStub(async () => new Uint8Array()) as never,
+        offloader: offloaderStub(async () => await Promise.resolve(new Uint8Array())) as never,
       });
       const [human] = mapChatMessagesToStoredMessages([new HumanMessage('offloaded')]);
       return buildMessageItem(writer, 's1', '01A', human);
@@ -148,6 +148,7 @@ describe('getMessages', () => {
       const error = jest.fn();
       const reader = context(client, {
         offloader: offloaderStub(async () => {
+          await Promise.resolve();
           throw s3Failure('ServiceUnavailable');
         }) as never,
         logger: { ...SILENT_LOGGER, error },
@@ -163,6 +164,7 @@ describe('getMessages', () => {
       const { client, mock } = createStrictDocumentMock();
       const reader = context(client, {
         offloader: offloaderStub(async () => {
+          await Promise.resolve();
           throw Object.assign(new Error('denied'), { name: 'AccessDeniedException' });
         }) as never,
       });
@@ -177,6 +179,7 @@ describe('getMessages', () => {
       const error = jest.fn();
       const reader = context(client, {
         offloader: offloaderStub(async () => {
+          await Promise.resolve();
           throw s3Failure('NoSuchKey');
         }) as never,
         logger: { ...SILENT_LOGGER, error },
@@ -339,8 +342,8 @@ describe('S3 key binding (SEC-03)', () => {
   const binding = () => ({
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => buildS3Key('p/', parts, objectId),
-    upload: async (key: string) => key,
-    download: jest.fn(async () => new Uint8Array()),
+    upload: (key: string) => key,
+    download: jest.fn(() => new Uint8Array()),
     deleteBatch: jest.fn(),
     assertOwnedKey: (key: string, scope: readonly string[]) => assertKeyInScope(key, 'p/', scope),
   });

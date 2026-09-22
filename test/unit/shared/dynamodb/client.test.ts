@@ -215,7 +215,7 @@ describe('warnOnStackedRetries (DDB-01)', () => {
   it('warns once when the injected client keeps the SDK retries', async () => {
     const logger = fakeLogger();
     await warnOnStackedRetries(
-      clientWith(async () => 3),
+      clientWith(async () => await Promise.resolve(3)),
       logger,
     );
     expect(logger.warn).toHaveBeenCalledTimes(1);
@@ -227,12 +227,13 @@ describe('warnOnStackedRetries (DDB-01)', () => {
   it('stays silent for a single-attempt client, a client without config, and one that cannot report', async () => {
     const logger = fakeLogger();
     await warnOnStackedRetries(
-      clientWith(async () => 1),
+      clientWith(async () => await Promise.resolve(1)),
       logger,
     );
     await warnOnStackedRetries({} as never, logger);
     await warnOnStackedRetries(
       clientWith(async () => {
+        await Promise.resolve();
         throw new Error('cannot report');
       }),
       logger,
