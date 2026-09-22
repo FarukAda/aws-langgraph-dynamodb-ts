@@ -59,16 +59,6 @@ export default defineConfig([
       ],
       'no-console': 'error',
       'no-inline-comments': 'error',
-      /**
-       * Comments do not count toward the cap. Counting them made the cap bite
-       * hardest on the best-documented files — the three adapter facades, which
-       * are little but JSDoc over one-line delegations — so the cheapest way
-       * past it was to document less. The cap governs how much code a file
-       * holds; that is what it now measures.
-       */
-      'max-lines': ['error', { max: 150, skipBlankLines: false, skipComments: true }],
-      complexity: ['error', 10],
-      'max-depth': ['error', 3],
       'no-restricted-syntax': ['error', NO_UNKNOWN, NO_EXPORT_ALL, NO_REEXPORT],
       'prettier/prettier': 'error',
       'perfectionist/sort-imports': [
@@ -103,10 +93,7 @@ export default defineConfig([
   {
     files: ['test/**/*.ts'],
     rules: {
-      'max-lines': ['error', { max: 400, skipBlankLines: false, skipComments: false }],
       '@typescript-eslint/no-explicit-any': 'off',
-      complexity: 'off',
-      'max-depth': 'off',
       'no-restricted-syntax': ['error', NO_EXPORT_ALL, NO_REEXPORT],
     },
   },

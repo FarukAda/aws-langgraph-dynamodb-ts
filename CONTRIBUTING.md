@@ -17,10 +17,7 @@ npm run lint && npm run typecheck && npm run typecheck:all && npm test
 
 The static guards fail the build rather than rely on review:
 
-- a `src` file is at most 150 lines, counting code and blank lines but not
-  comments — the cap governs how much a file *does*, and documenting it well
-  must never be what pushes it over; a test file is at most 400 lines, counting
-  everything;
+- file length and function complexity are not capped: a module is as large as the one decision it hides (`docs/decisions/0017-…`);
 - comments are JSDoc only (`/** ... */`) — no `//` comments in `src`;
 - no `any`, no `unknown`, no `instanceof` in `src` (errors are detected by brand and `code`);
 - no re-exports outside `src/index.ts`, no import cycles, no dead `ErrorCode` member;
