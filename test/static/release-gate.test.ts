@@ -18,7 +18,7 @@ describe('the release gate requires every CI check (REL-02)', () => {
     const names = ciCheckNames();
     expect(names).toContain('test (node 22 on ubuntu-latest)');
     expect(names).toContain('test (node 24 on macos-latest)');
-    expect(names.filter((name) => name.startsWith('test (node '))).toHaveLength(6);
+    expect(names.filter((name) => name.startsWith('test (node '))).toHaveLength(9);
     expect(names.filter((name) => name.startsWith('conformance ('))).toHaveLength(2);
   });
 

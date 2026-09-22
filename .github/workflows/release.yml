@@ -66,10 +66,13 @@ jobs:
           required=$(cat <<'REQUIRED'
           test (node 22 on ubuntu-latest)
           test (node 24 on ubuntu-latest)
+          test (node 26 on ubuntu-latest)
           test (node 22 on windows-latest)
           test (node 24 on windows-latest)
+          test (node 26 on windows-latest)
           test (node 22 on macos-latest)
           test (node 24 on macos-latest)
+          test (node 26 on macos-latest)
           npm audit (high+)
           typecheck (full program: src + test + configs)
           integration (DynamoDB Local)
