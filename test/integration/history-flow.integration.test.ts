@@ -8,6 +8,16 @@ import { sessionPartition } from '../../src/history/internal/keys';
 import { DynamoDBChatMessageHistory } from '../../src/index';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 
+/**
+ * `MessageContent` also allows an array of content blocks, which is why
+ * `String(...)` on it looks unsafe to `no-base-to-string` — every message
+ * built below passes a plain string, so this only restates the same union
+ * with an explicit `toString`, which each of its members already has.
+ */
+function contentText(content: { toString(): string } | null | undefined): string {
+  return String(content);
+}
+
 const tableName = 'history-itest';
 const admin = new DynamoDBClient(DDB_LOCAL_CONFIG);
 let history: DynamoDBChatMessageHistory;
@@ -123,7 +133,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     await history.addMessages('s-big', messages);
     const stored = await history.getMessages('s-big');
     expect(stored).toHaveLength(60);
-    expect(stored.map((m) => String(m.content).split(':')[0])).toEqual(
+    expect(stored.map((m) => contentText(m.content).split(':')[0])).toEqual(
       messages.map((_unused, index) => String(index)),
     );
     const { sessions: sessions } = await history.listSessions();
@@ -227,7 +237,7 @@ describe('hot-row append contention (TEST-03)', () => {
     );
     const messages = await history.getMessages('hot');
     expect(messages).toHaveLength(30);
-    expect(new Set(messages.map((message) => String(message.content))).size).toBe(30);
+    expect(new Set(messages.map((message) => contentText(message.content))).size).toBe(30);
     const session = (await history.listSessions()).sessions.find(
       (entry) => entry.sessionId === 'hot',
     );

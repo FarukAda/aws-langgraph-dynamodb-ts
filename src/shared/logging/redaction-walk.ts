@@ -71,11 +71,21 @@ function redactEntries(
 
 /**
  * A Map's entries as an object. Keys are stringified so a non-string key is
- * still reported rather than dropped, and each is checked against the
- * secret-key patterns exactly as a plain object's own keys are.
+ * still reported rather than dropped — including as `[object Object]` for a
+ * plain-object key, which beats silently losing the entry — and each is
+ * checked against the secret-key patterns exactly as a plain object's own
+ * keys are.
+ *
+ * The annotation on `keyText` is `Redactable`'s own shape restated with an
+ * explicit `toString`, which every one of its members already has; it changes
+ * nothing about which key is what, only what `no-base-to-string` can see, so
+ * it stops mistaking the deliberate `[object Object]` case above for a bug.
  */
 function redactMap(value: Map<Redactable, Redactable>, deps: WalkDeps): Redactable {
-  const entries = [...value].map(([key, entry]): [string, Redactable] => [String(key), entry]);
+  const entries = [...value].map(([key, entry]): [string, Redactable] => {
+    const keyText: { toString(): string } | null | undefined = key;
+    return [String(keyText), entry];
+  });
   return redactEntries(entries, deps.keyPatterns, deps.walk);
 }
 

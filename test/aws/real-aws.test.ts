@@ -20,6 +20,16 @@ const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
 const clientConfig = region ? { region } : {};
 const tableName = `aws-langgraph-awstest-${randomUUID()}`;
 
+/**
+ * `MessageContent` also allows an array of content blocks, which is why
+ * `String(...)` on it looks unsafe to `no-base-to-string` — every message
+ * built below passes a plain string, so this only restates the same union
+ * with an explicit `toString`, which each of its members already has.
+ */
+function contentText(content: { toString(): string } | null | undefined): string {
+  return String(content);
+}
+
 function checkpoint(id: string): Checkpoint {
   return {
     v: 4,
@@ -153,7 +163,7 @@ describe('DynamoDB adapters against real AWS', () => {
     await history.addMessages('big', messages);
     const stored = await history.getMessages('big');
     expect(stored).toHaveLength(60);
-    expect(stored.map((m) => String(m.content).split(':')[0])).toEqual(
+    expect(stored.map((m) => contentText(m.content).split(':')[0])).toEqual(
       messages.map((_unused, i) => String(i)),
     );
   });
