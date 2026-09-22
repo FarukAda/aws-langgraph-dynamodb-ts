@@ -24,9 +24,8 @@ export function overlapOffloader(): { offloader: OverlapOffloader; maxInFlight: 
     buildKey: (parts, objectId) => [...parts, objectId].join('/'),
     /**
      * `OverlapOffloader.upload` is typed `Promise<string>`; the body is
-     * synchronous. The `await` resolves an already-resolved value, costing
-     * one microtask and changing nothing a caller can observe, and keeps
-     * this a real `async` function whose return type still matches.
+     * synchronous and never throws, so returning `Promise.resolve(key)`
+     * already has that type without `async`.
      */
     upload: (key, data) => {
       objects.set(key, data);

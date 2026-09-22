@@ -15,10 +15,10 @@ describe('runBatch preserves the order the caller wrote (STORE-09)', () => {
     const order: string[] = [];
     /**
      * `runBatch`'s dispatch parameter is typed `Promise<unknown>`; this fake's
-     * own computation is synchronous. The `await` resolves an already-resolved
-     * value — it costs one microtask and changes nothing a caller can
-     * observe — and is what keeps this a real `async` function whose return
-     * type still matches.
+     * own computation is synchronous and never throws, but it has three
+     * return paths (put/get/search) and only one needs to be thenable to
+     * satisfy `require-await` — the other two are plain values that `async`
+     * itself still wraps in a `Promise`, so they are left as they are.
      */
     const dispatch = async (op: Operation): Promise<unknown> => {
       if ('value' in op) {

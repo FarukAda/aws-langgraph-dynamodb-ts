@@ -21,7 +21,10 @@ function context(client: CheckpointerContext['client']): CheckpointerContext {
   return { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
 }
 
-/** Same reasoning as `serde` above: the default resolves an already-resolved key. */
+/**
+ * The default `upload` is typed `Promise<string>` and never throws, so
+ * returning `Promise.resolve(key)` already has that type without `async`.
+ */
 function trackingOffloader(
   upload: (key: string) => Promise<string> = (key) => Promise.resolve(key),
 ) {

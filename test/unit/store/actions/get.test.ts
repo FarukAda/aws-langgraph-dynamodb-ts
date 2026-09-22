@@ -128,10 +128,9 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
 
   /**
    * `downloads[key]` is typed `() => Promise<Uint8Array>`; both fakes below
-   * are synchronous. The `await` resolves an already-resolved value (or, for
-   * `gone`, still throws synchronously before any resolution) — it costs one
-   * microtask and changes nothing a caller can observe — and keeps each a
-   * real `async` function whose return type still matches.
+   * are synchronous and neither needs `async`: `gone` throws synchronously,
+   * which still rejects the `Promise<Uint8Array>` a caller awaits, and
+   * `fresh` returns `Promise.resolve(...)`, which already has that type.
    */
   const gone = (): Promise<Uint8Array> => {
     throw s3Failure('NoSuchKey');

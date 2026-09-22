@@ -44,7 +44,10 @@ function transactionCancelled(rawItem?: Record<string, { S: string }>): Error {
   });
 }
 
-/** Same reasoning as `serde` above: the default resolves an already-resolved key. */
+/**
+ * The default `upload` is typed `Promise<string>` and never throws, so
+ * returning `Promise.resolve(key)` already has that type without `async`.
+ */
 function trackingOffloader(
   upload: (key: string) => Promise<string> = (key) => Promise.resolve(key),
 ) {
