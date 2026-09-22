@@ -48,12 +48,10 @@ function foreignDescriptor(scope: readonly string[]): Record<string, unknown> {
 }
 
 const checkpointerSerde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
-  loadsTyped: async (_type: string, data: Uint8Array | string): Promise<unknown> =>
-    await Promise.resolve(
-      JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data)),
-    ),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_type: string, data: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data))),
 };
 
 /** `history.getMessages` under the default `'skip'` policy, reading one foreign row. */

@@ -45,29 +45,29 @@ class RecordingBackend implements VectorBackend {
 
   /**
    * `VectorBackend` methods are typed `Promise<...>`; every body below is
-   * synchronous. Each `await Promise.resolve()` resolves an already-resolved
-   * value — it costs one microtask and changes nothing a caller can observe —
-   * and keeps the method a real `async` function whose return type still
-   * matches the interface.
+   * synchronous and none of them throw, so a non-async function returning
+   * `Promise.resolve(...)` already has type `Promise<...>` and needs
+   * neither `async` nor `await`.
    */
-  async upsert(namespace: string[], key: string): Promise<void> {
+  upsert(namespace: string[], key: string): Promise<void> {
     this.vectors.set(this.id(namespace, key), { namespace, key });
-    await Promise.resolve();
+    return Promise.resolve();
   }
 
-  async query(prefix: string[], _vector: number[], topK: number): Promise<VectorMatch[]> {
-    await Promise.resolve();
+  query(prefix: string[], _vector: number[], topK: number): Promise<VectorMatch[]> {
     const head = prefix.join('/');
-    return [...this.vectors.values()]
-      .filter((ref) => ref.namespace.join('/').startsWith(head))
-      .slice(0, topK)
-      .map((ref) => ({ namespace: ref.namespace, key: ref.key, score: 1 }));
+    return Promise.resolve(
+      [...this.vectors.values()]
+        .filter((ref) => ref.namespace.join('/').startsWith(head))
+        .slice(0, topK)
+        .map((ref) => ({ namespace: ref.namespace, key: ref.key, score: 1 })),
+    );
   }
 
-  async delete(namespace: string[], key: string): Promise<void> {
+  delete(namespace: string[], key: string): Promise<void> {
     this.deleted.push(this.id(namespace, key));
     this.vectors.delete(this.id(namespace, key));
-    await Promise.resolve();
+    return Promise.resolve();
   }
 }
 

@@ -15,26 +15,25 @@ class OrderedMemoryBackend implements VectorBackend {
 
   /**
    * `VectorBackend` methods are typed `Promise<...>`; every body below is
-   * synchronous. Each `await Promise.resolve()` resolves an already-resolved
-   * value — it costs one microtask and changes nothing a caller can observe —
-   * and keeps the method a real `async` function whose return type still
-   * matches the interface.
+   * synchronous and none of them throw, so a non-async function returning
+   * `Promise.resolve(...)` already has type `Promise<...>` and needs
+   * neither `async` nor `await`.
    */
-  async upsert(namespace: string[], key: string): Promise<void> {
+  upsert(namespace: string[], key: string): Promise<void> {
     this.entries.push({ namespace, key });
-    await Promise.resolve();
+    return Promise.resolve();
   }
 
-  async query(_namespace: string[], _vector: number[], topK: number): Promise<VectorMatch[]> {
+  query(_namespace: string[], _vector: number[], topK: number): Promise<VectorMatch[]> {
     const matches = this.entries.slice(0, topK).map((entry) => ({ ...entry, score: 1 }));
-    return await Promise.resolve(matches);
+    return Promise.resolve(matches);
   }
 
-  async delete(namespace: string[], key: string): Promise<void> {
+  delete(namespace: string[], key: string): Promise<void> {
     this.entries = this.entries.filter(
       (entry) => !(entry.namespace.join('/') === namespace.join('/') && entry.key === key),
     );
-    await Promise.resolve();
+    return Promise.resolve();
   }
 }
 

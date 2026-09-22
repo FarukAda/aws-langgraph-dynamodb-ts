@@ -235,10 +235,9 @@ describe('putItem', () => {
     resolveRowWrites(mock);
     const uploaded: string[] = [];
     const offloader = trackingOffloader({
-      upload: async (key: string) => {
-        await Promise.resolve();
+      upload: (key: string) => {
         uploaded.push(key);
-        return key;
+        return Promise.resolve(key);
       },
     });
     const ctx = context(client, { offloader: offloader as never });

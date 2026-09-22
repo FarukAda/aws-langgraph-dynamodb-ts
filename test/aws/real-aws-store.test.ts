@@ -24,17 +24,16 @@ class DeterministicEmbeddings implements EmbeddingsInterface {
 
   /**
    * `EmbeddingsInterface.embedQuery` is typed `Promise<number[]>`; the
-   * computation itself is synchronous. `await Promise.resolve(...)` resolves
-   * an already-resolved value — it costs one microtask and changes nothing a
-   * caller can observe — and is what keeps this a real `async` method whose
-   * return type still matches the interface.
+   * computation itself is synchronous. Returning `Promise.resolve(vector)`
+   * satisfies that type without `async`: a non-async function that returns
+   * a `Promise` already has type `Promise<T>`.
    */
-  async embedQuery(text: string): Promise<number[]> {
+  embedQuery(text: string): Promise<number[]> {
     const vector = new Array(EMBED_DIMS).fill(0);
     for (const char of text.toLowerCase()) {
       vector[char.charCodeAt(0) % EMBED_DIMS] += 1;
     }
-    return await Promise.resolve(vector);
+    return Promise.resolve(vector);
   }
 
   async embedDocuments(texts: string[]): Promise<number[][]> {
@@ -51,28 +50,37 @@ class FlakyMemoryBackend implements VectorBackend {
     return `${namespace.join(REF_SEPARATOR)}${REF_SEPARATOR}${key}`;
   }
 
-  /** `VectorBackend` methods are typed `Promise<...>`; see `embedQuery` above. */
+  /**
+   * `VectorBackend` methods are typed `Promise<...>`; every body here is
+   * synchronous. `upsert` stays `async` because its throw must still reach a
+   * caller as a rejection when called without `await` — a plain synchronous
+   * throw would not — and its `return Promise.resolve()` on the success path
+   * is what satisfies `require-await`, which accepts a thenable `return` in
+   * place of an explicit `await`. `query` and `delete` never throw, so a
+   * non-async function returning `Promise.resolve(...)` already has type
+   * `Promise<...>` and needs neither `async` nor `await`.
+   */
   async upsert(namespace: string[], key: string): Promise<void> {
     if (this.failNextUpsert) {
       this.failNextUpsert = false;
       throw new Error('backend upsert unavailable');
     }
     this.vectors.set(this.id(namespace, key), { namespace, key });
-    await Promise.resolve();
+    return Promise.resolve();
   }
 
-  async query(): Promise<never[]> {
-    return await Promise.resolve([]);
+  query(): Promise<never[]> {
+    return Promise.resolve([]);
   }
 
-  async delete(namespace: string[], key: string): Promise<void> {
+  delete(namespace: string[], key: string): Promise<void> {
     this.vectors.delete(this.id(namespace, key));
-    await Promise.resolve();
+    return Promise.resolve();
   }
 
-  async listKeys(prefix: string[]): Promise<VectorRef[]> {
+  listKeys(prefix: string[]): Promise<VectorRef[]> {
     const head = prefix.join(REF_SEPARATOR);
-    return await Promise.resolve(
+    return Promise.resolve(
       [...this.vectors.values()].filter((ref) =>
         ref.namespace.join(REF_SEPARATOR).startsWith(head),
       ),

@@ -249,15 +249,14 @@ class ReferenceStore extends BaseStore {
   readonly operations: Operation[] = [];
 
   /**
-   * `BaseStore.batch` is typed `Promise<...>`; this override is synchronous.
-   * `await Promise.resolve(...)` resolves an already-resolved value — it
-   * costs one microtask and changes nothing a caller can observe — and keeps
-   * this a real `async` method whose return type still matches the base
-   * class.
+   * `BaseStore.batch` is typed `Promise<...>`; this override is synchronous
+   * and never throws. Returning `Promise.resolve(...)` satisfies that type
+   * without `async`: a non-async method that returns a `Promise` already has
+   * type `Promise<T>`.
    */
-  async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
+  batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
     this.operations.push(...operations);
-    return await Promise.resolve(operations.map(() => null) as OperationResults<Op>);
+    return Promise.resolve(operations.map(() => null) as OperationResults<Op>);
   }
 }
 
@@ -293,7 +292,7 @@ describe('the overrides build exactly the operations upstream BaseStore builds',
     const { store } = storeWithMock();
     const run = jest
       .spyOn(store as unknown as Runner, 'run')
-      .mockImplementation(async (operations) => await Promise.resolve(operations.map(() => null)));
+      .mockImplementation((operations) => Promise.resolve(operations.map(() => null)));
     await call(store);
     expect(run.mock.calls.flatMap(([operations]) => operations)).toStrictEqual(
       reference.operations,

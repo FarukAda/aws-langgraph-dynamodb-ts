@@ -75,11 +75,10 @@ describe('addMessages', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
     const serde = {
-      dumpsTyped: async (): Promise<[string, Uint8Array]> => {
-        await Promise.resolve();
+      dumpsTyped: (): Promise<[string, Uint8Array]> => {
         throw new Error('serde failed');
       },
-      loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
+      loadsTyped: (): Promise<unknown> => Promise.resolve({}),
     };
     await expect(
       addMessages(context(client, { serde }), 's1', [new HumanMessage('a')]),

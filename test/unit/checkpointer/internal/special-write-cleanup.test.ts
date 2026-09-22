@@ -10,9 +10,9 @@ import { rowWrite } from '../../../shared/helpers/ddb-mock';
 /** The bytes are immaterial here, but they may not be none: a payload that
  * serialises to nothing is refused at the encoder. */
 const serde = {
-  dumpsTyped: async (): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new TextEncoder().encode('{}')]),
-  loadsTyped: async (): Promise<unknown> => await Promise.resolve(undefined),
+  dumpsTyped: (): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode('{}')]),
+  loadsTyped: (): Promise<unknown> => Promise.resolve(undefined),
 };
 
 const descriptor = (s3Key: string) => ({
@@ -73,8 +73,8 @@ function context(client: ClientStub, offloader?: ReturnType<typeof trackingOfflo
 describe('writeSpecialItemsWithCleanup', () => {
   it('is a no-op for an empty items list', async () => {
     const client: ClientStub = {
-      get: async () => await Promise.resolve({}),
-      put: async () => await Promise.resolve({}),
+      get: () => Promise.resolve({}),
+      put: () => Promise.resolve({}),
     };
     const offloader = trackingOffloader();
     const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', []);
@@ -84,9 +84,8 @@ describe('writeSpecialItemsWithCleanup', () => {
 
   it('a committed item deletes the descriptor it superseded', async () => {
     const client: ClientStub = {
-      get: async () =>
-        await Promise.resolve({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
-      put: async () => await Promise.resolve({}),
+      get: () => Promise.resolve({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
+      put: () => Promise.resolve({}),
     };
     const offloader = trackingOffloader();
     const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
@@ -99,9 +98,8 @@ describe('writeSpecialItemsWithCleanup', () => {
 
   it('an item that definitely never committed deletes its own new upload', async () => {
     const client: ClientStub = {
-      get: async () => await Promise.resolve({}),
-      put: async () => {
-        await Promise.resolve();
+      get: () => Promise.resolve({}),
+      put: () => {
         throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
       },
     };
@@ -116,9 +114,8 @@ describe('writeSpecialItemsWithCleanup', () => {
 
   it('returns (never throws) the first error when more than one item fails', async () => {
     const client: ClientStub = {
-      get: async () => await Promise.resolve({}),
-      put: async (input) => {
-        await Promise.resolve();
+      get: () => Promise.resolve({}),
+      put: (input) => {
         const item = input.Item as CheckpointWriteItem;
         if (item.SK.endsWith('one')) {
           throw Object.assign(new Error('first'), { name: 'ResourceNotFoundException' });
@@ -136,9 +133,8 @@ describe('writeSpecialItemsWithCleanup', () => {
 
   it('with no offloader configured nothing is deleted', async () => {
     const client: ClientStub = {
-      get: async () =>
-        await Promise.resolve({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
-      put: async () => await Promise.resolve({}),
+      get: () => Promise.resolve({ Item: { value: descriptor('old.bin'), writeGroup: 'g0' } }),
+      put: () => Promise.resolve({}),
     };
     await expect(
       writeSpecialItemsWithCleanup(context(client), 't', [specialItem('new.bin')]),
@@ -147,8 +143,8 @@ describe('writeSpecialItemsWithCleanup', () => {
 
   it('deletes nothing for a committed item that had no previous row to supersede', async () => {
     const client: ClientStub = {
-      get: async () => await Promise.resolve({}),
-      put: async () => await Promise.resolve({}),
+      get: () => Promise.resolve({}),
+      put: () => Promise.resolve({}),
     };
     const offloader = trackingOffloader();
     const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
@@ -161,20 +157,20 @@ describe('writeSpecialItemsWithCleanup', () => {
   it('cleans up each side of a mixed outcome: the previous object for the committed item, the new upload for the failed one', async () => {
     const client: ClientStub = {
       get: async (input) => {
-        await Promise.resolve();
         const key = input.Key as { SK: string };
         if (key.SK.endsWith('committed')) {
-          return { Item: { value: descriptor('committed-old.bin'), writeGroup: 'g0' } };
+          return Promise.resolve({
+            Item: { value: descriptor('committed-old.bin'), writeGroup: 'g0' },
+          });
         }
         return {};
       },
       put: async (input) => {
-        await Promise.resolve();
         const item = input.Item as CheckpointWriteItem;
         if (item.SK.endsWith('failed')) {
           throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
         }
-        return {};
+        return Promise.resolve({});
       },
     };
     const offloader = trackingOffloader();
@@ -194,7 +190,7 @@ describe('writeSpecialItemsWithCleanup', () => {
  */
 async function builtItem(value: unknown, writeGroup: string): Promise<CheckpointWriteItem> {
   const offloading = context(
-    { get: async () => await Promise.resolve({}), put: async () => await Promise.resolve({}) },
+    { get: () => Promise.resolve({}), put: () => Promise.resolve({}) },
     trackingOffloader(),
   );
   const [built] = await buildWriteItems(
@@ -228,9 +224,8 @@ async function raceOnSpecialRow(racerValue: object | null) {
   const own = await builtItem({ error: 'boom' }, 'group-1');
   const reads = [{}, { Item: { writeGroup: 'group-racer', value: racerValue } }];
   const client: ClientStub = {
-    get: async () => await Promise.resolve(reads.shift() ?? {}),
-    put: async () => {
-      await Promise.resolve();
+    get: () => Promise.resolve(reads.shift() ?? {}),
+    put: () => {
       throw Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
     },
   };
@@ -274,14 +269,12 @@ describe("writeSpecialItemsWithCleanup never releases a racer's committed object
   it('returns the error, issues no put and deletes nothing when the first read of the row fails', async () => {
     let puts = 0;
     const client: ClientStub = {
-      get: async () => {
-        await Promise.resolve();
+      get: () => {
         throw Object.assign(new Error('read down'), { name: 'ValidationException' });
       },
-      put: async () => {
-        await Promise.resolve();
+      put: () => {
         puts += 1;
-        return {};
+        return Promise.resolve({});
       },
     };
     const offloader = trackingOffloader();
@@ -314,12 +307,11 @@ describe('writeSpecialItemsWithCleanup releases a superseded object without read
     const own = await builtItem({ error: 'second' }, 'group-1');
     let reads = 0;
     const client: ClientStub = {
-      get: async () => {
-        await Promise.resolve();
+      get: () => {
         reads += 1;
-        return { Item: { value: superseded.value, writeGroup: 'g0' } };
+        return Promise.resolve({ Item: { value: superseded.value, writeGroup: 'g0' } });
       },
-      put: async () => await Promise.resolve({}),
+      put: () => Promise.resolve({}),
     };
     const offloader = trackingOffloader();
 
@@ -336,9 +328,9 @@ describe('writeSpecialItemsWithCleanup releases a superseded object without read
 describe('writeSpecialItemsWithCleanup S3 key binding (SEC-03)', () => {
   it("never deletes a superseded object outside the thread's own path", async () => {
     const client: ClientStub = {
-      get: async () =>
-        await Promise.resolve({ Item: { value: descriptor('foreign/old.bin'), writeGroup: 'g0' } }),
-      put: async () => await Promise.resolve({}),
+      get: () =>
+        Promise.resolve({ Item: { value: descriptor('foreign/old.bin'), writeGroup: 'g0' } }),
+      put: () => Promise.resolve({}),
     };
     const offloader = { ...trackingOffloader(), ownsKey: jest.fn(() => false) };
     const warn = jest.fn();

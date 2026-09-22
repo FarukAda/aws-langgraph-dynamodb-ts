@@ -21,12 +21,11 @@ describe('runBatch preserves the order the caller wrote (STORE-09)', () => {
      * type still matches.
      */
     const dispatch = async (op: Operation): Promise<unknown> => {
-      await Promise.resolve();
       if ('value' in op) {
         order.push(`put:${op.key}`);
         if (op.value === null) store.delete(op.key);
         else store.set(op.key, op.value);
-        return undefined;
+        return Promise.resolve(undefined);
       }
       if ('key' in op) {
         order.push(`get:${op.key}`);

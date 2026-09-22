@@ -11,10 +11,10 @@ import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../shared/helpers/test-setup';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    await Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };

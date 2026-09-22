@@ -18,10 +18,13 @@ class FlakyMemoryBackend implements VectorBackend {
 
   /**
    * `VectorBackend` methods are typed `Promise<...>`; every body below is
-   * synchronous. `await Promise.resolve(...)` resolves an already-resolved
-   * value — it costs one microtask and changes nothing a caller can observe —
-   * and keeps each method a real `async` function whose return type still
-   * matches the interface.
+   * synchronous. `upsert` and `delete` stay `async` because their throw must
+   * still reach a caller as a rejection when called without `await`; their
+   * `return Promise.resolve()` on the success path satisfies
+   * `require-await`, which accepts a thenable `return` in place of an
+   * explicit `await`. `query` never throws, so a non-async function
+   * returning `Promise.resolve(...)` already has type `Promise<...>` and
+   * needs neither `async` nor `await`.
    */
   async upsert(namespace: string[], key: string): Promise<void> {
     if (this.failNextUpsert) {
@@ -29,11 +32,11 @@ class FlakyMemoryBackend implements VectorBackend {
       throw new Error('backend upsert unavailable');
     }
     this.vectors.set(this.id(namespace, key), { namespace, key });
-    await Promise.resolve();
+    return Promise.resolve();
   }
 
-  async query(): Promise<never[]> {
-    return await Promise.resolve([]);
+  query(): Promise<never[]> {
+    return Promise.resolve([]);
   }
 
   async delete(namespace: string[], key: string): Promise<void> {
@@ -42,12 +45,12 @@ class FlakyMemoryBackend implements VectorBackend {
       throw new Error('backend delete unavailable');
     }
     this.vectors.delete(this.id(namespace, key));
-    await Promise.resolve();
+    return Promise.resolve();
   }
 
-  async listKeys(prefix: string[]): Promise<VectorRef[]> {
+  listKeys(prefix: string[]): Promise<VectorRef[]> {
     const head = prefix.join(REF_SEPARATOR);
-    return await Promise.resolve(
+    return Promise.resolve(
       [...this.vectors.values()].filter((ref) =>
         ref.namespace.join(REF_SEPARATOR).startsWith(head),
       ),

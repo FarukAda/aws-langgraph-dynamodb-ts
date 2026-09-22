@@ -17,16 +17,15 @@ import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/help
 
 /**
  * `SerializerProtocol` is typed `Promise<...>`; this fake's own computation is
- * synchronous. Each `await Promise.resolve(...)` resolves an already-resolved
- * value — it costs one microtask and changes nothing a caller can observe —
- * and keeps both methods real `async` functions whose return types still
- * match the interface.
+ * synchronous and neither method throws, so a non-async function returning
+ * `Promise.resolve(...)` already has type `Promise<...>` and needs neither
+ * `async` nor `await`.
  */
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    await Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 const checkpoint: Checkpoint = {

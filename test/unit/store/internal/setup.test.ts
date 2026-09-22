@@ -151,7 +151,7 @@ describe('collaborator shape (DDB-09)', () => {
         tableName: 'store',
         client: fakeClientMethods(),
         serde: {
-          dumpsTyped: async () => await Promise.resolve(['json', new Uint8Array()]),
+          dumpsTyped: () => Promise.resolve(['json', new Uint8Array()]),
         } as never,
       }),
     ).toThrow(

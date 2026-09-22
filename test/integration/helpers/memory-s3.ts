@@ -27,18 +27,19 @@ export class MemoryS3 implements S3ClientLike {
 
   /**
    * `S3ClientLike.send` is typed `Promise<object>`; every branch below is
-   * synchronous. The `await` resolves an already-resolved value — it costs
-   * one microtask and changes nothing a caller can observe — and is what
-   * keeps this a real `async` method whose return type still matches the
-   * interface, without wrapping every branch's return individually.
+   * synchronous. It stays `async` because two branches throw, and that must
+   * still reach a caller as a rejection when called without `await`; the one
+   * `Promise.resolve({})` return is what satisfies `require-await`, which
+   * accepts a thenable `return` in place of an explicit `await` — the other
+   * branches' plain returns are still wrapped by `async` itself, so only one
+   * of them needs to say so explicitly.
    */
   async send(command: SdkCommand): Promise<object> {
-    await Promise.resolve();
     const input = command.input as CommandInput;
     switch (command.constructor.name) {
       case 'PutObjectCommand':
         this.objects.set(input.Key as string, new Uint8Array(input.Body as Uint8Array));
-        return {};
+        return Promise.resolve({});
       case 'GetObjectCommand': {
         const data = this.objects.get(input.Key as string);
         if (!data) {
@@ -49,7 +50,7 @@ export class MemoryS3 implements S3ClientLike {
         }
         return {
           ContentLength: data.length,
-          Body: { transformToByteArray: async () => await Promise.resolve(data) },
+          Body: { transformToByteArray: () => Promise.resolve(data) },
         };
       }
       case 'DeleteObjectsCommand':

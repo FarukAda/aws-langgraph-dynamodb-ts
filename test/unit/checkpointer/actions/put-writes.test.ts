@@ -17,9 +17,9 @@ import {
 } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
-  loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (): Promise<unknown> => Promise.resolve({}),
 };
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {
@@ -46,7 +46,7 @@ function transactionCancelled(rawItem?: Record<string, { S: string }>): Error {
 
 /** Same reasoning as `serde` above: the default resolves an already-resolved key. */
 function trackingOffloader(
-  upload: (key: string) => Promise<string> = async (key) => await Promise.resolve(key),
+  upload: (key: string) => Promise<string> = (key) => Promise.resolve(key),
 ) {
   return {
     shouldOffload: () => true,
@@ -227,7 +227,7 @@ describe('putWrites', () => {
   it("gives two putWrites calls two S3 keys for the same logical write and value, each ending in the call's writeGroup", async () => {
     const { client, mock } = createStrictDocumentMock();
     resolveRowWrites(mock);
-    const upload = jest.fn(async (key: string) => await Promise.resolve(key));
+    const upload = jest.fn((key: string) => Promise.resolve(key));
     const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
@@ -242,7 +242,7 @@ describe('putWrites', () => {
   it('gives a changed value its own S3 key', async () => {
     const { client, mock } = createStrictDocumentMock();
     resolveRowWrites(mock);
-    const upload = jest.fn(async (key: string) => await Promise.resolve(key));
+    const upload = jest.fn((key: string) => Promise.resolve(key));
     const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');

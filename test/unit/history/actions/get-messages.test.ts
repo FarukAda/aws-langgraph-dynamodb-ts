@@ -137,7 +137,7 @@ describe('getMessages', () => {
   describe('failure classification under the skip policy (HIST-01, HIST-04, CODEC-03)', () => {
     async function offloadedHuman(client: HistoryContext['client']) {
       const writer = context(client, {
-        offloader: offloaderStub(async () => await Promise.resolve(new Uint8Array())) as never,
+        offloader: offloaderStub(() => Promise.resolve(new Uint8Array())) as never,
       });
       const [human] = mapChatMessagesToStoredMessages([new HumanMessage('offloaded')]);
       return buildMessageItem(writer, 's1', '01A', human);
@@ -147,8 +147,7 @@ describe('getMessages', () => {
       const { client, mock } = createStrictDocumentMock();
       const error = jest.fn();
       const reader = context(client, {
-        offloader: offloaderStub(async () => {
-          await Promise.resolve();
+        offloader: offloaderStub(() => {
           throw s3Failure('ServiceUnavailable');
         }) as never,
         logger: { ...SILENT_LOGGER, error },
@@ -163,8 +162,7 @@ describe('getMessages', () => {
     it("rethrows a raw AWS permission error under 'skip'", async () => {
       const { client, mock } = createStrictDocumentMock();
       const reader = context(client, {
-        offloader: offloaderStub(async () => {
-          await Promise.resolve();
+        offloader: offloaderStub(() => {
           throw Object.assign(new Error('denied'), { name: 'AccessDeniedException' });
         }) as never,
       });
@@ -178,8 +176,7 @@ describe('getMessages', () => {
       const { client, mock } = createStrictDocumentMock();
       const error = jest.fn();
       const reader = context(client, {
-        offloader: offloaderStub(async () => {
-          await Promise.resolve();
+        offloader: offloaderStub(() => {
           throw s3Failure('NoSuchKey');
         }) as never,
         logger: { ...SILENT_LOGGER, error },

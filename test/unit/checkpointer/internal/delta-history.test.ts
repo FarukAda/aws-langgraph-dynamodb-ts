@@ -63,13 +63,12 @@ function walkOver(chain: Ancestor[], stored: Record<string, number | null> = {})
   };
   /**
    * `deltaChannelHistory`'s `getTuple` parameter is typed `Promise<...>`; this
-   * fake's own lookup is synchronous. `await Promise.resolve(...)` resolves an
-   * already-resolved value — it costs one microtask and changes nothing a
-   * caller can observe — and is what keeps this a real `async` function whose
-   * return type still matches.
+   * fake's own lookup is synchronous. Returning `Promise.resolve(...)`
+   * satisfies that type without `async`: a non-async function that returns
+   * a `Promise` already has type `Promise<T>`.
    */
-  const getTuple = async (config: RunnableConfig): Promise<CheckpointTuple | undefined> =>
-    await Promise.resolve(byId.get(config.configurable?.checkpoint_id as string));
+  const getTuple = (config: RunnableConfig): Promise<CheckpointTuple | undefined> =>
+    Promise.resolve(byId.get(config.configurable?.checkpoint_id as string));
   return { context, getTuple, reads };
 }
 

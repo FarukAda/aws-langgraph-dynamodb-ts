@@ -77,10 +77,9 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: () => ({ Item: { value: descriptor('old'), writeGroup: 'g1' } }),
-        transactWrite: rowWrite(async (input: Record<string, unknown>) => {
-          await Promise.resolve();
+        transactWrite: rowWrite((input: Record<string, unknown>) => {
           inputs.push(input);
-          return {};
+          return Promise.resolve({});
         }),
       },
     };
@@ -106,10 +105,9 @@ describe('writeSpecialItem', () => {
       client: {
         get: () => seen.shift() ?? {},
         transactWrite: rowWrite(async () => {
-          await Promise.resolve();
           puts += 1;
           if (puts === 1) throw conditionalFailure();
-          return {};
+          return Promise.resolve({});
         }),
       },
     };
@@ -140,10 +138,9 @@ describe('writeSpecialItem', () => {
       client: {
         get: () => seen.shift() ?? {},
         transactWrite: rowWrite(async () => {
-          await Promise.resolve();
           puts += 1;
           if (puts === 1) throw conditionalFailure();
-          return {};
+          return Promise.resolve({});
         }),
       },
     };
@@ -161,8 +158,7 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: () => ({}),
-        transactWrite: rowWrite(async () => {
-          await Promise.resolve();
+        transactWrite: rowWrite(() => {
           throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
         }),
       },
@@ -189,10 +185,9 @@ describe('writeSpecialItem', () => {
         get: () => {
           throw new Error('read failed');
         },
-        transactWrite: rowWrite(async () => {
-          await Promise.resolve();
+        transactWrite: rowWrite(() => {
           puts += 1;
-          return {};
+          return Promise.resolve({});
         }),
       },
     };
@@ -225,12 +220,11 @@ describe('writeSpecialItem', () => {
           Item: { value: descriptor('theirs'), writeGroup: `competitor-${puts}` },
         }),
         transactWrite: rowWrite(async (input: Record<string, unknown>) => {
-          await Promise.resolve();
           puts += 1;
           if (puts <= OVERWRITE_CAS_MAX_ATTEMPTS) throw conditionalFailure();
           // The fallback put is unconditional: no ConditionExpression.
           expect(input.ConditionExpression).toBeUndefined();
-          return {};
+          return Promise.resolve({});
         }),
       },
     };
@@ -288,8 +282,7 @@ describe('writeSpecialItem', () => {
           { Item: { value: descriptor('old'), writeGroup: 'g1' } },
           { Item: { value: descriptor('new'), writeGroup: 'g2' } },
         ]),
-        transactWrite: rowWrite(async () => {
-          await Promise.resolve();
+        transactWrite: rowWrite(() => {
           throw retryExhausted();
         }),
       },
@@ -309,8 +302,7 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: queuedReads([{ Item: { value: descriptor('old'), writeGroup: 'g1' } }]),
-        transactWrite: rowWrite(async () => {
-          await Promise.resolve();
+        transactWrite: rowWrite(() => {
           throw retryExhausted();
         }),
       },
@@ -332,8 +324,7 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: queuedReads([{ Item: { value: descriptor('old'), writeGroup: 'g1' } }]),
-        transactWrite: rowWrite(async () => {
-          await Promise.resolve();
+        transactWrite: rowWrite(() => {
           throw conditionalFailure();
         }),
       },
@@ -360,8 +351,7 @@ describe('writeSpecialItem', () => {
           { Item: { value: descriptor('theirs'), writeGroup: 'competitor-3' } },
           { Item: { value: descriptor('new'), writeGroup: 'g2' } },
         ]),
-        transactWrite: rowWrite(async () => {
-          await Promise.resolve();
+        transactWrite: rowWrite(() => {
           puts += 1;
           throw puts <= OVERWRITE_CAS_MAX_ATTEMPTS ? conditionalFailure() : retryExhausted();
         }),

@@ -12,9 +12,9 @@ import {
 } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
-  loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (): Promise<unknown> => Promise.resolve({}),
 };
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {
@@ -23,7 +23,7 @@ function context(client: CheckpointerContext['client']): CheckpointerContext {
 
 /** Same reasoning as `serde` above: the default resolves an already-resolved key. */
 function trackingOffloader(
-  upload: (key: string) => Promise<string> = async (key) => await Promise.resolve(key),
+  upload: (key: string) => Promise<string> = (key) => Promise.resolve(key),
 ) {
   return {
     shouldOffload: () => true,
@@ -188,7 +188,7 @@ describe('putWrites special (negative-index) writes', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     resolveRowWrites(mock);
-    const upload = jest.fn(async (key: string) => await Promise.resolve(key));
+    const upload = jest.fn((key: string) => Promise.resolve(key));
     const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     await putWrites(
       ctx,

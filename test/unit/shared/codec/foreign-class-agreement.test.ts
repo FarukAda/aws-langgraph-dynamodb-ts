@@ -232,8 +232,7 @@ describe('loadPayloadValue', () => {
     const refusal = new Error('Invalid namespace');
     const serde = {
       dumpsTyped: JSON_SERDE.dumpsTyped,
-      loadsTyped: async (): Promise<never> => {
-        await Promise.resolve();
+      loadsTyped: (): Promise<never> => {
         throw refusal;
       },
     };
@@ -246,8 +245,7 @@ describe('loadPayloadValue', () => {
   it('brands a serde that throws something that is not an error at all', async () => {
     const serde = {
       dumpsTyped: JSON_SERDE.dumpsTyped,
-      loadsTyped: async (): Promise<never> => {
-        await Promise.resolve();
+      loadsTyped: (): Promise<never> => {
         throw 'refused';
       },
     };

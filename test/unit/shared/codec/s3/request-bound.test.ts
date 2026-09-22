@@ -136,13 +136,12 @@ describe('the request-handler bound on an S3 client this library builds', () => 
 describe('the same bound on an injected S3 client factory', () => {
   /**
    * `S3ClientLike.send` is typed `Promise<object>`; this fake never actually
-   * calls S3. `await Promise.resolve(...)` resolves an already-resolved
-   * value — it costs one microtask and changes nothing a caller can
-   * observe — and keeps `send` a real `async` function whose return type
-   * still matches the interface.
+   * calls S3 or throws. Returning `Promise.resolve({})` satisfies that type
+   * without `async`: a non-async function that returns a `Promise` already
+   * has type `Promise<T>`.
    */
   const fakeClient = () => ({
-    send: jest.fn(async () => await Promise.resolve({})),
+    send: jest.fn(() => Promise.resolve({})),
     destroy: jest.fn(),
   });
 

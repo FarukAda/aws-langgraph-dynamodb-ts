@@ -12,9 +12,8 @@ import { conditionalTable } from '../../../shared/helpers/conditional-delete';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new Uint8Array()]),
-  loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
+  dumpsTyped: (): Promise<[string, Uint8Array]> => Promise.resolve(['json', new Uint8Array()]),
+  loadsTyped: (): Promise<unknown> => Promise.resolve({}),
 };
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {

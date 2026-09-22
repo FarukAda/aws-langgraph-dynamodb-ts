@@ -28,9 +28,9 @@ export function overlapOffloader(): { offloader: OverlapOffloader; maxInFlight: 
      * one microtask and changing nothing a caller can observe, and keeps
      * this a real `async` function whose return type still matches.
      */
-    upload: async (key, data) => {
+    upload: (key, data) => {
       objects.set(key, data);
-      return await Promise.resolve(key);
+      return Promise.resolve(key);
     },
     download: async (key) => {
       inFlight += 1;
@@ -42,7 +42,7 @@ export function overlapOffloader(): { offloader: OverlapOffloader; maxInFlight: 
       return data;
     },
     /** Same reasoning as `upload` above: the interface is `Promise<string[]>`. */
-    deleteBatch: async () => await Promise.resolve([]),
+    deleteBatch: () => Promise.resolve([]),
     ownsKey: () => true,
     assertOwnedKey: () => undefined,
   };

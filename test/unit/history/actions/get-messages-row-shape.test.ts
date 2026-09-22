@@ -110,7 +110,7 @@ describe('the corrupt-row line bounds the failure it names', () => {
     const serde = {
       dumpsTyped: JSON_SERDE.dumpsTyped,
       loadsTyped: async (): Promise<unknown> =>
-        await Promise.resolve({
+        Promise.resolve({
           get type(): string {
             throw Object.assign(new Error('cannot rebuild'), { name });
           },

@@ -8,9 +8,9 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock, rejectRowWrites } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
-  loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (): Promise<unknown> => Promise.resolve({}),
 };
 
 function trackingOffloader() {

@@ -268,8 +268,7 @@ describe('loadPayloadValue', () => {
   it('reports a refusal of an uncheckable format rather than writing the payload off', async () => {
     const serde = {
       dumpsTyped: JSON_SERDE.dumpsTyped,
-      loadsTyped: async (): Promise<never> => {
-        await Promise.resolve();
+      loadsTyped: (): Promise<never> => {
         throw new SyntaxError('unexpected byte');
       },
     };
@@ -283,8 +282,7 @@ describe('loadPayloadValue', () => {
   it('reports rot even for a serde that refuses with something that is not an error', async () => {
     const serde = {
       dumpsTyped: JSON_SERDE.dumpsTyped,
-      loadsTyped: async (): Promise<never> => {
-        await Promise.resolve();
+      loadsTyped: (): Promise<never> => {
         throw 'refused';
       },
     };

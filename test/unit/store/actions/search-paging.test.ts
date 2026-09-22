@@ -119,20 +119,18 @@ describe('backend refill hitting the cap (STORE-05)', () => {
       delete: jest.fn(),
       /**
        * `VectorBackend.query` is typed `Promise<VectorMatch[]>`; this fake's
-       * own computation is synchronous. `await Promise.resolve(...)` resolves
-       * an already-resolved value — it costs one microtask and changes
-       * nothing a caller can observe — and is what keeps this a real `async`
-       * function whose return type still matches the interface.
+       * own computation is synchronous and never throws, so a non-async
+       * function returning `Promise.resolve(...)` already has type
+       * `Promise<VectorMatch[]>` and needs neither `async` nor `await`.
        */
-      query: jest.fn(
-        async (_ns: string[], _v: number[], topK: number) =>
-          await Promise.resolve(
-            Array.from({ length: topK }, (_, i) => ({
-              namespace: ['users', 'u1'],
-              key: `k${i}`,
-              score: 1 - i / 10,
-            })),
-          ),
+      query: jest.fn((_ns: string[], _v: number[], topK: number) =>
+        Promise.resolve(
+          Array.from({ length: topK }, (_, i) => ({
+            namespace: ['users', 'u1'],
+            key: `k${i}`,
+            score: 1 - i / 10,
+          })),
+        ),
       ),
     };
     const embeddings = { embedQuery: jest.fn(() => [1, 0]), embedDocuments: jest.fn() };

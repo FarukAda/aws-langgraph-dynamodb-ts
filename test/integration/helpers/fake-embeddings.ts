@@ -10,17 +10,16 @@ const DIMS = 8;
 export class FakeEmbeddings implements EmbeddingsInterface {
   /**
    * `EmbeddingsInterface.embedQuery` is typed `Promise<number[]>`; the
-   * computation itself is synchronous. `await Promise.resolve(...)` resolves
-   * an already-resolved value — it costs one microtask and changes nothing a
-   * caller can observe — and is what keeps this a real `async` method whose
-   * return type still matches the interface.
+   * computation itself is synchronous. Returning `Promise.resolve(vector)`
+   * satisfies that type without `async`: a non-async function that returns
+   * a `Promise` already has type `Promise<T>`.
    */
-  async embedQuery(text: string): Promise<number[]> {
+  embedQuery(text: string): Promise<number[]> {
     const vector = new Array(DIMS).fill(0);
     for (const char of text.toLowerCase()) {
       vector[char.charCodeAt(0) % DIMS] += 1;
     }
-    return await Promise.resolve(vector);
+    return Promise.resolve(vector);
   }
 
   async embedDocuments(texts: string[]): Promise<number[][]> {

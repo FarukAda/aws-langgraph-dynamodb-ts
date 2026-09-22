@@ -7,12 +7,10 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { truncateForLog } from '../../../../src/shared/logging/truncate';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
-  loadsTyped: async (_type: string, data: Uint8Array | string): Promise<unknown> =>
-    await Promise.resolve(
-      JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data)),
-    ),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_type: string, data: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data))),
 };
 
 describe('encodePayload / decodePayload', () => {
@@ -30,10 +28,10 @@ describe('encodePayload / decodePayload', () => {
 
   it('round-trips an inline payload whose serialized bytes start with 0x4C 0x47 0x43', async () => {
     const lgcSerde = {
-      dumpsTyped: async (): Promise<[string, Uint8Array]> =>
-        await Promise.resolve(['raw', new Uint8Array([0x4c, 0x47, 0x43, 1, 2, 3])]),
-      loadsTyped: async (_type: string, data: Uint8Array | string): Promise<unknown> =>
-        await Promise.resolve(
+      dumpsTyped: (): Promise<[string, Uint8Array]> =>
+        Promise.resolve(['raw', new Uint8Array([0x4c, 0x47, 0x43, 1, 2, 3])]),
+      loadsTyped: (_type: string, data: Uint8Array | string): Promise<unknown> =>
+        Promise.resolve(
           Array.from(typeof data === 'string' ? new TextEncoder().encode(data) : data),
         ),
     };

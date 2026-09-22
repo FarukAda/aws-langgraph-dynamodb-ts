@@ -133,12 +133,11 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
    * microtask and changes nothing a caller can observe — and keeps each a
    * real `async` function whose return type still matches.
    */
-  const gone = async (): Promise<Uint8Array> => {
-    await Promise.resolve();
+  const gone = (): Promise<Uint8Array> => {
     throw s3Failure('NoSuchKey');
   };
-  const fresh = async (): Promise<Uint8Array> =>
-    await Promise.resolve(new TextEncoder().encode(JSON.stringify({ name: 'fresh' })));
+  const fresh = (): Promise<Uint8Array> =>
+    Promise.resolve(new TextEncoder().encode(JSON.stringify({ name: 'fresh' })));
 
   async function records(ctx: StoreContext) {
     const old = await buildStoreItem(
@@ -224,8 +223,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
   it('does not re-read for a failure that is not a missing object', async () => {
     const { client, mock } = createStrictDocumentMock();
     /** Same reasoning as `gone` above: `downloads[key]` is `Promise<Uint8Array>`. */
-    const throttled = async (): Promise<Uint8Array> => {
-      await Promise.resolve();
+    const throttled = (): Promise<Uint8Array> => {
       throw s3Failure('SlowDown');
     };
     const downloads: Record<string, () => Promise<Uint8Array>> = {};

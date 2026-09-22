@@ -80,14 +80,14 @@ export const JSON_SERDE: SerializerProtocol = {
       );
     }
     /**
-     * `SerializerProtocol.dumpsTyped` is typed `Promise<[string, Uint8Array]>`,
-     * and this method's whole computation is synchronous. The `await` below
-     * resolves an already-resolved value — it costs one microtask, changes
-     * nothing a caller can observe, and is what keeps the method a real
-     * `async` function rather than one whose return type would stop matching
-     * the interface if `async` were dropped.
+     * `dumpsTyped` stays `async` because the two throws above must reach a
+     * caller as a rejection even when it is called without `await` (a bare
+     * `.catch()`), which a plain synchronous throw would not do. Returning
+     * `Promise.resolve(...)` here — rather than the bare tuple — is what
+     * satisfies `require-await`: the rule accepts a `return` of a thenable
+     * value in place of an explicit `await`, and needs no `await` to do it.
      */
-    return await Promise.resolve([JSON_SERDE_TYPE, new TextEncoder().encode(text)]);
+    return Promise.resolve([JSON_SERDE_TYPE, new TextEncoder().encode(text)]);
   },
   async loadsTyped(type, data) {
     /**
@@ -139,13 +139,8 @@ export const JSON_SERDE: SerializerProtocol = {
       );
     }
     try {
-      /**
-       * Same reasoning as `dumpsTyped`: `SerializerProtocol.loadsTyped` is
-       * typed `Promise<any>`, `JSON.parse` is synchronous, and this `await`
-       * resolves an already-resolved value so the method stays a real
-       * `async` function that returns the interface's declared type.
-       */
-      return await Promise.resolve(JSON.parse(text));
+      /** Same reasoning as `dumpsTyped`'s final return: see its comment. */
+      return Promise.resolve(JSON.parse(text));
     } catch (error) {
       throw new DynamoDBLangGraphError(
         'the stored payload is not the JSON this serializer wrote, so it cannot be decoded',

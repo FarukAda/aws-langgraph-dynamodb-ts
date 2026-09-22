@@ -12,17 +12,16 @@ const retryable = (): Error =>
 
 describe('withRetry', () => {
   it('returns the result on first success', async () => {
-    await expect(withRetry(async () => await Promise.resolve(7))).resolves.toBe(7);
+    await expect(withRetry(() => Promise.resolve(7))).resolves.toBe(7);
   });
 
   it('retries a retryable error then succeeds', async () => {
     let calls = 0;
     const result = await withRetry(
       async () => {
-        await Promise.resolve();
         calls += 1;
         if (calls < 2) throw retryable();
-        return 'ok';
+        return Promise.resolve('ok');
       },
       { rng: () => 0, baseDelayMs: 0 },
     );
@@ -33,8 +32,7 @@ describe('withRetry', () => {
   it('re-throws a non-retryable error unchanged', async () => {
     const permanent = Object.assign(new Error('nope'), { name: 'ValidationException' });
     await expect(
-      withRetry(async () => {
-        await Promise.resolve();
+      withRetry(() => {
         throw permanent;
       }),
     ).rejects.toBe(permanent);
@@ -43,8 +41,7 @@ describe('withRetry', () => {
   it('throws RetryExhaustedError after the attempt budget', async () => {
     await expect(
       withRetry(
-        async () => {
-          await Promise.resolve();
+        () => {
           throw retryable();
         },
         { maxAttempts: 2, rng: () => 0, baseDelayMs: 0 },
@@ -56,7 +53,7 @@ describe('withRetry', () => {
     const controller = new AbortController();
     controller.abort();
     await expect(
-      withRetry(async () => await Promise.resolve(1), { signal: controller.signal }),
+      withRetry(() => Promise.resolve(1), { signal: controller.signal }),
     ).rejects.toBeInstanceOf(AbortError);
   });
 
@@ -65,8 +62,7 @@ describe('withRetry', () => {
     let thrown: RetryExhaustedError | undefined;
     try {
       await withRetry(
-        async () => {
-          await Promise.resolve();
+        () => {
           throw last;
         },
         { maxAttempts: 1, rng: () => 0, baseDelayMs: 0 },
@@ -81,8 +77,7 @@ describe('withRetry', () => {
 
   it('normalizes a thrown non-Error value before classifying it', async () => {
     await expect(
-      withRetry(async () => {
-        await Promise.resolve();
+      withRetry(() => {
         throw 'plain string failure';
       }),
     ).rejects.toThrow('plain string failure');
@@ -91,16 +86,13 @@ describe('withRetry', () => {
 
 describe('withDynamoDBRetry', () => {
   it('resolves the wrapped function result with default options', async () => {
-    await expect(withDynamoDBRetry(async () => await Promise.resolve('value'))).resolves.toBe(
-      'value',
-    );
+    await expect(withDynamoDBRetry(() => Promise.resolve('value'))).resolves.toBe('value');
   });
 
   it('honors overrides such as maxAttempts', async () => {
     await expect(
       withDynamoDBRetry(
-        async () => {
-          await Promise.resolve();
+        () => {
           throw retryable();
         },
         { maxAttempts: 1, rng: () => 0, baseDelayMs: 0 },
@@ -114,10 +106,9 @@ describe('withRetry isRetryable predicate', () => {
     let calls = 0;
     const result = await withRetry(
       async () => {
-        await Promise.resolve();
         calls += 1;
         if (calls < 2) throw new Error('custom-transient');
-        return 'ok';
+        return Promise.resolve('ok');
       },
       {
         rng: () => 0,
@@ -132,8 +123,7 @@ describe('withRetry isRetryable predicate', () => {
   it('rethrows immediately when the predicate rejects a signal the list would retry', async () => {
     await expect(
       withRetry(
-        async () => {
-          await Promise.resolve();
+        () => {
           throw Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
         },
         { baseDelayMs: 0, isRetryable: () => false },
@@ -149,10 +139,9 @@ describe('withRetry onRetry hook (DDB-10)', () => {
     let calls = 0;
     await withRetry(
       async () => {
-        await Promise.resolve();
         calls += 1;
         if (calls < 3) throw failing;
-        return 'ok';
+        return Promise.resolve('ok');
       },
       { rng: () => 1, baseDelayMs: 10, onRetry },
     );
@@ -170,8 +159,7 @@ describe('withRetry abort normalisation (DDB-05)', () => {
   it('rejects with the library AbortError when the signal aborts during a backoff sleep', async () => {
     const controller = new AbortController();
     const run = withRetry(
-      async () => {
-        await Promise.resolve();
+      () => {
         setTimeout(() => controller.abort(), 0);
         throw throttled();
       },
@@ -187,7 +175,7 @@ describe('withRetry abort normalisation (DDB-05)', () => {
     const controller = new AbortController();
     controller.abort();
     await expect(
-      withRetry(async () => await Promise.resolve(1), { signal: controller.signal }),
+      withRetry(() => Promise.resolve(1), { signal: controller.signal }),
     ).rejects.toMatchObject({
       code: ErrorCode.ABORTED,
       name: 'AbortError',
@@ -199,9 +187,9 @@ describe('withRetry abort normalisation (DDB-05)', () => {
     const reason = new AbortError('caller cancelled');
     const controller = new AbortController();
     controller.abort(reason);
-    await expect(
-      withRetry(async () => await Promise.resolve(1), { signal: controller.signal }),
-    ).rejects.toBe(reason);
+    await expect(withRetry(() => Promise.resolve(1), { signal: controller.signal })).rejects.toBe(
+      reason,
+    );
   });
 });
 
@@ -224,10 +212,9 @@ describe('withRetry under a deadline', () => {
   it('spends no attempt past a deadline that has already gone by', async () => {
     let calls = 0;
     const error = (await withRetry(
-      async () => {
-        await Promise.resolve();
+      () => {
         calls += 1;
-        return failing();
+        return Promise.resolve(failing());
       },
       { maxAttempts: 3, baseDelayMs: 0, rng: () => 1, deadlineAt: Date.now() - 1 },
     ).catch((e: Error) => e)) as RetryExhaustedError;
@@ -246,10 +233,9 @@ describe('withRetry under a deadline', () => {
     const onRetry = jest.fn();
     let calls = 0;
     const error = (await withRetry(
-      async () => {
-        await Promise.resolve();
+      () => {
         calls += 1;
-        return failing();
+        return Promise.resolve(failing());
       },
       { maxAttempts: 5, baseDelayMs: 500, rng: () => 1, onRetry, deadlineAt: Date.now() + 1000 },
     ).catch((e: Error) => e)) as RetryExhaustedError;
@@ -273,8 +259,7 @@ describe('withRetry under a deadline', () => {
   it('throws a non-retryable error itself, inventing no attempt count', async () => {
     const permanent = Object.assign(new Error('nope'), { name: 'ValidationException' });
     const error = await withRetry(
-      async () => {
-        await Promise.resolve();
+      () => {
         throw permanent;
       },
       { maxAttempts: 3, baseDelayMs: 0, deadlineAt: Date.now() - 1 },
@@ -288,8 +273,7 @@ describe('withRetry under a deadline', () => {
     const failure = retryable();
     let calls = 0;
     const error = (await withRetry(
-      async () => {
-        await Promise.resolve();
+      () => {
         calls += 1;
         throw failure;
       },

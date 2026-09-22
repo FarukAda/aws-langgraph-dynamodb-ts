@@ -2,9 +2,8 @@ import { setUpCheckpointer } from '../../../../src/checkpointer/internal/setup';
 import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new Uint8Array()]),
-  loadsTyped: async (): Promise<unknown> => await Promise.resolve({}),
+  dumpsTyped: (): Promise<[string, Uint8Array]> => Promise.resolve(['json', new Uint8Array()]),
+  loadsTyped: (): Promise<unknown> => Promise.resolve({}),
 };
 
 describe('setUpCheckpointer', () => {
@@ -127,7 +126,7 @@ describe('collaborator shape (DDB-09)', () => {
           tableName: 'ckpt',
           client: fakeClientMethods(),
           serde: {
-            dumpsTyped: async () => await Promise.resolve(['json', new Uint8Array()]),
+            dumpsTyped: () => Promise.resolve(['json', new Uint8Array()]),
           } as never,
         },
         serde,

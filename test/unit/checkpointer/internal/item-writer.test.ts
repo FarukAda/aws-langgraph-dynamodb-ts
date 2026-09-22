@@ -12,10 +12,10 @@ import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> =>
-    await Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    await Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 function context(): CheckpointerContext {

@@ -57,10 +57,9 @@ describe('mapWithConcurrency', () => {
     const calls: number[] = [];
     await expect(
       mapWithConcurrency([1, 2, 3], 1, async (item) => {
-        await Promise.resolve();
         calls.push(item);
         if (item === 2) throw new Error('boom');
-        return item;
+        return Promise.resolve(item);
       }),
     ).rejects.toThrow('boom');
     expect(calls).toEqual([1, 2]);
@@ -68,10 +67,8 @@ describe('mapWithConcurrency', () => {
 
   it('reports the first failure when several in-flight calls reject', async () => {
     const gates = [deferred<never>(), deferred<never>()];
-    const run = mapWithConcurrency(
-      [0, 1],
-      2,
-      async (_item, index) => await Promise.resolve(gates[index].promise),
+    const run = mapWithConcurrency([0, 1], 2, (_item, index) =>
+      Promise.resolve(gates[index].promise),
     );
     gates[1].reject(new Error('second'));
     await tick();
@@ -96,10 +93,9 @@ describe('mapWithConcurrency', () => {
     for (const limit of [Number.NaN, 0.5, -3]) {
       const seen: number[] = [];
       await expect(
-        mapWithConcurrency([1, 2, 3], limit, async (item) => {
-          await Promise.resolve();
+        mapWithConcurrency([1, 2, 3], limit, (item) => {
           seen.push(item);
-          return item * 2;
+          return Promise.resolve(item * 2);
         }),
       ).resolves.toEqual([2, 4, 6]);
       expect(seen).toEqual([1, 2, 3]);
@@ -127,11 +123,8 @@ describe('mapWithConcurrency', () => {
    */
   it('throws a rejection whose value is undefined instead of leaving a hole', async () => {
     let caught: unknown = 'nothing was thrown';
-    const run = mapWithConcurrency(
-      [1, 2],
-      1,
-      async (item) =>
-        await Promise.resolve(item === 1 ? Promise.reject(undefined) : Promise.resolve(item)),
+    const run = mapWithConcurrency([1, 2], 1, (item) =>
+      Promise.resolve(item === 1 ? Promise.reject(undefined) : Promise.resolve(item)),
     );
     try {
       await run;
