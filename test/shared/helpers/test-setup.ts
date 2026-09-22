@@ -4,6 +4,8 @@
  * RNG so TTL timestamps and full-jitter backoff schedules are exactly
  * assertable. Real timers are left intact so `sleep()` resolves normally.
  */
+import { drainAsyncFailures, recordUnhandledRejection, recordWarning } from './async-failures';
+
 export const FROZEN_NOW_MS = 1_700_000_000_000;
 
 const RNG_SEED = 0x9e3779b9;
@@ -19,11 +21,27 @@ function createSeededRandom(seed: number): () => number {
   };
 }
 
+beforeAll(() => {
+  process.on('unhandledRejection', recordUnhandledRejection);
+  process.on('warning', recordWarning);
+});
+
 beforeEach(() => {
   jest.spyOn(Date, 'now').mockReturnValue(FROZEN_NOW_MS);
   jest.spyOn(Math, 'random').mockImplementation(createSeededRandom(RNG_SEED));
 });
 
+afterEach(async () => {
+  /** A rejection is reported a turn later than it happens; let it arrive first. */
+  await new Promise((resolve) => setImmediate(resolve));
+  drainAsyncFailures();
+});
+
 afterEach(() => {
   jest.restoreAllMocks();
+});
+
+afterAll(() => {
+  process.off('unhandledRejection', recordUnhandledRejection);
+  process.off('warning', recordWarning);
 });

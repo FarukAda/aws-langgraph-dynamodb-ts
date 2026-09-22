@@ -127,6 +127,9 @@ describe('DynamoDBStore', () => {
       s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
       ttl: { days: 30 },
     });
+    /** The injected client has maxAttempts > 1, triggering a warning asynchronously during setup. */
+    await new Promise((resolve) => setImmediate(resolve));
+    logger.warn.mockClear();
     await store.ensureS3LifecycleRule();
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
     /** A warn here would mean the versioning stub above was not the one consumed. */
