@@ -274,14 +274,18 @@ jobs:
       # refuses a range it cannot reduce to one version rather than degrading
       # to "install whatever npm resolves" for a >=, an x-range or a ||
       # union. One spec per line, read with mapfile, so no spec can be split
-      # on a space.
+      # on a space. Each floor is then checked on its own, name and version:
+      # `npm ls` given several specs lists whichever match and exits 0 if any
+      # does, and given bare names it never looks at the version at all.
       - name: Install every declared peer at its floor
         run: |
           set -euo pipefail
           mapfile -t floors < <(npm run --silent peer-floors)
           echo "installing ${floors[*]}"
           npm install --no-save "${floors[@]}"
-          npm ls ${floors[*]%@*}
+          for floor in "${floors[@]}"; do
+            npm ls --depth=0 "$floor"
+          done
 
       - name: Type-check and unit-test against the floors
         run: |
