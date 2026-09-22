@@ -16,11 +16,12 @@ import {
 import { DynamoDBSaver } from '../../src/index';
 import { buildLifecycleRuleId, buildMarkerRuleId } from '../../src/shared/codec/s3/config';
 import type { LogArgument, Logger } from '../../src/shared/logging/logger';
+import { liveRegion } from './helpers/env';
 import { rejection } from './helpers/probe';
 import { deleteBucketCompletely, settleAll } from './helpers/teardown';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const region = liveRegion();
+const clientConfig = { region };
 const bucketName = `aws-langgraph-s3vertest-${randomUUID()}`;
 const evidenceBucketName = `aws-langgraph-s3verevtest-${randomUUID()}`;
 
@@ -82,7 +83,7 @@ describe('an unversioned offload bucket against real AWS', () => {
     await s3.send(
       new CreateBucketCommand({
         Bucket: bucketName,
-        ...(region && region !== 'us-east-1'
+        ...(region !== 'us-east-1'
           ? { CreateBucketConfiguration: { LocationConstraint: region as never } }
           : {}),
       }),
@@ -179,7 +180,7 @@ describe('versioning states, delete markers and suspension against real AWS', ()
     await s3.send(
       new CreateBucketCommand({
         Bucket: evidenceBucketName,
-        ...(region && region !== 'us-east-1'
+        ...(region !== 'us-east-1'
           ? { CreateBucketConfiguration: { LocationConstraint: region as never } }
           : {}),
       }),

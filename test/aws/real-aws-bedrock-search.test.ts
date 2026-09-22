@@ -10,8 +10,9 @@ import {
 import { BedrockEmbeddings } from '@langchain/aws';
 
 import { DynamoDBStore } from '../../src/index';
+import { liveRegion } from './helpers/env';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? 'eu-central-1';
+const region = liveRegion();
 const clientConfig = { region };
 const tableName = `aws-langgraph-bedrocktest-${randomUUID()}`;
 const EMBED_DIMS = 1024;

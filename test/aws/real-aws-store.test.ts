@@ -11,9 +11,9 @@ import type { EmbeddingsInterface } from '@langchain/core/embeddings';
 import { AsyncCaller } from '@langchain/core/utils/async_caller';
 
 import { DynamoDBStore, type VectorBackend, type VectorRef } from '../../src/index';
+import { liveRegion } from './helpers/env';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-storetest-${randomUUID()}`;
 const REF_SEPARATOR = ' ';
 const EMBED_DIMS = 8;

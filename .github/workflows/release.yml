@@ -1,134 +1,326 @@
 name: Release NPM Package
 
-# Publishes a tagged commit to npm with provenance. Tags only: the tag must
-# equal `v<package.json version>`, and the commit must already have a fully
-# successful CI run. A prerelease version (one containing "-") publishes under
-# the `next` dist-tag and a prerelease GitHub release; a plain version goes to
-# `latest`. Actions are pinned by commit SHA and npm by exact version.
-
+# Tags only. A release starts from a pushed `v*` tag and nothing else: there is
+# no manual dispatch, so no run can publish whatever a branch's HEAD happens to
+# be.
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
-# Restrictive default so any job added later starts read-only; the publish job
-# elevates explicitly to what it needs (contents + id-token for the release and
-# for npm provenance).
-permissions:
-  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Nothing is granted at the top, so a job added later without its own
+# `permissions:` block inherits none rather than the repository default.
+#
+# The split below is the point of this file's shape. Publishing to npm through
+# Trusted Publishing means a job can mint a registry credential out of thin air
+# from `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`, both
+# of which are plain environment variables visible to every process in that job.
+# `verify` runs `npm ci` over some six hundred development packages and then
+# executes them: eslint, jest, tsc, the packaging checks. Any one of those, at
+# install time or at run time, could read those two variables and publish
+# anything it liked as this package, *with a valid provenance attestation
+# attached*, which is worse than a leaked token because it looks authentic.
+#
+# So `verify` has no `id-token` and cannot mint anything, and `publish` runs no
+# third-party code at all: it downloads the tarball `verify` already built and
+# checked, and runs `npm publish` on it with npm's own bundled binary, using
+# only actions GitHub owns. The GitHub release, which needs a third-party
+# action, is created afterwards by `github-release`, which has no `id-token`
+# either. npm's Trusted Publishing validates the repository and the *workflow
+# file*, not the job, so splitting the work into jobs inside this same file
+# needs no change on the registry side. test/static/release-gate.test.ts pins
+# that shape.
+permissions: {}
 
 jobs:
-  release:
-    name: publish ${{ github.ref_name }}
+  verify:
+    name: verify ${{ github.ref_name }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      id-token: write
+      contents: read
+      # Lets the CI gate below read this commit's check runs.
       checks: read
+    outputs:
+      dist-tag: ${{ steps.version.outputs.dist-tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      version: ${{ steps.version.outputs.version }}
+      tarball: ${{ steps.pack.outputs.tarball }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Pin npm
-        run: npm install -g npm@11.19.1
-
-      - name: Assert the tag matches package.json
+      # The tag must be exactly `v<package.json version>`: a tag pushed against
+      # a commit whose package.json was never bumped would otherwise either
+      # publish a duplicate version (and fail late, after every gate ran) or,
+      # worse, publish the wrong version number under a tag that claims
+      # another. The ref-type check is a second lock on the tags-only trigger.
+      #
+      # A prerelease version (one containing `-`, e.g. 1.0.0-rc.2) publishes
+      # under the `next` dist-tag and as a prerelease GitHub release, so
+      # `npm install` without a tag keeps resolving to the last stable
+      # version. A plain version goes to `latest`.
+      - name: Verify tag matches package.json version
+        id: version
         run: |
-          version="$(node -p "require('./package.json').version")"
-          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
-            echo "tag ${GITHUB_REF_NAME} does not match package.json version ${version}" >&2
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "::error::Release must run from a tag ref (got ${GITHUB_REF_TYPE} ${GITHUB_REF})."
             exit 1
           fi
-          if [[ "${version}" == *-* ]]; then
-            echo "DIST_TAG=next" >> "$GITHUB_ENV"
-            echo "PRERELEASE=true" >> "$GITHUB_ENV"
+          TAG="${GITHUB_REF_NAME}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          echo "version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
+          if [ "${TAG}" != "v${PKG_VERSION}" ]; then
+            echo "::error::Tag ${TAG} does not match package.json version ${PKG_VERSION} (expected v${PKG_VERSION})."
+            exit 1
+          fi
+          if [[ "${PKG_VERSION}" == *-* ]]; then
+            echo "dist-tag=next" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "Releasing ${TAG} (package.json version ${PKG_VERSION}) as a prerelease under the next dist-tag."
           else
-            echo "DIST_TAG=latest" >> "$GITHUB_ENV"
-            echo "PRERELEASE=false" >> "$GITHUB_ENV"
+            echo "dist-tag=latest" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "Releasing ${TAG} (package.json version ${PKG_VERSION}) under the latest dist-tag."
           fi
 
-      - name: Wait for every required CI check of this commit
+      # Publishing is gated on the CI that already ran for this commit, and on
+      # the live-AWS tier that runs on this same tag push. The gates re-run
+      # below catch a broken toolchain on this runner, but only the matrix
+      # proves the other operating systems and Node versions, only
+      # integration-live.yml proves the package against the real services, and
+      # only the commit's own check runs carry that.
+      #
+      # The required names are listed rather than counted. Counting ("some
+      # checks ran and none failed") passes when `ci.yml` produced no check
+      # runs at all on this commit, which a rename, invalid YAML or a
+      # later-added `paths-ignore:` would cause: CodeQL and Scorecard alone
+      # would then be a complete, green set. Every name must be present *and*
+      # successful; `live-aws integration` is one of them, so a tag whose live
+      # run failed, or never ran, does not publish.
+      #
+      # `id` is asked for because a commit can carry several runs of one check
+      # (a re-run, or a second tag at the same commit) and only the newest of
+      # them counts. Without the id the script cannot tell which that is, and
+      # treats the name as failed. The names are in scripts/required-checks.json
+      # and what each exit code means is in scripts/require-green-ci.mjs. It is
+      # a script rather than shell here so that its classification is
+      # unit-testable off a runner: a release gate that has never been
+      # exercised is not a gate.
+      #
+      # It runs from the checkout with the runner's own Node, before `npm ci`:
+      # the script imports nothing outside the repository. It waits up to 45
+      # minutes because the live tier starts on the same push as this job and
+      # runs its suites one at a time; a failure ends the wait at once.
+      - name: Wait for a fully successful CI run of this commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Every one of these must exist for this commit, be completed, and
-          # have succeeded. Naming them is the point: comparing "succeeded" to
-          # "registered so far" passes the instant the first fast job reports,
-          # which publishes without the unit matrix, integration, conformance
-          # or package smoke having run at all. test/static/release-gate.test.ts
-          # pins this list against the jobs ci.yml actually defines.
-          required=$(cat <<'REQUIRED'
-          test (node 22 on ubuntu-latest)
-          test (node 24 on ubuntu-latest)
-          test (node 26 on ubuntu-latest)
-          test (node 22 on windows-latest)
-          test (node 24 on windows-latest)
-          test (node 26 on windows-latest)
-          test (node 22 on macos-latest)
-          test (node 24 on macos-latest)
-          test (node 26 on macos-latest)
-          npm audit (high+)
-          typecheck (full program: src + test + configs)
-          integration (DynamoDB Local)
-          conformance (langgraph 1.1.5)
-          conformance (langgraph latest)
-          repository hygiene (knip, depcheck, jscpd, actionlint, changelog)
-          peer dependency floors
-          API reference is regenerated
-          package smoke (npm pack + install + import)
-          REQUIRED
-          )
-          for _ in $(seq 1 60); do
-            runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.app.slug == "github-actions")]')"
-            # Any failure of any of this commit's checks stops the release, not
-            # only a failure among the required ones.
-            failed="$(echo "$runs" | jq -r '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped") | .name] | join(", ")')"
-            if [ -n "$failed" ]; then
-              echo "CI failed for this commit (${failed}); not publishing" >&2
-              exit 1
-            fi
-            missing=""
-            while IFS= read -r name; do
-              ok="$(echo "$runs" | jq --arg n "$name" '[.[] | select(.name == $n and .status == "completed" and .conclusion == "success")] | length')"
-              if [ "$ok" = "0" ]; then missing="${missing}${name}; "; fi
-            done <<< "$required"
-            if [ -z "$missing" ]; then
-              echo "every required check succeeded for ${GITHUB_SHA}"
-              exit 0
-            fi
-            echo "still waiting on: ${missing}"
-            sleep 30
+          set -euo pipefail
+          for _ in $(seq 1 90); do
+            status=0
+            CHECK_RUNS="$(gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100" \
+              --jq '.check_runs[] | {id, name, status, conclusion}')" \
+              npm run --silent ci:require-green || status=$?
+            case "${status}" in
+              0) exit 0 ;;
+              2) sleep 30 ;;
+              *) exit "${status}" ;;
+            esac
           done
-          echo "required checks did not all succeed within 30 minutes: ${missing}" >&2
+          echo "::error::Required CI checks for ${GITHUB_SHA} did not all succeed within 45 minutes; not publishing."
           exit 1
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Gates
-        run: |
-          npm run typecheck
-          npm run lint
-          npm run build
-          npm test -- --ci
-
-      - name: Package smoke
-        run: npm run test:package-smoke
-
-      - name: Publish to npm
-        run: npm publish --access public --provenance --tag "${DIST_TAG}"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+      # Node 24 for the whole release. Trusted Publishing requires npm >= 11.5.1
+      # and every Node 22.x release still bundles npm 10.x; Node 24.x bundles
+      # 11.x, which clears that floor on its own. Nothing installs npm from the
+      # registry here on purpose: the CLI that holds the OIDC token in the
+      # `publish` job is the one Node shipped with, not one fetched at release
+      # time. The package itself supports Node >=22 (see engines.node); the 24
+      # here is a publisher-side choice only.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          generate_release_notes: true
-          prerelease: ${{ env.PRERELEASE == 'true' }}
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run typecheck:all
+      - run: npm test -- --ci
+      - run: npm run build
+      # The same consumer-side checks CI runs: the tarball's shape (listing,
+      # publint, arethetypeswrong), then pack, install into a fresh project
+      # and use the public API from ESM, CommonJS and TypeScript. The smoke
+      # rebuilds dist internally.
+      - run: npm run pack:check
+      - run: npm run test:package-smoke
+      # CI audited the commit; an advisory can land between that run and this
+      # tag, and this is the last moment before anything is irreversible.
+      - run: npm audit --audit-level=high
+
+      # Pack once, here, and publish exactly this file. Anything that repacks
+      # in the publish job would be publishing an artifact nothing checked.
+      - name: Pack the tarball that will be published
+        id: pack
+        run: |
+          set -euo pipefail
+          TARBALL="$(npm pack --json | node -p "JSON.parse(require('node:fs').readFileSync(0,'utf8'))[0].filename")"
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+          echo "Packed ${TARBALL}"
+          npm pack --dry-run
+
+      # Two SBOMs, because `npm sbom` alone cannot describe what a consumer of
+      # this package installs: see the script's header.
+      - run: npm run sbom
+
+      # The release body is this version's CHANGELOG section, not a generated
+      # list of commit subjects. A reader following a release link wants the
+      # breaking changes and the upgrade notes, and those are written there.
+      #
+      # Built here, in `verify`, because it can fail on what is in the
+      # repository: the script exits 1 for a version with no section (a tag cut
+      # with the heading still `[Unreleased]`), and GitHub refuses a body over
+      # 125,000 characters. Built after `npm publish`, either failure would
+      # leave the version live on npm with no GitHub release and no SBOMs
+      # attached, and a re-run unable to get past a publish that had already
+      # happened. Everything that can fail on repository content has to fail
+      # before the one step that cannot be taken back.
+      - name: Build the release body from the CHANGELOG
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          npm run --silent changelog-section -- "${VERSION}" > release-body.md
+          CHARS="$(wc -m < release-body.md)"
+          echo "release body: ${CHARS} characters"
+          if [ "${CHARS}" -lt 1 ] || [ "${CHARS}" -gt 125000 ]; then
+            echo "::error::The CHANGELOG section for ${VERSION} is ${CHARS} characters; a GitHub release body must be 1 to 125000."
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-artifacts
+          path: |
+            ${{ steps.pack.outputs.tarball }}
+            sbom.build.cyclonedx.json
+            sbom.runtime.cyclonedx.json
+            release-body.md
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish ${{ github.ref_name }}
+    needs: verify
+    runs-on: ubuntu-latest
+    # A deployment environment is the one control that puts a human between
+    # `git push --tags` and a live `latest`. It is left commented out because
+    # turning it on is a two-sided change and enabling only this half can break
+    # publishing: the OIDC token then carries an `environment` claim, and npm's
+    # docs do not state whether a trusted publisher configured *without* an
+    # environment accepts one. To enable: create the environment with a
+    # required reviewer in repository settings, set the same name in the npm
+    # trusted publisher configuration, then uncomment.
+    # environment: npm-publish
+    permissions:
+      # Required for npm Trusted Publishing and automatic provenance, and the
+      # only thing this job is granted: the GitHub release is created by the
+      # next job, so the one third-party action that step needs never runs
+      # where a registry credential can be minted. What runs here is npm's own
+      # bundled binary and actions owned by GitHub, pinned by commit.
+      id-token: write
+    steps:
+      # No checkout: publishing a tarball needs nothing from the repository,
+      # and nothing here runs `npm ci`, so no third-party package executes in
+      # the job that can mint a registry credential.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-artifacts
+
+      - name: Confirm npm is new enough for Trusted Publishing
+        run: |
+          set -euo pipefail
+          npm --version
+          node -e 'const [maj,min,pat]=require("node:child_process").execSync("npm --version").toString().trim().split(".").map(Number); const ok = maj>11 || (maj===11 && (min>5 || (min===5 && pat>=1))); if(!ok){ console.error("::error::npm is older than 11.5.1; Trusted Publishing will fall back to token auth."); process.exit(1); }'
+
+      # Show exactly what is about to be published (the file list and the
+      # resolved version) in the run log, before anything is irreversible.
+      #
+      # `--ignore-scripts` on both: npm runs no lifecycle script when it is
+      # handed a tarball rather than a folder, and the flag makes that a
+      # statement here rather than an assumption about npm.
+      - name: Publish (dry run)
+        env:
+          TARBALL: ${{ needs.verify.outputs.tarball }}
+          DIST_TAG: ${{ needs.verify.outputs.dist-tag }}
+        run: npm publish "./${TARBALL}" --dry-run --ignore-scripts --access public --tag "${DIST_TAG}"
+
+      # Do NOT set NODE_AUTH_TOKEN here: setting it (even as empty) causes npm
+      # to try token auth and bypass OIDC. The --provenance flag is explicit:
+      # npm's docs say it is automatic with trusted publishing, but some npm
+      # versions still require the flag, and it is harmless to include it.
+      - name: Publish
+        env:
+          TARBALL: ${{ needs.verify.outputs.tarball }}
+          DIST_TAG: ${{ needs.verify.outputs.dist-tag }}
+        run: npm publish "./${TARBALL}" --ignore-scripts --access public --provenance --tag "${DIST_TAG}"
+
+  github-release:
+    name: github release ${{ github.ref_name }}
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to create the GitHub release; no id-token.
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-artifacts
+
+      # `release-body.md` came down with the artifacts: `verify` built it from
+      # the CHANGELOG and checked it, so nothing after the publish above can
+      # fail on what the repository contains.
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          body_path: release-body.md
+          prerelease: ${{ needs.verify.outputs.prerelease == 'true' }}
+          files: |
+            sbom.runtime.cyclonedx.json
+            sbom.build.cyclonedx.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Nothing here moves the `next` dist-tag after a stable release, so
+      # `npm install pkg@next` keeps resolving to the last release candidate
+      # indefinitely. It is not automated because npm documents the OIDC
+      # exchange for publishing and says nothing about whether the credential it
+      # mints also authenticates `npm dist-tag`; a step that fails *after* a
+      # successful publish would leave the release half-done and the job red.
+      # So it is a reminder in the run summary, where the person who tagged is
+      # already looking.
+      - name: Remind that the next dist-tag still points at the last prerelease
+        if: needs.verify.outputs.prerelease != 'true'
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### One manual step remains"
+            echo
+            echo "\`${VERSION}\` is now \`latest\`. The \`next\` dist-tag still points at the last"
+            echo "prerelease, so \`npm install @farukada/aws-langgraph-dynamodb-ts@next\` resolves"
+            echo "to it. Move it:"
+            echo
+            echo '```bash'
+            echo "npm dist-tag add @farukada/aws-langgraph-dynamodb-ts@${VERSION} next"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

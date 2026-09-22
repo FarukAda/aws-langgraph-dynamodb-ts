@@ -14,11 +14,12 @@ import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 import { DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { DEFAULT_RETRY_MAX_ATTEMPTS } from '../../src/shared/constants';
 import { dropResponses, installFaults } from '../integration/helpers/fault-injection';
+import { liveRegion } from './helpers/env';
 import { rejection, report } from './helpers/probe';
 import { deleteBucketCompletely, deleteTableCompletely, settleAll } from './helpers/teardown';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const region = liveRegion();
+const clientConfig = { region };
 const suffix = randomUUID();
 const tableName = `aws-langgraph-s3test-${suffix}`;
 const bucketName = `aws-langgraph-s3test-${suffix}`;
@@ -86,7 +87,7 @@ describe('S3 offload against real AWS', () => {
     await s3.send(
       new CreateBucketCommand({
         Bucket: bucketName,
-        ...(region && region !== 'us-east-1'
+        ...(region !== 'us-east-1'
           ? { CreateBucketConfiguration: { LocationConstraint: region as never } }
           : {}),
       }),

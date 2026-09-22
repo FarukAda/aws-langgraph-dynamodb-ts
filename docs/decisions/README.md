@@ -32,3 +32,4 @@ the numbering, and that no number is used twice.
 | [15](0015-gate-the-build-on-complete-coverage.md) | Gate the build on complete coverage | Accepted |
 | [16](0016-specify-behaviour-against-primary-sources-only.md) | Specify behaviour against primary sources only | Accepted |
 | [17](0017-do-not-cap-file-length-or-function-complexity.md) | Do not cap file length or function complexity | Accepted |
+| [18](0018-run-the-live-aws-tier-on-release-tags-as-a-publish-gate.md) | Run the live-AWS tier on release tags as a publish gate | Accepted |

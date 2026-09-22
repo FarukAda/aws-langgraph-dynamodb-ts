@@ -15,12 +15,12 @@ import {
 } from '../../src/shared/dynamodb/conditional-put';
 import { putIdempotently } from '../../src/shared/dynamodb/idempotent-write';
 import { ErrorCode } from '../../src/shared/errors/error-code';
+import { liveRegion } from './helpers/env';
 import { countTransactAttempts, report, rejection } from './helpers/probe';
 import { createTestTable } from './helpers/table';
 import { deleteTableCompletely, settleAll } from './helpers/teardown';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-idemtest-${randomUUID()}`;
 
 /** How many writers race one row in the contention arm. */

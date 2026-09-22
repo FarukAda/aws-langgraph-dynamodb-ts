@@ -14,11 +14,12 @@ import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { buildLifecycleRuleId, buildMarkerRuleId } from '../../src/shared/codec/s3/config';
 import { S3_RELEASE_GRACE_DAYS } from '../../src/shared/constants';
+import { liveRegion } from './helpers/env';
 import { rejection } from './helpers/probe';
 import { deleteBucketCompletely, deleteTableCompletely, settleAll } from './helpers/teardown';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const region = liveRegion();
+const clientConfig = { region };
 const suffix = randomUUID();
 const tableName = `aws-langgraph-s3lctest-${suffix}`;
 const bucketName = `aws-langgraph-s3lctest-${suffix}`;
@@ -146,7 +147,7 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     await s3.send(
       new CreateBucketCommand({
         Bucket: bucketName,
-        ...(region && region !== 'us-east-1'
+        ...(region !== 'us-east-1'
           ? { CreateBucketConfiguration: { LocationConstraint: region as never } }
           : {}),
       }),

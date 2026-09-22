@@ -1,9 +1,10 @@
 /**
  * Like live-checkpointer.mjs but LEAVES the table in place so it is visible in
- * the AWS console (region eu-west-1, table "langgraph-saver-demo").
+ * the AWS console (in the region AWS_REGION names, table
+ * "langgraph-saver-demo").
  *
- * Run:    node examples/live-persist.mjs
- * Delete: aws dynamodb delete-table --table-name langgraph-saver-demo --region eu-west-1
+ * Run:    AWS_REGION=<region> node examples/live-persist.mjs
+ * Delete: aws dynamodb delete-table --table-name langgraph-saver-demo --region "$AWS_REGION"
  */
 import {
   CreateTableCommand,
@@ -13,8 +14,8 @@ import {
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 
 import { DynamoDBSaver } from '../dist/index.js';
+import { REGION } from './_harness.mjs';
 
-const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 const TABLE = process.env.LANGGRAPH_DEMO_TABLE ?? 'langgraph-saver-demo';
 const clientConfig = { region: REGION };
 const admin = new DynamoDBClient(clientConfig);
@@ -62,7 +63,7 @@ async function main() {
   saver.destroy();
   admin.destroy();
   console.log(
-    `\nLEFT IN PLACE. Open the DynamoDB console, switch region to EU (Ireland) / ${REGION}, ` +
+    `\nLEFT IN PLACE. Open the DynamoDB console, switch region to ${REGION}, ` +
       `open table "${TABLE}" -> Explore items.`,
   );
 }

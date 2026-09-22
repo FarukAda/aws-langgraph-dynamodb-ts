@@ -15,9 +15,9 @@ import { ERROR, type Checkpoint } from '@langchain/langgraph-checkpoint';
 import { partitionKey, payloadSortKey } from '../../src/checkpointer/internal/keys';
 import { sessionPartition } from '../../src/history/internal/keys';
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
+import { liveRegion } from './helpers/env';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-awstest-${randomUUID()}`;
 
 /**

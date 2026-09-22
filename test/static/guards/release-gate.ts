@@ -105,24 +105,54 @@ function renderName(template: string, values: Record<string, string>): string {
 }
 
 /**
- * Every check-run name the CI workflow produces for one commit, with each
- * matrix job expanded the way GitHub names its runs.
+ * Every check-run name the workflows the release waits on produce for one
+ * tagged commit, with each matrix job expanded the way GitHub names its runs:
+ * `ci.yml`, and `integration-live.yml`, the live-AWS tier that runs on the same
+ * tag push.
  */
 export function ciCheckNames(): string[] {
-  return jobsOf('ci.yml').flatMap((job) =>
-    combinations(job.matrix).map((values) => renderName(job.name, values)),
+  return ['ci.yml', 'integration-live.yml'].flatMap((file) =>
+    jobsOf(file).flatMap((job) =>
+      combinations(job.matrix).map((values) => renderName(job.name, values)),
+    ),
   );
 }
 
 /** The check names the release gate refuses to publish without. */
 export function requiredCheckNames(): string[] {
-  const lines = read('release.yml');
-  const start = lines.findIndex((line) => line.includes("<<'REQUIRED'"));
-  if (start < 0) throw new Error('release.yml has no required-checks list');
-  const end = lines.findIndex((line, index) => index > start && line.trim() === 'REQUIRED');
-  if (end < 0) throw new Error('the required-checks heredoc is not terminated');
-  return lines
-    .slice(start + 1, end)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  return JSON.parse(
+    readFileSync(resolve(SRC_ROOT, '..', 'scripts', 'required-checks.json'), 'utf8'),
+  ) as string[];
+}
+
+/**
+ * The lines of each job in a workflow, keyed by job id: everything from the
+ * job's key to the next job's, so a permission or a step can be attributed to
+ * the job that holds it.
+ */
+export function jobBodies(file: string): Record<string, string[]> {
+  const bodies: Record<string, string[]> = {};
+  let inJobs = false;
+  let current: string[] | undefined;
+  for (const line of read(file)) {
+    if (/^jobs:\s*$/.test(line)) {
+      inJobs = true;
+      continue;
+    }
+    if (inJobs && /^\S/.test(line)) inJobs = false;
+    if (!inJobs) continue;
+    const job = /^ {2}([A-Za-z][\w-]*):\s*$/.exec(line);
+    if (job) {
+      current = [];
+      bodies[job[1]] = current;
+      continue;
+    }
+    current?.push(line);
+  }
+  return bodies;
+}
+
+/** The workflow's top-level `permissions:` line, as written. */
+export function topLevelPermissions(file: string): string | undefined {
+  return read(file).find((line) => /^permissions:/.test(line));
 }

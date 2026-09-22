@@ -16,13 +16,14 @@ import {
 } from '@aws-sdk/client-s3';
 
 import { DynamoDBStore } from '../../src/index';
+import { liveRegion } from './helpers/env';
 import { report } from './helpers/probe';
 import { createTestTable } from './helpers/table';
 import { deleteBucketCompletely, deleteTableCompletely, settleAll } from './helpers/teardown';
 
 const run = promisify(execFile);
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const region = liveRegion();
+const clientConfig = { region };
 const suffix = randomUUID();
 const tableName = `aws-langgraph-sweeptest-${suffix}`;
 const bucketName = `aws-langgraph-sweeptest-${suffix}`;
@@ -116,7 +117,7 @@ describe('the stranded-payload sweep against real AWS', () => {
     await s3.send(
       new CreateBucketCommand({
         Bucket: bucketName,
-        ...(region && region !== 'us-east-1'
+        ...(region !== 'us-east-1'
           ? { CreateBucketConfiguration: { LocationConstraint: region as never } }
           : {}),
       }),
@@ -210,7 +211,8 @@ describe('the stranded-payload sweep against real AWS', () => {
       tableName,
       '--prefix',
       KEY_PREFIX,
-      ...(region === undefined ? [] : ['--region', region]),
+      '--region',
+      region,
     ]);
     report(stdout.trimEnd());
 

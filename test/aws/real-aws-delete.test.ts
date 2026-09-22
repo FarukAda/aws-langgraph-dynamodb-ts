@@ -12,12 +12,12 @@ import {
   rejectedItem,
   writeIdGuard,
 } from '../../src/shared/dynamodb/conditional-put';
+import { liveRegion } from './helpers/env';
 import { rejection, report } from './helpers/probe';
 import { createTestTable } from './helpers/table';
 import { deleteTableCompletely, settleAll } from './helpers/teardown';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-deltest-${randomUUID()}`;
 
 /** The delete the design sends: one `Delete`, one guard, one token. */

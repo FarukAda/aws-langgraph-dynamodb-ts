@@ -1046,13 +1046,13 @@ npm run test:integration        # integration flows + LangGraph/LangChain contra
 npm run test:integration:down
 ```
 
-The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. Every suite creates and tears down its own uniquely named table and bucket (`aws-langgraph-<suite>test-<uuid>`) in the account of the default credential chain. It is not run by CI: a maintainer runs it on demand before a release, so no scheduled job bills this account.
+The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. Every suite creates and tears down its own uniquely named table and bucket (`aws-langgraph-<suite>test-<uuid>`) in the account of the default credential chain. It runs on every release tag, and the release does not publish unless it passed; it runs on no schedule, so no job bills the account between releases. A maintainer can also run it locally.
 
 ```bash
-npm run test:aws                # needs AWS credentials; AWS_REGION selects the region
+npm run test:aws                # needs AWS credentials and AWS_REGION; refuses to run without a region
 ```
 
-The `examples/live-*.mjs` scripts are demos against real AWS, not a test tier: `live-checkpointer.mjs` runs a LangGraph agent across two saver instances and deletes its table afterwards; `live-agent.mjs`, `live-persist.mjs` and `live-store.mjs` leave their table in place so you can inspect the rows in the console. They read `AWS_REGION` (default `eu-west-1`) and `LANGGRAPH_DEMO_TABLE` (default `langgraph-saver-demo` / `langgraph-store-demo`), and `live-agent.mjs` needs a Bedrock model enabled in that region.
+The `examples/live-*.mjs` scripts are demos against real AWS, not a test tier: `live-checkpointer.mjs` runs a LangGraph agent across two saver instances and deletes its table afterwards; `live-agent.mjs`, `live-persist.mjs` and `live-store.mjs` leave their table in place so you can inspect the rows in the console. They need `AWS_REGION` (each stops and says so when it is unset) and read `LANGGRAPH_DEMO_TABLE` (default `langgraph-saver-demo` / `langgraph-store-demo`), and `live-agent.mjs` needs a Bedrock model enabled in that region.
 
 ### What the suite does and does not prove
 
@@ -1062,7 +1062,7 @@ The `examples/live-*.mjs` scripts are demos against real AWS, not a test tier: `
 | Integration (`npm run test:integration`, DynamoDB Local) | every push and PR | end-to-end adapter flows and fault injection; the write races the compare-and-swap exists for, with an in-memory S3 in the loop; the DynamoDB semantics the unit mocks assume; parity with `InMemoryStore` and `InMemoryChatMessageHistory` under `RunnableWithMessageHistory`; a 30-way single-session append storm |
 | Conformance (`npm run test:conformance`, DynamoDB Local) | every push and PR, against the declared floor and the latest `@langchain/langgraph-checkpoint` | a compiled LangGraph graph over the saver (interrupt/resume, subgraph namespaces, forks, history windows, crash-and-resume, `Send` fan-out) and LangChain's official checkpointer validation suite |
 | Package smoke (`npm run test:package-smoke`) | every push and PR | the packed tarball installs and imports without the optional S3 peer, and its declarations type-check without it |
-| Real AWS (`npm run test:aws`) | on demand, before a release | S3 offload, lifecycle rules and the S3 error taxonomy against the real services; real 30-way append contention; Bedrock embeddings (skipped with a reason when the model is not enabled) |
+| Real AWS (`npm run test:aws`) | every release tag, gating publish; on demand locally | S3 offload, lifecycle rules and the S3 error taxonomy against the real services; real 30-way append contention; Bedrock embeddings (skipped with a reason when the model is not enabled) |
 
 Nothing in the suite provokes real throttling or `ProvisionedThroughputExceededException` (only its classification is tested), receives `UnprocessedItems` from a batch write (DynamoDB Local and on-demand tables never return them), observes DynamoDB's TTL sweep (only the stamped attribute is asserted), uses a versioned bucket, exercises a hot partition, or measures the write capacity the compare-and-swap fallback consumes. An injected `client` that keeps the SDK's own retries multiplies the library's attempt budget; the integration tier pins that count once and every adapter warns about it at construction.
 

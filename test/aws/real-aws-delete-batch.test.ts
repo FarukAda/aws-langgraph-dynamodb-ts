@@ -11,12 +11,12 @@ import {
 } from '../../src/shared/dynamodb/conditional-put';
 import { deleteIdempotently } from '../../src/shared/dynamodb/idempotent-write';
 import { ErrorCode } from '../../src/shared/errors/error-code';
+import { liveRegion } from './helpers/env';
 import { countTransactAttempts, rejection, report } from './helpers/probe';
 import { createTestTable } from './helpers/table';
 import { deleteTableCompletely, settleAll } from './helpers/teardown';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-delbatchtest-${randomUUID()}`;
 
 /** How many deleters race one row in the contention arm. */

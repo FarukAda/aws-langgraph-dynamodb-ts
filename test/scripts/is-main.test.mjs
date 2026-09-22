@@ -5,7 +5,10 @@
  * the entry point and the calling module are the same file once symbolic
  * links are resolved — because `import.meta.filename === process.argv[1]`
  * resolves links on one side and not the other, so a script reached through a
- * linked path compares unequal, does nothing, and exits 0. Every case here
+ * linked path compares unequal, does nothing, and exits 0. For
+ * `require-green-ci.mjs` exit 0 *is* the answer — "every required check is
+ * present and successful. Publish." — so a gate that has not looked would say
+ * yes. Every case here
  * runs under `node --test` because `scripts/is-main.mjs` is an ESM `.mjs`
  * module the jest tier does not transpile.
  */
@@ -56,7 +59,19 @@ describe('isMain', () => {
   });
 });
 
+/** Run a script as CI does, and report how it exited. */
+const run = (path, env, args = []) =>
+  spawnSync(process.execPath, [path, ...args], { env: { ...process.env, ...env } }).status;
+
 describe('a script run through a linked path', () => {
+  it('require-green-ci still evaluates: no check runs is "wait" (2), never "publish" (0)', () => {
+    assert.equal(run(join(linked, 'require-green-ci.mjs'), { CHECK_RUNS: '' }), 2);
+  });
+
+  it('changelog-section still refuses a version that has no section', () => {
+    assert.equal(run(join(linked, 'changelog-section.mjs'), {}, ['0.0.0-no-such-version']), 1);
+  });
+
   it('peer-floors still prints the floors', () => {
     const result = spawnSync(process.execPath, [join(linked, 'peer-floors.mjs')], {
       encoding: 'utf8',

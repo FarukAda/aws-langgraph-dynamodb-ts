@@ -1,10 +1,10 @@
 /**
  * Populates a real DynamoDB store table with semantic-search items and LEAVES
- * it in place so it is visible in the AWS console (region eu-west-1, table
- * "langgraph-store-demo").
+ * it in place so it is visible in the AWS console (in the region AWS_REGION
+ * names, table "langgraph-store-demo").
  *
- * Run:    node examples/live-store.mjs
- * Delete: aws dynamodb delete-table --table-name langgraph-store-demo --region eu-west-1
+ * Run:    AWS_REGION=<region> node examples/live-store.mjs
+ * Delete: aws dynamodb delete-table --table-name langgraph-store-demo --region "$AWS_REGION"
  */
 import {
   CreateTableCommand,
@@ -14,8 +14,8 @@ import {
 import { BedrockEmbeddings } from '@langchain/aws';
 
 import { DynamoDBStore } from '../dist/index.js';
+import { REGION } from './_harness.mjs';
 
-const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 const TABLE = process.env.LANGGRAPH_DEMO_TABLE ?? 'langgraph-store-demo';
 const clientConfig = { region: REGION };
 const admin = new DynamoDBClient(clientConfig);
@@ -62,7 +62,7 @@ async function main() {
   store.destroy();
   admin.destroy();
   console.log(
-    `\nLEFT IN PLACE. DynamoDB console -> region EU (Ireland)/${REGION} -> table "${TABLE}" -> Explore items.`,
+    `\nLEFT IN PLACE. DynamoDB console -> region ${REGION} -> table "${TABLE}" -> Explore items.`,
   );
 }
 
