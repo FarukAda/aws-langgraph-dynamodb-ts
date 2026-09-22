@@ -4,7 +4,7 @@ Run conditions: run 1 in [`README.md`](./README.md). Clients built with
 `maxAttempts: 1` unless stated otherwise, so the SDK's own retries could not mask
 the failures being counted.
 
-## E-5: under concurrent writers on one row, most attempts come back as a retryable conflict rather than a clean win-or-lose
+## E-5: concurrent conditional transactional writers on one row do meet the retryable `TransactionConflict` failure, not only `ConditionalCheckFailed`
 
 **Request** — N writers each send the library's exact write shape (a one-item
 conditional `TransactWriteItems`, `ReturnValuesOnConditionCheckFailure: 'ALL_OLD'`,
@@ -31,19 +31,33 @@ the same condition as a plain conditional `PutItem`.
 ```
 
 **What this settles.** A one-item conditional `TransactWriteItems` against a
-contended row converts most would-be condition failures into a retryable
+contended row does not fail cleanly the way a plain conditional `PutItem` does:
+a concurrent attempt on the same row can be turned away with a retryable
 `TransactionCanceledException` carrying `CancellationReasons[0].Code ===
-'TransactionConflict'` — 38 % of attempts at two concurrent writers, rising with
-width, against 0 % for the plain conditional `PutItem` it replaces at every width
-tested. A small rate of `InternalServerError` (1 in 100 at the worst width) also
-appears only on the transactional path. The bare `TransactionConflictException`
-(rather than a cancellation reason) is what a *non-transactional* operation sees
-when it races a transaction on the same item, not what the transaction itself
-raises.
+'TransactionConflict'` — a genuinely different failure from
+`ConditionalCheckFailed`, and one the plain conditional `PutItem` this design
+replaces never produced in this probe, at any width tested (0 %). A small rate
+of `InternalServerError` (1 in 100 at the worst width) also appears only on the
+transactional path. The bare `TransactionConflictException` (rather than a
+cancellation reason) is what a *non-transactional* operation sees when it races
+a transaction on the same item, not what the transaction itself raises.
+
+**Measured, but not asserted by the paired live test.** The source recorded a
+conflict rate — 38 % / 65 % / 86 % at 2 / 5 / 20 concurrent writers — but each
+figure is an *aggregate* over several rounds (the five-writer figure is 13 of 20
+requests over 4 rounds), and the source kept no per-round breakdown. The
+aggregate 3-`ConditionalCheckFailed`-loser count at that width is consistent
+with a round where only 1 of 5 writers actually conflicted, so a single live run
+of this width could plausibly land far below 65 %. A release-gating test must
+not fail on ordinary round-to-round variance it cannot bound, so E-5's test
+asserts only that the `TransactionConflict` failure occurs at all — not how
+often. The rate above is recorded as the measurement it is, not as a contract
+the live test checks.
 
 **What the probe did not cover.** Contention across more than one row at a time
-(fan-out contention rather than hot-row contention), and rates on a
-provisioned-capacity table rather than on-demand.
+(fan-out contention rather than hot-row contention), rates on a
+provisioned-capacity table rather than on-demand, and any per-round breakdown of
+the aggregate figures above.
 
 ## E-6: the library's default retry budget absorbs the conflicts
 

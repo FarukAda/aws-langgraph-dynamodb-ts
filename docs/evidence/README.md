@@ -42,7 +42,7 @@ it identifies the maintainer's, and nothing in a probe can be re-derived from it
 | E-2 | A token whose first use was cancelled caches no result, and a replay is re-evaluated | [cancelled-transaction-token.md](cancelled-transaction-token.md) | `test/aws/real-aws-idempotency.test.ts` |
 | E-3 | A cancelled token still reserves its parameters — a changed body is refused, not re-evaluated | [cancelled-transaction-token.md](cancelled-transaction-token.md) | `test/aws/real-aws-idempotency.test.ts` |
 | E-4 | `CancellationReasons[].Item` through `DynamoDBDocument` is raw, unmarshalled `AttributeValue` data | [transaction-rejected-row.md](transaction-rejected-row.md) | `test/aws/real-aws-idempotency.test.ts` |
-| E-5 | Under concurrent writers on one row, most attempts come back as a retryable conflict rather than a clean win-or-lose | [transaction-conflict-contention.md](transaction-conflict-contention.md) | `test/aws/real-aws-idempotency.test.ts` |
+| E-5 | Concurrent conditional transactional writers on one row do meet the retryable `TransactionConflict` failure, not only `ConditionalCheckFailed` | [transaction-conflict-contention.md](transaction-conflict-contention.md) | `test/aws/real-aws-idempotency.test.ts` |
 | E-6 | The library's default retry budget absorbs the conflicts | [transaction-conflict-contention.md](transaction-conflict-contention.md) | `test/aws/real-aws-idempotency.test.ts` |
 | E-7 | `PutObject` with `If-None-Match: *` against an existing key is refused | [s3-conditional-create.md](s3-conditional-create.md) | `test/aws/real-aws-s3.test.ts` |
 | E-8 | A conditional `PutObject` that loses a race is refused with `ConditionalRequestConflict`/409 | [s3-conditional-create.md](s3-conditional-create.md) | `test/aws/real-aws-s3.test.ts` |

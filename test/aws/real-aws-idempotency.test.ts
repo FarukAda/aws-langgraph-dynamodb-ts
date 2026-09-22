@@ -229,22 +229,27 @@ describe('the idempotency contract this design rests on, against real AWS', () =
   });
 
   /**
-   * (docs/evidence/transaction-conflict-contention.md, E-5) — measured, not
-   * merely asserted: that the design's write shape is genuinely conflict-prone
-   * under contention, and that a plain conditional `PutItem` racing itself
-   * (no transaction involved) is not.
+   * (docs/evidence/transaction-conflict-contention.md, E-5) — that the
+   * design's write shape genuinely meets a *different* failure under
+   * contention, `TransactionConflict`, not only `ConditionalCheckFailed`, and
+   * that a plain conditional `PutItem` racing itself (no transaction
+   * involved) never does.
    *
    * Driven by raw `doc.transactWrite` calls at `maxAttempts: 1`, bypassing the
    * library's own retry helper entirely (see E-6 for that), so a conflict
    * cannot be silently absorbed before it is counted.
    *
-   * The claim says "most" attempts conflict, so the assertion asks for a
-   * majority rather than merely one: `docs/evidence/transaction-conflict-contention.md`
-   * records 65 % at this same five-writer width, well clear of the 50 % line.
-   * A single-conflict threshold would pass on a day the recorded shape did
-   * not hold at all, which is the gap this majority check closes.
+   * This asserts only that the failure **occurs**, not how often. The evidence
+   * file records a 65 % rate at this same five-writer width, but that figure
+   * is an aggregate over four rounds with no per-round breakdown recorded — the
+   * source's own numbers are consistent with a round where only one of five
+   * writers conflicted. A release-gating live test cannot bound round-to-round
+   * variance it was never given, so pinning any threshold above "at least one"
+   * here would risk failing this gate on an ordinary day rather than a real
+   * regression. See the evidence file for the measured rate as a recorded
+   * observation, not a contract this test checks.
    */
-  it('E-5: most concurrent conditional writers on one row meet a retryable conflict, and a plain PutItem control meets none', async () => {
+  it('E-5: at least one concurrent conditional writer on one row meets the retryable TransactionConflict failure, and a plain PutItem control meets none', async () => {
     const base = new DynamoDBClient({ ...clientConfig, maxAttempts: 1 });
     const raw = DynamoDBDocument.from(base);
 
@@ -283,9 +288,10 @@ describe('the idempotency contract this design rests on, against real AWS', () =
         `PutItem attempts did`,
     );
 
-    // "Most" means a majority: strictly more than half of the writers must
-    // have met a retryable conflict, not merely at least one.
-    expect(conflicted.length).toBeGreaterThan(WRITERS / 2);
+    // Existence, not rate: the aggregate 65% this width recorded has no
+    // per-round breakdown behind it, so this asserts only that the failure
+    // happened at least once, never how often.
+    expect(conflicted.length).toBeGreaterThan(0);
     expect(controlConflicted).toHaveLength(0);
   });
 
