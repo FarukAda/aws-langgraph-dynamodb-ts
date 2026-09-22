@@ -49,7 +49,7 @@
     "test:conformance": "jest --config jest.conformance.config.ts",
     "test:aws": "jest --config jest.aws.config.ts",
     "test:static": "jest test/static",
-    "test:scripts": "node --test test/scripts/**/*.test.mjs",
+    "test:scripts": "node --test \"test/scripts/**/*.test.mjs\"",
     "test:package-smoke": "node --test test/package-smoke/smoke.test.mjs",
     "test:consumer-types": "node --test test/package-smoke/consumer-types.test.mjs",
     "test:surface": "node --test test/surface/surface.test.mjs",

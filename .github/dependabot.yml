@@ -27,6 +27,7 @@ updates:
     groups:
       codeql-action:
         patterns:
-          - "github/codeql-action*"
+          - "github/codeql-action"
+          - "github/codeql-action/*"
     commit-message:
       prefix: "ci"
