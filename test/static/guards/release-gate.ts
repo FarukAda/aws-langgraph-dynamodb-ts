@@ -156,3 +156,29 @@ export function jobBodies(file: string): Record<string, string[]> {
 export function topLevelPermissions(file: string): string | undefined {
   return read(file).find((line) => /^permissions:/.test(line));
 }
+
+/**
+ * The keys of a workflow's top-level `on:` block — the events that start it —
+ * so a trigger added later is seen by name rather than by matching text.
+ */
+export function triggers(file: string): string[] {
+  const events: string[] = [];
+  let inOn = false;
+  for (const line of read(file)) {
+    if (/^on:\s*$/.test(line)) {
+      inOn = true;
+      continue;
+    }
+    if (!inOn) continue;
+    if (/^\S/.test(line)) break;
+    const event = /^ {2}([A-Za-z_][\w-]*):/.exec(line);
+    if (event) events.push(event[1]);
+  }
+  if (!inOn) throw new Error(`${file} has no block-form on: this guard can read`);
+  return events;
+}
+
+/** A workflow's whole text, for the few assertions a line reader cannot express. */
+export function readWorkflow(file: string): string {
+  return read(file).join('\n');
+}

@@ -47,10 +47,13 @@ workflow file with the credential that can publish.
 Negative. Between releases a claim is only as fresh as the last tag. A live
 failure blocks a release, including one caused by AWS rather than by this
 package: a throttled account or a regional incident stops a publish until
-the tier is re-run green. There is
+the tier is re-run green, and the release workflow is then re-run as well,
+because a release that already stopped does not resume on its own. There is
 no way to run the gate itself without tagging; a maintainer can still run
 `npm run test:aws` locally with their own credentials.
 
-Neutral. The cost is bounded to one run per tag. The OIDC role behind the
-repository's `AWS_TEST_ROLE_ARN` has to exist, and stay scoped to
-`aws-langgraph-*test-*` tables and buckets, for any release to publish.
+Neutral. The cost is bounded to one run per tag. The OIDC role named by the
+repository variable or secret `AWS_TEST_ROLE_ARN` has to exist, and stay
+scoped to `aws-langgraph-*test-*` tables and buckets, and the repository
+variable or secret `AWS_TEST_REGION` has to be set, for any release to
+publish.

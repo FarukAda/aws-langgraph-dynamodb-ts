@@ -6,7 +6,8 @@ import { sharedJestConfig } from './jest.shared.config.ts';
  * chain, in the region `AWS_REGION` names; a run without one refuses to start.
  *
  * It runs on every release tag, in `.github/workflows/integration-live.yml`,
- * and gates publishing: the release waits for its `live-aws integration`
+ * assuming the role the repository variable or secret `AWS_TEST_ROLE_ARN`
+ * names in the region `AWS_TEST_REGION` names, and gates publishing: the release waits for its `live-aws integration`
  * check (docs/decisions, record 18). A maintainer can also run it locally
  * with their own credentials:
  *

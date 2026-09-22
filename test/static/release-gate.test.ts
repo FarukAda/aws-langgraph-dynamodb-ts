@@ -1,8 +1,10 @@
 import {
   ciCheckNames,
   jobBodies,
+  readWorkflow,
   requiredCheckNames,
   topLevelPermissions,
+  triggers,
 } from './guards/release-gate';
 
 /**
@@ -57,6 +59,18 @@ describe('only the publish job can mint a credential, and it runs no third-party
     expect(topLevelPermissions('release.yml')).toBe('permissions: {}');
   });
 
+  it('starts from a pushed tag and nothing else, so no dispatch can publish a branch', () => {
+    expect(triggers('release.yml')).toEqual(['push']);
+    expect(readWorkflow('release.yml')).toMatch(/^ {4}tags: \['v\*'\]$/m);
+    expect(readWorkflow('release.yml')).not.toMatch(/^ {4}branches:/m);
+  });
+
+  it('passes --ignore-scripts to every npm publish', () => {
+    const publishes = jobs.publish.map(command).filter((line) => line?.startsWith('npm publish'));
+    expect(publishes).toHaveLength(2);
+    for (const line of publishes) expect(line).toContain('--ignore-scripts');
+  });
+
   it('gives id-token to publish and to no other job', () => {
     expect(Object.keys(jobs).sort()).toEqual(['github-release', 'publish', 'verify']);
     expect(Object.keys(jobs).filter((id) => holdsIdToken(jobs[id]))).toEqual(['publish']);
@@ -82,5 +96,29 @@ describe('only the publish job can mint a credential, and it runs no third-party
     expect(publishes.length).toBeGreaterThan(0);
     for (const line of publishes) expect(line).toContain('"./${TARBALL}"');
     expect(jobs.publish.join('\n')).toContain('TARBALL: ${{ needs.verify.outputs.tarball }}');
+  });
+});
+
+/**
+ * The live tier is a publish gate only while it cannot pass vacuously and
+ * grants nothing beyond its one job. A skipped Jest suite exits 0, so the
+ * zero-test check is what stops a run that made no AWS call from going green.
+ */
+describe('the live-AWS workflow', () => {
+  const text = readWorkflow('integration-live.yml');
+
+  it('runs on release tags only', () => {
+    expect(triggers('integration-live.yml')).toEqual(['push']);
+    expect(text).toMatch(/^ {4}tags: \['v\*'\]$/m);
+  });
+
+  it('grants nothing at the top of the workflow', () => {
+    expect(topLevelPermissions('integration-live.yml')).toBe('permissions: {}');
+  });
+
+  it('fails a run that passed having run no test', () => {
+    expect(text).toContain('--json --outputFile=jest-aws.json');
+    expect(text).toContain(`numPassedTests`);
+    expect(text).toMatch(/if \[ "\$\{PASSED\}" -lt 1 \]; then\s+echo "::error::[^"]*"\s+exit 1/);
   });
 });

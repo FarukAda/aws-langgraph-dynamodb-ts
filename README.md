@@ -1046,7 +1046,7 @@ npm run test:integration        # integration flows + LangGraph/LangChain contra
 npm run test:integration:down
 ```
 
-The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. Every suite creates and tears down its own uniquely named table and bucket (`aws-langgraph-<suite>test-<uuid>`) in the account of the default credential chain. It runs on every release tag, and the release does not publish unless it passed; it runs on no schedule, so no job bills the account between releases. A maintainer can also run it locally.
+The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. Every suite creates and tears down its own uniquely named table and bucket (`aws-langgraph-<suite>test-<uuid>`) in the account of the default credential chain. It runs on every release tag, assuming the OIDC role named by the repository variable or secret `AWS_TEST_ROLE_ARN` in the region `AWS_TEST_REGION` names, and the release does not publish unless it passed; it runs on no schedule, so no job bills the account between releases. A maintainer can also run it locally.
 
 ```bash
 npm run test:aws                # needs AWS credentials and AWS_REGION; refuses to run without a region

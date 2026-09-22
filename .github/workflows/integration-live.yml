@@ -57,11 +57,14 @@ jobs:
           cache: npm
       - run: npm ci
       # The role is scoped to `aws-langgraph-*test-*` tables and buckets, the
-      # only names the suites create (CONTRIBUTING.md, "Real-AWS tests").
+      # only names the suites create (CONTRIBUTING.md, "Real-AWS tests"). Its
+      # ARN and the region are each read from a repository variable or, when
+      # none is set, a secret of the same name. Neither is a credential; an
+      # empty value fails this step, and so the release gate, closed.
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ secrets.AWS_TEST_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_TEST_REGION }}
+          role-to-assume: ${{ vars.AWS_TEST_ROLE_ARN || secrets.AWS_TEST_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEST_REGION || secrets.AWS_TEST_REGION }}
 
       # No resource setup step: every suite creates and deletes its own tables
       # and buckets (test/aws/helpers/table.ts, teardown.ts).
@@ -73,7 +76,7 @@ jobs:
       # line here can never turn this job green without a single AWS call.
       - name: Run the live-AWS tier
         env:
-          AWS_REGION: ${{ secrets.AWS_TEST_REGION }}
+          AWS_REGION: ${{ vars.AWS_TEST_REGION || secrets.AWS_TEST_REGION }}
         run: |
           set -euo pipefail
           npm run test:aws -- --json --outputFile=jest-aws.json
