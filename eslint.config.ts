@@ -90,6 +90,21 @@ export default defineConfig([
         { vars: 'all', varsIgnorePattern: '^_', args: 'after-used', argsIgnorePattern: '^_' },
       ],
       'no-instanceof/no-instanceof': 'error',
+      /**
+       * Deferred to a later phase: enabling `recommendedTypeChecked` found 872
+       * hits across the tree. Rule 53 requires a clean tree before a blocking
+       * check goes on, so the four correctness rules that check `await`
+       * discipline (`no-floating-promises`, `no-misused-promises`,
+       * `await-thenable`, `require-await`) and every other type-checked rule
+       * with 20 or fewer hits were fixed and stay on. The four below each had
+       * more than 20 and are deferred: `no-unsafe-argument` (117 hits),
+       * `no-unsafe-assignment` (71 hits), `no-unsafe-member-access` (70 hits),
+       * `no-unsafe-return` (44 hits).
+       */
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
     },
   },
   {

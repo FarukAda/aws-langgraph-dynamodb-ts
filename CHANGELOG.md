@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Internal
+
+- Type-aware lint and unused-code checks now gate the build; no behaviour change.
+
 ## [1.0.0-rc.2] - 2026-09-21
 
 The adapters, the single-session adapter, the factory and `backfillRecencyIndex` now refuse a caller's mistake with a `ValidationError` naming the argument, in every case listed under *Changed (breaking)* below, where they used to ignore it, crash, answer with a silently empty result or report it as an AWS failure. No case in the surface tier's table of malformed inputs now ends in `UpstreamError` or `RetryExhaustedError`.
