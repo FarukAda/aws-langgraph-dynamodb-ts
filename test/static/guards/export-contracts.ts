@@ -47,11 +47,11 @@ function classGaps(node: ts.ClassDeclaration, source: string, file: string): Con
       ts.isConstructorDeclaration(member) ||
       (ts.isMethodDeclaration(member) && member.name !== undefined);
     if (!named) continue;
-    const declaration = member as ts.ConstructorDeclaration | ts.MethodDeclaration;
+    const declaration = member;
     if (isPrivate(declaration)) continue;
     const label = ts.isConstructorDeclaration(member)
       ? `${name}.constructor`
-      : `${name}.${(member as ts.MethodDeclaration).name.getText()}`;
+      : `${name}.${member.name.getText()}`;
     const doc = docOf(member, source);
     const missing = REQUIRED_SECTIONS.filter((section) => !doc.includes(section));
     if (missing.length > 0) gaps.push({ file, name: label, missing });

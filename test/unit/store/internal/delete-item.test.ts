@@ -48,7 +48,7 @@ function trackingOffloader() {
   return {
     shouldOffload: () => true,
     buildKey: (parts: string[], objectId: string) => [...parts, objectId].join('/'),
-    upload: async (key: string) => key,
+    upload: (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: () => true,
   };
@@ -123,7 +123,7 @@ describe('deleteStoreItem deletes only the row the caller observed', () => {
    */
   it('sends no write when the pre-read finds no row, and still runs the trailing cleanup', async () => {
     const backend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
-    const h = harness({ vectorBackend: backend as never });
+    const h = harness({ vectorBackend: backend });
     const table = revisionGuardedTable([row('r0')]);
     answerDeleteReads(h.mock, undefined);
     h.mock.on(TransactWriteCommand).callsFake(table.handler);

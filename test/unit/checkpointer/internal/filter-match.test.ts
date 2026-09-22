@@ -54,7 +54,7 @@ describe('matchesFilter on metadata that is not an object', () => {
     ['a string', 'meta'],
     ['a number', 7],
   ])('matches no clause when the metadata is %s', (_name, metadata) => {
-    expect(matchesFilter(metadata as never, { source: 'loop' } as never)).toBe(false);
+    expect(matchesFilter(metadata as never, { source: 'loop' })).toBe(false);
   });
 
   it('still matches an empty filter, which constrains nothing', () => {

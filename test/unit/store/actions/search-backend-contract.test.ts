@@ -57,7 +57,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     };
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
     });
     const found = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q', limit: 6 });
     expect(found).toHaveLength(6);
@@ -92,7 +92,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     const warn = jest.fn();
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
       logger: { ...SILENT_LOGGER, warn },
     });
     await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
@@ -108,7 +108,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     const vectorBackend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
     });
     await expect(
       searchItems(ctx, { namespacePrefix: ['users'], query: 'q' }),
@@ -138,7 +138,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     const warn = jest.fn();
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
       logger: { ...SILENT_LOGGER, warn },
     });
     await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
@@ -170,7 +170,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     const warn = jest.fn();
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
       logger: { ...SILENT_LOGGER, warn },
     });
     const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
@@ -206,7 +206,7 @@ describe('vectorScoreDirection (F4)', () => {
     const warn = jest.fn();
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
       vectorScoreDirection: 'distance',
       logger: { ...SILENT_LOGGER, warn },
     });
@@ -240,7 +240,7 @@ describe('vectorScoreDirection (F4)', () => {
     const warn = jest.fn();
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
       vectorScoreDirection: 'relevance',
       logger: { ...SILENT_LOGGER, warn },
     });

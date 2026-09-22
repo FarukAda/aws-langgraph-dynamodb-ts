@@ -18,7 +18,7 @@ function context(client: HistoryContext['client']): HistoryContext {
     logger: SILENT_LOGGER,
     ulid: () => 'U',
     onCorruptMessage: 'skip',
-  } as HistoryContext;
+  };
 }
 
 /** `undefined` stands for an attribute the row does not carry, which DynamoDB never returns. */

@@ -19,7 +19,7 @@ function context(): CheckpointerContext {
     tableName: 'ckpt',
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
-  } as CheckpointerContext;
+  };
 }
 
 const scope = (over: Partial<ListScope> = {}): ListScope => ({
@@ -41,16 +41,15 @@ const inline = (value: unknown) => ({
   bytes: new TextEncoder().encode(JSON.stringify(value)),
 });
 
-const meta = (over: Partial<CheckpointMetaItem> = {}): CheckpointMetaItem =>
-  ({
-    PK: 'CHKPT#t',
-    SK: 'META##c1',
-    threadId: 't',
-    checkpointNs: '',
-    checkpointId: 'c1',
-    metadata: inline({}),
-    ...over,
-  }) as CheckpointMetaItem;
+const meta = (over: Partial<CheckpointMetaItem> = {}): CheckpointMetaItem => ({
+  PK: 'CHKPT#t',
+  SK: 'META##c1',
+  threadId: 't',
+  checkpointNs: '',
+  checkpointId: 'c1',
+  metadata: inline({}),
+  ...over,
+});
 
 describe('readListScope', () => {
   it('reads every identifier and option a list covers', () => {
@@ -347,7 +346,7 @@ describe('passesMetadataFilter', () => {
 });
 
 describe('readListScope error shape', () => {
-  it('names the offending option on the error it raises', async () => {
+  it('names the offending option on the error it raises', () => {
     try {
       readListScope({ configurable: { thread_id: 't' } }, { limit: 1.5 });
       throw new Error('should have thrown');

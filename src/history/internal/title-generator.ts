@@ -59,8 +59,7 @@ function textOf(content: StoredContent | undefined): string | undefined {
  */
 export function deriveTitle(messages: StoredMessage[]): string | undefined {
   const firstHuman = messages.find((message) => message.type === 'human');
-  const content =
-    firstHuman === undefined ? undefined : textOf(firstHuman.data.content as StoredContent);
+  const content = firstHuman === undefined ? undefined : textOf(firstHuman.data.content);
   if (content === undefined || content.length === 0) return undefined;
   const codePoints = [...content];
   if (codePoints.length <= MAX_TITLE_LENGTH) return content;

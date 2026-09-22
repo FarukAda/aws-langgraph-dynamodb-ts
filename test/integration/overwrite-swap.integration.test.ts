@@ -52,9 +52,7 @@ describe('overwrite compare-and-swap (F5)', () => {
     const rejected = settled.filter((r) => r.status === 'rejected');
 
     expect(rejected).toHaveLength(1);
-    expect((rejected[0] as PromiseRejectedResult).reason.name).toBe(
-      'ConditionalCheckFailedException',
-    );
+    expect(rejected[0].reason.name).toBe('ConditionalCheckFailedException');
   });
 
   it('pins the absence of a revision on a row written before 0.9.0', async () => {

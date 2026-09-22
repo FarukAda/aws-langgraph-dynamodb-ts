@@ -13,7 +13,7 @@ import {
 } from '../../../shared/helpers/ddb-mock';
 
 jest.mock('../../../../src/shared/codec/s3/orphans', () => ({
-  cleanUpS3Orphans: jest.fn(async () => undefined),
+  cleanUpS3Orphans: jest.fn(() => undefined),
 }));
 
 const cleanUpMock = cleanUpS3Orphans as jest.MockedFunction<typeof cleanUpS3Orphans>;
@@ -28,7 +28,7 @@ const previous = {
 const offloader = {
   shouldOffload: () => false,
   buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-  upload: async (key: string) => key,
+  upload: (key: string) => key,
   deleteBatch: jest.fn(),
   ownsKey: () => true,
 };
@@ -54,7 +54,7 @@ describe('store put/delete bind row-sourced S3 keys to the item (SEC-03)', () =>
     /** `readExisting` sees the previous value; the read after the commit sees this put's inline one. */
     mock
       .on(GetCommand)
-      .callsFake(async (input: { ProjectionExpression: string }) =>
+      .callsFake((input: { ProjectionExpression: string }) =>
         input.ProjectionExpression.startsWith('#c')
           ? { Item: { createdAt: 'c', value: previous, rev: 'r0' } }
           : { Item: { rev: 'r1', value: { location: PayloadLocation.INLINE } } },

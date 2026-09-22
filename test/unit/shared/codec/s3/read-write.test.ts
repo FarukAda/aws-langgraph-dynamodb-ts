@@ -134,7 +134,7 @@ describe('uploadObject', () => {
 describe('downloadObject', () => {
   it('returns the body bytes', async () => {
     s3Mock.on(GetObjectCommand).resolves({
-      Body: { transformToByteArray: async () => new Uint8Array([7, 8]) } as never,
+      Body: { transformToByteArray: () => new Uint8Array([7, 8]) } as never,
     });
     expect(
       await downloadObject(new S3Client({ region: 'us-east-1' }), 'b', 'k.bin', 1024 * 1024),
@@ -199,7 +199,7 @@ describe('S3 retry classification (CODEC-02)', () => {
     s3Mock
       .on(GetObjectCommand)
       .rejectsOnce(Object.assign(new Error('socket timed out'), { name: 'TimeoutError' }))
-      .resolves({ Body: { transformToByteArray: async () => new Uint8Array([1]) } as never });
+      .resolves({ Body: { transformToByteArray: () => new Uint8Array([1]) } as never });
     await expect(downloadObject(client(), 'b', 'k.bin', 1024 * 1024)).resolves.toEqual(
       new Uint8Array([1]),
     );
@@ -224,7 +224,7 @@ describe('download size cap (CODEC-17, SEC-05)', () => {
   const client = () => new S3Client({ region: 'us-east-1' });
 
   it('refuses an object whose ContentLength exceeds the cap without reading the body', async () => {
-    const transformToByteArray = jest.fn(async () => new Uint8Array([1]));
+    const transformToByteArray = jest.fn(() => new Uint8Array([1]));
     s3Mock.on(GetObjectCommand).resolves({
       ContentLength: 6 * 1024 ** 3,
       Body: { transformToByteArray } as never,
@@ -242,7 +242,7 @@ describe('download size cap (CODEC-17, SEC-05)', () => {
     const destroy = jest.fn();
     const body = {
       destroy,
-      async *[Symbol.asyncIterator]() {
+      *[Symbol.asyncIterator]() {
         for (const chunk of [new Uint8Array(3), new Uint8Array(3), new Uint8Array(3)]) {
           yielded += 1;
           yield chunk;
@@ -259,7 +259,7 @@ describe('download size cap (CODEC-17, SEC-05)', () => {
 
   it('assembles a stream that stays under the cap', async () => {
     const body = {
-      async *[Symbol.asyncIterator]() {
+      *[Symbol.asyncIterator]() {
         yield new Uint8Array([1, 2]);
         yield new Uint8Array([3]);
       },
@@ -272,7 +272,7 @@ describe('download size cap (CODEC-17, SEC-05)', () => {
 
   it('falls back to transformToByteArray for a non-iterable body and still enforces the cap', async () => {
     s3Mock.on(GetObjectCommand).resolves({
-      Body: { transformToByteArray: async () => new Uint8Array(6) } as never,
+      Body: { transformToByteArray: () => new Uint8Array(6) } as never,
     });
     await expect(downloadObject(client(), 'b', 'k.bin', 5)).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,
@@ -283,7 +283,7 @@ describe('download size cap (CODEC-17, SEC-05)', () => {
 describe('download size cap on a stream without destroy()', () => {
   it('abandons a destroy-less stream over the cap with the same typed error', async () => {
     const body = {
-      async *[Symbol.asyncIterator]() {
+      *[Symbol.asyncIterator]() {
         yield new Uint8Array(6);
       },
     };

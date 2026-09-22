@@ -273,7 +273,5 @@ export async function passesMetadataFilter(
 ): Promise<MetadataVerdict> {
   if (!scope.filter) return { pass: true };
   const metadata = await readMetadata(context, meta, meta.threadId, scope.signal);
-  return matchesFilter(metadata as Record<string, FilterValue>, scope.filter)
-    ? { pass: true, metadata }
-    : { pass: false };
+  return matchesFilter(metadata, scope.filter) ? { pass: true, metadata } : { pass: false };
 }

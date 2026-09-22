@@ -186,7 +186,7 @@ describe('appendChunks', () => {
       return Promise.resolve({ UnprocessedItems: {} });
     });
     const offloader = {
-      deleteBatch: jest.fn(async (keys: string[]) => {
+      deleteBatch: jest.fn((keys: string[]) => {
         if (keys.includes('k1')) order.push('s3-delete-k1');
         return [];
       }),

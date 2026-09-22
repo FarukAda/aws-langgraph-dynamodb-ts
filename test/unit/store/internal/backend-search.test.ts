@@ -23,7 +23,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
   };
 }
 
-const index = { dims: 2, embeddings: { embedQuery: async () => [0, 1] } as never };
+const index = { dims: 2, embeddings: { embedQuery: () => [0, 1] } as never };
 
 const backendWith = (matches: unknown[]) => ({
   upsert: jest.fn(),
@@ -52,7 +52,7 @@ describe('searchViaBackend', () => {
     ]);
     const found = await searchViaBackend(
       ctx,
-      backend as never,
+      backend,
       index,
       { namespacePrefix: ['users'], query: 'q' },
       0,
@@ -82,7 +82,7 @@ describe('searchViaBackend', () => {
     ]);
     const found = await searchViaBackend(
       ctx,
-      backend as never,
+      backend,
       index,
       { namespacePrefix: ['users'], query: 'q' },
       0,
@@ -103,7 +103,7 @@ describe('searchViaBackend', () => {
     const backend = backendWith([{ namespace: ['users', 'u1'], key: 'gone', score: 0.9 }]);
     const found = await searchViaBackend(
       context(client),
-      backend as never,
+      backend,
       index,
       { namespacePrefix: ['users'], query: 'q' },
       0,
@@ -135,7 +135,7 @@ describe('searchViaBackend', () => {
       searchViaBackend(
         context(client),
         backend as never,
-        { dims: 3, embeddings: { embedQuery: async () => [0, 1] } as never },
+        { dims: 3, embeddings: { embedQuery: () => [0, 1] } as never },
         { namespacePrefix: ['users'], query: 'q' },
         0,
         1,
@@ -150,7 +150,7 @@ describe('searchViaBackend', () => {
     const backend = backendWith([]);
     const found = await searchViaBackend(
       context(client),
-      backend as never,
+      backend,
       index,
       { namespacePrefix: ['users'], query: 'q' },
       0,
@@ -199,7 +199,7 @@ describe('searchViaBackend', () => {
     const backend = backendWith(matches);
     const found = await searchViaBackend(
       ctx,
-      backend as never,
+      backend,
       index,
       { namespacePrefix: ['users'], query: 'q', filter: { keep: true } },
       0,
@@ -233,7 +233,7 @@ describe('searchViaBackend', () => {
     ]);
     const found = await searchViaBackend(
       ctx,
-      backend as never,
+      backend,
       index,
       { namespacePrefix: ['users'], query: 'q' },
       0,
@@ -264,7 +264,7 @@ describe('searchViaBackend', () => {
     ]);
     const found = await searchViaBackend(
       ctx,
-      backend as never,
+      backend,
       index,
       { namespacePrefix: ['users'], query: 'q' },
       0,
@@ -296,14 +296,7 @@ describe('searchViaBackend', () => {
       { namespace: deep, key: 'a', score: 0.1 },
       { namespace: deep, key: 'a', score: 0.9 },
     ]);
-    await searchViaBackend(
-      ctx,
-      backend as never,
-      index,
-      { namespacePrefix: deep, query: 'q' },
-      0,
-      2,
-    );
+    await searchViaBackend(ctx, backend, index, { namespacePrefix: deep, query: 'q' }, 0, 2);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('relevance'), {
       namespacePrefix: [...deep.slice(0, MAX_LOGGED_LABELS), `…(len ${deep.length})`],
     });
@@ -322,14 +315,7 @@ describe('searchViaBackend', () => {
     const label = 'n'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
     const key = 'k'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
     const backend = backendWith([{ namespace: ['users', label], key, score: 0.9 }]);
-    await searchViaBackend(
-      ctx,
-      backend as never,
-      index,
-      { namespacePrefix: ['users'], query: 'q' },
-      0,
-      1,
-    );
+    await searchViaBackend(ctx, backend, index, { namespacePrefix: ['users'], query: 'q' }, 0, 1);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('unusable vectorBackend match'), {
       namespace: ['users', truncateForLog(label)],
       key: truncateForLog(key),
@@ -345,14 +331,7 @@ describe('searchViaBackend', () => {
     const filler = Array.from({ length: MAX_LOGGED_LABELS }, (_unused, at) => `d${at}`);
     const deep = ['users', ...filler, 'a#b'];
     const backend = backendWith([{ namespace: deep, key: 'k', score: 0.9 }]);
-    await searchViaBackend(
-      ctx,
-      backend as never,
-      index,
-      { namespacePrefix: ['users'], query: 'q' },
-      0,
-      1,
-    );
+    await searchViaBackend(ctx, backend, index, { namespacePrefix: ['users'], query: 'q' }, 0, 1);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('unusable vectorBackend match'), {
       namespace: [...deep.slice(0, MAX_LOGGED_LABELS), `…(len ${deep.length})`],
       key: 'k',

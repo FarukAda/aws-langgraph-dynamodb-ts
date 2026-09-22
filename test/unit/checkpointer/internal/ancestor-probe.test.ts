@@ -18,7 +18,7 @@ function context(client: CheckpointerContext['client']): CheckpointerContext {
     tableName: 'ckpt',
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
-  } as CheckpointerContext;
+  };
 }
 
 const parent = { configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: 'c1' } };

@@ -208,7 +208,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
         ],
       }),
     );
-    const reason = conditionalCheckFailure(cancelled as RejectionFields);
+    const reason = conditionalCheckFailure(cancelled);
     expect(reason?.Code).toBe('ConditionalCheckFailed');
     expect(reason?.Item).toEqual({
       PK: { S: 'l4' },

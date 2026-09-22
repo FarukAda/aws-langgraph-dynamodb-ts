@@ -1,9 +1,6 @@
 import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
-import {
-  getCancellationReasons,
-  type RejectionFields,
-} from '../../../src/shared/dynamodb/cancellation';
+import { getCancellationReasons } from '../../../src/shared/dynamodb/cancellation';
 
 /**
  * Print a measurement the suite deliberately does not assert on.
@@ -52,7 +49,7 @@ export interface AttemptCounter {
  */
 function isTransactionConflict(error: Error): boolean {
   if (error.name === 'TransactionConflictException') return true;
-  const reasons = getCancellationReasons(error as RejectionFields) ?? [];
+  const reasons = getCancellationReasons(error) ?? [];
   return reasons.some((reason) => reason.Code === 'TransactionConflict');
 }
 

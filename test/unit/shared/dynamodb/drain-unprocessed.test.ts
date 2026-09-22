@@ -91,10 +91,10 @@ describe('the drain obeys the configured retry policy (CORE-04)', () => {
   function recordDelays(): number[] {
     const delays: number[] = [];
     const real = globalThis.setTimeout;
-    jest.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+    jest.spyOn(globalThis, 'setTimeout').mockImplementation((fn: () => void, ms?: number) => {
       delays.push(ms ?? 0);
       return real(fn, 0);
-    }) as unknown as typeof setTimeout);
+    });
     return delays;
   }
 

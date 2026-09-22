@@ -19,7 +19,7 @@ function context(client: HistoryContext['client']): HistoryContext {
     logger: SILENT_LOGGER,
     ulid: () => 'U',
     onCorruptMessage: 'skip',
-  } as HistoryContext;
+  };
 }
 
 const row = (ulid: string, ttl?: number) => ({

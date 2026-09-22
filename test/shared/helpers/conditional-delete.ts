@@ -49,8 +49,7 @@ function conditionHolds(input: DeleteCommandInput, row: DocItem | undefined): bo
   const names = input.ExpressionAttributeNames ?? {};
   const attribute = row[names['#pin']] as DocItem | string | undefined;
   const field = names['#field'];
-  const observed =
-    field === undefined ? attribute : (attribute as DocItem | undefined)?.[field as string];
+  const observed = field === undefined ? attribute : (attribute as DocItem | undefined)?.[field];
   return observed === input.ExpressionAttributeValues?.[':pin'];
 }
 

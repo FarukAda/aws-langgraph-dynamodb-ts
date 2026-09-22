@@ -13,19 +13,18 @@ function context(client: CheckpointerContext['client']): CheckpointerContext {
     tableName: 'ckpt',
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
-  } as CheckpointerContext;
+  };
 }
 
-const checkpoint = (over: Partial<Checkpoint> = {}): Checkpoint =>
-  ({
-    v: 1,
-    id: 'c2',
-    ts: '2026-01-01T00:00:00.000Z',
-    channel_values: { messages: ['hi'] },
-    channel_versions: { messages: 3 },
-    versions_seen: {},
-    ...over,
-  }) as Checkpoint;
+const checkpoint = (over: Partial<Checkpoint> = {}): Checkpoint => ({
+  v: 1,
+  id: 'c2',
+  ts: '2026-01-01T00:00:00.000Z',
+  channel_values: { messages: ['hi'] },
+  channel_versions: { messages: 3 },
+  versions_seen: {},
+  ...over,
+});
 
 const inline = (value: unknown) => ({
   location: 'INLINE',

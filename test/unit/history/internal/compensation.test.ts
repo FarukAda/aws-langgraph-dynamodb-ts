@@ -28,7 +28,7 @@ function context(
     ulid: () => 'U',
     onCorruptMessage: 'skip',
     ...extra,
-  } as HistoryContext;
+  };
 }
 
 const item = (ulid: string, key = 'k'): ChatMessageItem =>
@@ -50,7 +50,7 @@ function offloaderSpy() {
   return {
     deleted,
     offloader: {
-      deleteBatch: async (keys: string[]) => {
+      deleteBatch: (keys: string[]) => {
         deleted.push(...keys);
         return [];
       },

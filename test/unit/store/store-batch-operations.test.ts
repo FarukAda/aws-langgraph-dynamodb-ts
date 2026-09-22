@@ -281,9 +281,7 @@ describe('search paging given as null', () => {
     'refuses %s: null on search and on a batch search',
     async (field) => {
       const { store, mock } = storeWithMock();
-      await expect(store.search(['ns'], { [field]: null } as never)).rejects.toMatchObject(
-        refusal(field),
-      );
+      await expect(store.search(['ns'], { [field]: null })).rejects.toMatchObject(refusal(field));
       await expect(
         store.batch([{ namespacePrefix: ['ns'], [field]: null } as never]),
       ).rejects.toMatchObject(refusal(field));

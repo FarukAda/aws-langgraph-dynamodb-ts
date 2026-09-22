@@ -32,11 +32,11 @@ describe('readBodyBounded', () => {
   function streamingBody(chunks: Uint8Array[]) {
     let destroyed = false;
     return {
-      transformToByteArray: async () => bytes(0),
+      transformToByteArray: () => bytes(0),
       destroy: () => {
         destroyed = true;
       },
-      [Symbol.asyncIterator]: async function* () {
+      [Symbol.asyncIterator]: function* () {
         for (const chunk of chunks) yield chunk;
       },
       get destroyed() {
@@ -60,7 +60,7 @@ describe('readBodyBounded', () => {
   });
 
   it('reads a non-streaming body whole and then checks it', async () => {
-    const whole = { transformToByteArray: async () => bytes(4) };
+    const whole = { transformToByteArray: () => bytes(4) };
     await expect(readBodyBounded(whole as never, 'k', 10)).resolves.toHaveLength(4);
     await expect(readBodyBounded(whole as never, 'k', 3)).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,
@@ -69,7 +69,7 @@ describe('readBodyBounded', () => {
 
   /** A cap of zero admits only an empty body, which is a usable answer, not an error. */
   it('admits an empty body under a zero cap', async () => {
-    const whole = { transformToByteArray: async () => bytes(0) };
+    const whole = { transformToByteArray: () => bytes(0) };
     await expect(readBodyBounded(whole as never, 'k', 0)).resolves.toHaveLength(0);
   });
 });
@@ -186,7 +186,7 @@ describe('walkObject', () => {
 
   it('recurses an array and a plain object through the walk it was given', () => {
     expect(walkObject([1, 2] as never, deps)).toEqual([1, 2]);
-    expect(walkObject({ a: 1 } as never, deps)).toEqual({ a: 1 });
+    expect(walkObject({ a: 1 }, deps)).toEqual({ a: 1 });
   });
 
   /** A payload is exactly what a log must not carry. */
@@ -208,7 +208,7 @@ describe('walkObject', () => {
   });
 
   it('redacts a secret-looking key of a plain object', () => {
-    expect(walkObject({ password: 'hunter2' } as never, deps)).toEqual({
+    expect(walkObject({ password: 'hunter2' }, deps)).toEqual({
       password: '[REDACTED]',
     });
   });

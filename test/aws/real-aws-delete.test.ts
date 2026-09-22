@@ -6,7 +6,6 @@ import { DynamoDBDocument, type TransactWriteCommandInput } from '@aws-sdk/lib-d
 import {
   conditionalCheckFailure,
   getCancellationReasons,
-  type RejectionFields,
 } from '../../src/shared/dynamodb/cancellation';
 import {
   type RevisionGuard,
@@ -142,7 +141,7 @@ describe('the delete-side contract this design rests on, against real AWS', () =
     const refused = await rejection(
       doc.transactWrite(tokenedDelete(randomUUID(), key, writeIdGuard('rev', 'STALE'))),
     );
-    const reason = conditionalCheckFailure(refused as RejectionFields);
+    const reason = conditionalCheckFailure(refused);
     expect(reason?.Code).toBe('ConditionalCheckFailed');
     expect(reason?.Item?.rev).toEqual({ S: 'R1' });
     expect(reason?.Item?.v).toEqual({ N: '7' });
@@ -195,7 +194,7 @@ describe('the delete-side contract this design rests on, against real AWS', () =
     );
     expect(refused.name).toBe('TransactionCanceledException');
 
-    const reasons = getCancellationReasons(refused as RejectionFields) ?? [];
+    const reasons = getCancellationReasons(refused) ?? [];
     report(`transactional delete of an absent row: ${JSON.stringify(reasons)}`);
     expect(reasons).toHaveLength(1);
     expect(reasons[0].Code).toBe('ConditionalCheckFailed');

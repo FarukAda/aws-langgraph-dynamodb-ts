@@ -43,7 +43,7 @@ describe('backoff (property)', () => {
           let calls = 0;
           await expect(
             withRetry(
-              async () => {
+              () => {
                 calls += 1;
                 throw Object.assign(new Error('slow'), { name: 'ThrottlingException' });
               },

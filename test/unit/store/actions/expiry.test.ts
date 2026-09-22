@@ -86,7 +86,7 @@ describe('expired rows are filtered on every store read path (STORE-04)', () => 
     const { client, mock } = createStrictDocumentMock();
     const embeddings = {
       embedQuery: jest.fn(),
-      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+      embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const backend = {
       upsert: jest.fn().mockResolvedValue(undefined),

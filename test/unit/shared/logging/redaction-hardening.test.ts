@@ -38,7 +38,7 @@ describe('redactSecrets key matching (CORE-03, CORE-13)', () => {
       AUTH_TOKEN: 'at',
       Authorization: 'Basic abc',
       passphrase: 'pp',
-    } as never) as Redacted;
+    }) as Redacted;
     expect(Object.values(out).every((value) => value === '[REDACTED]')).toBe(true);
   });
 
@@ -63,7 +63,7 @@ describe('redactSecrets key matching (CORE-03, CORE-13)', () => {
       password: 'p',
       apiKey: 'k',
       token: 'tk',
-    } as never) as Redacted;
+    }) as Redacted;
     expect(Object.values(out).every((value) => value === '[REDACTED]')).toBe(true);
   });
 
@@ -81,7 +81,7 @@ describe('redactSecrets key matching (CORE-03, CORE-13)', () => {
 describe('redactSecrets error handling (CORE-02, CORE-20)', () => {
   it('rebuilds a bare Error whose cause carries a secret instead of passing it by reference', () => {
     const error = new Error('outer', { cause: { password: 'hunter2', region: 'eu' } });
-    const out = redactSecrets({ err: error } as never) as unknown as {
+    const out = redactSecrets({ err: error }) as unknown as {
       err: Error & { cause?: { password: string; region: string } };
     };
     expect(out.err).not.toBe(error);
@@ -92,12 +92,12 @@ describe('redactSecrets error handling (CORE-02, CORE-20)', () => {
 
   it('still passes a bare Error without a cause through by reference', () => {
     const error = new Error('plain');
-    expect((redactSecrets({ err: error } as never) as unknown as { err: Error }).err).toBe(error);
+    expect((redactSecrets({ err: error }) as unknown as { err: Error }).err).toBe(error);
   });
 
   it('treats a __proto__ key as data, never as the prototype', () => {
     const input = JSON.parse('{"__proto__":{"polluted":true},"password":"p"}') as Redacted;
-    const out = redactSecrets(input as never) as Redacted;
+    const out = redactSecrets(input) as Redacted;
     expect(Object.getPrototypeOf(out)).toBe(Object.prototype);
     expect(Object.hasOwn(out, '__proto__')).toBe(true);
     expect((out as { polluted?: boolean }).polluted).toBeUndefined();
@@ -109,7 +109,7 @@ describe('redactSecrets error handling (CORE-02, CORE-20)', () => {
       [Object.assign(new Error('one'), { token: 'secret-1' }), new Error('two')],
       'several failed',
     );
-    const out = redactSecrets({ err: aggregate } as never) as unknown as {
+    const out = redactSecrets({ err: aggregate }) as unknown as {
       err: { message: string; errors: { message: string; token?: string }[] };
     };
     expect(out.err.message).toBe('several failed');
@@ -120,7 +120,7 @@ describe('redactSecrets error handling (CORE-02, CORE-20)', () => {
 
   it('keeps a DOMException readable instead of collapsing it to an empty object', () => {
     const exception = new DOMException('The operation was aborted', 'AbortError');
-    const out = redactSecrets({ err: exception } as never) as unknown as {
+    const out = redactSecrets({ err: exception }) as unknown as {
       err: { name: string; message: string };
     };
     expect(out.err.name).toBe('AbortError');
@@ -323,7 +323,7 @@ describe('error messages that embed an upstream message (CORE-23)', () => {
     });
     await expect(
       withRetry(
-        async () => {
+        () => {
           throw cause;
         },
         { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },

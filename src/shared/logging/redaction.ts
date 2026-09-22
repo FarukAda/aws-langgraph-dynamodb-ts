@@ -90,7 +90,7 @@ export function redactSecrets(
   const walk = (current: Redactable): Redactable => {
     if (typeof current === 'string') return redactText(current, valuePatterns);
     if (current === null || typeof current !== 'object') return current;
-    if (done.has(current)) return done.get(current) as Redactable;
+    if (done.has(current)) return done.get(current);
     if (walking.has(current)) return '[Circular]';
     walking.add(current);
     try {

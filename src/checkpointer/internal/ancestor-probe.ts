@@ -74,7 +74,7 @@ export async function probeAncestor(
   return {
     threadId,
     checkpointId,
-    expired: row !== undefined && isExpiredRow(row as { ttl?: number }, nowSeconds()),
+    expired: row !== undefined && isExpiredRow(row, nowSeconds()),
   };
 }
 

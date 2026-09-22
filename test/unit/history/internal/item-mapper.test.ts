@@ -40,7 +40,7 @@ describe('history item-mapper', () => {
    * id, below the session: `<keyPrefix><sessionId, base64url>/<ulid>.bin`.
    */
   it("offloads a message under its session, in an object named by the message's own ULID", async () => {
-    const upload = jest.fn(async (key: string) => key);
+    const upload = jest.fn((key: string) => key);
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) => buildS3Key('p/', parts, objectId),

@@ -36,7 +36,7 @@ function requireMessageItem(
   sessionId: string,
   raw: DocItem,
 ): ChatMessageItem {
-  assertReadableRow(raw as ChatMessageItem, 'message');
+  assertReadableRow(raw, 'message');
   const item = narrowMessageItem(raw);
   if (item) return item;
   context.logger.warn('getMessages: refused a row that is not a chat message item', {

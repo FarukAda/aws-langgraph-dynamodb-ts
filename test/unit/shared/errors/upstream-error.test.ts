@@ -109,7 +109,7 @@ describe('UpstreamError normalises a cause that is not an Error', () => {
       message: 'slow down',
       $metadata: { requestId: 'r' },
     };
-    const error = new UpstreamError(cause as never, 'store.put');
+    const error = new UpstreamError(cause, 'store.put');
     expect(error.upstreamName).toBe('ThrottlingException');
     expect(error.requestId).toBe('r');
     expect(error.cause).toBe(cause);

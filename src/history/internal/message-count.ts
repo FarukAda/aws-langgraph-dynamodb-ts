@@ -26,7 +26,7 @@ import type { HistoryContext } from './setup';
  * refuses instead, and the read's own `warn` is what names the row.
  */
 function requireCountableRow(raw: DocItem, sessionId: string): ChatMessageItem {
-  assertReadableRow(raw as ChatMessageItem, 'message');
+  assertReadableRow(raw, 'message');
   const item = narrowMessageItem(raw);
   if (item) return item;
   throw new ValidationError(

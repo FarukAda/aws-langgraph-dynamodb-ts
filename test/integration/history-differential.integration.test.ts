@@ -35,7 +35,7 @@ interface Turn {
 function chain(getMessageHistory: (sessionId: string) => BaseListChatMessageHistory) {
   return new RunnableWithMessageHistory({
     runnable: RunnableLambda.from(
-      async (turn: Turn) => new AIMessage(`${(turn.history ?? []).length} before: ${turn.input}`),
+      (turn: Turn) => new AIMessage(`${(turn.history ?? []).length} before: ${turn.input}`),
     ),
     getMessageHistory,
     inputMessagesKey: 'input',
