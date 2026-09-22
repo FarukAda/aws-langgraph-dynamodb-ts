@@ -135,7 +135,7 @@ describe('the batch delete path, its cost and its contention, against real AWS',
       ...writeIdGuard('rev', 'R1'),
     });
     const units = removed.ConsumedCapacity?.CapacityUnits;
-    report(`D6 conditional delete of a ~300 KB row: ${String(units)} capacity unit(s)`);
+    report(`E-16 conditional delete of a ~300 KB row: ${String(units)} capacity unit(s)`);
     expect(units).toBeGreaterThan(1);
   });
 

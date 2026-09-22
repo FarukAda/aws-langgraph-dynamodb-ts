@@ -199,8 +199,12 @@ describe('versioning states, delete markers and suspension against real AWS', ()
 
   /**
    * (docs/evidence/s3-versioning-and-lifecycle.md, E-9) — `GetBucketVersioning`
-   * distinguishes never-versioned, enabled and suspended. Runs first in this
-   * describe so the bucket is genuinely never-versioned when it starts.
+   * distinguishes all three states: never-versioned, enabled and suspended.
+   * Runs first in this describe so the bucket is genuinely never-versioned
+   * when the first check happens, then drives the bucket through enabled and
+   * suspended itself, checking each in turn, so this one test actually covers
+   * everything its own claim names rather than leaving suspended to another
+   * test.
    */
   it('E-9: GetBucketVersioning distinguishes never-versioned, enabled and suspended', async () => {
     const never = await s3.send(new GetBucketVersioningCommand({ Bucket: evidenceBucketName }));
@@ -216,15 +220,35 @@ describe('versioning states, delete markers and suspension against real AWS', ()
     await waitForVersioningStatus(s3, evidenceBucketName, 'Enabled');
     const enabled = await s3.send(new GetBucketVersioningCommand({ Bucket: evidenceBucketName }));
     expect(enabled.Status).toBe('Enabled');
+
+    await s3.send(
+      new PutBucketVersioningCommand({
+        Bucket: evidenceBucketName,
+        VersioningConfiguration: { Status: 'Suspended' },
+      }),
+    );
+    await waitForVersioningStatus(s3, evidenceBucketName, 'Suspended');
+    const suspended = await s3.send(new GetBucketVersioningCommand({ Bucket: evidenceBucketName }));
+    expect(suspended.Status).toBe('Suspended');
   });
 
   /**
    * (docs/evidence/s3-versioning-and-lifecycle.md, E-10) — a delete on a
    * versioned bucket leaves a delete marker rather than erasing the object,
-   * and the payload survives, readable by its version id. Runs while the
-   * bucket is Enabled, which E-9 leaves it as.
+   * and the payload survives, readable by its version id. Enables versioning
+   * itself and waits for it to converge, rather than assuming the state E-9
+   * happens to leave the bucket in — E-9 now ends it Suspended, not Enabled —
+   * so this test stands on its own regardless of run order.
    */
   it('E-10: a delete on a versioned bucket leaves a marker, and the prior version stays readable', async () => {
+    await s3.send(
+      new PutBucketVersioningCommand({
+        Bucket: evidenceBucketName,
+        VersioningConfiguration: { Status: 'Enabled' },
+      }),
+    );
+    await waitForVersioningStatus(s3, evidenceBucketName, 'Enabled');
+
     const key = 'e10-delete-marker';
     const put = await s3.send(
       new PutObjectCommand({ Bucket: evidenceBucketName, Key: key, Body: 'the payload' }),

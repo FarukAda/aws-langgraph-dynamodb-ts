@@ -237,6 +237,12 @@ describe('the idempotency contract this design rests on, against real AWS', () =
    * Driven by raw `doc.transactWrite` calls at `maxAttempts: 1`, bypassing the
    * library's own retry helper entirely (see E-6 for that), so a conflict
    * cannot be silently absorbed before it is counted.
+   *
+   * The claim says "most" attempts conflict, so the assertion asks for a
+   * majority rather than merely one: `docs/evidence/transaction-conflict-contention.md`
+   * records 65 % at this same five-writer width, well clear of the 50 % line.
+   * A single-conflict threshold would pass on a day the recorded shape did
+   * not hold at all, which is the gap this majority check closes.
    */
   it('E-5: most concurrent conditional writers on one row meet a retryable conflict, and a plain PutItem control meets none', async () => {
     const base = new DynamoDBClient({ ...clientConfig, maxAttempts: 1 });
@@ -277,7 +283,9 @@ describe('the idempotency contract this design rests on, against real AWS', () =
         `PutItem attempts did`,
     );
 
-    expect(conflicted.length).toBeGreaterThan(0);
+    // "Most" means a majority: strictly more than half of the writers must
+    // have met a retryable conflict, not merely at least one.
+    expect(conflicted.length).toBeGreaterThan(WRITERS / 2);
     expect(controlConflicted).toHaveLength(0);
   });
 
