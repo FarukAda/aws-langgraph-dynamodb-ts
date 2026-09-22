@@ -58,8 +58,9 @@ a reviewer has to notice by inspection.
 Negative. The reference's own defects that this package must diverge from
 to be correct — a falsy id read as absent, a filter compared with `===`
 against an object — still have to be individually discovered, argued and
-recorded rather than inherited automatically, and the table has grown past
-thirty rows as a result. A change to the reference implementation upstream
+recorded rather than inherited automatically, and the table's numbering
+already reaches V-30 as a result. A change to the reference implementation
+upstream
 is a change to this package's own specification, which this package does
 not control the timing of.
 
