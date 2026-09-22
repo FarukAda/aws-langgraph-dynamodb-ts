@@ -1,13 +1,13 @@
 # Contributing to aws-langgraph-dynamodb-ts
 
-Thank you for helping. This guide is the operational one; the [README](README.md) explains the library, and its [*Versioning and compatibility*](README.md#versioning-and-compatibility) section says what a release may change.
+Thank you for helping. This guide is the operational one; the [README](README.md) explains the library, and its [*Versioning and compatibility*](README.md#versioning-and-compatibility) section says what a release may change. [`docs/coding-guidelines.md`](docs/coding-guidelines.md) is the standard the source itself is held to.
 
 ## Setup
 
 ```bash
 git clone https://github.com/FarukAda/aws-langgraph-dynamodb-ts.git
 cd aws-langgraph-dynamodb-ts
-npm ci                 # Node 22 or 24
+npm ci                 # Node 22, 24 or 26
 npm run lint && npm run typecheck && npm run typecheck:all && npm test
 ```
 
@@ -55,11 +55,29 @@ Two TypeScript versions are installed on purpose: the `typescript` alias resolve
 
 Three stricter compiler flags were evaluated for the build and deliberately not enabled: `verbatimModuleSyntax` (incompatible with the CommonJS build, which would need `import = require` syntax everywhere), `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (39 and 56 sites whose guards would be unreachable branches under the 100 % branch gate). `package.json` carries no `overrides` block: the one it used to hold pinned `uuid`, which no longer appears in the lock file at all. `npm run pack:check` verifies the tarball listing, `publint` and `@arethetypeswrong/cli` before a release.
 
+## Where behaviour comes from
+
+Every behaviour this package claims is specified against a primary source and cited where it is implemented: the AWS documentation for DynamoDB and S3, the peer packages' own published source at the version this package targets (`@langchain/core`, `@langchain/langgraph-checkpoint`), or a recorded live probe under [`docs/evidence/README.md`](docs/evidence/README.md), paired with a named live test that fails the moment the service changes its answer ([decision record 16](docs/decisions/0016-specify-behaviour-against-primary-sources-only.md)).
+
+What another implementation of the same problem does is never a source. A change argued as "the other client does it this way" is asked for the underlying reason instead; if there is one, that reason is the citation, and if there is not, the behaviour does not change. `MemorySaver` and `InMemoryStore` look like an exception and are not one: they are `@langchain/langgraph-checkpoint`'s and `@langchain/core`'s own published source for what the interfaces this package implements must do, which is why they are treated as the behavioural oracle ([decision record 9](docs/decisions/0009-treat-the-in-memory-reference-implementations-as-the-oracle.md)), and every deliberate departure from them is listed in the README's [*Differences from the reference implementations*](README.md#differences-from-the-reference-implementations) table.
+
+A claim about behaviour AWS leaves undocumented needs both parts before a pull request can cite it: a probe recorded under `docs/evidence`, and a live test in `test/aws` guarding the same claim. A citation to documentation that turns out to be silent on the point is not evidence, and neither is coverage against DynamoDB Local alone — see [`docs/evidence/README.md`](docs/evidence/README.md) for why both are required.
+
+## Decision records
+
+Write a record when a decision is expensive to reverse — one that shapes the on-disk layout, the public API, the error taxonomy or what the build enforces, where undoing it later means a breaking change or redoing real work. A bug fix, a naming choice, or anything a later change can undo for free does not need one.
+
+Each record has five sections — title, context, decision, status, consequences — in full sentences, addressed to a future developer wondering why something is the way it is: state the context in value-neutral language, including the technical and project forces at play; state the decision in the active voice; and list the consequences that are positive, negative and neutral, the negative ones included.
+
+Records are numbered sequentially under `docs/decisions/`, and a number is never reused. A decision that is later reversed keeps its record, marked superseded and pointing at the one that replaced it, because the reasoning that led to it is what explains why the replacement was needed. See [`docs/decisions/README.md`](docs/decisions/README.md) for the full index.
+
 ## Commits and pull requests
 
 Use [Conventional Commits](https://www.conventionalcommits.org/) (`fix(store): ...`, `feat(history): ...`, `docs(readme): ...`, `test(integration): ...`). The body says why, not what: which behaviour was wrong, how a user hit it, why this fix and not another. One concern per commit.
 
 A pull request follows the template: what, why, how, how it was tested, breaking changes. It needs a CHANGELOG entry under `[Unreleased]` for anything a user can observe, a README update when documented behaviour changes, and regenerated `docs/api` (`npm run docs`) when public JSDoc changes.
+
+Review a change in this order: design first, then functionality, complexity, tests, naming, comments, style and consistency, and documentation last — a design objection raised after the naming and style have been debated wastes that debate. Send a large reformatting as its own pull request, never folded into a functional one, so a reviewer can tell what changed from what merely moved. And say what was done well, not only what needs to change.
 
 ## Releases
 
