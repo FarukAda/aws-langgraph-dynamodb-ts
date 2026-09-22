@@ -1,5 +1,5 @@
 import js from '@eslint/js';
-import type { ESLint } from 'eslint';
+import type { ESLint, Linter } from 'eslint';
 import prettierConfig from 'eslint-config-prettier';
 import noInstanceof from 'eslint-plugin-no-instanceof';
 import perfectionist from 'eslint-plugin-perfectionist';
@@ -20,6 +20,15 @@ const plugins: Record<string, ESLint.Plugin> = {
   'unused-imports': unusedImports,
 };
 
+/**
+ * `typescript-eslint` types its exported configs against a minimal
+ * `{ name?, rules? }` shape so the package stays compatible across ESLint
+ * majors, which drops `languageOptions` from the type even though the object
+ * carries one at runtime. Read through ESLint's own {@link Linter.Config}
+ * instead of widening to `any`, which `no-explicit-any` bans here too.
+ */
+const disableTypeChecked = ts.configs.disableTypeChecked as Linter.Config;
+
 const NO_UNKNOWN = {
   selector: 'TSUnknownKeyword',
   message:
@@ -38,12 +47,18 @@ const NO_REEXPORT = {
 
 export default defineConfig([
   js.configs.recommended,
-  ...ts.configs.recommended,
+  ...ts.configs.recommendedTypeChecked,
   prettierConfig,
   {
     files: ['**/*.{ts,tsx}'],
     ignores: ['dist'],
     plugins,
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: typeof __dirname === 'undefined' ? process.cwd() : __dirname,
+      },
+    },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': [
@@ -79,11 +94,13 @@ export default defineConfig([
   },
   {
     files: ['**/*.mjs'],
+    ...disableTypeChecked,
     languageOptions: {
+      ...disableTypeChecked.languageOptions,
       sourceType: 'module',
       globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly', URL: 'readonly' },
     },
-    rules: { ...js.configs.recommended.rules },
+    rules: { ...js.configs.recommended.rules, ...disableTypeChecked.rules },
   },
   {
     files: ['src/index.ts'],
@@ -97,5 +114,17 @@ export default defineConfig([
       '@typescript-eslint/no-explicit-any': 'off',
       'no-restricted-syntax': ['error', NO_EXPORT_ALL, NO_REEXPORT],
     },
+  },
+  {
+    /**
+     * `tsconfig.json` excludes this fixture on purpose (its `package.json`
+     * pins an older `@aws-sdk/lib-dynamodb` so a real type-check runs only
+     * inside the isolated tarball install `test:consumer-types` sets up).
+     * The project service can never find a tsconfig for it, so type-aware
+     * rules are off here; the fixture still gets every non-type-aware rule
+     * from the `**\/*.{ts,tsx}` block above.
+     */
+    files: ['test/package-smoke/consumer-types/**/*.ts'],
+    ...disableTypeChecked,
   },
 ]);
