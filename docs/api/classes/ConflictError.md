@@ -6,7 +6,7 @@
 
 # Class: ConflictError
 
-Defined in: [shared/errors/errors.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L15)
+Defined in: [shared/errors/errors.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L27)
 
 A conditional write failed because the precondition no longer holds.
 
@@ -20,7 +20,15 @@ A conditional write failed because the precondition no longer holds.
 
 > **new ConflictError**(`message`, `cause?`): `ConflictError`
 
-Defined in: [shared/errors/errors.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L16)
+Defined in: [shared/errors/errors.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/errors.ts#L37)
+
+Accepts: `message` — what precondition no longer held. `cause` — the rejection
+beneath it, when there is one.
+
+Returns: the error, with `code: CONDITION_CONFLICT`. A caller may retry the
+operation from a fresh read; nothing was written.
+
+Throws: nothing; building an error may not fail.
 
 #### Parameters
 
@@ -46,7 +54,7 @@ Defined in: [shared/errors/errors.ts:16](https://github.com/FarukAda/aws-langgra
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
+Defined in: [shared/errors/base-error.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L33)
 
 #### Inherited from
 
@@ -58,7 +66,7 @@ Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
+Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L34)
 
 #### Inherited from
 

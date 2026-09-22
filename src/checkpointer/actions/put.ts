@@ -7,67 +7,88 @@ import type {
 
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { createUlidFactory } from '../../shared/ulid';
+import { transactIdempotently } from '../../shared/dynamodb/idempotent-write';
+import { ValidationError } from '../../shared/errors/errors';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { verifyCheckpointLanded } from '../internal/checkpoint-write-verify';
 import { readConfigurable } from '../internal/configurable';
 import { buildCheckpointItems } from '../internal/item-writer';
 import type { CheckpointerContext } from '../internal/setup';
-import { storedChannelsFor } from '../internal/stored-channels';
 import { validateCheckpointId } from '../internal/validation';
-
-/**
- * Nonces every put's S3 uploads (see {@link buildCheckpointItems}). A ULID
- * rather than a UUID because it sorts by time, which keeps a bucket listing of
- * one checkpoint's objects readable.
- */
-const nextPutNonce = createUlidFactory();
 
 /**
  * Persist a checkpoint and its metadata as a transactional pair of META and
  * PAYLOAD items, returning the config that addresses the stored checkpoint. The
  * incoming `checkpoint_id` (if any) becomes the new checkpoint's parent.
- * `newVersions` names the channels that changed in this step: only those and
- * the ones the parent stored are persisted (see `storedChannelsFor`).
  *
- * On failure with S3 offload configured, the rows are read back before any
- * upload is deleted (see {@link verifyCheckpointLanded}): a transaction that
- * committed and lost its response is reported as success, a confirmed
- * non-commit cleans up this call's own nonced uploads, and an unverifiable
- * outcome leaks them rather than risk stranding a live row.
+ * **Every channel value the checkpoint carries is stored.** `newVersions` is
+ * accepted because `BaseCheckpointSaver.put` declares it
+ * (`@langchain/langgraph-checkpoint@1.1.5` `dist/base.d.ts:68`) and is
+ * deliberately ignored: narrowing the stored values to the ones it names, and
+ * carrying the rest forward from the parent, made a put whose `newVersions` is
+ * `{}` write no values at all. LangGraph passes `{}` when forking a checkpoint
+ * and when writing an empty-checkpoint update (`@langchain/langgraph@1.4.13`
+ * `dist/pregel/index.js:668` and `:613`), so that put silently dropped user
+ * state. The reference saver does not narrow either: `MemorySaver.put` takes
+ * three parameters and stores the whole checkpoint (`dist/memory.js:206`).
+ *
+ * Accepts: `config` — its `checkpoint_id`, when present, becomes the new
+ * checkpoint's parent. `checkpoint.id` — validated as the sort-key segment it
+ * becomes. `metadata` — stored beside it, on the light row a listing reads.
+ * `config.signal` — cancels the writes' retries; checked before anything is
+ * encoded.
+ *
+ * Returns: the config addressing the stored checkpoint, which is what the
+ * caller passes back to continue the thread.
+ *
+ * Throws: ValidationError naming `config`, `configurable` or `signal` for a
+ * config of the wrong shape, `thread_id`, `checkpoint_ns`, `checkpoint_id` or
+ * `thread_ts` for a malformed identifier, `checkpoint` for a `null` or
+ * `undefined` checkpoint, `checkpoint_id` for a malformed `checkpoint.id`,
+ * `payload` for a payload too large to store inline without `s3`, or `s3Key`
+ * for an offloaded object's key over S3's cap; `S3_OFFLOAD_FAILED`; whatever
+ * the transaction throws once the outcome is established.
+ *
+ * Guarantees: both rows land or neither does — they are one transaction, so a
+ * META row never names a payload that is not there. That transaction goes out
+ * under a client request token drawn once, with the request it travels on, so
+ * a retry that follows a lost acknowledgement is discarded by the service
+ * rather than applied a second time. Writing the same `checkpoint.id` again
+ * replaces both, which is what a retry and a repair tool both need; the objects
+ * the replaced rows named are not deleted by the put, and are left to the
+ * lifecycle rule. A payload the serde refuses is refused before any write and
+ * releases whatever the same call had already uploaded, so an encode that fails
+ * halfway leaves nothing behind either. On failure with S3 offload configured
+ * the row carrying an offloaded descriptor is read back before any upload is
+ * deleted (see {@link verifyCheckpointLanded}): a transaction that committed
+ * and lost its response is reported as success, a confirmed non-commit cleans
+ * up the objects this call uploaded, and an unverifiable outcome leaks them
+ * rather than risk stranding a live row. Each put uploads under an object id of
+ * its own, so no row another put commits names this call's uploads.
  */
 export async function putCheckpoint(
   context: CheckpointerContext,
   config: RunnableConfig,
   checkpoint: Checkpoint,
   metadata: CheckpointMetadata,
-  newVersions?: ChannelVersions,
+  _newVersions?: ChannelVersions,
 ): Promise<RunnableConfig> {
   const { threadId, checkpointNs, checkpointId: parentCheckpointId } = readConfigurable(config);
   const signal = config.signal;
+  if (checkpoint === null || checkpoint === undefined) {
+    throw new ValidationError('checkpoint must be an object', 'checkpoint');
+  }
   validateCheckpointId(checkpoint.id);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const storedChannels = await storedChannelsFor(
-    context,
-    threadId,
-    checkpointNs,
-    checkpoint,
-    newVersions,
-    parentCheckpointId,
-    signal,
-  );
   const { meta, payload } = await buildCheckpointItems(
     context,
     threadId,
     checkpointNs,
     checkpoint,
     metadata,
-    nextPutNonce(),
     parentCheckpointId,
     ttlTimestamp,
-    storedChannels,
+    signal,
   );
   const stored: RunnableConfig = {
     configurable: {
@@ -77,15 +98,51 @@ export async function putCheckpoint(
     },
   };
   try {
-    await withDynamoDBRetry(
-      () =>
-        context.client.transactWrite({
-          TransactItems: [
-            { Put: { TableName: context.tableName, Item: meta } },
-            { Put: { TableName: context.tableName, Item: payload } },
-          ],
-        }),
-      retryFor(context, signal),
+    /**
+     * One request, one token, re-sent unchanged for every attempt of the
+     * budget — which is what the token is worth here, since a token minted on
+     * a request the retry closure rebuilt would be a fresh one per attempt and
+     * would deduplicate nothing.
+     *
+     * Neither row is guarded, so nothing else can turn a re-send away: a retry
+     * that follows a lost acknowledgement puts both rows back, and one
+     * arriving after a `deleteThread` removed them puts back two live rows
+     * naming two objects that call has already released. Inside the service's
+     * idempotency window the token discards it instead. The pair is atomic, so
+     * what that window covers is the pair: a re-send either re-applies both
+     * rows or neither.
+     *
+     * A condition on either row is not the alternative it looks like. Two
+     * guarded items would make one genuine race cancel with two
+     * `ConditionalCheckFailed` reasons, and `conditionalCheckFailure` reads a
+     * cancellation as a guard rejection only while a single cause remains — so
+     * the race would surface as an unrecognised non-retryable error.
+     *
+     * Because neither row is guarded, the precondition on what a token
+     * guarantees — see {@link transactIdempotently} — never bites on the rows
+     * themselves: no condition here can turn an attempt away, so an attempt
+     * either committed the pair, and its re-send is discarded, or committed
+     * nothing. It does bite on the transaction, which a conflict with a
+     * concurrent writer of the same id can still cancel: a cancellation
+     * completes nothing and is cached as nothing, so the attempt after one is
+     * a fresh evaluation rather than a replay. That is the wanted outcome here
+     * — the pair did not land, so it must still land — and it is why the
+     * token's promise is worded about a write that *committed* rather than one
+     * that was merely sent.
+     *
+     * The deadline that helper carries is what keeps this budget inside the
+     * window the token is honoured for. The token enforces no window itself,
+     * and a re-send arriving after it has closed is simply a new request: both
+     * rows land again, over whatever has replaced them and after whatever
+     * released the objects they name.
+     */
+    await transactIdempotently(
+      context,
+      [
+        { Put: { TableName: context.tableName, Item: meta } },
+        { Put: { TableName: context.tableName, Item: payload } },
+      ],
+      signal,
     );
   } catch (error) {
     if (!context.offloader) throw error;

@@ -62,11 +62,102 @@ export const DEFAULT_MAX_DECOMPRESSED_BYTES = 50 * 1024 * 1024;
  */
 export const DEFAULT_MAX_S3_DOWNLOAD_BYTES = 50 * 1024 * 1024;
 
+/**
+ * Largest `s3.maxDownloadBytes`/`compression.maxDecompressedBytes` an adapter
+ * accepts (512 MiB): both hold one buffer fully resident while it is read or
+ * inflated, and `BaseAdapterOptions.readConcurrency`'s doc multiplies the two
+ * together into the package's memory ceiling, so an unbounded value here is an
+ * unbounded process, not just an unbounded object.
+ */
+export const MAX_PAYLOAD_BUFFER_BYTES = 512 * 1024 * 1024;
+
 /** Default maximum attempts for transient-error retries. */
 export const DEFAULT_RETRY_MAX_ATTEMPTS = 5;
 
 /** Largest `retry.maxAttempts` an adapter accepts; beyond it a retry loop is a hang, not a policy. */
 export const MAX_RETRY_ATTEMPTS = 100;
+
+/**
+ * Largest `retry.baseDelayMs`/`retry.maxDelayMs` an adapter accepts (one
+ * minute): combined with {@link MAX_RETRY_ATTEMPTS}, an unbounded per-attempt
+ * delay turns a bounded attempt count back into an effectively unbounded wait.
+ */
+export const MAX_RETRY_DELAY_MS = 60_000;
+
+/**
+ * How long DynamoDB treats a repeated client request token as the same request
+ * rather than a new one, so re-sending a tokened write is deduplicated instead
+ * of applied twice (10 minutes). Recorded as its own constant so the margin
+ * {@link MAX_WRITE_LIFETIME_MS} keeps under it is legible.
+ */
+export const TOKEN_IDEMPOTENCY_WINDOW_MS = 600_000;
+
+/**
+ * Longest one token-carrying write may keep retrying (5 minutes): half of
+ * {@link TOKEN_IDEMPOTENCY_WINDOW_MS}. The other half absorbs the attempt
+ * still in flight when the budget ends, clock skew between this client's own
+ * clock and DynamoDB's timer, and SDK-internal queueing, so a write that
+ * retries to the end still finishes well inside the window its token is
+ * honoured for. Its own literal rather than a division of the window: aliasing
+ * two caps has already meant that retuning one silently moved the other (see
+ * {@link LIST_SCAN_WARN_THRESHOLD}).
+ */
+export const MAX_WRITE_LIFETIME_MS = 300_000;
+
+/**
+ * How long one request attempt may take on a client this library builds
+ * (10 seconds) before the SDK's request handler destroys it and rejects with a
+ * retryable `TimeoutError`. {@link MAX_WRITE_LIFETIME_MS} bounds how many
+ * attempts *start*; it is checked between them, so it can refuse to begin
+ * another wait and can never shorten the attempt already in flight. Without a
+ * handler timeout — every one of them defaults to 0 — a hung socket holds that
+ * attempt open forever and the write lifetime bounds nothing.
+ *
+ * Measured, not picked. Across the fan-out widths this package documents, the
+ * worst interval the handler itself saw — socket acquisition including the
+ * wait behind the agent's fifty sockets, connect, request write and
+ * time-to-first-response-header — was 0.92 s, at a thousand concurrent writes
+ * of 20 KB values, and ten seconds is roughly eleven times that. The asymmetry
+ * settles the close call: too large leaves one attempt hanging for at most ten
+ * seconds, which the write lifetime's own headroom absorbs, while too small
+ * turns a healthy wide fan-out into a retry storm.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * How long a socket may sit idle (5 seconds) on a client this library builds
+ * before the request handler destroys the request. Which error that surfaces
+ * as depends on when it fires: before response headers the handler's own
+ * rejection reaches the caller as a `TimeoutError`, while after them the call
+ * has already resolved and the destroy arrives through the response stream
+ * instead, as an `ECONNRESET` abort. Both are classified retryable, so either
+ * way a stalled transfer becomes a retry of this library's own. An idle timer
+ * rather than a deadline: activity in either direction resets it, so it bounds
+ * a transfer that has stalled and never one that is merely slow, and its clock
+ * starts at socket assignment rather than at request creation. What each
+ * client needs it *for* differs, so that belongs at each client's own call
+ * site rather than here.
+ *
+ * Not a tuning knob. The handler installs the socket listener immediately only
+ * below 6 000 ms; at or above that it defers registration by 3 000 ms and
+ * returns the deferral's timer id, which the handler's clear-on-resolve
+ * cancels when response headers arrive — so at 6 000 or more the field
+ * silently stops doing anything for every response that answers inside three
+ * seconds, which is the normal case. That is a fact about the request handler
+ * and about neither client. A unit assertion holds this value under that
+ * threshold so raising it fails loudly instead of disabling the only bound a
+ * stalled transfer has.
+ */
+export const DEFAULT_SOCKET_TIMEOUT_MS = 5_000;
+
+/**
+ * The most shards a recency index may have. The indexed read builds every
+ * shard's partition key and issues at least one query per shard, so an
+ * unbounded value turns a config typo into an unbounded stream of requests and
+ * an out-of-memory crash. How many of those queries run at once is
+ * `readConcurrency`.
+ */
+export const MAX_INDEX_SHARDS = 1024;
 
 /**
  * Max attempts for the message-append transaction. It shares one session's
@@ -86,12 +177,50 @@ export const MESSAGE_APPEND_RETRY_MAX_ATTEMPTS = 18;
  * Offloaded payloads decoded at once by one read (`getTuple` pending writes,
  * `search` candidates, `getMessages`). Each offloaded row costs one S3 GET, so
  * a serial loop scaled latency linearly with the row count; eight in flight
- * keeps the win without bursting a bucket.
+ * keeps the win without bursting a bucket. Also the recency-index shards one
+ * listing queries at once when the adapter names no `readConcurrency`.
  */
 export const DEFAULT_READ_CONCURRENCY = 8;
 
+/**
+ * Conditional row deletes a partition-wide delete keeps in flight. Pinning a
+ * row on the write that produced it costs one request per row where a batch
+ * carried twenty-five, so issuing them one at a time would have paid a round
+ * trip per row; eight at once gives most of that back while keeping a
+ * partition of any size from opening a socket per row. A fixed value rather
+ * than a caller option: this is a maintenance path, and it has no other knob.
+ *
+ * Its own literal at the same value as {@link DEFAULT_READ_CONCURRENCY}, not an
+ * alias of it — aliasing two limits has already meant that retuning one
+ * silently moved the other (see {@link LIST_SCAN_WARN_THRESHOLD}).
+ */
+export const DELETE_CONCURRENCY = 8;
+
+/**
+ * Largest `readConcurrency` an adapter accepts: it is a multiplier on the
+ * memory-ceiling formula (see the option's own doc) and on requests fired at
+ * once, so an unbounded value turns a typo into an out-of-memory crash or a
+ * request storm against the table/bucket.
+ */
+export const MAX_READ_CONCURRENCY = 128;
+
 /** Default cap on candidates the in-DB semantic ranker will score. */
 export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;
+
+/**
+ * Largest `maxSearchCandidates` an adapter accepts: this many decoded
+ * candidates are held and re-ranked in memory by one `search()` call, so an
+ * unbounded value lets a typo or hostile config hold an unbounded working set.
+ */
+export const MAX_SEARCH_CANDIDATES = 100_000;
+
+/**
+ * Largest `maxScanItems` an adapter accepts: this many raw rows are collected
+ * into memory across one paginated scan/query before it errors, so — like
+ * {@link MAX_SEARCH_CANDIDATES} — an unbounded value lets a typo or hostile
+ * config hold an unbounded working set.
+ */
+export const MAX_SCAN_ITEMS = 1_000_000;
 
 /**
  * Raw rows a single `listCheckpoints` call may pull before it warns. The read
@@ -108,6 +237,36 @@ export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;
  * left the pair reported as a duplicate export.
  */
 export const LIST_SCAN_WARN_THRESHOLD = 10000;
+
+/**
+ * Largest `limit` any read accepts, on every method that takes one.
+ *
+ * Chosen from what a page costs, which is linear in `limit` and amortised
+ * nowhere: every row of a page is held decoded and resident until the whole
+ * page is handed back, and an offloaded row is an S3 GET and a decompression
+ * of its own, `readConcurrency` at a time. A page of N rows is therefore N
+ * objects held at once and, in the worst case, N round trips before the caller
+ * sees the first of them.
+ *
+ * Ten thousand is where this package already says a read has stopped being one
+ * and become an export: {@link MAX_TOTAL_ITEMS_IN_MEMORY} refuses to collect
+ * more than that across a whole paginated query, and
+ * {@link LIST_SCAN_WARN_THRESHOLD} tells an operator about a listing that
+ * walks that far. A single page allowed past either would hold more than every
+ * other path in the package may. Its own literal at the same value rather than
+ * an alias of them, for the reason {@link LIST_SCAN_WARN_THRESHOLD} records.
+ *
+ * What it does *not* do is promise a memory figure: rows are the caller's own
+ * data, so ten thousand session summaries are a few megabytes while a hundred
+ * items at {@link MAX_INLINE_PAYLOAD_BYTES} are forty. It bounds a typo — the
+ * `1e12` that used to resolve — not a working set.
+ *
+ * What a caller loses at the ceiling is one large page, never the rows: every
+ * bounded read has a way to continue — `listSessions` a cursor, `search` an
+ * `offset`, `getMessages` a `before`, and `saver.list` streams and never
+ * accumulates — so an answer larger than this is paid for as pages.
+ */
+export const MAX_PAGE_LIMIT = 10_000;
 
 /**
  * Byte caps on caller-supplied identifiers, measured as UTF-8. DynamoDB caps a
@@ -138,3 +297,99 @@ export const MAX_S3_KEY_BYTES = 1024;
  * must outlive its row, never the other way round.
  */
 export const S3_LIFECYCLE_SWEEP_MARGIN_DAYS = 2;
+
+/**
+ * Days a released payload's noncurrent version survives behind its delete
+ * marker before S3 reclaims it. One day is the smallest the lifecycle API
+ * accepts and it rounds up to the next UTC midnight, so the window is 24-48 h:
+ * long enough to restore a payload released in error, short enough that a
+ * versioned bucket does not pay for every release it has ever made. It is a
+ * floor and never a cap — a longer retention the bucket already carries is
+ * kept, because this package has no business shortening someone else's
+ * recovery window. Inert on an unversioned bucket, which has no noncurrent
+ * versions to expire.
+ */
+export const S3_RELEASE_GRACE_DAYS = 1;
+
+/**
+ * Characters of an unchecked string one log line or one public error message
+ * carries, past which it is cut and marked with its real length.
+ *
+ * Most of what these lines quote is a row's sort key or an offloaded object's
+ * S3 key, so the service already caps each at 1024 bytes — the cost is not one
+ * long line but many. `list: skipped a row that is not a checkpoint meta item`
+ * and `left a foreign row in place` fire once per row, and those passes walk a
+ * whole partition, up to {@link MAX_TOTAL_ITEMS_IN_MEMORY} rows: one call on a
+ * shared table could write megabytes of log. A consumer's `VectorBackend`
+ * carries no such service cap at all.
+ *
+ * 256 is {@link MAX_KEY_SEGMENT_BYTES}, this package's own budget for one
+ * identifier inside a key, so any key composed from identifiers it validated
+ * is quoted whole in the common case and only a foreign row, a hand-written
+ * one or a backend's own answer — exactly the cases these lines report — is
+ * cut. Nothing is lost by cutting: the line's job is to say which row to go
+ * and look at, and the row holds the rest.
+ */
+export const MAX_LOGGED_VALUE_CHARS = 256;
+
+/**
+ * Labels of an unchecked `string[]` one log line or one public error message
+ * carries, past which the rest are dropped and the real depth is stated.
+ *
+ * An array is two unbounded things — how many labels there are and how long
+ * each one is — so a bound on the labels alone is not a bound: a backend
+ * answering with one label of a megabyte and one answering with a million
+ * labels of a character cost the same line. {@link MAX_LOGGED_VALUE_CHARS}
+ * covers the first, this covers the second.
+ *
+ * 8 is a budget rather than a rule about namespaces: a store namespace is a
+ * path, what identifies which path is its leading labels, and every namespace
+ * this package's own documentation forms is two or three deep. The marker
+ * states the depth it really had, so a deeper one is cut without being
+ * misreported.
+ *
+ * A `namespace` and `key` pair that passed `validateStoreKey` needs none of
+ * this and goes in whole: that check measures the sort key they *compose*, so
+ * it bounds how many labels there are as well as how long each one is. A
+ * search or listing **prefix** passes no such check — nothing composes it into
+ * a key — so its depth is unchecked however carefully each label was checked,
+ * and a backend's own answer is unchecked in both.
+ */
+export const MAX_LOGGED_LABELS = 8;
+
+/**
+ * Characters of a relayed *cause's* text one public error message or one log
+ * line carries, past which it is cut and marked with its real length.
+ *
+ * Its own cap rather than {@link MAX_LOGGED_VALUE_CHARS} because the two bound
+ * different things. That one bounds an **identifier** — a sort key, an S3
+ * object key, a namespace label — and 256 is this package's own budget for one
+ * identifier inside a key, so a value past it is already abnormal and the line
+ * only has to say which row to go and look at. This one bounds **prose**: the
+ * sentence an AWS SDK error, a consumer's `VectorBackend` or a caller's own
+ * `serde` wrote to explain a failure, which `redactedMessage` relays into
+ * `err.message`. Cutting that at an identifier's budget would throw away the
+ * half of a diagnostic that says what to do about it, and a diagnostic is the
+ * entire value of relaying it at all.
+ *
+ * 1024 is measured against the longest text this package actually relays: an
+ * IAM `AccessDenied`, which names the calling principal's ARN, the action and
+ * the resource ARN and then says why no policy allows it, runs to the mid
+ * hundreds of characters, and a role ARN with a long path and a session name
+ * pushes it further. 1024 clears that whole, so the case an operator most
+ * needs to read arrives intact.
+ *
+ * What it is *for* is the other direction. `redactedMessage` also relays a
+ * **caller's own** thrown error — a `serde` refusing a value, a `vectorBackend`
+ * rejecting a query — whose length the caller controls entirely, and those
+ * messages are quoted once per row on paths that walk a whole prefix or table.
+ * Unbounded, one such error fills a log; at 1024 a thousand of them are a
+ * megabyte rather than an unbounded amount.
+ *
+ * Its own literal at the same value as {@link MAX_SORT_KEY_BYTES} and
+ * {@link MAX_S3_KEY_BYTES} rather than an alias of either, for the reason
+ * {@link LIST_SCAN_WARN_THRESHOLD} records: aliasing two caps has already
+ * meant that retuning one silently moved the other, and these three answer
+ * unrelated questions.
+ */
+export const MAX_RELAYED_MESSAGE_CHARS = 1024;

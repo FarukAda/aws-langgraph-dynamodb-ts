@@ -1,4 +1,5 @@
 import { rejectedItem } from '../../shared/dynamodb/conditional-put';
+import { truncateForLog } from '../../shared/logging/truncate';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
 
@@ -17,8 +18,17 @@ function rejectedChannel(error: Error): string | undefined {
  * committed — a genuine duplicate, and the expected outcome of a retry. A row
  * held by a *different* channel is not something this adapter can produce, so
  * it is reported at `warn`: the write was not persisted and something else
- * wrote to this key space. No attributes returned means the outcome cannot be
- * told apart, so it is treated as the ordinary duplicate.
+ * wrote to this key space.
+ *
+ * Accepts: `error` — the rejection, which carries the row that caused it when
+ * the service returned attributes. No attributes means the two cases cannot be
+ * told apart, and the ordinary duplicate is the one assumed: warning on every
+ * unattributed rejection would cry wolf on the expected outcome of a retry.
+ *
+ * Returns: nothing. A rejection is not a failure here — first-write-wins means
+ * losing is a normal outcome — so it is reported, not thrown.
+ *
+ * Throws: nothing.
  */
 export function reportGuardRejection(
   context: CheckpointerContext,
@@ -30,7 +40,7 @@ export function reportGuardRejection(
     context.logger.warn('putWrites: write row held by an unexpected channel; write not persisted', {
       sortKey: item.SK,
       expected: item.channel,
-      found,
+      found: truncateForLog(found),
     });
     return;
   }
@@ -41,11 +51,20 @@ export function reportGuardRejection(
 }
 
 /**
- * True when the guard rejection's returned row provably belongs to another
- * `putWrites` call, so this call's own upload is dead and safe to delete. A
+ * Whether the rejection's returned row provably belongs to another `putWrites`
+ * call.
+ *
+ * Accepts: `error` — the rejection. `item` — the row this call tried to write,
+ * carrying its own `writeGroup`.
+ *
+ * Returns: whether the row that won carries a *different* group, which is the
+ * only evidence that this call's own upload is dead and safe to delete. A
  * retried put whose response was lost can be rejected by the row it wrote
- * itself, so an equal group — or no attributes at all — proves nothing and
- * must not be taken as "my upload is dead".
+ * itself, so an equal group — or no attributes at all — proves nothing and is
+ * answered `false`: the object is then left to the lifecycle rule rather than
+ * deleted out from under a live row.
+ *
+ * Throws: nothing.
  */
 export function rejectionProvesForeignRow(item: CheckpointWriteItem, error: Error): boolean {
   const group = rejectedItem(error)?.writeGroup as string | undefined;

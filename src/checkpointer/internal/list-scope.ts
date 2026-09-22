@@ -2,8 +2,18 @@ import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb'
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
+import { compareSortKeys } from '../../shared/dynamodb/sort-key-order';
+import { SAVER_LIST_KEYS } from '../../shared/validation/method-keys';
+import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
+import { validateLimit } from '../../shared/validation/primitives';
 import type { CheckpointMetaItem } from '../types';
-import { readConfigurable, type ResolvedConfigurable } from './configurable';
+import {
+  isAbsentId,
+  isThreadless,
+  readConfigurable,
+  readThreadlessConfigurable,
+  type ResolvedConfigurable,
+} from './configurable';
 import { type FilterValue, matchesFilter } from './filter-match';
 import { readMetadata } from './item-reader';
 import {
@@ -15,7 +25,7 @@ import {
 } from './keys';
 import { beginsWithQuery } from './query';
 import type { CheckpointerContext } from './setup';
-import { validateCheckpointId, validateCheckpointNs } from './validation';
+import { validateCheckpointId } from './validation';
 
 /** What one `list()` call covers, read once from its config and options. */
 export interface ListScope {
@@ -30,39 +40,120 @@ export interface ListScope {
   signal: AbortSignal | undefined;
 }
 
-/** The identifiers of a config that names no thread, validated the same way. */
-function readThreadless(config: RunnableConfig): ResolvedConfigurable {
-  const checkpointNs = (config.configurable?.checkpoint_ns as string | undefined) ?? '';
-  validateCheckpointNs(checkpointNs);
-  const rawId = config.configurable?.checkpoint_id as string | undefined;
-  const checkpointId = rawId ? rawId : undefined;
-  if (checkpointId !== undefined) validateCheckpointId(checkpointId);
-  return { threadId: '', checkpointNs, checkpointId };
-}
-
 /** The identifiers a list config names; a config without a thread is still validated for the ids it gives. */
 function resolveListIds(
   config: RunnableConfig,
 ): Omit<ResolvedConfigurable, 'threadId'> & { threadId: string | undefined } {
-  if (config.configurable?.thread_id === undefined) {
-    return { ...readThreadless(config), threadId: undefined };
+  if (isThreadless(config)) {
+    return { ...readThreadlessConfigurable(config), threadId: undefined };
   }
   return readConfigurable(config);
 }
 
 /**
- * Read the scope. Unlike `getTuple`, which addresses the root namespace when
- * none is given, `list()` without a `checkpoint_ns` covers every namespace,
- * and without a `thread_id` every thread, as the reference savers do; the
- * identifiers that are given are validated either way.
+ * `options.before`'s `checkpoint_id`, validated the way this package's own
+ * `configurable.ts` reads the same field off `config`, with the same two
+ * rules: {@link isAbsentId} — exactly `undefined`, `null` or `''` means no
+ * bound — and anything else, including `0`, `false` or `NaN`, none of which
+ * JS truthiness alone would catch, is validated by {@link validateCheckpointId}
+ * as the sort-key segment it becomes. Checking equality against exactly those
+ * three values, rather than truthiness, is deliberately stricter: a bare
+ * truthiness check would treat `0`, `false` and `NaN` as absent instead of
+ * validating them.
+ *
+ * Left as an unchecked cast, a caller-supplied non-string reached
+ * `ListScope.before`, which is typed `string | undefined`, and then
+ * `passesKeyFilters`'s `meta.checkpointId < scope.before` compared a stored
+ * string against it — `'1f0a…' < 123` is `false` for every row, so every
+ * checkpoint failed the filter and the listing came back silently empty
+ * instead of naming the bad value. The same comparison made an *empty*
+ * `checkpoint_id` fail every row too, and a malformed one (`'a#b'`) was
+ * accepted outright — both are the same defect reached differently, and
+ * both are H-10.
+ *
+ * Accepts: `before` — the caller's `options.before`. Absent is no bound.
+ * When given, must be an object — `{}` is legal, since it names no id.
+ * `before.configurable.checkpoint_id` is the only field read; the legacy
+ * `thread_ts` alias `configurable.ts` falls back to for a *thread's*
+ * checkpoint id does not apply here.
+ *
+ * Returns: the checkpoint id to filter on, or `undefined` for no filter.
+ *
+ * Throws: ValidationError naming `before` for a non-object `before`, or for
+ * a `checkpoint_id` — anything but `undefined`, `null` or `''` — that is not
+ * a well-formed identifier (H-10).
+ */
+function beforeCheckpointId(before: RunnableConfig | undefined): string | undefined {
+  if (before === undefined) return undefined;
+  assertObjectShape(before, 'before');
+  const checkpointId = before.configurable?.checkpoint_id;
+  if (isAbsentId(checkpointId)) return undefined;
+  validateCheckpointId(checkpointId, 'before');
+  return checkpointId;
+}
+
+/**
+ * Reject an `options` bag carrying a key this package does not read, or a
+ * `filter` that is not an object. Split out of {@link readListScope} to keep
+ * its own complexity under the repo's cap.
+ *
+ * Accepts: `options` — absent is left alone.
+ *
+ * Returns: nothing; validity is the absence of a throw.
+ *
+ * Throws: ValidationError naming `options.<key>` for an unknown key, or
+ * `filter` for a non-object one.
+ */
+function assertListOptionsShape(options: CheckpointListOptions | undefined): void {
+  if (options === undefined) return;
+  assertShape(options, SAVER_LIST_KEYS, 'options');
+  if (options.filter !== undefined) assertObjectShape(options.filter, 'filter');
+}
+
+/**
+ * What one `list()` call covers, read from its config and options.
+ *
+ * Accepts: `config` — must be an object; `null`, `undefined`, an array or any
+ * other non-object value is refused naming `config`, before any property is
+ * read off it. `config.configurable` — absent or an object, refused naming
+ * `configurable` otherwise; `thread_id` omitted lists every thread and
+ * `checkpoint_ns` omitted every namespace, as the reference savers do; every
+ * identifier that *is* given is validated either way. `options.limit` — an
+ * integer from 0 to the page ceiling; `0` asks for nothing, which
+ * `asksForNothing` answers before a request is built, so it is not refused
+ * here, while a negative value is refused rather than read as zero — it can
+ * only be a page size whose computation went wrong, and answering it with an
+ * empty listing hides that. `options.before` —
+ * an object naming, at most, a `checkpoint_id`; see {@link beforeCheckpointId}.
+ * `options.filter` — metadata equality clauses, applied in process; must be an
+ * object when given. `config.signal` — absent or `AbortSignal`-shaped.
+ *
+ * Returns: the scope every later step reads instead of the raw config.
+ *
+ * Throws: ValidationError for a malformed identifier; naming `config` for a
+ * non-object config, `configurable` for a non-object `configurable` and
+ * `signal` for a signal that is not `AbortSignal`-shaped — all checked before
+ * `options`, so a call with both malformed (e.g. `list('x', { bogus: 1 })`)
+ * names `config`, not `options.bogus`; naming `limit` for anything that is not
+ * an integer in range — a non-integer is one DynamoDB would otherwise refuse
+ * with a raw `ValidationException` after the round trip, and a value above the
+ * ceiling names the ceiling; naming `before` for a non-object `before` or a malformed
+ * `checkpoint_id` (H-10); naming `filter` for a non-object filter; naming
+ * `options.<key>` for a key this package does not read.
  */
 export function readListScope(config: RunnableConfig, options?: CheckpointListOptions): ListScope {
   const { threadId, checkpointNs, checkpointId } = resolveListIds(config);
+  assertListOptionsShape(options);
+  /**
+   * Zero floor: `list` is an iterator a caller drains, so a zero page ends it
+   * immediately and visibly. Only a conversation window refuses zero.
+   */
+  if (options?.limit !== undefined) validateLimit(options.limit, 0);
   return {
     threadId,
     checkpointNs: config.configurable?.checkpoint_ns === undefined ? undefined : checkpointNs,
     checkpointId,
-    before: options?.before?.configurable?.checkpoint_id as string | undefined,
+    before: beforeCheckpointId(options?.before),
     filter: options?.filter as Record<string, FilterValue> | undefined,
     limit: options?.limit,
     signal: config.signal,
@@ -70,11 +161,19 @@ export function readListScope(config: RunnableConfig, options?: CheckpointListOp
 }
 
 /**
- * The META query for a scope. A metadata filter means rows may be dropped
- * client-side, so only an unfiltered list passes the caller's limit through as
- * the page size. With an explicit namespace `before` bounds the key range so
- * rows newer than it are never read; across namespaces ids do not share one
- * order and `before` is applied in-process.
+ * The META query for a scope that names a thread.
+ *
+ * Accepts: `scope.filter` — its presence means rows may be dropped client-side,
+ * so only an unfiltered list passes the caller's `limit` through as the page
+ * size; passing it through a filtered read would cut the page short of matches
+ * that exist. `scope.checkpointNs` — absent spans every namespace of the
+ * thread. `scope.before` — bounds the key range only with an explicit
+ * namespace, since across namespaces ids do not share one order; it is applied
+ * in-process otherwise.
+ *
+ * Returns: the Query input.
+ *
+ * Throws: nothing.
  */
 export function listQuery(
   context: CheckpointerContext,
@@ -93,10 +192,18 @@ export function listQuery(
 }
 
 /**
- * The table `Scan` a thread-less `list()` runs: every checkpointer META row,
- * narrowed to one namespace when the caller gave one. It is what the
- * reference savers do for a config without a thread, and on DynamoDB it costs
- * a read of the whole table.
+ * The table `Scan` a thread-less `list()` runs when no recency index is
+ * configured.
+ *
+ * Accepts: `scope.checkpointNs` — narrows the filter to one namespace when the
+ * caller gave one.
+ *
+ * Returns: the Scan input, filtered to this adapter's META rows. It is what the
+ * reference savers do for a config without a thread, and on DynamoDB it costs a
+ * read of the whole table — cross-tenant by construction, which the public
+ * documentation says outright.
+ *
+ * Throws: nothing.
  */
 export function listScan(context: CheckpointerContext, scope: ListScope): ScanCommandInput {
   return {
@@ -114,13 +221,28 @@ export function listScan(context: CheckpointerContext, scope: ListScope): ScanCo
 }
 
 /**
- * True when `meta` passes the key-level filters: strictly older than `before`,
- * and — on a table scan, where the key condition cannot narrow them — in the
- * requested namespace and, when one is given, the requested checkpoint.
+ * Whether `meta` passes the key-level filters.
+ *
+ * Accepts: any narrowed META row, from a query or a scan.
+ *
+ * Returns: whether it is strictly older than `before` and — on a table scan,
+ * where the key condition cannot narrow them — in the requested namespace and,
+ * when one is given, the requested checkpoint. Applied to query results too,
+ * which is redundant there and free: one rule, one place.
+ *
+ * "Older" is {@link compareSortKeys}, because on the query path the same bound
+ * is already a `BETWEEN` on the composed sort key, which DynamoDB evaluates in
+ * UTF-8 byte order. JavaScript's `<` orders UTF-16 code units instead, and at
+ * an astral id the two disagree — which turned the redundant pass into a
+ * second, different filter that dropped rows the query had rightly returned.
+ * Every id in one namespace shares its sort key's prefix, so comparing the id
+ * is comparing the sort key.
+ *
+ * Throws: nothing.
  */
 export function passesKeyFilters(meta: CheckpointMetaItem, scope: ListScope): boolean {
   return (
-    (scope.before === undefined || meta.checkpointId < scope.before) &&
+    (scope.before === undefined || compareSortKeys(meta.checkpointId, scope.before) < 0) &&
     (scope.checkpointNs === undefined || meta.checkpointNs === scope.checkpointNs) &&
     (scope.checkpointId === undefined || meta.checkpointId === scope.checkpointId)
   );
@@ -130,9 +252,19 @@ export function passesKeyFilters(meta: CheckpointMetaItem, scope: ListScope): bo
 export type MetadataVerdict = { pass: false } | { pass: true; metadata?: CheckpointMetadata };
 
 /**
- * Apply the optional metadata-equality filter. The metadata decoded here is
- * handed to the tuple assembly, so a filtered list decodes (and, when offloaded,
- * downloads) each metadata blob once instead of twice.
+ * Apply the optional metadata-equality filter.
+ *
+ * Accepts: `scope.filter` — absent means every row passes and nothing is
+ * decoded. `meta` — already bound to its partition, so the scope its metadata
+ * is read under is its own.
+ *
+ * Returns: whether the row passes and, when it does and a filter forced the
+ * decode, the metadata itself — handed to the tuple assembly, so a filtered
+ * list decodes (and, when offloaded, downloads) each blob once instead of
+ * twice.
+ *
+ * Throws: whatever the decode throws. Metadata that decodes to something that
+ * is not an object matches no filter clause rather than failing the listing.
  */
 export async function passesMetadataFilter(
   context: CheckpointerContext,
@@ -140,7 +272,7 @@ export async function passesMetadataFilter(
   scope: ListScope,
 ): Promise<MetadataVerdict> {
   if (!scope.filter) return { pass: true };
-  const metadata = await readMetadata(context, meta, meta.threadId);
+  const metadata = await readMetadata(context, meta, meta.threadId, scope.signal);
   return matchesFilter(metadata as Record<string, FilterValue>, scope.filter)
     ? { pass: true, metadata }
     : { pass: false };

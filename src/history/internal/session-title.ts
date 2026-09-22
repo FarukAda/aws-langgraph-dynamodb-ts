@@ -23,6 +23,14 @@ function isConditionRejected(error: Error): boolean {
  * this call wrote — so a pre-existing title, or one a concurrent caller won
  * the `if_not_exists` race for, is never removed. A condition rejection means
  * exactly that and is not an error; anything else is.
+ *
+ * Accepts: `createdAt` — this call's own timestamp. `title` — the exact string
+ * this call wrote, compared as a value so nothing else's title is removed.
+ *
+ * Returns: nothing, whether the title was removed or the guards correctly
+ * refused.
+ *
+ * Throws: whatever the update throws other than its own condition failure.
  */
 export async function removeRolledBackTitle(
   context: HistoryContext,
@@ -32,15 +40,18 @@ export async function removeRolledBackTitle(
 ): Promise<void> {
   try {
     await withDynamoDBRetry(
-      () =>
-        context.client.update({
-          TableName: context.tableName,
-          Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
-          UpdateExpression: 'REMOVE #title',
-          ConditionExpression: '#c = :now AND #title = :title',
-          ExpressionAttributeNames: { '#title': 'title', '#c': 'createdAt' },
-          ExpressionAttributeValues: { ':now': createdAt, ':title': title },
-        }),
+      (request) =>
+        context.client.update(
+          {
+            TableName: context.tableName,
+            Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+            UpdateExpression: 'REMOVE #title',
+            ConditionExpression: '#c = :now AND #title = :title',
+            ExpressionAttributeNames: { '#title': 'title', '#c': 'createdAt' },
+            ExpressionAttributeValues: { ':now': createdAt, ':title': title },
+          },
+          request,
+        ),
       context.retry,
     );
   } catch (error) {

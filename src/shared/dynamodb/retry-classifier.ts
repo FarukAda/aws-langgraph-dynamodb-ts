@@ -118,14 +118,32 @@ function collectEvidence(error: Error): RetryEvidence {
 }
 
 /**
- * True when `error` (or any cause in its chain) is transient: a transaction
- * cancellation whose every reason is transient (that verdict takes precedence,
- * because a permanent reason arrives with the same statuses as a transient
- * one), an HTTP status in {@link TRANSIENT_HTTP_STATUSES}, the SDK's
- * `$retryable` trait, or an exact match of a `name`/`code`/`errno`/`syscall`
- * token against `retryableErrors`. Exact, not substring: the fields are
- * whole tokens, and a substring rule would let an unrelated name that merely
- * contains one ride along.
+ * Whether `error`, or any cause in its chain, is transient.
+ *
+ * Accepts: `error` — an `Error`; its `cause` chain is walked to
+ * {@link MAX_CAUSE_DEPTH}, and a cycle in it terminates the walk rather than
+ * looping. Anything else a `throw` can produce carries no node to walk and is
+ * not retryable. `retryableErrors` — the signal tokens to match; an empty list
+ * still admits the trait and status rules below.
+ *
+ * Returns: true when any of these holds, in this order —
+ * 1. the error is a transaction cancellation and **every** reason it carries is
+ *    transient. This verdict is final either way: a permanent reason arrives
+ *    with the same HTTP status as a transient one, so the later rules cannot be
+ *    allowed to overturn it. A cancellation carrying no reasons is not retried.
+ * 2. any node carries the SDK's `$retryable` trait;
+ * 3. any node's HTTP status is in {@link TRANSIENT_HTTP_STATUSES} — which is
+ *    what classifies a failure the SDK could not map to a modeled exception,
+ *    arriving as `name: 'Unknown'` with only a status;
+ * 4. any node's `name`, `code`, `errno` or `syscall` equals a token in
+ *    `retryableErrors`.
+ *
+ * The token match is exact, never substring: these fields are whole tokens, and
+ * a substring rule would let an unrelated name that merely contains one ride
+ * along.
+ *
+ * Throws: **nothing**, for any value a `throw` can produce — see
+ * {@link getCancellationReasons}, which the first rule reads through.
  */
 export function isRetryableError(error: Error, retryableErrors: readonly string[]): boolean {
   const cancellation = transactionCancellationRetryable(error);

@@ -1,6 +1,8 @@
 import { BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { batchWriteAll } from '../../../../src/shared/dynamodb/batch-write';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { AbortError } from '../../../../src/shared/errors/errors';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 const put = (pk: string) => ({ PutRequest: { Item: { pk } } });
@@ -77,5 +79,43 @@ describe('batchWriteAll', () => {
       succeededCount: 5,
     });
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(2);
+  });
+
+  /**
+   * A cancel is not a failed write, and the count assertion is the half that
+   * matters: a version that drains the remaining chunks and only then raises
+   * `AbortError` satisfies "it threw the right error" while still spending the
+   * requests the caller cancelled.
+   */
+  it('rethrows an abort from a chunk and attempts no chunk after it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const aborted = new AbortError();
+    mock.on(BatchWriteCommand).rejectsOnce(aborted).resolves({ UnprocessedItems: {} });
+    const requests = Array.from({ length: 60 }, (_, i) => put(String(i)));
+    const error = await batchWriteAll(client, 't', requests).catch((e: unknown) => e);
+    expect(error).toBe(aborted);
+    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
+  });
+
+  /**
+   * The production path: the signal fires during the drain's backoff, so the
+   * error arrives from `sleep` rather than from the write. It carries no
+   * `succeededCount`, which is what made the accumulated total `NaN`.
+   */
+  it('reports a signal that fires during a drain as a cancel, not a partial batch write', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    mock.on(BatchWriteCommand).callsFake((input: { RequestItems: { t: unknown[] } }) => {
+      controller.abort();
+      return { UnprocessedItems: { t: input.RequestItems.t } };
+    });
+    const requests = Array.from({ length: 60 }, (_, i) => put(String(i)));
+    const error = await batchWriteAll(client, 't', requests, {
+      signal: controller.signal,
+      retry: { baseDelayMs: 1, maxDelayMs: 1 },
+    }).catch((e: unknown) => e);
+    expect(error).toMatchObject({ name: 'AbortError', code: ErrorCode.ABORTED });
+    expect(error).not.toHaveProperty('failedChunks');
+    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
   });
 });

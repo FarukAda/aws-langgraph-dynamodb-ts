@@ -16,7 +16,7 @@ across its checkpointer, store and history. A per-adapter option wins.
 
 ### client?
 
-> `optional` **client?**: `DynamoDBDocument`
+> `optional` **client?**: [`DynamoDBDocumentLike`](../type-aliases/DynamoDBDocumentLike.md)
 
 Defined in: [factory/types.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L27)
 
@@ -30,7 +30,11 @@ logs a `warn` at construction when they would).
 
 > `optional` **clientConfig?**: `DynamoDBClientConfig`
 
-Defined in: [factory/types.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L28)
+Defined in: [factory/types.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L33)
+
+Used to build the client, and read for its `region` when an `s3` config
+names none — including by `createAll`, whose adapters are handed the shared
+client rather than this config.
 
 ***
 
@@ -38,7 +42,7 @@ Defined in: [factory/types.ts:28](https://github.com/FarukAda/aws-langgraph-dyna
 
 > `optional` **compression?**: [`CompressionConfig`](CompressionConfig.md)
 
-Defined in: [factory/types.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L37)
+Defined in: [factory/types.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L42)
 
 ***
 
@@ -46,7 +50,7 @@ Defined in: [factory/types.ts:37](https://github.com/FarukAda/aws-langgraph-dyna
 
 > `optional` **logger?**: [`Logger`](Logger.md)
 
-Defined in: [factory/types.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L35)
+Defined in: [factory/types.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L40)
 
 ***
 
@@ -54,7 +58,7 @@ Defined in: [factory/types.ts:35](https://github.com/FarukAda/aws-langgraph-dyna
 
 > `optional` **retry?**: [`RetryPolicy`](RetryPolicy.md)
 
-Defined in: [factory/types.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L39)
+Defined in: [factory/types.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L44)
 
 ***
 
@@ -62,7 +66,7 @@ Defined in: [factory/types.ts:39](https://github.com/FarukAda/aws-langgraph-dyna
 
 > `optional` **s3?**: [`S3OffloadConfig`](S3OffloadConfig.md)
 
-Defined in: [factory/types.ts:38](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L38)
+Defined in: [factory/types.ts:43](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L43)
 
 ***
 
@@ -70,4 +74,4 @@ Defined in: [factory/types.ts:38](https://github.com/FarukAda/aws-langgraph-dyna
 
 > `optional` **ttl?**: [`TtlOption`](../type-aliases/TtlOption.md)
 
-Defined in: [factory/types.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L36)
+Defined in: [factory/types.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L41)

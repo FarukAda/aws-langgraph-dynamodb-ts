@@ -16,6 +16,7 @@ describe('shared constants', () => {
     expect(C.MAX_TTL_DAYS).toBe(365 * 5);
     expect(C.MAX_TTL_SECONDS).toBe(C.MAX_TTL_DAYS * 24 * 60 * 60);
     expect(C.S3_LIFECYCLE_SWEEP_MARGIN_DAYS).toBe(2);
+    expect(C.S3_RELEASE_GRACE_DAYS).toBe(1);
   });
 
   it('pins the identifier and key byte caps', () => {
@@ -38,5 +39,28 @@ describe('shared constants', () => {
 
   it('pins the list() scan warning threshold to its own value, independent of the in-memory cap', () => {
     expect(C.LIST_SCAN_WARN_THRESHOLD).toBe(10000);
+  });
+
+  it('pins the ceilings bounding every previously-unbounded numeric option (H-08, M-08)', () => {
+    expect(C.MAX_INDEX_SHARDS).toBe(1024);
+    expect(C.MAX_READ_CONCURRENCY).toBe(128);
+    expect(C.MAX_RETRY_DELAY_MS).toBe(60_000);
+    expect(C.MAX_PAYLOAD_BUFFER_BYTES).toBe(512 * 1024 * 1024);
+    expect(C.MAX_SCAN_ITEMS).toBe(1_000_000);
+    expect(C.MAX_SEARCH_CANDIDATES).toBe(100_000);
+    expect(C.MAX_PAGE_LIMIT).toBe(10_000);
+  });
+
+  /**
+   * The page ceiling shares a value with the in-memory collection cap and the
+   * scan warning, and holds its own literal for the reason
+   * `LIST_SCAN_WARN_THRESHOLD` records: aliasing two limits has already meant
+   * that retuning one silently moved the other. A page must never be allowed to
+   * hold more than the most this package will collect anywhere else, so the
+   * relation is pinned even though the constants are not shared.
+   */
+  it('keeps the page ceiling no larger than the in-memory collection cap', () => {
+    expect(C.MAX_PAGE_LIMIT).toBeLessThanOrEqual(C.MAX_TOTAL_ITEMS_IN_MEMORY);
+    expect(C.MAX_PAGE_LIMIT).toBeLessThanOrEqual(C.LIST_SCAN_WARN_THRESHOLD);
   });
 });

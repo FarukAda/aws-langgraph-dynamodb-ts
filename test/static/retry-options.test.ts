@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { findRetryCallsWithoutOptions } from './guards/retry-options';
-import { listSourceFiles } from './guards/source-files';
+import { listSourceFiles, SRC_ROOT } from './guards/source-files';
+
+const readSource = (file: string): string => readFileSync(resolve(SRC_ROOT, file), 'utf8');
 
 describe('findRetryCallsWithoutOptions', () => {
   it('flags a call that passes only the operation', () => {
@@ -19,6 +22,25 @@ describe('findRetryCallsWithoutOptions', () => {
   it('does not mistake a trailing comma for a second argument', () => {
     const text = 'withDynamoDBRetry(() =>\n  client.get({ a: "x)" }),\n);';
     expect(findRetryCallsWithoutOptions(text)).toEqual([1]);
+  });
+});
+
+describe('the per-write deadline stays off the caller-facing surface', () => {
+  /**
+   * `RetryOptions` is re-exported from the package entry point and is the
+   * retry surface `backfillRecencyIndex` accepts, so a new field on it would
+   * otherwise be a public option. `deadlineAt` is computed per call by the
+   * paths that carry a client request token, never named by an application.
+   * The `@internal` marker that keeps it out of the shipped declarations and
+   * the generated docs is checked by `internal-seams`, which walks the AST and
+   * finds the property wherever it is declared; what is left here is the other
+   * half, which no AST walk can see: the key list a caller's options are
+   * validated against.
+   */
+  it('leaves deadlineAt out of the keys backfillRecencyIndex accepts', () => {
+    expect(readSource('shared/dynamodb/backfill-validation.ts')).not.toContain(
+      "deadlineAt: 'deadlineAt'",
+    );
   });
 });
 

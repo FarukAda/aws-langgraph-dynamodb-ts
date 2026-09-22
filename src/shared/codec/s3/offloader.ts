@@ -5,7 +5,10 @@ import {
   DEFAULT_S3_KEY_PREFIX,
   DEFAULT_S3_SSE,
   DEFAULT_S3_THRESHOLD_BYTES,
+  DEFAULT_SOCKET_TIMEOUT_MS,
 } from '../../constants';
+import type { Logger } from '../../logging/logger';
+import { type BacklinkRow, backlinkMetadata } from './backlink';
 import { createDefaultS3Client, loadS3Sdk } from './client';
 import type { S3ClientConfigLike } from './client-types';
 import { buildS3Key, S3OffloadConfig } from './config';
@@ -30,6 +33,17 @@ export class S3Offloader {
   private readonly maxDownloadBytes: number;
   private readonly config: S3OffloadConfig;
 
+  /**
+   * Accepts: `config` — already validated by the adapter that builds this, with
+   * its key prefix resolved to the adapter's own path.
+   *
+   * Returns: an offloader whose S3 client is built lazily, on the first
+   * operation that needs one.
+   *
+   * Throws: nothing. A missing `@aws-sdk/client-s3` is not raised here: the
+   * import is warmed so the failure surfaces, typed, on the first S3 operation
+   * rather than on the first oversize payload days later.
+   */
   constructor(config: S3OffloadConfig) {
     this.config = config;
     this.bucketName = config.bucketName;
@@ -50,10 +64,23 @@ export class S3Offloader {
   private getClient(): Promise<S3Client> {
     if (!this.clientPromise) {
       const cfg: S3ClientConfigLike = this.config.clientConfig ?? {};
-      /** The hook is typed structurally for consumers; the runtime modules use the real SDK client. */
+      /**
+       * The hook is typed structurally for consumers; the runtime modules use
+       * the real SDK client. It hands over a constructor, not a configuration,
+       * so a caller who supplies one has not opted out of the bound: the same
+       * default handler {@link createDefaultS3Client} applies reaches it, for
+       * the reason recorded there. `cfg` still spreads last, so a caller who
+       * does want to replace it puts a `requestHandler` in `clientConfig`.
+       */
       this.clientPromise = (
         this.config.createS3Client
-          ? Promise.resolve(this.config.createS3Client({ maxAttempts: 1, ...cfg }) as S3Client)
+          ? Promise.resolve(
+              this.config.createS3Client({
+                maxAttempts: 1,
+                requestHandler: { socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS },
+                ...cfg,
+              }) as S3Client,
+            )
           : createDefaultS3Client(cfg)
       ).then(
         (client) => {
@@ -74,63 +101,192 @@ export class S3Offloader {
     return this.clientPromise;
   }
 
-  /** True when `data` is large enough to warrant S3 offload. */
+  /**
+   * Whether `data` is large enough to warrant S3 offload.
+   *
+   * Accepts: the encoded payload, after compression — what would actually be
+   * stored.
+   *
+   * Returns: whether it reaches `thresholdBytes`. The comparison is inclusive,
+   * so a payload exactly at the threshold offloads.
+   *
+   * Throws: nothing.
+   */
   shouldOffload(data: Uint8Array): boolean {
     return data.length >= this.thresholdBytes;
   }
 
-  /** Build the S3 key for the given key parts. */
-  buildKey(parts: readonly string[]): string {
-    return buildS3Key(this.keyPrefix, parts);
+  /**
+   * Build the S3 key of the object write `objectId` uploads for the row `parts`
+   * identify.
+   *
+   * Accepts: `parts` — at least one; the row's identity. `objectId` — the
+   * uploading write's id, appended as it is: key-safe, with no `/` (see
+   * {@link buildS3Key}).
+   *
+   * Returns: the key, under this offloader's prefix.
+   *
+   * Throws: ValidationError naming `s3Key` for empty `parts` or a key over
+   * S3's 1024-byte cap.
+   */
+  buildKey(parts: readonly string[], objectId: string): string {
+    return buildS3Key(this.keyPrefix, parts, objectId);
   }
 
-  /** The configured key prefix. */
+  /**
+   * The configured key prefix.
+   *
+   * Accepts: nothing.
+   *
+   * Returns: the prefix every key this offloader builds starts with, which is
+   * what a lifecycle rule is scoped to.
+   *
+   * Throws: nothing.
+   */
   getKeyPrefix(): string {
     return this.keyPrefix;
   }
 
-  /** True when `key` lies under this offloader's prefix and the `scope` parts' path. */
+  /**
+   * Whether `key` lies under this offloader's prefix and the `scope` parts'
+   * path.
+   *
+   * Accepts: `key` — any key, including one read off a row. `scope` — the
+   * identity of the row that claims it.
+   *
+   * Returns: whether the row may address that object.
+   *
+   * Throws: nothing — this is the question form; {@link assertOwnedKey} is the
+   * refusing form.
+   */
   ownsKey(key: string, scope: readonly string[]): boolean {
     return isKeyInScope(key, this.keyPrefix, scope);
   }
 
-  /** Refuse a row-sourced key outside the row's own path (see {@link assertKeyInScope}). */
+  /**
+   * Refuse a row-sourced key outside the row's own path.
+   *
+   * Accepts: as {@link ownsKey}.
+   *
+   * Returns: nothing; being in scope is the absence of a throw.
+   *
+   * Throws: ValidationError. Every download of a key taken from a row goes
+   * through here, so a tampered or foreign row cannot make a reader fetch an
+   * object belonging to another row.
+   */
   assertOwnedKey(key: string, scope: readonly string[]): void {
     assertKeyInScope(key, this.keyPrefix, scope);
   }
 
-  /** Upload `data` under `key`, returning the key. */
-  async upload(key: string, data: Uint8Array): Promise<string> {
+  /**
+   * Upload `data` under `key`, writing only while the key is free.
+   *
+   * Accepts: `key` — built by {@link buildKey} for the write uploading `data`,
+   * so no other write uploads to it. `row` — written to the object as the
+   * DynamoDB backlink, for an out-of-band sweeper. `signal` — cancels the
+   * request itself, not merely the wait before the next attempt.
+   *
+   * Returns: the key, whether this request stored the object or an earlier
+   * attempt of this upload did (see `uploadObject`); the caller's obligation is
+   * the same either way.
+   *
+   * Throws: `S3_OFFLOAD_FAILED` carrying the key; `AbortError` when the signal
+   * fires, which is the caller's own stop rather than a failed offload.
+   */
+  async upload(
+    key: string,
+    data: Uint8Array,
+    row: BacklinkRow,
+    signal?: AbortSignal,
+  ): Promise<string> {
     await uploadObject(await this.getClient(), {
       bucket: this.bucketName,
       key,
       data,
       serverSideEncryption: this.sse,
       sseKmsKeyId: this.sseKmsKeyId,
+      metadata: backlinkMetadata(row),
+      signal,
     });
     return key;
   }
 
-  /** Download the bytes stored under `key`, refusing objects over `maxDownloadBytes`. */
-  async download(key: string): Promise<Uint8Array> {
-    return downloadObject(await this.getClient(), this.bucketName, key, this.maxDownloadBytes);
+  /**
+   * Download the bytes stored under `key`.
+   *
+   * Accepts: `key` — already checked against the reading row's scope.
+   * `signal` — cancels the request, including a body already streaming: the
+   * handler's abort listener outlives the response headers and destroys the
+   * socket, which is the one bound a stalled transfer has that the request
+   * timeout provably does not give it.
+   *
+   * Returns: the object's bytes.
+   *
+   * Throws: `S3_OFFLOAD_FAILED` for an object over `maxDownloadBytes` — the cap
+   * is enforced on the declared length and again while reading, so a lying
+   * `Content-Length` does not get past it — and for a missing object or a
+   * transport failure; `AbortError` when the signal fires.
+   */
+  async download(key: string, signal?: AbortSignal): Promise<Uint8Array> {
+    return downloadObject(
+      await this.getClient(),
+      this.bucketName,
+      key,
+      this.maxDownloadBytes,
+      signal,
+    );
   }
 
-  /** Delete `keys`, returning the keys S3 reported as failed. */
+  /**
+   * Delete `keys`.
+   *
+   * Accepts: any number of keys, including none.
+   *
+   * Returns: the keys S3 reported as failed, so the caller can log what leaked
+   * rather than assume it is gone.
+   *
+   * Throws: whatever the delete throws after its own retries; cleanup callers
+   * catch it, since a failed cleanup must not fail the operation it follows.
+   */
   async deleteBatch(keys: string[]): Promise<string[]> {
     return deleteObjects(await this.getClient(), this.bucketName, keys);
   }
 
-  /** Ensure a `${ttlDays}`-day expiration lifecycle rule exists for the prefix. */
-  async ensureLifecycleRule(ttlDays: number): Promise<void> {
-    return ensureLifecycleRule(await this.getClient(), this.bucketName, this.keyPrefix, ttlDays);
+  /**
+   * Ensure a `${ttlDays}`-day expiration lifecycle rule exists for the prefix.
+   *
+   * Accepts: `ttlDays` — whole days, the only granularity S3 accepts.
+   * `logger` — the adapter's, for the bucket's versioning state, which is
+   * reported rather than enforced.
+   *
+   * Returns: nothing. Rules that are already correct are left alone, so this
+   * is safe to call on every deploy.
+   *
+   * Throws: ValidationError naming `s3.keyPrefix` when a rule id this prefix
+   * would take is already held by a different prefix; whatever reading or
+   * writing the bucket's lifecycle configuration throws.
+   */
+  async ensureLifecycleRule(ttlDays: number, logger: Logger): Promise<void> {
+    return ensureLifecycleRule(
+      await this.getClient(),
+      this.bucketName,
+      this.keyPrefix,
+      ttlDays,
+      logger,
+    );
   }
 
   /**
-   * Release the underlying S3 client. Safe at any point in the client's
-   * lifecycle: called before construction starts it does nothing, called
-   * mid-construction it marks the offloader destroyed so the client is
-   * released the moment it resolves, and called after it releases it directly.
+   * Release the underlying S3 client.
+   *
+   * Accepts: nothing.
+   *
+   * Returns: nothing. Safe at any point in the client's lifecycle: called
+   * before construction starts it does nothing, called mid-construction it
+   * marks the offloader destroyed so the client is released the moment it
+   * resolves, and called after it releases it directly.
+   *
+   * Throws: whatever the SDK client's own `destroy` throws.
    */
   destroy(): void {
     this.destroyed = true;

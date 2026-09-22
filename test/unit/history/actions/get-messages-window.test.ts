@@ -6,6 +6,7 @@ import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { ulidTimePrefix } from '../../../../src/shared/ulid';
@@ -113,8 +114,9 @@ describe('getMessages window (HIST-06)', () => {
   it('rejects an invalid window before reaching DynamoDB', async () => {
     const { client, mock } = createStrictDocumentMock();
     for (const window of [
-      { limit: 0 },
+      { limit: -1 },
       { limit: 1.5 },
+      { limit: MAX_PAGE_LIMIT + 1 },
       { before: new Date('nope') },
       { before: '2024-01-01' as never },
     ]) {
@@ -122,6 +124,22 @@ describe('getMessages window (HIST-06)', () => {
         code: ErrorCode.VALIDATION,
       });
     }
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
+  });
+
+  /**
+   * The one `limit` this package refuses at zero. Answering it would hand back
+   * an empty conversation, which a model cannot tell from a session that never
+   * happened — and the chain then persists the answer it gives as the
+   * transcript. A zero page elsewhere is visibly empty to the caller who asked
+   * for it; a zero window is not.
+   */
+  it('refuses a limit of zero, naming limit, before reaching DynamoDB', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    await expect(getMessages(context(client), 's1', { limit: 0 })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'limit' },
+    });
     expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
   });
 });

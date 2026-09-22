@@ -8,11 +8,23 @@ import { defaultAdapterKeyPrefix, type S3OffloadConfig } from './config';
 export type AdapterName = 'checkpointer' | 'store' | 'history';
 
 /**
- * Resolve an adapter's `s3` option into the offloader's configuration: the
- * adapter-scoped default key prefix when none is given, and the DynamoDB
- * client's region when the S3 client config names none. The S3 SDK does not
- * follow region redirects by default, so a bucket reachable only through the
- * region the DynamoDB side was configured with used to fail with an opaque
+ * An adapter's `s3` option resolved into the offloader's configuration.
+ *
+ * Accepts: `s3` — as the caller gave it. `adapter` — names the default key
+ * prefix, so three adapters sharing one bucket do not share a path.
+ * `clientConfig` — the adapter's DynamoDB client config, read for its region
+ * only.
+ *
+ * Returns: `s3` with `keyPrefix` defaulted to the adapter's own path, and
+ * `clientConfig.region` filled in from the DynamoDB side when the S3 config
+ * names none. With no region on either side the field is left absent and the
+ * SDK resolves it from the environment.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: a bucket reachable only through the region the DynamoDB side was
+ * configured with is addressed in that region. The S3 SDK does not follow
+ * region redirects, so such a bucket otherwise failed with an opaque
  * `PermanentRedirect` on the first offload.
  */
 export function offloaderConfigFor(

@@ -1,4 +1,5 @@
 import { setUpCheckpointer } from '../../../../src/checkpointer/internal/setup';
+import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
   dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new Uint8Array()],
@@ -6,6 +7,17 @@ const serde = {
 };
 
 describe('setUpCheckpointer', () => {
+  it('rejects an option key this package does not read', () => {
+    expect(() =>
+      setUpCheckpointer({ tableName: 'tbl', readConcurency: 4 } as never, serde),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'VALIDATION',
+        context: { field: 'options.readConcurency' },
+      }),
+    );
+  });
+
   it('rejects an invalid tableName and an ambiguous client configuration at construction (CORE-05)', () => {
     expect(() =>
       setUpCheckpointer({ tableName: 'bad name', client: { send: jest.fn() } as never }, serde),
@@ -19,7 +31,12 @@ describe('setUpCheckpointer', () => {
   });
 
   it('builds and owns a client from clientConfig and exposes the context', () => {
-    const fakeClient = { destroy: jest.fn(), config: {}, middlewareStack: {}, send: jest.fn() };
+    const fakeClient = {
+      destroy: jest.fn(),
+      config: {},
+      middlewareStack: fakeMiddlewareStack(),
+      send: jest.fn(),
+    };
     const setup = setUpCheckpointer(
       {
         tableName: 'ckpt',
@@ -35,7 +52,7 @@ describe('setUpCheckpointer', () => {
   });
 
   it('does not own an injected client', () => {
-    const injected = { send: jest.fn() };
+    const injected = { ...fakeClientMethods(), send: jest.fn() };
     const setup = setUpCheckpointer({ tableName: 'ckpt', client: injected as never }, serde);
     expect(setup.ownsClient).toBe(false);
     expect(setup.context.client).toBe(injected);
@@ -43,7 +60,7 @@ describe('setUpCheckpointer', () => {
 
   it('creates an S3 offloader when s3 options are given', () => {
     const setup = setUpCheckpointer(
-      { tableName: 'ckpt', client: { send: jest.fn() } as never, s3: { bucketName: 'b' } },
+      { tableName: 'ckpt', client: fakeClientMethods() as never, s3: { bucketName: 'b' } },
       serde,
     );
     expect(setup.context.offloader).toBeDefined();
@@ -53,7 +70,7 @@ describe('setUpCheckpointer', () => {
     const setup = setUpCheckpointer(
       {
         tableName: 'ckpt',
-        client: { send: jest.fn() } as never,
+        client: fakeClientMethods() as never,
         compression: { enabled: true },
         ttl: { days: 5 },
       },
@@ -65,7 +82,7 @@ describe('setUpCheckpointer', () => {
 
   it('defaults the S3 key prefix to an adapter-scoped segment, but honors an explicit override', () => {
     const defaulted = setUpCheckpointer(
-      { tableName: 'ckpt', client: { send: jest.fn() } as never, s3: { bucketName: 'b' } },
+      { tableName: 'ckpt', client: fakeClientMethods() as never, s3: { bucketName: 'b' } },
       serde,
     );
     expect(defaulted.context.offloader?.getKeyPrefix()).toBe('langgraph-checkpoints/checkpointer/');
@@ -73,12 +90,48 @@ describe('setUpCheckpointer', () => {
     const overridden = setUpCheckpointer(
       {
         tableName: 'ckpt',
-        client: { send: jest.fn() } as never,
+        client: fakeClientMethods() as never,
         s3: { bucketName: 'b', keyPrefix: 'custom/' },
       },
       serde,
     );
     expect(overridden.context.offloader?.getKeyPrefix()).toBe('custom/');
+  });
+});
+
+describe('collaborator shape (DDB-09)', () => {
+  it('refuses an injected client missing a method this package calls', () => {
+    expect(() =>
+      setUpCheckpointer({ tableName: 'ckpt', client: { send: jest.fn() } as never }, serde),
+    ).toThrow(expect.objectContaining({ code: 'VALIDATION', context: { field: 'client.get' } }));
+  });
+
+  it('refuses a logger missing a level this package calls', () => {
+    expect(() =>
+      setUpCheckpointer(
+        {
+          tableName: 'ckpt',
+          client: fakeClientMethods() as never,
+          logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
+        },
+        serde,
+      ),
+    ).toThrow(expect.objectContaining({ code: 'VALIDATION', context: { field: 'logger.debug' } }));
+  });
+
+  it('refuses a serde missing a method this package calls', () => {
+    expect(() =>
+      setUpCheckpointer(
+        {
+          tableName: 'ckpt',
+          client: fakeClientMethods() as never,
+          serde: { dumpsTyped: async () => ['json', new Uint8Array()] } as never,
+        },
+        serde,
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: 'VALIDATION', context: { field: 'serde.loadsTyped' } }),
+    );
   });
 });
 
@@ -88,14 +141,14 @@ describe('S3 region inheritance (CODEC-15)', () => {
     const ddb = {
       destroy: jest.fn(),
       config: {},
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
       send: jest.fn(),
     };
     const s3Client = {
       destroy: jest.fn(),
       send: jest.fn(async () => ({})),
       config: {},
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
     };
     const setup = setUpCheckpointer(
       {
@@ -121,7 +174,11 @@ describe('S3 region inheritance (CODEC-15)', () => {
 describe('SDK retry stacking warning (DDB-01)', () => {
   it('warns at construction when an injected client keeps the SDK retries', async () => {
     const warn = jest.fn();
-    const client = { send: jest.fn(), config: { maxAttempts: async () => 3 } } as never;
+    const client = {
+      ...fakeClientMethods(),
+      send: jest.fn(),
+      config: { maxAttempts: async () => 3 },
+    } as never;
     setUpCheckpointer(
       {
         tableName: 'ckpt',
@@ -139,7 +196,7 @@ describe('SDK retry stacking warning (DDB-01)', () => {
     const ddb = {
       destroy: jest.fn(),
       config: { maxAttempts: async () => 1 },
-      middlewareStack: { clone: () => ({}) },
+      middlewareStack: fakeMiddlewareStack(),
       send: jest.fn(),
     };
     setUpCheckpointer(
@@ -158,7 +215,7 @@ describe('SDK retry stacking warning (DDB-01)', () => {
 
 describe('retry policy (DDB-03)', () => {
   it('resolves the retry policy onto the context, defaulting to five attempts', () => {
-    const client = { send: jest.fn() } as never;
+    const client = fakeClientMethods() as never;
     expect(setUpCheckpointer({ tableName: 't123', client }, serde).context.retry?.maxAttempts).toBe(
       5,
     );

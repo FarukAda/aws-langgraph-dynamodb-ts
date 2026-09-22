@@ -5,8 +5,12 @@ import {
   revertSessionCreation,
 } from '../../../../src/history/internal/session-count';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
+import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
+import * as retryModule from '../../../../src/shared/dynamodb/retry';
+import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 function context(client: HistoryContext['client']): HistoryContext {
   return { client, tableName: 'history', logger: SILENT_LOGGER } as never;
@@ -167,5 +171,86 @@ describe('revertSessionCreation', () => {
       .resolves({});
     await revertSessionCreation(context(client), 's1', 2, now);
     expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
+  });
+});
+
+/**
+ * `ADD #count :neg` is the one write in this package that is not naturally
+ * idempotent: applied twice it subtracts twice, and nothing reads the row back
+ * to notice. The request token it already carries is what stops a re-send from
+ * double-applying it; the deadline is what keeps the retrying inside the ten
+ * minutes that token is honoured for.
+ */
+describe('a tokened revert stays inside the window its token is honoured for', () => {
+  const adapterPolicy = () => ({ maxAttempts: 4, baseDelayMs: 1, maxDelayMs: 1 });
+
+  it('bounds the decrement, on a copy of the adapter policy rather than on it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    const retry = adapterPolicy();
+    const ctx = { ...context(client), retry } as HistoryContext;
+    const spy = jest.spyOn(retryModule, 'withDynamoDBRetry');
+
+    await revertSessionCount(ctx, 's1', 2, 'u');
+
+    expect(spy.mock.calls[0][1]).toEqual({
+      ...retry,
+      deadlineAt: FROZEN_NOW_MS + MAX_WRITE_LIFETIME_MS,
+    });
+    /** Stamped onto the adapter's own object, this call's clock would bound every later one. */
+    expect(retry).not.toHaveProperty('deadlineAt');
+    expect(ctx.retry).toBe(retry);
+  });
+
+  it('bounds the row delete the same way', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    const retry = adapterPolicy();
+    const ctx = { ...context(client), retry } as HistoryContext;
+    const spy = jest.spyOn(retryModule, 'withDynamoDBRetry');
+
+    await revertSessionCreation(ctx, 's1', 2, '2026-08-29T00:00:00.000Z');
+
+    expect(spy.mock.calls[0][1]).toEqual({
+      ...retry,
+      deadlineAt: FROZEN_NOW_MS + MAX_WRITE_LIFETIME_MS,
+    });
+    expect(retry).not.toHaveProperty('deadlineAt');
+  });
+
+  /**
+   * A policy whose every sleep is a minute long would spend seventeen of them
+   * on a sustained conflict — nearly three times the window the token survives.
+   * The clock advances by each sleep the schedule starts (`onRetry` fires once
+   * before each, and `rng: () => 0` keeps the sleep itself instantaneous), so
+   * the budget ends a handful of attempts in rather than at its eighteenth,
+   * while the token still deduplicates the sends already made. The exact count
+   * belongs to the helper rather than to production, which checks the sleep it
+   * is about to take and so stops one attempt earlier.
+   */
+  it('cuts short a budget that would outlive the token', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(
+      Object.assign(new Error('cancelled'), {
+        name: 'TransactionCanceledException',
+        CancellationReasons: [{ Code: 'TransactionConflict' }],
+      }),
+    );
+    const clock = { now: FROZEN_NOW_MS };
+    jest.spyOn(Date, 'now').mockImplementation(() => clock.now);
+    const retry = {
+      maxAttempts: 18,
+      baseDelayMs: 60_000,
+      maxDelayMs: 60_000,
+      rng: () => 0,
+      onRetry: () => {
+        clock.now += 60_000;
+      },
+    };
+
+    await expect(
+      revertSessionCount({ ...context(client), retry } as HistoryContext, 's1', 2, 'u'),
+    ).rejects.toBeInstanceOf(RetryExhaustedError);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(6);
   });
 });

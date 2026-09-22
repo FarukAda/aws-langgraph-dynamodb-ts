@@ -6,7 +6,7 @@
 
 # Class: DynamoDBSessionChatMessageHistory
 
-Defined in: [history/session-adapter.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L20)
+Defined in: [history/session-adapter.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L31)
 
 Single-session view over a [SessionBackend](../interfaces/SessionBackend.md), implementing LangChain's
 `BaseListChatMessageHistory` so it can drive `RunnableWithMessageHistory`.
@@ -23,7 +23,24 @@ the newest fifty messages instead of the whole session.
 
 > **new DynamoDBSessionChatMessageHistory**(`backend`, `sessionId`, `window?`): `DynamoDBSessionChatMessageHistory`
 
-Defined in: [history/session-adapter.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L23)
+Defined in: [history/session-adapter.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L52)
+
+Accepts: `backend` — the multi-session adapter this view delegates to,
+checked structurally for [SessionBackend](../interfaces/SessionBackend.md)'s own members. `sessionId`
+— the one session it is bound to, validated the same way every other
+adapter method validates a session id. `window` — bounds every read it
+performs; when given, only the `limit` key `AdapterWindow` declares, an
+integer from 1 to the package's page ceiling. `0` is refused: this window
+is what `RunnableWithMessageHistory` reads on every invocation, and an
+empty one is indistinguishable from a conversation that never happened.
+
+Returns: the view. Normally built through
+`DynamoDBChatMessageHistory.forSession`, which is the supported route.
+
+Throws: ValidationError naming `backend`, `backend.<member>` for the first
+missing method, `sessionId`, `window` for a window that is not an object,
+`window.<key>` for a key `AdapterWindow` does not declare, or `limit`. Checking here reports a caller's mistake at
+construction instead of rebranding it as an upstream failure on first use.
 
 #### Parameters
 
@@ -53,7 +70,7 @@ Defined in: [history/session-adapter.ts:23](https://github.com/FarukAda/aws-lang
 
 > **lc\_namespace**: `string`[]
 
-Defined in: [history/session-adapter.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L21)
+Defined in: [history/session-adapter.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L32)
 
 A path to the module that contains the class, eg. ["langchain", "llms"]
 Usually should be the same as the entrypoint the class is exported from.
@@ -68,9 +85,15 @@ Usually should be the same as the entrypoint the class is exported from.
 
 > **addMessage**(`message`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L35)
+Defined in: [history/session-adapter.ts:94](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L94)
 
-Add a message object to the store.
+Append one message to this session.
+
+Accepts: `message` — a LangChain message.
+
+Returns: nothing.
+
+Throws: as [addMessages](#addmessages).
 
 #### Parameters
 
@@ -92,20 +115,25 @@ Add a message object to the store.
 
 > **addMessages**(`messages`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L39)
+Defined in: [history/session-adapter.ts:113](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L113)
 
-Add a list of messages.
+Append messages to this session.
 
-Implementations should override this method to handle bulk addition of messages
-in an efficient manner to avoid unnecessary round-trips to the underlying store.
+Accepts: `messages` — LangChain messages; an empty list writes nothing.
+
+Returns: nothing, and only once every message has landed.
+
+Throws: whatever the backend's `addMessages` throws, wrapped as
+`UpstreamError` unless it is already one of this library's own errors.
+
+Guarantees: the window bounds what is *read*, never what is written — the
+session keeps every message appended to it.
 
 #### Parameters
 
 ##### messages
 
 `BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]
-
-A list of BaseMessage objects to store.
 
 #### Returns
 
@@ -121,9 +149,20 @@ A list of BaseMessage objects to store.
 
 > **clear**(): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:43](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L43)
+Defined in: [history/session-adapter.ts:133](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L133)
 
-Remove all messages from the store.
+Delete this session's messages, metadata and offloaded objects.
+
+Accepts: nothing.
+
+Returns: nothing. Clearing a session that does not exist is not an error.
+
+Throws: whatever the backend's `clear` throws, wrapped as `UpstreamError`
+unless it is already one of this library's own errors.
+
+Guarantees: the whole session goes, not the window.
+`BaseListChatMessageHistory` declares `clear()`, and a chain that calls it
+is asking for exactly that.
 
 #### Returns
 
@@ -139,9 +178,19 @@ Remove all messages from the store.
 
 > **getMessages**(): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/session-adapter.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L31)
+Defined in: [history/session-adapter.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L79)
 
-Returns a list of messages stored in the store.
+This session's messages in chronological order.
+
+Accepts: nothing — the session and the window are fixed at construction,
+which is what `BaseListChatMessageHistory` requires.
+
+Returns: the messages, bounded by the adapter's window. LangChain calls
+this on every chain invocation, so the window is what keeps a long session
+from growing the prompt without limit.
+
+Throws: whatever the backend's `getMessages` throws, wrapped as
+`UpstreamError` unless it is already one of this library's own errors.
 
 #### Returns
 

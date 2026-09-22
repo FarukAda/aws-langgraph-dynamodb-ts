@@ -1,64 +1,119 @@
-import type { Operation, PutOperation } from '@langchain/langgraph-checkpoint';
+import type { Operation } from '@langchain/langgraph-checkpoint';
 
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 
-/**
- * How one `batch()` call is dispatched: the positions of its writes, grouped
- * by the item they touch, and the positions of its reads.
- */
-interface BatchPlan {
-  /** Each group holds the puts/deletes of one `(namespace, key)`, in operation order. */
-  writeGroups: number[][];
-  reads: number[];
+/** What one operation touches, which is what decides whether it may run beside another. */
+type Touch =
+  | { readonly kind: 'write'; readonly item: string }
+  | { readonly kind: 'get'; readonly item: string }
+  /** A search or a namespace listing observes every item, so it is scoped to none. */
+  | { readonly kind: 'broad' };
+
+/** The items a run of mutually independent operations has already claimed. */
+interface Segment {
+  readonly indices: number[];
+  readonly written: Set<string>;
+  readonly read: Set<string>;
+  hasWrite: boolean;
+  hasBroad: boolean;
 }
 
-function itemOf(op: PutOperation): string {
+function itemOf(op: { namespace: string[]; key: string }): string {
   return JSON.stringify([op.namespace, op.key]);
 }
 
-/**
- * Group a batch so that dependent operations stay ordered while independent
- * ones can run side by side. Two writes to the same item must land in the
- * order given, since the later one wins; writes to different items and all
- * reads are independent of each other.
- */
-function planBatch(operations: readonly Operation[]): BatchPlan {
-  const groups = new Map<string, number[]>();
-  const reads: number[] = [];
-  operations.forEach((op, index) => {
-    if (!('value' in op)) {
-      reads.push(index);
-      return;
-    }
-    const item = itemOf(op);
-    const group = groups.get(item);
-    if (group) group.push(index);
-    else groups.set(item, [index]);
-  });
-  return { writeGroups: [...groups.values()], reads };
+function touchOf(op: Operation): Touch {
+  const addressed = op as { namespace?: string[]; key?: string };
+  if ('value' in op)
+    return { kind: 'write', item: itemOf(addressed as { namespace: string[]; key: string }) };
+  if (addressed.key !== undefined && addressed.namespace !== undefined) {
+    return { kind: 'get', item: itemOf(addressed as { namespace: string[]; key: string }) };
+  }
+  return { kind: 'broad' };
 }
 
 /**
- * Run a batch: every write group serially within itself and groups
- * concurrently with each other, then every read concurrently, at most
- * {@link DEFAULT_READ_CONCURRENCY} operations in flight at a time. Results
- * come back in operation order. Writes complete before any read starts, so a
- * get or search in the same batch observes the puts beside it. Any failure
- * rejects the whole batch: no further operation is started, the ones already
- * in flight settle, and the first error propagates.
+ * True when `touch` may not join `segment` — because some operation already in
+ * it addresses the same item, or because a write and a whole-store read would
+ * then be unordered with respect to each other.
+ */
+function conflicts(segment: Segment, touch: Touch): boolean {
+  if (touch.kind === 'broad') return segment.hasWrite;
+  if (touch.kind === 'get') return segment.written.has(touch.item);
+  return segment.written.has(touch.item) || segment.read.has(touch.item) || segment.hasBroad;
+}
+
+function admit(segment: Segment, index: number, touch: Touch): void {
+  segment.indices.push(index);
+  if (touch.kind === 'broad') segment.hasBroad = true;
+  if (touch.kind === 'get') segment.read.add(touch.item);
+  if (touch.kind === 'write') {
+    segment.written.add(touch.item);
+    segment.hasWrite = true;
+  }
+}
+
+function emptySegment(): Segment {
+  return { indices: [], written: new Set(), read: new Set(), hasWrite: false, hasBroad: false };
+}
+
+/**
+ * Split a batch into runs of mutually independent operations, in caller order.
+ *
+ * Operations that address different items, and reads that address the same
+ * item, are independent of each other and share a run. Anything that could
+ * observe or overwrite an earlier operation's effect starts a new one, so the
+ * order the caller wrote is the order the caller observes: a `get` after a
+ * `put` of the same item sees it, a `get` before one does not, and a `search`
+ * sees every write that precedes it and none that follow.
+ *
+ * Running every write before every read — the earlier behaviour — made a
+ * `[delete, get]` batch return nothing where the reference store returns the
+ * value, and a `[get, put]` batch return the new value where the reference
+ * returns null. `AsyncBatchedStore` coalesces everything enqueued in one tick
+ * into a single `batch()`, so that difference is reachable from ordinary code.
+ */
+function planBatch(operations: readonly Operation[]): number[][] {
+  const runs: number[][] = [];
+  let segment = emptySegment();
+  operations.forEach((op, index) => {
+    const touch = touchOf(op);
+    if (segment.indices.length > 0 && conflicts(segment, touch)) {
+      runs.push(segment.indices);
+      segment = emptySegment();
+    }
+    admit(segment, index, touch);
+  });
+  if (segment.indices.length > 0) runs.push(segment.indices);
+  return runs;
+}
+
+/**
+ * Run a batch: each run of independent operations concurrently, at most
+ * `limit` in flight, and the runs themselves in
+ * order. Results come back in operation order.
+ *
+ * Accepts: `operations` — in caller order, which is the order they are
+ * observed in; empty returns empty. `limit` — operations in flight within one
+ * run.
+ *
+ * Returns: the results in operation order, not completion order.
+ *
+ * Throws: the first failure. Any failure rejects the whole batch: no operation
+ * in a later run starts, the ones already in flight settle, and that first
+ * error is the one thrown.
  */
 export async function runBatch<R>(
   operations: readonly Operation[],
   dispatch: (operation: Operation) => Promise<R>,
+  limit: number = DEFAULT_READ_CONCURRENCY,
 ): Promise<R[]> {
-  const plan = planBatch(operations);
   const results: R[] = [];
-  await mapWithConcurrency(plan.writeGroups, DEFAULT_READ_CONCURRENCY, async (group) => {
-    for (const index of group) results[index] = await dispatch(operations[index]);
-  });
-  await mapWithConcurrency(plan.reads, DEFAULT_READ_CONCURRENCY, async (index) => {
-    results[index] = await dispatch(operations[index]);
-  });
+  for (const run of planBatch(operations)) {
+    await mapWithConcurrency(run, limit, async (index) => {
+      results[index] = await dispatch(operations[index]);
+    });
+  }
   return results;
 }

@@ -3,15 +3,21 @@
 // commit, so exactly one previous payload is superseded and nothing is
 // orphaned.
 
+import { randomUUID } from 'node:crypto';
+
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
+import { DynamoDBStore } from '../../src/index';
 import { type PayloadDescriptor, PayloadLocation } from '../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../src/shared/logging/logger';
+import { partitionKey, sortKey } from '../../src/store/internal/keys';
 import { putWithRevisionSwap } from '../../src/store/internal/overwrite-swap';
 import type { ExistingRecordMeta } from '../../src/store/internal/read-existing';
 import type { StoreItemRecord } from '../../src/store/types';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
+import { afterResponse } from './helpers/fault-injection';
+import { MemoryS3 } from './helpers/memory-s3';
 
 const tableName = 'overwrite-swap-itest';
 const admin = new DynamoDBClient(DDB_LOCAL_CONFIG);
@@ -75,10 +81,9 @@ describe('overwrite compare-and-swap (F5)', () => {
   // only runs DynamoDB Local (checked), and test/integration/helpers has no
   // S3/offloader fake (checked). Driving this case through DynamoDBStore.put()
   // with a real offloader is therefore impossible without inventing a
-  // parallel harness, which the task brief forbids. Per the brief's
-  // implementer note, this instead calls putWithRevisionSwap -- the actual
-  // Task 9 compare-and-swap primitive that persist.ts hands the offloader
-  // path to -- directly against real DynamoDB, and pins the DynamoDB half of
+  // parallel harness. This instead calls putWithRevisionSwap -- the actual
+  // compare-and-swap primitive that persist.ts hands the offloader path to
+  // -- directly against real DynamoDB, and pins the DynamoDB half of
   // the no-orphan invariant: whichever writer loses the immediate race
   // re-reads and reports having superseded the *other* writer's committed
   // descriptor, never the stale value it first observed and never its own.
@@ -130,10 +135,12 @@ describe('overwrite compare-and-swap (F5)', () => {
       value: seed,
       createdAt: 'T0',
     };
-    // Deliberately minimal: putWithRevisionSwap only ever reads tableName,
-    // client, and logger off its context (never offloader, index, etc.), so
-    // this mirrors the shape test/unit/store/internal/overwrite-swap.test.ts
-    // already relies on -- but with a real DynamoDBDocument instead of a mock.
+    // Deliberately minimal: putWithRevisionSwap reads tableName, client,
+    // logger and retry off its context, and hands that same context to the
+    // tokened write as its deps -- never offloader or index, because the
+    // choice of write shape is the descriptor's. These records carry an S3
+    // descriptor, so this drives the transaction path against a real
+    // DynamoDBDocument rather than a mock.
     const context = { tableName, offloader: {}, logger: SILENT_LOGGER, client };
 
     const [supersededA, supersededB] = await Promise.all([
@@ -156,5 +163,79 @@ describe('overwrite compare-and-swap (F5)', () => {
       expect(supersededA.value).toEqual(descriptor('B'));
       expect(finalRow.Item?.rev).toBe('A');
     }
+  });
+
+  /**
+   * The fact the whole tokened write rests on, asserted at the tier that runs
+   * in CI rather than inferred from a one-off probe: a re-sent transaction
+   * whose first use was **applied** is answered from the idempotency cache,
+   * not applied a second time. The interleaving is the real one - the write
+   * lands, its acknowledgement is lost, a racing delete removes the row and
+   * releases its object, and the identical request is retried into a
+   * partition where the creation guard holds again. Without the cache that
+   * retry recreates a row naming an object nobody will ever write again.
+   */
+  it('discards the re-send of a transaction whose acknowledgement was lost', async () => {
+    const pk = 'STORE#token-reland';
+    const sk = 'k';
+    const input = {
+      TransactItems: [
+        {
+          Put: {
+            TableName: tableName,
+            Item: { PK: pk, SK: sk, rev: 'A', value: 'A' },
+            ConditionExpression: 'attribute_not_exists(PK)',
+          },
+        },
+      ],
+      ClientRequestToken: randomUUID(),
+    };
+    await client.transactWrite(input);
+    /** Without this the whole test would still pass if the first call applied nothing. */
+    const created = await client.get({ TableName: tableName, Key: { PK: pk, SK: sk } });
+    expect(created.Item).toBeDefined();
+    await client.delete({ TableName: tableName, Key: { PK: pk, SK: sk } });
+    await client.transactWrite(input);
+    const after = await client.get({
+      TableName: tableName,
+      Key: { PK: pk, SK: sk },
+      ConsistentRead: true,
+    });
+    expect(after.Item).toBeUndefined();
+  });
+
+  /**
+   * The composition, not the service fact: `store.put` itself, a write that
+   * commits and whose acknowledgement is then lost, a concurrent delete that
+   * removes the row it wrote, and the library's own retry re-sending the
+   * identical tokened request. The row must stay deleted.
+   *
+   * Without the token the retry is a fresh conditional put, the creation guard
+   * holds again now the row is gone, and the put resurrects a row the caller
+   * had every reason to believe was deleted - carrying a payload id nothing
+   * will ever write again.
+   */
+  it('does not resurrect a row a concurrent delete removed while its put was in flight', async () => {
+    const namespace = ['reland'];
+    const key = 'k';
+    const rowKey = { PK: partitionKey(namespace), SK: sortKey(namespace, key) };
+    const base = new DynamoDBClient({ ...DDB_LOCAL_CONFIG, maxAttempts: 1 });
+    afterResponse(base, 'TransactWriteItemsCommand', async () => {
+      await client.delete({ TableName: tableName, Key: rowKey });
+      throw Object.assign(new Error('simulated lost response'), { name: 'ETIMEDOUT' });
+    });
+    const store = new DynamoDBStore({
+      tableName,
+      client: DynamoDBDocument.from(base),
+      logger: SILENT_LOGGER,
+      s3: { bucketName: 'memory', thresholdBytes: 1, createS3Client: () => new MemoryS3() },
+    });
+
+    await store.put(namespace, key, { pad: 'p'.repeat(600) });
+
+    const after = await client.get({ TableName: tableName, Key: rowKey, ConsistentRead: true });
+    expect(after.Item).toBeUndefined();
+    store.destroy();
+    base.destroy();
   });
 });

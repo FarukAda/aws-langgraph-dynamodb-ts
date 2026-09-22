@@ -1,44 +1,50 @@
 import { REVISION_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { readRow, verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
 import type { StoreContext } from './setup';
 
-/** True when `error` is a {@link RetryExhaustedError} — by name, not `instanceof` (banned repo-wide). */
+/**
+ * Whether `error` is a {@link RetryExhaustedError}.
+ *
+ * Accepts: any error, and equally anything else a `throw` can produce. The
+ * test is by `name`, not `instanceof`, which is banned repo-wide: an error
+ * crossing a module or realm boundary fails the identity check while still
+ * being the same error.
+ *
+ * Returns: whether the write is ambiguous for the reason retries were spent,
+ * which is the only failure a verification read is allowed to resolve.
+ *
+ * Throws: **nothing**, for any value. A value carrying no name is not a spent
+ * budget, so the caller rethrows it rather than spending a read on it.
+ */
 export function isRetryExhausted(error: Error): boolean {
-  return error.name === 'RetryExhaustedError';
+  return (error as Error | undefined)?.name === 'RetryExhaustedError';
 }
 
 /**
  * True when the row is confirmed absent — used to resolve an ambiguous
  * retry-exhausted *delete*, where the delete may well have landed server-side
  * and only its acknowledgement was lost. Only the partition key is projected:
- * existence is the whole question. A failure reading this is not treated as
- * confirmation, which is fail-safe here: the caller only rethrows, and nothing
- * is deleted on the strength of a `false`.
+ * existence is the whole question.
+ *
+ * Accepts: the row's key.
+ *
+ * Returns: whether the row is confirmed gone. A failed read answers `false` —
+ * "not confirmed", never "still there": the caller only rethrows on `false`, so
+ * nothing is deleted on the strength of a read that did not happen.
+ *
+ * Throws: nothing.
  */
 export async function rowIsAbsent(
   context: StoreContext,
   key: { PK: string; SK: string },
 ): Promise<boolean> {
   try {
-    const result = await withDynamoDBRetry(
-      () =>
-        context.client.get({
-          TableName: context.tableName,
-          Key: key,
-          ConsistentRead: true,
-          ProjectionExpression: '#pk',
-          ExpressionAttributeNames: { '#pk': 'PK' },
-        }),
-      context.retry,
-    );
-    return result.Item === undefined;
+    const row = await readRow(context, { key, attribute: 'PK' });
+    return row === undefined;
   } catch {
     return false;
   }
 }
-
-/** What a post-failure verification read could establish about a write. */
-export type WriteVerdict = 'landed' | 'not-landed' | 'unverified';
 
 /**
  * Read `record`'s row back to establish what an ambiguous write actually did,
@@ -46,39 +52,28 @@ export type WriteVerdict = 'landed' | 'not-landed' | 'unverified';
  * stamps a fresh per-call `rev`, so the comparison works for inline and
  * offloaded records alike.
  *
- * - `'landed'`: the row holds this write's `rev`, so it committed server-side
- *   and only its acknowledgement was lost.
- * - `'not-landed'`: the row was read and holds something else, or nothing —
- *   or the record carries no `rev` to compare — so this call's own upload, if
- *   any, is dead and safe to delete.
- * - `'unverified'`: the read itself failed, so nothing is established.
+ * Accepts: `record` — the row this call wrote, carrying the `rev` it stamped.
+ * A record with no `rev` has nothing to compare and is reported `'not-landed'`
+ * without spending a read.
  *
- * The third answer used to be folded into the second as a plain `false`, which
- * made a partition that blocked both the put and this read delete the object a
- * possibly-live row points at — permanently breaking every later read of that
- * item. Only a *confirmed* non-commit may delete the new upload: leaking one
- * object (reclaimed by `ensureS3LifecycleRule`) is recoverable, stranding a
- * live row is not.
+ * Returns: `'landed'`, `'not-landed'` or `'unverified'`; see
+ * {@link WriteVerdict} for what each answer licenses the caller to do. Only the
+ * `rev` is read: an offloaded record's key ends in that same `rev`, so the row
+ * holding a different one never names this write's object, and a cleanup
+ * needs nothing more from it.
+ *
+ * Throws: nothing — a failed verification is `'unverified'`, which is an
+ * answer, not an error.
  */
 export async function verifyWriteLanded(
   context: StoreContext,
   record: { PK: string; SK: string; rev?: string },
 ): Promise<WriteVerdict> {
-  if (record.rev === undefined) return 'not-landed';
-  try {
-    const result = await withDynamoDBRetry(
-      () =>
-        context.client.get({
-          TableName: context.tableName,
-          Key: { PK: record.PK, SK: record.SK },
-          ConsistentRead: true,
-          ProjectionExpression: '#r',
-          ExpressionAttributeNames: { '#r': REVISION_ATTRIBUTE },
-        }),
-      context.retry,
-    );
-    return result.Item?.[REVISION_ATTRIBUTE] === record.rev ? 'landed' : 'not-landed';
-  } catch {
-    return 'unverified';
-  }
+  const { verdict } = await verifyRow(context, {
+    key: { PK: record.PK, SK: record.SK },
+    kind: 'attribute',
+    attribute: REVISION_ATTRIBUTE,
+    expected: record.rev,
+  });
+  return verdict;
 }

@@ -17,10 +17,17 @@ describe('scopedQuery', () => {
 });
 
 describe('storeScan', () => {
-  it('filters to rows that carry a namespace attribute', () => {
+  /**
+   * The key restriction comes first and the attribute test second. Selecting on
+   * the attribute alone admitted any row on a shared table that carries a
+   * `namespace`, which `test/unit/shared/key-space-disjointness.test.ts` pins
+   * by behaviour; this pins the request that behaviour rests on.
+   */
+  it('restricts the scan to the store partition tag, then to store rows', () => {
     const input = storeScan('store');
     expect(input.TableName).toBe('store');
-    expect(input.FilterExpression).toBe('attribute_exists(#ns)');
-    expect(input.ExpressionAttributeNames).toEqual({ '#ns': 'namespace' });
+    expect(input.FilterExpression).toBe('begins_with(#pk, :pkp) AND attribute_exists(#ns)');
+    expect(input.ExpressionAttributeNames).toEqual({ '#pk': 'PK', '#ns': 'namespace' });
+    expect(input.ExpressionAttributeValues).toEqual({ ':pkp': 'STORE#' });
   });
 });

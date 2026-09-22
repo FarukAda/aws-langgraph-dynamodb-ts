@@ -105,16 +105,25 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     );
   }
 
-  /** An offloader whose downloads are answered per S3 key. */
+  /**
+   * An offloader whose downloads are answered per S3 key. `downloads` is filled
+   * after the records are built, because a key ends in the id of the put that
+   * uploaded it and is only known once the record exists.
+   */
   function offloaderFor(downloads: Record<string, () => Promise<Uint8Array>>) {
     return {
       shouldOffload: () => true,
-      buildKey: (parts: readonly string[]) => parts.join('/'),
+      buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
       upload: async (key: string) => key,
       download: jest.fn(async (key: string) => downloads[key]()),
       assertOwnedKey: () => undefined,
       deleteBatch: jest.fn(),
     };
+  }
+
+  /** The S3 key a built record's value descriptor points at. */
+  function keyOf(record: Awaited<ReturnType<typeof buildStoreItem>>): string {
+    return (record.value as { s3Key: string }).s3Key;
   }
 
   const gone = async (): Promise<Uint8Array> => {
@@ -129,25 +138,30 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
       ['users', 'u1'],
       'p',
       { name: 'old' },
-      { ...timestamps, nonce: 'A' },
+      { ...timestamps, rev: 'A' },
     );
     const replaced = await buildStoreItem(
       ctx,
       ['users', 'u1'],
       'p',
       { name: 'new' },
-      { ...timestamps, nonce: 'B' },
+      { ...timestamps, rev: 'B' },
     );
     return { old, replaced };
   }
 
+  /**
+   * An overwrite stores different bytes, so it writes a different key and the
+   * superseded object is the one deleted. A reader holding the old row then
+   * finds its object gone — the race this re-read exists for.
+   */
   it('re-reads the row once and returns the new value when the first object was deleted by an overwrite', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const ctx = {
-      ...context(client),
-      offloader: offloaderFor({ 'users/u1/p/A': gone, 'users/u1/p/B': fresh }) as never,
-    };
+    const downloads: Record<string, () => Promise<Uint8Array>> = {};
+    const ctx = { ...context(client), offloader: offloaderFor(downloads) as never };
     const { old, replaced } = await records(ctx);
+    downloads[keyOf(old)] = gone;
+    downloads[keyOf(replaced)] = fresh;
     mock.on(GetCommand).resolvesOnce({ Item: old }).resolvesOnce({ Item: replaced });
     const item = await getItem(ctx, ['users', 'u1'], 'p');
     expect(item?.value).toEqual({ name: 'fresh' });
@@ -156,16 +170,20 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
 
   it('returns null when the re-read finds the row deleted', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const ctx = { ...context(client), offloader: offloaderFor({ 'users/u1/p/A': gone }) as never };
+    const downloads: Record<string, () => Promise<Uint8Array>> = {};
+    const ctx = { ...context(client), offloader: offloaderFor(downloads) as never };
     const { old } = await records(ctx);
+    downloads[keyOf(old)] = gone;
     mock.on(GetCommand).resolvesOnce({ Item: old }).resolvesOnce({});
     await expect(getItem(ctx, ['users', 'u1'], 'p')).resolves.toBeNull();
   });
 
   it('rethrows when the re-read still points at the missing object (a genuine loss)', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const ctx = { ...context(client), offloader: offloaderFor({ 'users/u1/p/A': gone }) as never };
+    const downloads: Record<string, () => Promise<Uint8Array>> = {};
+    const ctx = { ...context(client), offloader: offloaderFor(downloads) as never };
     const { old } = await records(ctx);
+    downloads[keyOf(old)] = gone;
     mock.on(GetCommand).resolves({ Item: old });
     await expect(getItem(ctx, ['users', 'u1'], 'p')).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,
@@ -173,16 +191,37 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     expect(mock.commandCalls(GetCommand)).toHaveLength(2);
   });
 
+  /**
+   * The overwrite this re-read exists to catch can put anything on the row,
+   * including a `null` where the descriptor was. Comparing the two rows read
+   * `location` off it, so the caller of a public `get` was handed a bare
+   * TypeError about a property instead of a coded error naming the row's own
+   * unreadable descriptor.
+   */
+  it('answers a re-read row whose descriptor is null with a coded error, not a property read', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const downloads: Record<string, () => Promise<Uint8Array>> = {};
+    const ctx = { ...context(client), offloader: offloaderFor(downloads) as never };
+    const { old } = await records(ctx);
+    downloads[keyOf(old)] = gone;
+    mock
+      .on(GetCommand)
+      .resolvesOnce({ Item: old })
+      .resolvesOnce({ Item: { ...old, value: null } });
+    const error = await getItem(ctx, ['users', 'u1'], 'p').catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(DynamoDBLangGraphError);
+    expect(error).toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'descriptor' } });
+  });
+
   it('does not re-read for a failure that is not a missing object', async () => {
     const { client, mock } = createStrictDocumentMock();
     const throttled = async (): Promise<Uint8Array> => {
       throw s3Failure('SlowDown');
     };
-    const ctx = {
-      ...context(client),
-      offloader: offloaderFor({ 'users/u1/p/A': throttled }) as never,
-    };
+    const downloads: Record<string, () => Promise<Uint8Array>> = {};
+    const ctx = { ...context(client), offloader: offloaderFor(downloads) as never };
     const { old } = await records(ctx);
+    downloads[keyOf(old)] = throttled;
     mock.on(GetCommand).resolves({ Item: old });
     await expect(getItem(ctx, ['users', 'u1'], 'p')).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,
@@ -206,7 +245,7 @@ describe('getItem S3 key binding (SEC-03)', () => {
           location: PayloadLocation.S3,
           serdeType: 'json',
           compressed: false,
-          s3Key: buildS3Key('p/', ['victims', 'v1', 'secret', 'n']),
+          s3Key: buildS3Key('p/', ['victims', 'v1', 'secret'], '01J9ZQ5X3N8VQ4M6C2T7R0K1HD'),
         },
       },
     });

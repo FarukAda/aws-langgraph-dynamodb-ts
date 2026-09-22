@@ -1,6 +1,11 @@
+import {
+  MAX_LOGGED_VALUE_CHARS,
+  MAX_RELAYED_MESSAGE_CHARS,
+} from '../../../../src/shared/constants';
 import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { UpstreamError } from '../../../../src/shared/errors/upstream-error';
+import { truncateForLog, truncateRelayedText } from '../../../../src/shared/logging/truncate';
 
 describe('UpstreamError', () => {
   it('wraps an SDK error, keeping its name, request id and HTTP status for support tickets', () => {
@@ -28,5 +33,85 @@ describe('UpstreamError', () => {
     expect(error.requestId).toBeUndefined();
     expect(error.httpStatusCode).toBeUndefined();
     expect('requestId' in error).toBe(false);
+  });
+});
+
+describe('UpstreamError redacts the cause it quotes (SEC-05)', () => {
+  /**
+   * The wrapped message reaches `err.message`, which an application may print
+   * with a plain console call rather than through a redacting logger. An SDK
+   * error can carry a credential fragment in its own text, so quoting it raw
+   * leaked it through the one path that bypasses the logger entirely.
+   */
+  it('replaces a credential shape in the quoted message', () => {
+    const cause = new Error('SignatureDoesNotMatch: Credential=AKIAIOSFODNN7EXAMPLE/20240101');
+    const error = new UpstreamError(cause, 'saver.put');
+    expect(error.message).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    expect(error.message).toContain('[REDACTED]');
+  });
+
+  it('keeps the operation, the upstream name and the cause itself', () => {
+    const cause = new Error('throttled');
+    const error = new UpstreamError(cause, 'store.put');
+    expect(error.message).toBe('store.put: Error: throttled');
+    expect(error.upstreamName).toBe('Error');
+    expect(error.cause).toBe(cause);
+  });
+
+  /**
+   * A name and a message are the two halves of what the failure was, and both
+   * come from below this library — an SDK, a transport, a consumer's
+   * `VectorBackend` — with nothing this package ran checking either length.
+   * The name takes the identifier cap because it is one; the text takes the
+   * relay cap because it is prose. `upstreamName` and `cause` keep both whole,
+   * since the structured fields are what a caller branches on.
+   */
+  it('cuts both halves of the failure it quotes, and keeps the fields whole', () => {
+    const name = 'N'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const text = 'm'.repeat(MAX_RELAYED_MESSAGE_CHARS * 4);
+    const cause = Object.assign(new Error(text), { name });
+    const error = new UpstreamError(cause, 'store.get');
+
+    expect(error.message).toBe(`store.get: ${truncateForLog(name)}: ${truncateRelayedText(text)}`);
+    expect(error.message.length).toBeLessThan(text.length);
+    expect(error.message.length).toBeLessThan(
+      MAX_LOGGED_VALUE_CHARS + MAX_RELAYED_MESSAGE_CHARS + 100,
+    );
+    expect(error.upstreamName).toBe(name);
+    expect((error.cause as Error).message).toBe(text);
+  });
+});
+
+/**
+ * `UpstreamError` is built inside the `catch` that wraps a failure from below,
+ * where the caught value is whatever the SDK, the transport or a third-party
+ * backend threw — in JavaScript, anything at all. Reading `.name` off it
+ * crashed there, and the `TypeError` replaced the failure being wrapped.
+ */
+describe('UpstreamError normalises a cause that is not an Error', () => {
+  it('describes a thrown string as the error it stands in for', () => {
+    const error = new UpstreamError('connection reset' as never, 'saver.put');
+    expect(error.code).toBe(ErrorCode.UPSTREAM);
+    expect(error.upstreamName).toBe('Error');
+    expect(error.message).toBe('saver.put: Error: connection reset');
+    expect((error.cause as Error).message).toBe('connection reset');
+  });
+
+  it('describes a null cause rather than reading a name off it', () => {
+    const error = new UpstreamError(null as never, 'store.get');
+    expect(error.message).toBe('store.get: Error: null was thrown');
+    expect(isDynamoDBLangGraphError(error)).toBe(true);
+  });
+
+  it('keeps an object that is already error-shaped, metadata included', () => {
+    const cause = {
+      name: 'ThrottlingException',
+      message: 'slow down',
+      $metadata: { requestId: 'r' },
+    };
+    const error = new UpstreamError(cause as never, 'store.put');
+    expect(error.upstreamName).toBe('ThrottlingException');
+    expect(error.requestId).toBe('r');
+    expect(error.cause).toBe(cause);
   });
 });

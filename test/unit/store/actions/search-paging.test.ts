@@ -45,7 +45,7 @@ async function rows(
         ['users', 'u1'],
         `k${i}`,
         { kind: kindOf(i), i },
-        { createdAt: 'c', updatedAt: 'u', embedding: [1, 0] },
+        { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0]] },
       ),
     );
   }
@@ -146,21 +146,25 @@ describe('backend refill hitting the cap (STORE-05)', () => {
 });
 
 describe('listNamespaces projects only the key attributes (STORE-02)', () => {
-  it('asks for PK, SK, namespace and key, not the payload', async () => {
+  it('asks for PK, SK, namespace, key and the format version, not the payload', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [] });
     mock.on(QueryCommand).resolves({ Items: [] });
     await listNamespaces(context(client), { limit: 10, offset: 0 });
     const scan = mock.commandCalls(ScanCommand)[0].args[0].input;
-    expect(scan.ProjectionExpression).toBe('PK, SK, #ns, #key');
-    expect(scan.ExpressionAttributeNames).toMatchObject({ '#ns': 'namespace', '#key': 'key' });
+    expect(scan.ProjectionExpression).toBe('PK, SK, #ns, #key, #v');
+    expect(scan.ExpressionAttributeNames).toMatchObject({
+      '#ns': 'namespace',
+      '#key': 'key',
+      '#v': 'v',
+    });
     await listNamespaces(context(client), {
       limit: 10,
       offset: 0,
       matchConditions: [{ matchType: 'prefix', path: ['users'] }],
     });
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.ProjectionExpression).toBe(
-      'PK, SK, #ns, #key',
+      'PK, SK, #ns, #key, #v',
     );
   });
 });
@@ -173,6 +177,45 @@ describe('empty namespace on both paths', () => {
     const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
     await expect(searchItems(ctx, { namespacePrefix: ['users'] })).resolves.toEqual([]);
     await expect(searchItems(ctx, { namespacePrefix: ['users'], query: 'q' })).resolves.toEqual([]);
+  });
+});
+
+/**
+ * `limit: 0` asks for an empty page, and the rule is that such a page is
+ * answered without issuing a request. Both of these read one anyway:
+ * `collectCandidates` pulls the first row from the paginator before it tests
+ * its `offset + limit` bound, and a listing has to collect and sort every live
+ * namespace before it can slice one off. The empty result was never in doubt —
+ * what is asserted here is the request that is no longer paid for.
+ */
+describe('a page of zero costs no read (STORE-02)', () => {
+  it('answers search with nothing without a Query, a Scan or an embedding', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx0 = context(client);
+    mock.on(QueryCommand).resolves({ Items: await rows(ctx0, 3, () => 'note') });
+    const embeddings = { embedQuery: jest.fn(async () => [1, 0]), embedDocuments: jest.fn() };
+    const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
+    await expect(searchItems(ctx, { namespacePrefix: ['users'], limit: 0 })).resolves.toEqual([]);
+    await expect(
+      searchItems(ctx, { namespacePrefix: ['users'], query: 'q', limit: 0, offset: 2 }),
+    ).resolves.toEqual([]);
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
+    expect(mock.commandCalls(ScanCommand)).toHaveLength(0);
+    expect(embeddings.embedQuery).not.toHaveBeenCalled();
+  });
+
+  it('answers listNamespaces with nothing without a Query or a Scan', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    await expect(listNamespaces(context(client), { limit: 0, offset: 0 })).resolves.toEqual([]);
+    await expect(
+      listNamespaces(context(client), {
+        limit: 0,
+        offset: 0,
+        matchConditions: [{ matchType: 'prefix', path: ['users'] }],
+      }),
+    ).resolves.toEqual([]);
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
+    expect(mock.commandCalls(ScanCommand)).toHaveLength(0);
   });
 });
 

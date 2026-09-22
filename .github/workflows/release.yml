@@ -11,6 +11,12 @@ on:
     tags:
       - 'v*'
 
+# Restrictive default so any job added later starts read-only; the publish job
+# elevates explicitly to what it needs (contents + id-token for the release and
+# for npm provenance).
+permissions:
+  contents: read
+
 jobs:
   release:
     name: publish ${{ github.ref_name }}
@@ -47,30 +53,57 @@ jobs:
             echo "PRERELEASE=false" >> "$GITHUB_ENV"
           fi
 
-      - name: Wait for a fully successful CI run of this commit
+      - name: Wait for every required CI check of this commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # The CI workflow runs on the push to main that the tag points at;
-          # every check run of that commit (unit matrix, typecheck, audit,
-          # integration, conformance, docs, package smoke) must have succeeded.
+          # Every one of these must exist for this commit, be completed, and
+          # have succeeded. Naming them is the point: comparing "succeeded" to
+          # "registered so far" passes the instant the first fast job reports,
+          # which publishes without the unit matrix, integration, conformance
+          # or package smoke having run at all. test/static/release-gate.test.ts
+          # pins this list against the jobs ci.yml actually defines.
+          required=$(cat <<'REQUIRED'
+          test (node 22 on ubuntu-latest)
+          test (node 24 on ubuntu-latest)
+          test (node 22 on windows-latest)
+          test (node 24 on windows-latest)
+          test (node 22 on macos-latest)
+          test (node 24 on macos-latest)
+          npm audit (high+)
+          typecheck (full program: src + test + configs)
+          integration (DynamoDB Local)
+          conformance (langgraph 1.1.5)
+          conformance (langgraph latest)
+          repository hygiene (knip, depcheck, jscpd, actionlint, changelog)
+          peer dependency floors
+          API reference is regenerated
+          package smoke (npm pack + install + import)
+          REQUIRED
+          )
           for _ in $(seq 1 60); do
             runs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.app.slug == "github-actions" and .name != "publish '"${GITHUB_REF_NAME}"'")]')"
-            total="$(echo "$runs" | jq 'length')"
-            done_ok="$(echo "$runs" | jq '[.[] | select(.status == "completed" and .conclusion == "success")] | length')"
-            failed="$(echo "$runs" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped")] | length')"
-            echo "CI check runs for ${GITHUB_SHA}: ${done_ok}/${total} succeeded, ${failed} failed"
-            if [ "$failed" != "0" ]; then
-              echo "CI failed for this commit; not publishing" >&2
+              --jq '[.check_runs[] | select(.app.slug == "github-actions")]')"
+            # Any failure of any of this commit's checks stops the release, not
+            # only a failure among the required ones.
+            failed="$(echo "$runs" | jq -r '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped") | .name] | join(", ")')"
+            if [ -n "$failed" ]; then
+              echo "CI failed for this commit (${failed}); not publishing" >&2
               exit 1
             fi
-            if [ "$total" != "0" ] && [ "$done_ok" = "$total" ]; then
+            missing=""
+            while IFS= read -r name; do
+              ok="$(echo "$runs" | jq --arg n "$name" '[.[] | select(.name == $n and .status == "completed" and .conclusion == "success")] | length')"
+              if [ "$ok" = "0" ]; then missing="${missing}${name}; "; fi
+            done <<< "$required"
+            if [ -z "$missing" ]; then
+              echo "every required check succeeded for ${GITHUB_SHA}"
               exit 0
             fi
+            echo "still waiting on: ${missing}"
             sleep 30
           done
-          echo "CI did not finish within 30 minutes" >&2
+          echo "required checks did not all succeed within 30 minutes: ${missing}" >&2
           exit 1
 
       - name: Install dependencies

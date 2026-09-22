@@ -112,6 +112,25 @@ describe('listNamespaces', () => {
     expect(out).toEqual([['users', 'u1']]);
   });
 
+  /**
+   * Collation calls these two distinct namespaces equal, so without a
+   * tie-break their order — and with it every page boundary — is decided by
+   * whichever order DynamoDB returned the rows in.
+   */
+  it('orders namespaces the collation calls equal by a stable tie-break', async () => {
+    const precomposed = ['café'];
+    const decomposed = ['café'];
+    expect(precomposed[0].localeCompare(decomposed[0])).toBe(0);
+    const page = async (rows: ReturnType<typeof row>[]): Promise<string[][]> => {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(ScanCommand).resolves({ Items: rows });
+      return listNamespaces(context(client), { limit: 1, offset: 0 });
+    };
+    const forwards = await page([row(precomposed), row(decomposed)]);
+    const backwards = await page([row(decomposed), row(precomposed)]);
+    expect(forwards).toEqual(backwards);
+  });
+
   it('applies offset and limit', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: items });

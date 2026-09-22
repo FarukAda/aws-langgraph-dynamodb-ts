@@ -7,6 +7,7 @@ import { reconcileVectorIndex } from '../../../../src/store/actions/reconcile-ve
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -87,6 +88,51 @@ describe('reconcileVectorIndex', () => {
     expect(backend.upsert).toHaveBeenCalledWith(['users', 'u1'], 'a', [0.5]);
     expect(backend.upsert).toHaveBeenCalledWith(['users', 'u1'], 'b', [0.5]);
     expect(backend.delete).toHaveBeenCalledWith(['users', 'u1'], 'orphan');
+  });
+
+  /**
+   * More items than one decode batch holds: the flush inside the enumeration
+   * must both bound the concurrency and lose nothing, or a reconcile would
+   * prune the vectors of the items it failed to carry forward.
+   */
+  it('decodes more items than one batch, bounded and complete', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const { offloader, maxInFlight } = overlapOffloader();
+    const embeddings = {
+      embedQuery: jest.fn(),
+      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+    };
+    const backend = {
+      upsert: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn().mockResolvedValue(undefined),
+      query: jest.fn(),
+    };
+    const ctx = context(client, {
+      index: { dims: 1, embeddings: embeddings as never },
+      vectorBackend: backend,
+      offloader: offloader as never,
+      readConcurrency: 4,
+    });
+    const records = [];
+    for (let i = 0; i < 10; i++) {
+      records.push(
+        await buildStoreItem(
+          ctx,
+          ['users', 'u1'],
+          `k${i}`,
+          { text: `value${i}` },
+          { createdAt: 'c', updatedAt: 'u' },
+        ),
+      );
+    }
+    mock.on(QueryCommand).resolves({ Items: records });
+
+    const result = await reconcileVectorIndex(ctx, ['users', 'u1']);
+
+    expect(result).toEqual({ upserted: 10, pruned: 0 });
+    expect(backend.upsert).toHaveBeenCalledTimes(10);
+    expect(maxInFlight()).toBeGreaterThan(1);
+    expect(maxInFlight()).toBeLessThanOrEqual(4);
   });
 
   it('passes maxScanItems through to the underlying paginated query', async () => {

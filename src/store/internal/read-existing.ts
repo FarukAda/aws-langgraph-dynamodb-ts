@@ -21,6 +21,18 @@ export interface ExistingRecordMeta {
  *
  * Lives apart from `actions/put.ts` so `persist.ts` can re-read on a lost swap
  * without importing its own caller.
+ *
+ * Accepts: the row's key. The row need not exist.
+ *
+ * Returns: what the row holds, with `exists: false` and every field undefined
+ * when there is none. A row written before revisions existed reports no
+ * `revision`, which is why the swap tests `rev` for presence rather than
+ * comparing two undefineds.
+ *
+ * Throws: whatever the read throws after retries.
+ *
+ * Guarantees: strongly consistent — a put must supersede the row that is really
+ * there, not one a replica still shows.
  */
 export async function readExisting(
   context: StoreContext,
@@ -28,26 +40,39 @@ export async function readExisting(
   sk: string,
 ): Promise<ExistingRecordMeta> {
   const existing = await withDynamoDBRetry(
-    () =>
-      context.client.get({
-        TableName: context.tableName,
-        Key: { PK: pk, SK: sk },
-        ConsistentRead: true,
-        ProjectionExpression: '#c, #r, #v.#loc, #v.#s3k',
-        ExpressionAttributeNames: {
-          '#c': 'createdAt',
-          '#r': REVISION_ATTRIBUTE,
-          '#v': 'value',
-          '#loc': 'location',
-          '#s3k': 's3Key',
+    (request) =>
+      context.client.get(
+        {
+          TableName: context.tableName,
+          Key: { PK: pk, SK: sk },
+          ConsistentRead: true,
+          ProjectionExpression: '#c, #r, #v.#loc, #v.#s3k',
+          ExpressionAttributeNames: {
+            '#c': 'createdAt',
+            '#r': REVISION_ATTRIBUTE,
+            '#v': 'value',
+            '#loc': 'location',
+            '#s3k': 's3Key',
+          },
         },
-      }),
+        request,
+      ),
     context.retry,
   );
   return existingFrom(existing.Item as DocItem | undefined);
 }
 
-/** Project a raw row (a read result, or the row a rejection carried) onto {@link ExistingRecordMeta}. */
+/**
+ * Project a raw row onto {@link ExistingRecordMeta}.
+ *
+ * Accepts: `item` — a read result, or the row a conditional-check rejection
+ * carried with it; `undefined` means there is no row.
+ *
+ * Returns: the fields a put needs from the row it supersedes. Fields the
+ * projection did not ask for, or that the row does not carry, are undefined.
+ *
+ * Throws: nothing.
+ */
 export function existingFrom(item: DocItem | undefined): ExistingRecordMeta {
   return {
     exists: item !== undefined,

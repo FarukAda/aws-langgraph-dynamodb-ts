@@ -1,8 +1,4 @@
-import {
-  type BaseMessage,
-  type StoredMessage,
-  mapChatMessagesToStoredMessages,
-} from '@langchain/core/messages';
+import type { BaseMessage, StoredMessage } from '@langchain/core/messages';
 
 import { nowIso } from '../../shared/clock';
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
@@ -14,7 +10,12 @@ import { chunkBySize } from '../internal/message-chunker';
 import type { HistoryContext } from '../internal/setup';
 import { deriveTitle } from '../internal/title-generator';
 import { resolveTtlAnchor } from '../internal/ttl-anchor';
-import { validateSessionId, validateStorableMessages } from '../internal/validation';
+import {
+  toStoredMessages,
+  validateMessageList,
+  validateSessionId,
+  validateStorableMessages,
+} from '../internal/validation';
 import type { ChatMessageItem } from '../types';
 
 /** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
@@ -41,12 +42,15 @@ async function buildItems(
   context: HistoryContext,
   sessionId: string,
   stored: StoredMessage[],
-  ttlTimestamp?: number,
+  ttlTimestamp: number | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<ChatMessageItem[]> {
   const items: ChatMessageItem[] = [];
   try {
     for (const message of stored) {
-      items.push(await buildMessageItem(context, sessionId, context.ulid(), message, ttlTimestamp));
+      items.push(
+        await buildMessageItem(context, sessionId, context.ulid(), message, ttlTimestamp, signal),
+      );
     }
   } catch (error) {
     if (context.offloader) {
@@ -73,6 +77,24 @@ async function buildItems(
  *
  * Per item the 400 KB DynamoDB limit still applies; enable S3 offloading so
  * large payloads become small descriptors and stay well under the limits.
+ *
+ * Accepts: `messages` — LangChain messages; an empty list writes nothing and is
+ * not an error, which is what a turn that produced no message means.
+ * `signal` — aborts between chunks.
+ *
+ * Returns: nothing, and only once every message has landed.
+ *
+ * Throws: ValidationError naming `sessionId` or `messages` (with the offending
+ * index) before any write; `S3_OFFLOAD_FAILED`; whatever the transaction
+ * throws, after the rollback; {@link CompensationFailedError} when that
+ * rollback could not finish.
+ *
+ * Guarantees: a caller observes all messages or none. `messageCount` always
+ * agrees with the messages that landed, because each chunk writes both in one
+ * transaction. Every message of the append shares one creation-anchored expiry,
+ * so a conversation expires whole rather than losing its oldest turns first. No
+ * S3 object is left behind by a failure, at any stage — including a failure
+ * partway through encoding, before the saga exists.
  */
 export async function addMessages(
   context: HistoryContext,
@@ -81,13 +103,14 @@ export async function addMessages(
   signal?: AbortSignal,
 ): Promise<void> {
   validateSessionId(sessionId);
+  validateMessageList(messages);
   if (messages.length === 0) return;
-  const stored = mapChatMessagesToStoredMessages(messages);
+  const stored = toStoredMessages(messages);
   validateStorableMessages(stored);
   const anchor = context.ttl
     ? await resolveTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl), signal)
     : undefined;
-  const items = await buildItems(context, sessionId, stored, anchor?.ttlTimestamp);
+  const items = await buildItems(context, sessionId, stored, anchor?.ttlTimestamp, signal);
   const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
   await appendChunks(
     context,

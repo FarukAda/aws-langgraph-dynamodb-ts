@@ -8,7 +8,8 @@ import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
  */
 export interface FaultRule {
   match: (commandName: string, input: unknown) => boolean;
-  fail: () => Error;
+  /** Builds the error to throw. It is given the command's name, so one rule can refuse each shape the way the service really refuses it. */
+  fail: (commandName: string) => Error;
   times: number;
   skip?: number;
 }
@@ -32,7 +33,7 @@ export function installFaults(client: DynamoDBClient, rules: FaultRule[]): void 
           rule.skip -= 1;
         } else {
           rule.times -= 1;
-          throw rule.fail();
+          throw rule.fail(commandName);
         }
       }
       return next(args);
@@ -62,6 +63,70 @@ export function dropResponses(client: DynamoDBClient, commandName: string, times
       return result;
     },
     { step: 'deserialize', name: 'drop-responses' },
+  );
+}
+
+/**
+ * Run `hook` after a matching command's response has come back, for up to
+ * `times` occurrences, before the caller sees that response. It is what makes a
+ * read-then-write race deterministic: a writer that lands between a partition
+ * query and the deletes it drives is the whole subject of the conditional
+ * delete path, and `Promise.all` cannot place a write there reliably.
+ *
+ * **A hook that throws becomes the command's failure**, after the request has
+ * committed — which is how a test models a lost acknowledgement with a racing
+ * write inside it. That is load-bearing, not incidental: wrapping the `await`
+ * below in a try/catch would leave such a test green while it silently stopped
+ * exercising the retry at all.
+ */
+export function afterResponse(
+  client: DynamoDBClient,
+  commandName: string,
+  hook: () => Promise<void>,
+  times = 1,
+): void {
+  let remaining = times;
+  client.middlewareStack.add(
+    (next, context) => async (args) => {
+      const result = await next(args);
+      const name = (context as { commandName?: string }).commandName ?? '';
+      if (name === commandName && remaining > 0) {
+        remaining -= 1;
+        await hook();
+      }
+      return result;
+    },
+    { step: 'deserialize', name: 'after-response' },
+  );
+}
+
+/**
+ * Run `hook` before a matching command is sent, for up to `times` occurrences.
+ *
+ * The mirror of {@link afterResponse}, and the two are not interchangeable:
+ * `afterResponse` awaits the response first, so it can never fire for a command
+ * the service *refuses*. Landing a competing write before every attempt of a
+ * compare-and-swap is only reachable from here, because the attempts that
+ * re-pin from a cancellation issue no read to hook and their own transactions
+ * come back as errors.
+ */
+export function beforeRequest(
+  client: DynamoDBClient,
+  commandName: string,
+  hook: () => Promise<void>,
+  times = 1,
+): void {
+  let remaining = times;
+  client.middlewareStack.add(
+    (next, context) => async (args) => {
+      const name = (context as { commandName?: string }).commandName ?? '';
+      if (name === commandName && remaining > 0) {
+        remaining -= 1;
+        await hook();
+      }
+      return next(args);
+    },
+    { step: 'initialize', name: 'before-request' },
   );
 }
 

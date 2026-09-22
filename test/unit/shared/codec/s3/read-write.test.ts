@@ -2,7 +2,9 @@ import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { downloadObject, uploadObject } from '../../../../../src/shared/codec/s3/read-write';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
+import { truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 const s3Mock = mockClient(S3Client);
 
@@ -67,6 +69,37 @@ describe('uploadObject', () => {
     expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(2);
   });
 
+  /**
+   * The first request stored the object and its response was lost. The retry
+   * of that same upload, to that same key, is refused with `412` because the
+   * key is taken — by this upload's own earlier request, the only one that
+   * writes this key.
+   */
+  it('resolves a retried upload that S3 refuses with 412 because its own first attempt stored it', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejectsOnce(Object.assign(new Error('internal'), { name: 'InternalError' }))
+      .rejects(
+        Object.assign(new Error('At least one of the pre-conditions you specified did not hold'), {
+          name: 'PreconditionFailed',
+          $metadata: { httpStatusCode: 412 },
+        }),
+      );
+    await expect(
+      uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        data: new Uint8Array([1]),
+      }),
+    ).resolves.toBeUndefined();
+    const calls = s3Mock.commandCalls(PutObjectCommand).map((call) => call.args[0].input);
+    expect(calls).toHaveLength(2);
+    expect(calls.map((input) => [input.Key, input.IfNoneMatch])).toEqual([
+      ['k.bin', '*'],
+      ['k.bin', '*'],
+    ]);
+  });
+
   it('does not retry a permanent S3 error on upload', async () => {
     s3Mock
       .on(PutObjectCommand)
@@ -113,6 +146,28 @@ describe('downloadObject', () => {
     await expect(
       downloadObject(new S3Client({ region: 'us-east-1' }), 'b', 'k.bin', 1024 * 1024),
     ).rejects.toMatchObject({ code: ErrorCode.S3_OFFLOAD_FAILED });
+  });
+
+  /**
+   * The empty-body refusal is raised inside the retry and relayed as the
+   * public message, so a row-sourced key reaches `err.message` through it.
+   * `context.key` still carries the key whole.
+   */
+  it('bounds the key the empty-body refusal quotes', async () => {
+    const key = `${'w'.repeat(MAX_LOGGED_VALUE_CHARS * 4)}.bin`;
+    s3Mock.on(GetObjectCommand).resolves({});
+    const refusal = await downloadObject(
+      new S3Client({ region: 'us-east-1' }),
+      'b',
+      key,
+      1024 * 1024,
+    ).then(
+      () => new Error('should have thrown'),
+      (error: Error) => error,
+    );
+    expect(refusal).toMatchObject({ context: { operation: 'download', key } });
+    expect(refusal.message).not.toContain(key);
+    expect(refusal.message).toContain(truncateForLog(key));
   });
 });
 

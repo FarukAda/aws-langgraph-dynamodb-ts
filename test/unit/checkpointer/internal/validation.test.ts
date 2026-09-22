@@ -4,6 +4,7 @@ import {
   validateCheckpointNs,
   validateTaskId,
   validateThreadId,
+  validateWrites,
 } from '../../../../src/checkpointer/internal/validation';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
@@ -76,5 +77,49 @@ describe('validateChannel (SEC-09)', () => {
     expectValidationError(() => validateChannel(''));
     expectValidationError(() => validateChannel('a#b'));
     expectValidationError(() => validateChannel('c'.repeat(257)));
+  });
+});
+
+describe('validateWrites', () => {
+  it('accepts an array of [channel, value] tuples, empty or not', () => {
+    expect(() => validateWrites([])).not.toThrow();
+    expect(() =>
+      validateWrites([
+        ['ch', 'a'],
+        ['ch', 'b'],
+      ]),
+    ).not.toThrow();
+  });
+
+  it('rejects anything that is not an array, naming writes', () => {
+    for (const writes of ['x', null, undefined, {}]) {
+      expectValidationError(() => validateWrites(writes as never));
+    }
+  });
+
+  it('rejects an entry that is not itself an array, naming writes with its index', () => {
+    expect(() => validateWrites([null] as never)).toThrow(/writes\[0\]/);
+  });
+
+  /**
+   * An entry whose first element is present but not a string is left alone
+   * here: `buildWriteItems` destructures it and hands it to `validateChannel`,
+   * which already reports it under `channel` — this function would only
+   * duplicate or shadow that more specific error.
+   */
+  it('does not reject an entry whose first element is not a string', () => {
+    expect(() => validateWrites([[123, 'v']] as never)).not.toThrow();
+  });
+});
+
+describe('validateCheckpointNs applies every rule except non-blank', () => {
+  const HIGH = String.fromCharCode(0xd83d);
+
+  it('accepts the empty root namespace', () => {
+    expect(() => validateCheckpointNs('')).not.toThrow();
+  });
+
+  it('rejects an ill-formed namespace, which reaches both the sort key and the object key', () => {
+    expect(() => validateCheckpointNs(`child${HIGH}`)).toThrow(/checkpoint_ns/);
   });
 });

@@ -1,11 +1,13 @@
 import {
   GetBucketLifecycleConfigurationCommand,
+  GetBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import {
-  BatchWriteCommand,
+  DeleteCommand,
   DynamoDBDocument,
+  GetCommand,
   QueryCommand,
   ScanCommand,
   TransactWriteCommand,
@@ -18,7 +20,7 @@ import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-hi
 import { DynamoDBSessionChatMessageHistory } from '../../../src/history/session-adapter';
 import { JSON_SERDE } from '../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
-import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -54,9 +56,9 @@ describe('DynamoDBChatMessageHistory', () => {
         { PK: 'sess-1', SK: 'HISTORY#SESSION' },
       ],
     });
-    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    mock.on(DeleteCommand).resolves({});
     await history(client).clear('sess-1');
-    expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
+    expect(mock.commandCalls(DeleteCommand)).toHaveLength(2);
   });
 
   it('listSessions scans for sessions', async () => {
@@ -64,7 +66,7 @@ describe('DynamoDBChatMessageHistory', () => {
     mock.on(ScanCommand).resolves({
       Items: [
         {
-          PK: 's',
+          PK: 'HIST#s',
           SK: 'HISTORY#SESSION',
           sessionId: 's',
           messageCount: 1,
@@ -73,13 +75,16 @@ describe('DynamoDBChatMessageHistory', () => {
         },
       ],
     });
-    const sessions = await history(client).listSessions();
+    const { sessions: sessions } = await history(client).listSessions();
     expect(sessions.map((s) => s.sessionId)).toEqual(['s']);
   });
 
   it('reconcileMessageCount recomputes and writes back the stored count', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(QueryCommand).resolves({ Count: 2 });
+    /** The repair pins its write to the count the row held, so it reads that first. */
+    mock.on(GetCommand).resolves({ Item: { messageCount: 0 } });
+    const counted = { PK: 'HIST#sess-1', sessionId: 'sess-1', message: { location: 'INLINE' } };
+    mock.on(QueryCommand).resolves({ Items: [{ ...counted, v: 1 }, counted] });
     mock.on(UpdateCommand).resolves({});
     await expect(history(client).reconcileMessageCount('sess-1')).resolves.toBe(2);
   });
@@ -100,7 +105,7 @@ describe('DynamoDBChatMessageHistory', () => {
     expect(() => history(injected.client).destroy()).not.toThrow();
 
     const destroy = jest.fn();
-    const fake = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
+    const fake = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
     const owned = new DynamoDBChatMessageHistory({
       tableName: 'history',
       clientConfig: { region: 'us-east-1' },
@@ -114,15 +119,20 @@ describe('DynamoDBChatMessageHistory', () => {
     const { client } = createStrictDocumentMock();
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const h = new DynamoDBChatMessageHistory({
       tableName: 'history',
       client,
       serde: JSON_SERDE,
+      logger,
       s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
       ttl: { days: 30 },
     });
     await h.ensureS3LifecycleRule();
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
+    /** A warn here would mean the versioning stub above was not the one consumed. */
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('ensureS3LifecycleRule no-ops when ttl is not configured', async () => {
@@ -165,6 +175,182 @@ describe('cancellation via { signal } (CORE-04)', () => {
     await expectAborted(h.listSessions(options));
     await expectAborted(h.reconcileMessageCount('s1', options));
     expect(mock.calls()).toHaveLength(0);
+  });
+
+  /**
+   * The wait between retries calls `removeEventListener` from inside its
+   * timer. A signal lacking it passed the old shape check, so one throttled
+   * read threw from that timer, an uncaught exception, and the call never
+   * settled.
+   */
+  it('refuses a signal without removeEventListener before any request, naming signal', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.rejects(Object.assign(new Error('throttled'), { name: 'ThrottlingException' }));
+    const h = new DynamoDBChatMessageHistory({
+      tableName: 'history',
+      client,
+      retry: { maxAttempts: 2 },
+    });
+    const signal = { aborted: false, addEventListener: () => {} } as never;
+    await expect(h.getMessages('s1', { signal })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'signal' },
+    });
+    expect(mock.calls()).toHaveLength(0);
+  });
+});
+
+describe('options shape (M-08)', () => {
+  const bogus = { bogus: true } as never;
+  const rejectsUnknownKey = (promise: Promise<unknown>) =>
+    expect(promise).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'options.bogus' },
+    });
+
+  it('getMessages refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).getMessages('s1', bogus));
+  });
+
+  /**
+   * `before: null` passes the `!== undefined` guard and then used to reach
+   * `null.getTime`, a bare `TypeError` the boundary branded `UpstreamError`
+   * instead of naming the caller's mistake.
+   */
+  it('getMessages refuses before: null rather than crashing on it', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      history(client).getMessages('s1', { before: null } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'before' } });
+  });
+
+  it('listSessions refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).listSessions(bogus));
+  });
+
+  it('listSessions refuses a non-integer maxItems or maxIterations', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(history(client).listSessions({ maxItems: 1.5 })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'maxItems' },
+    });
+    await expect(history(client).listSessions({ maxIterations: 1.5 })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'maxIterations' },
+    });
+  });
+
+  it('addMessages refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).addMessages('s1', [new HumanMessage('hi')], bogus));
+  });
+
+  it('addMessage refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).addMessage('s1', new HumanMessage('hi'), bogus));
+  });
+
+  it('clear refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).clear('s1', bogus));
+  });
+
+  it('reconcileMessageCount refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    await rejectsUnknownKey(history(client).reconcileMessageCount('s1', bogus));
+  });
+});
+
+/**
+ * `addMessages` validated each message once `messages` was known to be an
+ * array, but never that it was one: a non-array reached `.length` directly
+ * and raised a bare `TypeError`, branded `UpstreamError` instead of naming
+ * the caller's mistake.
+ */
+describe('addMessages messages validation', () => {
+  it('refuses a messages that is not an array, naming it', async () => {
+    const { client } = createStrictDocumentMock();
+    for (const messages of ['x', null, undefined, {}]) {
+      await expect(history(client).addMessages('s1', messages as never)).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION,
+        context: { field: 'messages' },
+      });
+    }
+  });
+
+  it('accepts messages: [], a no-op that writes nothing', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    await expect(history(client).addMessages('s1', [])).resolves.toBeUndefined();
+    expect(mock.calls()).toHaveLength(0);
+  });
+
+  it('accepts a valid message list and writes it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    await expect(
+      history(client).addMessages('s1', [new HumanMessage('hi')]),
+    ).resolves.toBeUndefined();
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(1);
+  });
+});
+
+/**
+ * `listSessions` refused a `cursor` given without a configured `indexName`,
+ * but with one set a non-string `cursor` reached the cursor decoder's
+ * `Buffer.from` directly and raised a bare `TypeError`, branded
+ * `UpstreamError` instead of naming the caller's mistake.
+ */
+describe('listSessions cursor validation on the indexed path', () => {
+  function indexedHistory(client: DynamoDBDocument) {
+    return new DynamoDBChatMessageHistory({
+      tableName: 'history',
+      client,
+      serde: JSON_SERDE,
+      indexName: 'gsi1',
+    });
+  }
+
+  it('refuses a cursor that is present and not a string, naming it', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      indexedHistory(client).listSessions({ cursor: 123 as never }),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'cursor' } });
+  });
+
+  it('accepts a valid string cursor and pages from it', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    const cursor = Buffer.from('2026-01-01T00:00:00.000Z#s1', 'utf8').toString('base64url');
+    await expect(indexedHistory(client).listSessions({ cursor })).resolves.toEqual({
+      sessions: [],
+    });
+  });
+});
+
+describe('forSession checks its arguments when it is called', () => {
+  const refusal = (field: string) =>
+    expect.objectContaining({
+      code: ErrorCode.VALIDATION,
+      context: expect.objectContaining({ field }),
+    });
+
+  /** A synchronous throw, not a rejection: `forSession` returns an adapter, not a promise. */
+  it('throws ValidationError synchronously for a malformed sessionId', () => {
+    const h = history(createStrictDocumentMock().client);
+    expect(() => h.forSession('a#b')).toThrow(refusal('sessionId'));
+    expect(() => h.forSession('')).toThrow(refusal('sessionId'));
+    expect(() => h.forSession(42 as never)).toThrow(refusal('sessionId'));
+  });
+
+  it('throws ValidationError synchronously for a malformed window', () => {
+    const h = history(createStrictDocumentMock().client);
+    expect(() => h.forSession('s1', 'x' as never)).toThrow(refusal('window'));
+    expect(() => h.forSession('s1', { limt: 5 } as never)).toThrow(refusal('window.limt'));
+    /** Zero too: this window feeds a model, and an empty one reads as a session that never was. */
+    expect(() => h.forSession('s1', { limit: 0 })).toThrow(refusal('limit'));
+    expect(() => h.forSession('s1', { limit: -1 })).toThrow(refusal('limit'));
   });
 });
 

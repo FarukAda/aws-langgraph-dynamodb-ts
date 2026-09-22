@@ -6,7 +6,7 @@
 
 # Interface: S3ClientLike
 
-Defined in: [shared/codec/s3/client-types.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L39)
+Defined in: [shared/codec/s3/client-types.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L49)
 
 The S3 client surface this library calls, typed structurally for the same
 reason. `S3Client` from `@aws-sdk/client-s3` satisfies it.
@@ -17,7 +17,7 @@ reason. `S3Client` from `@aws-sdk/client-s3` satisfies it.
 
 > **destroy**(): `void`
 
-Defined in: [shared/codec/s3/client-types.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L41)
+Defined in: [shared/codec/s3/client-types.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L51)
 
 #### Returns
 
@@ -29,7 +29,7 @@ Defined in: [shared/codec/s3/client-types.ts:41](https://github.com/FarukAda/aws
 
 > **send**(`command`, `options?`): `Promise`\<`object`\>
 
-Defined in: [shared/codec/s3/client-types.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L40)
+Defined in: [shared/codec/s3/client-types.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L50)
 
 #### Parameters
 

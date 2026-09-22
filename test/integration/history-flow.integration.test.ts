@@ -33,7 +33,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
 
   it('lists sessions with derived metadata', async () => {
     await history.addMessages('s2', [new HumanMessage('hello world')]);
-    const sessions = await history.listSessions();
+    const { sessions: sessions } = await history.listSessions();
     const s2 = sessions.find((s) => s.sessionId === 's2');
     expect(s2?.title).toBe('hello world');
     expect(s2?.messageCount).toBe(1);
@@ -54,7 +54,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     const messages = await history.getMessages('s4');
     expect(messages).toHaveLength(10);
     expect(new Set(messages.map((m) => m.content)).size).toBe(10);
-    const sessions = await history.listSessions();
+    const { sessions: sessions } = await history.listSessions();
     expect(sessions.find((s) => s.sessionId === 's4')?.messageCount).toBe(10);
   });
 
@@ -126,7 +126,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     expect(stored.map((m) => String(m.content).split(':')[0])).toEqual(
       messages.map((_unused, index) => String(index)),
     );
-    const sessions = await history.listSessions();
+    const { sessions: sessions } = await history.listSessions();
     expect(sessions.find((s) => s.sessionId === 's-big')?.messageCount).toBe(60);
   });
 
@@ -154,7 +154,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     expect(injected).toBe(1);
     const messages = await history.getMessages('s-fault');
     expect(messages).toHaveLength(1);
-    const sessions = await history.listSessions();
+    const { sessions: sessions } = await history.listSessions();
     expect(sessions.find((s) => s.sessionId === 's-fault')?.messageCount).toBe(1);
   });
 
@@ -228,7 +228,9 @@ describe('hot-row append contention (TEST-03)', () => {
     const messages = await history.getMessages('hot');
     expect(messages).toHaveLength(30);
     expect(new Set(messages.map((message) => String(message.content))).size).toBe(30);
-    const session = (await history.listSessions()).find((entry) => entry.sessionId === 'hot');
+    const session = (await history.listSessions()).sessions.find(
+      (entry) => entry.sessionId === 'hot',
+    );
     expect(session?.messageCount).toBe(30);
   });
 });

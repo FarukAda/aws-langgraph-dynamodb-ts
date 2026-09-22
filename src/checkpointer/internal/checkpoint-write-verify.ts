@@ -1,85 +1,66 @@
-import { type PayloadDescriptor, PayloadLocation } from '../../shared/codec/codec';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import {
+  offloadedKey,
+  type RowProbe,
+  verifyRow,
+  type WriteVerdict,
+} from '../../shared/dynamodb/write-verify';
 import type { CheckpointMetaItem, CheckpointPayloadItem } from '../types';
 import type { CheckpointerContext } from './setup';
 
-/** What a post-failure verification read could establish about a put. */
-export type CheckpointWriteVerdict = 'landed' | 'not-landed' | 'unverified';
-
-/** The S3 key an offloaded descriptor points at, or undefined for inline/absent. */
-function offloadedKey(descriptor: PayloadDescriptor | undefined): string | undefined {
-  return descriptor?.location === PayloadLocation.S3 ? descriptor.s3Key : undefined;
-}
-
-/** Which row to read back, and the key it must hold for the write to count as landed. */
-interface Probe {
-  key: { PK: string; SK: string };
-  attribute: 'metadata' | 'checkpoint';
-  expected: string;
-}
-
 /**
- * Pick the row carrying an offloaded descriptor. The META and PAYLOAD rows
- * commit in one transaction, so one of them is enough; with neither offloaded
- * there is nothing to protect and no read to spend.
+ * Pick the row carrying an offloaded descriptor, projected to that
+ * descriptor's `location` and `s3Key`. The META and PAYLOAD rows commit in one
+ * transaction, so one of them is enough; with neither offloaded there is
+ * nothing to protect and no read to spend, which {@link verifyRow} answers
+ * `'not-landed'` for an absent `expected`.
  */
-function chooseProbe(meta: CheckpointMetaItem, payload: CheckpointPayloadItem): Probe | undefined {
+function chooseProbe(meta: CheckpointMetaItem, payload: CheckpointPayloadItem): RowProbe {
   const metaKey = offloadedKey(meta.metadata);
   if (metaKey !== undefined) {
-    return { key: { PK: meta.PK, SK: meta.SK }, attribute: 'metadata', expected: metaKey };
-  }
-  const payloadKey = offloadedKey(payload.checkpoint);
-  if (payloadKey !== undefined) {
     return {
-      key: { PK: payload.PK, SK: payload.SK },
-      attribute: 'checkpoint',
-      expected: payloadKey,
+      key: { PK: meta.PK, SK: meta.SK },
+      kind: 'descriptor',
+      attribute: 'metadata',
+      expected: metaKey,
+      descriptors: ['metadata'],
     };
   }
-  return undefined;
+  return {
+    key: { PK: payload.PK, SK: payload.SK },
+    kind: 'descriptor',
+    attribute: 'checkpoint',
+    expected: offloadedKey(payload.checkpoint),
+    descriptors: ['checkpoint'],
+  };
 }
 
 /**
  * Read one of the two rows back after the META+PAYLOAD transaction failed and
  * report what that failure actually did — never assuming it did nothing.
  *
- * No rejection is proof of a non-commit: `withDynamoDBRetry` re-issues a
- * transaction whose response was lost, and the re-issues can time out at the
- * transport without reaching DynamoDB, so the budget is spent on a
- * `RetryExhaustedError` while the rows are committed. Deleting the uploads on
- * that basis stranded the head checkpoint of a thread on a `NoSuchKey`.
+ * Accepts: `meta` and `payload` — the two rows the failed transaction carried.
+ * Whichever of them has something offloaded is the one read back; a fully
+ * inline write has no object at stake and spends no read.
  *
- * Keys are nonced per call (see `buildCheckpointItems`), so "the row holds
- * this attempt's key" is the same statement as "this attempt's write is
- * live". When neither descriptor is offloaded there is nothing to delete, so
- * the answer is simply "safe to clean up", a no-op for the caller.
+ * Returns: the verdict. See {@link WriteVerdict} for what each answer licenses
+ * the caller to do. `'landed'` when the row holds this attempt's key,
+ * `'not-landed'` when it holds another or none, `'unverified'` when the read
+ * failed.
  *
- * A read failure establishes nothing; the caller then leaks one object at
- * worst (reclaimed by `ensureS3LifecycleRule`) rather than deleting one a live
- * row may point at — the same trade `store/internal/persist.ts` makes.
+ * Throws: nothing — a failed read is the `'unverified'` answer.
+ *
+ * Guarantees: both descriptors' keys end in the object id this put drew, which
+ * no other put uses. The row holds this attempt's key only if this put's
+ * transaction committed, and the other row commits with it, so one read decides
+ * the landing. A row holding any other key was committed by another put, whose
+ * rows name only that put's objects, so a `'not-landed'` answer leaves both of
+ * this put's uploads named by no row.
  */
 export async function verifyCheckpointLanded(
   context: CheckpointerContext,
   meta: CheckpointMetaItem,
   payload: CheckpointPayloadItem,
-): Promise<CheckpointWriteVerdict> {
-  const probe = chooseProbe(meta, payload);
-  if (!probe) return 'not-landed';
-  try {
-    const result = await withDynamoDBRetry(
-      () =>
-        context.client.get({
-          TableName: context.tableName,
-          Key: probe.key,
-          ConsistentRead: true,
-          ProjectionExpression: '#d',
-          ExpressionAttributeNames: { '#d': probe.attribute },
-        }),
-      context.retry,
-    );
-    const stored = result.Item?.[probe.attribute] as PayloadDescriptor | undefined;
-    return offloadedKey(stored) === probe.expected ? 'landed' : 'not-landed';
-  } catch {
-    return 'unverified';
-  }
+): Promise<WriteVerdict> {
+  const { verdict } = await verifyRow(context, chooseProbe(meta, payload));
+  return verdict;
 }

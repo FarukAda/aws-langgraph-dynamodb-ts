@@ -16,4 +16,4 @@ None.
 - [ ] tests were written first and cover the change (unit; integration or conformance for DynamoDB semantics)
 - [ ] CHANGELOG `[Unreleased]` entry for anything a user can observe
 - [ ] README updated where documented behaviour changed; `npm run docs` regenerated if public JSDoc changed
-- [ ] the change respects [docs/STABILITY.md](../docs/STABILITY.md)
+- [ ] the change respects the README's [*Versioning and compatibility*](../README.md#versioning-and-compatibility) section

@@ -1,10 +1,20 @@
-import { BatchWriteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import {
+  BatchWriteCommand,
+  GetCommand,
+  PutCommand,
+  TransactWriteCommand,
+} from '@aws-sdk/lib-dynamodb';
 
 import { putWrites } from '../../../../src/checkpointer/actions/put-writes';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import {
+  committedRows,
+  createStrictDocumentMock,
+  rejectRowWrites,
+  resolveRowWrites,
+} from '../../../shared/helpers/ddb-mock';
 
 const serde = {
   dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
@@ -22,10 +32,24 @@ function conditionalCheckFailed(): Error {
   return Object.assign(new Error('conflict'), { name: 'ConditionalCheckFailedException' });
 }
 
+/**
+ * The same refusal as a one-item transaction reports it, which is the shape an
+ * offloaded write meets: a cancellation carrying one `ConditionalCheckFailed`
+ * reason rather than an exception of its own.
+ */
+function transactionCancelled(rawItem?: Record<string, { S: string }>): Error {
+  return Object.assign(new Error('conflict'), {
+    name: 'TransactionCanceledException',
+    CancellationReasons: [
+      { Code: 'ConditionalCheckFailed', ...(rawItem ? { Item: rawItem } : {}) },
+    ],
+  });
+}
+
 function trackingOffloader(upload: (key: string) => Promise<string> = async (key) => key) {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => parts.join('/'),
+    buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
     upload,
     deleteBatch: jest.fn().mockResolvedValue([]),
   };
@@ -118,7 +142,7 @@ describe('putWrites', () => {
 
   it('cleans up offloaded objects when a regular write fails outright', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    rejectRowWrites(mock, Object.assign(new Error('boom'), { name: 'ValidationException' }));
     mock.on(GetCommand).resolves({});
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
@@ -138,10 +162,9 @@ describe('putWrites', () => {
 
   it('cleans up only the item that failed, never a sibling that already succeeded', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock
-      .on(PutCommand)
-      .resolvesOnce({})
-      .rejectsOnce(Object.assign(new Error('down'), { name: 'ValidationException' }));
+    const down = Object.assign(new Error('down'), { name: 'ValidationException' });
+    mock.on(PutCommand).resolvesOnce({}).rejectsOnce(down);
+    mock.on(TransactWriteCommand).resolvesOnce({}).rejectsOnce(down);
     mock.on(GetCommand).resolves({});
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
@@ -194,25 +217,43 @@ describe('putWrites', () => {
     );
   });
 
-  it('gives each putWrites call its own S3 key for the same logical write (nonce uniqueness)', async () => {
+  /**
+   * Two calls writing the same value for the same write address two objects:
+   * the key is the write's own row with the call's `writeGroup` below it, so no
+   * other call's row ever names this call's object, and each row's key ends in
+   * the group that row carries.
+   */
+  it("gives two putWrites calls two S3 keys for the same logical write and value, each ending in the call's writeGroup", async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
     const upload = jest.fn(async (key: string) => key);
     const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
     expect(upload).toHaveBeenCalledTimes(2);
-    // A hardcoded/constant nonce would also satisfy the key-shape regex used
-    // elsewhere in this file; this proves two attempts actually diverge.
+    const keys = upload.mock.calls.map(([key]) => key);
+    const groups = committedRows(mock).map((row) => row.writeGroup as string);
+    expect(keys).toEqual(groups.map((group) => `t//c1/task-1/write-0/ch/${group}`));
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it('gives a changed value its own S3 key', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    resolveRowWrites(mock);
+    const upload = jest.fn(async (key: string) => key);
+    const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
+    const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
+    await putWrites(ctx, config, [['ch', 'a']], 'task-1');
+    await putWrites(ctx, config, [['ch', 'b']], 'task-1');
     const [firstKey] = upload.mock.calls[0] as [string];
     const [secondKey] = upload.mock.calls[1] as [string];
-    expect(firstKey).not.toBe(secondKey);
+    expect(secondKey).not.toBe(firstKey);
   });
 
   it('never deletes an S3 object when a regular write loses the conditional-check race', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(PutCommand).rejects(conditionalCheckFailed());
+    rejectRowWrites(mock, transactionCancelled());
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await putWrites(
@@ -233,10 +274,9 @@ describe('putWrites', () => {
 
   it('leaves a lost-race upload alone while still cleaning a genuinely failed sibling', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock
-      .on(PutCommand)
-      .rejectsOnce(conditionalCheckFailed())
-      .rejectsOnce(Object.assign(new Error('down'), { name: 'ValidationException' }));
+    const down = Object.assign(new Error('down'), { name: 'ValidationException' });
+    mock.on(PutCommand).rejectsOnce(conditionalCheckFailed()).rejectsOnce(down);
+    mock.on(TransactWriteCommand).rejectsOnce(transactionCancelled()).rejectsOnce(down);
     mock.on(GetCommand).resolves({});
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
@@ -266,14 +306,11 @@ describe('putWrites', () => {
     // committed: no error, no cleanup (CKPT-02).
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).callsFake(async () => {
-      const puts = mock.commandCalls(PutCommand);
-      const written = puts[puts.length - 1].args[0].input.Item as {
-        writeGroup: string;
-        value: unknown;
-      };
+      const rows = committedRows(mock);
+      const written = rows[rows.length - 1] as { writeGroup: string; value: unknown };
       return { Item: { value: written.value, writeGroup: written.writeGroup } };
     });
-    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(
@@ -291,11 +328,9 @@ describe('putWrites', () => {
     // First-write-wins is a success, not an error, but this call's upload is
     // now unreferenced and must not leak (CKPT-09).
     const { client, mock } = createStrictDocumentMock();
-    mock.on(PutCommand).rejects(
-      Object.assign(new Error('conflict'), {
-        name: 'ConditionalCheckFailedException',
-        Item: { channel: { S: 'ch' }, writeGroup: { S: 'SOME-OTHER-CALL' } },
-      }),
+    rejectRowWrites(
+      mock,
+      transactionCancelled({ channel: { S: 'ch' }, writeGroup: { S: 'SOME-OTHER-CALL' } }),
     );
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
@@ -308,5 +343,38 @@ describe('putWrites', () => {
       ),
     ).resolves.toBeUndefined();
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases an earlier write's object when a later payload is refused", async () => {
+    // The first write's object uploads, the second serialises to nothing and
+    // is refused, and no row is ever written — so nothing names the first
+    // write's object and the call must not leave it behind.
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = trackingOffloader();
+    let calls = 0;
+    const refusing = {
+      ...serde,
+      dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => {
+        calls += 1;
+        return calls === 2 ? ['json', new Uint8Array()] : serde.dumpsTyped(value);
+      },
+    };
+    const ctx = { ...context(client), serde: refusing, offloader: offloader as never };
+    await expect(
+      putWrites(
+        ctx,
+        { configurable: { thread_id: 't', checkpoint_id: 'c1' } },
+        [
+          ['a', 'first'],
+          ['b', 'refused'],
+        ],
+        'task-1',
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'value' } });
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
+    expect(keys).toEqual([expect.stringMatching(/^t\/\/c1\/task-1\/write-0\/a\/[^/]+$/)]);
+    expect(mock.commandCalls(PutCommand)).toHaveLength(0);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 });

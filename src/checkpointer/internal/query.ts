@@ -14,7 +14,18 @@ export interface BeginsWithQueryOptions {
   consistent?: boolean;
 }
 
-/** Build a Query input selecting every item in a partition (all sort keys). */
+/**
+ * Query input selecting every item in a thread's partition.
+ *
+ * Accepts: the thread whose partition to read.
+ *
+ * Returns: the Query input, with no sort-key condition: it selects this
+ * adapter's META, PAYLOAD and WRITE rows and any row another adapter left in
+ * the partition — which is why every caller filters with
+ * `isCheckpointerSortKey`.
+ *
+ * Throws: nothing.
+ */
 export function partitionQuery(
   tableName: string,
   partition: string,
@@ -31,9 +42,16 @@ export function partitionQuery(
 }
 
 /**
- * Build a Query input selecting items whose partition equals `partition` and
- * whose sort key begins with `skPrefix`. Names are aliased so reserved words
- * never appear bare. Defaults to newest-first ordering.
+ * Query input for a `begins_with` sort-key prefix.
+ *
+ * Accepts: `options.ascending` — sort-key order; newest-first is the default
+ * because that is what "the latest checkpoint" asks for. `options.limit` — rows
+ * DynamoDB evaluates per page, not a total. `options.consistent` — for a read
+ * whose answer a write depends on.
+ *
+ * Returns: the Query input.
+ *
+ * Throws: nothing.
  */
 export function beginsWithQuery(
   tableName: string,
@@ -55,7 +73,13 @@ export function beginsWithQuery(
     },
     ScanIndexForward: options.ascending ?? false,
   };
-  if (options.limit !== undefined) params.Limit = options.limit;
+  /**
+   * DynamoDB requires `Limit` to be at least 1 and rejects anything lower with
+   * a raw `ValidationException`. A caller asking for nothing is answered
+   * before a request is built (see `listCheckpoints`), so a non-positive value
+   * reaching here means no page size was intended.
+   */
+  if (options.limit !== undefined && options.limit >= 1) params.Limit = options.limit;
   if (options.consistent) params.ConsistentRead = true;
   return params;
 }

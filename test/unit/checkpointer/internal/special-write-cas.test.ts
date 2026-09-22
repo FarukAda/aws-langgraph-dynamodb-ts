@@ -4,6 +4,7 @@ import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../../../src/shared/dynamodb/conditional-put';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { rowWrite } from '../../../shared/helpers/ddb-mock';
 
 const descriptor = (s3Key: string) => ({
   location: PayloadLocation.S3 as const,
@@ -23,8 +24,18 @@ const item = (): CheckpointWriteItem => ({
   value: descriptor('new'),
 });
 
+/**
+ * The compare-and-swap rejection as this path now reports it. Every item here
+ * is offloaded, so each attempt goes out as a one-item transaction and its
+ * refusal arrives as a cancellation carrying one `ConditionalCheckFailed`
+ * reason. The bare-exception shape the inline payload still produces is pinned
+ * in `special-write-token.test.ts`.
+ */
 const conditionalFailure = () =>
-  Object.assign(new Error('rejected'), { name: 'ConditionalCheckFailedException' });
+  Object.assign(new Error('cancelled'), {
+    name: 'TransactionCanceledException',
+    CancellationReasons: [{ Code: 'ConditionalCheckFailed' }],
+  });
 
 const retryExhausted = () =>
   Object.assign(new Error('Operation failed after 5 attempts: timeout'), {
@@ -66,10 +77,10 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: async () => ({ Item: { value: descriptor('old'), writeGroup: 'g1' } }),
-        put: async (input: Record<string, unknown>) => {
+        transactWrite: rowWrite(async (input: Record<string, unknown>) => {
           inputs.push(input);
           return {};
-        },
+        }),
       },
     };
 
@@ -93,11 +104,11 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: async () => seen.shift() ?? {},
-        put: async () => {
+        transactWrite: rowWrite(async () => {
           puts += 1;
           if (puts === 1) throw conditionalFailure();
           return {};
-        },
+        }),
       },
     };
 
@@ -108,9 +119,9 @@ describe('writeSpecialItem', () => {
   });
 
   it('does not delete its own just-committed payload when a lost put response looks like a competitor win', async () => {
-    // Attempt 1's PutCommand actually committed server-side, but the response
-    // was lost (ECONNRESET etc.) and withDynamoDBRetry retried the guarded
-    // put — which now sees its OWN just-written row and fails the condition,
+    // Attempt 1's write actually committed server-side, but the response
+    // was lost (ECONNRESET etc.) and withDynamoDBRetry re-sent the guarded
+    // write — which now sees its OWN just-written row and fails the condition,
     // indistinguishable from a competitor's win. The re-read finds the row
     // already holding this call's own writeGroup ('g2', matching
     // item().writeGroup), so the write must report having superseded
@@ -126,11 +137,11 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: async () => seen.shift() ?? {},
-        put: async () => {
+        transactWrite: rowWrite(async () => {
           puts += 1;
           if (puts === 1) throw conditionalFailure();
           return {};
-        },
+        }),
       },
     };
 
@@ -147,9 +158,9 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: async () => ({}),
-        put: async () => {
+        transactWrite: rowWrite(async () => {
           throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
-        },
+        }),
       },
     };
 
@@ -159,7 +170,12 @@ describe('writeSpecialItem', () => {
     expect(outcome.error?.message).toBe('boom');
   });
 
-  it('never rejects, so a concurrent Promise.all branch still settles, without attempting a put', async () => {
+  /**
+   * The failed read establishes nothing about the row, which a racer may hold
+   * with this item's key, so the upload is reported kept, like every outcome
+   * nothing confirmed (C-02b).
+   */
+  it('never rejects, and keeps the upload without attempting a put, when the first read fails', async () => {
     let puts = 0;
     const context = {
       tableName: 'c',
@@ -169,17 +185,26 @@ describe('writeSpecialItem', () => {
         get: async () => {
           throw new Error('read failed');
         },
-        put: async () => {
+        transactWrite: rowWrite(async () => {
           puts += 1;
           return {};
-        },
+        }),
       },
     };
 
-    await expect(writeSpecialItem(context as never, item())).resolves.toMatchObject({
-      committed: false,
-    });
+    const outcome = await writeSpecialItem(context as never, item());
+
+    expect(outcome).toEqual({ committed: true, error: new Error('read failed') });
     expect(puts).toBe(0);
+  });
+
+  it('reports a failed put as not committed, reading nothing, when no offloader is configured', async () => {
+    const get = jest.fn();
+    const client = { get, put: async () => Promise.reject(new Error('boom')) };
+    const context = { tableName: 'c', logger: SILENT_LOGGER, client };
+    const outcome = await writeSpecialItem(context as never, item());
+    expect(outcome).toEqual({ committed: false, error: new Error('boom') });
+    expect(get).not.toHaveBeenCalled();
   });
 
   it('exhausts the compare-and-swap budget and falls back to an unconditional overwrite', async () => {
@@ -194,13 +219,13 @@ describe('writeSpecialItem', () => {
         get: async () => ({
           Item: { value: descriptor('theirs'), writeGroup: `competitor-${puts}` },
         }),
-        put: async (input: Record<string, unknown>) => {
+        transactWrite: rowWrite(async (input: Record<string, unknown>) => {
           puts += 1;
           if (puts <= OVERWRITE_CAS_MAX_ATTEMPTS) throw conditionalFailure();
           // The fallback put is unconditional: no ConditionExpression.
           expect(input.ConditionExpression).toBeUndefined();
           return {};
-        },
+        }),
       },
     };
 
@@ -257,9 +282,9 @@ describe('writeSpecialItem', () => {
           { Item: { value: descriptor('old'), writeGroup: 'g1' } },
           { Item: { value: descriptor('new'), writeGroup: 'g2' } },
         ]),
-        put: async () => {
+        transactWrite: rowWrite(async () => {
           throw retryExhausted();
-        },
+        }),
       },
     };
 
@@ -277,9 +302,9 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: queuedReads([{ Item: { value: descriptor('old'), writeGroup: 'g1' } }]),
-        put: async () => {
+        transactWrite: rowWrite(async () => {
           throw retryExhausted();
-        },
+        }),
       },
     };
 
@@ -299,9 +324,9 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: queuedReads([{ Item: { value: descriptor('old'), writeGroup: 'g1' } }]),
-        put: async () => {
+        transactWrite: rowWrite(async () => {
           throw conditionalFailure();
-        },
+        }),
       },
     };
 
@@ -309,7 +334,7 @@ describe('writeSpecialItem', () => {
 
     expect(outcome.committed).toBe(true);
     expect(outcome.superseded).toBeUndefined();
-    expect(outcome.error?.name).toBe('ConditionalCheckFailedException');
+    expect(outcome.error?.name).toBe('TransactionCanceledException');
   });
 
   it('confirms the commit when the unconditional fallback overwrite loses its response too', async () => {
@@ -326,10 +351,10 @@ describe('writeSpecialItem', () => {
           { Item: { value: descriptor('theirs'), writeGroup: 'competitor-3' } },
           { Item: { value: descriptor('new'), writeGroup: 'g2' } },
         ]),
-        put: async () => {
+        transactWrite: rowWrite(async () => {
           puts += 1;
           throw puts <= OVERWRITE_CAS_MAX_ATTEMPTS ? conditionalFailure() : retryExhausted();
-        },
+        }),
       },
     };
 
@@ -337,45 +362,5 @@ describe('writeSpecialItem', () => {
 
     expect(puts).toBe(OVERWRITE_CAS_MAX_ATTEMPTS + 1);
     expect(outcome).toEqual({ committed: true, superseded: descriptor('theirs') });
-  });
-});
-
-describe('writeSpecialItem with the rejected row on the exception (DDB-07)', () => {
-  it('re-pins from the exception and reads the row only once, up front', async () => {
-    let reads = 0;
-    let puts = 0;
-    const rejected = Object.assign(new Error('rejected'), {
-      name: 'ConditionalCheckFailedException',
-      Item: {
-        writeGroup: { S: 'g9' },
-        value: {
-          M: {
-            location: { S: 'S3' },
-            serdeType: { S: 'json' },
-            compressed: { BOOL: false },
-            s3Key: { S: 'racer' },
-          },
-        },
-      },
-    });
-    const context = {
-      tableName: 'c',
-      logger: SILENT_LOGGER,
-      offloader: {},
-      client: {
-        get: async () => {
-          reads += 1;
-          return { Item: { value: descriptor('old'), writeGroup: 'g1' } };
-        },
-        put: async () => {
-          puts += 1;
-          if (puts === 1) throw rejected;
-          return {};
-        },
-      },
-    };
-    const outcome = await writeSpecialItem(context as never, item());
-    expect(outcome).toEqual({ committed: true, superseded: descriptor('racer') });
-    expect(reads).toBe(1);
   });
 });

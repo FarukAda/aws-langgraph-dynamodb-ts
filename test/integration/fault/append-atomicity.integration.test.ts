@@ -50,7 +50,7 @@ describe('addMessages caller-observed atomicity under partial transaction failur
     const stored = await reader.getMessages(sessionId);
     expect(stored).toHaveLength(0);
 
-    const sessions = await reader.listSessions();
+    const { sessions: sessions } = await reader.listSessions();
     const meta = sessions.find((session) => session.sessionId === sessionId);
     expect(meta?.messageCount ?? 0).toBe(0);
   });
@@ -62,7 +62,7 @@ describe('addMessages caller-observed atomicity under partial transaction failur
 
     const stored = await reader.getMessages(sessionId);
     expect(stored).toHaveLength(150);
-    const sessions = await reader.listSessions();
+    const { sessions: sessions } = await reader.listSessions();
     expect(sessions.find((session) => session.sessionId === sessionId)?.messageCount).toBe(150);
   });
 
@@ -129,7 +129,7 @@ describe('addMessages caller-observed atomicity under partial transaction failur
 
     const stored = await reader.getMessages(sessionId);
     expect(stored).toHaveLength(0);
-    const sessions = await reader.listSessions();
+    const { sessions: sessions } = await reader.listSessions();
     const meta = sessions.find((session) => session.sessionId === sessionId);
     // Pre-fix (a bare, non-idempotent UpdateItem retried on the same
     // lost-response path) this could go negative from double-applying the -99

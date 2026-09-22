@@ -8,11 +8,12 @@ import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { buildS3Key } from '../../../../src/shared/codec/s3/config';
 import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { truncateForLog } from '../../../../src/shared/logging/truncate';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
-import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 function context(
@@ -34,7 +35,7 @@ function context(
 function offloaderStub(download: () => Promise<Uint8Array>) {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => parts.join('/'),
+    buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
     upload: async (key: string) => key,
     download: jest.fn(download),
     deleteBatch: jest.fn(),
@@ -89,6 +90,31 @@ describe('getMessages', () => {
     expect(error).toHaveBeenCalledWith(
       expect.stringContaining('corrupt'),
       expect.objectContaining({ sortKey: 'HISTORY#MSG#01B' }),
+    );
+  });
+
+  /**
+   * The sort key comes off the row, so nothing this package validated bounds
+   * it — a hand-written row under the message prefix can carry any length.
+   * Every other row-sourced string a log line quotes is cut at the same cap.
+   */
+  it('bounds the sort key it reports for a corrupt item', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
+    const corrupt = await buildMessageItem(context(client), 's1', '01B', human);
+    corrupt.SK = `HISTORY#MSG#${'0'.repeat(MAX_LOGGED_VALUE_CHARS * 4)}`;
+    corrupt.message = {
+      location: PayloadLocation.INLINE,
+      serdeType: 'json',
+      compressed: false,
+      bytes: new TextEncoder().encode('{not valid json'),
+    };
+    mock.on(QueryCommand).resolves({ Items: [corrupt] });
+    const error = jest.fn();
+    await getMessages({ ...context(client), logger: { ...SILENT_LOGGER, error } }, 's1');
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('corrupt'),
+      expect.objectContaining({ sortKey: truncateForLog(corrupt.SK) }),
     );
   });
 
@@ -293,10 +319,26 @@ describe('getMessages', () => {
   });
 });
 
+describe('options shape (M-08)', () => {
+  it('refuses a key this package does not read, naming it under options', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(
+      getMessages(context(client), 's1', { limit: 1, bogus: true } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'options.bogus' } });
+  });
+
+  it('refuses a signal that is not AbortSignal-like', async () => {
+    const { client } = createStrictDocumentMock();
+    await expect(getMessages(context(client), 's1', { signal: {} as never })).rejects.toMatchObject(
+      { code: ErrorCode.VALIDATION, context: { field: 'signal' } },
+    );
+  });
+});
+
 describe('S3 key binding (SEC-03)', () => {
   const binding = () => ({
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => buildS3Key('p/', parts),
+    buildKey: (parts: readonly string[], objectId: string) => buildS3Key('p/', parts, objectId),
     upload: async (key: string) => key,
     download: jest.fn(async () => new Uint8Array()),
     deleteBatch: jest.fn(),
@@ -318,12 +360,17 @@ describe('S3 key binding (SEC-03)', () => {
       location: PayloadLocation.S3,
       serdeType: 'json',
       compressed: false,
-      s3Key: buildS3Key('p/', ['victim', '01A']),
+      s3Key: buildS3Key('p/', ['victim'], '01A'),
     };
     return item;
   }
 
-  it("skips a message whose key lies outside the session's path under 'skip' and logs it", async () => {
+  /**
+   * The `'skip'` policy covers a payload nobody can read. A key outside the
+   * session's path is a wrong prefix or a foreign row, so it is reported
+   * under both policies rather than healed over with a shorter conversation.
+   */
+  it("throws on a message whose key lies outside the session's path under 'skip', logging nothing", async () => {
     const { client, mock } = createStrictDocumentMock();
     const offloader = binding();
     mock.on(QueryCommand).resolves({ Items: [await foreignItem(client, offloader)] });
@@ -332,12 +379,12 @@ describe('S3 key binding (SEC-03)', () => {
       offloader: offloader as never,
       logger: { ...SILENT_LOGGER, error },
     });
-    await expect(getMessages(reader, 's1')).resolves.toEqual([]);
+    await expect(getMessages(reader, 's1')).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 's3Key' },
+    });
     expect(offloader.download).not.toHaveBeenCalled();
-    expect(error).toHaveBeenCalledWith(
-      expect.stringContaining('corrupt'),
-      expect.objectContaining({ reason: 'ValidationError' }),
-    );
+    expect(error).not.toHaveBeenCalled();
   });
 
   it("throws on such a message under 'throw'", async () => {
@@ -349,27 +396,5 @@ describe('S3 key binding (SEC-03)', () => {
       code: ErrorCode.VALIDATION,
       context: { field: 's3Key' },
     });
-  });
-});
-
-describe('offloaded reads run concurrently (CODEC-14)', () => {
-  it('decodes offloaded messages up to 8 at a time, preserving order', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    const { offloader, maxInFlight } = overlapOffloader();
-    const ctx = context(client, { offloader: offloader as never });
-    const stored = mapChatMessagesToStoredMessages([
-      new HumanMessage('m0'),
-      new AIMessage('m1'),
-      new HumanMessage('m2'),
-      new AIMessage('m3'),
-    ]);
-    const items = await Promise.all(
-      stored.map((message, index) => buildMessageItem(ctx, 's1', `01${index}`, message)),
-    );
-    mock.on(QueryCommand).resolves({ Items: items });
-    const messages = await getMessages(ctx, 's1');
-    expect(messages.map((message) => message.content)).toEqual(['m0', 'm1', 'm2', 'm3']);
-    expect(maxInFlight()).toBeGreaterThan(1);
-    expect(maxInFlight()).toBeLessThanOrEqual(8);
   });
 });

@@ -200,7 +200,16 @@ describe('S3 offload against real AWS', () => {
     const base = new DynamoDBClient(clientConfig);
     installFaults(base, [
       {
-        match: (name) => name === 'PutItemCommand',
+        /**
+         * Both shapes. This payload clears the offload threshold, so the
+         * overwrite goes out as a one-item transaction rather than a plain
+         * put; a matcher naming only `PutItemCommand` would never fire, the
+         * faulted put would succeed, and this test would fail claiming the
+         * injected error never arrived - while the invariant it guards, that a
+         * failed overwrite never deletes the still-live row's object, would go
+         * unexercised.
+         */
+        match: (name) => name === 'PutItemCommand' || name === 'TransactWriteItemsCommand',
         fail: () =>
           Object.assign(new Error('injected overwrite failure'), { name: 'ValidationException' }),
         times: 1,
@@ -237,10 +246,13 @@ describe('S3 offload against real AWS', () => {
   });
 
   it('keeps a checkpoint readable when its put transaction commits but every response is lost (CKPT-01)', async () => {
-    // Each TransactWriteItems attempt reaches DynamoDB and commits, but its
-    // response is dropped, so the library exhausts its retry budget while the
-    // rows are live. Before the fix, failure cleanup then deleted the S3 object
-    // those rows point at and the checkpoint became permanently unreadable.
+    // Every TransactWriteItems response is dropped, so the library exhausts its
+    // retry budget while the rows are live. Since the put carries a request
+    // token, only the first attempt commits: the rest reach DynamoDB and are
+    // answered from its idempotency cache, which is why this proves "one
+    // commit and four deduped re-sends" rather than five real commits. Before
+    // the fix, failure cleanup then deleted the S3 object those rows point at
+    // and the checkpoint became permanently unreadable.
     const base = new DynamoDBClient({ ...clientConfig, maxAttempts: 1 });
     dropResponses(base, 'TransactWriteItemsCommand', DEFAULT_RETRY_MAX_ATTEMPTS);
     const faulted = new DynamoDBSaver({

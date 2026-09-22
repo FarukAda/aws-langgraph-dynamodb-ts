@@ -6,7 +6,7 @@
 
 # Class: DynamoDBLangGraphError
 
-Defined in: [shared/errors/base-error.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L28)
+Defined in: [shared/errors/base-error.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L32)
 
 Base class for every error this library throws. Carries a branchable
 [ErrorCode](../enumerations/ErrorCode.md), structured [ErrorContext](../interfaces/ErrorContext.md), and a native `cause`
@@ -35,7 +35,20 @@ than `instanceof`, which is banned repo-wide.
 
 > **new DynamoDBLangGraphError**(`message`, `code`, `context?`, `cause?`): `DynamoDBLangGraphError`
 
-Defined in: [shared/errors/base-error.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L32)
+Defined in: [shared/errors/base-error.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L50)
+
+Accepts: `message` — already redacted by whoever composed it, since it reaches
+`err.message`, which an application may print without a redacting logger.
+`context` — identifiers and counts only, never a payload or a credential.
+It is **copied**, so a caller that reuses one builder object cannot rewrite
+the context of an error already in flight; `null` reads as an absent one.
+`cause` — the failure below this one, kept as the native `cause` chain.
+
+Returns: the error, branded so [isDynamoDBLangGraphError](../functions/isDynamoDBLangGraphError.md) recognises it
+across realms and across two copies of this package. The brand is
+non-enumerable, so it never reaches a log or a JSON serialization.
+
+Throws: nothing; building an error may not fail.
 
 #### Parameters
 
@@ -69,7 +82,7 @@ Defined in: [shared/errors/base-error.ts:32](https://github.com/FarukAda/aws-lan
 
 > `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
 
-Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L29)
+Defined in: [shared/errors/base-error.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L33)
 
 ***
 
@@ -77,4 +90,4 @@ Defined in: [shared/errors/base-error.ts:29](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
+Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L34)

@@ -1,5 +1,5 @@
 import { MAX_LOOP_ITERATIONS, MAX_TOTAL_ITEMS_IN_MEMORY } from '../constants';
-import { ResultTruncatedError } from '../errors/errors';
+import { ResultTruncatedError, ValidationError } from '../errors/errors';
 import { abortErrorFrom } from './abort';
 import type { RetryOptions } from './retry';
 import type { DocItem } from './types';
@@ -79,22 +79,50 @@ async function dataRemains(reader: Reader, startKey: DocItem | undefined): Promi
   return false;
 }
 
+/** Reject a cap that admits nothing; `Infinity` is the way to ask for no cap. */
+function assertPositiveCap(value: number, field: string): number {
+  if (!(value >= 1)) {
+    throw new ValidationError(
+      `${field} must be at least 1 (pass Infinity to read to completion)`,
+      field,
+    );
+  }
+  return value;
+}
+
 /**
- * Drive a paged DynamoDB read to completion, yielding each item. Continues past
- * empty pages, honors the abort signal before each fetch, and enforces iteration
- * + in-memory item caps. `fetchPage` performs one page read. When a cap is hit
- * while more data actually remains, throws {@link ResultTruncatedError} rather
- * than silently returning a partial result; pass `Infinity` caps to read to true
- * completion (e.g. for deletes).
+ * Drive a paged DynamoDB read to completion, yielding each item.
+ *
+ * Accepts: `fetchPage` — performs one page read from a start key.
+ * `options.maxItems` — how many items may be yielded, default
+ * {@link MAX_TOTAL_ITEMS_IN_MEMORY}. `options.maxIterations` — how many page
+ * reads may be issued, default {@link MAX_LOOP_ITERATIONS}; the probe below is
+ * charged against it too. Both accept `Infinity` to read to true completion
+ * (deletes do), and both must otherwise be at least 1 — a cap of 0 used to
+ * yield one item before noticing. `options.signal` — checked before every
+ * fetch. `options.retry` is the page reader's own concern.
+ *
+ * Returns: an async generator over the items, continuing past empty pages.
+ *
+ * Throws: ValidationError naming `maxItems` or `maxIterations` for a cap below
+ * 1; `AbortError` when the signal is already aborted at a page boundary; and
+ * {@link ResultTruncatedError} when a cap is reached while data actually
+ * remains — a partial result is never returned silently.
+ *
+ * Guarantees: reaching `maxItems` on the last item of a page is not by itself a
+ * truncation. DynamoDB returns a `LastEvaluatedKey` whenever it stopped
+ * *evaluating* at the 1 MB boundary, whether or not a later item passes the
+ * filter, so the remaining keys are followed until one carries an item
+ * (truncated) or they run out (the result was complete).
  */
 export async function* paginatePages(
   fetchPage: (startKey: DocItem | undefined) => Promise<PageResult>,
   options: PaginateCoreOptions = {},
 ): AsyncGenerator<DocItem> {
-  const maxItems = options.maxItems ?? MAX_TOTAL_ITEMS_IN_MEMORY;
+  const maxItems = assertPositiveCap(options.maxItems ?? MAX_TOTAL_ITEMS_IN_MEMORY, 'maxItems');
   const reader: Reader = {
     fetchPage,
-    maxIterations: options.maxIterations ?? MAX_LOOP_ITERATIONS,
+    maxIterations: assertPositiveCap(options.maxIterations ?? MAX_LOOP_ITERATIONS, 'maxIterations'),
     iterations: 0,
     signal: options.signal,
   };

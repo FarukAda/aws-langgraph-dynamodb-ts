@@ -5,23 +5,26 @@ import type { StoreItemRecord } from '../types';
 import { putWithRevisionSwap } from './overwrite-swap';
 import type { ExistingRecordMeta } from './read-existing';
 import type { StoreContext } from './setup';
-import { verifyWriteLanded, type WriteVerdict } from './write-verify';
+import { verifyWriteLanded } from './write-verify';
 
 /**
- * Best-effort delete of one descriptor's S3 object. `scope` is passed for a
- * descriptor read back from the row (the superseded value) and omitted for
- * this call's own upload.
+ * Best-effort delete of the S3 object behind `release`, if it names one.
+ *
+ * `release` is absent when there is nothing to release, and a row this library
+ * did not write can hold `null` there, so it is tested for truthiness. `scope`
+ * is passed for a descriptor read back from the row (the superseded value) and
+ * omitted for this call's own upload.
  */
 async function cleanUp(
   context: StoreContext,
-  descriptor: DescriptorRef | undefined,
+  release: DescriptorRef | undefined,
   label: string,
   scope?: readonly string[],
 ): Promise<void> {
-  if (!context.offloader || !descriptor) return;
+  if (!context.offloader || !release) return;
   await cleanUpS3Orphans(
     context.offloader,
-    collectS3Keys([descriptor]),
+    collectS3Keys([release]),
     label,
     context.logger,
     scope === undefined ? {} : { scope },
@@ -44,13 +47,35 @@ async function cleanUp(
  * its response, and a `ConditionalCheckFailedException` is as consistent with
  * hitting the row this call just wrote as with a competitor's win. The row is
  * therefore read back (`verifyWriteLanded`) before anything is deleted. Only a
- * confirmed `'not-landed'` deletes this record's own nonced object; a confirmed
+ * confirmed `'not-landed'` deletes this record's own object; a confirmed
  * `'landed'` cleans up the previous object like the success path and swallows
  * the error, and an `'unverified'` read deletes nothing and rethrows — leaking
  * one object at worst rather than stranding a live row pointing at a deleted
  * one. The verification compares the per-call `rev`, so an inline record is
  * verified too: a lost acknowledgement of an inline overwrite used to be
  * reported as a failure while the previous offloaded object was never cleaned.
+ *
+ * Neither release reads the row again first. The record's object is uploaded
+ * under the record's own `rev`, which no other put uses, so no row another put
+ * commits names it; and the record names only that object, never the one it
+ * superseded.
+ *
+ * Accepts: `record` — the fully encoded row, its payload already uploaded if it
+ * was offloaded. `existing` — what the caller read before encoding.
+ *
+ * Returns: nothing. The row is committed and exactly one side's object, at
+ * most, has been released.
+ *
+ * Throws: whatever the write throws, unless the verification proves the write
+ * landed after all — in which case the error is swallowed and the cleanup runs
+ * as on the success path.
+ *
+ * Guarantees: this record's own object is released only after a read proves
+ * the write did not land, and a superseded object only after this record is
+ * committed. The failure modes are ordered by which is worse: a leaked object
+ * costs storage until the lifecycle rule reclaims it, while a row pointing at a
+ * deleted object is unreadable data, so every ambiguous case leaks instead of
+ * deletes.
  */
 export async function persistRecord(
   context: StoreContext,
@@ -63,12 +88,12 @@ export async function persistRecord(
       superseded = await putWithRevisionSwap(context, record, existing);
     } else {
       await withDynamoDBRetry(
-        () => context.client.put({ TableName: context.tableName, Item: record }),
+        (request) => context.client.put({ TableName: context.tableName, Item: record }, request),
         context.retry,
       );
     }
   } catch (error) {
-    const verdict: WriteVerdict = await verifyWriteLanded(context, record);
+    const verdict = await verifyWriteLanded(context, record);
     if (verdict === 'not-landed') await cleanUp(context, record.value, 'store.put');
     if (verdict !== 'landed') throw error;
   }

@@ -1,9 +1,11 @@
 import {
   SESSION_SORT_KEY,
+  historyPartitionPrefix,
   messageSortKey,
   messageSortKeyPrefix,
   sessionPartition,
 } from '../../../../src/history/internal/keys';
+import { partitionKey as storePartition } from '../../../../src/store/internal/keys';
 
 describe('history keys', () => {
   it('tags the partition key with the chat-history adapter prefix (C1, C2)', () => {
@@ -24,10 +26,21 @@ describe('history keys', () => {
     // shared via DynamoDBFactory.createAll() used to collapse to the exact
     // same PK/SK as history's own per-session metadata row (sortKey(namespace,
     // key) = [...namespace.slice(1), key].join('#'), which is just 'SESSION'
-    // for a single-element namespace). No unprefixed store key can produce
-    // 'HISTORY#...' by accident, since '#' is forbidden in a store key/namespace
-    // element (see store/internal/validation.ts's assertNoSeparator).
+    // for a single-element namespace).
+    //
+    // The tag does not make the sort key unreachable, and an earlier note here
+    // claiming it did was wrong: '#' is forbidden inside a store namespace
+    // element, but the join inserts one, so store.put(['t','HISTORY'],
+    // 'SESSION', ...) composes 'HISTORY#SESSION' exactly. What keeps the two
+    // rows apart is the partition tag — see the partition-key disjointness
+    // suite, which also pins the two table scans that must restrict on it.
     expect(SESSION_SORT_KEY.startsWith('HISTORY#')).toBe(true);
     expect(messageSortKeyPrefix().startsWith('HISTORY#')).toBe(true);
+    expect(sessionPartition('t')).not.toBe(storePartition(['t', 'HISTORY']));
+  });
+
+  it('exposes the partition tag the table scan restricts on', () => {
+    expect(historyPartitionPrefix()).toBe('HIST#');
+    expect(sessionPartition('s1').startsWith(historyPartitionPrefix())).toBe(true);
   });
 });

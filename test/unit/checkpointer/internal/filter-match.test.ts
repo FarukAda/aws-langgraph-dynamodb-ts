@@ -41,3 +41,23 @@ describe('matchesFilter and the prototype chain (SEC-16)', () => {
     expect(matchesFilter({}, { toString: 'x' })).toBe(false);
   });
 });
+
+/**
+ * A filtered `list()` walks every row, so one row whose metadata is not an
+ * object must not fail the listing. `Object.hasOwn(null, …)` threw a raw
+ * TypeError out of the public method.
+ */
+describe('matchesFilter on metadata that is not an object', () => {
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['a string', 'meta'],
+    ['a number', 7],
+  ])('matches no clause when the metadata is %s', (_name, metadata) => {
+    expect(matchesFilter(metadata as never, { source: 'loop' } as never)).toBe(false);
+  });
+
+  it('still matches an empty filter, which constrains nothing', () => {
+    expect(matchesFilter(null as never, {})).toBe(true);
+  });
+});

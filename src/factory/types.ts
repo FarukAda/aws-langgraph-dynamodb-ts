@@ -1,5 +1,4 @@
 import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
-import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
 import type { DynamoDBSaver } from '../checkpointer/saver';
 import type { DynamoDBSaverOptions } from '../checkpointer/types';
@@ -7,6 +6,7 @@ import type { DynamoDBChatMessageHistory } from '../history/chat-message-history
 import type { DynamoDBChatMessageHistoryOptions } from '../history/types';
 import type { CompressionConfig } from '../shared/codec/compression';
 import type { S3OffloadConfig } from '../shared/codec/s3/config';
+import type { DynamoDBDocumentLike } from '../shared/dynamodb/client-types';
 import type { RetryPolicy } from '../shared/dynamodb/retry-policy';
 import type { Logger } from '../shared/logging/logger';
 import type { TtlOption } from '../shared/validation/ttl';
@@ -24,7 +24,12 @@ export interface FactoryBaseOptions {
    * SDK's own retries stack inside the library's retry budget (each adapter
    * logs a `warn` at construction when they would).
    */
-  client?: DynamoDBDocument;
+  client?: DynamoDBDocumentLike;
+  /**
+   * Used to build the client, and read for its `region` when an `s3` config
+   * names none — including by `createAll`, whose adapters are handed the shared
+   * client rather than this config.
+   */
   clientConfig?: DynamoDBClientConfig;
   /**
    * @internal Test seam and dependency-injection hook for constructing the
@@ -42,7 +47,13 @@ export interface FactoryBaseOptions {
 /** An adapter's own options inside {@link CreateAllOptions}: everything but the shared client. */
 export type AdapterSection<Options> = Omit<Options, 'client' | 'clientConfig' | 'createClient'>;
 
-/** Per-adapter options for `DynamoDBFactory.createAll`; omit a section to skip that adapter. */
+/**
+ * Per-adapter options for `DynamoDBFactory.createAll`; omit a section to skip
+ * that adapter, and pass none to build none. A key that is not one of these
+ * three is refused: it would otherwise skip every adapter silently. So is a
+ * section that is not an object, `null` included, naming `options` as that
+ * adapter's constructor would.
+ */
 export interface CreateAllOptions {
   saver?: AdapterSection<DynamoDBSaverOptions>;
   store?: AdapterSection<DynamoDBStoreOptions>;

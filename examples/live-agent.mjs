@@ -12,7 +12,7 @@ import {
   waitUntilTableExists,
 } from '@aws-sdk/client-dynamodb';
 import { ChatBedrockConverse } from '@langchain/aws';
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { createAgent } from 'langchain';
 
 import { DynamoDBSaver } from '../dist/index.js';
 
@@ -50,7 +50,7 @@ async function ensureTable() {
 function newAgent() {
   const saver = new DynamoDBSaver({ tableName: TABLE, clientConfig, compression: { enabled: true } });
   const llm = new ChatBedrockConverse({ model: MODEL, region: REGION, temperature: 0 });
-  return { saver, agent: createReactAgent({ llm, tools: [], stateModifier: SYSTEM, checkpointer: saver }) };
+  return { saver, agent: createAgent({ model: llm, tools: [], systemPrompt: SYSTEM, checkpointer: saver }) };
 }
 
 async function ask(agent, text) {

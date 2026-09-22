@@ -42,19 +42,33 @@ function itemSize(item: Record<string, Attribute | undefined>): number {
 }
 
 const text = fc.string({ unit: 'grapheme', minLength: 1, maxLength: 64 });
+/**
+ * A row written before the field existed carries none, one written since
+ * carries the write's own id — the estimate has to stay above the real size
+ * either way, out of the allowance rather than by being loosened.
+ */
+const writeId = fc.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/);
 const descriptor = fc.oneof(
-  fc.record({
-    location: fc.constant(PayloadLocation.INLINE),
-    serdeType: text,
-    compressed: fc.boolean(),
-    bytes: fc.uint8Array({ maxLength: 4096 }),
-  }),
-  fc.record({
-    location: fc.constant(PayloadLocation.S3),
-    serdeType: text,
-    compressed: fc.boolean(),
-    s3Key: fc.string({ unit: 'grapheme', minLength: 1, maxLength: 200 }),
-  }),
+  fc.record(
+    {
+      location: fc.constant(PayloadLocation.INLINE),
+      serdeType: text,
+      compressed: fc.boolean(),
+      writeId,
+      bytes: fc.uint8Array({ maxLength: 4096 }),
+    },
+    { requiredKeys: ['location', 'serdeType', 'compressed', 'bytes'] },
+  ),
+  fc.record(
+    {
+      location: fc.constant(PayloadLocation.S3),
+      serdeType: text,
+      compressed: fc.boolean(),
+      writeId,
+      s3Key: fc.string({ unit: 'grapheme', minLength: 1, maxLength: 200 }),
+    },
+    { requiredKeys: ['location', 'serdeType', 'compressed', 's3Key'] },
+  ),
 ) as fc.Arbitrary<PayloadDescriptor>;
 const item = fc
   .record({

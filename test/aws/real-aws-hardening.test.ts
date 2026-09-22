@@ -161,7 +161,7 @@ describe('v0.8.0 hardening against real AWS', () => {
       await built.store.put([id, 'HISTORY'], 'SESSION', { text: 'not a session' });
 
       expect((await built.history.getMessages(id)).map((m) => m.content)).toEqual(['real message']);
-      const sessions = await built.history.listSessions();
+      const { sessions: sessions } = await built.history.listSessions();
       expect(sessions.find((s) => s.sessionId === id)?.messageCount).toBe(1);
       const stored = await built.store.get([id, 'HISTORY'], 'SESSION');
       expect(stored?.value).toEqual({ text: 'not a session' });
@@ -220,7 +220,7 @@ describe('v0.8.0 hardening against real AWS', () => {
       await expect(built.history.addMessages(id, messages)).rejects.toThrow();
 
       expect(await built.history.getMessages(id)).toEqual([]);
-      const sessions = await built.history.listSessions();
+      const { sessions: sessions } = await built.history.listSessions();
       expect(sessions.find((s) => s.sessionId === id)).toBeUndefined();
     } finally {
       built.destroy();

@@ -1,4 +1,5 @@
 import {
+  assertMatchType,
   matchNamespace,
   prefixRoot,
   truncateDepth,
@@ -51,5 +52,32 @@ describe('prefixRoot', () => {
 
   it('returns an empty array when the prefix starts with a wildcard', () => {
     expect(prefixRoot([{ matchType: 'prefix', path: ['*', 'u1'] }])).toEqual([]);
+  });
+});
+
+/**
+ * The contract defines exactly two match types
+ * (@langchain/langgraph-checkpoint@1.1.5 dist/store/base.d.ts:211). An
+ * unrecognised one took the suffix branch and answered as if the caller had
+ * asked for a suffix match — a wrong answer, not an obvious failure.
+ */
+describe('matchNamespace refuses a match type it does not define', () => {
+  it.each(['contains', '', undefined, 42])('rejects %p', (matchType) => {
+    expect(() => matchNamespace(['users', 'u1'], { matchType, path: ['u1'] } as never)).toThrow(
+      /matchType/,
+    );
+  });
+
+  it('accepts the two it does define', () => {
+    expect(matchNamespace(['users', 'u1'], { matchType: 'prefix', path: ['users'] })).toBe(true);
+    expect(matchNamespace(['users', 'u1'], { matchType: 'suffix', path: ['u1'] })).toBe(true);
+  });
+
+  it('assertMatchType echoes a string and describes anything else by type, a bigint included', () => {
+    expect(() => assertMatchType('contains' as never)).toThrow(/received "contains"/);
+    expect(() => assertMatchType(10n as never)).toThrow(
+      expect.objectContaining({ message: expect.stringMatching(/received bigint/) }),
+    );
+    expect(() => assertMatchType('suffix')).not.toThrow();
   });
 });

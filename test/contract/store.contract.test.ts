@@ -27,17 +27,31 @@ describe('BaseStore contract conformance', () => {
       { matchConditions: [{ matchType: 'prefix', path: ['c'] }], limit: 10, offset: 0 },
     ]);
 
-    expect(putResult).toBeUndefined();
+    /** A put and a delete answer `null`, the value `InMemoryStore.batch` pushes for them. */
+    expect(putResult).toBeNull();
     expect(getResult).toMatchObject({ namespace: ['c', 'u1'], key: 'k', value: { v: 1 } });
     expect(Array.isArray(searchResult)).toBe(true);
     expect((searchResult as { key: string }[]).map((item) => item.key)).toEqual(['k']);
     expect(namespacesResult).toEqual([['c', 'u1']]);
   });
 
-  it('put with a null value deletes the item', async () => {
+  /**
+   * A put *operation* carrying `null` is upstream's encoding of a delete, and
+   * `delete()` and `batch()` keep it. `put()` itself refuses `null`: its value
+   * is typed an object, and a caller reaching for a delete has `delete()`.
+   */
+  it('a null put operation deletes through batch and delete, and put() refuses null', async () => {
     await store.put(['c', 'u2'], 'k', { v: 2 });
+    await expect(store.put(['c', 'u2'], 'k', null as never)).rejects.toMatchObject({
+      code: 'VALIDATION',
+      context: { field: 'value' },
+    });
     expect(await store.get(['c', 'u2'], 'k')).not.toBeNull();
-    await store.put(['c', 'u2'], 'k', null as never);
+    await store.delete(['c', 'u2'], 'k');
     expect(await store.get(['c', 'u2'], 'k')).toBeNull();
+
+    await store.put(['c', 'u3'], 'k', { v: 3 });
+    await store.batch([{ namespace: ['c', 'u3'], key: 'k', value: null }]);
+    expect(await store.get(['c', 'u3'], 'k')).toBeNull();
   });
 });

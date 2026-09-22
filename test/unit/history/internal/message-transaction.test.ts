@@ -1,11 +1,14 @@
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { writeMessageChunk } from '../../../../src/history/internal/message-transaction';
+import type { HistoryTransactItem } from '../../../../src/history/internal/session-update';
+import type { HistoryContext } from '../../../../src/history/internal/setup';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../../../src/shared/constants';
 import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { createUlidFactory } from '../../../../src/shared/ulid';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function transactionConflict(): Error {
@@ -37,24 +40,118 @@ function messageItem(sk: string): ChatMessageItem {
   };
 }
 
-function context(client: unknown) {
-  return { client, tableName: 'history', logger: SILENT_LOGGER } as never;
+function context(client: unknown, extra?: Partial<HistoryContext>) {
+  return {
+    client,
+    tableName: 'history',
+    logger: SILENT_LOGGER,
+    /** One factory per context, so ids drawn through it strictly increase. */
+    ulid: createUlidFactory(),
+    ...extra,
+  } as never;
+}
+
+/** The id the session update of one transaction carries for the SESSION row. */
+function sessionWriteId(call: { input: { TransactItems?: HistoryTransactItem[] } }): unknown {
+  return call.input.TransactItems?.[0].Update?.ExpressionAttributeValues?.[':wid'];
+}
+
+/**
+ * The row an update item leaves behind, applying the two clause forms this
+ * builder emits. What an expression carries and what the row ends up holding
+ * are different things: a once-only clause carries a fresh value on every
+ * append and still leaves the row holding its first, which is the whole
+ * difference between a pin that works and one that always passes.
+ */
+function applySets(row: Record<string, unknown>, item?: HistoryTransactItem) {
+  const update = item?.Update;
+  const names = update?.ExpressionAttributeNames ?? {};
+  const values = update?.ExpressionAttributeValues ?? {};
+  const next = { ...row };
+  /** Clauses are comma-separated, but so are `if_not_exists` arguments. */
+  const clauses = (update?.UpdateExpression ?? '').split(' SET ')[1].split(/, (?=#)/);
+  for (const clause of clauses) {
+    const [target, source] = clause.split(' = ');
+    const once = source.startsWith('if_not_exists(');
+    const attribute = names[target];
+    if (once && next[attribute] !== undefined) continue;
+    next[attribute] = values[once ? source.slice(source.indexOf(', ') + 2, -1) : source];
+  }
+  return next;
 }
 
 describe('writeMessageChunk', () => {
   it('writes the metadata update and every message put in one transaction', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
-    await writeMessageChunk(
-      { client, tableName: 'history' } as never,
-      [messageItem('MSG#1'), messageItem('MSG#2')],
-      { sessionId: 's1', count: 2, now: 'u' },
-    );
+    await writeMessageChunk(context(client), [messageItem('MSG#1'), messageItem('MSG#2')], {
+      sessionId: 's1',
+      count: 2,
+      now: 'u',
+    });
     const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
     expect(items).toHaveLength(3);
     expect(items[0].Update?.UpdateExpression).toContain('ADD #count :n');
     expect(items[1].Put?.Item?.SK).toBe('MSG#1');
     expect(items[2].Put?.Item?.SK).toBe('MSG#2');
+  });
+
+  /**
+   * Two appends to one session have to leave two different ids on the SESSION
+   * row. "An id is present" and "the id is on the row" hold just as well for an
+   * id stamped once when the session was created, and so does "each append
+   * carries a fresh id" — an update that carries a value the row refuses still
+   * carries it. Only the row's own state after the second append says it moved.
+   */
+  it('leaves a different write id on the session row after each append', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    const ctx = context(client);
+    /**
+     * Distinct `now` values, because `createdAt` below is the contrast that
+     * proves the simulation freezes an `if_not_exists` clause at all. Give
+     * both appends the same timestamp and that assertion holds whether or not
+     * the helper freezes anything, and a one-line slip in it would go unseen.
+     */
+    await writeMessageChunk(ctx, [messageItem('MSG#1')], { sessionId: 's1', count: 1, now: 'u1' });
+    await writeMessageChunk(ctx, [messageItem('MSG#2')], { sessionId: 's1', count: 1, now: 'u2' });
+    const calls = mock.commandCalls(TransactWriteCommand);
+    expect(sessionWriteId(calls[0].args[0])).not.toBe(sessionWriteId(calls[1].args[0]));
+
+    const created = applySets({}, calls[0].args[0].input.TransactItems?.[0]);
+    const appended = applySets(created, calls[1].args[0].input.TransactItems?.[0]);
+    expect(created.writeId).toEqual(expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/));
+    expect(appended.writeId).not.toBe(created.writeId);
+    /** The once-only neighbours are the contrast: they stay on the first value. */
+    expect(appended.createdAt).toBe(created.createdAt);
+  });
+
+  /**
+   * The session update travels in the same transaction as the chunk's rows,
+   * which is what makes a moved id mean "a row was added" in both directions.
+   * Asserting the transaction's shape rather than one value is what would catch
+   * a path writing message rows without the update beside them.
+   */
+  it('carries the session update beside every message put, on a first and a retried attempt', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejectsOnce(ttlConditionFailure()).resolves({});
+    await writeMessageChunk(context(client), [messageItem('MSG#1'), messageItem('MSG#2')], {
+      sessionId: 's1',
+      count: 2,
+      now: 'u',
+      ttlTimestamp: 5000,
+      forceTtlRefresh: true,
+    });
+    const calls = mock.commandCalls(TransactWriteCommand);
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      const items = call.args[0].input.TransactItems ?? [];
+      expect(items[0].Update?.Key).toEqual({ PK: 'HIST#s1', SK: 'HISTORY#SESSION' });
+      expect(items[0].Update?.ExpressionAttributeNames?.['#wid']).toBe('writeId');
+      expect(items.slice(1).map((item) => item.Put?.Item?.SK)).toEqual(['MSG#1', 'MSG#2']);
+    }
+    /** The cancelled attempt committed nothing, so the retry carries its id. */
+    expect(sessionWriteId(calls[1].args[0])).toBe(sessionWriteId(calls[0].args[0]));
   });
 
   it('retries a transaction-conflict cancellation', async () => {
@@ -65,7 +162,7 @@ describe('writeMessageChunk', () => {
     });
     mock.on(TransactWriteCommand).rejectsOnce(conflict).resolves({});
     await writeMessageChunk(
-      { client, tableName: 'history' } as never,
+      context(client),
       [messageItem('MSG#1')],
       { sessionId: 's1', count: 1, now: 'u' },
       { rng: () => 0 },
@@ -82,7 +179,7 @@ describe('writeMessageChunk', () => {
     mock.on(TransactWriteCommand).rejects(permanent);
     await expect(
       writeMessageChunk(
-        { client, tableName: 'history' } as never,
+        context(client),
         [messageItem('MSG#1')],
         { sessionId: 's1', count: 1, now: 'u' },
         { rng: () => 0 },
@@ -99,7 +196,7 @@ describe('writeMessageChunk', () => {
     mock.on(TransactWriteCommand).rejects(bare);
     await expect(
       writeMessageChunk(
-        { client, tableName: 'history' } as never,
+        context(client),
         [messageItem('MSG#1')],
         { sessionId: 's1', count: 1, now: 'u' },
         { rng: () => 0 },
@@ -116,7 +213,7 @@ describe('writeMessageChunk', () => {
     });
     mock.on(TransactWriteCommand).rejectsOnce(conflict).resolves({});
     await writeMessageChunk(
-      { client, tableName: 'history' } as never,
+      context(client),
       [messageItem('MSG#1')],
       { sessionId: 's1', count: 1, now: 'u' },
       { rng: () => 0 },
@@ -130,7 +227,7 @@ describe('writeMessageChunk', () => {
   it('uses a distinct ClientRequestToken for separate chunks', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
-    const ctx = { client, tableName: 'history' } as never;
+    const ctx = context(client);
     await writeMessageChunk(ctx, [messageItem('MSG#1')], { sessionId: 's1', count: 1, now: 'u' });
     await writeMessageChunk(ctx, [messageItem('MSG#2')], { sessionId: 's1', count: 1, now: 'u' });
     const calls = mock.commandCalls(TransactWriteCommand);
@@ -148,7 +245,7 @@ describe('writeMessageChunk', () => {
     }
     call.resolves({});
     await writeMessageChunk(
-      { client, tableName: 'history' } as never,
+      context(client),
       [messageItem('MSG#1')],
       { sessionId: 's1', count: 1, now: 'u' },
       { rng: () => 0 },
@@ -161,7 +258,7 @@ describe('writeMessageChunk', () => {
     mock.on(TransactWriteCommand).rejects(transactionConflict());
     await expect(
       writeMessageChunk(
-        { client, tableName: 'history' } as never,
+        context(client),
         [messageItem('MSG#1')],
         { sessionId: 's1', count: 1, now: 'u' },
         { rng: () => 0 },
@@ -262,11 +359,7 @@ describe('append retry floor under a caller retry policy (DDB-03)', () => {
     mock.on(TransactWriteCommand).rejects(transactionConflict());
     await expect(
       writeMessageChunk(
-        {
-          client,
-          tableName: 'history',
-          retry: { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
-        } as never,
+        context(client, { retry: { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 } }),
         [messageItem('MSG#1')],
         { sessionId: 's1', delta: 1, now: 0 } as never,
         { rng: () => 0 },

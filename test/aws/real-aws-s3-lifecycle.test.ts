@@ -4,13 +4,15 @@ import { CreateTableCommand, DynamoDBClient, waitUntilTableExists } from '@aws-s
 import {
   CreateBucketCommand,
   GetBucketLifecycleConfigurationCommand,
+  type LifecycleRule,
   S3Client,
   waitUntilBucketExists,
 } from '@aws-sdk/client-s3';
 import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
-import { buildLifecycleRuleId } from '../../src/shared/codec/s3/config';
+import { buildLifecycleRuleId, buildMarkerRuleId } from '../../src/shared/codec/s3/config';
+import { S3_RELEASE_GRACE_DAYS } from '../../src/shared/constants';
 import { deleteBucketCompletely, deleteTableCompletely, settleAll } from './helpers/teardown';
 
 const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
@@ -64,6 +66,49 @@ async function waitForLifecycleRuleDays(
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   throw new Error(`Lifecycle rule never converged to ${expectedDays} days`);
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Both rules of `keyPrefix`, once the bucket reports them. Bucket-level config
+ * is eventually consistent, so this polls: a single read cannot tell a rule
+ * that was never written from one that has not propagated yet.
+ */
+async function waitForBothRules(
+  s3: S3Client,
+  keyPrefix: string,
+  expectedDays: number,
+  attempts = 10,
+  delayMs = 1000,
+): Promise<{ ttl?: LifecycleRule; marker?: LifecycleRule }> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const raw = await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket: bucketName }));
+      const rules = raw.Rules ?? [];
+      const ttl = rules.find((rule) => rule.ID === buildLifecycleRuleId(keyPrefix));
+      const marker = rules.find((rule) => rule.ID === buildMarkerRuleId(keyPrefix));
+      if (ttl?.Expiration?.Days === expectedDays && marker !== undefined) return { ttl, marker };
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'NoSuchLifecycleConfiguration') throw error;
+    }
+    await sleep(delayMs);
+  }
+  throw new Error(`Both lifecycle rules of ${keyPrefix} never converged`);
+}
+
+/** An S3 client that counts the lifecycle configurations an adapter writes through it. */
+function countingClient(counter: { puts: number }): S3Client {
+  const counted = new S3Client(clientConfig);
+  counted.middlewareStack.add(
+    (next, context) => async (args) => {
+      const name = (context as { commandName?: string }).commandName ?? '';
+      if (name === 'PutBucketLifecycleConfigurationCommand') counter.puts += 1;
+      return next(args);
+    },
+    { step: 'initialize', name: 'countLifecyclePuts', priority: 'high' },
+  );
+  return counted;
 }
 
 /**
@@ -169,7 +214,7 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     expect(rule?.Status).toBe('Enabled');
   });
 
-  it('each adapter provisions its own lifecycle rule under its default adapter-scoped prefix without colliding (the Task-3 fix)', async () => {
+  it('each adapter provisions its own lifecycle rule under its default adapter-scoped prefix without colliding', async () => {
     const s3Config = { bucketName, clientConfig };
     const defaultSaver = new DynamoDBSaver({
       tableName,
@@ -227,6 +272,56 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     }
     defaultSaver.destroy();
     expect(saverRuleAfter?.Status).toBe('Enabled');
+  });
+
+  /**
+   * Both shapes, sent to real S3 and read back unchanged: the marker rule is
+   * the one S3 would reject with `MalformedXML` if its `ExpiredObjectDeleteMarker`
+   * shared an `Expiration` with the ttl rule's `Days`. The second call proves
+   * the pair is recognised as correct and rewrites nothing — and it is made
+   * only after a poll, because a call reading a stale configuration would
+   * legitimately rewrite it.
+   */
+  it('provisions both rules, reads them back unchanged, and then writes nothing', async () => {
+    const prefix = 'release-grace-test/';
+    const counter = { puts: 0 };
+    const saver = new DynamoDBSaver({
+      tableName,
+      clientConfig,
+      ttl: { days: 30 },
+      s3: {
+        bucketName,
+        clientConfig,
+        keyPrefix: prefix,
+        createS3Client: () => countingClient(counter),
+      },
+    });
+
+    await saver.ensureS3LifecycleRule();
+    const { ttl, marker } = await waitForBothRules(s3, prefix, 32);
+    expect(ttl?.Status).toBe('Enabled');
+    // The filter is the field whose round trip decides whether a destructive
+    // rule stays scoped to this package's keys.
+    expect(ttl?.Filter?.Prefix).toBe(prefix);
+    expect(marker?.Filter?.Prefix).toBe(prefix);
+    expect(ttl?.Expiration).toEqual({ Days: 32 });
+    expect(ttl?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(S3_RELEASE_GRACE_DAYS);
+    expect(marker?.Status).toBe('Enabled');
+    expect(marker?.Expiration).toEqual({ ExpiredObjectDeleteMarker: true });
+    expect(marker?.NoncurrentVersionExpiration).toBeUndefined();
+    expect(counter.puts).toBe(1);
+
+    // This adapter's own client can still be served a stale read, which
+    // self-heals by rewriting; retry until one call lands on a converged read.
+    let wroteNothing = false;
+    for (let attempt = 0; attempt < 5 && !wroteNothing; attempt++) {
+      const before = counter.puts;
+      await saver.ensureS3LifecycleRule();
+      wroteNothing = counter.puts === before;
+      if (!wroteNothing) await sleep(1000);
+    }
+    saver.destroy();
+    expect(wroteNothing).toBe(true);
   });
 
   it('surfaces S3 retry-exhaustion as S3_OFFLOAD_FAILED with operation/key context, not a bare RETRY_EXHAUSTED', async () => {

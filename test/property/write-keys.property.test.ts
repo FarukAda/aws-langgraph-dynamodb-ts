@@ -45,7 +45,7 @@ describe('writeSortKey (property)', () => {
     );
     fc.assert(
       fc.property(outside, (i) => {
-        expect(() => writeSortKey('ns', 'cp', 't', i, 'ch')).toThrow(/outside the range/);
+        expect(() => writeSortKey('ns', 'cp', 't', i, 'ch')).toThrow(/encodable/);
       }),
     );
   });

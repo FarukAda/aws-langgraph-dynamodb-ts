@@ -1,0 +1,63 @@
+# OpenSSF Scorecard: an external, mechanical read of this repository's supply
+# chain posture — branch protection, pinned dependencies, token permissions,
+# signed releases, SAST and so on.
+#
+# `publish_results: true` is required for the README badge to resolve, and it
+# means the score is published to the public OpenSSF API. That is the point of
+# the badge, but it is worth stating plainly: this makes the result visible to
+# anyone, including checks this repository currently fails.
+#
+# Actions are pinned by commit SHA rather than by tag, as release.yml already
+# is — and Scorecard's own Pinned-Dependencies check grades exactly that.
+name: Scorecard
+
+on:
+  branch_protection_rule:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 5 * * 2'
+
+concurrency:
+  group: scorecard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Upload the SARIF result to the Security tab.
+      security-events: write
+      # Publish the result to the OpenSSF API, which is what the badge reads.
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code scanning
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: results.sarif

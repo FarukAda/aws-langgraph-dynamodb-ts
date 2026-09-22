@@ -3,7 +3,13 @@ import { BatchWriteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb
 import { putWrites } from '../../../../src/checkpointer/actions/put-writes';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import {
+  committedRows,
+  createStrictDocumentMock,
+  rejectRowWrites,
+  resolveRowWrites,
+  rowWriteInputs,
+} from '../../../shared/helpers/ddb-mock';
 
 const serde = {
   dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
@@ -20,7 +26,7 @@ function context(client: CheckpointerContext['client']): CheckpointerContext {
 function trackingOffloader(upload: (key: string) => Promise<string> = async (key) => key) {
   return {
     shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => parts.join('/'),
+    buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
     upload,
     deleteBatch: jest.fn().mockResolvedValue([]),
   };
@@ -39,7 +45,7 @@ describe('putWrites special (negative-index) writes', () => {
     // needed, unlike the old UnprocessedItems accounting.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    rejectRowWrites(mock, Object.assign(new Error('boom'), { name: 'ValidationException' }));
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(
@@ -56,14 +62,15 @@ describe('putWrites special (negative-index) writes', () => {
     expect(keys[0]).toMatch(/^t\/\/c1\/task-1\/write--1\/__error__\/[^/]+$/);
   });
 
-  it('still cleans up a failed regular write when the special path fails before its own conditional put is attempted', async () => {
+  it('still cleans up a failed regular write, and keeps the special upload, when the special path fails before its own conditional put is attempted', async () => {
     // Regression: a readSpecialRow rejection used to short-circuit
     // Promise.all before this regular write's own failed-upload cleanup ran.
-    // It also cleans up the special write's own never-committed upload: the
-    // read failing means the conditional put was never even attempted, so
-    // that upload is unambiguously never-committed. The regular write's own
-    // post-failure verification read must succeed (row absent) for its upload
-    // to count as confirmed dead, so only the special row's read is failed.
+    // The special write's own upload is kept: its put was never attempted, but
+    // the failed read establishes nothing about the row, which a racer that
+    // wrote the same value may already hold under that very key (C-02b). The
+    // regular write's own post-failure verification read must succeed (row
+    // absent) for its upload to count as confirmed dead, so only the special
+    // row's read is failed.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).callsFake(async (input: { Key: { SK: string } }) => {
       if (input.Key.SK.includes('#0000000007#')) {
@@ -71,7 +78,7 @@ describe('putWrites special (negative-index) writes', () => {
       }
       return {};
     });
-    mock.on(PutCommand).rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
+    rejectRowWrites(mock, Object.assign(new Error('boom'), { name: 'ValidationException' }));
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(
@@ -85,24 +92,21 @@ describe('putWrites special (negative-index) writes', () => {
         'task-1',
       ),
     ).rejects.toThrow('get');
-    expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
-    const keysCalled = offloader.deleteBatch.mock.calls.map((call) => (call[0] as string[])[0]);
-    expect(keysCalled).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/^t\/\/c1\/task-1\/write-0\/ch\/[^/]+$/),
-        expect.stringMatching(/^t\/\/c1\/task-1\/write--1\/__error__\/[^/]+$/),
-      ]),
-    );
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith([
+      expect.stringMatching(/^t\/\/c1\/task-1\/write-0\/ch\/[^/]+$/),
+    ]);
   });
 
-  it('uses an individual conditional PutCommand for special (negative-index) writes, never BatchWriteItem', async () => {
+  it('uses an individual conditional write for special (negative-index) writes, never BatchWriteItem', async () => {
     // BatchWriteItem cannot carry per-request conditions, which is why the
-    // compare-and-swap on special writes must issue its own PutCommand. An
+    // compare-and-swap on special writes must issue its own write. An
     // offloader is configured so the compare-and-swap path (rather than its
-    // no-offloader unconditional-put shortcut) is the one under test.
+    // no-offloader unconditional-put shortcut) is the one under test; which
+    // shape that write then takes is pinned in special-write-token.test.ts.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
     const ctx = { ...context(client), offloader: trackingOffloader() as never };
     await putWrites(
       ctx,
@@ -111,10 +115,8 @@ describe('putWrites special (negative-index) writes', () => {
       'task-1',
     );
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
-    expect(mock.commandCalls(PutCommand)).toHaveLength(1);
-    expect(mock.commandCalls(PutCommand)[0].args[0].input.ConditionExpression).toBe(
-      'attribute_not_exists(PK)',
-    );
+    expect(rowWriteInputs(mock)).toHaveLength(1);
+    expect(rowWriteInputs(mock)[0].ConditionExpression).toBe('attribute_not_exists(PK)');
   });
 
   it('overwrites an existing special row, guarded on the writeGroup it observed', async () => {
@@ -123,7 +125,7 @@ describe('putWrites special (negative-index) writes', () => {
     // the attribute_not_exists(PK) first-write branch above.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { value: { s3Key: 'old.bin' }, writeGroup: 'earlier' } });
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
     const ctx = { ...context(client), offloader: trackingOffloader() as never };
     await putWrites(
       ctx,
@@ -131,16 +133,16 @@ describe('putWrites special (negative-index) writes', () => {
       [['__error__', 'boom']],
       'task-1',
     );
-    const calls = mock.commandCalls(PutCommand);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].args[0].input.ConditionExpression).toBe('#rev = :rev');
-    expect(calls[0].args[0].input.ExpressionAttributeValues).toEqual({ ':rev': 'earlier' });
+    const puts = rowWriteInputs(mock);
+    expect(puts).toHaveLength(1);
+    expect(puts[0].ConditionExpression).toBe('#rev = :rev');
+    expect(puts[0].ExpressionAttributeValues).toEqual({ ':rev': 'earlier' });
   });
 
-  it('dispatches special and regular writes from the same call, each through its own conditional PutCommand', async () => {
+  it('dispatches special and regular writes from the same call, each through its own conditional write', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
     const ctx = { ...context(client), offloader: trackingOffloader() as never };
     await putWrites(
       ctx,
@@ -152,15 +154,18 @@ describe('putWrites special (negative-index) writes', () => {
       'task-1',
     );
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
-    const calls = mock.commandCalls(PutCommand);
-    expect(calls).toHaveLength(2);
+    const puts = rowWriteInputs(mock);
+    expect(puts).toHaveLength(2);
     // Regular writes guard first-write-wins with ReturnValuesOnConditionCheckFailure;
     // special writes guard on the observed writeGroup instead, so they never set it.
-    const regular = calls.find((call) => (call.args[0].input.Item as { index: number }).index >= 0);
-    const special = calls.find((call) => (call.args[0].input.Item as { index: number }).index < 0);
-    expect(regular?.args[0].input.ReturnValuesOnConditionCheckFailure).toBe('ALL_OLD');
+    const indexOf = (put: (typeof puts)[number]) => (put.Item as { index: number }).index;
+    expect(puts.find((put) => indexOf(put) >= 0)?.ReturnValuesOnConditionCheckFailure).toBe(
+      'ALL_OLD',
+    );
     // Special writes ask for it too, so a lost compare-and-swap re-pins from the exception.
-    expect(special?.args[0].input.ReturnValuesOnConditionCheckFailure).toBe('ALL_OLD');
+    expect(puts.find((put) => indexOf(put) < 0)?.ReturnValuesOnConditionCheckFailure).toBe(
+      'ALL_OLD',
+    );
   });
 
   it('dedupes duplicate writes to the same special channel by sort key before writing', async () => {
@@ -181,7 +186,7 @@ describe('putWrites special (negative-index) writes', () => {
   it('never uploads the discarded duplicate special write (fixes the leak, not just the DynamoDB row)', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    mock.on(PutCommand).resolves({});
+    resolveRowWrites(mock);
     const upload = jest.fn(async (key: string) => key);
     const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     await putWrites(
@@ -206,15 +211,12 @@ describe('putWrites special (negative-index) writes', () => {
     // later getTuple() on the checkpoint fail with S3 NoSuchKey, permanently.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).callsFake(async () => {
-      const puts = mock.commandCalls(PutCommand);
-      if (puts.length === 0) return {};
-      const written = puts[puts.length - 1].args[0].input.Item as {
-        writeGroup: string;
-        value: unknown;
-      };
+      const rows = committedRows(mock);
+      if (rows.length === 0) return {};
+      const written = rows[rows.length - 1] as { writeGroup: string; value: unknown };
       return { Item: { value: written.value, writeGroup: written.writeGroup } };
     });
-    mock.on(PutCommand).rejects(Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(

@@ -6,6 +6,7 @@ import {
   CompensationFailedError,
 } from '../../shared/errors/errors';
 import { toError } from '../../shared/errors/wrap-error';
+import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { ChatMessageItem } from '../types';
 import { revertSessionCount, revertSessionCreation } from './session-count';
 import type { HistoryContext } from './setup';
@@ -14,6 +15,35 @@ import type { HistoryContext } from './setup';
 export interface CommittedChunk {
   keys: { PK: string; SK: string }[];
   count: number;
+}
+
+/**
+ * Say what the compensation is doing, and make sure the saying cannot stop it.
+ *
+ * The caller's `Logger` is consumer code, and both lines here are written from
+ * inside a rollback: the first is {@link compensate}'s opening statement, the
+ * second sits in the `catch` that builds {@link CompensationFailedError}. A
+ * throw out of either used to take the rollback with it — the first skipping
+ * the S3 cleanup, every committed chunk's deletes, the count revert and the
+ * rethrow in one go; the second replacing the one error whose job is to say
+ * that `messageCount` drifted.
+ *
+ * The guard itself is {@link absorbLoggerFailure}, which this held an inline
+ * copy of while that helper belonged to another change. Swallowing is still
+ * the answer for the reason it gives: the only channel a report could use is
+ * the one that just broke. Guarded here rather than left to the seam the
+ * context's logger was resolved at, because this is the package's least
+ * forgiving path — it runs once per rolled-back append, and what it loses if
+ * it stops early is a caller's "all messages or none".
+ */
+function reportStep(
+  context: HistoryContext,
+  level: 'warn' | 'error',
+  message: string,
+  sessionId: string,
+  committedChunks: number,
+): void {
+  absorbLoggerFailure(() => context.logger[level](message, { sessionId, committedChunks }));
 }
 
 /**
@@ -61,10 +91,11 @@ async function rollbackCommitted(
     );
   } catch (error) {
     /**
-     * batchWriteAll has exactly one throw site and it is always a
-     * BatchWriteAllIncompleteError (see Task 9) — asserted, not instanceof-
-     * checked, since the false case is unreachable and this project
-     * enforces 100% branch coverage with no exceptions.
+     * `batchWriteAll` raises a {@link BatchWriteAllIncompleteError} for every
+     * failure but a cancel, and this call passes no signal, so the cancel
+     * cannot arise here — asserted rather than narrowed, since the false
+     * branch is unreachable and this project enforces 100% branch coverage. A
+     * signal reaching this call would have to narrow instead.
      */
     const deleted = (error as BatchWriteAllIncompleteError).succeededCount;
     await revertSessionCount(context, sessionId, deleted, now);
@@ -86,6 +117,28 @@ async function rollbackCommitted(
  * outcome could not be verified: its rows may be live, so its objects are
  * leaked rather than deleted, while the never-attempted chunks after it are
  * still cleaned.
+ *
+ * Accepts: `committed` — the chunks known to have landed, in order; empty means
+ * the very first chunk failed, and then the only thing to undo is the session
+ * row this call may have created. `trigger` — the failure that started this.
+ * `uncertain` — see above.
+ *
+ * Returns: never; the declared `Promise<never>` is the contract.
+ *
+ * Throws: `trigger` when the rollback succeeded, {@link CompensationFailedError}
+ * when it did not.
+ *
+ * Guarantees: an object is deleted only once no row can reference it — the
+ * never-committed suffix immediately, the committed prefix only after its rows
+ * are confirmed gone, and an unverified chunk never. Storage is leaked in
+ * preference to leaving a live row pointing at a deleted object.
+ *
+ * Neither of its two log lines can stop it: both go through
+ * {@link reportStep}. A throw from the first used to skip the S3 cleanup, the
+ * rollback, the count revert and the rethrow all at once, leaving every
+ * committed chunk in the table with `messageCount` still counting it, and
+ * handing the caller the logger's own error in place of the failure that
+ * started this. Announcing the rollback is not the rollback.
  */
 export async function compensate(
   context: HistoryContext,
@@ -98,10 +151,13 @@ export async function compensate(
   uncertain: boolean,
 ): Promise<never> {
   if (committed.length > 0) {
-    context.logger.warn('history.addMessages compensating committed chunks after a chunk failed', {
+    reportStep(
+      context,
+      'warn',
+      'history.addMessages compensating committed chunks after a chunk failed',
       sessionId,
-      committedChunks: committed.length,
-    });
+      committed.length,
+    );
   }
   /**
    * The never-attempted suffix never had a DynamoDB row, so it is safe to
@@ -112,10 +168,13 @@ export async function compensate(
   try {
     await rollbackCommitted(context, sessionId, committed, now, title);
   } catch (rollbackError) {
-    context.logger.error('history.addMessages rollback failed; messageCount may have drifted', {
+    reportStep(
+      context,
+      'error',
+      'history.addMessages rollback failed; messageCount may have drifted',
       sessionId,
-      committedChunks: committed.length,
-    });
+      committed.length,
+    );
     /** Skip S3 cleanup here: rollback may have failed, so committed rows might still reference these objects. */
     throw new CompensationFailedError(trigger, toError(rollbackError as Error));
   }

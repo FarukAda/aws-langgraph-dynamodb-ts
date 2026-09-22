@@ -1,7 +1,26 @@
 /**
- * Map `items` through `fn` with at most `limit` calls in flight, preserving
- * input order in the result. The first rejection wins: no further item is
- * started, the calls already in flight settle, and that error propagates.
+ * Map `items` through `fn` with at most `limit` calls in flight.
+ *
+ * Accepts: `items` — any length, including empty, which calls `fn` never.
+ * `limit` — calls in flight; anything that is not a whole number of at least 1
+ * degrades to sequential rather than stalling, and a value above `items.length`
+ * starts only as many workers as there are items. The floor is a *range* test
+ * rather than arithmetic on purpose: `Math.min(NaN, items.length)` is `NaN`,
+ * so a `NaN` limit asked for `Array.from({ length: NaN })` workers — none —
+ * and the call resolved to an empty array having invoked `fn` on nothing.
+ * `refillDryShards` loops while any shard is dry around exactly this call, so
+ * zero workers there was a busy-spin with no I/O and no way out; only the
+ * required `concurrency` field kept it off typed paths. `fn` — receives the
+ * item and its index.
+ *
+ * Returns: the results in **input** order, not completion order.
+ *
+ * Throws: the first rejection, whatever its value. No further item is started
+ * after it, the calls already in flight are allowed to settle, and that first
+ * error is the one thrown — a later failure never displaces it. Whether one
+ * has happened is tracked by a flag rather than by testing the value, because
+ * a rejection whose value is `undefined` is indistinguishable from no rejection
+ * at all: it used to be swallowed, and its slot in the results stayed a hole.
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],
@@ -10,20 +29,24 @@ export async function mapWithConcurrency<T, R>(
 ): Promise<R[]> {
   const results: R[] = [];
   let next = 0;
+  let failed = false;
   let failure: Error | undefined;
   const worker = async (): Promise<void> => {
-    while (failure === undefined && next < items.length) {
+    while (!failed && next < items.length) {
       const index = next;
       next += 1;
       try {
         results[index] = await fn(items[index], index);
       } catch (error) {
-        failure ??= error as Error;
+        if (!failed) {
+          failed = true;
+          failure = error as Error;
+        }
       }
     }
   };
-  const workers = Math.max(1, Math.min(limit, items.length));
+  const workers = Math.min(limit >= 1 ? Math.floor(limit) : 1, Math.max(items.length, 1));
   await Promise.all(Array.from({ length: workers }, worker));
-  if (failure !== undefined) throw failure;
+  if (failed) throw failure;
   return results;
 }

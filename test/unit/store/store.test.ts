@@ -1,20 +1,22 @@
 import {
   GetBucketLifecycleConfigurationCommand,
+  GetBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import {
-  DeleteCommand,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  ScanCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
-import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import {
+  answerDeleteReads,
+  createStrictDocumentMock,
+  deletedKeys,
+  fakeMiddlewareStack,
+  observableRow,
+  resolveRowDeletes,
+} from '../../shared/helpers/ddb-mock';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -34,12 +36,13 @@ describe('DynamoDBStore', () => {
     expect(item?.value).toEqual({ name: 'Faruk' });
   });
 
-  it('delete dispatches a DeleteCommand', async () => {
+  it('delete reads the row and removes the one it read', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(DeleteCommand).resolves({});
+    answerDeleteReads(mock, observableRow());
+    resolveRowDeletes(mock);
     const store = new DynamoDBStore({ tableName: 'store', client });
     await store.delete(['n'], 'k');
-    expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
+    expect(deletedKeys(mock)).toHaveLength(1);
   });
 
   it('search dispatches a scoped Query and returns matches', async () => {
@@ -101,7 +104,7 @@ describe('DynamoDBStore', () => {
     ).not.toThrow();
 
     const destroy = jest.fn();
-    const fake = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
+    const fake = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
     const owned = new DynamoDBStore({
       tableName: 'store',
       clientConfig: { region: 'us-east-1' },
@@ -115,14 +118,19 @@ describe('DynamoDBStore', () => {
     const { client } = createStrictDocumentMock();
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const store = new DynamoDBStore({
       tableName: 'store',
       client,
+      logger,
       s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
       ttl: { days: 30 },
     });
     await store.ensureS3LifecycleRule();
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
+    /** A warn here would mean the versioning stub above was not the one consumed. */
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('ensureS3LifecycleRule no-ops when ttl is not configured', async () => {
@@ -170,7 +178,7 @@ describe('cancellation via { signal } (CORE-04)', () => {
 describe('BaseStore lifecycle (CORE-22)', () => {
   it('stop() releases an owned client exactly once and leaves an injected one alone', async () => {
     const destroy = jest.fn();
-    const fake = { destroy, config: {}, middlewareStack: { clone: () => ({}) }, send: jest.fn() };
+    const fake = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
     const owned = new DynamoDBStore({
       tableName: 'store',
       clientConfig: { region: 'us-east-1' },
@@ -182,5 +190,84 @@ describe('BaseStore lifecycle (CORE-22)', () => {
     const spy = jest.spyOn(injected.client, 'destroy');
     await new DynamoDBStore({ tableName: 'store', client: injected.client }).stop();
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('options shape (M-08)', () => {
+  /**
+   * The `= {}` default parameter only fires for `undefined`, not `null`, so a
+   * caller passing `null` used to reach the destructure before `guardPublic`
+   * could normalise the resulting `TypeError`. The destructure now runs
+   * inside the guarded callback, after `assertShape` has already refused a
+   * non-object `options`.
+   */
+  it('search names the field rather than crashing when options is null', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], null as never)).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'options' },
+    });
+  });
+
+  it('search refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { bogus: true } as never)).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'options.bogus' },
+    });
+  });
+
+  it('search refuses a signal that is not AbortSignal-like', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { signal: {} as never })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'signal' },
+    });
+  });
+
+  it('search refuses a non-object filter, naming it', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { filter: 'x' as never })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'filter' },
+    });
+  });
+
+  it('search refuses a non-string query, naming it', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { query: 123 as never })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'query' },
+    });
+  });
+
+  it('search accepts an empty query and a non-operator filter clause', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(QueryCommand).resolves({ Items: [] });
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { query: '' })).resolves.toEqual([]);
+    await expect(store.search(['ns'], { filter: { a: { $foo: 1 } } })).resolves.toEqual([]);
+  });
+
+  it('reconcileVectorIndex refuses a key this package does not read', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(
+      store.reconcileVectorIndex(['ns'], { bogus: true } as never),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'options.bogus' } });
+  });
+});
+
+describe('collaborator shape (DDB-09)', () => {
+  it('refuses a raw DynamoDBClient where a DynamoDBDocument is required', () => {
+    const raw = { send: () => undefined };
+    expect(() => new DynamoDBStore({ tableName: 'tbl', client: raw as never })).toThrow(
+      expect.objectContaining({ code: 'VALIDATION', context: { field: 'client.get' } }),
+    );
   });
 });

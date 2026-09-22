@@ -28,14 +28,18 @@
 
 ## Interfaces
 
+- [BackfillOptions](interfaces/BackfillOptions.md)
+- [BackfillResult](interfaces/BackfillResult.md)
 - [BaseAdapterOptions](interfaces/BaseAdapterOptions.md)
 - [CancelOptions](interfaces/CancelOptions.md)
 - [CodecOptions](interfaces/CodecOptions.md)
 - [CompressionConfig](interfaces/CompressionConfig.md)
 - [CreateAllOptions](interfaces/CreateAllOptions.md)
 - [CreatedAdapters](interfaces/CreatedAdapters.md)
+- [DeltaChannelHistoryOptions](interfaces/DeltaChannelHistoryOptions.md)
 - [ErrorContext](interfaces/ErrorContext.md)
 - [FactoryBaseOptions](interfaces/FactoryBaseOptions.md)
+- [ListNamespacesOptions](interfaces/ListNamespacesOptions.md)
 - [ListSessionsOptions](interfaces/ListSessionsOptions.md)
 - [Logger](interfaces/Logger.md)
 - [MessageWindow](interfaces/MessageWindow.md)
@@ -49,6 +53,7 @@
 - [S3OffloadConfig](interfaces/S3OffloadConfig.md)
 - [SessionBackend](interfaces/SessionBackend.md)
 - [SessionMetadata](interfaces/SessionMetadata.md)
+- [SessionPage](interfaces/SessionPage.md)
 - [VectorBackend](interfaces/VectorBackend.md)
 - [VectorMatch](interfaces/VectorMatch.md)
 - [VectorReconcileResult](interfaces/VectorReconcileResult.md)
@@ -60,6 +65,7 @@
 - [AdapterWindow](type-aliases/AdapterWindow.md)
 - [CorruptMessagePolicy](type-aliases/CorruptMessagePolicy.md)
 - [DynamoDBChatMessageHistoryOptions](type-aliases/DynamoDBChatMessageHistoryOptions.md)
+- [DynamoDBDocumentLike](type-aliases/DynamoDBDocumentLike.md)
 - [DynamoDBSaverOptions](type-aliases/DynamoDBSaverOptions.md)
 - [DynamoDBStoreOptions](type-aliases/DynamoDBStoreOptions.md)
 - [GetMessagesOptions](type-aliases/GetMessagesOptions.md)
@@ -68,11 +74,17 @@
 - [S3ClientConfigLike](type-aliases/S3ClientConfigLike.md)
 - [S3ClientOption](type-aliases/S3ClientOption.md)
 - [S3RegionLike](type-aliases/S3RegionLike.md)
+- [SearchOptions](type-aliases/SearchOptions.md)
 - [TtlOption](type-aliases/TtlOption.md)
 - [VectorScoreDirection](type-aliases/VectorScoreDirection.md)
 
+## Variables
+
+- [JSON\_SERDE](variables/JSON_SERDE.md)
+
 ## Functions
 
+- [backfillRecencyIndex](functions/backfillRecencyIndex.md)
 - [isDynamoDBLangGraphError](functions/isDynamoDBLangGraphError.md)
 - [redactLogger](functions/redactLogger.md)
 - [redactSecrets](functions/redactSecrets.md)

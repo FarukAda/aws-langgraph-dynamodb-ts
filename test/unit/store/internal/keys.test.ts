@@ -4,6 +4,7 @@ import {
   partitionKey,
   sortKey,
   sortKeyPrefix,
+  storePartitionPrefix,
 } from '../../../../src/store/internal/keys';
 
 describe('store keys', () => {
@@ -30,5 +31,10 @@ describe('store keys', () => {
 
   it('exposes the separator', () => {
     expect(NAMESPACE_SEPARATOR).toBe('#');
+  });
+
+  it('exposes the partition tag the rootless scan restricts on', () => {
+    expect(storePartitionPrefix()).toBe('STORE#');
+    expect(partitionKey(['users']).startsWith(storePartitionPrefix())).toBe(true);
   });
 });

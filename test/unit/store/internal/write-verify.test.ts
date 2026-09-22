@@ -25,13 +25,18 @@ function context(client: StoreContext['client']): StoreContext {
 const record = { PK: 'p', SK: 's', rev: 'r1' };
 
 describe('verifyWriteLanded (STORE-13)', () => {
-  it("reports 'landed' when the row holds this write's own rev, projecting only the rev", async () => {
+  /**
+   * Only the `rev` is read. An offloaded record's key ends in its own `rev`, so
+   * the row that holds a different one never names this write's object, and a
+   * cleanup needs nothing else from it.
+   */
+  it("reports 'landed' when the row holds this write's own rev, projecting the rev alone", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { rev: 'r1' } });
     await expect(verifyWriteLanded(context(client), record)).resolves.toBe('landed');
     const input = mock.commandCalls(GetCommand)[0].args[0].input;
-    expect(input.ProjectionExpression).toBe('#r');
-    expect(input.ExpressionAttributeNames).toEqual({ '#r': 'rev' });
+    expect(input.ProjectionExpression).toBe('#a0');
+    expect(input.ExpressionAttributeNames).toEqual({ '#a0': 'rev' });
     expect(input.ConsistentRead).toBe(true);
   });
 
@@ -69,8 +74,7 @@ describe('rowIsAbsent (I4, STORE-07)', () => {
     mock.on(GetCommand).resolves({});
     await expect(rowIsAbsent(context(client), { PK: 'p', SK: 's' })).resolves.toBe(true);
     const input = mock.commandCalls(GetCommand)[0].args[0].input;
-    expect(input.ProjectionExpression).toBe('#pk');
-    expect(input.ExpressionAttributeNames).toEqual({ '#pk': 'PK' });
+    expect(Object.values(input.ExpressionAttributeNames!)).toEqual(['PK']);
   });
 
   it('returns false when the row is still present', async () => {

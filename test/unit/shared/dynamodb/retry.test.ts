@@ -1,3 +1,7 @@
+import {
+  MAX_WRITE_LIFETIME_MS,
+  TOKEN_IDEMPOTENCY_WINDOW_MS,
+} from '../../../../src/shared/constants';
 import { withDynamoDBRetry, withRetry } from '../../../../src/shared/dynamodb/retry';
 import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -182,5 +186,101 @@ describe('withRetry abort normalisation (DDB-05)', () => {
     const controller = new AbortController();
     controller.abort(reason);
     await expect(withRetry(async () => 1, { signal: controller.signal })).rejects.toBe(reason);
+  });
+});
+
+describe('withRetry under a deadline', () => {
+  const failing = async (): Promise<never> => {
+    throw retryable();
+  };
+
+  /**
+   * The margin is what makes a retried write safe to re-send: the whole budget
+   * plus the attempt in flight when it expires still ends inside the window a
+   * client request token is honoured for.
+   */
+  it('bounds a write to half the token idempotency window', () => {
+    expect(TOKEN_IDEMPOTENCY_WINDOW_MS).toBe(600_000);
+    expect(MAX_WRITE_LIFETIME_MS).toBe(300_000);
+    expect(MAX_WRITE_LIFETIME_MS * 2).toBe(TOKEN_IDEMPOTENCY_WINDOW_MS);
+  });
+
+  it('spends no attempt past a deadline that has already gone by', async () => {
+    let calls = 0;
+    const error = (await withRetry(
+      async () => {
+        calls += 1;
+        return failing();
+      },
+      { maxAttempts: 3, baseDelayMs: 0, rng: () => 1, deadlineAt: Date.now() - 1 },
+    ).catch((e: Error) => e)) as RetryExhaustedError;
+    expect(calls).toBe(1);
+    expect(error).toBeInstanceOf(RetryExhaustedError);
+    expect(error.context.attempts).toBe(1);
+    expect(error.message).toContain('after 1 attempts');
+  });
+
+  /**
+   * The first sleep (500ms) fits inside the 1000ms budget and the second
+   * (1000ms) reaches it on its own, so the cut lands on attempt 2 by
+   * arithmetic rather than by how long anything really took.
+   */
+  it('cuts the budget before a sleep that would cross the deadline', async () => {
+    const onRetry = jest.fn();
+    let calls = 0;
+    const error = (await withRetry(
+      async () => {
+        calls += 1;
+        return failing();
+      },
+      { maxAttempts: 5, baseDelayMs: 500, rng: () => 1, onRetry, deadlineAt: Date.now() + 1000 },
+    ).catch((e: Error) => e)) as RetryExhaustedError;
+    expect(calls).toBe(2);
+    expect(error.context.attempts).toBe(2);
+    expect(error.message).toContain('after 2 attempts');
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the attempt reached, not the budget it was given', async () => {
+    const error = (await withRetry(failing, {
+      maxAttempts: 100,
+      baseDelayMs: 0,
+      rng: () => 1,
+      deadlineAt: Date.now() - 1,
+    }).catch((e: Error) => e)) as RetryExhaustedError;
+    expect(error.context.attempts).not.toBe(100);
+    expect(error.context.attempts).toBe(1);
+  });
+
+  it('throws a non-retryable error itself, inventing no attempt count', async () => {
+    const permanent = Object.assign(new Error('nope'), { name: 'ValidationException' });
+    const error = await withRetry(
+      async () => {
+        throw permanent;
+      },
+      { maxAttempts: 3, baseDelayMs: 0, deadlineAt: Date.now() - 1 },
+    ).catch((e: Error) => e);
+    expect(error).toBe(permanent);
+    expect(error).not.toBeInstanceOf(RetryExhaustedError);
+  });
+
+  it('leaves the schedule and the count exactly as they are without a deadline', async () => {
+    const onRetry = jest.fn();
+    const failure = retryable();
+    let calls = 0;
+    const error = (await withRetry(
+      async () => {
+        calls += 1;
+        throw failure;
+      },
+      { maxAttempts: 3, baseDelayMs: 10, rng: () => 1, onRetry },
+    ).catch((e: Error) => e)) as RetryExhaustedError;
+    expect(calls).toBe(3);
+    expect(onRetry.mock.calls.map(([info]) => info)).toEqual([
+      { attempt: 1, delayMs: 10, error: failure },
+      { attempt: 2, delayMs: 20, error: failure },
+    ]);
+    expect(error.context.attempts).toBe(3);
+    expect(error.message).toContain('after 3 attempts');
   });
 });

@@ -1,10 +1,16 @@
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { ValidationError } from '../../../../src/shared/errors/errors';
 import {
   validateKey,
   validateNamespace,
+  validateNamespaceLabels,
   validatePaging,
   validateStoreKey,
 } from '../../../../src/store/internal/validation';
+
+const refusal = (field: string) =>
+  expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field } });
 
 describe('validateNamespace', () => {
   it('accepts a non-empty, separator-free namespace', () => {
@@ -25,6 +31,33 @@ describe('validateNamespace', () => {
 
   it('throws when an element contains a control character (M7)', () => {
     expect(() => validateNamespace(['users', 'a\u001b[31m'])).toThrow(/control characters/);
+  });
+
+  it("accepts '.' and a 'langgraph' root, which only the put() method refuses", () => {
+    expect(() => validateNamespace(['users', 'a.b'])).not.toThrow();
+    expect(() => validateNamespace(['langgraph'])).not.toThrow();
+  });
+
+  it('names the field its caller gives', () => {
+    expect(() => validateNamespace([], 'namespacePrefix')).toThrow(refusal('namespacePrefix'));
+    expect(() => validateNamespace(['a#b'], 'namespacePrefix')).toThrow(
+      refusal('namespacePrefix element'),
+    );
+  });
+});
+
+describe('validateNamespaceLabels', () => {
+  it('accepts an empty path, a "*" label without any exemption, and "."', () => {
+    expect(() => validateNamespaceLabels([], 'prefix')).not.toThrow();
+    expect(() => validateNamespaceLabels(['*', 'a.b', '*'], 'prefix')).not.toThrow();
+  });
+
+  it('names the argument for a non-array and its element for a bad label', () => {
+    expect(() => validateNamespaceLabels('x' as never, 'suffix')).toThrow(refusal('suffix'));
+    expect(() => validateNamespaceLabels(['a', 1 as never], 'suffix')).toThrow(
+      refusal('suffix element'),
+    );
+    expect(() => validateNamespaceLabels(['a#b'], 'suffix')).toThrow(refusal('suffix element'));
   });
 });
 
@@ -82,5 +115,24 @@ describe('validatePaging', () => {
 
   it('throws on a non-integer limit', () => {
     expect(() => validatePaging(0, 1.5)).toThrow(ValidationError);
+  });
+
+  /**
+   * The store was the only `limit` already bounded below and, like every other,
+   * bounded nowhere above: `store.search({ limit: 1e12 })` resolved.
+   */
+  it('throws on a limit above the page ceiling and names it', () => {
+    expect(() => validatePaging(0, MAX_PAGE_LIMIT)).not.toThrow();
+    expect(() => validatePaging(0, MAX_PAGE_LIMIT + 1)).toThrow(refusal('limit'));
+    expect(() => validatePaging(0, 1e12)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
+  });
+
+  /**
+   * `offset` carries no ceiling of its own: it says where a page starts rather
+   * than how much one holds, and `maxScanItems` already bounds what it can make
+   * a read walk.
+   */
+  it('leaves a large offset alone', () => {
+    expect(() => validatePaging(1e12, 10)).not.toThrow();
   });
 });

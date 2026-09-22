@@ -1,5 +1,9 @@
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
-import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
+import type {
+  ChannelVersions,
+  Checkpoint,
+  CheckpointMetadata,
+} from '@langchain/langgraph-checkpoint';
 
 import { putCheckpoint } from '../../../../src/checkpointer/actions/put';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
@@ -30,23 +34,34 @@ function contextWith(client: CheckpointerContext['client']): CheckpointerContext
   return { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
 }
 
-function trackingOffloader() {
-  return {
-    shouldOffload: () => true,
-    buildKey: (parts: readonly string[]) => parts.join('/'),
-    upload: async (key: string) => key,
-    deleteBatch: jest.fn().mockResolvedValue([]),
-  };
-}
-
 function transientTimeout(): Error {
   return Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
 }
 
-/** The metadata descriptor the transaction tried to write, as the row would hold it. */
-function committedMetaRow(mock: ReturnType<typeof createStrictDocumentMock>['mock']) {
-  const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
-  return { Item: { metadata: items[0].Put?.Item?.metadata } };
+/**
+ * A serde that encodes normally except for its `refuseAt`-th value, which it
+ * turns into no bytes at all — the refusal `encodePayload` raises for a payload
+ * no reader could parse back. Pointed at the *second* value it reaches the
+ * metadata, after the checkpoint's own object has already uploaded.
+ */
+function refusingSerde(refuseAt: number): CheckpointerContext['serde'] {
+  let calls = 0;
+  return {
+    ...serde,
+    dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => {
+      calls += 1;
+      return calls === refuseAt ? ['json', new Uint8Array()] : serde.dumpsTyped(value);
+    },
+  };
+}
+
+function trackingOffloader() {
+  return {
+    shouldOffload: () => true,
+    buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
+    upload: async (key: string) => key,
+    deleteBatch: jest.fn().mockResolvedValue([]),
+  };
 }
 
 describe('putCheckpoint', () => {
@@ -97,67 +112,6 @@ describe('putCheckpoint', () => {
     ).rejects.toThrow('nope');
   });
 
-  it('cleans up its own nonced uploads when the write is confirmed not to have landed', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock
-      .on(TransactWriteCommand)
-      .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    mock.on(GetCommand).resolves({});
-    const offloader = trackingOffloader();
-    const context = { ...contextWith(client), offloader: offloader as never };
-    await expect(
-      putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
-    ).rejects.toThrow('boom');
-    expect(offloader.deleteBatch).toHaveBeenCalledWith([
-      expect.stringMatching(/^t1\/\/ckpt-1\/metadata\/[0-9A-HJKMNP-TV-Z]{26}$/),
-      expect.stringMatching(/^t1\/\/ckpt-1\/checkpoint\/[0-9A-HJKMNP-TV-Z]{26}$/),
-    ]);
-  });
-
-  it('keeps the uploads and returns the config when a retried transaction landed but lost its response', async () => {
-    // Attempt 1 commits server-side; every re-issue times out at the transport,
-    // so the budget is spent on RetryExhaustedError although the rows are live.
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(TransactWriteCommand).rejects(transientTimeout());
-    mock.on(GetCommand).callsFake(async () => committedMetaRow(mock));
-    const offloader = trackingOffloader();
-    const context = { ...contextWith(client), offloader: offloader as never };
-    await expect(
-      putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
-    ).resolves.toEqual({
-      configurable: { thread_id: 't1', checkpoint_ns: '', checkpoint_id: 'ckpt-1' },
-    });
-    expect(offloader.deleteBatch).not.toHaveBeenCalled();
-  });
-
-  it("cleans up its own uploads when the row holds another attempt's descriptor after retry exhaustion", async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(TransactWriteCommand).rejects(transientTimeout());
-    mock.on(GetCommand).resolves({
-      Item: { metadata: { location: 'S3', serdeType: 'json', compressed: false, s3Key: 'other' } },
-    });
-    const offloader = trackingOffloader();
-    const context = { ...contextWith(client), offloader: offloader as never };
-    await expect(
-      putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
-    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
-    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
-  });
-
-  it('leaks rather than deletes when the verification read itself fails', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(TransactWriteCommand).rejects(transientTimeout());
-    mock
-      .on(GetCommand)
-      .rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
-    const offloader = trackingOffloader();
-    const context = { ...contextWith(client), offloader: offloader as never };
-    await expect(
-      putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
-    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
-    expect(offloader.deleteBatch).not.toHaveBeenCalled();
-  });
-
   it('does not read back on failure when no offloader is configured', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(transientTimeout());
@@ -170,6 +124,53 @@ describe('putCheckpoint', () => {
       ),
     ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+
+  it('releases the checkpoint object when the metadata payload is refused', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = trackingOffloader();
+    const ctx = {
+      ...contextWith(client),
+      serde: refusingSerde(2),
+      offloader: offloader as never,
+    };
+    await expect(
+      putCheckpoint(ctx, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'value' } });
+    // The checkpoint uploaded, the metadata was refused, and no row names
+    // either: the object must not survive the call it was uploaded for.
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
+    expect(keys).toEqual([expect.stringMatching(/^t1\/\/ckpt-1\/checkpoint\/[^/]+$/)]);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+  });
+
+  it('still reports the refusal when releasing the object fails', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const offloader = trackingOffloader();
+    offloader.deleteBatch.mockRejectedValue(
+      Object.assign(new Error('denied'), { name: 'AccessDenied' }),
+    );
+    const ctx = { ...contextWith(client), serde: refusingSerde(2), offloader: offloader as never };
+    // The release is best-effort: a caller needs to see why its payload was
+    // refused, not why a cleanup could not finish.
+    await expect(
+      putCheckpoint(ctx, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'value' } });
+    // Asserted, not assumed: the refusal reaches the caller just as well when
+    // no release was attempted, so without this the test could not fail for
+    // the reason it exists.
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+  });
+
+  it('rethrows a refused payload untouched when no offloader is configured', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const ctx = { ...contextWith(client), serde: refusingSerde(2) };
+    await expect(
+      putCheckpoint(ctx, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'value' } });
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
   it('rejects an over-limit checkpoint with a typed error before any write when s3 is not configured (CKPT-03)', async () => {
@@ -205,8 +206,14 @@ const valued: Checkpoint = {
   channel_versions: { foo: 1, baz: 1 },
 };
 
-describe('putCheckpoint stores channel values per newVersions (validation suite)', () => {
-  it('stores only the channels newVersions names for a checkpoint without a parent', async () => {
+describe('putCheckpoint stores every channel value the checkpoint carries', () => {
+  /**
+   * The reference saver does not narrow what it stores: `MemorySaver.put` takes
+   * three parameters and has no `newVersions` at all
+   * (@langchain/langgraph-checkpoint@1.1.5 dist/memory.js:206). This adapter
+   * matches that, so `newVersions` cannot change what is written.
+   */
+  it('stores every value when newVersions names only one channel', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
     await putCheckpoint(
@@ -216,29 +223,22 @@ describe('putCheckpoint stores channel values per newVersions (validation suite)
       metadata,
       { foo: 1 },
     );
-    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar' });
-    const meta =
-      mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems?.[0].Put?.Item;
-    expect(meta?.storedChannels).toEqual(['foo']);
-    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
   });
 
-  it('carries the channels the parent stored that this put still holds', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    mock.on(TransactWriteCommand).resolves({});
-    mock.on(GetCommand).resolves({ Item: { storedChannels: ['baz'] } });
-    await putCheckpoint(
-      contextWith(client),
-      { configurable: { thread_id: 't1', checkpoint_id: 'parent-0' } },
-      valued,
-      metadata,
-      { foo: 1 },
-    );
-    expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
-    expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
-      PK: 'CHKPT#t1',
-      SK: 'META##parent-0',
-    });
+  /**
+   * LangGraph passes an empty `newVersions` when forking a checkpoint
+   * (`updateState(..., '__copy__')`) and when writing an empty-checkpoint
+   * update (@langchain/langgraph@1.4.13 dist/pregel/index.js:668 and :613).
+   * Narrowing by it wrote a checkpoint with no channel values at all.
+   */
+  it('stores every value when newVersions is empty, with and without a parent', async () => {
+    for (const configurable of [{ thread_id: 't1' }, { thread_id: 't1', checkpoint_id: 'p' }]) {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(TransactWriteCommand).resolves({});
+      await putCheckpoint(contextWith(client), { configurable }, valued, metadata, {});
+      expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
+    }
   });
 
   it('stores every value when newVersions is omitted', async () => {
@@ -251,6 +251,37 @@ describe('putCheckpoint stores channel values per newVersions (validation suite)
       metadata,
     );
     expect(storedCheckpoint(mock).channel_values).toEqual({ foo: 'bar', baz: 'qux' });
-    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+
+  /** The parent read existed only to carry channels forward; nothing needs it now. */
+  it('never reads the parent row, whatever newVersions says', async () => {
+    const cases: (ChannelVersions | undefined)[] = [undefined, {}, { foo: 1 }];
+    for (const versions of cases) {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(TransactWriteCommand).resolves({});
+      await putCheckpoint(
+        contextWith(client),
+        { configurable: { thread_id: 't1', checkpoint_id: 'parent-0' } },
+        valued,
+        metadata,
+        versions,
+      );
+      expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+    }
+  });
+
+  it('writes no storedChannels attribute on the META row', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).resolves({});
+    await putCheckpoint(
+      contextWith(client),
+      { configurable: { thread_id: 't1' } },
+      valued,
+      metadata,
+      { foo: 1 },
+    );
+    const meta =
+      mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems?.[0].Put?.Item;
+    expect(meta).not.toHaveProperty('storedChannels');
   });
 });

@@ -75,13 +75,23 @@ describe('matchesStoreFilter', () => {
     expect(matchesStoreFilter(schemaValue, { schema: { $schema: 'other' } })).toBe(false);
   });
 
-  it('does not vacuously match every item when a field condition is an empty operator object', () => {
-    const testValue = { status: 'active' };
-    expect(matchesStoreFilter(testValue, { role: {} })).toBe(false);
-    expect(matchesStoreFilter({ role: 'admin' }, { role: {} })).toBe(false);
-    // A structurally-equal empty object as the field's actual value still
-    // exact-matches, since {} then falls through to the plain-value branch:
+  /**
+   * An empty condition names no operators, so `every` over them is vacuously
+   * true and the condition constrains nothing — exactly as the reference store
+   * resolves it (@langchain/langgraph-checkpoint@1.1.5 dist/store/utils.js:61
+   * and :68). Requiring at least one operator inverted that answer, so the same
+   * filter matched nothing here and everything there.
+   */
+  it('imposes no constraint when a field condition is an empty operator object', () => {
+    expect(matchesStoreFilter({ role: 'admin' }, { role: {} })).toBe(true);
     expect(matchesStoreFilter({ role: {} }, { role: {} })).toBe(true);
+    expect(matchesStoreFilter({ role: 42 }, { role: {} })).toBe(true);
+  });
+
+  it('still applies every other condition beside an empty one', () => {
+    const value = { role: 'admin', score: 3 };
+    expect(matchesStoreFilter(value, { role: {}, score: { $gte: 3 } })).toBe(true);
+    expect(matchesStoreFilter(value, { role: {}, score: { $gte: 4 } })).toBe(false);
   });
 
   it('never lets a stored NaN satisfy a range operator (F3)', () => {
@@ -153,5 +163,25 @@ describe('range comparators are type-strict (M9, A4)', () => {
     // absent field could compare against a function rather than "no value".
     expect(matchesStoreFilter({}, { toString: 'x' })).toBe(false);
     expect(matchesStoreFilter({}, { constructor: { $gt: 1 } })).toBe(false);
+  });
+});
+
+/**
+ * `search` walks every candidate row, so one row whose value is not an object
+ * must not fail the search. `Object.hasOwn(null, …)` threw out of the public
+ * method.
+ */
+describe('matchesStoreFilter on a value that is not an object', () => {
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['a string', 'text'],
+    ['a number', 7],
+  ])('satisfies no condition when the value is %s', (_name, value) => {
+    expect(matchesStoreFilter(value as never, { a: 1 } as never)).toBe(false);
+  });
+
+  it('still satisfies an empty filter, which constrains nothing', () => {
+    expect(matchesStoreFilter(null as never, {})).toBe(true);
   });
 });

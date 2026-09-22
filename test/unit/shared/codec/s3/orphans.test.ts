@@ -1,4 +1,6 @@
 import { cleanUpS3Orphans } from '../../../../../src/shared/codec/s3/orphans';
+import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
+import { truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 function fakeLogger() {
   return { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
@@ -132,5 +134,27 @@ describe('cleanUpS3Orphans row scope (SEC-03)', () => {
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]), ownsKey: jest.fn() };
     await cleanUpS3Orphans(offloader as never, ['k'], 'put', fakeLogger());
     expect(offloader.ownsKey).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The line names the failure rather than repeating what it said, and the name
+ * is the SDK's or an offloader's own — nothing this package ran checked its
+ * length. `message` is bounded where `redactedMessage` relays it, so relaying
+ * the name whole would split what is one value.
+ */
+describe('cleanUpS3Orphans bounds the failure it names', () => {
+  it('cuts an error name past the log cap and states its real length', async () => {
+    const reason = 'N'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const offloader = {
+      deleteBatch: jest
+        .fn()
+        .mockRejectedValue(Object.assign(new Error('denied'), { name: reason })),
+    };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, ['k1'], 'put', logger, { rng: () => 0 });
+    expect(logger.warn).toHaveBeenCalledWith(expect.any(String), {
+      reason: truncateForLog(reason),
+    });
   });
 });

@@ -25,8 +25,19 @@ const RUNTIME_DEPS = Object.entries(manifest.peerDependencies)
   .filter(([name]) => !manifest.peerDependenciesMeta?.[name]?.optional)
   .map(([name, range]) => `"${name}@${range}"`);
 
-/** Type-checking the consumer needs a compiler and Node types; still no @aws-sdk/client-s3. */
-const TYPECHECK_DEPS = ['typescript', '@types/node'];
+/** Type-checking the consumer needs Node types; still no @aws-sdk/client-s3. */
+const TYPECHECK_DEPS = ['@types/node'];
+
+/**
+ * The compilers the shipped declarations are checked against: the floor the
+ * README's "Versioning and compatibility" section promises consumers, and the
+ * newest release. Installing an unpinned `typescript` checked only whatever was
+ * latest that day, so the promised floor was never exercised — and the
+ * repository's own typecheck cannot stand in for it, since that compiles the
+ * source with the pinned TypeScript 6/7, not the emitted `.d.ts` with a
+ * consumer's compiler.
+ */
+const TYPECHECK_COMPILERS = ['typescript@5', 'typescript@latest'];
 
 const OPTIONAL_PEER = '@aws-sdk/client-s3';
 
@@ -131,7 +142,10 @@ test('packs, installs the tarball, and imports the published surface', { timeout
     writeFileSync(join(dir, 'run.cjs'), SMOKE_CJS);
     assert.match(execSync('node run.cjs', { cwd: dir }).toString(), /SMOKE_CJS_OK/);
     writeFileSync(join(dir, 'consumer.ts'), CONSUMER);
-    assert.deepEqual(ourTypeErrors(dir), []);
+    for (const compiler of TYPECHECK_COMPILERS) {
+      execSync(`npm install "${compiler}"`, { cwd: dir, stdio: 'ignore' });
+      assert.deepEqual(ourTypeErrors(dir), [], `shipped declarations fail under ${compiler}`);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(tarballPath, { force: true });

@@ -2,7 +2,13 @@ import { GetCommand, PutCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-
 
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
-import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import {
+  answerDeleteReads,
+  createStrictDocumentMock,
+  deletedKeys,
+  observableRow,
+  resolveRowDeletes,
+} from '../../shared/helpers/ddb-mock';
 
 type Mock = ReturnType<typeof createStrictDocumentMock>['mock'];
 
@@ -71,10 +77,13 @@ describe('DynamoDBStore.batch dispatches independent operations concurrently (ST
     expect(item?.value).toEqual({ v: 1 });
   });
 
+  /** A put and a delete answer `null`, as the reference store's `batch` does. */
   it('returns a mixed batch in operation order', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).resolves({});
+    /** The projected pre-read observes a row, so the delete operation is really sent. */
+    answerDeleteReads(mock, observableRow());
     mock.on(PutCommand).resolves({});
+    resolveRowDeletes(mock);
     mock.on(QueryCommand).resolves({ Items: [] });
     mock
       .on(ScanCommand)
@@ -84,9 +93,11 @@ describe('DynamoDBStore.batch dispatches independent operations concurrently (ST
       { namespace: ['n'], key: 'k' },
       { namespacePrefix: ['n'] },
       { namespace: ['n'], key: 'k', value: { v: 1 } },
+      { namespace: ['n'], key: 'gone', value: null },
       { matchConditions: [], maxDepth: undefined, limit: 10, offset: 0 },
     ]);
-    expect(results).toEqual([null, [], undefined, [['a']]]);
+    expect(results).toStrictEqual([null, [], null, null, [['a']]]);
+    expect(deletedKeys(mock)).toEqual([{ PK: 'STORE#n', SK: 'gone' }]);
   });
 
   it('rejects the whole batch when one operation fails', async () => {

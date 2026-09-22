@@ -30,6 +30,7 @@ const ACTION_BY_S3_COMMAND: Record<string, string> = {
   GetObjectCommand: 's3:GetObject',
   DeleteObjectsCommand: 's3:DeleteObject',
   GetBucketLifecycleConfigurationCommand: 's3:GetLifecycleConfiguration',
+  GetBucketVersioningCommand: 's3:GetBucketVersioning',
   PutBucketLifecycleConfigurationCommand: 's3:PutLifecycleConfiguration',
 };
 

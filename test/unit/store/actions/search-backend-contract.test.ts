@@ -21,6 +21,50 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
 }
 
 describe('searchItems vectorBackend contract (I3, A3)', () => {
+  /**
+   * Every match costs a canonical read, so a page of them must not be a page of
+   * round-trips: the in-DynamoDB path already decodes with the same bounded
+   * concurrency (CODEC-14).
+   */
+  it('reads the matched items concurrently, not one round-trip at a time', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const record = await buildStoreItem(
+      context(client),
+      ['users', 'u1'],
+      'a',
+      { a: 1 },
+      { createdAt: 'c', updatedAt: 'u' },
+    );
+    let inFlight = 0;
+    let maxInFlight = 0;
+    mock.on(GetCommand).callsFake(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setImmediate(resolve));
+      inFlight -= 1;
+      return { Item: record };
+    });
+    const matches = Array.from({ length: 6 }, (_, i) => ({
+      namespace: ['users', 'u1'],
+      key: `k${i}`,
+      score: 1 - i / 10,
+    }));
+    const vectorBackend = {
+      upsert: jest.fn(),
+      delete: jest.fn(),
+      query: jest.fn().mockResolvedValue(matches),
+    };
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      vectorBackend: vectorBackend as never,
+    });
+    const found = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q', limit: 6 });
+    expect(found).toHaveLength(6);
+    expect(found.map((item) => item.score)).toEqual(matches.map((match) => match.score));
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
+
   it('warns when a backend returns scores that are not non-increasing (I3)', async () => {
     // The upstream SearchItem.score contract is "higher = better match", and
     // match.score is forwarded verbatim. A backend surfacing a raw *distance*

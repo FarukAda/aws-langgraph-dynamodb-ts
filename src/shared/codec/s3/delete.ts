@@ -4,9 +4,18 @@ import { S3_DELETE_BATCH_MAX } from '../../constants';
 import { loadS3Sdk } from './client';
 
 /**
- * Delete `keys` from `bucket` in chunks of 1000 (the DeleteObjects limit).
- * Returns the keys S3 reported as failed — never throws on per-key errors so
- * callers (orphan cleanup) can decide how loudly to react.
+ * Delete `keys` from `bucket`, in chunks of {@link S3_DELETE_BATCH_MAX} — the
+ * limit `DeleteObjects` accepts per request.
+ *
+ * Accepts: `keys` — any length, including empty, which issues no request.
+ *
+ * Returns: the keys S3 named in an error entry. A per-key failure is reported
+ * this way rather than thrown, so the caller (orphan cleanup) decides how
+ * loudly to react. An error entry carrying no `Key` cannot be attributed and is
+ * not reported.
+ *
+ * Throws: whatever the SDK rejects with — a request that never reached S3, or
+ * one refused whole (permissions, a missing bucket).
  */
 export async function deleteObjects(
   client: S3Client,

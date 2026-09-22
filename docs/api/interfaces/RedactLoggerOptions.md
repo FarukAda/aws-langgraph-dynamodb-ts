@@ -6,7 +6,7 @@
 
 # Interface: RedactLoggerOptions
 
-Defined in: [shared/logging/redaction.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L50)
+Defined in: [shared/logging/redaction.ts:120](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L120)
 
 Options controlling [redactLogger](../functions/redactLogger.md).
 
@@ -16,7 +16,7 @@ Options controlling [redactLogger](../functions/redactLogger.md).
 
 > `optional` **extraKeys?**: readonly `string`[]
 
-Defined in: [shared/logging/redaction.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L56)
+Defined in: [shared/logging/redaction.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L126)
 
 Additional key names to redact. Matched like the defaults: a key is
 redacted when its normalised form (lower-case, punctuation removed) equals
@@ -28,7 +28,7 @@ or ends with the normalised name, so `'ssn'` covers `SSN` and `user_ssn`.
 
 > `optional` **extraValuePatterns?**: readonly `RegExp`[]
 
-Defined in: [shared/logging/redaction.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L62)
+Defined in: [shared/logging/redaction.ts:132](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L132)
 
 Additional secret shapes to redact wherever they appear inside a string.
 A pattern's first capture group, if it has one, is preserved verbatim and

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
+import { nowMs } from '../../shared/clock';
+import { MAX_WRITE_LIFETIME_MS, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
 import { getCancellationReasons } from '../../shared/dynamodb/cancellation';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { ChatMessageItem } from '../types';
@@ -26,6 +27,28 @@ function isTtlConditionLoss(error: Error): boolean {
   );
 }
 
+/**
+ * Build one send of the chunk, drawing the token that makes its re-sends safe.
+ *
+ * The message rows are keyed by their own ULIDs, so putting one twice changes
+ * nothing; the session update is `ADD #count :n`, and that is the whole of the
+ * damage a re-send would do. Applied rather than deduplicated it adds the
+ * chunk's count a second time to a row whose messages are already there,
+ * nothing on this path reads the count back to notice, and
+ * `reconcileMessageCount` is the only repair.
+ *
+ * Drawn per send rather than per call, because the second send the ttl race
+ * triggers is a *different* request: it repeats the same chunk with
+ * `forceTtlRefresh: false`, which drops the session update's
+ * ConditionExpression, and the same token presented with changed parameters
+ * inside the service's window is refused outright. That race is also the one
+ * place the precondition on what a token guarantees shows here — the first
+ * send was cancelled by its condition, so it committed nothing, nothing was
+ * cached for its token, and the second send is a fresh evaluation rather than
+ * a replay. The deadline the caller draws beside this input is what keeps each
+ * send's retrying inside the window that send's token is honoured for; the
+ * token enforces no window of its own.
+ */
 function buildInput(
   context: HistoryContext,
   items: ChatMessageItem[],
@@ -47,12 +70,23 @@ async function attempt(
   retry: ChunkRetryOptions,
 ): Promise<void> {
   const input = buildInput(context, items, fields);
-  await withDynamoDBRetry(() => context.client.transactWrite(input), {
+  /**
+   * Minted here, beside the token, rather than once per `writeMessageChunk`.
+   * The ttl race sends the chunk twice and each send draws its own token, so
+   * each send is honoured for its own ten minutes and is entitled to a full
+   * budget. One deadline per call would hand the second send whatever the
+   * first did not spend, silently halving the retrying that matters most —
+   * the send made after a race has already been lost.
+   */
+  const deadlineAt = nowMs() + MAX_WRITE_LIFETIME_MS;
+  await withDynamoDBRetry((request) => context.client.transactWrite(input, request), {
     ...context.retry,
     /** The contention floor: a caller policy may raise the budget, never lower it. */
     maxAttempts: Math.max(MESSAGE_APPEND_RETRY_MAX_ATTEMPTS, context.retry?.maxAttempts ?? 0),
     rng: retry.rng,
     signal: retry.signal,
+    /** A bound on the whole budget, never on the attempt count above it. */
+    deadlineAt,
   });
 }
 
@@ -71,18 +105,46 @@ async function attempt(
  * cancellation caused by any other item (a genuine message-row conflict) is
  * not retried here — it propagates for the normal transient-conflict retry
  * budget inside `withDynamoDBRetry` to handle, or to the caller otherwise.
+ *
+ * Accepts: `items` — one chunk, already within the transaction's limits.
+ * `fields` — the session-metadata update accompanying it; its `indexShards` and
+ * its `writeId` are taken from the adapter's context, never from the caller.
+ * `retry.signal` — aborts between attempts.
+ *
+ * Returns: nothing. The chunk and the count are committed together or not at
+ * all.
+ *
+ * Throws: whatever the transaction throws — including a
+ * `TransactionCanceledException` for a genuine conflict, after the retry budget
+ * is spent. The caller compensates; this function never partially succeeds.
+ *
+ * Guarantees: `messageCount` can never disagree with the messages that landed,
+ * because they land in one transaction. At most one extra attempt is spent on
+ * the benign ttl race, and it carries its own request token, so a retry can
+ * never double-apply the count — and its own deadline of
+ * {@link MAX_WRITE_LIFETIME_MS}, so the retrying stops while that token is
+ * still deduplicating rather than after it has expired. The SESSION row's
+ * `writeId` moves if and only if a message row was added: the update travels in
+ * the same transaction as the rows, and nothing else writes it.
  */
 export async function writeMessageChunk(
   context: HistoryContext,
   items: ChatMessageItem[],
-  fields: SessionUpdateFields,
+  fields: Omit<SessionUpdateFields, 'writeId'>,
   retry: ChunkRetryOptions = {},
 ): Promise<void> {
+  /**
+   * The index shard comes from the adapter's context, not from the caller's
+   * fields, and the write id is drawn here — once per chunk, beside it. Drawn
+   * here rather than inside the builder, every attempt of this chunk carries
+   * one id, and no caller can supply or reuse one.
+   */
+  const withIndex = { ...fields, indexShards: context.indexShards, writeId: context.ulid() };
   try {
-    await attempt(context, items, fields, retry);
+    await attempt(context, items, withIndex, retry);
   } catch (error) {
     if (fields.forceTtlRefresh && isTtlConditionLoss(error as Error)) {
-      await attempt(context, items, { ...fields, forceTtlRefresh: false }, retry);
+      await attempt(context, items, { ...withIndex, forceTtlRefresh: false }, retry);
       return;
     }
     throw error;

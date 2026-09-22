@@ -1,4 +1,7 @@
 import {
+  checkpointerPartitionPrefix,
+  isCheckpointerSortKey,
+  metaAnyNamespacePrefix,
   metaSortKey,
   metaSortKeyPrefix,
   partitionKey,
@@ -34,9 +37,17 @@ describe('checkpointer keys', () => {
     expect(writeSortKey('', 'c', 't', 0, 'chanA')).not.toBe(writeSortKey('', 'c', 't', 0, 'chanB'));
   });
 
+  /**
+   * Padding a fraction produced `00000009.5`, a sort key that no longer orders
+   * numerically — the whole point of the fixed-width encoding.
+   */
+  it('rejects a write index that is not an integer', () => {
+    expect(() => writeSortKey('', 'c1', 'task', 1.5, 'ch')).toThrow(/encodable/);
+  });
+
   it('rejects a write index outside the encodable range (M8)', () => {
-    expect(() => writeSortKey('', 'c', 't', -9, 'ch')).toThrow(/outside the range/);
-    expect(() => writeSortKey('', 'c', 't', 1e10, 'ch')).toThrow(/outside the range/);
+    expect(() => writeSortKey('', 'c', 't', -9, 'ch')).toThrow(/encodable/);
+    expect(() => writeSortKey('', 'c', 't', 1e10, 'ch')).toThrow(/encodable/);
   });
 
   it('orders WRITE sort keys numerically by index (10 after 2)', () => {
@@ -62,5 +73,32 @@ describe('writeSortKey composed length (SEC-10)', () => {
 
   it('accepts a composed sort key at the limit', () => {
     expect(() => writeSortKey('ns', 'c'.repeat(256), 't'.repeat(256), 0, 'ch')).not.toThrow();
+  });
+});
+
+describe('checkpointer key-space tags', () => {
+  it('exposes the partition tag every checkpointer row starts with', () => {
+    expect(checkpointerPartitionPrefix()).toBe('CHKPT#');
+    expect(partitionKey('t').startsWith(checkpointerPartitionPrefix())).toBe(true);
+  });
+
+  /** A list without a namespace spans every namespace of the thread. */
+  it('exposes a META prefix that spans every namespace', () => {
+    expect(metaAnyNamespacePrefix()).toBe('META#');
+    expect(metaSortKey('ns', 'c1').startsWith(metaAnyNamespacePrefix())).toBe(true);
+    expect(metaSortKey('', 'c1').startsWith(metaAnyNamespacePrefix())).toBe(true);
+  });
+
+  /**
+   * A partition-wide delete has no sort-key condition, so this is what keeps it
+   * from wiping a row another adapter left in the partition.
+   */
+  it('owns its three row kinds and nothing else', () => {
+    expect(isCheckpointerSortKey(metaSortKey('', 'c1'))).toBe(true);
+    expect(isCheckpointerSortKey(payloadSortKey('', 'c1'))).toBe(true);
+    expect(isCheckpointerSortKey(writeSortKey('', 'c1', 'task', 0, 'ch'))).toBe(true);
+    expect(isCheckpointerSortKey('HISTORY#SESSION')).toBe(false);
+    expect(isCheckpointerSortKey('u1#profile')).toBe(false);
+    expect(isCheckpointerSortKey('META')).toBe(false);
   });
 });

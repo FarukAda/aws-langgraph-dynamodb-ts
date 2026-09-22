@@ -1,7 +1,11 @@
-import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-checkpoint';
+import type {
+  IndexConfig,
+  SearchOperation,
+  SerializerProtocol,
+} from '@langchain/langgraph-checkpoint';
 
 import type { PayloadDescriptor } from '../shared/codec/codec';
-import type { BaseAdapterOptions, CodecOptions } from '../shared/options';
+import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';
 import type { VectorScoreDirection } from './internal/score-direction';
 import type { VectorBackend } from './vector-backend';
 
@@ -9,19 +13,37 @@ import type { VectorBackend } from './vector-backend';
 export type DynamoDBStoreOptions = BaseAdapterOptions &
   CodecOptions & {
     /**
-     * Optional semantic-search index configuration (embeddings + fields). The
-     * embedding is stored inline on the item (about 10 bytes per dimension) and
-     * is not counted toward `s3.thresholdBytes`; see that option's note on the
-     * 400 KB item limit.
+     * Optional semantic-search index configuration (embeddings + fields).
+     *
+     * Without a `vectorBackend` the vectors live on the item itself, one per
+     * extracted path at roughly 10 bytes per dimension. They are not counted
+     * toward `s3.thresholdBytes` — offload decides on the payload alone — so a
+     * value near the threshold plus many vectors is the combination to watch
+     * against DynamoDB's 400 KB item limit; see that option's note.
      */
     index?: IndexConfig;
-    /** Optional serializer override (defaults to the JSON serializer). */
+    /**
+     * Optional serializer override. The default is the exported `JSON_SERDE`,
+     * plain JSON: what it stores is the JSON projection of a value, and the
+     * README's *Table schema* section tabulates where that differs from the
+     * value itself.
+     */
     serde?: SerializerProtocol;
     /** Optional external vector index; when set, similarity search delegates to it. */
     vectorBackend?: VectorBackend;
-    /** Max candidates the in-DB ranker will score before erroring (default 1000). */
+    /**
+     * Max candidates a semantic search may hold in memory to rank, and the
+     * furthest a `vectorBackend` page may reach, before erroring (default
+     * 1000). It bounds this process's memory, not the corpus — a corpus larger
+     * than this belongs behind a `vectorBackend`.
+     */
     maxSearchCandidates?: number;
-    /** Cap on items scanned into memory during a plain (non-semantic) search before ResultTruncatedError. Defaults to MAX_TOTAL_ITEMS_IN_MEMORY. */
+    /**
+     * Cap on rows read into memory by one search, namespace listing or
+     * reconcile before `ResultTruncatedError`. Reaching it is an error, not a
+     * truncation: a partial answer is never returned as a complete one.
+     * Defaults to `MAX_TOTAL_ITEMS_IN_MEMORY`.
+     */
     maxScanItems?: number;
     /**
      * Direction of the score a `vectorBackend` returns. `'relevance'` (the
@@ -34,15 +56,64 @@ export type DynamoDBStoreOptions = BaseAdapterOptions &
     vectorScoreDirection?: VectorScoreDirection;
   };
 
+/**
+ * Options {@link DynamoDBStore.search} accepts: the metadata/paging fields of
+ * `SearchOperation` it exposes as its own parameter (`namespacePrefix` is a
+ * separate positional argument instead), plus cancellation.
+ */
+export type SearchOptions = Pick<SearchOperation, 'filter' | 'limit' | 'offset' | 'query'> &
+  CancelOptions;
+
+/**
+ * Options {@link DynamoDBStore.listNamespaces} accepts: the object
+ * `BaseStore.listNamespaces` declares inline, with the same five optional
+ * fields, named so a caller can type the options it builds. A test pins it
+ * equal to upstream's parameter type.
+ */
+export interface ListNamespacesOptions {
+  /** Only namespaces starting with these labels; `'*'` matches any one label. */
+  prefix?: string[];
+  /** Only namespaces ending with these labels; `'*'` matches any one label. */
+  suffix?: string[];
+  /**
+   * Truncate each namespace to at most this many labels, at least 1; the
+   * namespaces that truncation makes equal are listed once.
+   */
+  maxDepth?: number;
+  /**
+   * How many namespaces to return, from 0 to `MAX_PAGE_LIMIT` (10,000);
+   * default 100. `0` returns an empty array without reading the table.
+   */
+  limit?: number;
+  /** How many namespaces to skip first, a non-negative integer; default 0. */
+  offset?: number;
+}
+
 /** The DynamoDB item backing a single stored value. */
 export interface StoreItemRecord {
   PK: string;
   SK: string;
+  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
+  v?: number;
+  /** Recency-index keys; absent on rows written before the index existed. */
+  gsi1pk?: string;
+  gsi1sk?: string;
   namespace: string[];
   key: string;
   value: PayloadDescriptor;
   createdAt: string;
   updatedAt: string;
+  /**
+   * One vector per extracted path, scored by best match on read. Absent when
+   * the value has no indexable text, or when a `vectorBackend` holds the
+   * vectors instead.
+   */
+  embeddings?: number[][];
+  /**
+   * The single joined vector rows carried before the store embedded each path
+   * separately. Never written now; still read, and scored as a one-element
+   * list, so rows written by an earlier version rank exactly as they did.
+   */
   embedding?: number[];
   ttl?: number;
   /**

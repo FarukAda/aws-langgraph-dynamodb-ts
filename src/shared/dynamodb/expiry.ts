@@ -1,9 +1,19 @@
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
 /**
- * True when a row carrying a DynamoDB TTL is at or past it. DynamoDB's sweep
- * can lag up to ~48 h, so every read path applies this itself; the value is
- * epoch seconds, the unit the `ttl` attribute uses.
+ * Whether a row has reached its TTL.
+ *
+ * Accepts: `row` — any row; one without a `ttl` attribute never expires.
+ * `nowSeconds` — the current epoch **second**, the unit the attribute uses.
+ *
+ * Returns: true when `ttl <= nowSeconds`, so the expiry instant itself counts
+ * as expired.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: an expired row is absent to every reader even while DynamoDB's
+ * own sweep lags, which it may by up to 48 hours
+ * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/howitworks-ttl.html).
  */
 export function isExpiredRow(row: { ttl?: number }, nowSeconds: number): boolean {
   return row.ttl !== undefined && row.ttl <= nowSeconds;
@@ -12,10 +22,21 @@ export function isExpiredRow(row: { ttl?: number }, nowSeconds: number): boolean
 const TTL_FILTER = 'attribute_not_exists(#ttl) OR #ttl > :now';
 
 /**
- * Exclude expired rows server-side, ANDing any filter the query already has.
- * A filter never replaces the in-process {@link isExpiredRow} check — it only
- * trims transfer — because the two clocks (query build, row iteration) are
- * not the same instant and DynamoDB applies filters after `Limit`.
+ * The same query with expired rows filtered out server-side.
+ *
+ * Accepts: `params` — a Query or Scan input, with or without a
+ * `FilterExpression`; an existing one is ANDed rather than replaced.
+ * `nowSeconds` — the epoch second to compare against.
+ *
+ * Returns: a copy carrying the added filter and the `#ttl` / `:now` aliases. No
+ * other call site in this package uses those two names, so the merge cannot
+ * shadow a caller's own alias.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: this trims transfer only. It never replaces the in-process
+ * {@link isExpiredRow} check, because the query is built and its rows are read
+ * at two different instants, and DynamoDB applies a filter *after* `Limit`.
  */
 export function withoutExpired<T extends QueryCommandInput | ScanCommandInput>(
   params: T,

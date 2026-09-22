@@ -1,4 +1,4 @@
-import { GetCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, QueryCommand, ScanCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
@@ -66,7 +66,31 @@ describe('public error boundary (CORE-01)', () => {
     const cause = sdkError();
     mock.on(GetCommand).rejects(cause);
     const store = new DynamoDBStore({ tableName: 'store', client });
-    await expect(store.get(['n'], 'k')).rejects.toMatchObject(wrapped('store.batch', cause));
+    await expect(store.get(['n'], 'k')).rejects.toMatchObject(wrapped('store.get', cause));
+  });
+
+  /**
+   * The four single-operation methods share `batch`'s machinery and must not
+   * share its brand: an operator counting `UpstreamError` by
+   * `context.operation` is told which method the caller called, and the
+   * README's error table names the four separately.
+   */
+  it('DynamoDBStore brands a single-operation failure with the method the caller called', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const cause = sdkError();
+    mock.on(GetCommand).rejects(cause);
+    mock.on(ScanCommand).rejects(cause);
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.put(['n'], 'k', { v: 1 })).rejects.toMatchObject(
+      wrapped('store.put', cause),
+    );
+    await expect(store.delete(['n'], 'k')).rejects.toMatchObject(wrapped('store.delete', cause));
+    await expect(store.listNamespaces()).rejects.toMatchObject(
+      wrapped('store.listNamespaces', cause),
+    );
+    await expect(store.batch([{ namespace: ['n'], key: 'k' }])).rejects.toMatchObject(
+      wrapped('store.batch', cause),
+    );
   });
 
   it('DynamoDBChatMessageHistory wraps a raw SDK error from getMessages', async () => {
