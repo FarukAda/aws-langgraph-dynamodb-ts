@@ -50,7 +50,7 @@ carries a `LastModified` timestamp a sweep can use to compute remaining grace.
 **What the probe did not cover.** A `ListObjectVersions` response spanning more
 than one page.
 
-## E-11: a lifecycle rule may pair `ExpiredObjectDeleteMarker` with `NoncurrentVersionExpiration`, but never share one `Expiration` with `Days`
+## E-11: a lifecycle rule cannot share one `Expiration` between `Days` and `ExpiredObjectDeleteMarker`
 
 **Request** — `PutBucketLifecycleConfiguration` with one rule whose single
 `Expiration` carries both `Days` and `ExpiredObjectDeleteMarker: true`.
@@ -62,11 +62,18 @@ REFUSED: name=MalformedXML Code=MalformedXML status=400
 msg=The XML you provided was not well-formed or did not validate against our published schema
 ```
 
-A rule that instead puts `ExpiredObjectDeleteMarker` in its **own** `Expiration` —
-alone, or beside a `NoncurrentVersionExpiration` in the same rule, or as a second
-rule next to a separate `Expiration{Days}` rule — is accepted and round-trips
-unchanged on read-back (confirmed by the paired case both rules of this package's
-own lifecycle provisioning write, which a live test exercises on every run).
+The shape this package writes instead — `ExpiredObjectDeleteMarker` in the
+`Expiration` of a **second** rule, next to a separate rule carrying
+`Expiration{Days}` — is accepted and round-trips unchanged on read-back. That is
+asserted on every run, not by E-11's test but by the lifecycle provisioning test
+beside it ("provisions both rules, reads them back unchanged, and then writes
+nothing", `test/aws/real-aws-s3-lifecycle.test.ts`).
+
+**Measured, but not asserted by any live test.** The probe also saw S3 accept
+`ExpiredObjectDeleteMarker` in its own `Expiration` alone, and beside a
+`NoncurrentVersionExpiration` in the same rule. This package never sends either
+shape, so no live test re-checks them; they are recorded as the observation they
+were, not as a claim the live tier keeps true.
 
 **What this settles.** `ExpiredObjectDeleteMarker` cannot share one `Expiration`
 block with `Days`/`Date` — this matches the S3 API reference's stated constraint,

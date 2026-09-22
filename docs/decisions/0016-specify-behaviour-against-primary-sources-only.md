@@ -57,7 +57,7 @@ a dated, re-runnable probe — than documented behaviour, not a lower one.
 Negative. Establishing an undocumented fact costs a live run against a
 real AWS account, which not every contributor can do, and `docs/evidence/`
 is deliberately not run on a schedule, so a claim is only as fresh as the
-maintainer's last run before a release — the run date recorded beside each
+run on the last release tag (record 18) — the run date recorded beside each
 claim exists for exactly that reason.
 
 Neutral. This rule does not forbid running tests against DynamoDB Local or

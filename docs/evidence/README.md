@@ -11,11 +11,13 @@ alone cannot be checked by a reviewer without AWS credentials.
 
 Nothing runs this live tier on a schedule, deliberately: one suite calls Bedrock,
 and a scheduled job that retried or looped would bill the account with nobody
-watching. It runs on demand, by a maintainer, before a release
+watching. It runs on every `v*` release tag (`integration-live.yml`), and the
+release does not publish unless that run passed (decision record 18). A
+maintainer can also run it locally with their own credentials
 (`AWS_REGION=eu-central-1 npm run test:aws`; every `E-` claim alone with
-`-t "E-"`). So a claim is only as fresh as the last run that checked it — the date
-of each run is stated below for exactly that reason; re-run the suite before
-relying on one of these claims in a decision that matters.
+`-t "E-"`). So between releases a claim is only as fresh as the last run that
+checked it — the date of each run is stated below for exactly that reason; re-run
+the suite before relying on one of these claims in a decision that matters.
 
 ## Run conditions
 
@@ -48,7 +50,7 @@ it identifies the maintainer's, and nothing in a probe can be re-derived from it
 | E-8 | A conditional `PutObject` that loses a race is refused with `ConditionalRequestConflict`/409 | [s3-conditional-create.md](s3-conditional-create.md) | `test/aws/real-aws-s3.test.ts` |
 | E-9 | `GetBucketVersioning` distinguishes never-versioned, enabled and suspended | [s3-versioning-and-lifecycle.md](s3-versioning-and-lifecycle.md) | `test/aws/real-aws-s3-versioning.test.ts` |
 | E-10 | Deleting a versioned object leaves a delete marker, and the prior version stays readable by id | [s3-versioning-and-lifecycle.md](s3-versioning-and-lifecycle.md) | `test/aws/real-aws-s3-versioning.test.ts` |
-| E-11 | A lifecycle rule may pair `ExpiredObjectDeleteMarker` with `NoncurrentVersionExpiration`, but never share one `Expiration` with `Days` | [s3-versioning-and-lifecycle.md](s3-versioning-and-lifecycle.md) | `test/aws/real-aws-s3-lifecycle.test.ts` |
+| E-11 | A lifecycle rule cannot share one `Expiration` between `Days` and `ExpiredObjectDeleteMarker` | [s3-versioning-and-lifecycle.md](s3-versioning-and-lifecycle.md) | `test/aws/real-aws-s3-lifecycle.test.ts` |
 | E-12 | Under suspended versioning, writes get a null version id and old versions survive untouched | [s3-versioning-and-lifecycle.md](s3-versioning-and-lifecycle.md) | `test/aws/real-aws-s3-versioning.test.ts` |
 | E-13 | The idempotency cache covers a transactional `Delete` exactly as it covers a `Put` | [transactional-delete-idempotency.md](transactional-delete-idempotency.md) | `test/aws/real-aws-delete.test.ts` |
 | E-14 | A conditional `DeleteItem` against an already-gone row is refused with no item attached | [conditional-delete.md](conditional-delete.md) | `test/aws/real-aws-delete.test.ts` |
