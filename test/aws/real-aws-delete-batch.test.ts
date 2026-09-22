@@ -29,11 +29,10 @@ const bigAttribute = randomBytes(220 * 1024).toString('base64');
  * Why the partition delete is one conditional `DeleteItem` per row rather than
  * a `BatchWriteItem`, proved against real AWS: the batch path cannot be made
  * safe at any price, what the per-row path costs instead, and what it meets
- * under contention (the measurement §11.6 had been borrowing from the write
- * side).
+ * under contention. Two of these assert claims recorded in `docs/evidence`
+ * (E-16, E-17).
  *
- * Ported from `live-validation-delete.md`, run 2026-09-19. Creates and tears
- * down one on-demand table per run.
+ * Creates and tears down one on-demand table per run.
  */
 describe('the batch delete path, its cost and its contention, against real AWS', () => {
   let admin: DynamoDBClient;
@@ -56,10 +55,10 @@ describe('the batch delete path, its cost and its contention, against real AWS',
   });
 
   /**
-   * `live-validation-delete.md`, seventh probe — a `ConditionExpression` on a
-   * `BatchWriteItem` `DeleteRequest` is **accepted and silently ignored**: the
-   * request succeeds, reports nothing unprocessed, and the row is deleted
-   * although the condition was false.
+   * (docs/evidence/batch-write-condition.md, E-17) — a `ConditionExpression`
+   * on a `BatchWriteItem` `DeleteRequest` is **accepted and silently
+   * ignored**: the request succeeds, reports nothing unprocessed, and the row
+   * is deleted although the condition was false.
    *
    * This assertion is **defensive, not diagnostic**. It exists so that a future
    * "optimisation" back to a conditional batch — twenty-five rows per request
@@ -73,7 +72,7 @@ describe('the batch delete path, its cost and its contention, against real AWS',
    * reach the wire. A guard that is not transmitted and a guard that is ignored
    * are the same danger: the caller wrote a condition and the row went anyway.
    */
-  it('D7: accepts a condition on a batch delete request and deletes the row regardless', async () => {
+  it('E-17: accepts a condition on a batch delete request and deletes the row regardless', async () => {
     const key = { PK: 'd7', SK: 'row' };
     await doc.put({ TableName: tableName, Item: { ...key, rev: 'R1' } });
 
@@ -99,8 +98,8 @@ describe('the batch delete path, its cost and its contention, against real AWS',
   });
 
   /**
-   * `live-validation-delete.md`, sixth probe and the second run's B2 — what a
-   * delete costs, and what a refusal does not report.
+   * (docs/evidence/delete-capacity.md, E-16) — what a delete costs, and what a
+   * refusal does not report.
    *
    * A successful delete is charged on the size of the row it removes, not on a
    * flat unit, which is why a checkpoint row carrying an inline payload is
@@ -114,7 +113,7 @@ describe('the batch delete path, its cost and its contention, against real AWS',
    * What is asserted is only the shape: absent on a refusal, and well above one
    * unit on a success.
    */
-  it('D6/B2: reports no consumed capacity for a refusal and row-sized capacity for a success', async () => {
+  it('E-16: reports no consumed capacity for a refusal and row-sized capacity for a success', async () => {
     const key = { PK: 'd6', SK: 'row' };
     await doc.put({ TableName: tableName, Item: { ...key, rev: 'R1', blob: bigAttribute } });
 
@@ -141,8 +140,8 @@ describe('the batch delete path, its cost and its contention, against real AWS',
   });
 
   /**
-   * The delete-side contention measurement §11.6 had been borrowing from the
-   * write side.
+   * The delete-side contention measurement, previously untested on its own —
+   * only the write side's had been.
    *
    * Five deleters race one row, each pinned on the revision it observed, each
    * under its own token and the library's own retry budget. The claim is

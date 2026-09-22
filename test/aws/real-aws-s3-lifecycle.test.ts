@@ -5,6 +5,7 @@ import {
   CreateBucketCommand,
   GetBucketLifecycleConfigurationCommand,
   type LifecycleRule,
+  PutBucketLifecycleConfigurationCommand,
   S3Client,
   waitUntilBucketExists,
 } from '@aws-sdk/client-s3';
@@ -13,6 +14,7 @@ import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { buildLifecycleRuleId, buildMarkerRuleId } from '../../src/shared/codec/s3/config';
 import { S3_RELEASE_GRACE_DAYS } from '../../src/shared/constants';
+import { rejection } from './helpers/probe';
 import { deleteBucketCompletely, deleteTableCompletely, settleAll } from './helpers/teardown';
 
 const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
@@ -114,8 +116,10 @@ function countingClient(counter: { puts: number }): S3Client {
 /**
  * Real-AWS verification of S3 lifecycle-rule provisioning and the S3 error
  * taxonomy — split out from real-aws-s3.test.ts (which owns the core offload
- * CRUD path) to stay under this repo's per-file line cap. Creates and tears
- * down a unique table and bucket per run.
+ * CRUD path) to stay under this repo's per-file line cap. Also carries the one
+ * raw-SDK lifecycle probe this package's own provisioning code never
+ * exercises (E-11 of `docs/evidence`). Creates and tears down a unique table
+ * and bucket per run.
  */
 describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
   let admin: DynamoDBClient;
@@ -356,5 +360,39 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     // withRetry's maxAttempts for S3 uploads is 3 — retry-exhaustion should
     // have genuinely occurred, not an immediate non-retryable throw.
     expect(putAttempts).toBe(3);
+  });
+
+  /**
+   * (docs/evidence/s3-versioning-and-lifecycle.md, E-11) — the refusal half of
+   * the marker-reclaim constraint: a single lifecycle rule cannot pair
+   * `ExpiredObjectDeleteMarker` with a `Days`-based `Expiration` in the same
+   * `Expiration` block. The accepted half — the two as separate rules — is
+   * exercised by every other test in this file that provisions the marker
+   * rule beside the ttl rule; this is the one nothing else here covers,
+   * because `ensureS3LifecycleRule` never sends the combined shape.
+   *
+   * The refusal happens at request validation, before anything is written, so
+   * this cannot disturb the rules the other tests in this file have already
+   * provisioned on the shared bucket.
+   */
+  it('E-11: a single Expiration combining Days and ExpiredObjectDeleteMarker is refused as MalformedXML', async () => {
+    const refused = await rejection(
+      s3.send(
+        new PutBucketLifecycleConfigurationCommand({
+          Bucket: bucketName,
+          LifecycleConfiguration: {
+            Rules: [
+              {
+                ID: 'e11-combined-expiration',
+                Status: 'Enabled',
+                Filter: { Prefix: 'e11-combined/' },
+                Expiration: { Days: 32, ExpiredObjectDeleteMarker: true },
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    expect(refused.name).toBe('MalformedXML');
   });
 });

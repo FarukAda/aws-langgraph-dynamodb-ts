@@ -5,6 +5,7 @@ import { DynamoDBDocument, type TransactWriteCommandInput } from '@aws-sdk/lib-d
 
 import {
   conditionalCheckFailure,
+  getCancellationReasons,
   type RejectionFields,
 } from '../../src/shared/dynamodb/cancellation';
 import {
@@ -44,11 +45,11 @@ function tokenedPut(
 
 /**
  * The live assertions the **write** side of the offload-durability design rests
- * on (design §8.3, L1–L4 and L8), ported from the one-off probes recorded in
- * `live-validation.md` on 2026-09-17 so that they run before every tag instead
- * of living in a markdown file that nothing re-checks.
+ * on, each asserting a claim recorded in `docs/evidence` (E-1 through E-6), so
+ * that they run before every tag instead of living in a markdown file that
+ * nothing re-checks.
  *
- * None of these can be carried by DynamoDB Local, and L8 least of all: there a
+ * None of these can be carried by DynamoDB Local, and E-3 least of all: there a
  * cancelled token reserves nothing, so the local image answers a changed body
  * by re-evaluating it. Everything here needs a real service.
  *
@@ -75,9 +76,9 @@ describe('the idempotency contract this design rests on, against real AWS', () =
   });
 
   /**
-   * L1 (`live-validation.md` §1, "VERDICT L1: REPLAY SUPPRESSED") — the one
-   * assertion the whole prevention layer rests on, and the reason every other
-   * assertion in this file is interpretable at all.
+   * (docs/evidence/cancelled-transaction-token.md, E-1) — the one assertion
+   * the whole prevention layer rests on, and the reason every other assertion
+   * in this file is interpretable at all.
    *
    * The library uploads an object, then commits the row that names it. If a
    * re-sent write could land a second time, the cleanup that follows a lost
@@ -86,7 +87,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
    * row between the two sends is what makes this a real test: a replay that was
    * genuinely re-evaluated would recreate it.
    */
-  it('L1: answers a replayed completed token from the cache and writes nothing', async () => {
+  it('E-1: answers a replayed completed token from the cache and writes nothing', async () => {
     const token = randomUUID();
     const input = tokenedPut(token, { PK: 'l1', SK: 'row', marker: 'first' }, false);
 
@@ -106,7 +107,8 @@ describe('the idempotency contract this design rests on, against real AWS', () =
   });
 
   /**
-   * L2 (`live-validation.md` §1) — a cancelled token caches no result.
+   * (docs/evidence/cancelled-transaction-token.md, E-2) — a cancelled token
+   * caches no result.
    *
    * The replay does not merely fail again: the blocker is gone by then, so
    * re-evaluation succeeds and writes the row. That is the strongest possible
@@ -115,7 +117,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
    * no idempotency at all, and its retry is a fresh evaluation against the
    * table as it stands at retry time.
    */
-  it('L2: re-evaluates and applies a replayed cancelled token once the blocker is gone', async () => {
+  it('E-2: re-evaluates and applies a replayed cancelled token once the blocker is gone', async () => {
     await doc.put({ TableName: tableName, Item: { PK: 'l2', SK: 'row', blocker: 'yes' } });
     const input = tokenedPut(randomUUID(), { PK: 'l2', SK: 'row', marker: 'replay' }, true);
 
@@ -136,25 +138,25 @@ describe('the idempotency contract this design rests on, against real AWS', () =
   });
 
   /**
-   * L8 (`live-validation.md` §1, L2c) — the re-pin refusal, and **the one
-   * assertion in this repository that only real AWS can make**.
+   * (docs/evidence/cancelled-transaction-token.md, E-3) — the re-pin refusal,
+   * and **the one assertion in this repository that only real AWS can make**.
    *
    * A cancelled use caches no result but still reserves its *parameters*, so
    * the same token presented with a changed body inside the ten-minute window
    * is refused with `IdempotentParameterMismatchException` — a name that is in
    * no retry list and in no handler in this package, so a helper that reused a
    * token across a compare-and-swap re-pin would surface a raw SDK error to a
-   * caller. This is what makes the design's "a re-pin draws a fresh token" rule
-   * necessary rather than merely tidy.
+   * caller. This is what makes "a re-pin draws a fresh token" a necessary rule
+   * rather than merely a tidy one.
    *
    * Do not move this into the integration tier and do not "simplify" it into
-   * L1. DynamoDB Local does not reserve a cancelled token's parameters
-   * (`local-validation.md` Probe 3) and simply re-evaluates the changed body,
-   * so the assertion silently inverts there. And a re-send of an *identical*
-   * request proves L1, not this: the mismatch needs the same token with
-   * different parameters, which is the adjacent mistake.
+   * E-1. DynamoDB Local does not reserve a cancelled token's parameters and
+   * simply re-evaluates the changed body, so the assertion silently inverts
+   * there. And a re-send of an *identical* request proves E-1, not this: the
+   * mismatch needs the same token with different parameters, which is the
+   * adjacent mistake.
    */
-  it('L8: refuses a cancelled token re-sent with a changed body', async () => {
+  it('E-3: refuses a cancelled token re-sent with a changed body', async () => {
     const token = randomUUID();
     await doc.put({ TableName: tableName, Item: { PK: 'l8', SK: 'row', blocker: 'yes' } });
 
@@ -179,7 +181,8 @@ describe('the idempotency contract this design rests on, against real AWS', () =
   });
 
   /**
-   * L4 (`live-validation.md` §2) — the cancellation's `Item` is raw.
+   * (docs/evidence/transaction-rejected-row.md, E-4) — the cancellation's
+   * `Item` is raw.
    *
    * The document client unmarshalls a *response* but not an *error payload*,
    * so a row attached to a cancellation reason arrives in DynamoDB's own
@@ -192,7 +195,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
    * only checked for presence would pass just as well against an already
    * unmarshalled item, which is the change that would break the caller.
    */
-  it('L4: attaches the rejected row as raw attribute values, exactly as a PutCommand does', async () => {
+  it('E-4: attaches the rejected row as raw attribute values, exactly as a PutCommand does', async () => {
     const row = { PK: 'l4', SK: 'row', rev: 7, note: 'old', tags: ['a', 'b'], nested: { n: 1 } };
     await doc.put({ TableName: tableName, Item: row });
     const guard = revisionGuard('rev', { exists: false });
@@ -226,8 +229,61 @@ describe('the idempotency contract this design rests on, against real AWS', () =
   });
 
   /**
-   * L3 (`live-validation.md` §3) — contention, as a bounded claim rather than a
-   * measurement.
+   * (docs/evidence/transaction-conflict-contention.md, E-5) — measured, not
+   * merely asserted: that the design's write shape is genuinely conflict-prone
+   * under contention, and that a plain conditional `PutItem` racing itself
+   * (no transaction involved) is not.
+   *
+   * Driven by raw `doc.transactWrite` calls at `maxAttempts: 1`, bypassing the
+   * library's own retry helper entirely (see E-6 for that), so a conflict
+   * cannot be silently absorbed before it is counted.
+   */
+  it('E-5: most concurrent conditional writers on one row meet a retryable conflict, and a plain PutItem control meets none', async () => {
+    const base = new DynamoDBClient({ ...clientConfig, maxAttempts: 1 });
+    const raw = DynamoDBDocument.from(base);
+
+    const transactional = await Promise.allSettled(
+      Array.from({ length: WRITERS }, async (_unused, writer) =>
+        raw.transactWrite(
+          tokenedPut(randomUUID(), { PK: 'e5-txn', SK: 'row', writer: String(writer) }, true),
+        ),
+      ),
+    );
+    const conflicted = transactional.filter((result) => {
+      if (result.status === 'fulfilled') return false;
+      const reasons = getCancellationReasons(result.reason as RejectionFields) ?? [];
+      return reasons.some((reason) => reason.Code === 'TransactionConflict');
+    });
+
+    const control = await Promise.allSettled(
+      Array.from({ length: WRITERS }, async (_unused, writer) =>
+        raw.put({
+          TableName: tableName,
+          Item: { PK: 'e5-control', SK: 'row', writer: String(writer) },
+          ConditionExpression: 'attribute_not_exists(PK)',
+        }),
+      ),
+    );
+    const controlConflicted = control.filter(
+      (result) =>
+        result.status === 'rejected' &&
+        (result.reason as Error).name === 'TransactionConflictException',
+    );
+    base.destroy();
+
+    report(
+      `E-5 ${WRITERS} writers on one row: ${conflicted.length}/${WRITERS} transactional ` +
+        `attempts saw TransactionConflict; ${controlConflicted.length}/${WRITERS} plain ` +
+        `PutItem attempts did`,
+    );
+
+    expect(conflicted.length).toBeGreaterThan(0);
+    expect(controlConflicted).toHaveLength(0);
+  });
+
+  /**
+   * (docs/evidence/transaction-conflict-contention.md, E-6) — contention, as a
+   * bounded claim rather than a measurement.
    *
    * Under contention the design's shape converts most would-be condition
    * failures into *retryable* conflicts, which the library's existing retry
@@ -237,11 +293,11 @@ describe('the idempotency contract this design rests on, against real AWS', () =
    * `RetryExhaustedError`.
    *
    * It deliberately does **not** pin the conflict percentage. 38 % / 65 % /
-   * 86 % at 2 / 5 / 20 writers is what AWS did on one day in one region; a test
-   * that pins it makes a flaky assertion out of a true observation. The rate is
-   * printed so a run still reports it.
+   * 86 % at 2 / 5 / 20 writers is what AWS did on one day in one region (E-5);
+   * a test that pins it makes a flaky assertion out of a true observation. The
+   * rate is printed so a run still reports it.
    */
-  it('L3: lands every one of five racing writers on a clean terminal outcome', async () => {
+  it('E-6: lands every one of five racing writers on a clean terminal outcome', async () => {
     const base = new DynamoDBClient({ ...clientConfig, maxAttempts: 1 });
     const counter = countTransactAttempts(base);
     const deps = { client: DynamoDBDocument.from(base), tableName };
@@ -256,7 +312,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
 
     const rate = counter.attempts === 0 ? 0 : (counter.conflicts / counter.attempts) * 100;
     report(
-      `L3 ${WRITERS} writers on one row: ${counter.attempts} attempts, ` +
+      `E-6 ${WRITERS} writers on one row: ${counter.attempts} attempts, ` +
         `${counter.conflicts} conflicts (${rate.toFixed(0)}%), ` +
         `${(counter.attempts / WRITERS).toFixed(1)} attempts per logical write`,
     );

@@ -10,8 +10,8 @@ import {
  *
  * Real AWS varies by day, region and account, so a contention *rate* is an
  * observation rather than a contract: pinning one turns a true measurement into
- * a flaky test. These lines are how a run still reports the number that the
- * design's §11.6 tables quote, for whoever is reading the run.
+ * a flaky test. These lines are how a run still reports the number, for
+ * whoever is reading it.
  *
  * `process.stdout.write` rather than `console`, which this repository's lint
  * rules ban everywhere.

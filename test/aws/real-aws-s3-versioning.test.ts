@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetBucketLifecycleConfigurationCommand,
+  GetBucketVersioningCommand,
+  GetObjectCommand,
+  ListObjectVersionsCommand,
+  PutBucketVersioningCommand,
+  PutObjectCommand,
   S3Client,
   waitUntilBucketExists,
 } from '@aws-sdk/client-s3';
@@ -10,11 +16,13 @@ import {
 import { DynamoDBSaver } from '../../src/index';
 import { buildLifecycleRuleId, buildMarkerRuleId } from '../../src/shared/codec/s3/config';
 import type { LogArgument, Logger } from '../../src/shared/logging/logger';
+import { rejection } from './helpers/probe';
 import { deleteBucketCompletely, settleAll } from './helpers/teardown';
 
 const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
 const clientConfig = region ? { region } : {};
 const bucketName = `aws-langgraph-s3vertest-${randomUUID()}`;
+const evidenceBucketName = `aws-langgraph-s3verevtest-${randomUUID()}`;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -135,5 +143,188 @@ describe('an unversioned offload bucket against real AWS', () => {
     expect(versioning).toHaveLength(1);
     expect(versioning[0][0]).toContain('enable bucket versioning');
     expect(versioning[0][1]).toEqual({ bucket: bucketName });
+  });
+});
+
+/**
+ * Poll `GetBucketVersioning` until it reports `status`. Bucket-level
+ * configuration is eventually consistent, the same reason
+ * `real-aws-s3-lifecycle.test.ts` polls for its own rule reads.
+ */
+async function waitForVersioningStatus(
+  s3: S3Client,
+  bucket: string,
+  status: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const state = await s3.send(new GetBucketVersioningCommand({ Bucket: bucket }));
+    if (state.Status === status) return;
+    await sleep(1000);
+  }
+  throw new Error(`bucket versioning never reported ${status}`);
+}
+
+/**
+ * Real-AWS verification of the versioning and delete-marker shapes the
+ * containment layer is defined on (E-9, E-10, E-12 of `docs/evidence`),
+ * probed directly against the raw SDK rather than through the adapters. A
+ * bucket of its own: it moves through all three versioning states, which the
+ * unversioned suite above deliberately does not.
+ */
+describe('versioning states, delete markers and suspension against real AWS', () => {
+  let s3: S3Client;
+
+  beforeAll(async () => {
+    s3 = new S3Client(clientConfig);
+    await s3.send(
+      new CreateBucketCommand({
+        Bucket: evidenceBucketName,
+        ...(region && region !== 'us-east-1'
+          ? { CreateBucketConfiguration: { LocationConstraint: region as never } }
+          : {}),
+      }),
+    );
+    await waitUntilBucketExists({ client: s3, maxWaitTime: 90 }, { Bucket: evidenceBucketName });
+  });
+
+  afterAll(async () => {
+    await settleAll([
+      async () => {
+        if (!s3) return;
+        await deleteBucketCompletely(s3, evidenceBucketName);
+        s3.destroy();
+      },
+    ]);
+  });
+
+  /**
+   * (docs/evidence/s3-versioning-and-lifecycle.md, E-9) — `GetBucketVersioning`
+   * distinguishes never-versioned, enabled and suspended. Runs first in this
+   * describe so the bucket is genuinely never-versioned when it starts.
+   */
+  it('E-9: GetBucketVersioning distinguishes never-versioned, enabled and suspended', async () => {
+    const never = await s3.send(new GetBucketVersioningCommand({ Bucket: evidenceBucketName }));
+    expect(never.Status).toBeUndefined();
+    expect(never.$metadata.httpStatusCode).toBe(200);
+
+    await s3.send(
+      new PutBucketVersioningCommand({
+        Bucket: evidenceBucketName,
+        VersioningConfiguration: { Status: 'Enabled' },
+      }),
+    );
+    await waitForVersioningStatus(s3, evidenceBucketName, 'Enabled');
+    const enabled = await s3.send(new GetBucketVersioningCommand({ Bucket: evidenceBucketName }));
+    expect(enabled.Status).toBe('Enabled');
+  });
+
+  /**
+   * (docs/evidence/s3-versioning-and-lifecycle.md, E-10) — a delete on a
+   * versioned bucket leaves a delete marker rather than erasing the object,
+   * and the payload survives, readable by its version id. Runs while the
+   * bucket is Enabled, which E-9 leaves it as.
+   */
+  it('E-10: a delete on a versioned bucket leaves a marker, and the prior version stays readable', async () => {
+    const key = 'e10-delete-marker';
+    const put = await s3.send(
+      new PutObjectCommand({ Bucket: evidenceBucketName, Key: key, Body: 'the payload' }),
+    );
+    const originalVersionId = put.VersionId;
+    expect(originalVersionId).toBeDefined();
+
+    const del = await s3.send(new DeleteObjectCommand({ Bucket: evidenceBucketName, Key: key }));
+    expect(del.DeleteMarker).toBe(true);
+
+    const versionless = await rejection(
+      s3.send(new GetObjectCommand({ Bucket: evidenceBucketName, Key: key })),
+    );
+    expect(versionless.name).toBe('NoSuchKey');
+
+    const byVersion = await s3.send(
+      new GetObjectCommand({ Bucket: evidenceBucketName, Key: key, VersionId: originalVersionId }),
+    );
+    expect(await byVersion.Body?.transformToString()).toBe('the payload');
+
+    const listed = await s3.send(
+      new ListObjectVersionsCommand({ Bucket: evidenceBucketName, Prefix: key }),
+    );
+    expect(
+      (listed.DeleteMarkers ?? []).some((marker) => marker.Key === key && marker.IsLatest === true),
+    ).toBe(true);
+  });
+
+  /**
+   * (docs/evidence/s3-versioning-and-lifecycle.md, E-12) — under suspended
+   * versioning, writes get a null version id, a second write there replaces
+   * the first rather than accumulating, a delete leaves a null-version
+   * delete marker, and a version written while versioning was Enabled
+   * survives suspension untouched. Enables and suspends versioning itself
+   * rather than assuming E-9's state, so this test stands on its own.
+   */
+  it('E-12: under suspended versioning, writes get a null version id and old versions survive untouched', async () => {
+    await s3.send(
+      new PutBucketVersioningCommand({
+        Bucket: evidenceBucketName,
+        VersioningConfiguration: { Status: 'Enabled' },
+      }),
+    );
+    await waitForVersioningStatus(s3, evidenceBucketName, 'Enabled');
+
+    const key = 'e12-suspension';
+    const enabledEra = await s3.send(
+      new PutObjectCommand({
+        Bucket: evidenceBucketName,
+        Key: key,
+        Body: 'the enabled-era payload',
+      }),
+    );
+    const enabledEraVersionId = enabledEra.VersionId;
+    expect(enabledEraVersionId).toBeDefined();
+
+    await s3.send(
+      new PutBucketVersioningCommand({
+        Bucket: evidenceBucketName,
+        VersioningConfiguration: { Status: 'Suspended' },
+      }),
+    );
+    await waitForVersioningStatus(s3, evidenceBucketName, 'Suspended');
+
+    const firstSuspended = await s3.send(
+      new PutObjectCommand({ Bucket: evidenceBucketName, Key: key, Body: 'suspended write 1' }),
+    );
+    expect(firstSuspended.VersionId).toBeUndefined();
+
+    const secondSuspended = await s3.send(
+      new PutObjectCommand({ Bucket: evidenceBucketName, Key: key, Body: 'suspended write 2' }),
+    );
+    expect(secondSuspended.VersionId).toBeUndefined();
+
+    const deleted = await s3.send(
+      new DeleteObjectCommand({ Bucket: evidenceBucketName, Key: key }),
+    );
+    expect(deleted.DeleteMarker).toBe(true);
+    expect(deleted.VersionId).toBe('null');
+
+    const afterDelete = await s3.send(
+      new ListObjectVersionsCommand({ Bucket: evidenceBucketName, Prefix: key }),
+    );
+    // The second suspended write replaced the first's null version rather
+    // than accumulating, and the delete then replaced that with a
+    // null-version delete marker: no current version survives.
+    expect((afterDelete.Versions ?? []).filter((version) => version.Key === key)).toHaveLength(0);
+    expect(
+      (afterDelete.DeleteMarkers ?? []).filter(
+        (marker) => marker.Key === key && marker.VersionId === 'null',
+      ),
+    ).toHaveLength(1);
+
+    const stillReadable = await s3.send(
+      new GetObjectCommand({
+        Bucket: evidenceBucketName,
+        Key: key,
+        VersionId: enabledEraVersionId,
+      }),
+    );
+    expect(await stillReadable.Body?.transformToString()).toBe('the enabled-era payload');
   });
 });

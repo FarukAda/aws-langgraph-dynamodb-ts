@@ -34,9 +34,10 @@ function tokenedDelete(
 }
 
 /**
- * The live assertions the **delete** side of the design rests on, ported from
- * `live-validation-delete.md` (the eight probes run on 2026-09-19) so that they
- * run before every tag rather than living in a markdown file nothing re-checks.
+ * The live assertions the **delete** side of the design rests on, each
+ * asserting a claim recorded in `docs/evidence` (E-3, E-4, E-13 through E-15),
+ * so that they run before every tag rather than living in a markdown file
+ * nothing re-checks.
  *
  * The delete side needs live evidence more than the put side does, because its
  * whole safety argument is a *decode*: a refusal carrying a row means "someone
@@ -69,17 +70,17 @@ describe('the delete-side contract this design rests on, against real AWS', () =
   });
 
   /**
-   * `live-validation-delete.md`, first probe — the idempotency cache covers a
-   * transactional `Delete` exactly as it covers a `Put`.
+   * (docs/evidence/transactional-delete-idempotency.md, E-13) — the
+   * idempotency cache covers a transactional `Delete` exactly as it covers a
+   * `Put`.
    *
-   * This is the fact the whole delete-side candidate rests on, and it was
-   * reasoned rather than observed until that run. An unconditional `DeleteItem`
-   * cannot be turned away, so a retry arriving after the first attempt already
-   * committed removes whatever a competitor has written since. Under a token
-   * the replay never reaches the row — which is what the row written *between*
-   * the two sends proves here: it survives.
+   * This is the fact the whole delete-side candidate rests on. An
+   * unconditional `DeleteItem` cannot be turned away, so a retry arriving
+   * after the first attempt already committed removes whatever a competitor
+   * has written since. Under a token the replay never reaches the row — which
+   * is what the row written *between* the two sends proves here: it survives.
    */
-  it('D1: answers a replayed delete from the cache, leaving a row written since it untouched', async () => {
+  it('E-13: answers a replayed delete from the cache, leaving a row written since it untouched', async () => {
     const key = { PK: 'd1', SK: 'row' };
     await doc.put({ TableName: tableName, Item: { ...key, rev: 'R1' } });
     const input = tokenedDelete(randomUUID(), key);
@@ -94,7 +95,8 @@ describe('the delete-side contract this design rests on, against real AWS', () =
   });
 
   /**
-   * `live-validation-delete.md`, second probe — the re-pin refusal on a `Delete`.
+   * (docs/evidence/cancelled-transaction-token.md, E-3) — the re-pin refusal,
+   * on a `Delete` rather than a `Put`.
    *
    * A cancelled use caches no result but still reserves its parameters, so a
    * compare-and-swap loop that re-pinned onto the revision the rejection just
@@ -104,7 +106,7 @@ describe('the delete-side contract this design rests on, against real AWS', () =
    * is why a re-pin must mint a fresh token, and DynamoDB Local cannot show it:
    * there a cancelled token reserves nothing.
    */
-  it('D2: refuses a cancelled delete token re-sent with the re-pinned body', async () => {
+  it('E-3: refuses a cancelled delete token re-sent with the re-pinned body', async () => {
     const key = { PK: 'd2', SK: 'row' };
     await doc.put({ TableName: tableName, Item: { ...key, rev: 'R1' } });
     const token = randomUUID();
@@ -123,16 +125,16 @@ describe('the delete-side contract this design rests on, against real AWS', () =
   });
 
   /**
-   * `live-validation-delete.md`, third probe — a refused transactional delete
-   * returns the row it refused, raw, which is what lets the loop re-pin rather
-   * than give up.
+   * (docs/evidence/transaction-rejected-row.md, E-4) — a refused transactional
+   * delete returns the row it refused, raw, which is what lets the loop re-pin
+   * rather than give up.
    *
    * The second half is the one that matters: the same delete, re-pinned from
    * the rejected row onto the revision it actually carries and carrying a
    * **fresh** token, succeeds. Together with the refusal above that is the
    * whole rule: the body may change, the token may not be reused.
    */
-  it('D3: hands back the rejected row raw, and a fresh token re-pinned from it succeeds', async () => {
+  it('E-4: hands back the rejected row raw, and a fresh token re-pinned from it succeeds', async () => {
     const key = { PK: 'd3', SK: 'row' };
     const row = { ...key, rev: 'R1', note: 'x', v: 7 };
     await doc.put({ TableName: tableName, Item: row });
@@ -153,8 +155,8 @@ describe('the delete-side contract this design rests on, against real AWS', () =
   });
 
   /**
-   * `live-validation-delete.md`, fourth probe — a conditional `DeleteItem` against a
-   * row that is already gone rejects with **no** `Item`.
+   * (docs/evidence/conditional-delete.md, E-14) — a conditional `DeleteItem`
+   * against a row that is already gone rejects with **no** `Item`.
    *
    * This is the decode the whole partition delete turns on: no item means the
    * row is already gone, so count it deleted and release the object it named;
@@ -162,7 +164,7 @@ describe('the delete-side contract this design rests on, against real AWS', () =
    * have to be distinguishable from the rejection alone, because a second read
    * to tell them apart would race the same writer all over again.
    */
-  it('D4: rejects a conditional delete of an absent row without attaching an item', async () => {
+  it('E-14: rejects a conditional delete of an absent row without attaching an item', async () => {
     const refused = await rejection(
       doc.delete({
         TableName: tableName,
@@ -176,15 +178,14 @@ describe('the delete-side contract this design rests on, against real AWS', () =
   });
 
   /**
-   * The last interpolated cell in the design's evidence table (§11.1): the
-   * *transactional* form of the same rejection against an **absent** row.
+   * The *transactional* form of the same rejection against an **absent**
+   * row (E-14 above is the plain, non-transactional form).
    *
-   * The present case was observed live above; the absent case was reasoned from
-   * the plain `DeleteItem` and from DynamoDB Local (`local-validation.md`
-   * Probe 5). A transaction reports the rejection as one cancellation *reason*
-   * rather than as an exception of its own, so nothing about the `DeleteItem`
-   * shape settles it. The whole reason shape is printed, so a run reports what
-   * it actually is rather than only whether it matched.
+   * A transaction reports the rejection as one cancellation *reason* rather
+   * than as an exception of its own, so nothing about the plain `DeleteItem`
+   * shape settles this on its own — it needs its own live check. The whole
+   * reason shape is printed, so a run reports what it actually is rather than
+   * only whether it matched.
    */
   it('settles the transactional absent-row rejection shape: one reason, no item', async () => {
     const refused = await rejection(
@@ -203,24 +204,25 @@ describe('the delete-side contract this design rests on, against real AWS', () =
   });
 
   /**
-   * The inner miss (`live-validation-delete.md`, the second run's B1).
+   * (docs/evidence/conditional-delete.md, E-15) — the inner miss.
    *
    * The guard is a document path over a payload descriptor (`#pin.#field`).
-   * The first run probed only the case where the *outer* attribute is absent,
-   * while the mechanism meets the *inner* one: an attribute present but carrying
-   * no id, which is what a concurrent writer leaves when it rewrites a row from
-   * offloaded to inline. B1 settled that it evaluates to **false** rather than
-   * raising `ValidationException`, so one condition shape covers an offloaded
-   * row, an inline one, and a row a racer has turned into either.
+   * E-14 covers only the case where the row is entirely absent; this covers
+   * two narrower cases the mechanism also meets: the *outer* attribute absent
+   * on a row that otherwise exists, and the attribute present but carrying no
+   * id inside it — what a concurrent writer leaves when it rewrites a row from
+   * offloaded to inline. Both evaluate to **false** rather than raising
+   * `ValidationException`, so one condition shape covers an offloaded row, an
+   * inline one, and a row a racer has turned into either.
    *
    * Read what this does *not* say. It is not "a row with no id is refused": the
    * condition is only ever sent for a row the partition query observed carrying
-   * one. A row observed *without* an id — every row written by rc.1 and earlier
-   * — is deleted unconditionally, because refusing those would leave pre-rc.2
-   * data undeletable, an availability regression far worse than the erasure
-   * being closed.
+   * one. A row observed *without* an id — every row written before this guard
+   * existed — is deleted unconditionally, because refusing those would leave
+   * that data undeletable, an availability regression far worse than the
+   * erasure being closed.
    */
-  it('§D8 B1: evaluates a document-path guard as false for an inner miss, and returns the row', async () => {
+  it('E-15: evaluates a document-path guard as false for an inner miss, and returns the row', async () => {
     const guard = writeIdGuard('value', 'W1', 'writeId');
     const matching = { PK: 'b1', SK: 'matching', value: { writeId: 'W1', location: 'S3' } };
     const innerMiss = { PK: 'b1', SK: 'inner-miss', value: { location: 'S3' } };

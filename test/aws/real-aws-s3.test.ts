@@ -4,6 +4,7 @@ import { CreateTableCommand, DynamoDBClient, waitUntilTableExists } from '@aws-s
 import {
   CreateBucketCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   S3Client,
   waitUntilBucketExists,
 } from '@aws-sdk/client-s3';
@@ -13,6 +14,7 @@ import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 import { DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { DEFAULT_RETRY_MAX_ATTEMPTS } from '../../src/shared/constants';
 import { dropResponses, installFaults } from '../integration/helpers/fault-injection';
+import { rejection, report } from './helpers/probe';
 import { deleteBucketCompletely, deleteTableCompletely, settleAll } from './helpers/teardown';
 
 const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
@@ -48,13 +50,14 @@ async function offloadedObjectCount(s3: S3Client): Promise<number> {
 }
 
 /**
- * Real-AWS verification of the S3 offload path through the public adapters.
- * Exercises PutObject / GetObject / DeleteObject / ListBucket against a real
- * bucket — round-trip fidelity, object placement, and orphan cleanup that
- * mocked unit tests cannot prove. Creates and tears down a unique table and
- * bucket per run. Lifecycle-rule provisioning and the S3 error taxonomy live
- * in real-aws-s3-lifecycle.test.ts, split out to stay under this repo's
- * per-file line cap.
+ * Real-AWS verification of the S3 offload path through the public adapters,
+ * plus two raw-SDK probes of the conditional-create refusal that path depends
+ * on (E-7, E-8 of `docs/evidence`). Exercises PutObject / GetObject /
+ * DeleteObject / ListBucket against a real bucket — round-trip fidelity,
+ * object placement, and orphan cleanup that mocked unit tests cannot prove.
+ * Creates and tears down a unique table and bucket per run. Lifecycle-rule
+ * provisioning and the S3 error taxonomy live in real-aws-s3-lifecycle.test.ts,
+ * split out to stay under this repo's per-file line cap.
  */
 describe('S3 offload against real AWS', () => {
   let admin: DynamoDBClient;
@@ -278,5 +281,72 @@ describe('S3 offload against real AWS', () => {
       configurable: { thread_id: threadId, checkpoint_ns: '', checkpoint_id: 'lost' },
     });
     expect(tuple?.checkpoint.channel_values).toEqual({ blob: bigPayload });
+  });
+
+  /**
+   * (docs/evidence/s3-conditional-create.md, E-7) — the raw refusal this
+   * package's `alreadyStored()` check depends on (`name ===
+   * 'PreconditionFailed'` or `$metadata.httpStatusCode === 412`), probed
+   * directly against the service rather than through the adapters. Built at
+   * `maxAttempts: 1` so the SDK's own retries cannot mask the response being
+   * asserted.
+   */
+  it('E-7: PutObject with If-None-Match: * against an existing key is refused with 412 PreconditionFailed', async () => {
+    const raw = new S3Client({ ...clientConfig, maxAttempts: 1 });
+    const key = `${KEY_PREFIX}e7-conditional-create`;
+    await raw.send(new PutObjectCommand({ Bucket: bucketName, Key: key, Body: 'first' }));
+
+    const refused = await rejection(
+      raw.send(
+        new PutObjectCommand({ Bucket: bucketName, Key: key, Body: 'second', IfNoneMatch: '*' }),
+      ),
+    );
+    raw.destroy();
+
+    expect(refused.name).toBe('PreconditionFailed');
+    expect((refused as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode).toBe(
+      412,
+    );
+  });
+
+  /**
+   * (docs/evidence/s3-conditional-create.md, E-8) — the loser of a
+   * conditional-create race, which is a different rejection from E-7's: E-7
+   * meets an already-settled object, this meets another in-flight create for
+   * the same brand-new key. Built at `maxAttempts: 1` so the SDK's own
+   * retries cannot turn a genuine race into a resolved PUT before it is
+   * counted.
+   */
+  it('E-8: a conditional PutObject that loses a race is refused with ConditionalRequestConflict/409', async () => {
+    const raw = new S3Client({ ...clientConfig, maxAttempts: 1 });
+    const key = `${KEY_PREFIX}e8-conditional-race`;
+    const attempt = (): Promise<unknown> =>
+      raw.send(
+        new PutObjectCommand({
+          Bucket: bucketName,
+          Key: key,
+          Body: randomUUID(),
+          IfNoneMatch: '*',
+        }),
+      );
+
+    const settled = await Promise.allSettled([
+      attempt(),
+      attempt(),
+      attempt(),
+      attempt(),
+      attempt(),
+    ]);
+    raw.destroy();
+
+    const conflicted = settled.filter(
+      (result) =>
+        result.status === 'rejected' &&
+        (result.reason as Error).name === 'ConditionalRequestConflict',
+    );
+    report(`E-8 5 racing conditional creates: ${conflicted.length} saw ConditionalRequestConflict`);
+
+    expect(settled.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(conflicted.length).toBeGreaterThan(0);
   });
 });

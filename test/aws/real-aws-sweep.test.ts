@@ -82,9 +82,8 @@ async function enableVersioning(s3: S3Client): Promise<void> {
 }
 
 /**
- * L7 (design §8.3) — the stranded-payload sweep, end to end against a real
- * versioned bucket and a real table. The one item in §8.3 that had never been
- * run at all.
+ * The stranded-payload sweep, end to end against a real versioned bucket and a
+ * real table.
  *
  * A release on a versioned bucket does not erase the object: it leaves a delete
  * marker with the payload surviving behind it as a noncurrent version until the
