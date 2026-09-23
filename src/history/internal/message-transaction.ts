@@ -9,7 +9,7 @@ import {
   buildSessionUpdateItem,
   type HistoryTransactItem,
   type SessionUpdateFields,
-} from './session-update';
+} from './session';
 import type { HistoryContext } from './setup';
 
 /** Per-call retry seams (injected in tests to keep backoff instant). */
@@ -93,7 +93,7 @@ async function attempt(
  * single `ClientRequestToken` is used per attempt so a re-sent commit (e.g.
  * after a lost response) is idempotent and never double-applies the count
  * `ADD`. When `fields.forceTtlRefresh` is set, the session update carries a
- * monotonic ConditionExpression (see session-update.ts); if — and only if —
+ * monotonic ConditionExpression (see session.ts); if — and only if —
  * that specific condition loses a race against a concurrent caller who just
  * healed the same anchor, this retries the identical chunk once with
  * `forceTtlRefresh: false` (safe: `if_not_exists` then converges to whatever

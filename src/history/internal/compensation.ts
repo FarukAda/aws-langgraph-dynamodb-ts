@@ -8,7 +8,7 @@ import { toError } from '../../shared/errors/to-error';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { SessionId } from './parse';
 import type { ChatMessageItem } from './rows';
-import { revertSessionCount, revertSessionCreation } from './session-count';
+import { revertSessionCount, revertSessionCreation } from './session';
 import type { HistoryContext } from './setup';
 
 /** A chunk that committed, retained so it can be rolled back on a later failure. */
@@ -79,7 +79,7 @@ async function rollbackCommitted(
   const keys = committed.flatMap((chunk) => chunk.keys);
   const total = committed.reduce((sum, chunk) => sum + chunk.count, 0);
   if (keys.length === 0) {
-    await revertSessionCreation(context, sessionId, total, now, title);
+    await revertSessionCreation(context, sessionId, { total, createdAt: now, title });
     return;
   }
   try {
@@ -102,7 +102,7 @@ async function rollbackCommitted(
     await revertSessionCount(context, sessionId, deleted, now);
     throw error;
   }
-  await revertSessionCreation(context, sessionId, total, now, title);
+  await revertSessionCreation(context, sessionId, { total, createdAt: now, title });
 }
 
 /**

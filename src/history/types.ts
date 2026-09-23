@@ -96,17 +96,3 @@ export interface SessionMetadata {
   /** When the session's TTL expires, as an ISO-8601 instant; absent when no TTL is stored. */
   expiresAt?: string;
 }
-
-/** The per-session metadata item, updated atomically as messages are appended. */
-export interface ChatSessionItem {
-  PK: string;
-  SK: string;
-  /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
-  v?: number;
-  sessionId: string;
-  messageCount: number;
-  title?: string;
-  createdAt: string;
-  updatedAt: string;
-  ttl?: number;
-}

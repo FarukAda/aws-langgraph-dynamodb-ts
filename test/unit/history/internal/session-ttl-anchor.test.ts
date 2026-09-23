@@ -1,5 +1,5 @@
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { resolveTtlAnchor } from '../../../../src/history/internal/ttl-anchor';
+import { resolveTtlAnchor } from '../../../../src/history/internal/session';
 
 const SESSION_ID = parseSessionId('s1');
 

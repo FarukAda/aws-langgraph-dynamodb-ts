@@ -13,9 +13,8 @@ import {
   type StorableMessages,
 } from '../internal/parse';
 import { buildMessageItem, type ChatMessageItem } from '../internal/rows';
+import { deriveTitle, resolveTtlAnchor } from '../internal/session';
 import type { HistoryContext } from '../internal/setup';
-import { deriveTitle } from '../internal/title-generator';
-import { resolveTtlAnchor } from '../internal/ttl-anchor';
 
 /** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
 const MAX_MESSAGES_PER_TRANSACTION = 99;

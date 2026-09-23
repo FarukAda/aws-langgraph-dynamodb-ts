@@ -1,6 +1,6 @@
 import type { StoredMessage } from '@langchain/core/messages';
 
-import { deriveTitle } from '../../../../src/history/internal/title-generator';
+import { deriveTitle } from '../../../../src/history/internal/session';
 
 const message = (type: string, content: string): StoredMessage => ({
   type,

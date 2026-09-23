@@ -1,97 +1,19 @@
 import { nowSeconds as currentSeconds } from '../../shared/clock';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import type { DocItem } from '../../shared/dynamodb/client';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import { queryRecencyIndex } from '../../shared/dynamodb/index-query';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
-import {
-  assertReadableRow,
-  isExpiredRow,
-  PARTITION_KEY_ATTRIBUTE,
-  SORT_KEY_ATTRIBUTE,
-} from '../../shared/dynamodb/table-schema';
+import { PARTITION_KEY_ATTRIBUTE, SORT_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
 import { type PageLimit, parseLimit } from '../../shared/validation/primitives';
 import { type ListSessionsRequest, parseListSessionsRequest } from '../internal/parse';
-import { SESSION_SORT_KEY, historyPartitionPrefix, sessionPartition } from '../internal/rows';
+import { SESSION_SORT_KEY, historyPartitionPrefix } from '../internal/rows';
+import { summariseSession } from '../internal/session';
 import type { HistoryContext } from '../internal/setup';
-import type { ChatSessionItem, ListSessionsOptions, SessionMetadata, SessionPage } from '../types';
+import type { ListSessionsOptions, SessionMetadata, SessionPage } from '../types';
 
 /** Rows per page when the caller names none. */
 const DEFAULT_PAGE_SIZE: PageLimit = parseLimit(100, 0);
-
-/**
- * Whether a row's `ttl` is an instant this listing can both judge and render.
- *
- * Neither of the two things done with it refuses a value it cannot use.
- * {@link isExpiredRow} compares it against the clock, and a non-number compares
- * `false` against every clock, so an unreadable ttl reads as *live* rather than
- * being filtered out. `expiresAt` then renders it, and `NaN`, `Infinity` and
- * anything past the ±8.64e12 seconds a `Date` spans are all numbers whose
- * `toISOString` throws `RangeError` — which failed the whole listing.
- */
-function hasReadableTtl(ttl: DocItem[string]): boolean {
-  if (ttl === undefined) return true;
-  return typeof ttl === 'number' && Number.isFinite(new Date(ttl * 1000).getTime());
-}
-
-/**
- * Whether every attribute {@link summarise} hands back is the type this package
- * writes there.
- *
- * The identity test above proves a row is a session row; this proves its own
- * attributes are usable. They are returned under declared types, so a row that
- * disagrees answers the caller with a lie — `messageCount: 'many'` handed back
- * as a number — or, for the ttl, with a `RangeError`. A row this release cannot
- * speak for is dropped the way a foreign row is, never at the cost of the rest
- * of the page.
- */
-function isSummarisable(raw: DocItem): boolean {
-  return (
-    typeof raw.messageCount === 'number' &&
-    typeof raw.createdAt === 'string' &&
-    typeof raw.updatedAt === 'string' &&
-    (raw.title === undefined || typeof raw.title === 'string') &&
-    hasReadableTtl(raw.ttl)
-  );
-}
-
-/**
- * The session a row describes, or undefined for a foreign, malformed or expired
- * row.
- *
- * The `sessionId` is bound to the partition the row was found in, as
- * `narrowMetaItem`, `narrowStoreRecord` and `narrowMessageItem` bind theirs.
- * Both reads that reach here select rows by something other than the partition
- * — a table scan filtered on the sort key, and a recency-index query — so
- * without the binding a row planted anywhere in the table under this adapter's
- * SESSION sort key was summarised under whatever `sessionId` it claimed, and a
- * caller taking that id to `getMessages` read a partition the row never lived
- * in.
- *
- * Throws: `FORMAT_UNSUPPORTED` for a row a newer release wrote. It is not a
- * foreign row to skip, and summarising it under this release's rules could
- * return its attributes with a meaning they no longer have. Checked before the
- * shape, the binding and the ttl — as every other read of this package's rows
- * checks it — so a newer row is refused rather than judged against attribute
- * names it may no longer use, and the answer does not depend on the reading
- * machine's clock.
- */
-function summarise(raw: DocItem, nowSeconds: number): SessionMetadata | undefined {
-  const item = raw as ChatSessionItem;
-  assertReadableRow(item, 'session');
-  if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') return undefined;
-  if (item.PK !== sessionPartition(item.sessionId)) return undefined;
-  if (!isSummarisable(raw) || isExpiredRow(item, nowSeconds)) return undefined;
-  return {
-    sessionId: item.sessionId,
-    title: item.title,
-    messageCount: item.messageCount,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-    expiresAt: item.ttl === undefined ? undefined : new Date(item.ttl * 1000).toISOString(),
-  };
-}
 
 /**
  * One page from the recency index, newest-updated first.
@@ -120,7 +42,7 @@ async function pageFromIndex(
     signal: request.signal,
   });
   const sessions = page.items
-    .map((raw) => summarise(raw, nowSeconds))
+    .map((raw) => summariseSession(raw, nowSeconds))
     .filter((session): session is SessionMetadata => session !== undefined);
   return { sessions, ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }) };
 }
@@ -145,7 +67,7 @@ async function pageFromIndex(
  * byte. Such a row sits in a `STORE#` partition, and since a row stamped with a
  * format version above this release is *reported* rather than skipped, one of
  * them was enough to fail this listing on a table the three adapters share.
- * `summarise` already requires `PK` to equal `sessionPartition(sessionId)`, so
+ * `summariseSession` already requires `PK` to equal `sessionPartition(sessionId)`, so
  * the tag excludes only rows it was dropping after the read. Filtering costs no
  * read capacity either way: DynamoDB applies it once the scan has finished.
  */
@@ -171,7 +93,7 @@ async function allByScan(
     maxIterations: request.maxIterations,
     maxItems: request.maxItems,
   })) {
-    const session = summarise(raw, nowSeconds);
+    const session = summariseSession(raw, nowSeconds);
     if (session) sessions.push(session);
   }
   /**
