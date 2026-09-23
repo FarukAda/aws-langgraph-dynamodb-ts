@@ -4,10 +4,12 @@ import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgrap
 import { nowSeconds } from '../../shared/clock';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
 import { isExpiredRow } from '../../shared/dynamodb/table-schema';
-import { assembleTuple } from '../internal/assemble';
-import { fetchTargetMeta } from '../internal/fetch';
-import { metaRows, narrowOrWarn } from '../internal/list-rows';
-import { passesKeyFilters, passesMetadataFilter } from '../internal/list-scope';
+import {
+  metaRows,
+  narrowOrWarn,
+  passesKeyFilters,
+  passesMetadataFilter,
+} from '../internal/listing';
 import {
   type CheckpointId,
   type CheckpointNs,
@@ -15,6 +17,7 @@ import {
   parseListScope,
   type ThreadId,
 } from '../internal/parse';
+import { assembleTuple, fetchTargetMeta } from '../internal/read';
 import type { CheckpointMetaItem } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
 
@@ -32,11 +35,16 @@ async function tupleFor(
   if (!passesKeyFilters(meta, scope)) return undefined;
   const verdict = await passesMetadataFilter(context, meta, scope);
   if (!verdict.pass) return undefined;
-  return assembleTuple(context, meta.threadId, meta.checkpointNs, meta, {
-    signal: scope.signal,
-    consistent: false,
-    metadata: verdict.metadata,
-  });
+  return assembleTuple(
+    context,
+    { threadId: meta.threadId, checkpointNs: meta.checkpointNs },
+    meta,
+    {
+      signal: scope.signal,
+      consistent: false,
+      metadata: verdict.metadata,
+    },
+  );
 }
 
 /** A `checkpoint_id` addresses one row: read it directly instead of scanning the namespace for it. */

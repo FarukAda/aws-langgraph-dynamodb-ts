@@ -1,4 +1,4 @@
-import { matchesFilter } from '../../../../src/checkpointer/internal/filter-match';
+import { matchesFilter } from '../../../../src/checkpointer/internal/listing';
 
 describe('matchesFilter', () => {
   const metadata = { source: 'loop', step: 3, parents: { '': 'p1' } };

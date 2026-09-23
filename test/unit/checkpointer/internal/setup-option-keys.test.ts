@@ -2,7 +2,7 @@ import {
   DELTA_CHANNEL_HISTORY_KEYS,
   SAVER_KEYS,
   SAVER_LIST_KEYS,
-} from '../../../../src/checkpointer/internal/option-keys';
+} from '../../../../src/checkpointer/internal/setup';
 
 describe('the checkpointer option-key lists (compiler-verified against the types)', () => {
   it('lists exactly what the checkpointer reads from each options bag', () => {

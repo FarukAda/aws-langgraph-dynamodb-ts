@@ -4,7 +4,7 @@ import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 import { mockClient } from 'aws-sdk-client-mock';
 
-import { assembleTuple } from '../../../src/checkpointer/internal/assemble';
+import { assembleTuple } from '../../../src/checkpointer/internal/read';
 import type { CheckpointMetaItem } from '../../../src/checkpointer/internal/rows';
 import { setUpCheckpointer } from '../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
@@ -317,7 +317,7 @@ describe('the three checkpointer read paths agree on a failed download', () => {
     const fromGetTuple = await rejection(() => saver.getTuple(THREAD));
     const { context } = setUpCheckpointer(saverOptions(client), serde);
     const fromAssemble = await rejection(() =>
-      assembleTuple(context, 't', '', rows.meta, { consistent: true }),
+      assembleTuple(context, { threadId: 't', checkpointNs: '' }, rows.meta, { consistent: true }),
     );
     expect(verdict(fromAssemble)).toEqual(verdict(fromGetTuple));
   });

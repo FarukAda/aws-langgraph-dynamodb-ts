@@ -1,6 +1,6 @@
 import { QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
-import { metaRows, narrowOrWarn } from '../../../../src/checkpointer/internal/list-rows';
+import { metaRows, narrowOrWarn } from '../../../../src/checkpointer/internal/listing';
 import { type ListScope, parseListScope } from '../../../../src/checkpointer/internal/parse';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';

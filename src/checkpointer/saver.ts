@@ -22,9 +22,8 @@ import { listCheckpoints } from './actions/list';
 import { putCheckpoint } from './actions/put';
 import { putWrites as putWritesAction } from './actions/put-writes';
 import { deltaChannelHistory } from './internal/delta-history';
-import { SAVER_KEYS } from './internal/option-keys';
 import { parseDeltaHistoryRequest } from './internal/parse';
-import { type CheckpointerContext, setUpCheckpointer } from './internal/setup';
+import { SAVER_KEYS, type CheckpointerContext, setUpCheckpointer } from './internal/setup';
 import type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './types';
 
 /**

@@ -36,7 +36,7 @@ exceeds what the running release understands throws `FORMAT_UNSUPPORTED`
 matched against attribute names a later format may have renamed or
 repurposed. `narrowMetaItem` in `src/checkpointer/internal/rows.ts`
 and `fetchPayload` / `fetchPendingWrites` in
-`src/checkpointer/internal/fetch.ts` all apply this check first, ahead of
+`src/checkpointer/internal/read.ts` all apply this check first, ahead of
 narrowing the row to a typed item, for exactly that reason: a foreign or
 newer row is reported as newer, not silently treated as absent or invalid.
 A payload descriptor carries the same rule under its own `schemaVersion`.

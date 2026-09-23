@@ -41,7 +41,7 @@ import * as ts from 'typescript';
  * key could have served, which is exactly what the rule forbids.
  */
 export const ALLOWED_SCAN_SITES: Readonly<Record<string, string>> = {
-  'checkpointer/internal/list-rows.ts': 'saver.list() across threads, without a recency index',
+  'checkpointer/internal/listing.ts': 'saver.list() across threads, without a recency index',
   'history/actions/list-sessions.ts': 'history.listSessions(), without a recency index',
   'store/actions/list-namespaces.ts': 'listNamespaces() with no concrete prefix root',
   'store/internal/candidates.ts': 'store.search([]) over every namespace',

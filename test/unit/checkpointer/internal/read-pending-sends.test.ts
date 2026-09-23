@@ -1,7 +1,7 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { type Checkpoint, TASKS } from '@langchain/langgraph-checkpoint';
 
-import { migratePendingSends } from '../../../../src/checkpointer/internal/pending-sends';
+import { migratePendingSends } from '../../../../src/checkpointer/internal/read';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -46,7 +46,12 @@ describe('migratePendingSends', () => {
   it('rebuilds TASKS from the parent s pending writes for a pre-v4 checkpoint', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [sendRow(TASKS, { node: 'a' }), sendRow('other', 1)] });
-    const migrated = await migratePendingSends(context(client), checkpoint(), 't', '', 'c1', {});
+    const migrated = await migratePendingSends(
+      context(client),
+      checkpoint(),
+      { threadId: 't', checkpointNs: '', parentCheckpointId: 'c1' },
+      {},
+    );
     expect(migrated.channel_values[TASKS]).toEqual([{ node: 'a' }]);
     expect(migrated.channel_versions[TASKS]).toBe(3);
   });
@@ -57,9 +62,7 @@ describe('migratePendingSends', () => {
     const migrated = await migratePendingSends(
       context(client),
       checkpoint({ channel_versions: {} }),
-      't',
-      '',
-      'c1',
+      { threadId: 't', checkpointNs: '', parentCheckpointId: 'c1' },
       {},
     );
     expect(migrated.channel_versions[TASKS]).toBe(1);
@@ -69,9 +72,14 @@ describe('migratePendingSends', () => {
   it('returns a v4 checkpoint untouched and reads nothing', async () => {
     const { client, mock } = createStrictDocumentMock();
     const input = checkpoint({ v: 4 });
-    await expect(migratePendingSends(context(client), input, 't', '', 'c1', {})).resolves.toBe(
-      input,
-    );
+    await expect(
+      migratePendingSends(
+        context(client),
+        input,
+        { threadId: 't', checkpointNs: '', parentCheckpointId: 'c1' },
+        {},
+      ),
+    ).resolves.toBe(input);
     expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
   });
 
@@ -79,9 +87,14 @@ describe('migratePendingSends', () => {
   it('returns a root checkpoint untouched and reads nothing', async () => {
     const { client, mock } = createStrictDocumentMock();
     const input = checkpoint();
-    await expect(migratePendingSends(context(client), input, 't', '', undefined, {})).resolves.toBe(
-      input,
-    );
+    await expect(
+      migratePendingSends(
+        context(client),
+        input,
+        { threadId: 't', checkpointNs: '', parentCheckpointId: undefined },
+        {},
+      ),
+    ).resolves.toBe(input);
     expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
   });
 
@@ -89,14 +102,24 @@ describe('migratePendingSends', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [sendRow(TASKS, { node: 'a' })] });
     const input = checkpoint();
-    await migratePendingSends(context(client), input, 't', '', 'c1', {});
+    await migratePendingSends(
+      context(client),
+      input,
+      { threadId: 't', checkpointNs: '', parentCheckpointId: 'c1' },
+      {},
+    );
     expect(input.channel_values[TASKS]).toBeUndefined();
   });
 
   it('rebuilds an empty TASKS channel when the parent holds no sends', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });
-    const migrated = await migratePendingSends(context(client), checkpoint(), 't', '', 'c1', {});
+    const migrated = await migratePendingSends(
+      context(client),
+      checkpoint(),
+      { threadId: 't', checkpointNs: '', parentCheckpointId: 'c1' },
+      {},
+    );
     expect(migrated.channel_values[TASKS]).toEqual([]);
   });
 });

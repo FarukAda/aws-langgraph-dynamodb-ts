@@ -1,4 +1,23 @@
-import type { CheckpointPendingWrite } from '@langchain/langgraph-checkpoint';
+/**
+ * Hides which rows a checkpoint read issues, with what consistency, and how a
+ * checkpoint an older release wrote is read back.
+ *
+ * A tuple is a META row, a PAYLOAD row and a checkpoint's WRITE rows, read
+ * strongly for `getTuple` and eventually for `list`, with expired rows absent
+ * however long DynamoDB's sweep lags, and with a pre-v4 checkpoint's `Send`s
+ * migrated from its parent's pending writes. The caller asks for a tuple; which
+ * reads that takes, and in what order, is decided here.
+ */
+
+import type { RunnableConfig } from '@langchain/core/runnables';
+import {
+  type Checkpoint,
+  type CheckpointMetadata,
+  type CheckpointPendingWrite,
+  type CheckpointTuple,
+  maxChannelVersion,
+  TASKS,
+} from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
@@ -14,6 +33,7 @@ import {
 import type { ThreadAddress } from './parse';
 import {
   beginsWithQuery,
+  type CheckpointLocation,
   type CheckpointMetaItem,
   type CheckpointPayloadItem,
   type CheckpointWriteItem,
@@ -22,10 +42,23 @@ import {
   narrowHead,
   partitionKey,
   payloadRowKey,
+  readCheckpoint,
+  readMetadata,
   toPendingWrites,
   writeSortKeyPrefix,
 } from './rows';
 import type { CheckpointerContext } from './setup';
+
+/** The thread and namespace a read was asked for. */
+export interface ThreadLocation {
+  readonly threadId: string;
+  readonly checkpointNs: string;
+}
+
+/** A checkpoint's parent, whose pending writes a pre-v4 checkpoint's migration reads. */
+export interface PendingSendsSource extends ThreadLocation {
+  readonly parentCheckpointId: string | undefined;
+}
 
 /**
  * Rows one page of the newest-first META read evaluates. The read stops at the
@@ -138,9 +171,9 @@ export async function fetchTargetMeta(
 /**
  * The PAYLOAD row of one checkpoint.
  *
- * Accepts: `read.consistent` — defaults to true; `list` passes false and
- * accepts replica lag, since a listing tolerates what a read-your-writes
- * `getTuple` does not.
+ * Accepts: `at` — the checkpoint's location. `read.consistent` — defaults to
+ * true; `list` passes false and accepts replica lag, since a listing tolerates
+ * what a read-your-writes `getTuple` does not.
  *
  * Returns: the row, or undefined when it is not there — the window the ordered
  * PAYLOAD→META write leaves open, which the caller answers as "no checkpoint".
@@ -150,9 +183,7 @@ export async function fetchTargetMeta(
  */
 export async function fetchPayload(
   context: CheckpointerContext,
-  threadId: string,
-  checkpointNs: string,
-  checkpointId: string,
+  at: CheckpointLocation,
   read: ReadOptions = {},
 ): Promise<CheckpointPayloadItem | undefined> {
   const result = await withDynamoDBRetry(
@@ -160,7 +191,7 @@ export async function fetchPayload(
       context.client.get(
         {
           TableName: context.tableName,
-          Key: payloadRowKey({ threadId, checkpointNs, checkpointId }),
+          Key: payloadRowKey(at),
           ConsistentRead: read.consistent ?? true,
         },
         request,
@@ -180,8 +211,9 @@ export async function fetchPayload(
 /**
  * Every pending write stored for one checkpoint, decoded, in write order.
  *
- * Accepts: `read.consistent` — omitted reads strongly consistently; `list`
- * passes `false` explicitly and accepts replica lag, `getTuple` passes `true`.
+ * Accepts: `at` — the checkpoint's location. `read.consistent` — omitted reads
+ * strongly consistently; `list` passes `false` explicitly and accepts replica
+ * lag, `getTuple` passes `true`.
  *
  * Returns: the writes after `dropSupersededWrites` has resolved
  * first-write-wins; a checkpoint with none returns an empty array.
@@ -197,15 +229,13 @@ export async function fetchPayload(
  */
 export async function fetchPendingWrites(
   context: CheckpointerContext,
-  threadId: string,
-  checkpointNs: string,
-  checkpointId: string,
+  at: CheckpointLocation,
   read: ReadOptions = {},
 ): Promise<CheckpointPendingWrite[]> {
   const params = beginsWithQuery(
     context.tableName,
-    partitionKey(threadId),
-    writeSortKeyPrefix(checkpointNs, checkpointId),
+    partitionKey(at.threadId),
+    writeSortKeyPrefix(at.checkpointNs, at.checkpointId),
     { ascending: true, consistent: read.consistent ?? true },
   );
   /**
@@ -235,11 +265,125 @@ export async function fetchPendingWrites(
     context.logger.warn(
       'getTuple: a checkpoint carries very many pending-write rows; the read is complete but slow',
       {
-        threadId,
-        checkpointId,
+        threadId: at.threadId,
+        checkpointId: at.checkpointId,
         rows: items.length,
       },
     );
   }
-  return toPendingWrites(context, items, threadId, read.signal);
+  return toPendingWrites(context, items, at.threadId, read.signal);
+}
+
+/** How a tuple is assembled: cancellation, read consistency, and metadata already decoded by the caller. */
+export interface AssembleOptions {
+  signal?: AbortSignal;
+  /** `true` for `getTuple` (read-your-writes), `false` for the eventually-consistent `list` path. */
+  consistent: boolean;
+  /** Metadata the caller decoded to apply a filter, so it is not decoded (or downloaded) twice. */
+  metadata?: CheckpointMetadata;
+}
+
+/** Build a config that addresses a specific checkpoint. */
+function configFor(threadId: string, checkpointNs: string, checkpointId: string): RunnableConfig {
+  return {
+    configurable: { thread_id: threadId, checkpoint_ns: checkpointNs, checkpoint_id: checkpointId },
+  };
+}
+
+/**
+ * A full {@link CheckpointTuple} built from a META row.
+ *
+ * Accepts: `thread` — the **caller's** location, never the row's: `thread.threadId`
+ * scopes which S3 object the row may point at, so it must come from the
+ * partition the caller asked for; `thread.checkpointNs` is its namespace.
+ * `options.metadata` — already decoded by a filtered `list`, so a filtered
+ * listing decodes and downloads each metadata blob once, not twice.
+ * `options.consistent` — true for `getTuple`, false for `list`.
+ *
+ * Returns: the tuple, with `parentConfig` set only when the row names a parent;
+ * `undefined` when the PAYLOAD row is absent — the window the ordered
+ * PAYLOAD→META write leaves open, and the same answer a caller gets for a
+ * checkpoint that does not exist.
+ *
+ * Throws: whatever the reads and decodes throw.
+ */
+export async function assembleTuple(
+  context: CheckpointerContext,
+  thread: ThreadLocation,
+  meta: CheckpointMetaItem,
+  options: AssembleOptions,
+): Promise<CheckpointTuple | undefined> {
+  const read = { signal: options.signal, consistent: options.consistent };
+  const at: CheckpointLocation = { ...thread, checkpointId: meta.checkpointId };
+  const payload = await fetchPayload(context, at, read);
+  if (!payload) return undefined;
+  const [checkpoint, metadata, pendingWrites] = await Promise.all([
+    readCheckpoint(context, payload, thread.threadId, options.signal).then((stored) =>
+      migratePendingSends(
+        context,
+        stored,
+        { ...thread, parentCheckpointId: meta.parentCheckpointId },
+        read,
+      ),
+    ),
+    options.metadata ?? readMetadata(context, meta, thread.threadId, options.signal),
+    fetchPendingWrites(context, at, read),
+  ]);
+  const tuple: CheckpointTuple = {
+    config: configFor(thread.threadId, thread.checkpointNs, meta.checkpointId),
+    checkpoint,
+    metadata,
+    pendingWrites,
+  };
+  if (meta.parentCheckpointId !== undefined) {
+    tuple.parentConfig = configFor(thread.threadId, thread.checkpointNs, meta.parentCheckpointId);
+  }
+  return tuple;
+}
+
+/**
+ * Pre-v4 checkpoints kept a task's `Send`s as `__pregel_tasks` pending writes
+ * on the parent rather than in the checkpoint itself. Reading such a
+ * checkpoint rebuilds `channel_values[TASKS]` from those writes and stamps
+ * the channel with the highest version the checkpoint already carries (or
+ * the first version when it carries none), exactly as the reference savers
+ * do, so a thread written before LangGraph 0.2 still resumes.
+ *
+ * Accepts: `checkpoint` — any version. `parent` — the checkpoint's own thread
+ * and namespace, plus `parent.parentCheckpointId`, the parent whose pending
+ * writes hold the sends; absent means there is nowhere to migrate from.
+ * `read` — cancellation and consistency for the pending-writes read.
+ *
+ * Returns: the checkpoint untouched when it is v4 or has no parent, and
+ * otherwise a copy with `channel_values[TASKS]` rebuilt. The input is never
+ * mutated.
+ *
+ * Throws: whatever reading the parent's pending writes throws.
+ */
+export async function migratePendingSends(
+  context: CheckpointerContext,
+  checkpoint: Checkpoint,
+  parent: PendingSendsSource,
+  read: ReadOptions,
+): Promise<Checkpoint> {
+  if (checkpoint.v >= 4 || parent.parentCheckpointId === undefined) return checkpoint;
+  const writes = await fetchPendingWrites(
+    context,
+    {
+      threadId: parent.threadId,
+      checkpointNs: parent.checkpointNs,
+      checkpointId: parent.parentCheckpointId,
+    },
+    read,
+  );
+  const sends = writes.filter(([, channel]) => channel === TASKS).map(([, , value]) => value);
+  const versions = Object.values(checkpoint.channel_versions);
+  return {
+    ...checkpoint,
+    channel_values: { ...checkpoint.channel_values, [TASKS]: sends },
+    channel_versions: {
+      ...checkpoint.channel_versions,
+      [TASKS]: versions.length > 0 ? maxChannelVersion(...versions) : 1,
+    },
+  };
 }

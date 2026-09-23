@@ -1,11 +1,11 @@
-import type { FilterValue } from '../../../../src/checkpointer/internal/filter-match';
 import {
   listQuery,
   listScan,
   passesKeyFilters,
   passesMetadataFilter,
-} from '../../../../src/checkpointer/internal/list-scope';
+} from '../../../../src/checkpointer/internal/listing';
 import {
+  type FilterValue,
   type ListScope,
   parseListScope,
   type ThreadId,
@@ -262,7 +262,7 @@ describe('parseListScope', () => {
     }
   });
 
-  /** `$foo` is not a known operator, so `filter-match.ts` matches it as a literal clause. */
+  /** `$foo` is not a known operator, so `matchesFilter` matches it as a literal clause. */
   it('accepts a filter carrying a non-operator key inside a clause', () => {
     expect(() =>
       parseListScope({ configurable: { thread_id: 't' } }, { filter: { a: { $foo: 1 } } }),

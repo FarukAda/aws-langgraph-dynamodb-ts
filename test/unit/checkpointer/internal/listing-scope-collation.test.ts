@@ -1,4 +1,4 @@
-import { listQuery, passesKeyFilters } from '../../../../src/checkpointer/internal/list-scope';
+import { listQuery, passesKeyFilters } from '../../../../src/checkpointer/internal/listing';
 import {
   type ListScope,
   parseListScope,

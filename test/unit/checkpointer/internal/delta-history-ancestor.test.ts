@@ -3,7 +3,7 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import {
   ancestorExpired,
   probeAncestor,
-} from '../../../../src/checkpointer/internal/ancestor-probe';
+} from '../../../../src/checkpointer/internal/delta-history';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { MAX_LOGGED_LABELS, MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';

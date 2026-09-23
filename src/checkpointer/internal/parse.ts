@@ -23,9 +23,8 @@ import {
   parseStringArray,
 } from '../../shared/validation/primitives';
 import type { CheckpointConfigurable, DeltaChannelHistoryOptions } from '../types';
-import type { FilterValue } from './filter-match';
-import { DELTA_CHANNEL_HISTORY_KEYS, SAVER_LIST_KEYS } from './option-keys';
 import { writeSortKeyBytes } from './rows';
+import { DELTA_CHANNEL_HISTORY_KEYS, SAVER_LIST_KEYS } from './setup';
 
 declare const threadIdBrand: unique symbol;
 declare const checkpointNsBrand: unique symbol;
@@ -404,6 +403,10 @@ export function parsePutWritesRequest(
     signal,
   };
 }
+
+/** A JSON-comparable value used in metadata filters. */
+export type FilterValue =
+  string | number | boolean | null | FilterValue[] | { [key: string]: FilterValue };
 
 /** What one `list()` call covers, parsed once from its config and options. */
 export interface ListScope {

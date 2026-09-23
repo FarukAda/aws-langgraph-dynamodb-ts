@@ -1,6 +1,6 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
-import { metaRows } from '../../../../src/checkpointer/internal/list-rows';
+import { metaRows } from '../../../../src/checkpointer/internal/listing';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { listSessions } from '../../../../src/history/actions/list-sessions';

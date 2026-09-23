@@ -1,6 +1,6 @@
 import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
-import { assembleTuple } from '../../../../src/checkpointer/internal/assemble';
+import { assembleTuple } from '../../../../src/checkpointer/internal/read';
 import type { CheckpointMetaItem } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -62,7 +62,12 @@ const payloadRow = {
 describe('assembleTuple', () => {
   it('builds the tuple from the payload, the metadata and the pending writes', async () => {
     const { client } = withRows({ payload: payloadRow });
-    const tuple = await assembleTuple(context(client), 't', '', meta(), { consistent: true });
+    const tuple = await assembleTuple(
+      context(client),
+      { threadId: 't', checkpointNs: '' },
+      meta(),
+      { consistent: true },
+    );
     expect(tuple?.config.configurable).toMatchObject({
       thread_id: 't',
       checkpoint_ns: '',
@@ -77,18 +82,21 @@ describe('assembleTuple', () => {
   it('answers undefined when the payload row is not there', async () => {
     const { client } = withRows({});
     await expect(
-      assembleTuple(context(client), 't', '', meta(), { consistent: true }),
+      assembleTuple(context(client), { threadId: 't', checkpointNs: '' }, meta(), {
+        consistent: true,
+      }),
     ).resolves.toBeUndefined();
   });
 
   it('sets parentConfig only when the row names a parent', async () => {
     const { client } = withRows({ payload: payloadRow });
-    const root = await assembleTuple(context(client), 't', '', meta(), { consistent: true });
+    const root = await assembleTuple(context(client), { threadId: 't', checkpointNs: '' }, meta(), {
+      consistent: true,
+    });
     expect(root?.parentConfig).toBeUndefined();
     const child = await assembleTuple(
       context(client),
-      't',
-      '',
+      { threadId: 't', checkpointNs: '' },
       meta({ parentCheckpointId: 'c0' }),
       { consistent: true },
     );
@@ -100,8 +108,7 @@ describe('assembleTuple', () => {
     const { client } = withRows({ payload: payloadRow });
     const tuple = await assembleTuple(
       context(client),
-      't',
-      '',
+      { threadId: 't', checkpointNs: '' },
       meta({ metadata: undefined as never }),
       {
         consistent: true,
@@ -113,7 +120,9 @@ describe('assembleTuple', () => {
 
   it('passes the consistency the caller asked for down to the payload read', async () => {
     const { client, mock } = withRows({ payload: payloadRow });
-    await assembleTuple(context(client), 't', '', meta(), { consistent: false });
+    await assembleTuple(context(client), { threadId: 't', checkpointNs: '' }, meta(), {
+      consistent: false,
+    });
     expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(false);
   });
 
@@ -141,8 +150,7 @@ describe('assembleTuple', () => {
     };
     await assembleTuple(
       { ...context(client), offloader: offloader as never },
-      'caller-thread',
-      '',
+      { threadId: 'caller-thread', checkpointNs: '' },
       meta(),
       { consistent: true },
     );
