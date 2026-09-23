@@ -287,8 +287,8 @@ export interface PendingDelete {
 
 /**
  * What one flush needs, narrowed from the caller's options rather than taking
- * the options interface itself, so the seam between the two modules stays as
- * small as what crosses it.
+ * the options interface itself, so the seam between the pass and its flush
+ * stays as small as what crosses it.
  */
 export interface FlushDeps {
   client: DynamoDBDocumentLike;
