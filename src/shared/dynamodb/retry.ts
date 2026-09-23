@@ -4,12 +4,13 @@ import {
   INITIAL_BACKOFF_DELAY_MS,
   MAX_BACKOFF_DELAY_MS,
 } from '../constants';
+import { DEFAULT_RETRYABLE_ERRORS } from '../errors/classify';
 import { RetryExhaustedError } from '../errors/errors';
 import { toError } from '../errors/wrap-error';
 import { redactedMessage } from '../logging/secret-patterns';
 import { abortErrorFrom } from './abort';
 import { fullJitter, sleep } from './backoff';
-import { DEFAULT_RETRYABLE_ERRORS, isRetryableError } from './retry-classifier';
+import { isRetryableError } from './retry-classifier';
 
 /**
  * The per-request options one attempt hands to the SDK call it makes.

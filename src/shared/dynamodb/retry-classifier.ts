@@ -1,76 +1,7 @@
-import { getCancellationReasons } from './cancellation';
+import { TRANSIENT_HTTP_STATUSES } from '../errors/classify';
+import { transientCancellation } from './cancellation';
 
 const MAX_CAUSE_DEPTH = 32;
-
-/**
- * Default retryable transient signals. TransactionCanceledException is
- * intentionally absent (its reasons include permanent failures);
- * TransactionConflictException (transient row contention) IS retryable.
- */
-export const DEFAULT_RETRYABLE_ERRORS: readonly string[] = [
-  'ProvisionedThroughputExceededException',
-  'ThrottlingException',
-  'RequestLimitExceeded',
-  'InternalServerError',
-  'ServiceUnavailable',
-  'TransactionConflictException',
-  'TransactionInProgressException',
-  'RequestTimeout',
-  'RequestTimeoutException',
-  'ECONNRESET',
-  'ECONNREFUSED',
-  'ETIMEDOUT',
-  'EPIPE',
-  'EAI_AGAIN',
-  'NetworkingError',
-  'TimeoutError',
-  'EHOSTUNREACH',
-  'ENETUNREACH',
-  'ENOTFOUND',
-];
-
-/**
- * HTTP statuses the AWS SDK retries regardless of the error name: throttling
- * (429) and the transient server statuses. They matter most for an error the
- * SDK could not map to a modeled exception (an intermediary's HTML 503, a
- * truncated body), which arrives as `name: 'Unknown'` with only its status.
- */
-const TRANSIENT_HTTP_STATUSES: readonly number[] = [429, 500, 502, 503, 504];
-
-/**
- * Cancellation reason codes (from a `TransactionCanceledException`'s
- * `CancellationReasons`) that are transient and safe to retry. `None` marks an
- * item that was not the cause and is ignored.
- */
-const TRANSIENT_CANCELLATION_REASONS: readonly string[] = [
-  'None',
-  'TransactionConflict',
-  'ThrottlingError',
-  'ProvisionedThroughputExceeded',
-];
-
-/**
- * When `error` is a transaction cancellation carrying reasons, return whether
- * every reason is transient; otherwise undefined so normal signal matching
- * applies. A bare cancellation with no reasons is treated as non-retryable.
- */
-function transactionCancellationRetryable(error: Error): boolean | undefined {
-  const reasons = getCancellationReasons(error);
-  if (!reasons) return undefined;
-  /**
-   * `length > 0` is load-bearing: `.every()` is vacuously true on an empty
-   * array, which would make a reason-less cancellation retryable — the exact
-   * opposite of what this function documents. AWS populates one reason per
-   * `TransactItems` entry, so an empty array should not occur; if it ever
-   * does, the conservative answer is not to retry.
-   */
-  return (
-    reasons.length > 0 &&
-    reasons.every(
-      (reason) => reason.Code === undefined || TRANSIENT_CANCELLATION_REASONS.includes(reason.Code),
-    )
-  );
-}
 
 /** What the cause chain says about an error: exact signal tokens, HTTP statuses, retryable trait. */
 interface RetryEvidence {
@@ -143,10 +74,10 @@ function collectEvidence(error: Error): RetryEvidence {
  * along.
  *
  * Throws: **nothing**, for any value a `throw` can produce — see
- * {@link getCancellationReasons}, which the first rule reads through.
+ * {@link transientCancellation}, which the first rule reads through.
  */
 export function isRetryableError(error: Error, retryableErrors: readonly string[]): boolean {
-  const cancellation = transactionCancellationRetryable(error);
+  const cancellation = transientCancellation(error);
   if (cancellation !== undefined) return cancellation;
   const evidence = collectEvidence(error);
   if (evidence.retryableByTrait) return true;

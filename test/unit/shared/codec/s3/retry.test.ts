@@ -49,3 +49,41 @@ describe('isTransientS3Error', () => {
     expect(isTransientS3Error(loop)).toBe(false);
   });
 });
+
+/**
+ * S3 once kept a list of its own: the DynamoDB tokens plus three S3 names. It
+ * now uses the one shared list, and every name and network code the old list
+ * held is still retried on the S3 path.
+ */
+describe('isTransientS3Error keeps everything it retried before', () => {
+  it.each([
+    'ProvisionedThroughputExceededException',
+    'ThrottlingException',
+    'RequestLimitExceeded',
+    'InternalServerError',
+    'ServiceUnavailable',
+    'TransactionConflictException',
+    'TransactionInProgressException',
+    'RequestTimeout',
+    'RequestTimeoutException',
+    'TimeoutError',
+    'SlowDown',
+    'InternalError',
+    'ConditionalRequestConflict',
+  ])('retries the name %s', (name) => {
+    expect(isTransientS3Error(Object.assign(new Error(name), { name }))).toBe(true);
+  });
+
+  it.each([
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'EPIPE',
+    'EAI_AGAIN',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'ENOTFOUND',
+  ])('retries the network code %s', (code) => {
+    expect(isTransientS3Error(Object.assign(new Error(code), { code }))).toBe(true);
+  });
+});

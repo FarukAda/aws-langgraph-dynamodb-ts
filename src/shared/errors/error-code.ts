@@ -22,6 +22,58 @@ export enum ErrorCode {
   RESULT_TRUNCATED = 'RESULT_TRUNCATED',
   ABORTED = 'ABORTED',
   COMPENSATION_FAILED = 'COMPENSATION_FAILED',
+  /**
+   * AWS throttled the request: `ProvisionedThroughputExceededException`,
+   * `ThrottlingException`, `RequestLimitExceeded`, S3's `SlowDown`, an HTTP
+   * 429, or a cancelled transaction whose causes include a throttling reason.
+   * Back off, or raise the table's capacity or the account quota.
+   */
+  THROTTLED = 'THROTTLED',
+  /**
+   * AWS or the network failed transiently: `InternalServerError`,
+   * `InternalFailure`, `ServiceUnavailable`, S3's `InternalError`, a request
+   * timeout (`RequestTimeout`, `RequestTimeoutException`, the SDK's
+   * `TimeoutError`), an HTTP 500/502/503/504, or a reset, refused or
+   * unreachable connection. Retry after a backoff. A write that failed this way
+   * may still have been applied.
+   */
+  SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
+  /**
+   * Another request was writing the same item or object at the same moment:
+   * `TransactionConflictException`, `TransactionInProgressException`,
+   * `ReplicatedWriteConflictException`, S3's `ConditionalRequestConflict`, or a
+   * cancelled transaction whose only transient cause is a conflict. Retry; more
+   * capacity would not help.
+   */
+  CONTENTION = 'CONTENTION',
+  /**
+   * AWS refused the caller's identity or permissions: `AccessDeniedException`,
+   * S3's `AccessDenied`, an expired, unrecognised or malformed credential or
+   * signature. Fix the credentials or the IAM policy; do not retry.
+   * `context.awsErrorName` says which.
+   */
+  ACCESS_DENIED = 'ACCESS_DENIED',
+  /**
+   * The table, index, bucket or object is not there: `ResourceNotFoundException`,
+   * S3's `NoSuchBucket` or `NoSuchKey`. Not an absent item — a read of a key that
+   * holds nothing returns nothing.
+   */
+  NOT_FOUND = 'NOT_FOUND',
+  /**
+   * AWS rejected the request as malformed: `ValidationException`,
+   * `ValidationError`, `IdempotentParameterMismatchException`, or a request body
+   * it could not read or accept. Retrying the same request fails the same way.
+   */
+  AWS_REJECTED = 'AWS_REJECTED',
+  /** An AWS request failed and no narrower code applies; `context.awsErrorName` names it. */
+  AWS_REQUEST_FAILED = 'AWS_REQUEST_FAILED',
+  /**
+   * A failure that came neither from this package's own checks nor from AWS:
+   * a `VectorBackend`, an `Embeddings` model, a `serde` or a `SessionBackend`
+   * threw something of its own, or this package has a bug. The original is
+   * `cause`.
+   */
+  UNEXPECTED_ERROR = 'UNEXPECTED_ERROR',
   UPSTREAM = 'UPSTREAM',
 }
 

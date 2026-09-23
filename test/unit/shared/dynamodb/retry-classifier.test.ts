@@ -1,7 +1,5 @@
-import {
-  DEFAULT_RETRYABLE_ERRORS,
-  isRetryableError,
-} from '../../../../src/shared/dynamodb/retry-classifier';
+import { isRetryableError } from '../../../../src/shared/dynamodb/retry-classifier';
+import { DEFAULT_RETRYABLE_ERRORS } from '../../../../src/shared/errors/classify';
 
 describe('isRetryableError', () => {
   it('matches by name', () => {
@@ -202,9 +200,11 @@ describe('isRetryableError parity with the SDK classifier (DDB-02)', () => {
   });
 
   /**
-   * `EAI_AGAIN` is a temporary DNS resolution failure and arrives as a `code`;
-   * `NetworkingError` is the SDK's own name for a connection that never formed.
-   * Neither request reached the service, so neither can have been applied.
+   * `EAI_AGAIN` is a temporary DNS resolution failure and `ECONNREFUSED` a
+   * connection the far end turned away; both arrive as a `code`. Neither request
+   * reached the service, so neither can have been applied. The list once held
+   * `NetworkingError` for this case, but that is an SDK v2 name no v3 package
+   * emits: a v3 connection failure carries the Node system `code` instead.
    */
   it('retries a connection that never formed', () => {
     expect(
@@ -215,7 +215,7 @@ describe('isRetryableError parity with the SDK classifier (DDB-02)', () => {
     ).toBe(true);
     expect(
       isRetryableError(
-        Object.assign(new Error('socket'), { name: 'NetworkingError' }),
+        Object.assign(new Error('connect'), { code: 'ECONNREFUSED' }),
         DEFAULT_RETRYABLE_ERRORS,
       ),
     ).toBe(true);
@@ -234,6 +234,106 @@ describe('isRetryableError parity with the SDK classifier (DDB-02)', () => {
         const error = Object.assign(new Error(signal), { [field]: signal });
         expect(isRetryableError(error, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
       }
+    }
+  });
+});
+
+/**
+ * Every failure the default tokens retried before they were derived from the
+ * classifier's table is still retried. The transport failures matter most: a
+ * timeout, a reset or refused connection, a failed DNS lookup and the SDK's own
+ * transient markers are what a flaky network produces, and losing one would
+ * turn a blip into a failed write.
+ */
+describe('the default tokens keep everything they retried before', () => {
+  const PREVIOUSLY_RETRIED_NAMES = [
+    'ProvisionedThroughputExceededException',
+    'ThrottlingException',
+    'RequestLimitExceeded',
+    'InternalServerError',
+    'ServiceUnavailable',
+    'TransactionConflictException',
+    'TransactionInProgressException',
+    'RequestTimeout',
+    'RequestTimeoutException',
+    'TimeoutError',
+  ];
+  const PREVIOUSLY_RETRIED_CODES = [
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'EPIPE',
+    'EAI_AGAIN',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'ENOTFOUND',
+  ];
+
+  it.each(PREVIOUSLY_RETRIED_NAMES)('retries the name %s', (name) => {
+    expect(
+      isRetryableError(Object.assign(new Error(name), { name }), DEFAULT_RETRYABLE_ERRORS),
+    ).toBe(true);
+  });
+
+  it.each(PREVIOUSLY_RETRIED_CODES)(
+    'retries the network code %s through code, errno and syscall',
+    (code) => {
+      for (const field of ['code', 'errno', 'syscall'] as const) {
+        const error = new Error('outer', {
+          cause: Object.assign(new Error(code), { [field]: code }),
+        });
+        expect(isRetryableError(error, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
+      }
+    },
+  );
+
+  it('retries the SDK transient markers and statuses whatever the name', () => {
+    expect(
+      isRetryableError(
+        Object.assign(new Error('x'), { name: 'Unknown', $retryable: {} }),
+        DEFAULT_RETRYABLE_ERRORS,
+      ),
+    ).toBe(true);
+    for (const status of [429, 500, 502, 503, 504]) {
+      expect(
+        isRetryableError(
+          Object.assign(new Error('x'), { name: 'Unknown', $metadata: { httpStatusCode: status } }),
+          DEFAULT_RETRYABLE_ERRORS,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('retries a cancellation whose every reason is transient', () => {
+    for (const code of [
+      'TransactionConflict',
+      'ThrottlingError',
+      'ProvisionedThroughputExceeded',
+    ]) {
+      const error = Object.assign(new Error('cancelled'), {
+        name: 'TransactionCanceledException',
+        CancellationReasons: [{ Code: 'None' }, { Code: code }],
+      });
+      expect(isRetryableError(error, DEFAULT_RETRYABLE_ERRORS)).toBe(true);
+    }
+  });
+
+  /**
+   * The derived list adds `InternalFailure` and `ReplicatedWriteConflictException`
+   * (both documented as safe to retry), and for DynamoDB the three S3 names it
+   * now shares with the S3 path.
+   */
+  it('also retries the names the derived list adds', () => {
+    for (const name of [
+      'InternalFailure',
+      'ReplicatedWriteConflictException',
+      'SlowDown',
+      'InternalError',
+      'ConditionalRequestConflict',
+    ]) {
+      expect(
+        isRetryableError(Object.assign(new Error(name), { name }), DEFAULT_RETRYABLE_ERRORS),
+      ).toBe(true);
     }
   });
 });
