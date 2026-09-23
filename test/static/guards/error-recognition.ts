@@ -90,11 +90,83 @@ function brokenRule(left: ts.Expression, right: ts.Expression, file: string): st
   return undefined;
 }
 
+/** Whether `property` is owned, and read outside the one file allowed to read it in `file`. */
+function ownedElsewhere(property: string, file: string): boolean {
+  return Object.hasOwn(OWNED_PROPERTIES, property) && OWNED_PROPERTIES[property] !== file;
+}
+
+/** Whether `.code` may be read ad hoc against `ErrorCode` in `file` (only the base class may). */
+function codeOwnedElsewhere(file: string): boolean {
+  return file !== 'shared/errors/base-error.ts';
+}
+
+/** The rule a `switch` on `discriminant` breaks in `file`, if any. */
+function brokenSwitchRule(node: ts.SwitchStatement, file: string): string | undefined {
+  const property = propertyRead(node.expression);
+  if (property === undefined) return undefined;
+  if (ownedElsewhere(property, file)) {
+    return `switches on .${property}; only ${OWNED_PROPERTIES[property]} may`;
+  }
+  const comparesToErrorCode = node.caseBlock.clauses.some(
+    (clause) => ts.isCaseClause(clause) && isErrorCodeMember(clause.expression),
+  );
+  if (property === 'code' && comparesToErrorCode && codeOwnedElsewhere(file)) {
+    return 'switches on .code against ErrorCode; use hasErrorCode';
+  }
+  return undefined;
+}
+
+/** Method names whose argument is tested for membership in, or a match against, the receiver. */
+const MEMBERSHIP_METHODS: ReadonlySet<string> = new Set(['includes', 'indexOf', 'has', 'test']);
+
+/** The elements a membership receiver tests against, when they are statically visible. */
+function membershipElements(receiver: ts.Expression): readonly ts.Expression[] | undefined {
+  const target = unwrap(receiver);
+  if (ts.isArrayLiteralExpression(target)) return target.elements;
+  if (
+    ts.isNewExpression(target) &&
+    ts.isIdentifier(target.expression) &&
+    target.expression.text === 'Set' &&
+    target.arguments?.length === 1
+  ) {
+    const sole = unwrap(target.arguments[0]);
+    if (ts.isArrayLiteralExpression(sole)) return sole.elements;
+  }
+  return undefined;
+}
+
+/**
+ * The rule a membership test (`array.includes(x)`, `array.indexOf(x)`,
+ * `set.has(x)`, `regex.test(x)`) breaks in `file`, if any — the array-form
+ * bypass of the same comparisons {@link brokenRule} already refuses.
+ */
+function brokenMembershipRule(node: ts.CallExpression, file: string): string | undefined {
+  const callee = unwrap(node.expression);
+  if (!ts.isPropertyAccessExpression(callee) || !MEMBERSHIP_METHODS.has(callee.name.text)) {
+    return undefined;
+  }
+  for (const argument of node.arguments) {
+    const property = propertyRead(argument);
+    if (property === undefined) continue;
+    if (ownedElsewhere(property, file)) {
+      return `tests .${property} via .${callee.name.text}(); only ${OWNED_PROPERTIES[property]} may`;
+    }
+    if (property !== 'code' || !codeOwnedElsewhere(file)) continue;
+    const elements = membershipElements(callee.expression) ?? [];
+    if (elements.some((element) => isErrorCodeMember(element))) {
+      return `tests .code via .${callee.name.text}() against ErrorCode; use hasErrorCode`;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Every place `source` recognises an error by name, by reason code outside the
- * cancellation module, or by an ad-hoc `.code` read. Parsed, not matched as
- * text, so a comment or a string is never counted. A value destructured first
- * (`const { name } = error`) is not seen; that is not the shape any site took.
+ * cancellation module, or by an ad-hoc `.code` read — an equality, a `switch`,
+ * or a membership test (`.includes`, `.indexOf`, `.has`, `.test`) all count.
+ * Parsed, not matched as text, so a comment or a string is never counted. A
+ * value destructured first (`const { name } = error`) is not seen; that is
+ * not the shape any site took.
  */
 export function findRecognitionSites(source: string, file: string): RecognitionSite[] {
   const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
@@ -112,14 +184,12 @@ export function findRecognitionSites(source: string, file: string): RecognitionS
       if (rule !== undefined) report(node, rule);
     }
     if (ts.isSwitchStatement(node)) {
-      const property = propertyRead(node.expression);
-      if (
-        property !== undefined &&
-        Object.hasOwn(OWNED_PROPERTIES, property) &&
-        OWNED_PROPERTIES[property] !== file
-      ) {
-        report(node, `switches on .${property}; only ${OWNED_PROPERTIES[property]} may`);
-      }
+      const rule = brokenSwitchRule(node, file);
+      if (rule !== undefined) report(node, rule);
+    }
+    if (ts.isCallExpression(node)) {
+      const rule = brokenMembershipRule(node, file);
+      if (rule !== undefined) report(node, rule);
     }
     ts.forEachChild(node, visit);
   };

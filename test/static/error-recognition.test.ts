@@ -23,6 +23,30 @@ describe('findRecognitionSites', () => {
     expect(at("switch (error.name) { case 'X': break; }")).toEqual([1]);
   });
 
+  it('flags a switch on .code whose cases compare against ErrorCode', () => {
+    expect(at('switch (error.code) { case ErrorCode.ABORTED: break; default: break; }')).toEqual([
+      1,
+    ]);
+    // A switch on .code with no ErrorCode case is not this library's own code.
+    expect(at("switch (error.code) { case 'ECONNRESET': break; }")).toEqual([]);
+  });
+
+  it('flags a membership test whose argument reads .name or .Code, however it is spelled', () => {
+    expect(at("if (['ConditionalCheckFailedException', 'X'].includes(error.name)) {}")).toEqual([
+      1,
+    ]);
+    expect(at('if (reasons.indexOf(reason.Code) !== -1) {}')).toEqual([1]);
+    expect(at("if (new Set(['X']).has(error.name)) {}")).toEqual([1]);
+    expect(at('if (/^Abort/.test(error.name)) {}')).toEqual([1]);
+  });
+
+  it('flags a membership test of .code against an ErrorCode list, but leaves a Node-code list alone', () => {
+    expect(
+      at('if ([ErrorCode.ABORTED, ErrorCode.RETRY_EXHAUSTED].includes(error.code)) {}'),
+    ).toEqual([1]);
+    expect(at("if (['ECONNRESET', 'ETIMEDOUT'].includes(error.code)) {}")).toEqual([]);
+  });
+
   it('leaves the classifier, a comparison with undefined, and a Node code alone', () => {
     expect(at("if (fields.name === 'X') {}", 'shared/errors/classify.ts')).toEqual([]);
     expect(at('if (reason.Code === undefined) {}')).toEqual([]);
