@@ -42,7 +42,7 @@ import type { HistoryContext } from './setup';
 /**
  * True when a TransactWriteItems cancellation was caused by a
  * ConditionalCheckFailed reason. Named distinctly from
- * checkpointer/actions/put-writes.ts's isConditionalCheckFailed, which
+ * shared/dynamodb/conditional-put.ts's isConditionalCheckFailed, which
  * checks a different thing entirely (a raw PutItem exception name, not a
  * transaction cancellation reason) — this function had that same name
  * until now, a real trap for whoever read one assuming it was the other.
@@ -669,7 +669,8 @@ async function writeCount(
  * Returns: the count written.
  *
  * Throws: `CONDITION_CONFLICT` when the session does not exist, or when it
- * changed during every one of the compare-and-swap's attempts; `VALIDATION`
+ * changed during every one of the compare-and-swap's attempts;
+ * `FORMAT_UNSUPPORTED` for a message row a newer release wrote; `VALIDATION`
  * naming `message` for a row in the message key space this package did not
  * write; whatever the reads and the write throw.
  */
@@ -698,7 +699,8 @@ export async function repairMessageCount(
 }
 
 /**
- * Whether a row's `ttl` is an instant this listing can both judge and render.
+ * Whether a row's `ttl` is an instant a session listing can both judge and
+ * render.
  *
  * Neither of the two things done with it refuses a value it cannot use.
  * {@link isExpiredRow} compares it against the clock, and a non-number compares
@@ -716,12 +718,12 @@ function hasReadableTtl(ttl: DocItem[string]): boolean {
  * Whether every attribute {@link summariseSession} hands back is the type this package
  * writes there.
  *
- * The identity test above proves a row is a session row; this proves its own
- * attributes are usable. They are returned under declared types, so a row that
- * disagrees answers the caller with a lie — `messageCount: 'many'` handed back
- * as a number — or, for the ttl, with a `RangeError`. A row this release cannot
- * speak for is dropped the way a foreign row is, never at the cost of the rest
- * of the page.
+ * The identity test {@link summariseSession} makes first proves a row is a
+ * session row; this proves its own attributes are usable. They are returned
+ * under declared types, so a row that disagrees answers the caller with a lie
+ * — `messageCount: 'many'` handed back as a number — or, for the ttl, with a
+ * `RangeError`. A row this release cannot speak for is dropped the way a
+ * foreign row is, never at the cost of the rest of the page.
  */
 function isSummarisable(raw: DocItem): boolean {
   return (
@@ -746,7 +748,7 @@ function isSummarisable(raw: DocItem): boolean {
  * caller taking that id to `getMessages` read a partition the row never lived
  * in.
  *
- * Accepts: `raw` — a row a listing read. `nowSeconds` — the listing's clock,
+ * Accepts: `raw` — a row a listing read. `atSeconds` — the listing's clock,
  * against which an expired row is absent.
  *
  * Returns: the summary, or `undefined` for a foreign, malformed or expired row.
@@ -759,12 +761,12 @@ function isSummarisable(raw: DocItem): boolean {
  * names it may no longer use, and the answer does not depend on the reading
  * machine's clock.
  */
-export function summariseSession(raw: DocItem, nowSeconds: number): SessionMetadata | undefined {
+export function summariseSession(raw: DocItem, atSeconds: number): SessionMetadata | undefined {
   const item = raw as ChatSessionItem;
   assertReadableRow(item, 'session');
   if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') return undefined;
   if (item.PK !== sessionPartition(item.sessionId)) return undefined;
-  if (!isSummarisable(raw) || isExpiredRow(item, nowSeconds)) return undefined;
+  if (!isSummarisable(raw) || isExpiredRow(item, atSeconds)) return undefined;
   return {
     sessionId: item.sessionId,
     title: item.title,
