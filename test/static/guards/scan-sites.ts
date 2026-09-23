@@ -45,7 +45,7 @@ export const ALLOWED_SCAN_SITES: Readonly<Record<string, string>> = {
   'history/actions/list-sessions.ts': 'history.listSessions(), without a recency index',
   'store/actions/list-namespaces.ts': 'listNamespaces() with no concrete prefix root',
   'store/internal/table-search.ts': 'store.search([]) over every namespace',
-  'shared/dynamodb/backfill-index.ts':
+  'backfill/backfill.ts':
     'backfillRecencyIndex(), a migration that reads every row by construction',
   'shared/dynamodb/paginate.ts': 'paginateScan itself, which sends the Scan of the reads above',
 };

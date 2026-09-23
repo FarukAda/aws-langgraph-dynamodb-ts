@@ -30,8 +30,8 @@ export type {
  * Run it before setting `indexName` on any adapter — see its own documentation
  * for why enabling the index first hides pre-existing rows from the listings.
  */
-export { backfillRecencyIndex } from './shared/dynamodb/backfill-index';
-export type { BackfillOptions, BackfillResult } from './shared/dynamodb/backfill-types';
+export { backfillRecencyIndex } from './backfill/backfill';
+export type { BackfillOptions, BackfillResult } from './backfill/backfill';
 
 export { DynamoDBFactory } from './factory/factory';
 export type {

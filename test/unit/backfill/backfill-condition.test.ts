@@ -1,10 +1,10 @@
 import { ScanCommand, UpdateCommand, type UpdateCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import { backfillRecencyIndex } from '../../../../src/shared/dynamodb/backfill-index';
-import type { BackfillResult } from '../../../../src/shared/dynamodb/backfill-types';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
-import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { backfillRecencyIndex } from '../../../src/backfill/backfill';
+import type { BackfillResult } from '../../../src/backfill/backfill';
+import type { DocItem } from '../../../src/shared/dynamodb/client';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
+import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 
 const TABLE = 'tbl';
 

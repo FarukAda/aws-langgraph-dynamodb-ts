@@ -1,11 +1,11 @@
-import { assertBackfillOptions } from '../../../../src/shared/dynamodb/backfill-validation';
-import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { assertBackfillOptions } from '../../../src/backfill/backfill';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
 import {
   assertRetryBounds,
   assertRetryPolicy,
   assertTableName,
-} from '../../../../src/shared/validation/options';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+} from '../../../src/shared/validation/options';
+import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 
 const TABLE = 'tbl';
 const ok = () => createStrictDocumentMock().client;

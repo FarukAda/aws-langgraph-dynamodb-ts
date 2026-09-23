@@ -1,8 +1,8 @@
 import { ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
-import { backfillRecencyIndex } from '../../../../src/shared/dynamodb/backfill-index';
-import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { backfillRecencyIndex } from '../../../src/backfill/backfill';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
+import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 
 /**
  * `backfillRecencyIndex` takes a signal in two places: its own `signal`, and

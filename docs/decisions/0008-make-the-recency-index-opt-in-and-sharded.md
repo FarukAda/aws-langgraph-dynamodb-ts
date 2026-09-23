@@ -35,7 +35,7 @@ partition key is spread across `indexShards` shards (default 8, ceiling
 1024) rather than one, and a listing reads all of a run's shards at once,
 up to `readConcurrency` in flight, following each newest-first. A table
 that already has rows predating the index runs
-`backfillRecencyIndex()` (`src/shared/dynamodb/backfill-index.ts`) first —
+`backfillRecencyIndex()` (`src/backfill/backfill.ts`) first —
 a conditional `UpdateItem` per row, safe to run against a live table and
 safe to re-run, that gives an existing row its keys without ever
 overwriting a live adapter's own write or resurrecting a row that has since

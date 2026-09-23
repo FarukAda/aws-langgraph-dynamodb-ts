@@ -21,7 +21,12 @@ import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   transactIdempotently,
 } from '../../shared/dynamodb/idempotent-write';
-import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/recency-index';
+import {
+  backfilledAt,
+  DEFAULT_INDEX_SHARDS,
+  indexKeys,
+  type IndexTarget,
+} from '../../shared/dynamodb/recency-index';
 import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import {
   assertReadableRow,
@@ -35,7 +40,7 @@ import { conflictError } from '../../shared/errors/errors';
 import type { SessionMetadata } from '../types';
 import { countLiveMessages } from './message-read';
 import type { SessionId } from './parse';
-import { SESSION_SORT_KEY, sessionPartition, sessionRowKey } from './rows';
+import { historyPartitionPrefix, SESSION_SORT_KEY, sessionPartition, sessionRowKey } from './rows';
 import type { HistoryContext } from './setup';
 
 /**
@@ -761,4 +766,24 @@ export function summariseSession(raw: DocItem, atSeconds: number): SessionMetada
     updatedAt: item.updatedAt,
     expiresAt: item.ttl === undefined ? undefined : new Date(item.ttl * 1000).toISOString(),
   };
+}
+
+/**
+ * Where a history row sits in the recency index, for a row written before the
+ * index existed.
+ *
+ * Accepts: `row` — any row of the table.
+ *
+ * Returns: a SESSION row's identity — its session id, at its own `updatedAt` —
+ * or `undefined` for a message row or a row of another adapter.
+ *
+ * Throws: nothing.
+ */
+export function sessionIndexTarget(row: DocItem): IndexTarget | undefined {
+  const pk = typeof row.PK === 'string' ? row.PK : '';
+  const sk = typeof row.SK === 'string' ? row.SK : '';
+  if (!pk.startsWith(historyPartitionPrefix())) return undefined;
+  return sk.endsWith('SESSION') && typeof row.sessionId === 'string'
+    ? { tag: 'SESS', id: row.sessionId, at: backfilledAt(row.updatedAt) }
+    : undefined;
 }

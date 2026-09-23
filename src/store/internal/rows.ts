@@ -18,7 +18,12 @@ import { type CodecDeps, decodePayload, type PayloadDescriptor } from '../../sha
 import type { DescriptorRef } from '../../shared/codec/descriptor-keys';
 import { encodePayload } from '../../shared/codec/encode';
 import type { DocItem } from '../../shared/dynamodb/client';
-import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/recency-index';
+import {
+  backfilledAt,
+  DEFAULT_INDEX_SHARDS,
+  indexKeys,
+  type IndexTarget,
+} from '../../shared/dynamodb/recency-index';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import {
   ADAPTER_TAGS,
@@ -541,4 +546,22 @@ export async function readStoreItem(
     createdAt: new Date(record.createdAt),
     updatedAt: new Date(record.updatedAt),
   };
+}
+
+/**
+ * Where a store row sits in the recency index, for a row written before the
+ * index existed.
+ *
+ * Accepts: `row` — any row of the table.
+ *
+ * Returns: an item row's identity — its sort key, at its own `updatedAt` — or
+ * `undefined` for a row of another adapter.
+ *
+ * Throws: nothing.
+ */
+export function storeIndexTarget(row: DocItem): IndexTarget | undefined {
+  const pk = typeof row.PK === 'string' ? row.PK : '';
+  const sk = typeof row.SK === 'string' ? row.SK : '';
+  if (!pk.startsWith(storePartitionPrefix())) return undefined;
+  return { tag: 'STORE', id: sk, at: backfilledAt(row.updatedAt) };
 }

@@ -38,9 +38,7 @@ describe('the per-write deadline stays off the caller-facing surface', () => {
    * validated against.
    */
   it('leaves deadlineAt out of the keys backfillRecencyIndex accepts', () => {
-    expect(readSource('shared/dynamodb/backfill-validation.ts')).not.toContain(
-      "deadlineAt: 'deadlineAt'",
-    );
+    expect(readSource('backfill/backfill.ts')).not.toContain("deadlineAt: 'deadlineAt'");
   });
 });
 

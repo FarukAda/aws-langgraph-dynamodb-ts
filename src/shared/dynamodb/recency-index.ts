@@ -229,6 +229,29 @@ export async function* iterateRecencyIndex(
 /** The adapter tags that scope GSI1, matching the partition-key tags. */
 export type IndexTag = 'CHKPT' | 'STORE' | 'SESS';
 
+/** How a row appears in the recency index: its adapter's tag, its identity, and its time. */
+export interface IndexTarget {
+  tag: IndexTag;
+  id: string;
+  at: string;
+}
+
+/** The time a row that recorded none is indexed at, older than anything indexed since. */
+export const BACKFILLED_AT = '1970-01-01T00:00:00.000Z';
+
+/**
+ * The time a backfilled row is indexed at.
+ *
+ * Accepts: `recorded` — the row's own time attribute, whatever it holds.
+ *
+ * Returns: that time when it is a string, else {@link BACKFILLED_AT}.
+ *
+ * Throws: nothing.
+ */
+export function backfilledAt(recorded: DocItem[string]): string {
+  return typeof recorded === 'string' ? recorded : BACKFILLED_AT;
+}
+
 /** The two attributes a row carries to appear in GSI1. */
 export interface IndexKeys {
   gsi1pk: string;

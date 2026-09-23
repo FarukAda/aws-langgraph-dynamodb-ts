@@ -1,10 +1,6 @@
-import {
-  BACKFILLED_AT,
-  decodeScanCursor,
-  encodeScanCursor,
-  indexTargetOf,
-} from '../../../../src/shared/dynamodb/backfill-target';
-import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { decodeScanCursor, encodeScanCursor, indexTargetOf } from '../../../src/backfill/backfill';
+import { BACKFILLED_AT } from '../../../src/shared/dynamodb/recency-index';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
 
 describe('indexTargetOf', () => {
   it('indexes a checkpoint META row at the pre-index epoch', () => {

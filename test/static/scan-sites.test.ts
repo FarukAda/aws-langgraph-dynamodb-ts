@@ -43,7 +43,7 @@ describe('unlistedScanSites', () => {
 
   it('passes the index backfill and the paginator, which the design names', () => {
     const sites = findScanSites([
-      { path: 'shared/dynamodb/backfill-index.ts', text: 'await options.client.scan(input);' },
+      { path: 'backfill/backfill.ts', text: 'await options.client.scan(input);' },
       { path: 'shared/dynamodb/paginate.ts', text: 'return options.client.scan(input);' },
     ]);
     expect(sites).toHaveLength(2);

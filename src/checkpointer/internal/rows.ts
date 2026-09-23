@@ -31,7 +31,12 @@ import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import type { DocItem } from '../../shared/dynamodb/client';
 import { namedDescriptor, type NamedDescriptor } from '../../shared/dynamodb/partition-delete';
-import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/recency-index';
+import {
+  BACKFILLED_AT,
+  DEFAULT_INDEX_SHARDS,
+  indexKeys,
+  type IndexTarget,
+} from '../../shared/dynamodb/recency-index';
 import {
   ADAPTER_TAGS,
   assertReadableRow,
@@ -1035,4 +1040,25 @@ export function checkpointRowUnit(row: DocItem): string {
  */
 export function checkpointRowKind(row: DocItem): string {
   return (row.SK as string).split(KEY_SEPARATOR)[0];
+}
+
+/**
+ * Where a checkpointer row sits in the recency index, for a row written before
+ * the index existed.
+ *
+ * Accepts: `row` — any row of the table.
+ *
+ * Returns: a META row's identity — its checkpoint id, at {@link BACKFILLED_AT},
+ * because a META row records no time of its own — or `undefined` for any other
+ * row, this adapter's or not.
+ *
+ * Throws: nothing.
+ */
+export function checkpointIndexTarget(row: DocItem): IndexTarget | undefined {
+  const pk = typeof row.PK === 'string' ? row.PK : '';
+  const sk = typeof row.SK === 'string' ? row.SK : '';
+  if (!pk.startsWith(ADAPTER_PARTITION_PREFIX)) return undefined;
+  return sk.startsWith(metaAnyNamespacePrefix()) && typeof row.checkpointId === 'string'
+    ? { tag: 'CHKPT', id: row.checkpointId, at: BACKFILLED_AT }
+    : undefined;
 }

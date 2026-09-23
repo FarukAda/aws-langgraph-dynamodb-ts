@@ -17,6 +17,7 @@ describe('the layer table', () => {
     expect(layerOf('checkpointer/actions/put.ts')).toBe('actions');
     expect(layerOf('store/store.ts')).toBe('adapter');
     expect(layerOf('factory/types.ts')).toBe('factory');
+    expect(layerOf('backfill/backfill.ts')).toBe('factory');
     expect(layerOf('index.ts')).toBe('entry');
     expect(layerOf('store/new-thing.ts')).toBeUndefined();
   });
