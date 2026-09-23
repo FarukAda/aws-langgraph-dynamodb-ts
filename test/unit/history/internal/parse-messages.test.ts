@@ -49,7 +49,7 @@ describe('parseSessionId', () => {
   });
 });
 
-describe('parseMessages', () => {
+describe('parseMessages (array)', () => {
   it('accepts an array, empty or not', () => {
     expect(() => parseMessages([])).not.toThrow();
     expect(() => parseMessages([new HumanMessage('hi')])).not.toThrow();
@@ -62,7 +62,7 @@ describe('parseMessages', () => {
   });
 });
 
-describe('parseMessages', () => {
+describe('parseMessages (serialization)', () => {
   it('serializes real messages in order', () => {
     const stored = parseMessages([new HumanMessage('one'), new HumanMessage('two')]);
     expect(stored.map((message) => message.data.content)).toEqual(['one', 'two']);

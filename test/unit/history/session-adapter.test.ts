@@ -41,6 +41,15 @@ describe('bound read window (HIST-06)', () => {
     await new DynamoDBSessionChatMessageHistory(b, 's', { limit: 20 }).getMessages();
     expect(b.getMessages).toHaveBeenCalledWith('s', { limit: 20 });
   });
+
+  it("keeps a copy of its window, not the caller's object", async () => {
+    const b = backend();
+    const w = { limit: 20 };
+    const history = new DynamoDBSessionChatMessageHistory(b, 's', w);
+    w.limit = 0;
+    await history.getMessages();
+    expect(b.getMessages).toHaveBeenCalledWith('s', { limit: 20 });
+  });
 });
 
 /**
