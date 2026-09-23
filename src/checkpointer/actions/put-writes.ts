@@ -44,10 +44,9 @@ const nextWriteGroup = createUlidFactory();
  *
  * Guarantees: regular writes are first-write-wins, matching the reference
  * checkpointer; special negative-index writes always overwrite (see
- * {@link commitPendingWrites}). Cleanup of this call's own uploads
- * only ever targets uploads confirmed unreferenced (see
- * {@link commitPendingWrites}): a verified non-commit, or a guard rejection whose
- * returned row provably belongs to another call. A special write's superseded
+ * {@link commitPendingWrites}). Cleanup of this call's own uploads only ever
+ * targets uploads confirmed unreferenced: a verified non-commit, or a guard
+ * rejection whose returned row provably belongs to another call. A special write's superseded
  * payload is released only once the write that superseded it committed. An
  * upload can leak. A payload refused partway through the encode releases the
  * objects the earlier writes of the same call had already uploaded, before the
