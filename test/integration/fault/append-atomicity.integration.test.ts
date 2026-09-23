@@ -3,6 +3,7 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { HumanMessage } from '@langchain/core/messages';
 
 import { DynamoDBChatMessageHistory } from '../../../src/index';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DDB_LOCAL_CONFIG, createTable, deleteTable } from '../helpers/ddb-local';
 import { awsError, installFaults } from '../helpers/fault-injection';
 
@@ -162,7 +163,8 @@ describe('addMessages caller-observed atomicity under partial transaction failur
     const sessionId = 's-multi-chunk-rollback';
     const messages = Array.from({ length: 150 }, (_unused, index) => new HumanMessage(`m${index}`));
     await expect(faulted.addMessages(sessionId, messages)).rejects.toMatchObject({
-      name: 'CompensationFailedError',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.COMPENSATION_FAILED,
     });
     base.destroy();
 

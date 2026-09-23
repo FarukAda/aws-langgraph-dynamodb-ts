@@ -174,6 +174,20 @@ describe('ensureLifecycleRule', () => {
       ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 7, silent()),
     ).rejects.toThrow('denied');
   });
+
+  it.each(['NoSuchBucket', 'ResourceNotFoundException', 'NoSuchKey'])(
+    'rethrows %s from the read instead of starting from an empty rule set',
+    async (name) => {
+      s3Mock
+        .on(GetBucketLifecycleConfigurationCommand)
+        .rejects(Object.assign(new Error('missing'), { name, $metadata: { httpStatusCode: 404 } }));
+      s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+      await expect(
+        ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 7, silent()),
+      ).rejects.toMatchObject({ name });
+      expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
+    },
+  );
 });
 
 describe('ensureLifecycleRule prefix guard (SEC-04, CODEC-07)', () => {

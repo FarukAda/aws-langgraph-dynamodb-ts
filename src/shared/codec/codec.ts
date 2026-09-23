@@ -2,8 +2,8 @@ import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBLangGraphError, isDynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
-import { ValidationError } from '../errors/errors';
-import { toError } from '../errors/wrap-error';
+import { validationError } from '../errors/errors';
+import { toError } from '../errors/to-error';
 import { truncateForLog } from '../logging/truncate';
 import { CompressionConfig, decompress } from './compression';
 import { bytesHoldDeclaredForm } from './declared-form';
@@ -70,7 +70,7 @@ export interface CodecDeps {
 
 function requireOffloader(deps: CodecDeps): S3Offloader {
   if (!deps.offloader) {
-    throw new ValidationError(
+    throw validationError(
       "this row's payload is offloaded to S3 but the adapter has no `s3` configuration; " +
         'configure the bucket the writer used',
       's3',
@@ -105,7 +105,7 @@ function requireOffloader(deps: CodecDeps): S3Offloader {
  */
 function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   if (descriptor === null || typeof descriptor !== 'object') {
-    throw new ValidationError(
+    throw validationError(
       `payload descriptor is ${descriptor === null ? 'null' : typeof descriptor}, not a descriptor ` +
         'this library wrote',
       'descriptor',
@@ -126,10 +126,7 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   if (!locations.includes(descriptor.location)) {
     /** The location is whatever the row holds, and the row is what this refuses. */
     const location = truncateForLog(String(JSON.stringify(descriptor.location)));
-    throw new ValidationError(
-      `payload descriptor has an unknown location ${location}`,
-      'descriptor',
-    );
+    throw validationError(`payload descriptor has an unknown location ${location}`, 'descriptor');
   }
 }
 
@@ -150,11 +147,11 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
  *
  * Returns: the decoded bytes.
  *
- * Throws: ValidationError naming `descriptor` for a shape no reader could
+ * Throws: `VALIDATION` naming `descriptor` for a shape no reader could
  * make sense of and `s3` for an offloaded row with no offloader configured;
  * `FORMAT_UNSUPPORTED` naming `schemaVersion` for a payload a newer release
- * wrote, which a newer reader reads fine; ValidationError naming `s3Key` when
- * the key lies outside `scope`; `AbortError` when the signal fires during the
+ * wrote, which a newer reader reads fine; `VALIDATION` naming `s3Key` when
+ * the key lies outside `scope`; `ABORTED` when the signal fires during the
  * download; `S3_OFFLOAD_FAILED` from the download; `COMPRESSION_LIMIT` or
  * `PAYLOAD_CORRUPT` from decompression.
  *
@@ -193,10 +190,10 @@ export async function readPayloadBytes(
  * Throws: the serde's own error whenever it is already one of this library's,
  * so `PAYLOAD_CORRUPT` from `JSON_SERDE` stays exactly what it was — as does
  * its refusal of a `serdeType` it has no grammar for, which it brands the same
- * ValidationError naming `serde` that the classifier below reaches for on the
+ * `VALIDATION` naming `serde` that the classifier below reaches for on the
  * identical row under any other serde; `PAYLOAD_CORRUPT` when the bytes are no
  * longer the form the row declares, on whatever serde raised it; anything else
- * as a ValidationError naming `serde`, carrying the refusal as `cause`.
+ * as a `VALIDATION` error naming `serde`, carrying the refusal as `cause`.
  *
  * Guarantees: no error leaves a decode unbranded, and which serde the adapter
  * was configured with never decides *which* brand. A rotted row read through
@@ -214,7 +211,7 @@ export async function readPayloadBytes(
  * serializer would not reconstruct the value they name. A stored `lc`
  * constructor record naming a class outside LangChain's allow-list is refused
  * by `load()` with a plain `Error`, which a public boundary could only rebrand
- * as an `UpstreamError` — reporting a row's own content to the caller as an AWS
+ * as an `UNEXPECTED_ERROR` — reporting a row's own content to the caller as an AWS
  * failure. It is deliberately *not* classified as payload loss, for
  * `assertKeyInScope`'s reason rather than `PAYLOAD_CORRUPT`'s: the bytes are
  * undamaged and parse, and which classes revive is a property of **this**
@@ -243,7 +240,7 @@ export async function loadPayloadValue<T>(
         refusal,
       );
     }
-    throw new ValidationError(
+    throw validationError(
       'the configured serde refused the payload stored in this row: the bytes parse, but the ' +
         'serializer would not reconstruct the value they name — a stored `lc` constructor record ' +
         'naming a class outside its allow-list reads this way, as does a serde that did not ' +
@@ -265,15 +262,15 @@ export async function loadPayloadValue<T>(
  * Throws: everything {@link readPayloadBytes} throws, plus everything
  * {@link loadPayloadValue} throws for bytes the serde will not accept —
  * `PAYLOAD_CORRUPT` for bytes that are no longer the form the row declares,
- * whichever serde is configured, ValidationError naming `serde` for a refusal
+ * whichever serde is configured, `VALIDATION` naming `serde` for a refusal
  * of bytes that are still intact.
  *
  * Guarantees: the bytes are read first, in a statement of their own. Passing
  * `descriptor.serdeType` and the awaited read as two arguments to one call read
  * the property *before* the guard ran, since arguments evaluate left to right —
  * so a row whose payload is `null` raised a bare `TypeError` carrying no code,
- * which a public boundary can only rebrand as an `UpstreamError`. Every read
- * path now answers such a row with the ValidationError naming `descriptor` that
+ * which a public boundary can only rebrand as an `UNEXPECTED_ERROR`. Every read
+ * path now answers such a row with the `VALIDATION` error naming `descriptor` that
  * the history adapter, which reads its bytes separately, already produced.
  */
 export async function decodePayload<T>(

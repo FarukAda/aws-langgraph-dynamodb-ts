@@ -3,7 +3,7 @@ import {
   MAX_BACKOFF_DELAY_MS,
   MAX_UNPROCESSED_RETRIES,
 } from '../constants';
-import { BatchWriteIncompleteError } from '../errors/errors';
+import { batchWriteIncompleteError } from '../errors/errors';
 import { isAbortError } from './abort';
 import { fullJitter, nextBackoffDelay, sleep } from './backoff';
 import type { DynamoDBDocumentLike } from './client-types';
@@ -35,11 +35,11 @@ function drainBackoff(retry?: RetryOptions): { base: number; max: number } {
 /**
  * The error a failed round raises.
  *
- * An `AbortError` passes through unchanged: a caller who cancelled did not get
+ * An `ABORTED` error passes through unchanged: a caller who cancelled did not get
  * an incomplete batch write, and wrapping it reported
  * `BATCH_WRITE_INCOMPLETE` for an aborted `deleteThread`, contradicting the
  * `ABORTED` every cancellable method documents. Anything else becomes a
- * {@link BatchWriteIncompleteError} carrying what did persist.
+ * `BATCH_WRITE_INCOMPLETE` error carrying what did persist.
  */
 function drainFailure(
   error: Error,
@@ -48,7 +48,7 @@ function drainFailure(
   retries: number,
 ): Error {
   if (isAbortError(error)) return error;
-  return new BatchWriteIncompleteError(succeededCount, pending, retries, error);
+  return batchWriteIncompleteError(succeededCount, pending, retries, error);
 }
 
 /**
@@ -63,16 +63,16 @@ function drainFailure(
  *
  * Returns: nothing; success means every request persisted.
  *
- * Throws: {@link BatchWriteIncompleteError} when the batch does not drain
+ * Throws: `BATCH_WRITE_INCOMPLETE` when the batch does not drain
  * within the rounds allowed, or when a round's write call fails outright — its
  * `succeededCount` is every earlier round's confirmed persists and the
- * triggering error is the `cause`. An `AbortError` passes through unchanged: a
+ * triggering error is the `cause`. An `ABORTED` error passes through unchanged: a
  * caller who cancelled did not get an incomplete batch write, and every
  * cancellable method documents `ABORTED`.
  *
  * Guarantees: **every** error this function throws is one of those two — a
- * `BatchWriteIncompleteError` carrying an accurate `succeededCount`, or an
- * `AbortError`. {@link batchWriteAll} adds up those counts across chunks and
+ * `BATCH_WRITE_INCOMPLETE` error carrying an accurate `succeededCount`, or an
+ * `ABORTED` error. {@link batchWriteAll} adds up those counts across chunks and
  * depends on it.
  */
 export async function drainUnprocessedWrites(
@@ -105,5 +105,5 @@ export async function drainUnprocessedWrites(
       throw drainFailure(error as Error, initialCount - pending.length, pending, retries);
     }
   }
-  throw new BatchWriteIncompleteError(initialCount - pending.length, pending, maxRetries);
+  throw batchWriteIncompleteError(initialCount - pending.length, pending, maxRetries);
 }

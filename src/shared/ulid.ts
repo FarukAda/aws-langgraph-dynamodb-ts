@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import { ValidationError } from './errors/errors';
+import { validationError } from './errors/errors';
 
 const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const ENCODING_LEN = 32;
@@ -65,7 +65,7 @@ function encodeTime(timeMs: number): string {
  * Returns: the prefix, usable as a sort-key bound — every id from that
  * millisecond onward sorts at or after it, every earlier id before it.
  *
- * Throws: ValidationError for a millisecond outside the range, naming no field:
+ * Throws: `VALIDATION` for a millisecond outside the range, naming no field:
  * no caller-supplied option is at fault here, and the rule a caller meets is
  * `validateMessageWindow`'s, which names `before`. This guard is the invariant
  * underneath it, so no second caller can rebuild the bound that broke.
@@ -83,7 +83,7 @@ function encodeTime(timeMs: number): string {
  */
 export function ulidTimePrefix(timeMs: number): string {
   if (!(timeMs >= 0 && timeMs < ULID_TIME_RANGE_MS)) {
-    throw new ValidationError(
+    throw validationError(
       `a ULID time prefix covers epoch milliseconds 0 to ${ULID_TIME_RANGE_MS - 1} (the year ` +
         `37648); ${timeMs} is outside it and has no ten-character encoding`,
     );

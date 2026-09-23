@@ -3,7 +3,6 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { compareSortKeys } from '../../shared/dynamodb/sort-key-order';
-import { SAVER_LIST_KEYS } from '../../shared/validation/method-keys';
 import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
 import { validateLimit } from '../../shared/validation/primitives';
 import type { CheckpointMetaItem } from '../types';
@@ -23,6 +22,7 @@ import {
   metaSortKeyPrefix,
   partitionKey,
 } from './keys';
+import { SAVER_LIST_KEYS } from './option-keys';
 import { beginsWithQuery } from './query';
 import type { CheckpointerContext } from './setup';
 import { validateCheckpointId } from './validation';
@@ -79,7 +79,7 @@ function resolveListIds(
  *
  * Returns: the checkpoint id to filter on, or `undefined` for no filter.
  *
- * Throws: ValidationError naming `before` for a non-object `before`, or for
+ * Throws: `VALIDATION` naming `before` for a non-object `before`, or for
  * a `checkpoint_id` — anything but `undefined`, `null` or `''` — that is not
  * a well-formed identifier (H-10).
  */
@@ -101,7 +101,7 @@ function beforeCheckpointId(before: RunnableConfig | undefined): string | undefi
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `options.<key>` for an unknown key, or
+ * Throws: `VALIDATION` naming `options.<key>` for an unknown key, or
  * `filter` for a non-object one.
  */
 function assertListOptionsShape(options: CheckpointListOptions | undefined): void {
@@ -130,7 +130,7 @@ function assertListOptionsShape(options: CheckpointListOptions | undefined): voi
  *
  * Returns: the scope every later step reads instead of the raw config.
  *
- * Throws: ValidationError for a malformed identifier; naming `config` for a
+ * Throws: `VALIDATION` for a malformed identifier; naming `config` for a
  * non-object config, `configurable` for a non-object `configurable` and
  * `signal` for a signal that is not `AbortSignal`-shaped — all checked before
  * `options`, so a call with both malformed (e.g. `list('x', { bogus: 1 })`)

@@ -7,10 +7,11 @@ import type {
 
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { ValidationError } from '../../shared/errors/errors';
+import { failureLabel } from '../../shared/errors/base-error';
+import { validationError } from '../../shared/errors/errors';
 import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
-import { getItem } from '../actions/get';
 import type { VectorBackend, VectorMatch } from '../vector-backend';
+import { getItem } from './get-item';
 import { namespaceMatchesPrefix } from './keys';
 import { toRelevanceScores } from './score-direction';
 import { passesFilter } from './search-filter';
@@ -45,8 +46,8 @@ function warnOnNonDescendingScores(
  * Whether the match names an address this store can form at all — the one case
  * a match is dropped for, because a backend returning a namespace element that
  * holds the reserved separator would otherwise turn a whole search into a
- * `ValidationError` over one bad key. The address is checked here rather than
- * read back off the error `getItem` raises: the read raises a `ValidationError`
+ * `VALIDATION` error over one bad key. The address is checked here rather than
+ * read back off the error `getItem` raises: the read raises a `VALIDATION` error
  * of its own for a payload it cannot honour — an offloaded row read with no
  * `s3` configured, a descriptor that is not one, an `s3Key` outside the row's
  * path — and those are reads that did not happen, not items that are not
@@ -57,7 +58,7 @@ function warnOnNonDescendingScores(
  * nothing this package ran bounded either the labels or how many of them there
  * are. The `reason` goes through the same cap, though it is the only one of
  * these that cannot exceed it: what this `catch` binds is always
- * `validateStoreKey`'s own `ValidationError`, whose name is a literal of this
+ * `validateStoreKey`'s own `VALIDATION` error, whose code is a literal of this
  * package's. It is cut anyway so the rule reads the same at every site that
  * names a failure — a name and a message are the two halves of what the
  * failure was, and `message` is bounded where `redactedMessage` relays it —
@@ -72,7 +73,7 @@ function addressable(context: StoreContext, match: VectorMatch): boolean {
     context.logger.warn('search: skipped an unusable vectorBackend match', {
       namespace: truncateLabelsForLog(match.namespace),
       key: truncateForLog(match.key),
-      reason: truncateForLog((error as Error).name),
+      reason: truncateForLog(failureLabel(error as Error)),
     });
     return false;
   }
@@ -150,7 +151,7 @@ async function fetchUnseen(
  * score for its vector. Fewer than `limit` items means the backend has no more
  * matches under the prefix, not that the page was cut short.
  *
- * Throws: ValidationError naming `index.dims` when the query embeds to a
+ * Throws: `VALIDATION` naming `index.dims` when the query embeds to a
  * different width than the index declares, and naming `maxSearchCandidates`
  * either for a page larger than the cap or when the filter leaves the page short
  * at the cap — the same answer the in-DynamoDB ranker gives, rather than a
@@ -181,7 +182,7 @@ export async function searchViaBackend(
   assertVectorDims(index, queryVector, 'query');
   const need = offset + limit;
   if (need > context.maxSearchCandidates) {
-    throw new ValidationError(
+    throw validationError(
       `Requested page (offset ${offset} + limit ${limit} = ${need}) exceeds maxSearchCandidates ` +
         `(${context.maxSearchCandidates}); narrow the page or raise maxSearchCandidates`,
       'maxSearchCandidates',
@@ -208,7 +209,7 @@ export async function searchViaBackend(
     if (results.length >= need || matches.length < topK) break;
     if (topK >= context.maxSearchCandidates) {
       /** The backend still holds matches, but the filter left the page short at the cap: the same answer the in-DB ranker gives, not a silently short page. */
-      throw new ValidationError(
+      throw validationError(
         `Semantic search collected ${results.length} of ${need} matches within maxSearchCandidates ` +
           `(${context.maxSearchCandidates}); narrow the filter or raise maxSearchCandidates`,
         'maxSearchCandidates',

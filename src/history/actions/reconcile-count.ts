@@ -1,7 +1,9 @@
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { ConflictError } from '../../shared/errors/errors';
+import { classifyAwsError } from '../../shared/errors/classify';
+import { ErrorCode } from '../../shared/errors/error-code';
+import { conflictError } from '../../shared/errors/errors';
 import { SESSION_SORT_KEY, sessionPartition } from '../internal/keys';
 import { countLiveMessages } from '../internal/message-count';
 import type { HistoryContext } from '../internal/setup';
@@ -100,11 +102,11 @@ async function writeCount(
  * Returns: the count now stored, which is the number of messages a reader would
  * see.
  *
- * Throws: ValidationError naming `sessionId`; {@link ConflictError} when the
+ * Throws: `VALIDATION` naming `sessionId`; `CONDITION_CONFLICT` when the
  * session does not exist — rather than creating a permanent, TTL-less
  * metadata-only row — and when it stays too busy to settle within
  * {@link OVERWRITE_CAS_MAX_ATTEMPTS} attempts; `FORMAT_UNSUPPORTED` for a
- * message row a newer release wrote, and ValidationError naming `message` for
+ * message row a newer release wrote, and `VALIDATION` naming `message` for
  * a row in the session's message key space that this adapter did not write,
  * both of which `getMessages` refuses too — writing a count back for a session
  * no read can open would repair nothing; whatever the reads and the write
@@ -125,19 +127,17 @@ export async function reconcileMessageCount(
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
     const observed = await observeCount(context, sessionId, signal);
     if (!observed.exists) {
-      throw new ConflictError(
-        `Cannot reconcile messageCount: session "${sessionId}" does not exist`,
-      );
+      throw conflictError(`Cannot reconcile messageCount: session "${sessionId}" does not exist`);
     }
     const count = await countLiveMessages(context, sessionId, signal);
     try {
       await writeCount(context, sessionId, count, observed, signal);
       return count;
     } catch (error) {
-      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error;
+      if (classifyAwsError(error as Error) !== ErrorCode.CONDITION_CONFLICT) throw error;
     }
   }
-  throw new ConflictError(
+  throw conflictError(
     `Cannot reconcile messageCount: session "${sessionId}" changed during every one of ` +
       `${OVERWRITE_CAS_MAX_ATTEMPTS} attempts; retry when it is quieter`,
   );

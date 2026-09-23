@@ -3,7 +3,7 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { PayloadDescriptor } from '../codec/codec';
 import type { S3Offloader } from '../codec/s3/offloader';
 import { BATCH_WRITE_MAX } from '../constants';
-import { BatchWriteAllIncompleteError } from '../errors/errors';
+import { batchWriteAllIncompleteError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
 import { truncateForLog } from '../logging/truncate';
 import { isAbortError } from './abort';
@@ -55,7 +55,7 @@ export interface PartitionDeleteOptions {
   logger: Logger;
   /** The adapter's retry options for the page reads and the row deletes. */
   retry?: RetryOptions;
-  /** Aborting it stops the read between pages and rejects with the library's AbortError. */
+  /** Aborting it stops the read between pages and rejects with an `ABORTED` error. */
   signal?: AbortSignal;
   offloader?: S3Offloader;
   /** Label for log lines and S3-cleanup diagnostics, e.g. `deleteThread`. */
@@ -179,7 +179,7 @@ async function flushBuffer(options: PartitionDeleteOptions, state: PassState): P
   const cancelled = cancelAmong(tally.failures);
   if (cancelled !== undefined) throw cancelled;
   const { deleted, attempted } = state;
-  throw new BatchWriteAllIncompleteError(deleted, attempted, tally.failures, deleted, 'row');
+  throw batchWriteAllIncompleteError(deleted, attempted, tally.failures, deleted, 'row');
 }
 
 /**
@@ -196,9 +196,9 @@ async function flushBuffer(options: PartitionDeleteOptions, state: PassState): P
  *
  * Returns: how many rows were deleted, not counting the ones left in place.
  *
- * Throws: `AbortError` when the signal fires, whether between pages or during
+ * Throws: `ABORTED` when the signal fires, whether between pages or during
  * a row's delete, unwrapped and with no further row issued — a cancel is not a
- * delete that half-landed. Otherwise {@link BatchWriteAllIncompleteError} when
+ * delete that half-landed. Otherwise `BATCH_WRITE_INCOMPLETE` when
  * a row's delete fails, carrying what did succeed across every earlier flush.
  * S3 cleanup never throws, whatever it finds.
  *

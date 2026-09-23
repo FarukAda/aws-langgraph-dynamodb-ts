@@ -1,5 +1,5 @@
 import { MAX_SORT_KEY_BYTES } from '../../shared/constants';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 
 /** Reserved separator joining sort-key segments; forbidden inside any segment. */
 export const SORT_KEY_SEPARATOR = '#';
@@ -147,7 +147,7 @@ export function payloadSortKey(checkpointNs: string, checkpointId: string): stri
  * Returns: the sort key, its index zero-padded to a fixed width so the special
  * negative slots order below the positional ones.
  *
- * Throws: ValidationError naming `index` for an index this encoding cannot
+ * Throws: `VALIDATION` naming `index` for an index this encoding cannot
  * represent, and `sortKey` for a composed key over
  * {@link MAX_SORT_KEY_BYTES} — identifiers that each pass their own length rule
  * can still compose a key DynamoDB would refuse with a raw error.
@@ -165,7 +165,7 @@ export function writeSortKey(
     offsetIndex < 0 ||
     offsetIndex.toString().length > WRITE_INDEX_PAD_WIDTH
   ) {
-    throw new ValidationError(
+    throw validationError(
       `write index ${index} is not an integer encodable at offset ${WRITE_INDEX_OFFSET} ` +
         `with ${WRITE_INDEX_PAD_WIDTH} digits`,
       'index',
@@ -182,7 +182,7 @@ export function writeSortKey(
   ].join(SORT_KEY_SEPARATOR);
   const bytes = Buffer.byteLength(sortKey, 'utf8');
   if (bytes > MAX_SORT_KEY_BYTES) {
-    throw new ValidationError(
+    throw validationError(
       `checkpoint_ns, checkpoint_id, taskId and channel compose a ${bytes}-byte sort key; ` +
         `DynamoDB caps sort keys at ${MAX_SORT_KEY_BYTES} bytes`,
       'sortKey',

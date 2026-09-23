@@ -53,9 +53,9 @@ function kindOf(row: DocItem): string {
  * Returns: nothing. Deleting a thread that does not exist is not an error:
  * there is simply nothing in the partition.
  *
- * Throws: ValidationError for a malformed `threadId`;
- * `BatchWriteAllIncompleteError` when a row's delete fails, carrying what did
- * succeed; `AbortError` when the signal fires, whether between pages or during
+ * Throws: `VALIDATION` for a malformed `threadId`;
+ * `BATCH_WRITE_INCOMPLETE` when a row's delete fails, carrying what did
+ * succeed; `ABORTED` when the signal fires, whether between pages or during
  * a row's delete — a cancel is reported as a cancel and never as an incomplete
  * delete, and no further row is issued after it. A refused row is **not** one of
  * those failures and raises nothing: the pin turned it away because it was
@@ -63,8 +63,8 @@ function kindOf(row: DocItem): string {
  * acknowledged to its author and release the object that write uploaded, so
  * leaving it is the safe answer rather than a degraded one. The error's two
  * counts are **rows**, not batches — rows deleted and rows attempted, summed
- * across every flush of the pass, with `succeededCount` repeating the first and
- * `failedChunks` holding each failing row's own error — and its message says so,
+ * across every flush of the pass, with `details.succeededCount` repeating the first
+ * and `details.failedChunks` holding each failing row's own error — and its message says so,
  * because a pass that sends one request per row is not a batch that did not
  * drain. Refused rows are in neither count; they are reported at `warn` with
  * their sort keys and counted as skipped. The remedy for a refusal is the same

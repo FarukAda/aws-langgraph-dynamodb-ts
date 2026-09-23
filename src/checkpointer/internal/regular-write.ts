@@ -125,7 +125,7 @@ async function verifyFailure(
  *
  * A failure is not proof of a non-commit: `withDynamoDBRetry` re-issues a put
  * whose response was lost, and the re-issues can time out at the transport, so
- * the budget is spent on a `RetryExhaustedError` while the row is live.
+ * the budget is spent on a `RETRY_EXHAUSTED` error while the row is live.
  * Treating that as "never reached DynamoDB" deleted the object the live row
  * pointed at, making the checkpoint's pending writes unreadable forever. Each
  * such failure is therefore verified against the row before it is classified,

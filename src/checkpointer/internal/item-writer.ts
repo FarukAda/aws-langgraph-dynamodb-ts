@@ -95,7 +95,7 @@ const nextPutObjectId = createUlidFactory();
  * (heavy: the checkpoint itself), which the caller writes in that order —
  * payload first, so a META row never names a payload that is not there yet.
  *
- * Throws: ValidationError naming `value` for a checkpoint the serializer cannot
+ * Throws: `VALIDATION` naming `value` for a checkpoint the serializer cannot
  * represent; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded.
  * Encoding precedes every write, so a checkpoint that cannot be stored never
  * half-writes a thread — and a metadata payload refused after the checkpoint's
@@ -188,7 +188,7 @@ export async function buildCheckpointItems(
  * Returns: one row per write, special channels first, each carrying its
  * `occurrence` so a channel emitted twice by one call keeps both values.
  *
- * Throws: ValidationError naming `channel` or `value`; `S3_OFFLOAD_FAILED`. A
+ * Throws: `VALIDATION` naming `channel` or `value`; `S3_OFFLOAD_FAILED`. A
  * payload refused partway through releases the objects the earlier writes of
  * the same call had already uploaded (see {@link releaseUploads}), so a build
  * that throws returns the caller to where it started.

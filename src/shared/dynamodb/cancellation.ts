@@ -96,3 +96,80 @@ export function conditionalCheckFailure(error: RejectionFields): CancellationRea
   const causes = reasons.filter((reason) => reason.Code !== NOT_THE_CAUSE);
   return causes.length === 1 && causes[0].Code === CONDITION_FAILED ? causes[0] : undefined;
 }
+
+/**
+ * Cancellation reason codes (from a `TransactionCanceledException`'s
+ * `CancellationReasons`) that are transient and safe to retry. `None` marks an
+ * item that was not the cause and is ignored.
+ */
+const TRANSIENT_CANCELLATION_REASONS: readonly string[] = [
+  'None',
+  'TransactionConflict',
+  'ThrottlingError',
+  'ProvisionedThroughputExceeded',
+];
+
+/**
+ * Whether a cancelled transaction failed only for transient reasons.
+ *
+ * Accepts: `error` — any error; only a cancellation carries reasons.
+ *
+ * Returns: `undefined` when the error carries no reasons, so the caller's
+ * ordinary signal matching applies; otherwise whether every reason is
+ * transient. A cancellation carrying no reasons at all is not transient.
+ *
+ * Throws: nothing, for any value; see {@link getCancellationReasons}.
+ */
+export function transientCancellation(error: RejectionFields): boolean | undefined {
+  const reasons = getCancellationReasons(error);
+  if (!reasons) return undefined;
+  /**
+   * `length > 0` is load-bearing: `.every()` is vacuously true on an empty
+   * array, which would make a reason-less cancellation retryable — the exact
+   * opposite of what this function documents. AWS populates one reason per
+   * `TransactItems` entry, so an empty array should not occur; if it ever
+   * does, the conservative answer is not to retry.
+   */
+  return (
+    reasons.length > 0 &&
+    reasons.every(
+      (reason) => reason.Code === undefined || TRANSIENT_CANCELLATION_REASONS.includes(reason.Code),
+    )
+  );
+}
+
+/** Cancellation reason codes that mean the request was throttled. */
+const THROTTLING_REASONS: readonly string[] = ['ThrottlingError', 'ProvisionedThroughputExceeded'];
+
+/**
+ * Whether a cancelled transaction was throttled.
+ *
+ * Accepts: `error` — any error; only a cancellation carries reasons.
+ *
+ * Returns: true when any reason is a throttling reason. Meaningful only for a
+ * cancellation {@link transientCancellation} already found transient, which is
+ * the one place it is asked.
+ *
+ * Throws: nothing, for any value.
+ */
+export function throttledCancellation(error: RejectionFields): boolean {
+  return (getCancellationReasons(error) ?? []).some(
+    (reason) => reason.Code !== undefined && THROTTLING_REASONS.includes(reason.Code),
+  );
+}
+
+/**
+ * Whether the item at `index` of a cancelled transaction failed its condition.
+ *
+ * Accepts: `error` — any error. `index` — the item's position in the
+ * `TransactItems` the caller sent; reasons come back in that order.
+ *
+ * Returns: true when that item's reason is `ConditionalCheckFailed`, whatever
+ * the other items' reasons are; false for anything that is not such a
+ * cancellation.
+ *
+ * Throws: nothing, for any value.
+ */
+export function conditionFailedAt(error: RejectionFields, index: number): boolean {
+  return getCancellationReasons(error)?.[index]?.Code === CONDITION_FAILED;
+}

@@ -12,9 +12,10 @@ import { loadPayloadValue, PayloadLocation } from '../../../../src/shared/codec/
 import { bytesHoldDeclaredForm } from '../../../../src/shared/codec/declared-form';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-loss';
+import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { getItem } from '../../../../src/store/actions/get';
+import { getItem } from '../../../../src/store/internal/get-item';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -210,7 +211,9 @@ describe('bytes that are no longer the form the row declares are payload loss', 
   });
 
   it('is permanent loss, which is what lets the policy confine it to one message', () => {
-    expect(isPermanentPayloadLoss({ code: ErrorCode.PAYLOAD_CORRUPT } as never)).toBe(true);
+    expect(
+      isPermanentPayloadLoss(new DynamoDBLangGraphError('rot', ErrorCode.PAYLOAD_CORRUPT)),
+    ).toBe(true);
   });
 });
 

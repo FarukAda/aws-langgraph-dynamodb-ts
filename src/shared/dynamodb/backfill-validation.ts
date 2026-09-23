@@ -1,5 +1,5 @@
 import { MAX_INDEX_SHARDS } from '../constants';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { assertMembers, assertSignalLike } from '../validation/collaborators';
 import { allKeysOf, assertShape } from '../validation/option-shape';
 import { validateRetryBounds, validateTableName } from '../validation/options';
@@ -65,7 +65,7 @@ const BACKFILL_RETRY_KEYS = allKeysOf<Omit<RetryOptions, 'deadlineAt'>>({
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `retry`, `retry.<numeric key>`,
+ * Throws: `VALIDATION` naming `retry`, `retry.<numeric key>`,
  * `retry.retryableErrors`, `retry.isRetryable`, `retry.onRetry`, `retry.rng`
  * or `retry.signal`.
  */
@@ -76,13 +76,13 @@ function validateBackfillRetryOptions(retry: RetryOptions): void {
     validateStringArray(retry.retryableErrors, 'retry.retryableErrors');
   }
   if (retry.isRetryable !== undefined && typeof retry.isRetryable !== 'function') {
-    throw new ValidationError('retry.isRetryable must be a function', 'retry.isRetryable');
+    throw validationError('retry.isRetryable must be a function', 'retry.isRetryable');
   }
   if (retry.onRetry !== undefined && typeof retry.onRetry !== 'function') {
-    throw new ValidationError('retry.onRetry must be a function', 'retry.onRetry');
+    throw validationError('retry.onRetry must be a function', 'retry.onRetry');
   }
   if (retry.rng !== undefined && typeof retry.rng !== 'function') {
-    throw new ValidationError('retry.rng must be a function', 'retry.rng');
+    throw validationError('retry.rng must be a function', 'retry.rng');
   }
   assertSignalLike(retry.signal, 'retry.signal');
 }
@@ -96,7 +96,7 @@ function validateBackfillRetryOptions(retry: RetryOptions): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field` — including for `null`, which is a
+ * Throws: `VALIDATION` naming `field` — including for `null`, which is a
  * caller's explicit (wrong) value, not "unset", so it is refused rather than
  * silently falling through to the default the way `??` alone would.
  */
@@ -121,7 +121,7 @@ function validatePositiveBound(value: number | undefined, field: string, max?: n
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `options.<key>` for an unknown key;
+ * Throws: `VALIDATION` naming `options.<key>` for an unknown key;
  * `tableName`; `client` or `client.<member>`; `indexShards`, `pageSize` or
  * `maxPages` for a non-positive-integer bound (`indexShards` is additionally
  * capped); `dryRun` for a non-boolean; `retry`/`retry.<key>`; `signal`.
@@ -134,7 +134,7 @@ export function validateBackfillOptions(options: BackfillOptions): void {
   validatePositiveBound(options.pageSize, 'pageSize');
   validatePositiveBound(options.maxPages, 'maxPages');
   if (options.dryRun !== undefined && typeof options.dryRun !== 'boolean') {
-    throw new ValidationError('dryRun must be a boolean', 'dryRun');
+    throw validationError('dryRun must be a boolean', 'dryRun');
   }
   if (options.retry !== undefined) validateBackfillRetryOptions(options.retry);
   assertSignalLike(options.signal);

@@ -10,7 +10,7 @@ import { abortErrorFrom } from './abort';
  *
  * Returns: a promise resolving when the delay elapses.
  *
- * Throws: `AbortError` (`code === 'ABORTED'`) however the signal was aborted —
+ * Throws: an `ABORTED` error however the signal was aborted —
  * with a `DOMException`, a string or a custom reason (see
  * {@link abortErrorFrom}).
  *

@@ -1,7 +1,7 @@
 import type { CompressionConfig } from '../codec/compression';
 import { assertScopedKeyPrefix, type S3OffloadConfig } from '../codec/s3/config';
 import { MAX_INLINE_PAYLOAD_BYTES, MAX_PAYLOAD_BUFFER_BYTES } from '../constants';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { allKeysOf, assertObjectShape, assertShape } from './option-shape';
 import { validateInteger, validateNonEmptyString } from './primitives';
 
@@ -32,13 +32,13 @@ const S3_KEYS = allKeysOf<S3OffloadConfig>({
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming the offending field, dotted under
+ * Throws: `VALIDATION` naming the offending field, dotted under
  * `compression`.
  */
 export function validateCompression(config: CompressionConfig): void {
   assertShape(config, COMPRESSION_KEYS, 'compression');
   if (typeof config.enabled !== 'boolean') {
-    throw new ValidationError('compression.enabled must be a boolean', 'compression.enabled');
+    throw validationError('compression.enabled must be a boolean', 'compression.enabled');
   }
   if (config.level !== undefined) {
     validateInteger(config.level, 'compression.level', { min: 0, max: 9 });
@@ -78,7 +78,7 @@ export function validateCompression(config: CompressionConfig): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `s3.serverSideEncryption` or
+ * Throws: `VALIDATION` naming `s3.serverSideEncryption` or
  * `s3.sseKmsKeyId`. Unchecked, a truthy key id that is not a string was
  * handed to `PutObject` at the first offload, and a falsy one (`''`, `null`,
  * `0`) was dropped, uploading without the key the caller named.
@@ -88,7 +88,7 @@ function validateS3Encryption(config: S3OffloadConfig): void {
     config.serverSideEncryption !== undefined &&
     !SSE_ALGORITHMS.includes(config.serverSideEncryption)
   ) {
-    throw new ValidationError(
+    throw validationError(
       `s3.serverSideEncryption must be one of ${SSE_ALGORITHMS.join(', ')}`,
       's3.serverSideEncryption',
     );
@@ -108,7 +108,7 @@ function validateS3Encryption(config: S3OffloadConfig): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming the offending field, dotted under `s3`.
+ * Throws: `VALIDATION` naming the offending field, dotted under `s3`.
  */
 export function validateS3(config: S3OffloadConfig): void {
   assertShape(config, S3_KEYS, 's3');
@@ -139,6 +139,6 @@ export function validateS3(config: S3OffloadConfig): void {
    * not a function threw a bare `TypeError`.
    */
   if (config.createS3Client !== undefined && typeof config.createS3Client !== 'function') {
-    throw new ValidationError('s3.createS3Client must be a function', 's3.createS3Client');
+    throw validationError('s3.createS3Client must be a function', 's3.createS3Client');
   }
 }

@@ -2,7 +2,7 @@ import { BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { batchWriteAll } from '../../../../src/shared/dynamodb/batch-write';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { AbortError } from '../../../../src/shared/errors/errors';
+import { abortError } from '../../../../src/shared/errors/errors';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 const put = (pk: string) => ({ PutRequest: { Item: { pk } } });
@@ -50,16 +50,20 @@ describe('batchWriteAll', () => {
       (e: unknown) => e,
     );
     expect(error).toMatchObject({
-      name: 'BatchWriteAllIncompleteError',
-      succeededChunks: 1,
-      totalChunks: 2,
-      // Chunk 1: 25 items, 5 (pk 20-24) never drain -> succeededCount 20.
-      // Chunk 2: 5 items, all drain immediately -> succeededCount 5. Total 25.
-      succeededCount: 25,
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.BATCH_WRITE_INCOMPLETE,
+      details: {
+        kind: 'pass',
+        succeededChunks: 1,
+        totalChunks: 2,
+        // Chunk 1: 25 items, 5 (pk 20-24) never drain -> succeededCount 20.
+        // Chunk 2: 5 items, all drain immediately -> succeededCount 5. Total 25.
+        succeededCount: 25,
+      },
     });
   });
 
-  it('still attempts a later chunk after an earlier chunk hard-fails with a non-BatchWriteIncompleteError, excluding it from succeededCount', async () => {
+  it('still attempts a later chunk after an earlier chunk hard-fails with an error other than BATCH_WRITE_INCOMPLETE, excluding it from succeededCount', async () => {
     const { client, mock } = createStrictDocumentMock();
     // Chunk 1's single call rejects outright (not retryable, so no backoff
     // sleeps); chunk 2's call then succeeds normally.
@@ -70,13 +74,17 @@ describe('batchWriteAll', () => {
     const requests = Array.from({ length: 30 }, (_, i) => put(String(i)));
     const error = await batchWriteAll(client, 't', requests).catch((e: unknown) => e);
     expect(error).toMatchObject({
-      name: 'BatchWriteAllIncompleteError',
-      succeededChunks: 1,
-      totalChunks: 2,
-      // Chunk 1 hard-fails (not a BatchWriteIncompleteError, so its
-      // succeededCount is never read) -> contributes 0. Chunk 2: 5 items,
-      // all drain immediately -> succeededCount 5.
-      succeededCount: 5,
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.BATCH_WRITE_INCOMPLETE,
+      details: {
+        kind: 'pass',
+        succeededChunks: 1,
+        totalChunks: 2,
+        // Chunk 1 hard-fails (not a BATCH_WRITE_INCOMPLETE error, so its
+        // succeededCount is never read) -> contributes 0. Chunk 2: 5 items,
+        // all drain immediately -> succeededCount 5.
+        succeededCount: 5,
+      },
     });
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(2);
   });
@@ -84,12 +92,12 @@ describe('batchWriteAll', () => {
   /**
    * A cancel is not a failed write, and the count assertion is the half that
    * matters: a version that drains the remaining chunks and only then raises
-   * `AbortError` satisfies "it threw the right error" while still spending the
+   * `ABORTED` satisfies "it threw the right error" while still spending the
    * requests the caller cancelled.
    */
   it('rethrows an abort from a chunk and attempts no chunk after it', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const aborted = new AbortError();
+    const aborted = abortError();
     mock.on(BatchWriteCommand).rejectsOnce(aborted).resolves({ UnprocessedItems: {} });
     const requests = Array.from({ length: 60 }, (_, i) => put(String(i)));
     const error = await batchWriteAll(client, 't', requests).catch((e: unknown) => e);
@@ -114,7 +122,7 @@ describe('batchWriteAll', () => {
       signal: controller.signal,
       retry: { baseDelayMs: 1, maxDelayMs: 1 },
     }).catch((e: unknown) => e);
-    expect(error).toMatchObject({ name: 'AbortError', code: ErrorCode.ABORTED });
+    expect(error).toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.ABORTED });
     expect(error).not.toHaveProperty('failedChunks');
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
   });

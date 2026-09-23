@@ -1,7 +1,7 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { paginateQuery } from '../../../../src/shared/dynamodb/paginate';
-import { AbortError, ResultTruncatedError } from '../../../../src/shared/errors/errors';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 async function collect<T>(gen: AsyncGenerator<T>): Promise<T[]> {
@@ -30,26 +30,26 @@ describe('paginateQuery', () => {
     controller.abort();
     await expect(
       collect(paginateQuery({ client, params: { TableName: 't' }, signal: controller.signal })),
-    ).rejects.toBeInstanceOf(AbortError);
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED });
   });
 
-  it('throws ResultTruncatedError when maxItems is reached with more pages available', async () => {
+  it('throws RESULT_TRUNCATED when maxItems is reached with more pages available', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(QueryCommand)
       .resolves({ Items: [{ pk: 'a' }, { pk: 'b' }], LastEvaluatedKey: { pk: 'b' } });
     await expect(
       collect(paginateQuery({ client, params: { TableName: 't' }, maxItems: 1 })),
-    ).rejects.toBeInstanceOf(ResultTruncatedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RESULT_TRUNCATED });
     expect(mock.commandCalls(QueryCommand)).toHaveLength(1);
   });
 
-  it('throws ResultTruncatedError at the iteration cap when data remains', async () => {
+  it('throws RESULT_TRUNCATED at the iteration cap when data remains', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [], LastEvaluatedKey: { pk: 'loop' } });
     await expect(
       collect(paginateQuery({ client, params: { TableName: 't' }, maxIterations: 2 })),
-    ).rejects.toBeInstanceOf(ResultTruncatedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RESULT_TRUNCATED });
     expect(mock.commandCalls(QueryCommand)).toHaveLength(2);
   });
 

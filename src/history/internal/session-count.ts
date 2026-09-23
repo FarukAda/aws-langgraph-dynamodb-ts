@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { nowMs } from '../../shared/clock';
 import { MAX_WRITE_LIFETIME_MS } from '../../shared/constants';
-import { getCancellationReasons } from '../../shared/dynamodb/cancellation';
+import { conditionFailedAt } from '../../shared/dynamodb/cancellation';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
 import { removeRolledBackTitle } from './session-title';
@@ -17,8 +17,7 @@ import type { HistoryContext } from './setup';
  * until now, a real trap for whoever read one assuming it was the other.
  */
 function isCancelledByCondition(error: Error): boolean {
-  const reasons = getCancellationReasons(error);
-  return reasons?.[0]?.Code === 'ConditionalCheckFailed';
+  return conditionFailedAt(error, 0);
 }
 
 /**

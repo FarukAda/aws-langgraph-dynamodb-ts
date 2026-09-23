@@ -11,8 +11,8 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
+import type { DynamoDBLangGraphError } from '../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
-import type { BatchWriteAllIncompleteError } from '../../../src/shared/errors/errors';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 
 /**
@@ -125,7 +125,7 @@ describe('DynamoDBSaver', () => {
     /**
      * `config` is required, not optional — a JS caller can still pass `null`
      * or omit it. Both used to fail downstream with a raw `TypeError`, wrapped
-     * as `UpstreamError`; the shared config reader now refuses them the same
+     * as `UNEXPECTED_ERROR`; the shared config reader now refuses them the same
      * way as any other non-object config, naming `config` instead.
      */
     it('refuses a null or undefined config, naming it', async () => {
@@ -197,7 +197,7 @@ describe('DynamoDBSaver', () => {
      * `config.configurable` used to be read straight off the argument, so a
      * `null` or `undefined` config reached a bare `TypeError` from that
      * property access — caught by the error boundary and reported as an
-     * `UpstreamError`, an AWS-side failure, instead of naming the caller's
+     * `UNEXPECTED_ERROR`, a failure from below, instead of naming the caller's
      * mistake. The shared config reader now refuses any non-object config
      * before any property is read off it.
      */
@@ -319,7 +319,10 @@ describe('cancellation via RunnableConfig.signal (CORE-04)', () => {
     return controller.signal;
   };
   const expectAborted = (promise: Promise<unknown>) =>
-    expect(promise).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'AbortError' });
+    expect(promise).rejects.toMatchObject({
+      code: ErrorCode.ABORTED,
+      name: 'DynamoDBLangGraphError',
+    });
 
   it('rejects getTuple, list, put, putWrites and deleteThread before any DynamoDB call', async () => {
     const { client, mock } = createStrictDocumentMock();
@@ -358,7 +361,7 @@ describe('cancellation via RunnableConfig.signal (CORE-04)', () => {
   });
 
   /**
-   * The promise is "BatchWriteAllIncompleteError when a row's delete fails,
+   * The promise is "`BATCH_WRITE_INCOMPLETE` when a row's delete fails,
    * counting rows rather than batches and carrying what did succeed". A row
    * whose *handling* threw — here the decode of the row a rejection carries,
    * which an injected client can hand back already unmarshalled — reached no
@@ -385,12 +388,13 @@ describe('cancellation via RunnableConfig.signal (CORE-04)', () => {
     const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
     const raised = await saver.deleteThread('t').then(
       () => undefined,
-      (error: BatchWriteAllIncompleteError) => error,
+      (error: DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE>) => error,
     );
     expect(raised).toMatchObject({ code: ErrorCode.BATCH_WRITE_INCOMPLETE });
-    expect(raised?.succeededCount).toBe(deleted);
-    expect((raised?.succeededChunks ?? 0) + (raised?.failedChunks.length ?? 0)).toBe(
-      raised?.totalChunks,
-    );
+    const details = raised?.details;
+    expect(details?.kind).toBe('pass');
+    if (details?.kind !== 'pass') return;
+    expect(details.succeededCount).toBe(deleted);
+    expect(details.succeededChunks + details.failedChunks.length).toBe(details.totalChunks);
   });
 });

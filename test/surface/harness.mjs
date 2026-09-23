@@ -13,9 +13,41 @@ const req = (m) => require(require.resolve(m, { paths: [root] }));
 const lib = require(path.join(root, 'dist/index.js'));
 const { DynamoDBClient } = req('@aws-sdk/client-dynamodb');
 const ddb = req('@aws-sdk/lib-dynamodb');
-const { mockClient } = req('aws-sdk-client-mock');
+const { mockClient: mockClientIn } = req('aws-sdk-client-mock');
 const { GetCommand, QueryCommand, ScanCommand, BatchGetCommand } = ddb;
 const { HumanMessage } = req('@langchain/core/messages');
+
+/**
+ * The sinon that `aws-sdk-client-mock` itself resolves, so the sandbox below is
+ * one it accepts.
+ */
+const sinon = createRequire(require.resolve('aws-sdk-client-mock', { paths: [root] }))('sinon');
+
+/**
+ * The sandbox every stub of one `collectRows()` call is made in; it is restored,
+ * and so emptied, when the call ends.
+ *
+ * `mockClient` without a sandbox stubs through sinon's global default sandbox,
+ * which keeps every stub it ever made — and with it the client and the rows the
+ * stub serves — until something calls `sinon.restore()`. Nothing here did, and a
+ * stub's own `restore()` does not take it out of that collection, so each call
+ * retained about 40 MB that no garbage collection could free; the five calls a
+ * test run makes left a ~290 MB heap at process exit, where Node 24 and 26 then
+ * crashed (`Check failed: node->IsInUse()`) or hung while freeing it. The
+ * defect is theirs — Node 22 frees the same heap cleanly — but a heap this size
+ * is what reaches it, and nothing in the run needs to keep one.
+ */
+let sandbox = null;
+const mockClient = (client) => mockClientIn(client, { sandbox });
+
+/**
+ * The stubs sinon still holds once no `collectRows()` call is running: those
+ * of its global default sandbox, plus any left in a per-call sandbox. It is 0
+ * when every stub was made in, and released with, the sandbox of its call.
+ */
+export function retainedStubCount() {
+  return sinon.getFakes().length + (sandbox === null ? 0 : sandbox.getFakes().length);
+}
 
 function docMock() {
   const client = ddb.DynamoDBDocument.from(new DynamoDBClient({ region: 'us-east-1' }));
@@ -63,8 +95,10 @@ function outcome(e) {
   if (e === undefined) return 'RESOLVED';
   const name = e && e.name; const code = e && e.code; const field = e && e.context && e.context.field;
   const branded = e && typeof lib.isDynamoDBLangGraphError === 'function' && e instanceof Object && lib.isDynamoDBLangGraphError(e);
-  if (name === 'UpstreamError' && /unstubbed write/.test(e.message)) return 'REACHED-WRITE (input accepted, write attempted)';
-  if (branded) return `throws ${name}/${code}${field ? ` field=${field}` : ''}`;
+  if (code === 'UNEXPECTED_ERROR' && /unstubbed write/.test(e.message)) return 'REACHED-WRITE (input accepted, write attempted)';
+  // One class now: a branded error under any other name is a defect worth a row of its own.
+  if (branded && name !== 'DynamoDBLangGraphError') return `throws MISNAMED ${name}/${code}`;
+  if (branded) return `throws ${code}${field ? ` field=${field}` : ''}`;
   return `BARE ${name}`;
 }
 async function tryAsync(entry, label, fn) {
@@ -331,7 +365,7 @@ const STORED_ROW_READERS = [
  * form the row declares — nothing can read those, so they are `PAYLOAD_CORRUPT`
  * — and bytes that are intact while the serializer declines to rebuild the
  * value they name, which says what *this* reader may do and is a
- * `ValidationError` naming `serde`. On a row declaring `json` both land the
+ * `VALIDATION` error naming `serde`. On a row declaring `json` both land the
  * same way on all three adapters and under either serializer, which is the half
  * only a grid can show: the two defaults behave differently on the read,
  * `JsonPlusSerializer` reviving a stored `lc` constructor record where
@@ -439,23 +473,14 @@ async function fuzzTeardown() {
 
 function fuzzErrors() {
   const E = 'errors';
-  trySync(E, 'new ValidationError()', () => new lib.ValidationError());
-  trySync(E, 'new ValidationError(1, 2, 3)', () => { const e = new lib.ValidationError(1, 2, 3); return e.message + '|' + JSON.stringify(e.context) + '|cause=' + describe(e.cause); });
-  trySync(E, 'new UpstreamError(null, "op")', () => new lib.UpstreamError(null, 'op'));
-  trySync(E, 'new UpstreamError("str", "op")', () => new lib.UpstreamError('str', 'op'));
-  trySync(E, 'new UpstreamError({}, "op")', () => { const e = new lib.UpstreamError({}, 'op'); return e.message; });
-  trySync(E, 'new UpstreamError(err) (no operation)', () => { const e = new lib.UpstreamError(new Error('x')); return e.message; });
-  trySync(E, 'new RetryExhaustedError("m", "x")', () => { const e = new lib.RetryExhaustedError('m', 'x'); return JSON.stringify(e.context); });
-  trySync(E, 'new BatchWriteIncompleteError("a","b","c")', () => { const e = new lib.BatchWriteIncompleteError('a', 'b', 'c'); return e.message; });
-  trySync(E, 'new BatchWriteAllIncompleteError()', () => { const e = new lib.BatchWriteAllIncompleteError(); return e.message; });
-  trySync(E, 'new CompensationFailedError(null, null)', () => new lib.CompensationFailedError(null, null));
-  trySync(E, 'new CompensationFailedError("s", "t")', () => new lib.CompensationFailedError('s', 't'));
-  trySync(E, 'new ResultTruncatedError()', () => { const e = new lib.ResultTruncatedError(); return e.message + '|' + JSON.stringify(e.context); });
-  trySync(E, 'new AbortError(123)', () => { const e = new lib.AbortError(123); return typeof e.message + ':' + e.message; });
-  trySync(E, 'new ConflictError()', () => new lib.ConflictError());
+  trySync(E, 'new DynamoDBLangGraphError()', () => new lib.DynamoDBLangGraphError());
+  trySync(E, 'new DynamoDBLangGraphError(1, 2, 3)', () => { const e = new lib.DynamoDBLangGraphError(1, 2, 3); return e.message + '|' + JSON.stringify(e.context) + '|cause=' + describe(e.cause); });
+  trySync(E, 'new DynamoDBLangGraphError("m", "BATCH_WRITE_INCOMPLETE", {}, undefined, null)', () => describe(new lib.DynamoDBLangGraphError('m', 'BATCH_WRITE_INCOMPLETE', {}, undefined, null).details));
+  trySync(E, 'new DynamoDBLangGraphError("m", "BATCH_WRITE_INCOMPLETE", {}, undefined, "x")', () => describe(new lib.DynamoDBLangGraphError('m', 'BATCH_WRITE_INCOMPLETE', {}, undefined, 'x').details));
+  trySync(E, 'details copied? (mutate the caller array, then re-read)', () => { const arr = [{ a: 1 }]; const e = new lib.DynamoDBLangGraphError('m', 'BATCH_WRITE_INCOMPLETE', {}, undefined, { kind: 'drain', succeededCount: 0, unprocessed: arr, retries: 1 }); arr.push({ b: 2 }); return e.details.unprocessed.length === 1; });
   trySync(E, 'new DynamoDBLangGraphError("m", "NOT_A_CODE", null)', () => { const e = new lib.DynamoDBLangGraphError('m', 'NOT_A_CODE', null); return e.code + '|' + describe(e.context); });
   trySync(E, 'new DynamoDBLangGraphError("m", code, {}, "notAnError")', () => { const e = new lib.DynamoDBLangGraphError('m', 'VALIDATION', {}, 'notAnError'); return describe(e.cause); });
-  for (const v of [null, undefined, 'x', {}, 1, new Error('e'), new lib.ValidationError('v')]) trySync('isDynamoDBLangGraphError', `value=${describe(v)}`, () => lib.isDynamoDBLangGraphError(v));
+  for (const v of [null, undefined, 'x', {}, 1, new Error('e'), new lib.DynamoDBLangGraphError('v', 'VALIDATION')]) trySync('isDynamoDBLangGraphError', `value=${describe(v)}`, () => lib.isDynamoDBLangGraphError(v));
   trySync('isDynamoDBLangGraphError', 'foreign object carrying the brand symbol', () => lib.isDynamoDBLangGraphError({ [Symbol.for('@farukada/aws-langgraph-dynamodb-ts/error')]: true }));
   trySync('ErrorCode', 'Object.isFrozen(ErrorCode)', () => Object.isFrozen(lib.ErrorCode));
   /**
@@ -465,14 +490,13 @@ function fuzzErrors() {
    * caught here and reported as the answer the row exists to give.
    */
   trySync('ErrorCode', 'mutate ErrorCode.VALIDATION = "x" (refused?)', () => { const before = lib.ErrorCode.VALIDATION; let refused = false; try { lib.ErrorCode.VALIDATION = 'x'; } catch { refused = true; } const after = lib.ErrorCode.VALIDATION; if (!refused) lib.ErrorCode.VALIDATION = before; return refused && after === before; });
-  trySync('errors', 'ValidationError JSON.stringify exposes?', () => Object.keys(JSON.parse(JSON.stringify(new lib.ValidationError('m', 'f')))).join(','));
+  trySync('errors', 'DynamoDBLangGraphError JSON.stringify exposes?', () => Object.keys(JSON.parse(JSON.stringify(new lib.DynamoDBLangGraphError('m', 'VALIDATION', { field: 'f' })))).join(','));
   /**
    * Both rows answer yes/no, not "what did it hold": a sync row records its
    * value's constructor, so returning the value itself reported `String` or
    * `Number` whichever way the copy went and the ratchet could not see it.
    */
   trySync('errors', 'error.context copied? (mutate the caller object, then re-read)', () => { const ctx = { field: 'f' }; const e = new lib.DynamoDBLangGraphError('m', 'VALIDATION', ctx); ctx.field = 'changed'; return e.context.field === 'f'; });
-  trySync('errors', 'BatchWriteIncompleteError.unprocessed copied?', () => { const arr = [{ a: 1 }]; const e = new lib.BatchWriteIncompleteError(0, arr, 1); arr.push({ b: 2 }); return e.unprocessed.length === 1; });
 }
 
 /**
@@ -481,17 +505,23 @@ function fuzzErrors() {
  */
 export async function collectRows() {
   rows.length = 0;
-  fuzzConstructors();
-  await fuzzSaver();
-  await fuzzStore();
-  await fuzzHistory();
-  fuzzFactory();
-  await fuzzBackfill();
-  fuzzRedaction();
-  await fuzzSerde();
-  await fuzzStoredRows();
-  fuzzErrors();
-  /** Last: it replaces two SDK methods for the length of its probes and restores them after. */
-  await fuzzTeardown();
+  sandbox = sinon.createSandbox();
+  try {
+    fuzzConstructors();
+    await fuzzSaver();
+    await fuzzStore();
+    await fuzzHistory();
+    fuzzFactory();
+    await fuzzBackfill();
+    fuzzRedaction();
+    await fuzzSerde();
+    await fuzzStoredRows();
+    fuzzErrors();
+    /** Last: it replaces two SDK methods for the length of its probes and restores them after. */
+    await fuzzTeardown();
+  } finally {
+    sandbox.restore();
+    sandbox = null;
+  }
   return rows.map((row) => [...row]);
 }

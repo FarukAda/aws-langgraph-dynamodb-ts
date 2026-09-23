@@ -16,7 +16,6 @@ import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
-import { STORE_KEYS } from '../../shared/validation/adapter-keys';
 import {
   assertBaseCollaborators,
   assertMembers,
@@ -25,9 +24,9 @@ import {
 import { assertShape } from '../../shared/validation/option-shape';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions } from '../types';
-import type { VectorBackend } from '../vector-backend';
+import type { VectorBackend, VectorScoreDirection } from '../vector-backend';
+import { STORE_KEYS } from './option-keys';
 import { validateStoreOptions } from './option-validation';
-import type { VectorScoreDirection } from './score-direction';
 
 /** Resolved collaborators shared by every store action. */
 export interface StoreContext {
@@ -74,7 +73,7 @@ export interface StoreSetup {
  * store owns it — a client the caller passed in is never destroyed by
  * `destroy()`.
  *
- * Throws: ValidationError for any invalid option, naming the option.
+ * Throws: `VALIDATION` for any invalid option, naming the option.
  *
  * Guarantees: constructing a store performs no I/O. The stacked-retry check is
  * deliberately not awaited: it is a warning about a caller-supplied client, not

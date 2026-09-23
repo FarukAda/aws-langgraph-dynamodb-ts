@@ -1,8 +1,5 @@
-import {
-  toRelevanceScores,
-  type VectorScoreDirection,
-} from '../../../../src/store/internal/score-direction';
-import type { VectorMatch } from '../../../../src/store/vector-backend';
+import { toRelevanceScores } from '../../../../src/store/internal/score-direction';
+import type { VectorMatch, VectorScoreDirection } from '../../../../src/store/vector-backend';
 
 const match = (key: string, score: number): VectorMatch => ({ namespace: ['n'], key, score });
 

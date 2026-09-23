@@ -3,7 +3,7 @@ import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
@@ -58,7 +58,7 @@ async function cleanUpItems(
  * Returns: nothing. Every write is attempted; a regular write that loses its
  * first-write-wins race is a normal outcome, not a failure.
  *
- * Throws: ValidationError naming `config`, `configurable` or `signal` for a
+ * Throws: `VALIDATION` naming `config`, `configurable` or `signal` for a
  * config of the wrong shape; `thread_id`, `checkpoint_ns`, `checkpoint_id` or
  * `thread_ts` for a malformed identifier, and `checkpoint_id` when the config
  * names none; `taskId`, `writes`, `channel`, `sortKey`, `payload` or `s3Key`;
@@ -89,7 +89,7 @@ export async function putWrites(
   const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
   const signal = config.signal;
   if (checkpointId === undefined) {
-    throw new ValidationError('checkpoint_id is required to store writes', 'checkpoint_id');
+    throw validationError('checkpoint_id is required to store writes', 'checkpoint_id');
   }
   validateWrites(writes);
   if (writes.length === 0) return;

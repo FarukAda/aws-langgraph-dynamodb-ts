@@ -4,6 +4,7 @@ import { clearSession } from '../../../../src/history/actions/clear';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { conditionalTable } from '../../../shared/helpers/conditional-delete';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -231,7 +232,7 @@ describe('clearSession', () => {
     });
     await expect(
       clearSession(context(client), 'sess-1', { signal: controller.signal }),
-    ).rejects.toMatchObject({ name: 'AbortError' });
+    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.ABORTED });
     expect(mock.commandCalls(DeleteCommand).length).toBeLessThan(rows);
   });
 });

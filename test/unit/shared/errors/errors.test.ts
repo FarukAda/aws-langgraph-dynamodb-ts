@@ -1,119 +1,231 @@
+import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
-  AbortError,
-  BatchWriteAllIncompleteError,
-  BatchWriteIncompleteError,
-  CompensationFailedError,
-  ConflictError,
-  ResultTruncatedError,
-  RetryExhaustedError,
-  ValidationError,
+  abortError,
+  batchWriteAllIncompleteError,
+  batchWriteIncompleteError,
+  compensationFailedError,
+  conflictError,
+  resultTruncatedError,
+  retryExhaustedError,
+  validationError,
 } from '../../../../src/shared/errors/errors';
 
-describe('error subclasses', () => {
-  it('each fixes its ErrorCode', () => {
-    expect(new ValidationError('v').code).toBe(ErrorCode.VALIDATION);
-    expect(new ConflictError('c').code).toBe(ErrorCode.CONDITION_CONFLICT);
-    expect(new RetryExhaustedError('r').code).toBe(ErrorCode.RETRY_EXHAUSTED);
-    expect(new AbortError().code).toBe(ErrorCode.ABORTED);
-    expect(new ResultTruncatedError('maxItems', 10000).code).toBe(ErrorCode.RESULT_TRUNCATED);
+/** Every factory, called with the least it accepts. */
+const EVERY_FACTORY = [
+  ['validationError', () => validationError('v')],
+  ['conflictError', () => conflictError('c')],
+  ['retryExhaustedError', () => retryExhaustedError('r')],
+  ['resultTruncatedError', () => resultTruncatedError('maxItems', 1)],
+  ['abortError', () => abortError()],
+  ['batchWriteIncompleteError', () => batchWriteIncompleteError(0, [], 1)],
+  ['batchWriteAllIncompleteError', () => batchWriteAllIncompleteError(0, 1, [])],
+  ['compensationFailedError', () => compensationFailedError(new Error('t'), new Error('r'))],
+] as const;
+
+describe('every factory', () => {
+  /** One class: a caller tells errors apart by `code`, never by `name` or prototype. */
+  it.each(EVERY_FACTORY)('%s builds the one branded class', (_name, build) => {
+    const error = build();
+    expect(error.name).toBe('DynamoDBLangGraphError');
+    expect(isDynamoDBLangGraphError(error)).toBe(true);
   });
 
-  it('CompensationFailedError carries the trigger as cause and the rollback error', () => {
-    const trigger = new Error('append failed');
-    const rollback = new Error('delete failed');
-    const err = new CompensationFailedError(trigger, rollback);
-    expect(err.code).toBe(ErrorCode.COMPENSATION_FAILED);
-    expect(err.cause).toBe(trigger);
-    expect(err.rollbackError).toBe(rollback);
-    expect(err.message).toMatch(/append failed/);
-    expect(err.message).toMatch(/delete failed/);
+  /**
+   * The top frame is the one a reader follows. Built inside a helper, every
+   * stack would open on that helper and hide the line that raised the error.
+   */
+  it.each(EVERY_FACTORY)('%s starts the stack at its caller', (_name, build) => {
+    const [, top] = (build().stack ?? '').split('\n');
+    expect(top).toBeDefined();
+    expect(top).not.toContain('errors.ts');
+    expect(top).toContain('errors.test.ts');
   });
 
-  it('ResultTruncatedError names the cap and limit it hit', () => {
-    const err = new ResultTruncatedError('maxIterations', 1000);
-    expect(err.message).toMatch(/maxIterations cap \(1000\)/);
-    // The cap is the offending *field*, not the operation that was running (CORE-06).
-    expect(err.context).toEqual({ field: 'maxIterations' });
+  it('fixes each code', () => {
+    expect(validationError('v').code).toBe(ErrorCode.VALIDATION);
+    expect(conflictError('c').code).toBe(ErrorCode.CONDITION_CONFLICT);
+    expect(retryExhaustedError('r').code).toBe(ErrorCode.RETRY_EXHAUSTED);
+    expect(abortError().code).toBe(ErrorCode.ABORTED);
+    expect(resultTruncatedError('maxItems', 10000).code).toBe(ErrorCode.RESULT_TRUNCATED);
+  });
+});
+
+describe('validationError', () => {
+  it('names the field and keeps the cause', () => {
+    const cause = new Error('under');
+    expect(validationError('bad', 'tableName', cause)).toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'tableName' },
+      message: 'bad',
+      cause,
+    });
   });
 
-  it('ValidationError reports the offending field in context.field, not as an operation', () => {
-    expect(new ValidationError('bad', 'tableName').context).toEqual({ field: 'tableName' });
-    expect(new ValidationError('bad').context).toEqual({});
+  it('reports the offending field in context.field, not as an operation', () => {
+    expect(validationError('bad', 'tableName').context).toEqual({ field: 'tableName' });
+    expect(validationError('bad').context).toEqual({});
+  });
+});
+
+describe('conflictError', () => {
+  it('keeps the message and the cause', () => {
+    const cause = new Error('stale');
+    expect(conflictError('precondition failed', cause)).toMatchObject({
+      code: ErrorCode.CONDITION_CONFLICT,
+      context: {},
+      message: 'precondition failed',
+      cause,
+    });
+  });
+});
+
+describe('retryExhaustedError', () => {
+  it('names the attempts spent and keeps the cause', () => {
+    const cause = new Error('last failure');
+    expect(retryExhaustedError('exhausted', 3, cause)).toMatchObject({
+      code: ErrorCode.RETRY_EXHAUSTED,
+      context: { attempts: 3 },
+      message: 'exhausted',
+      cause,
+    });
   });
 
-  it('BatchWriteIncompleteError keeps succeededCount and unprocessed', () => {
+  it('omits attempts from context when none is given', () => {
+    expect(retryExhaustedError('exhausted').context).toEqual({});
+  });
+});
+
+describe('resultTruncatedError', () => {
+  it('names the cap as the field and quotes the limit in the message', () => {
+    const error = resultTruncatedError('maxIterations', 1000);
+    expect(error.code).toBe(ErrorCode.RESULT_TRUNCATED);
+    expect(error.message).toMatch(/maxIterations cap \(1000\)/);
+    /** The cap is the offending field, not the operation that was running. */
+    expect(error.context).toEqual({ field: 'maxIterations' });
+  });
+});
+
+describe('abortError', () => {
+  it('defaults the message to Operation aborted and keeps the cause', () => {
+    const cause = new Error('signal reason');
+    const error = abortError(undefined, cause);
+    expect(error.code).toBe(ErrorCode.ABORTED);
+    expect(error.message).toBe('Operation aborted');
+    expect(error.cause).toBe(cause);
+  });
+
+  it('uses the given message', () => {
+    expect(abortError('stopped').message).toBe('stopped');
+  });
+});
+
+describe('batchWriteIncompleteError', () => {
+  it('carries a drain record with both counts', () => {
     const unprocessed = [{ PutRequest: { Item: { pk: 'a' } } }];
-    const err = new BatchWriteIncompleteError(3, unprocessed, 10);
-    expect(err.code).toBe(ErrorCode.BATCH_WRITE_INCOMPLETE);
-    expect(err.succeededCount).toBe(3);
-    expect(err.unprocessed).toEqual(unprocessed);
-    expect(err.message).toMatch(/3 item\(s\) persisted, 1 still un-acked/);
+    const error = batchWriteIncompleteError(3, unprocessed, 10);
+    expect(error.code).toBe(ErrorCode.BATCH_WRITE_INCOMPLETE);
+    expect(error.details).toEqual({ kind: 'drain', succeededCount: 3, unprocessed, retries: 10 });
+    expect(error.message).toMatch(/3 item\(s\) persisted, 1 still un-acked/);
   });
 
-  it('BatchWriteAllIncompleteError defaults succeededCount to 0 when the caller omits it', () => {
-    const err = new BatchWriteAllIncompleteError(0, 1, [new Error('boom')]);
-    expect(err.succeededCount).toBe(0);
+  /**
+   * The list is read long after the throw — from a `catch`, to drive
+   * reconciliation. Holding the caller's array by reference let a caller that
+   * reuses its buffer rewrite the contents of an error already in flight.
+   */
+  it('copies the unprocessed list it is handed', () => {
+    const unprocessed = [{ PutRequest: { Item: { pk: 'a' } } }];
+    const error = batchWriteIncompleteError(1, unprocessed, 2);
+    unprocessed.push({ PutRequest: { Item: { pk: 'b' } } });
+    expect(error.details).toMatchObject({
+      kind: 'drain',
+      unprocessed: [{ PutRequest: { Item: { pk: 'a' } } }],
+    });
+  });
+
+  /**
+   * "Throws: nothing; building an error may not fail", and it is reached from
+   * a `catch`: crashing on an argument it did not expect would replace the
+   * failure being reported with a bare `TypeError` that names none of it.
+   */
+  it('reads a missing or non-array unprocessed list as empty rather than crashing', () => {
+    const missing = batchWriteIncompleteError(0, undefined as never, 1);
+    expect(missing.details).toMatchObject({ unprocessed: [] });
+    expect(missing.message).toContain('0 still un-acked');
+    expect(batchWriteIncompleteError(0, 'x' as never, 1).details).toMatchObject({
+      unprocessed: [],
+    });
+  });
+});
+
+describe('batchWriteAllIncompleteError', () => {
+  it('carries a pass record, in rows when asked, with the first failure as cause', () => {
+    const first = new Error('first');
+    const error = batchWriteAllIncompleteError(1, 2, [first], 5, 'row');
+    expect(error.cause).toBe(first);
+    expect(error.details).toEqual({
+      kind: 'pass',
+      unit: 'row',
+      succeededChunks: 1,
+      totalChunks: 2,
+      failedChunks: [first],
+      succeededCount: 5,
+    });
+  });
+
+  it('defaults succeededCount to 0 when the caller omits it', () => {
+    expect(batchWriteAllIncompleteError(0, 1, [new Error('boom')]).details).toMatchObject({
+      succeededCount: 0,
+    });
   });
 
   /** The chunk wording is the default, so the batch path's message is untouched. */
-  it('BatchWriteAllIncompleteError counts rows when a caller deletes one row per request', () => {
-    const batched = new BatchWriteAllIncompleteError(1, 2, [new Error('boom')], 25);
+  it('counts rows when a caller deletes one row per request', () => {
+    const batched = batchWriteAllIncompleteError(1, 2, [new Error('boom')], 25);
     expect(batched.message).toContain('batchWriteAll did not fully drain: 1/2 chunk(s) succeeded');
-    const perRow = new BatchWriteAllIncompleteError(1, 2, [new Error('boom')], 1, 'row');
+    const perRow = batchWriteAllIncompleteError(1, 2, [new Error('boom')], 1, 'row');
+    expect(perRow.message).toContain('the partition delete did not fully drain');
     expect(perRow.message).toContain('1/2 row(s) succeeded, 1 row(s) failed');
     expect(perRow.message).not.toContain('batchWriteAll');
   });
-});
 
-/**
- * Every constructor here documents "Throws: nothing; building an error may not
- * fail", and each is reached from a `catch` on the failure path. A constructor
- * that crashes on an argument it did not expect replaces the failure being
- * reported with a bare `TypeError` that names none of it.
- */
-describe('error constructors survive the arguments a JavaScript caller can reach', () => {
-  it('BatchWriteAllIncompleteError reports the failure when no failing chunk is passed', () => {
-    const error = new BatchWriteAllIncompleteError(0, 1, undefined as never);
-    expect(error.code).toBe(ErrorCode.BATCH_WRITE_INCOMPLETE);
-    expect(error.failedChunks).toEqual([]);
-    expect(error.cause).toBeUndefined();
-    expect(error.message).toContain('0 chunk(s) failed');
-  });
-
-  it('BatchWriteIncompleteError reports the failure when no unprocessed list is passed', () => {
-    const error = new BatchWriteIncompleteError(0, undefined as never, 1);
-    expect(error.code).toBe(ErrorCode.BATCH_WRITE_INCOMPLETE);
-    expect(error.unprocessed).toEqual([]);
-    expect(error.message).toContain('0 still un-acked');
-  });
-
-  it('CompensationFailedError describes a trigger and a rollback that are not errors', () => {
-    const error = new CompensationFailedError('append blew up' as never, null as never);
-    expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
-    expect(error.message).toContain('append blew up');
-    expect(error.rollbackError.message).toBe('null was thrown');
-    expect((error.cause as Error).message).toBe('append blew up');
-  });
-});
-
-/**
- * Both lists are read long after the throw — from a `catch`, to drive
- * reconciliation. Holding the caller's array by reference let a caller that
- * reuses its buffer rewrite the contents of an error already in flight.
- */
-describe('error constructors copy the lists they are handed', () => {
-  it('BatchWriteIncompleteError keeps the items that were un-acked at the throw', () => {
-    const unprocessed = [{ PutRequest: { Item: { pk: 'a' } } }];
-    const error = new BatchWriteIncompleteError(1, unprocessed, 1);
-    unprocessed.push({ PutRequest: { Item: { pk: 'b' } } });
-    expect(error.unprocessed).toHaveLength(1);
-  });
-
-  it('BatchWriteAllIncompleteError keeps the chunks that had failed at the throw', () => {
+  it('keeps the chunks that had failed at the throw', () => {
     const failed = [new Error('boom')];
-    const error = new BatchWriteAllIncompleteError(0, 2, failed);
+    const error = batchWriteAllIncompleteError(0, 2, failed);
     failed.push(new Error('later'));
-    expect(error.failedChunks).toHaveLength(1);
+    expect(error.details).toMatchObject({ failedChunks: [expect.any(Error)] });
+  });
+
+  it('reads a missing or non-array failure list as empty rather than crashing', () => {
+    const missing = batchWriteAllIncompleteError(0, 1, undefined as never);
+    expect(missing.code).toBe(ErrorCode.BATCH_WRITE_INCOMPLETE);
+    expect(missing.details).toMatchObject({ failedChunks: [] });
+    expect(missing.cause).toBeUndefined();
+    expect(missing.message).toContain('0 chunk(s) failed');
+    expect(batchWriteAllIncompleteError(0, 1, 'x' as never).details).toMatchObject({
+      failedChunks: [],
+    });
+  });
+});
+
+describe('compensationFailedError', () => {
+  it('carries the trigger as cause and the rollback failure in details', () => {
+    const trigger = new Error('append failed');
+    const rollback = new Error('delete failed');
+    const error = compensationFailedError(trigger, rollback);
+    expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
+    expect(error.cause).toBe(trigger);
+    expect(error.details).toEqual({ rollbackError: rollback });
+    expect(error.message).toMatch(/append failed/);
+    expect(error.message).toMatch(/delete failed/);
+  });
+
+  it('normalises a trigger and a rollback that are not errors through toError', () => {
+    const error = compensationFailedError('trigger blew up' as never, null as never);
+    expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
+    expect(error.message).toContain('trigger blew up');
+    expect((error.cause as Error).message).toBe('trigger blew up');
+    expect(error.details.rollbackError.message).toBe('null was thrown');
   });
 });

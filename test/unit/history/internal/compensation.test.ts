@@ -129,7 +129,7 @@ describe('compensate', () => {
   });
 
   /** The rollback failed, so those rows may survive: their objects must stay. */
-  it('raises CompensationFailedError and keeps the committed objects when the rollback fails', async () => {
+  it('raises COMPENSATION_FAILED and keeps the committed objects when the rollback fails', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(BatchWriteCommand).rejects(new Error('throttled'));
     mock.on(TransactWriteCommand).resolves({});
@@ -181,7 +181,7 @@ describe('compensate', () => {
   });
 
   /** The second line reports the drift; a throw there replaced the error whose job is to name it. */
-  it('still raises CompensationFailedError when the rollback s own log throws', async () => {
+  it('still raises COMPENSATION_FAILED when the rollback s own log throws', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(BatchWriteCommand).rejects(new Error('throttled'));
     mock.on(TransactWriteCommand).resolves({});

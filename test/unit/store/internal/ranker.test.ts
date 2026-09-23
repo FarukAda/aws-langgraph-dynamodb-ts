@@ -52,7 +52,7 @@ describe('rankInMemory', () => {
     expect(onMismatch).not.toHaveBeenCalled();
   });
 
-  it('throws a ValidationError when the candidate set exceeds the cap', () => {
+  it('throws a VALIDATION error when the candidate set exceeds the cap', () => {
     try {
       rankInMemory([candidate('a'), candidate('b')], [1, 0], 1);
       throw new Error('should have thrown');

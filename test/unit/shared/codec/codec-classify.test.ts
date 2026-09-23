@@ -12,7 +12,7 @@ import {
 } from '../../../../src/shared/codec/payload-loss';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { RetryExhaustedError, ValidationError } from '../../../../src/shared/errors/errors';
+import { retryExhaustedError, validationError } from '../../../../src/shared/errors/errors';
 
 const serde = {
   dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
@@ -113,7 +113,7 @@ describe('readPayloadBytes', () => {
 });
 
 describe('decodePayload without an offloader', () => {
-  it('rejects an offloaded descriptor with a ValidationError naming the s3 option', async () => {
+  it('rejects an offloaded descriptor with a VALIDATION error naming the s3 option', async () => {
     const descriptor = {
       location: PayloadLocation.S3,
       serdeType: 'json',
@@ -201,7 +201,7 @@ describe('isMissingObjectError', () => {
   it('is true only for an S3 offload failure whose cause is NoSuchKey', () => {
     expect(isMissingObjectError(s3Failure('NoSuchKey'))).toBe(true);
     expect(isMissingObjectError(s3Failure('AccessDenied'))).toBe(false);
-    expect(isMissingObjectError(new RetryExhaustedError('x', 5))).toBe(false);
+    expect(isMissingObjectError(retryExhaustedError('x', 5))).toBe(false);
     expect(isMissingObjectError(Object.assign(new Error('x'), { name: 'NoSuchKey' }))).toBe(false);
   });
 });
@@ -212,17 +212,15 @@ describe('isPermanentPayloadLoss', () => {
     expect(isPermanentPayloadLoss(bomb)).toBe(true);
     expect(isPermanentPayloadLoss(s3Failure('NoSuchKey'))).toBe(true);
     expect(isPermanentPayloadLoss(s3Failure('ServiceUnavailable'))).toBe(false);
-    expect(isPermanentPayloadLoss(new ValidationError('v'))).toBe(false);
+    expect(isPermanentPayloadLoss(validationError('v'))).toBe(false);
     expect(isPermanentPayloadLoss(new Error('plain'))).toBe(false);
   });
 });
 
 describe('isPermanentPayloadLoss on descriptor rejections (SEC-03, CODEC-16, M-03)', () => {
   it('treats an unreadable descriptor as permanent and other validation, s3Key included, as not', () => {
-    expect(isPermanentPayloadLoss(new ValidationError('not a descriptor', 'descriptor'))).toBe(
-      true,
-    );
-    expect(isPermanentPayloadLoss(new ValidationError('bad option', 's3'))).toBe(false);
+    expect(isPermanentPayloadLoss(validationError('not a descriptor', 'descriptor'))).toBe(true);
+    expect(isPermanentPayloadLoss(validationError('bad option', 's3'))).toBe(false);
   });
 
   /**
@@ -243,6 +241,6 @@ describe('isPermanentPayloadLoss on descriptor rejections (SEC-03, CODEC-16, M-0
    * rather than skipped.
    */
   it('does not treat an out-of-scope key as payload loss', () => {
-    expect(isPermanentPayloadLoss(new ValidationError('foreign', 's3Key'))).toBe(false);
+    expect(isPermanentPayloadLoss(validationError('foreign', 's3Key'))).toBe(false);
   });
 });

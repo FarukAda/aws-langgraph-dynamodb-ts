@@ -1,4 +1,4 @@
-import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
+import { retryExhaustedError } from '../../../../src/shared/errors/errors';
 import { redactLogger, redactSecrets } from '../../../../src/shared/logging/redaction';
 
 describe('redactSecrets', () => {
@@ -61,10 +61,10 @@ describe('redactSecrets', () => {
     // `super(message, { cause })` makes `cause` non-enumerable per spec, so
     // Object.entries skips it. Every library error attaches its own
     // enumerable code/context, so the rebuild path always fires for them —
-    // dropping the underlying AWS failure that a redacted RetryExhaustedError
+    // dropping the underlying AWS failure that a redacted `RETRY_EXHAUSTED`
     // exists to report.
     const root = Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
-    const wrapper = new RetryExhaustedError('Operation failed after 5 attempts', 5, root);
+    const wrapper = retryExhaustedError('Operation failed after 5 attempts', 5, root);
     const out = redactSecrets({ err: wrapper }) as unknown as {
       err: { cause?: { name: string; message: string } };
     };
@@ -75,7 +75,7 @@ describe('redactSecrets', () => {
 
   it('redacts secrets inside a preserved cause chain', () => {
     const root = Object.assign(new Error('rejected AKIAIOSFODNN7EXAMPLE'), { token: 'sk-live-1' });
-    const wrapper = new RetryExhaustedError('wrapped', 2, root);
+    const wrapper = retryExhaustedError('wrapped', 2, root);
     const out = redactSecrets({ err: wrapper }) as unknown as {
       err: { cause?: { message: string; token: string } };
     };

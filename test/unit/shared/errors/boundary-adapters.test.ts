@@ -4,6 +4,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { DynamoDBChatMessageHistory } from '../../../../src/history/chat-message-history';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../../src/store/store';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -26,17 +27,19 @@ function sdkError(): Error {
 }
 
 const wrapped = (operation: string, cause: Error) => ({
-  name: 'UpstreamError',
-  code: 'UPSTREAM',
-  upstreamName: 'UnrecognizedClientException',
-  requestId: 'req-1',
-  httpStatusCode: 400,
-  context: { operation },
+  name: 'DynamoDBLangGraphError',
+  code: ErrorCode.ACCESS_DENIED,
+  context: {
+    operation,
+    awsErrorName: 'UnrecognizedClientException',
+    requestId: 'req-1',
+    httpStatusCode: 400,
+  },
   cause,
 });
 
 describe('public error boundary (CORE-01)', () => {
-  it('DynamoDBSaver wraps a raw SDK error from put and passes a ValidationError through', async () => {
+  it('DynamoDBSaver wraps a raw SDK error from put and passes a VALIDATION error through', async () => {
     const { client, mock } = createStrictDocumentMock();
     const cause = sdkError();
     mock.on(TransactWriteCommand).rejects(cause);
@@ -45,7 +48,8 @@ describe('public error boundary (CORE-01)', () => {
       saver.put({ configurable: { thread_id: 't' } }, checkpoint, metadata),
     ).rejects.toMatchObject(wrapped('saver.put', cause));
     await expect(saver.put({ configurable: {} }, checkpoint, metadata)).rejects.toMatchObject({
-      name: 'ValidationError',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.VALIDATION,
     });
   });
 
@@ -71,9 +75,9 @@ describe('public error boundary (CORE-01)', () => {
 
   /**
    * The four single-operation methods share `batch`'s machinery and must not
-   * share its brand: an operator counting `UpstreamError` by
-   * `context.operation` is told which method the caller called, and the
-   * README's error table names the four separately.
+   * share its brand: an operator counting failures by `context.operation` is
+   * told which method the caller called, and the README's error table names
+   * the four separately.
    */
   it('DynamoDBStore brands a single-operation failure with the method the caller called', async () => {
     const { client, mock } = createStrictDocumentMock();
@@ -92,6 +96,41 @@ describe('public error boundary (CORE-01)', () => {
       wrapped('store.batch', cause),
     );
   });
+
+  /**
+   * The README's `ABORTED` row says so: the classifier reads the name, not the
+   * signal, so a collaborator timing itself out is reported as a cancel even
+   * though the caller passed no signal at all.
+   */
+  it.each(['vectorBackend', 'index.embeddings'])(
+    "reports %s's own AbortError as ABORTED when the caller's signal never fired",
+    async (collaborator) => {
+      const { client } = createStrictDocumentMock();
+      const timeout = Object.assign(new Error('timed out'), { name: 'AbortError' });
+      const fromEmbeddings = collaborator === 'index.embeddings';
+      const store = new DynamoDBStore({
+        tableName: 'store',
+        client,
+        index: {
+          dims: 2,
+          embeddings: {
+            embedQuery: async () => (fromEmbeddings ? Promise.reject(timeout) : [0, 1]),
+            embedDocuments: () => Promise.resolve([[0, 1]]),
+          } as never,
+        },
+        vectorBackend: {
+          upsert: () => Promise.resolve(),
+          delete: () => Promise.resolve(),
+          query: async () => Promise.reject(timeout),
+        },
+      });
+      await expect(store.search(['users'], { query: 'q' })).rejects.toMatchObject({
+        code: ErrorCode.ABORTED,
+        context: { operation: 'store.search' },
+        cause: timeout,
+      });
+    },
+  );
 
   it('DynamoDBChatMessageHistory wraps a raw SDK error from getMessages', async () => {
     const { client, mock } = createStrictDocumentMock();

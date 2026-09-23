@@ -1,3 +1,5 @@
+import { hasErrorCode } from '../errors/base-error';
+import { isMissingObject } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
 
 /**
@@ -17,8 +19,11 @@ import { ErrorCode } from '../errors/error-code';
  * failure this test exists to classify.
  */
 export function isMissingObjectError(error: Error): boolean {
-  const coded = error as { code?: string; cause?: { name?: string } } | undefined;
-  return coded?.code === ErrorCode.S3_OFFLOAD_FAILED && coded.cause?.name === 'NoSuchKey';
+  return (
+    hasErrorCode(error, ErrorCode.S3_OFFLOAD_FAILED) &&
+    error.cause !== undefined &&
+    isMissingObject(error.cause as Error)
+  );
 }
 
 /**
@@ -29,7 +34,7 @@ export function isMissingObjectError(error: Error): boolean {
  * and no other reader would fare better.
  *
  * Two refusals from the same guard are deliberately *not* matched here, both
- * because the sentence above would be false of them. A `ValidationError` naming
+ * because the sentence above would be false of them. A `VALIDATION` error naming
  * `s3Key` says the reader may not follow the key, not that the payload is
  * unreadable (see `assertKeyInScope`). A `FORMAT_UNSUPPORTED` naming
  * `schemaVersion` says the payload was written by a newer release — which reads
@@ -38,8 +43,7 @@ export function isMissingObjectError(error: Error): boolean {
  * canary (see `assertReadableDescriptor`).
  */
 function isUnreadableDescriptor(error: Error): boolean {
-  const coded = error as { code?: string; context?: { field?: string } } | undefined;
-  return coded?.code === ErrorCode.VALIDATION && coded.context?.field === 'descriptor';
+  return hasErrorCode(error, ErrorCode.VALIDATION) && error.context.field === 'descriptor';
 }
 
 /**
@@ -68,10 +72,9 @@ function isUnreadableDescriptor(error: Error): boolean {
  * `Error` gets.
  */
 export function isPermanentPayloadLoss(error: Error): boolean {
-  const code = (error as { code?: string } | undefined)?.code;
   return (
-    code === ErrorCode.COMPRESSION_LIMIT ||
-    code === ErrorCode.PAYLOAD_CORRUPT ||
+    hasErrorCode(error, ErrorCode.COMPRESSION_LIMIT) ||
+    hasErrorCode(error, ErrorCode.PAYLOAD_CORRUPT) ||
     isMissingObjectError(error) ||
     isUnreadableDescriptor(error)
   );

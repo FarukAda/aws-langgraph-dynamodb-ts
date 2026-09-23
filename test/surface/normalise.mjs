@@ -33,11 +33,22 @@ export function countBare(lines) {
 }
 
 /** The outcomes that report a failure outside this library. */
-const UPSTREAM_OUTCOMES = ['UpstreamError/UPSTREAM', 'RetryExhaustedError/RETRY_EXHAUSTED'];
+const UPSTREAM_OUTCOMES = [
+  'RETRY_EXHAUSTED', 'THROTTLED', 'SERVICE_UNAVAILABLE', 'CONTENTION', 'ACCESS_DENIED',
+  'NOT_FOUND', 'AWS_REJECTED', 'AWS_REQUEST_FAILED', 'UNEXPECTED_ERROR',
+];
 
 /** How many cases end in an upstream failure. The second ratchet reads this. */
 export function countUpstream(lines) {
   return lines.filter((line) =>
     UPSTREAM_OUTCOMES.some((kind) => line.includes(`| throws ${kind}`) || line.includes(`| sync throws ${kind}`)),
   ).length;
+}
+
+/**
+ * How many cases raised a branded error under a name other than the one class.
+ * There is one error class, so any other name is a defect, not a variant.
+ */
+export function countMisnamed(lines) {
+  return lines.filter((line) => line.includes('throws MISNAMED')).length;
 }

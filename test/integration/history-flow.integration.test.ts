@@ -6,6 +6,7 @@ import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
 import { sessionPartition } from '../../src/history/internal/keys';
 import { DynamoDBChatMessageHistory } from '../../src/index';
+import { ErrorCode } from '../../src/shared/errors/error-code';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 
 /**
@@ -206,10 +207,11 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
     expect(meta.Item?.ttl).toBeGreaterThan(Math.floor(Date.now() / 1000));
   });
 
-  it('reconcileMessageCount throws ConflictError instead of creating a junk row for a nonexistent session', async () => {
+  it('reconcileMessageCount throws CONDITION_CONFLICT instead of creating a junk row for a nonexistent session', async () => {
     const sessionId = 'ghost-session';
     await expect(history.reconcileMessageCount(sessionId)).rejects.toMatchObject({
-      name: 'ConflictError',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.CONDITION_CONFLICT,
     });
 
     const doc = DynamoDBDocument.from(admin);

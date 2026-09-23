@@ -80,6 +80,6 @@ export interface CodecOptions {
 
 /** Per-call cancellation for the long-running adapter methods. */
 export interface CancelOptions {
-  /** Aborting it rejects the call with `AbortError` (`ABORTED`) at the next wait. */
+  /** Aborting it rejects the call with an `ABORTED` error at the next wait. */
   signal?: AbortSignal;
 }

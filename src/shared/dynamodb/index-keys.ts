@@ -1,4 +1,4 @@
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 
 /** The adapter tags that scope GSI1, matching the partition-key tags. */
 export type IndexTag = 'CHKPT' | 'STORE' | 'SESS';
@@ -33,7 +33,7 @@ function fnv1a(value: string): number {
 /** Refuse a shard count that would make the index unusable in either direction. */
 function assertShardCount(shards: number): void {
   if (!Number.isInteger(shards) || shards < 1) {
-    throw new ValidationError(
+    throw validationError(
       `indexShards must be a positive integer (received ${shards}); a non-positive value would ` +
         'make every row share one index partition or produce an unusable key',
       'indexShards',
@@ -65,7 +65,7 @@ function assertShardCount(shards: number): void {
  *
  * Returns: the two index attributes.
  *
- * Throws: ValidationError naming `indexShards` for a count below 1 — the read
+ * Throws: `VALIDATION` naming `indexShards` for a count below 1 — the read
  * side built an empty partition list from such a value and reported an empty
  * table full of rows.
  *
@@ -90,7 +90,7 @@ export function indexKeys(tag: IndexTag, id: string, at: string, shards: number)
  * Returns: one partition key per shard, which a recency listing queries in
  * parallel and merges.
  *
- * Throws: ValidationError naming `indexShards`.
+ * Throws: `VALIDATION` naming `indexShards`.
  */
 export function indexPartitions(tag: IndexTag, shards: number): string[] {
   assertShardCount(shards);

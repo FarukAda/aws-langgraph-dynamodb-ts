@@ -44,12 +44,12 @@ refused because the row already has keys or is gone — plus a `nextCursor`
 when the run stopped short of the end. An absent cursor means the table is
 fully backfilled.
 
-Throws: ValidationError naming the offending option, before any DynamoDB
-call; RetryExhaustedError once a transient failure has used every attempt;
-AbortError when `signal` fires, or `retry.signal` when no top-level `signal`
-is given; UpstreamError wrapping any other error the scan or the writes
-throw — this is the function's own error boundary, the same as every
-adapter's public methods, so a caller's mistake never escapes as a bare
+Throws: `VALIDATION` naming the offending option, before any DynamoDB
+call; `RETRY_EXHAUSTED` once a transient failure has used every attempt;
+`ABORTED` when `signal` fires, or `retry.signal` when no top-level `signal`
+is given; any other error the scan or the writes throw, wrapped with the
+code the classifier assigns — this is the function's own error boundary,
+the same as every adapter's public methods, so a caller's mistake never escapes as a bare
 exception. A refused write is none of these: it is an outcome for one row,
 reported in `skipped`.
 

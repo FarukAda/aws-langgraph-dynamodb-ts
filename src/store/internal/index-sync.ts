@@ -1,3 +1,4 @@
+import { failureLabel } from '../../shared/errors/base-error';
 import type { Logger } from '../../shared/logging/logger';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { VectorBackend } from '../vector-backend';
@@ -41,7 +42,7 @@ export async function syncVectorIndex(
       namespace,
       key,
       operation: embedding ? 'upsert' : 'delete',
-      reason: truncateForLog((error as Error).name),
+      reason: truncateForLog(failureLabel(error as Error)),
     });
   }
 }

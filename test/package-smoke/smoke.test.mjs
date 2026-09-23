@@ -92,7 +92,7 @@ import assert from 'node:assert/strict';
 import {
   DynamoDBSaver, DynamoDBStore, DynamoDBChatMessageHistory,
   DynamoDBSessionChatMessageHistory, DynamoDBFactory,
-  ErrorCode, DynamoDBLangGraphError, ValidationError, redactSecrets,
+  ErrorCode, DynamoDBLangGraphError, redactSecrets,
 } from '@farukada/aws-langgraph-dynamodb-ts';
 
 for (const c of [DynamoDBSaver, DynamoDBStore, DynamoDBChatMessageHistory, DynamoDBSessionChatMessageHistory, DynamoDBFactory]) {
@@ -105,7 +105,7 @@ await assert.rejects(
   () => store.put(['bad#ns'], 'k', { v: 1 }),
   (e) => e instanceof DynamoDBLangGraphError && e.code === ErrorCode.VALIDATION,
 );
-assert.ok(new ValidationError('x') instanceof DynamoDBLangGraphError);
+assert.ok(new DynamoDBLangGraphError('x', ErrorCode.VALIDATION) instanceof DynamoDBLangGraphError);
 assert.deepEqual(redactSecrets({ token: 's', keep: 'ok' }), { token: '[REDACTED]', keep: 'ok' });
 console.log('SMOKE_OK');
 `;

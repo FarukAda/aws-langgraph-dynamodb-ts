@@ -126,7 +126,7 @@ export class S3Offloader {
    *
    * Returns: the key, under this offloader's prefix.
    *
-   * Throws: ValidationError naming `s3Key` for empty `parts` or a key over
+   * Throws: `VALIDATION` naming `s3Key` for empty `parts` or a key over
    * S3's 1024-byte cap.
    */
   buildKey(parts: readonly string[], objectId: string): string {
@@ -170,7 +170,7 @@ export class S3Offloader {
    *
    * Returns: nothing; being in scope is the absence of a throw.
    *
-   * Throws: ValidationError. Every download of a key taken from a row goes
+   * Throws: `VALIDATION`. Every download of a key taken from a row goes
    * through here, so a tampered or foreign row cannot make a reader fetch an
    * object belonging to another row.
    */
@@ -190,7 +190,7 @@ export class S3Offloader {
    * attempt of this upload did (see `uploadObject`); the caller's obligation is
    * the same either way.
    *
-   * Throws: `S3_OFFLOAD_FAILED` carrying the key; `AbortError` when the signal
+   * Throws: `S3_OFFLOAD_FAILED` carrying the key; `ABORTED` when the signal
    * fires, which is the caller's own stop rather than a failed offload.
    */
   async upload(
@@ -225,7 +225,7 @@ export class S3Offloader {
    * Throws: `S3_OFFLOAD_FAILED` for an object over `maxDownloadBytes` — the cap
    * is enforced on the declared length and again while reading, so a lying
    * `Content-Length` does not get past it — and for a missing object or a
-   * transport failure; `AbortError` when the signal fires.
+   * transport failure; `ABORTED` when the signal fires.
    */
   async download(key: string, signal?: AbortSignal): Promise<Uint8Array> {
     return downloadObject(
@@ -262,7 +262,7 @@ export class S3Offloader {
    * Returns: nothing. Rules that are already correct are left alone, so this
    * is safe to call on every deploy.
    *
-   * Throws: ValidationError naming `s3.keyPrefix` when a rule id this prefix
+   * Throws: `VALIDATION` naming `s3.keyPrefix` when a rule id this prefix
    * would take is already held by a different prefix; whatever reading or
    * writing the bucket's lifecycle configuration throws.
    */

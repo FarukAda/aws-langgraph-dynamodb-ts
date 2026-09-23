@@ -5,6 +5,7 @@ import type { DynamoDBChatMessageHistoryOptions } from '../history/types';
 import { s3ClientOptions } from '../shared/codec/s3/client-types';
 import type { S3OffloadConfig } from '../shared/codec/s3/config';
 import { resolveDynamoDBClient } from '../shared/dynamodb/client';
+import { failureLabel } from '../shared/errors/base-error';
 import { type Logger, resolveLogger } from '../shared/logging/logger';
 import { truncateForLog } from '../shared/logging/truncate';
 import { assertMembers, LOGGER_MEMBERS } from '../shared/validation/collaborators';
@@ -74,7 +75,7 @@ function release(logger: Logger, close: () => void): void {
      * rule exists to remove.
      */
     logger.warn('factory.destroy: an adapter did not release its resources', {
-      reason: truncateForLog((error as Error).name),
+      reason: truncateForLog(failureLabel(error as Error)),
     });
   }
 }
@@ -118,7 +119,7 @@ export class DynamoDBFactory {
    * Returns: a factory holding those defaults. It opens nothing: every client
    * is built by the `create*` call that needs one.
    *
-   * Throws: ValidationError naming `options.<key>`, `client`, `clientConfig`,
+   * Throws: `VALIDATION` naming `options.<key>`, `client`, `clientConfig`,
    * `logger` or `logger.<method>`. Everything else each adapter validates for
    * itself, since a per-adapter value may still replace it.
    */
@@ -182,7 +183,7 @@ export class DynamoDBFactory {
    * Returns: the saver, which owns the client it built and releases it on
    * `destroy()`.
    *
-   * Throws: ValidationError for any invalid option, naming it as the saver's
+   * Throws: `VALIDATION` for any invalid option, naming it as the saver's
    * constructor does — `options` for a value that is not an object, checked
    * before the defaults are laid under it: `null` crashed reading `client`
    * off it, and a string was spread into its characters.
@@ -235,7 +236,7 @@ export class DynamoDBFactory {
    * that releases all of them and the shared client. A client the factory was
    * given rather than built is never destroyed.
    *
-   * Throws: ValidationError naming `options` for an argument or a section that
+   * Throws: `VALIDATION` naming `options` for an argument or a section that
    * is not an object, or `options.<key>` for a key that is not a section name.
    * Whatever an adapter's constructor throws — after the adapters already
    * built and the freshly created client have been released, so a failed call

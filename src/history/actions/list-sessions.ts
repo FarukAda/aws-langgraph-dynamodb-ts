@@ -7,12 +7,12 @@ import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { assertReadableRow } from '../../shared/dynamodb/row-version';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import type { DocItem } from '../../shared/dynamodb/types';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { assertSignalLike } from '../../shared/validation/collaborators';
-import { LIST_SESSIONS_KEYS } from '../../shared/validation/method-keys';
 import { assertShape } from '../../shared/validation/option-shape';
 import { validateInteger, validateLimit } from '../../shared/validation/primitives';
 import { SESSION_SORT_KEY, historyPartitionPrefix, sessionPartition } from '../internal/keys';
+import { LIST_SESSIONS_KEYS } from '../internal/option-keys';
 import type { HistoryContext } from '../internal/setup';
 import type { ChatSessionItem, ListSessionsOptions, SessionMetadata, SessionPage } from '../types';
 
@@ -196,7 +196,7 @@ async function allByScan(
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field` for anything else that is not an
+ * Throws: `VALIDATION` naming `field` for anything else that is not an
  * integer of at least 1 — the same bound `paginatePages`'s own
  * `assertPositiveCap` already enforces, just checked before a `null` can be
  * mistaken for "no value" and silently replaced by the default.
@@ -229,14 +229,14 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
   assertScanCap(options.maxIterations, 'maxIterations');
   if (options.cursor === undefined) return;
   if (context.indexName === undefined) {
-    throw new ValidationError(
+    throw validationError(
       'paging by cursor needs a configured `indexName`: without the recency index a listing is ' +
         'one table scan, which has no position to resume from',
       'cursor',
     );
   }
   if (typeof options.cursor !== 'string') {
-    throw new ValidationError('cursor must be a string', 'cursor');
+    throw validationError('cursor must be a string', 'cursor');
   }
 }
 
@@ -266,12 +266,12 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
  * promise more rows: the page after it can come back empty (see
  * `queryRecencyIndex`).
  *
- * Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
+ * Throws: `VALIDATION` naming `limit`, `cursor`, `maxItems`,
  * `maxIterations`, `signal`, or `options.<key>` for a key this package does
- * not read; {@link ResultTruncatedError} past the scan path's caps, or for an
+ * not read; `RESULT_TRUNCATED` past the scan path's caps, or for an
  * index shard whose pages do not end within `MAX_LOOP_ITERATIONS`;
  * `FORMAT_UNSUPPORTED` for a SESSION row a newer release wrote, on either
- * path; `AbortError`.
+ * path; `ABORTED`.
  *
  * Guarantees: with a configured `indexName` each index shard is read
  * newest-first one DynamoDB page at a time, and its next page whenever it has

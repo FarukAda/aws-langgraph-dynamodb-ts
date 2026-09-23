@@ -1,18 +1,18 @@
 import { abortErrorFrom, isAbortError } from '../../../../src/shared/dynamodb/abort';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { AbortError, ValidationError } from '../../../../src/shared/errors/errors';
+import { abortError, validationError } from '../../../../src/shared/errors/errors';
 
 describe('abortErrorFrom (DDB-05)', () => {
-  it('wraps the DOMException a bare abort() produces as the cause of a library AbortError', () => {
+  it('wraps the DOMException a bare abort() produces as the cause of a library ABORTED error', () => {
     const controller = new AbortController();
     controller.abort();
     const error = abortErrorFrom(controller.signal);
-    expect(error).toMatchObject({ name: 'AbortError', code: ErrorCode.ABORTED });
+    expect(error).toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.ABORTED });
     expect((error.cause as Error).name).toBe('AbortError');
   });
 
-  it('returns a library AbortError given as the reason unchanged', () => {
-    const reason = new AbortError('caller cancelled');
+  it('returns a library ABORTED error given as the reason unchanged', () => {
+    const reason = abortError('caller cancelled');
     const controller = new AbortController();
     controller.abort(reason);
     expect(abortErrorFrom(controller.signal)).toBe(reason);
@@ -38,13 +38,15 @@ describe('isAbortError', () => {
     const controller = new AbortController();
     controller.abort();
     expect(isAbortError(abortErrorFrom(controller.signal))).toBe(true);
-    expect(isAbortError(new AbortError('cancelled'))).toBe(true);
-    expect(isAbortError(Object.assign(new Error('x'), { code: ErrorCode.ABORTED }))).toBe(true);
+    expect(isAbortError(abortError('cancelled'))).toBe(true);
   });
 
   it('says no to every other error, branded or not', () => {
-    expect(isAbortError(new ValidationError('bad', 'field'))).toBe(false);
+    expect(isAbortError(validationError('bad', 'field'))).toBe(false);
     expect(isAbortError(Object.assign(new Error('x'), { name: 'AbortError' }))).toBe(false);
     expect(isAbortError(new Error('plain'))).toBe(false);
+    // The brand is required: an unbranded object that merely carries the
+    // code looks like a cancel and is not one.
+    expect(isAbortError(Object.assign(new Error('x'), { code: ErrorCode.ABORTED }))).toBe(false);
   });
 });

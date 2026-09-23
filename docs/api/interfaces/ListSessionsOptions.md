@@ -51,7 +51,7 @@ empty page on either path and reads neither.
 
 Defined in: [history/types.ts:80](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L80)
 
-Cap on rows read into memory before `ResultTruncatedError` (default 10 000). Scan path only.
+Cap on rows read into memory before `RESULT_TRUNCATED` (default 10 000). Scan path only.
 
 ***
 
@@ -61,7 +61,7 @@ Cap on rows read into memory before `ResultTruncatedError` (default 10 000). Sca
 
 Defined in: [history/types.ts:78](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L78)
 
-Cap on scan pages before `ResultTruncatedError` (default 1000). Scan path only.
+Cap on scan pages before `RESULT_TRUNCATED` (default 1000). Scan path only.
 
 ***
 
@@ -71,7 +71,7 @@ Cap on scan pages before `ResultTruncatedError` (default 1000). Scan path only.
 
 Defined in: [shared/options.ts:84](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L84)
 
-Aborting it rejects the call with `AbortError` (`ABORTED`) at the next wait.
+Aborting it rejects the call with an `ABORTED` error at the next wait.
 
 #### Inherited from
 

@@ -1,6 +1,7 @@
+import type { AnyDynamoDBLangGraphError } from './base-error';
 import { isDynamoDBLangGraphError } from './base-error';
-import { UpstreamError } from './upstream-error';
-import { toError } from './wrap-error';
+import { toError } from './to-error';
+import { wrapForeignError } from './wrap-error';
 
 /**
  * Normalise anything escaping a public method into the library's error model.
@@ -9,17 +10,17 @@ import { toError } from './wrap-error';
  * (`toError` settles that first).
  *
  * Returns: a branded library error unchanged, since its code was assigned
- * closer to the failure and wins; anything else wrapped as an
- * {@link UpstreamError} naming `operation`.
+ * closer to the failure and wins; anything else wrapped by
+ * {@link wrapForeignError}, with the code the classifier assigns.
  *
  * Throws: nothing. It runs inside a `catch`, where throwing would discard the
  * failure being reported and replace it with its own.
  */
-export function toPublicError(error: Error, operation: string): Error {
+export function toPublicError(error: Error, operation: string): AnyDynamoDBLangGraphError {
   const normalized = toError(error);
   return isDynamoDBLangGraphError(normalized)
     ? normalized
-    : new UpstreamError(normalized, operation);
+    : (wrapForeignError(normalized, operation) as AnyDynamoDBLangGraphError);
 }
 
 /**

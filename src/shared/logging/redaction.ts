@@ -1,4 +1,4 @@
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { assertMembers, LOGGER_MEMBERS } from '../validation/collaborators';
 import { assertObjectShape } from '../validation/option-shape';
 import { validateStringArray } from '../validation/primitives';
@@ -24,14 +24,14 @@ const UNREDACTABLE = '[UNREDACTABLE]';
  * Returns: nothing; validity is the absence of a throw. An empty list is
  * valid, and is how a caller turns value matching off.
  *
- * Throws: ValidationError naming `field` for a non-array or an entry that is
+ * Throws: `VALIDATION` naming `field` for a non-array or an entry that is
  * not a `RegExp`. {@link redactText} skips such an entry, which protects
  * nothing while the caller believes it does, so it is refused where it is
  * supplied instead.
  */
 function assertRegExpArray(value: readonly RegExp[], field: string): void {
   if (!Array.isArray(value) || value.some((entry: RegExp) => !isRegExp(entry))) {
-    throw new ValidationError(`${field} must be an array of RegExp`, field);
+    throw validationError(`${field} must be an array of RegExp`, field);
   }
 }
 
@@ -60,7 +60,7 @@ function assertRegExpArray(value: readonly RegExp[], field: string): void {
  * scrubbed the caller's own object would corrupt the very data the application
  * is working with.
  *
- * Throws: ValidationError naming `patterns` or `valuePatterns` for a list this
+ * Throws: `VALIDATION` naming `patterns` or `valuePatterns` for a list this
  * function could not apply, which is a mistake in the call itself and is
  * raised before anything is walked. Nothing after that: a value whose
  * redaction fails — a throwing getter, a structure deep enough to exhaust the
@@ -163,7 +163,7 @@ function assertRedactionOptions(options: RedactLoggerOptions): void {
  *
  * Returns: a logger with the same four methods.
  *
- * Throws: ValidationError naming `logger` or `logger.<method>` for a logger it
+ * Throws: `VALIDATION` naming `logger` or `logger.<method>` for a logger it
  * could not delegate to, and `options`, `extraKeys` or `extraValuePatterns`
  * for an option of the wrong type. Nothing at log time.
  *

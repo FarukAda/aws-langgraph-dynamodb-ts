@@ -3,7 +3,6 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { type BatchWriteCommandInput, DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
-import { type RejectionFields } from '../../src/shared/dynamodb/cancellation';
 import {
   isConditionalCheckFailed,
   rejectedItem,
@@ -146,7 +145,7 @@ describe('the batch delete path, its cost and its contention, against real AWS',
    * Five deleters race one row, each pinned on the revision it observed, each
    * under its own token and the library's own retry budget. The claim is
    * bounded rather than numeric: exactly one wins, every loser reaches a clean
-   * terminal outcome, and none ends in `RetryExhaustedError`.
+   * terminal outcome, and none ends in `RETRY_EXHAUSTED`.
    *
    * The losers' shape is the part worth having. Each one meets a row that the
    * winner has already removed, so each rejection carries **no** row — which is
@@ -182,7 +181,7 @@ describe('the batch delete path, its cost and its contention, against real AWS',
     for (const result of settled) {
       if (result.status === 'fulfilled') continue;
       const error = result.reason as Error;
-      expect(isConditionalCheckFailed(error as RejectionFields)).toBe(true);
+      expect(isConditionalCheckFailed(error)).toBe(true);
       expect((error as { code?: string }).code).not.toBe(ErrorCode.RETRY_EXHAUSTED);
       // Already gone, not rewritten: the loser may release what it read.
       expect(rejectedItem(error)).toBeUndefined();

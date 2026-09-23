@@ -1,5 +1,5 @@
 import { MAX_TTL_DAYS, MAX_TTL_SECONDS, S3_LIFECYCLE_SWEEP_MARGIN_DAYS } from '../constants';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { allKeysOf, assertShape } from './option-shape';
 import { validateInteger } from './primitives';
 
@@ -32,7 +32,7 @@ const TTL_KEYS = allKeysOf<Record<KeyOfEachShape<TtlOption>, number>>({
 function validateWithinCap(value: number, field: string, max: number): void {
   validateInteger(value, field, { min: 1 });
   if (value > max) {
-    throw new ValidationError(`${field} must be <= ${max} (five years)`, field);
+    throw validationError(`${field} must be <= ${max} (five years)`, field);
   }
 }
 
@@ -44,16 +44,16 @@ function validateWithinCap(value: number, field: string, max: number): void {
  */
 function assertOneUnit(ttl: TtlOption): void {
   if (typeof ttl !== 'object' || ttl === null) {
-    throw new ValidationError('ttl must be an object: { days } or { seconds }', 'ttl');
+    throw validationError('ttl must be an object: { days } or { seconds }', 'ttl');
   }
   assertShape(ttl, TTL_KEYS, 'ttl');
   const days = 'days' in ttl;
   const seconds = 'seconds' in ttl;
   if (days && seconds) {
-    throw new ValidationError('ttl must specify either ttl.days or ttl.seconds, not both', 'ttl');
+    throw validationError('ttl must specify either ttl.days or ttl.seconds, not both', 'ttl');
   }
   if (!days && !seconds) {
-    throw new ValidationError('ttl must specify either ttl.days or ttl.seconds', 'ttl');
+    throw validationError('ttl must specify either ttl.days or ttl.seconds', 'ttl');
   }
 }
 
@@ -67,7 +67,7 @@ function assertOneUnit(ttl: TtlOption): void {
  *
  * Returns: whole seconds, `days × 86400` for the days form.
  *
- * Throws: ValidationError, in this order, naming `ttl` for a value that is not
+ * Throws: `VALIDATION`, in this order, naming `ttl` for a value that is not
  * an object, `ttl.<key>` for a key other than `days` or `seconds`, `ttl` for
  * an object naming neither unit or both, and `ttl.days` or `ttl.seconds` for a
  * value outside 1..five years. Both forms share that cap, so the two spellings

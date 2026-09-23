@@ -1,5 +1,5 @@
 import { MAX_S3_KEY_BYTES } from '../../constants';
-import { ValidationError } from '../../errors/errors';
+import { validationError } from '../../errors/errors';
 import { assertNoControlChars, assertWellFormed } from '../../validation/primitives';
 import type { S3ClientConfigLike, S3ClientLike } from './client-types';
 import { encodeKeyPart } from './key-scope';
@@ -57,7 +57,7 @@ export interface S3OffloadConfig {
  * never compose one key, and the same prefix, parts and id always compose the
  * same one.
  *
- * Throws: ValidationError naming `s3Key` for an empty `parts` — an object with
+ * Throws: `VALIDATION` naming `s3Key` for an empty `parts` — an object with
  * no row above it is outside every row's scope and could never be read back —
  * and for a key over the 1024-byte cap. The encoding grows every part by a
  * third, so identifiers that each pass their own length rule can still compose
@@ -65,7 +65,7 @@ export interface S3OffloadConfig {
  */
 export function buildS3Key(prefix: string, parts: readonly string[], objectId: string): string {
   if (parts.length === 0) {
-    throw new ValidationError(
+    throw validationError(
       'an offloaded object needs the identity of the row that points at it; parts was empty',
       's3Key',
     );
@@ -74,7 +74,7 @@ export function buildS3Key(prefix: string, parts: readonly string[], objectId: s
   const key = `${prefix}${encoded.join('/')}.bin`;
   const bytes = Buffer.byteLength(key, 'utf8');
   if (bytes > MAX_S3_KEY_BYTES) {
-    throw new ValidationError(
+    throw validationError(
       `the offloaded S3 object key would be ${bytes} bytes; S3 caps keys at ` +
         `${MAX_S3_KEY_BYTES} — shorten the identifiers or the keyPrefix`,
       's3Key',
@@ -99,7 +99,7 @@ const UNSCOPED_SEGMENTS = new Set(['', '.', '..']);
  *
  * Returns: nothing; acceptance is the absence of a throw.
  *
- * Throws: ValidationError naming `s3.keyPrefix`. The shape rule is reported
+ * Throws: `VALIDATION` naming `s3.keyPrefix`. The shape rule is reported
  * before the segment rule, so a prefix breaking both is named by its shape.
  *
  * Guarantees: the prefix scopes both the objects and the lifecycle rule built
@@ -123,7 +123,7 @@ export function assertScopedKeyPrefix(keyPrefix: string): void {
     keyPrefix === '/' ||
     !keyPrefix.endsWith('/')
   ) {
-    throw new ValidationError(
+    throw validationError(
       's3.keyPrefix must be a non-empty path that ends with "/" (for example "langgraph/"): ' +
         'it scopes both the offloaded objects and the S3 lifecycle rule',
       's3.keyPrefix',
@@ -137,7 +137,7 @@ export function assertScopedKeyPrefix(keyPrefix: string): void {
       .split('/')
       .some((segment) => UNSCOPED_SEGMENTS.has(segment))
   ) {
-    throw new ValidationError(
+    throw validationError(
       's3.keyPrefix must name a real path: no empty, "." or ".." segment (for example ' +
         '"langgraph/", not "../langgraph/" or "/langgraph/"). Such a prefix addresses object ' +
         'keys outside the path the IAM policy grants and the lifecycle rule sweeps',

@@ -1,5 +1,8 @@
+import type { WriteRequest } from '../../../../src/shared/dynamodb/types';
 import {
   DynamoDBLangGraphError,
+  failureLabel,
+  hasErrorCode,
   isDynamoDBLangGraphError,
 } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -66,5 +69,67 @@ describe('DynamoDBLangGraphError.context is the error own copy', () => {
     expect(new DynamoDBLangGraphError('x', ErrorCode.VALIDATION, null as never).context).toEqual(
       {},
     );
+  });
+});
+
+describe('details', () => {
+  it('is absent, not undefined-valued, when a code carries none', () => {
+    const error = new DynamoDBLangGraphError('m', ErrorCode.VALIDATION);
+    expect(Object.hasOwn(error, 'details')).toBe(false);
+    expect(Object.keys(JSON.parse(JSON.stringify(error)))).not.toContain('details');
+  });
+
+  it('copies every array it holds, so a reused buffer cannot rewrite the report', () => {
+    const unprocessed: WriteRequest[] = [{ DeleteRequest: { Key: { PK: 'a', SK: 'b' } } }];
+    const error = new DynamoDBLangGraphError('m', ErrorCode.BATCH_WRITE_INCOMPLETE, {}, undefined, {
+      kind: 'drain',
+      succeededCount: 0,
+      unprocessed,
+      retries: 1,
+    });
+    unprocessed.push({ DeleteRequest: { Key: { PK: 'c', SK: 'd' } } });
+    expect(error.details.kind === 'drain' && error.details.unprocessed).toHaveLength(1);
+  });
+
+  it('does not throw for details that are not an object, whatever a JavaScript caller passes', () => {
+    const build = (): DynamoDBLangGraphError =>
+      new DynamoDBLangGraphError('m', ErrorCode.COMPENSATION_FAILED, {}, undefined, null as never);
+    expect(build).not.toThrow();
+    expect(build().details).toBeNull();
+  });
+});
+
+describe('hasErrorCode', () => {
+  it('answers true only for a branded error carrying that code', () => {
+    const conflict = new DynamoDBLangGraphError('m', ErrorCode.CONDITION_CONFLICT);
+    expect(hasErrorCode(conflict, ErrorCode.CONDITION_CONFLICT)).toBe(true);
+    expect(hasErrorCode(conflict, ErrorCode.VALIDATION)).toBe(false);
+    expect(
+      hasErrorCode(
+        Object.assign(new Error('x'), { code: 'CONDITION_CONFLICT' }),
+        ErrorCode.CONDITION_CONFLICT,
+      ),
+    ).toBe(false);
+  });
+
+  it.each([null, undefined, 'x', 1])('answers false for %p rather than throwing', (value) => {
+    expect(hasErrorCode(value as never, ErrorCode.VALIDATION)).toBe(false);
+  });
+});
+
+describe('failureLabel', () => {
+  /** Every library error shares one name; logging it would tell none of them apart. */
+  it('names a library error by its code', () => {
+    expect(failureLabel(new DynamoDBLangGraphError('m', ErrorCode.VALIDATION))).toBe('VALIDATION');
+    expect(failureLabel(new DynamoDBLangGraphError('m', ErrorCode.RETRY_EXHAUSTED))).toBe(
+      'RETRY_EXHAUSTED',
+    );
+  });
+
+  it('names any other error by its name', () => {
+    expect(failureLabel(Object.assign(new Error('x'), { name: 'ThrottlingException' }))).toBe(
+      'ThrottlingException',
+    );
+    expect(failureLabel(Object.assign(new Error('x'), { code: 'VALIDATION' }))).toBe('Error');
   });
 });

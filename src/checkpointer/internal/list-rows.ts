@@ -64,7 +64,7 @@ function threadlessRows(
  * Returns: an async generator over the raw rows, newest-first within a
  * namespace. Abandoning it stops the read.
  *
- * Throws: whatever the query or scan throws; `AbortError` when the signal
+ * Throws: whatever the query or scan throws; `ABORTED` when the signal
  * fires.
  *
  * Guarantees: the read is deliberately unbounded. This is a stream that never

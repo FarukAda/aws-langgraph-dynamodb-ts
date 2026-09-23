@@ -21,6 +21,11 @@ The static guards fail the build rather than rely on review:
 - comments are JSDoc only (`/** ... */`) — no `//` comments in `src`;
 - no `any`, no `unknown`, no `instanceof` in `src` (errors are detected by brand and `code`);
 - no re-exports outside `src/index.ts`, no import cycles, no dead `ErrorCode` member;
+- no module imports from a layer above its own or from another feature; the layer table is `test/static/guards/layers.ts` (`test/static/layer-direction.test.ts`);
+- errors are recognised by code (`test/static/error-recognition.test.ts`);
+- every AWS error name is declared by the SDK or documented (`test/static/aws-error-names.test.ts`);
+- the removed class names appear nowhere a reader would act on them (`test/static/retired-error-names.test.ts`);
+- every `ErrorCode` is in the README's table (`test/static/error-codes.test.ts`);
 - every `info`/`warn`/`error` log event is documented in the README table, and the README IAM policy lists exactly the DynamoDB and S3 actions the code uses;
 - the public export set and the adapter method signatures are pinned in `test/types/public-surface.test.ts` — changing them is a deliberate, documented act;
 - `createClient` / `createS3Client` are `@internal` test seams and stay out of the shipped declarations;
@@ -41,7 +46,7 @@ Write the failing test first, then the code. A change that touches behaviour nee
 | Package smoke | `npm run test:package-smoke` | network (`npm pack` + install into a temp project) |
 | Real AWS | `AWS_REGION=eu-central-1 npm run test:aws` | AWS credentials |
 
-CI runs the unit, integration, conformance, surface and package-smoke tiers on each push and pull request. The surface baseline runs beside the package smoke test, on one platform: it is a snapshot, and comparing a snapshot across nine matrix legs is nine chances to disagree about nothing. Run it locally as well after any change to what the public API accepts or rejects, and regenerate with `npm run test:surface:update` only after reading the diff it printed. Two ratchets in `test/surface/surface.test.mjs` sit beside the baseline: `EXPECTED_BARE` caps the cases where an error that is not this library's escapes, and `EXPECTED_UPSTREAM` the cases that end in `UpstreamError` or `RetryExhaustedError`. Both may only go down — lower the constant in the commit that fixes a case, never raise it — and `EXPECTED_UPSTREAM` is 0: no case the tier runs ends in either, so none reports a caller's mistake as an AWS failure. One tier runs only on release tags: the real-AWS tier, described below.
+CI runs the unit, integration, conformance, surface and package-smoke tiers on each push and pull request. The surface baseline runs beside the package smoke test, on one platform: it is a snapshot, and comparing a snapshot across nine matrix legs is nine chances to disagree about nothing. Run it locally as well after any change to what the public API accepts or rejects, and regenerate with `npm run test:surface:update` only after reading the diff it printed. Two ratchets in `test/surface/surface.test.mjs` sit beside the baseline: `EXPECTED_BARE` caps the cases where an error that is not this library's escapes, and `EXPECTED_UPSTREAM` the cases that end in a code reporting a failure outside this library (`RETRY_EXHAUSTED`, `THROTTLED`, `SERVICE_UNAVAILABLE`, `CONTENTION`, `ACCESS_DENIED`, `NOT_FOUND`, `AWS_REJECTED`, `AWS_REQUEST_FAILED`, `UNEXPECTED_ERROR`). Both may only go down — lower the constant in the commit that fixes a case, never raise it — and `EXPECTED_UPSTREAM` is 0: no case the tier runs ends in one, so none reports a caller's mistake as an AWS failure. One tier runs only on release tags: the real-AWS tier, described below.
 
 ### Real-AWS tests
 

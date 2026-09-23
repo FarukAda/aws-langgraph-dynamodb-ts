@@ -50,7 +50,7 @@ describe('loadS3Sdk without the optional peer (CODEC-05)', () => {
   /** The dynamic import runs after isolateModules returns, so unmock only once the test is done. */
   afterEach(() => jest.dontMock('@aws-sdk/client-s3'));
 
-  it('names the missing peer and the install command in a ValidationError', async () => {
+  it('names the missing peer and the install command in a VALIDATION error', async () => {
     const missing = Object.assign(new Error("Cannot find package '@aws-sdk/client-s3'"), {
       code: 'ERR_MODULE_NOT_FOUND',
     });

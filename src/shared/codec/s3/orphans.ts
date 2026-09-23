@@ -1,4 +1,5 @@
 import { fullJitter, nextBackoffDelay, sleep } from '../../dynamodb/backoff';
+import { failureLabel } from '../../errors/base-error';
 import { absorbLoggerFailure, type Logger } from '../../logging/logger';
 import { truncateForLog } from '../../logging/truncate';
 import type { S3Offloader } from './offloader';
@@ -137,7 +138,7 @@ export async function cleanUpS3Orphans(
   absorbLoggerFailure(() =>
     logger.warn(
       `Failed to clean up orphaned S3 objects after ${context}; a lifecycle rule from ensureS3LifecycleRule() would sweep them, otherwise clean up manually`,
-      { reason: truncateForLog(lastError.name) },
+      { reason: truncateForLog(failureLabel(lastError)) },
     ),
   );
 }

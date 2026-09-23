@@ -12,7 +12,7 @@ import {
 } from '../../../../src/shared/dynamodb/idempotent-write';
 import * as retryModule from '../../../../src/shared/dynamodb/retry';
 import type { RetryOptions } from '../../../../src/shared/dynamodb/retry';
-import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
@@ -188,13 +188,13 @@ describe('putIdempotently', () => {
 
     await expect(
       putIdempotently({ client, tableName: TABLE, retry: onTheLimit }, ITEM),
-    ).rejects.toThrow(RetryExhaustedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(emitted()).toHaveLength(1);
 
     mock.resetHistory();
     await expect(
       putIdempotently({ client, tableName: TABLE, retry: instantPolicy() }, ITEM),
-    ).rejects.toThrow(RetryExhaustedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(emitted()).toHaveLength(4);
   });
 

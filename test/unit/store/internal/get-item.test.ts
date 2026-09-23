@@ -6,9 +6,8 @@ import { buildS3Key } from '../../../../src/shared/codec/s3/config';
 import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { ValidationError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { getItem } from '../../../../src/store/actions/get';
+import { getItem } from '../../../../src/store/internal/get-item';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -53,16 +52,18 @@ describe('getItem', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it('throws ValidationError on an empty namespace', async () => {
+  it('throws VALIDATION on an empty namespace', async () => {
     const { client } = createStrictDocumentMock();
-    await expect(getItem(context(client), [], 'k1')).rejects.toBeInstanceOf(ValidationError);
+    await expect(getItem(context(client), [], 'k1')).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+    });
   });
 
-  it('throws ValidationError when the key contains the reserved separator', async () => {
+  it('throws VALIDATION when the key contains the reserved separator', async () => {
     const { client } = createStrictDocumentMock();
-    await expect(getItem(context(client), ['users'], 'a#b')).rejects.toBeInstanceOf(
-      ValidationError,
-    );
+    await expect(getItem(context(client), ['users'], 'a#b')).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+    });
   });
 
   it('returns the decoded item with namespace, key, value, and dates', async () => {

@@ -88,9 +88,9 @@ function compareNamespaces(a: string[], b: string[]): number {
  *
  * Returns: the namespaces, sorted, then `limit` of them from `offset`.
  *
- * Throws: ValidationError naming `offset`, `limit`, `maxDepth`,
+ * Throws: `VALIDATION` naming `offset`, `limit`, `maxDepth`,
  * `matchConditions`, `prefix`, `prefix element`, `suffix` or `suffix element`;
- * {@link ResultTruncatedError} when `maxScanItems` is reached while rows
+ * `RESULT_TRUNCATED` when `maxScanItems` is reached while rows
  * remain, so a partial listing is never returned as a complete one;
  * `FORMAT_UNSUPPORTED` for a store item a newer release wrote.
  *

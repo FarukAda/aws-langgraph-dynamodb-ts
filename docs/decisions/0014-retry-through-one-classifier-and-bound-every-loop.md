@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted. Its default token lists are now derived from the classifier table of [19](0019-raise-one-error-class-and-classify-aws-failures-in-one-place.md).
 
 ## Context
 

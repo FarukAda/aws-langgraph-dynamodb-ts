@@ -1,5 +1,11 @@
 import { expectTypeOf } from 'expect-type';
 
+import {
+  type BatchWriteIncompleteDetails,
+  type CompensationFailedDetails,
+  ErrorCode,
+  isDynamoDBLangGraphError,
+} from '../../src/index';
 import type {
   AdapterWindow,
   CancelOptions,
@@ -109,5 +115,23 @@ describe('factory shared defaults and partial createAll (CORE-17)', () => {
     expectTypeOf<CreateAllOptions['saver']>().toEqualTypeOf<
       Omit<DynamoDBSaverOptions, 'client' | 'clientConfig' | 'createClient'> | undefined
     >();
+  });
+});
+
+describe('a code narrows the details it carries', () => {
+  it('types details by code, and as undefined for a code without any', () => {
+    const caught = new Error('x');
+    if (isDynamoDBLangGraphError(caught)) {
+      if (caught.code === ErrorCode.COMPENSATION_FAILED) {
+        expectTypeOf(caught.details).toEqualTypeOf<CompensationFailedDetails>();
+      }
+      if (caught.code === ErrorCode.BATCH_WRITE_INCOMPLETE) {
+        expectTypeOf(caught.details).toEqualTypeOf<BatchWriteIncompleteDetails>();
+      }
+      if (caught.code === ErrorCode.VALIDATION) {
+        expectTypeOf(caught.details).toEqualTypeOf<undefined>();
+      }
+    }
+    expect(isDynamoDBLangGraphError(caught)).toBe(false);
   });
 });

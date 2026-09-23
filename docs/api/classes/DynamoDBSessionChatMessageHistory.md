@@ -37,7 +37,7 @@ empty one is indistinguishable from a conversation that never happened.
 Returns: the view. Normally built through
 `DynamoDBChatMessageHistory.forSession`, which is the supported route.
 
-Throws: ValidationError naming `backend`, `backend.<member>` for the first
+Throws: `VALIDATION` naming `backend`, `backend.<member>` for the first
 missing method, `sessionId`, `window` for a window that is not an object,
 `window.<key>` for a key `AdapterWindow` does not declare, or `limit`. Checking here reports a caller's mistake at
 construction instead of rebranding it as an upstream failure on first use.
@@ -85,7 +85,7 @@ Usually should be the same as the entrypoint the class is exported from.
 
 > **addMessage**(`message`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:94](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L94)
+Defined in: [history/session-adapter.ts:95](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L95)
 
 Append one message to this session.
 
@@ -115,7 +115,7 @@ Throws: as [addMessages](#addmessages).
 
 > **addMessages**(`messages`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:113](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L113)
+Defined in: [history/session-adapter.ts:115](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L115)
 
 Append messages to this session.
 
@@ -123,8 +123,9 @@ Accepts: `messages` — LangChain messages; an empty list writes nothing.
 
 Returns: nothing, and only once every message has landed.
 
-Throws: whatever the backend's `addMessages` throws, wrapped as
-`UpstreamError` unless it is already one of this library's own errors.
+Throws: whatever the backend's `addMessages` throws, wrapped with
+the code the classifier assigns unless it is already one of this library's
+own errors.
 
 Guarantees: the window bounds what is *read*, never what is written — the
 session keeps every message appended to it.
@@ -149,7 +150,7 @@ session keeps every message appended to it.
 
 > **clear**(): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:133](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L133)
+Defined in: [history/session-adapter.ts:135](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L135)
 
 Delete this session's messages, metadata and offloaded objects.
 
@@ -157,8 +158,8 @@ Accepts: nothing.
 
 Returns: nothing. Clearing a session that does not exist is not an error.
 
-Throws: whatever the backend's `clear` throws, wrapped as `UpstreamError`
-unless it is already one of this library's own errors.
+Throws: whatever the backend's `clear` throws, wrapped with the code the
+classifier assigns unless it is already one of this library's own errors.
 
 Guarantees: the whole session goes, not the window.
 `BaseListChatMessageHistory` declares `clear()`, and a chain that calls it
@@ -178,7 +179,7 @@ is asking for exactly that.
 
 > **getMessages**(): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/session-adapter.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L79)
+Defined in: [history/session-adapter.ts:80](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L80)
 
 This session's messages in chronological order.
 
@@ -189,8 +190,9 @@ Returns: the messages, bounded by the adapter's window. LangChain calls
 this on every chain invocation, so the window is what keeps a long session
 from growing the prompt without limit.
 
-Throws: whatever the backend's `getMessages` throws, wrapped as
-`UpstreamError` unless it is already one of this library's own errors.
+Throws: whatever the backend's `getMessages` throws, wrapped with
+the code the classifier assigns unless it is already one of this library's
+own errors.
 
 #### Returns
 

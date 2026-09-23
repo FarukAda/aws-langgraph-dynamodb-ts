@@ -6,7 +6,6 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { DEFAULT_INDEX_SHARDS } from '../../../../src/shared/dynamodb/index-keys';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { ResultTruncatedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -182,7 +181,7 @@ describe('listSessions', () => {
     expect(sessions.map((s) => s.sessionId)).toEqual(['real']);
   });
 
-  it('throws ResultTruncatedError by default when scan pages are exhausted by non-session filtering', async () => {
+  it('throws RESULT_TRUNCATED by default when scan pages are exhausted by non-session filtering', async () => {
     const { client, mock } = createStrictDocumentMock();
     // Every page returns 0 post-filter items but always continues (simulating
     // a table dominated by non-session rows), for more than MAX_LOOP_ITERATIONS (1000) pages.
@@ -190,7 +189,9 @@ describe('listSessions', () => {
     for (let i = 0; i < 1001; i++) {
       scanMock = scanMock.resolvesOnce({ Items: [], LastEvaluatedKey: { PK: 'x', SK: String(i) } });
     }
-    await expect(listSessions(context(client))).rejects.toThrow(ResultTruncatedError);
+    await expect(listSessions(context(client))).rejects.toMatchObject({
+      code: ErrorCode.RESULT_TRUNCATED,
+    });
   });
 
   it('succeeds with a raised maxIterations override', async () => {
@@ -210,9 +211,9 @@ describe('listSessions', () => {
       Items: [session('a', '2024-01-01'), session('b', '2024-01-02')],
       LastEvaluatedKey: { PK: 'x', SK: 'y' },
     });
-    await expect(listSessions(context(client), { maxItems: 1 })).rejects.toThrow(
-      ResultTruncatedError,
-    );
+    await expect(listSessions(context(client), { maxItems: 1 })).rejects.toMatchObject({
+      code: ErrorCode.RESULT_TRUNCATED,
+    });
   });
 });
 

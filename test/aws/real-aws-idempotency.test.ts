@@ -304,7 +304,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
    * budget is supposed to absorb. What this asserts is that it does: every
    * logical write reaches a clean terminal outcome — one winner, the rest
    * turned away by the condition — and none of them ends in
-   * `RetryExhaustedError`.
+   * `RETRY_EXHAUSTED`.
    *
    * It deliberately does **not** pin the conflict percentage. 38 % / 65 % /
    * 86 % at 2 / 5 / 20 writers is what AWS did on one day in one region (E-5);
@@ -336,7 +336,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
       if (result.status === 'fulfilled') continue;
       const error = result.reason as Error;
       // A clean loss: turned away by the condition, not by a spent budget.
-      expect(isConditionalCheckFailed(error as RejectionFields)).toBe(true);
+      expect(isConditionalCheckFailed(error)).toBe(true);
       expect((error as { code?: string }).code).not.toBe(ErrorCode.RETRY_EXHAUSTED);
     }
     expect(counter.attempts).toBeGreaterThanOrEqual(WRITERS);

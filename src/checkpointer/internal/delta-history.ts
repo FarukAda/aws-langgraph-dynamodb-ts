@@ -155,7 +155,7 @@ function historyOf(walk: Walk, channel: string): DeltaChannelHistory {
  *
  * Throws: `ANCESTOR_EXPIRED` when an ancestor a channel still needs exists but
  * has expired ({@link ancestorExpired}). An ancestor that was never written
- * still ends the walk quietly — that is an ordinary root. `AbortError` when the
+ * still ends the walk quietly — that is an ordinary root. `ABORTED` when the
  * signal fires, at whichever hop it fires on, and in preference to a diagnosis
  * of the stop: a walk cancelled just as it reached an expired ancestor reports
  * the cancel, since the caller stopped waiting for the answer either way.

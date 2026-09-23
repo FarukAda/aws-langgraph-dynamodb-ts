@@ -319,7 +319,7 @@ describe('searchViaBackend', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('unusable vectorBackend match'), {
       namespace: ['users', truncateForLog(label)],
       key: truncateForLog(key),
-      reason: 'ValidationError',
+      reason: 'VALIDATION',
     });
   });
 
@@ -335,7 +335,7 @@ describe('searchViaBackend', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('unusable vectorBackend match'), {
       namespace: [...deep.slice(0, MAX_LOGGED_LABELS), `…(len ${deep.length})`],
       key: 'k',
-      reason: 'ValidationError',
+      reason: 'VALIDATION',
     });
   });
 });

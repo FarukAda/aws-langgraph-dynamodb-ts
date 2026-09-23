@@ -109,7 +109,7 @@ export async function fetchTargetMeta(
    * exhausted read — more requests, on the read the page size above exists to
    * make cheaper. `maxIterations` is the runaway guard, but a finite value
    * would turn a namespace whose rows have all aged out into a thrown
-   * `ResultTruncatedError` where this function documents `undefined`, failing
+   * `RESULT_TRUNCATED` where this function documents `undefined`, failing
    * every graph step on exactly the thread shape the page size is here to
    * serve. The page size is what bounds the walk instead: it divides the
    * requests a dead head costs by {@link LATEST_META_PAGE_SIZE}.

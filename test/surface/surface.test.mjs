@@ -2,8 +2,8 @@ import { strict as assert } from 'node:assert';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { collectRows } from './harness.mjs';
-import { canonicalLines, countBare, countUpstream, duplicateLabels } from './normalise.mjs';
+import { collectRows, retainedStubCount } from './harness.mjs';
+import { canonicalLines, countBare, countMisnamed, countUpstream, duplicateLabels } from './normalise.mjs';
 
 const BASELINE = 'test/surface/baseline.txt';
 
@@ -26,11 +26,13 @@ const BASELINE = 'test/surface/baseline.txt';
 const EXPECTED_BARE = 0;
 
 /**
- * The count of cases ending in `UpstreamError/UPSTREAM` or
- * `RetryExhaustedError/RETRY_EXHAUSTED`, under the same rule. It sees what the
- * bare count cannot: wrapping a method so a caller's mistake escapes as an
- * `UpstreamError` removes a bare row and adds one here, and that is a
- * rebranding, not a fix. The fake client's own rejection is reported as
+ * The count of cases ending in a code that reports a failure outside this
+ * library — `RETRY_EXHAUSTED`, `THROTTLED`, `SERVICE_UNAVAILABLE`,
+ * `CONTENTION`, `ACCESS_DENIED`, `NOT_FOUND`, `AWS_REJECTED`,
+ * `AWS_REQUEST_FAILED` or `UNEXPECTED_ERROR` — under the same rule. It sees
+ * what the bare count cannot: wrapping a method so a caller's mistake escapes
+ * wrapped as a failure from below removes a bare row and adds one here, and
+ * that is a rebranding, not a fix. The fake client's own rejection is reported as
  * REACHED-WRITE instead, so a row counted here failed somewhere other than the
  * AWS call the harness fakes.
  */
@@ -80,5 +82,32 @@ test('no case regresses into ending in an upstream failure', async () => {
   assert.ok(
     upstream <= EXPECTED_UPSTREAM,
     `${upstream} cases end in an upstream failure, up from ${EXPECTED_UPSTREAM}; lower EXPECTED_UPSTREAM as fixes land, never raise it`,
+  );
+});
+
+test('every branded error carries the one class name', async () => {
+  const lines = canonicalLines(await collectRows());
+  const misnamed = countMisnamed(lines);
+  assert.equal(
+    misnamed,
+    0,
+    `${misnamed} cases raised a branded error under a name other than DynamoDBLangGraphError; there is one error class`,
+  );
+});
+
+/**
+ * A stub sinon keeps holds the client it replaced and every row it serves.
+ * When the harness stubbed through sinon's global sandbox, nothing released
+ * them: each call kept about 40 MB, and the ~290 MB five calls left at process
+ * exit crashed Node 24 and 26 while they freed it
+ * (`Check failed: node->IsInUse()`), or hung them there.
+ */
+test('a run of the harness leaves no stub behind', async () => {
+  await collectRows();
+  const retained = retainedStubCount();
+  assert.equal(
+    retained,
+    0,
+    `${retained} sinon stubs outlived the harness run that made them; stub through the per-run sandbox so it releases them`,
   );
 });

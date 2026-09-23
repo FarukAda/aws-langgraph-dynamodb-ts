@@ -4,12 +4,13 @@ import {
   INITIAL_BACKOFF_DELAY_MS,
   MAX_BACKOFF_DELAY_MS,
 } from '../constants';
-import { RetryExhaustedError } from '../errors/errors';
-import { toError } from '../errors/wrap-error';
+import { DEFAULT_RETRYABLE_ERRORS } from '../errors/classify';
+import { retryExhaustedError } from '../errors/errors';
+import { toError } from '../errors/to-error';
 import { redactedMessage } from '../logging/secret-patterns';
 import { abortErrorFrom } from './abort';
 import { fullJitter, sleep } from './backoff';
-import { DEFAULT_RETRYABLE_ERRORS, isRetryableError } from './retry-classifier';
+import { isRetryableError } from './retry-classifier';
 
 /**
  * The per-request options one attempt hands to the SDK call it makes.
@@ -134,11 +135,11 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
  *
  * Throws: the error itself, unchanged, when it is not retryable — a
  * `ValidationException` or a permission failure is never retried;
- * {@link AbortError} when the signal fires, including during a wait and
+ * `ABORTED` when the signal fires, including during a wait and
  * including while a request is in flight — the SDK rejects the cancelled
  * request with an error of its own, and a failed attempt whose signal has
  * fired is reported as the cancel it is rather than being classified, retried
- * or wrapped; {@link RetryExhaustedError} once the budget ends, carrying the attempt
+ * or wrapped; `RETRY_EXHAUSTED` once the budget ends, carrying the attempt
  * actually reached — not the attempts configured — and the last error as
  * `cause`. Its message quotes the last error **redacted**, because it reaches
  * `err.message`, which an application may print without a redacting logger.
@@ -153,7 +154,7 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
  * ending the budget in place of a wait drops only that last observation point:
  * a signal that fires *after* the deadline has already refused the wait, in
  * the window where the wait would have been running, surfaces as
- * {@link RetryExhaustedError} rather than {@link AbortError}. One already set
+ * `RETRY_EXHAUSTED` rather than `ABORTED`. One already set
  * at entry, fired during an attempt, or fired during an earlier wait, is still
  * caught.
  *
@@ -199,7 +200,7 @@ export async function withRetry<T>(
       await sleep(delayMs, options.signal);
     }
   }
-  throw new RetryExhaustedError(
+  throw retryExhaustedError(
     `Operation failed after ${attempts} attempts: ${redactedMessage(lastError)}`,
     attempts,
     lastError,

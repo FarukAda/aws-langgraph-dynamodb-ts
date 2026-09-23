@@ -147,7 +147,7 @@ describe('reconcileVectorIndex', () => {
       vectorBackend: backend,
       maxScanItems: 5,
     });
-    // 6 items under a 5-item cap must throw ResultTruncatedError, proving the
+    // 6 items under a 5-item cap must throw `RESULT_TRUNCATED`, proving the
     // configured cap (not the old unconfigurable 10,000 default) is in effect.
     const records = [];
     for (let i = 0; i < 6; i++) {

@@ -4,6 +4,7 @@ import { writeRegularItems } from '../../../../src/checkpointer/internal/regular
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import {
   committedRows,
@@ -79,7 +80,10 @@ describe('writeRegularItems', () => {
     mock.on(GetCommand).resolves({});
     const outcome = await writeRegularItems(context(client), [item('G1')]);
     expect(outcome.deadUploads).toEqual([item('G1')]);
-    expect(outcome.error).toMatchObject({ name: 'RetryExhaustedError' });
+    expect(outcome.error).toMatchObject({
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.RETRY_EXHAUSTED,
+    });
   });
 
   it("marks the upload dead when the row holds another call's writeGroup", async () => {
@@ -98,7 +102,10 @@ describe('writeRegularItems', () => {
       .rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
     const outcome = await writeRegularItems(context(client), [item('G1')]);
     expect(outcome.deadUploads).toEqual([]);
-    expect(outcome.error).toMatchObject({ name: 'RetryExhaustedError' });
+    expect(outcome.error).toMatchObject({
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.RETRY_EXHAUSTED,
+    });
   });
 
   it('skips the verification read and marks the upload dead when no offloader is configured', async () => {
@@ -158,7 +165,7 @@ describe('writeRegularItems', () => {
     rejectRowWrites(mock, timeout());
     mock.on(GetCommand).resolves({ Item: { writeGroup: 'OTHER' } });
     const outcome = await writeRegularItems(context(client), [item('G1')], controller.signal);
-    expect(outcome.error).toMatchObject({ name: 'AbortError', code: 'ABORTED' });
+    expect(outcome.error).toMatchObject({ name: 'DynamoDBLangGraphError', code: 'ABORTED' });
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
     expect(outcome.deadUploads).toEqual([item('G1')]);
   });

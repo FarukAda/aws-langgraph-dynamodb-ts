@@ -8,7 +8,8 @@ import {
 import { appendChunks } from '../../../../src/history/internal/append-saga';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import { CompensationFailedError, RetryExhaustedError } from '../../../../src/shared/errors/errors';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { retryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createUlidFactory } from '../../../../src/shared/ulid';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -91,8 +92,7 @@ describe('appendChunks', () => {
     });
   });
 
-  it('raises CompensationFailedError when the rollback itself fails', async () => {
-    expect(CompensationFailedError).toBeDefined();
+  it('raises COMPENSATION_FAILED when the rollback itself fails', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(TransactWriteCommand)
@@ -110,7 +110,7 @@ describe('appendChunks', () => {
         [[inlineItem('MSG#1')], [inlineItem('MSG#2')]],
         { now: 'u' },
       ),
-    ).rejects.toMatchObject({ name: 'CompensationFailedError', code: 'COMPENSATION_FAILED' });
+    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: 'COMPENSATION_FAILED' });
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining('rollback failed'),
       expect.objectContaining({ sessionId: 's1' }),
@@ -141,7 +141,10 @@ describe('appendChunks', () => {
       appendChunks(context(client), 's1', [committedMessages, [inlineItem('MSG#trigger')]], {
         now: 'u',
       }),
-    ).rejects.toMatchObject({ name: 'CompensationFailedError' });
+    ).rejects.toMatchObject({
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.COMPENSATION_FAILED,
+    });
     const revertCall = mock.commandCalls(TransactWriteCommand)[2].args[0].input;
     const revertUpdate = revertCall.TransactItems?.[0]?.Update;
     // 25 of the 30 committed rows were actually deleted; the revert must
@@ -219,7 +222,10 @@ describe('appendChunks', () => {
         [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
         { now: 'u' },
       ),
-    ).rejects.toMatchObject({ name: 'CompensationFailedError' });
+    ).rejects.toMatchObject({
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.COMPENSATION_FAILED,
+    });
     // The committed chunk's key (k1) must NOT be among the cleaned keys, since
     // its DynamoDB row's fate is unknown after a failed rollback. Only the
     // never-committed chunk's key (k2) is safe to have cleaned.
@@ -261,9 +267,9 @@ describe('appendChunks', () => {
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
 
     // The original trigger, not a new error, must still be what surfaces —
-    // the swallowed condition failure must not become CompensationFailedError.
+    // the swallowed condition failure must not become `COMPENSATION_FAILED`.
     // Asserting the precise name+message (not just a `toThrow('boom')`
-    // substring check) matters here: CompensationFailedError's own message
+    // substring check) matters here: `COMPENSATION_FAILED`'s own message
     // embeds the trigger's message as a substring ("compensation failed
     // after an append error: boom (rollback: cancelled)"), so a loose
     // substring match would pass even without the fix.
@@ -316,13 +322,13 @@ describe('appendChunks', () => {
 describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
   // The transaction is retried up to MESSAGE_APPEND_RETRY_MAX_ATTEMPTS times
   // with real backoff and appendChunks exposes no rng seam, so the exhausted
-  // outcome is injected directly: withRetry rethrows a RetryExhaustedError
+  // outcome is injected directly: withRetry rethrows a `RETRY_EXHAUSTED` error
   // unchanged, which is exactly what the saga sees after a lost-response
   // transaction whose re-issues all timed out. The cause deliberately carries
   // no retryable signal (the classifier walks the cause chain), or the mock
   // itself would be retried through the whole 18-attempt backoff.
   function exhausted(): Error {
-    return new RetryExhaustedError(
+    return retryExhaustedError(
       'Operation failed after 18 attempts: timeout',
       18,
       Object.assign(new Error('timeout'), { name: 'SimulatedTransportFailure' }),
@@ -350,7 +356,7 @@ describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
     await expect(
       appendChunks(context(client, offloader), 's1', [[s3Item('MSG#1', 'k1')]], { now: 'u' }),
-    ).rejects.toMatchObject({ name: 'RetryExhaustedError' });
+    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.RETRY_EXHAUSTED });
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1']);
   });
 
@@ -363,7 +369,7 @@ describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
     await expect(
       appendChunks(context(client, offloader), 's1', [[s3Item('MSG#1', 'k1')]], { now: 'u' }),
-    ).rejects.toMatchObject({ name: 'RetryExhaustedError' });
+    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.RETRY_EXHAUSTED });
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
@@ -381,7 +387,7 @@ describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
         [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
         { now: 'u' },
       ),
-    ).rejects.toMatchObject({ name: 'RetryExhaustedError' });
+    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.RETRY_EXHAUSTED });
     // k1 may be referenced by a live row; k2's chunk was never attempted.
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k2']);

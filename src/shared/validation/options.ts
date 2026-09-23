@@ -5,7 +5,7 @@ import {
   MAX_RETRY_DELAY_MS,
 } from '../constants';
 import type { RetryPolicy } from '../dynamodb/retry-policy';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import type { BaseAdapterOptions, CodecOptions } from '../options';
 import { validateCompression, validateS3 } from './codec-options';
 import { allKeysOf, assertObjectShape, assertShape } from './option-shape';
@@ -28,11 +28,11 @@ const RETRY_KEYS = allKeysOf<RetryPolicy>({
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `tableName`.
+ * Throws: `VALIDATION` naming `tableName`.
  */
 export function validateTableName(tableName: string): void {
   if (typeof tableName !== 'string' || !TABLE_NAME_PATTERN.test(tableName)) {
-    throw new ValidationError(
+    throw validationError(
       'tableName must be 3-255 characters from [A-Za-z0-9_.-], as DynamoDB requires',
       'tableName',
     );
@@ -52,7 +52,7 @@ export function validateTableName(tableName: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `client` for both ways at once, then
+ * Throws: `VALIDATION` naming `client` for both ways at once, then
  * `clientConfig` for one that is not an object.
  */
 export function validateClientChoice(
@@ -62,7 +62,7 @@ export function validateClientChoice(
     options.client &&
     (options.clientConfig !== undefined || options.createClient !== undefined)
   ) {
-    throw new ValidationError(
+    throw validationError(
       'provide either `client` or `clientConfig`/`createClient`, not both: an injected client ' +
         'is used as-is and the configuration would be silently ignored',
       'client',
@@ -92,7 +92,7 @@ export function validateClientChoice(
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `retry.maxAttempts`, `retry.baseDelayMs` or
+ * Throws: `VALIDATION` naming `retry.maxAttempts`, `retry.baseDelayMs` or
  * `retry.maxDelayMs`.
  */
 export function validateRetryBounds(
@@ -120,7 +120,7 @@ export function validateRetryBounds(
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `retry` or `retry.<key>`.
+ * Throws: `VALIDATION` naming `retry` or `retry.<key>`.
  */
 export function validateRetryPolicy(policy: RetryPolicy): void {
   assertShape(policy, RETRY_KEYS, 'retry');
@@ -149,7 +149,7 @@ function validateRecencyIndex(options: BaseAdapterOptions): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError whose `context.field` names the offending option,
+ * Throws: `VALIDATION` whose `context.field` names the offending option,
  * dotted for a nested one (`s3.bucketName`). The order is `tableName`, client
  * choice, `ttl`, `retry`, `compression`, `s3`, `readConcurrency`, then the
  * index options.
@@ -159,7 +159,7 @@ function validateRecencyIndex(options: BaseAdapterOptions): void {
  */
 export function validateBaseAdapterOptions(options: BaseAdapterOptions & CodecOptions): void {
   if (typeof options !== 'object' || options === null) {
-    throw new ValidationError('options must be an object naming at least a tableName', 'options');
+    throw validationError('options must be an object naming at least a tableName', 'options');
   }
   validateTableName(options.tableName);
   validateClientChoice(options);

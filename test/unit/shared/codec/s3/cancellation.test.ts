@@ -86,7 +86,7 @@ describe('a cancelled transfer is reported as a cancel', () => {
         data: new Uint8Array([1]),
         signal: controller.signal,
       }),
-    ).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'AbortError' });
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'DynamoDBLangGraphError' });
     expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(0);
   });
 
@@ -103,7 +103,7 @@ describe('a cancelled transfer is reported as a cancel', () => {
         data: new Uint8Array([1]),
         signal: controller.signal,
       }),
-    ).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'AbortError' });
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'DynamoDBLangGraphError' });
   });
 
   /**
@@ -125,7 +125,7 @@ describe('a cancelled transfer is reported as a cancel', () => {
     });
     await expect(
       downloadObject(client(), 'b', 'k.bin', MAX_BYTES, controller.signal),
-    ).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'AbortError' });
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'DynamoDBLangGraphError' });
     expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(1);
   });
 

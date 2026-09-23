@@ -8,13 +8,14 @@ import { type CodecDeps, loadPayloadValue, readPayloadBytes } from '../../shared
 import { isPermanentPayloadLoss } from '../../shared/codec/payload-loss';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { toError } from '../../shared/errors/wrap-error';
+import { failureLabel } from '../../shared/errors/base-error';
+import { toError } from '../../shared/errors/to-error';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';
 import { assertSignalLike } from '../../shared/validation/collaborators';
-import { GET_MESSAGES_KEYS } from '../../shared/validation/method-keys';
 import { assertShape } from '../../shared/validation/option-shape';
 import { readWindow } from '../internal/message-window';
+import { GET_MESSAGES_KEYS } from '../internal/option-keys';
 import type { HistoryContext } from '../internal/setup';
 import { validateMessageWindow, validateSessionId } from '../internal/validation';
 import type { ChatMessageItem, MessageWindow } from '../types';
@@ -110,12 +111,12 @@ async function decodeMessage(
  * does not exist and one whose messages have all expired both return nothing:
  * a conversation nobody can read is a conversation that is not there.
  *
- * Throws: ValidationError naming `sessionId`, `limit`, `before`, `signal`, or
+ * Throws: `VALIDATION` naming `sessionId`, `limit`, `before`, `signal`, or
  * `options.<key>` for a key this package does not read;
  * `FORMAT_UNSUPPORTED` for a row, or a payload, a newer version wrote — the
  * payload half whatever the policy, because a newer reader reads it and
  * dropping it would lose a turn a rollback could still serve; the decode error
- * of a corrupt row under `onCorruptMessage: 'throw'`; ValidationError naming
+ * of a corrupt row under `onCorruptMessage: 'throw'`; `VALIDATION` naming
  * `message` for a row in this session's message key space that this adapter
  * did not write, naming
  * `s3Key` for a row addressing an object outside the session's own path, and
@@ -155,7 +156,7 @@ export async function getMessages(
     context.logger.error('getMessages: skipped a corrupt message item', {
       sessionId,
       sortKey: truncateForLog(items[index].SK),
-      reason: truncateForLog(result.error.name),
+      reason: truncateForLog(failureLabel(result.error)),
     });
   });
   return messages;

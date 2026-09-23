@@ -7,7 +7,7 @@ import {
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
 import * as retryModule from '../../../../src/shared/dynamodb/retry';
-import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
@@ -250,7 +250,7 @@ describe('a tokened revert stays inside the window its token is honoured for', (
 
     await expect(
       revertSessionCount({ ...context(client), retry }, 's1', 2, 'u'),
-    ).rejects.toBeInstanceOf(RetryExhaustedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(6);
   });
 });

@@ -93,7 +93,7 @@ describe('listCheckpoints', () => {
   it('does not cap a filtered list on the raw rows it scanned (M4)', async () => {
     // The page cap counts raw rows pulled, not filter-matched ones, so a
     // caller asking for a handful of rare matches over a large thread used to
-    // get a hard ResultTruncatedError instead of the true answer.
+    // get a hard `RESULT_TRUNCATED` instead of the true answer.
     const { client, mock } = createStrictDocumentMock();
     const { metas } = await fixtures(client);
     const template = metas.c2;

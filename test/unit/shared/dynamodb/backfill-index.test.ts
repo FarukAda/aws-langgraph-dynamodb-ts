@@ -178,17 +178,21 @@ describe('backfillRecencyIndex', () => {
 describe('backfillRecencyIndex error boundary', () => {
   /**
    * The tool is its own error boundary, like every adapter method: an error
-   * that is not this package's own reaches the caller as `UpstreamError`, with
-   * the original kept as `cause` so nothing about it is lost.
+   * that is not this package's own reaches the caller wrapped with the code
+   * the classifier assigns, with the original kept as `cause` so nothing
+   * about it is lost.
    */
-  it('wraps a raw error the client throws as UpstreamError, with the original as cause', async () => {
+  it('wraps a raw error the client throws, with the original as cause', async () => {
     const original = new Error('socket hang up');
     const client = { scan: jest.fn().mockRejectedValue(original), update: jest.fn() };
     const error = await backfillRecencyIndex({ client: client as never, tableName: TABLE }).then(
       () => undefined,
       (rejection: Error) => rejection,
     );
-    expect(error).toMatchObject({ name: 'UpstreamError', code: ErrorCode.UPSTREAM });
+    expect(error).toMatchObject({
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.UNEXPECTED_ERROR,
+    });
     expect((error as Error).cause).toBe(original);
     expect(client.scan).toHaveBeenCalledTimes(1);
   });
@@ -285,7 +289,7 @@ describe('backfillRecencyIndex input validation', () => {
 
   /**
    * A malformed retry policy used to reach the retry loop itself and exhaust
-   * its (nonsensical) attempt budget, reporting `RetryExhaustedError` — an
+   * its (nonsensical) attempt budget, reporting `RETRY_EXHAUSTED` — an
    * AWS-side failure — for what is a caller's config mistake.
    */
   it('refuses a malformed retry policy, naming it, rather than exhausting retries', async () => {

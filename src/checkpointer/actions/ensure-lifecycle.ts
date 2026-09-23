@@ -23,7 +23,7 @@ import type { CheckpointerContext } from '../internal/setup';
  * calling this on every deploy is safe.
  *
  * Throws: whatever reading or writing the bucket's lifecycle configuration
- * throws, and ValidationError naming `s3.keyPrefix` when the rule id this
+ * throws, and `VALIDATION` naming `s3.keyPrefix` when the rule id this
  * prefix would take is already held by a different prefix.
  *
  * Guarantees: needs the bucket-level `s3:GetLifecycleConfiguration` /

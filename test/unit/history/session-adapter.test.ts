@@ -1,7 +1,8 @@
 import { HumanMessage } from '@langchain/core/messages';
 
 import { DynamoDBSessionChatMessageHistory } from '../../../src/history/session-adapter';
-import { ValidationError } from '../../../src/shared/errors/errors';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
+import { validationError } from '../../../src/shared/errors/errors';
 
 function backend() {
   return {
@@ -106,86 +107,87 @@ describe('validates its constructor arguments', () => {
 /**
  * The backend behind this adapter is whatever the caller supplied to
  * `DynamoDBChatMessageHistory`, so a raw failure from it must still cross the
- * same error boundary every other public method does: unbranded becomes
- * `UpstreamError`, and an error this library already branded passes through
- * exactly as raised.
+ * same error boundary every other public method does: unbranded becomes a
+ * `DynamoDBLangGraphError` carrying the code the classifier assigns — here
+ * `UNEXPECTED_ERROR`, since a bare `Error` is not AWS-shaped — and an error
+ * this library already branded passes through exactly as raised.
  */
 describe('crosses the error boundary like every other public method', () => {
   const cause = new Error('boom');
-  const validationError = new ValidationError('bad session id', 'sessionId');
+  const refusal = validationError('bad session id', 'sessionId');
 
-  it('getMessages wraps a plain Error and passes a ValidationError through unchanged', async () => {
+  it('getMessages wraps a plain Error and passes a VALIDATION error through unchanged', async () => {
     const b = backend();
     const history = new DynamoDBSessionChatMessageHistory(b, 's');
 
     b.getMessages.mockRejectedValueOnce(cause);
     await expect(history.getMessages()).rejects.toMatchObject({
-      name: 'UpstreamError',
-      code: 'UPSTREAM',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.UNEXPECTED_ERROR,
     });
 
-    b.getMessages.mockRejectedValueOnce(validationError);
+    b.getMessages.mockRejectedValueOnce(refusal);
     const rejection = history.getMessages();
-    await expect(rejection).rejects.toBe(validationError);
+    await expect(rejection).rejects.toBe(refusal);
     await expect(rejection).rejects.toMatchObject({
       code: 'VALIDATION',
       context: { field: 'sessionId' },
     });
   });
 
-  it('addMessage wraps a plain Error and passes a ValidationError through unchanged', async () => {
+  it('addMessage wraps a plain Error and passes a VALIDATION error through unchanged', async () => {
     const b = backend();
     const history = new DynamoDBSessionChatMessageHistory(b, 's');
     const message = new HumanMessage('hi');
 
     b.addMessages.mockRejectedValueOnce(cause);
     await expect(history.addMessage(message)).rejects.toMatchObject({
-      name: 'UpstreamError',
-      code: 'UPSTREAM',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.UNEXPECTED_ERROR,
     });
 
-    b.addMessages.mockRejectedValueOnce(validationError);
+    b.addMessages.mockRejectedValueOnce(refusal);
     const rejection = history.addMessage(message);
-    await expect(rejection).rejects.toBe(validationError);
+    await expect(rejection).rejects.toBe(refusal);
     await expect(rejection).rejects.toMatchObject({
       code: 'VALIDATION',
       context: { field: 'sessionId' },
     });
   });
 
-  it('addMessages wraps a plain Error and passes a ValidationError through unchanged', async () => {
+  it('addMessages wraps a plain Error and passes a VALIDATION error through unchanged', async () => {
     const b = backend();
     const history = new DynamoDBSessionChatMessageHistory(b, 's');
     const message = new HumanMessage('hi');
 
     b.addMessages.mockRejectedValueOnce(cause);
     await expect(history.addMessages([message])).rejects.toMatchObject({
-      name: 'UpstreamError',
-      code: 'UPSTREAM',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.UNEXPECTED_ERROR,
     });
 
-    b.addMessages.mockRejectedValueOnce(validationError);
+    b.addMessages.mockRejectedValueOnce(refusal);
     const rejection = history.addMessages([message]);
-    await expect(rejection).rejects.toBe(validationError);
+    await expect(rejection).rejects.toBe(refusal);
     await expect(rejection).rejects.toMatchObject({
       code: 'VALIDATION',
       context: { field: 'sessionId' },
     });
   });
 
-  it('clear wraps a plain Error and passes a ValidationError through unchanged', async () => {
+  it('clear wraps a plain Error and passes a VALIDATION error through unchanged', async () => {
     const b = backend();
     const history = new DynamoDBSessionChatMessageHistory(b, 's');
 
     b.clear.mockRejectedValueOnce(cause);
     await expect(history.clear()).rejects.toMatchObject({
-      name: 'UpstreamError',
-      code: 'UPSTREAM',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.UNEXPECTED_ERROR,
     });
 
-    b.clear.mockRejectedValueOnce(validationError);
+    b.clear.mockRejectedValueOnce(refusal);
     const rejection = history.clear();
-    await expect(rejection).rejects.toBe(validationError);
+    await expect(rejection).rejects.toBe(refusal);
     await expect(rejection).rejects.toMatchObject({
       code: 'VALIDATION',
       context: { field: 'sessionId' },

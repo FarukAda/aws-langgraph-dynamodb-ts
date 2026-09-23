@@ -13,7 +13,7 @@ DynamoDB-backed multi-session chat history. Each message is its own item
 per-session metadata item; every message in a session shares one uniform TTL.
 Appends are O(1) and lock-free. Use [forSession](#forsession) to get a single-session
 LangChain adapter. Every public method is the library's error boundary — a
-raw AWS SDK error escaping an action surfaces as an `UpstreamError`.
+raw AWS SDK error escaping an action is wrapped with the code the classifier assigns.
 
 ## Constructors
 
@@ -29,7 +29,7 @@ construction rather than on the first request.
 Returns: an adapter that owns the client it built, or borrows the one it
 was given.
 
-Throws: ValidationError naming the offending option.
+Throws: `VALIDATION` naming the offending option.
 
 Guarantees: no I/O. Constructing the adapter issues no request.
 
@@ -93,13 +93,13 @@ chunks.
 
 Returns: nothing, and only once every message has landed.
 
-Throws: ValidationError naming `messages`, for a value that is not itself
+Throws: `VALIDATION` naming `messages`, for a value that is not itself
 an array, or, with the offending index, for an element that is not a
 message or one that could never be read back; or naming `signal` or
 `options.<key>` for a key this package does not read;
-CompensationFailedError when a later chunk fails and the rollback fails
-too; RetryExhaustedError after 18 contended attempts; UpstreamError;
-AbortError.
+`COMPENSATION_FAILED` when a later chunk fails and the rollback fails
+too; `RETRY_EXHAUSTED` after 18 contended attempts; a classified AWS failure;
+`ABORTED`.
 
 Guarantees: a caller observes all messages or none. One transaction per
 chunk of up to 99 keeps `messageCount` exact. Lock-free and safe under
@@ -138,10 +138,10 @@ Accepts: `sessionId` — validated. `options.signal` — aborts between pages.
 
 Returns: nothing. Clearing a session that does not exist is not an error.
 
-Throws: ValidationError for a malformed session id, an invalid `signal`,
+Throws: `VALIDATION` for a malformed session id, an invalid `signal`,
 or an `options.<key>` this package does not read;
-BatchWriteAllIncompleteError when a row's delete fails, counting rows
-rather than batches; UpstreamError; AbortError when the signal fires,
+`BATCH_WRITE_INCOMPLETE` when a row's delete fails, counting rows
+rather than batches; a classified AWS failure; `ABORTED` when the signal fires,
 which is what a cancel surfaces as rather than an incomplete delete, even
 when it fires part-way through the pass. A row refused because it
 was rewritten after the partition read raises nothing: it is left in place,
@@ -211,8 +211,8 @@ without both.
 
 Returns: nothing. Installing a rule that is already there is a no-op too.
 
-Throws: ValidationError naming `s3.keyPrefix` on a rule-id collision;
-UpstreamError when the bucket's lifecycle cannot be read or written.
+Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
+a classified AWS failure when the bucket's lifecycle cannot be read or written.
 
 #### Returns
 
@@ -243,7 +243,7 @@ same way.
 Returns: an adapter implementing `BaseListChatMessageHistory`, which is
 what `RunnableWithMessageHistory` takes.
 
-Throws: ValidationError naming `sessionId`, `window` for a window that is
+Throws: `VALIDATION` naming `sessionId`, `window` for a window that is
 not an object, `window.<key>` for a key the adapter does not declare, or
 `limit` — raised by the constructed adapter, so a bad id or window fails
 here rather than on first use.
@@ -282,15 +282,15 @@ the whole session. `options.signal` — aborts the reads.
 Returns: the messages, oldest first. A session that does not exist and one
 whose messages have all expired both return nothing.
 
-Throws: ValidationError for a malformed session id or window, an invalid
+Throws: `VALIDATION` for a malformed session id or window, an invalid
 `signal`, or naming `options.<key>` for a key this package does not read;
-ValidationError naming `s3Key` for a row addressing an object outside the
+`VALIDATION` naming `s3Key` for a row addressing an object outside the
 session's own path, and naming `message` for a row in this session's
 message key space that this adapter did not write, both whatever the
 corruption policy;
 `FORMAT_UNSUPPORTED` for a row, or a payload, a newer release wrote;
-UpstreamError;
-AbortError; and, under `onCorruptMessage: 'throw'`, the decode error of a
+a classified AWS failure;
+`ABORTED`; and, under `onCorruptMessage: 'throw'`, the decode error of a
 corrupt row.
 
 Guarantees: strongly consistent, so the turn just appended is visible.
@@ -343,11 +343,11 @@ DynamoDB can end a shard's page at its last row and still return a key to
 continue from, and the page after such a cursor can come back empty. Stop
 when `nextCursor` is absent, never when a page looks short.
 
-Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
+Throws: `VALIDATION` naming `limit`, `cursor`, `maxItems`,
 `maxIterations`, `signal`, or `options.<key>` for a key this package does
-not read; ResultTruncatedError past either cap on the scan path, or for an
+not read; `RESULT_TRUNCATED` past either cap on the scan path, or for an
 index shard whose pages do not end; `FORMAT_UNSUPPORTED` for a session row
-a newer release wrote; UpstreamError; AbortError.
+a newer release wrote; a classified AWS failure; `ABORTED`.
 
 Guarantees: with a configured `indexName` each shard is read one DynamoDB
 page at a time, and its next page whenever it has no row buffered and the
@@ -384,14 +384,14 @@ Accepts: `sessionId` — validated, and an existing session.
 Returns: the count now stored, which is the number of messages a reader
 would see.
 
-Throws: ValidationError for a malformed session id, an invalid `signal`,
-or an `options.<key>` this package does not read; ConflictError when the
+Throws: `VALIDATION` for a malformed session id, an invalid `signal`,
+or an `options.<key>` this package does not read; `CONDITION_CONFLICT` when the
 session does not exist or stayed busy through every attempt;
 `FORMAT_UNSUPPORTED` for a message row a newer release wrote, and
-ValidationError naming `message` for a row in the session's message key
+`VALIDATION` naming `message` for a row in the session's message key
 space that this adapter did not write, both of which `getMessages` refuses
 too — a count is a repair only while it agrees with the read;
-UpstreamError; AbortError.
+a classified AWS failure; `ABORTED`.
 
 Guarantees: safe on a live session — the write is pinned to the value the
 row held when the count was computed, so a concurrent append makes it

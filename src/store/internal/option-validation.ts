@@ -1,13 +1,14 @@
 import type { IndexConfig } from '@langchain/langgraph-checkpoint';
 
 import { MAX_SCAN_ITEMS, MAX_SEARCH_CANDIDATES } from '../../shared/constants';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { assertMembers, EMBEDDINGS_MEMBERS } from '../../shared/validation/collaborators';
 import { allKeysOf, assertShape } from '../../shared/validation/option-shape';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import { validateInteger, validateStringArray } from '../../shared/validation/primitives';
 import type { DynamoDBStoreOptions } from '../types';
-import { VECTOR_SCORE_DIRECTIONS, type VectorScoreDirection } from './score-direction';
+import type { VectorScoreDirection } from '../vector-backend';
+import { VECTOR_SCORE_DIRECTIONS } from './score-direction';
 
 /**
  * The keys `IndexConfig` declares. The type is upstream's, but this package is
@@ -56,7 +57,7 @@ function assertUsableIndex(index: IndexConfig | undefined): void {
  */
 function assertScoreDirection(direction?: VectorScoreDirection): void {
   if (direction === undefined || VECTOR_SCORE_DIRECTIONS.includes(direction)) return;
-  throw new ValidationError(
+  throw validationError(
     `vectorScoreDirection must be one of ${VECTOR_SCORE_DIRECTIONS.join(' | ')}; received ` +
       `${JSON.stringify(direction)}, which would be left in the backend's own direction and ` +
       'could rank a distance backend backwards',
@@ -96,14 +97,14 @@ function validateLimits(options: DynamoDBStoreOptions): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming the offending option. Every failure is raised
+ * Throws: `VALIDATION` naming the offending option. Every failure is raised
  * at construction, where the fix is, rather than at the first put or search.
  */
 export function validateStoreOptions(options: DynamoDBStoreOptions): void {
   validateBaseAdapterOptions(options);
   validateLimits(options);
   if (options.vectorBackend && !options.index) {
-    throw new ValidationError(
+    throw validationError(
       'vectorBackend requires a configured `index` (embeddings); without one no embedding ' +
         'is computed, every put would clear the item vector, and search would silently return ' +
         'unranked, score-less results',

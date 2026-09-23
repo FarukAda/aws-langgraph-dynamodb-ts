@@ -2,10 +2,10 @@ import { GetCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { getItem } from '../../../../src/store/actions/get';
 import { listNamespaces } from '../../../../src/store/actions/list-namespaces';
 import { reconcileVectorIndex } from '../../../../src/store/actions/reconcile-vector-index';
 import { searchItems } from '../../../../src/store/actions/search';
+import { getItem } from '../../../../src/store/internal/get-item';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

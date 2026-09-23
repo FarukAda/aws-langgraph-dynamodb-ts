@@ -1,6 +1,6 @@
 import { fullJitter, nextBackoffDelay, sleep } from '../../../../src/shared/dynamodb/backoff';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { AbortError } from '../../../../src/shared/errors/errors';
+import { abortError } from '../../../../src/shared/errors/errors';
 
 describe('nextBackoffDelay', () => {
   it('doubles up to the cap', () => {
@@ -28,24 +28,24 @@ describe('sleep', () => {
 
   it('rejects immediately when the signal is already aborted', async () => {
     const controller = new AbortController();
-    controller.abort(new AbortError());
-    await expect(sleep(1000, controller.signal)).rejects.toBeInstanceOf(AbortError);
+    controller.abort(abortError());
+    await expect(sleep(1000, controller.signal)).rejects.toMatchObject({ code: ErrorCode.ABORTED });
   });
 
-  it('falls back to a fresh AbortError when an already-aborted signal has no reason', async () => {
+  it('falls back to a fresh ABORTED error when an already-aborted signal has no reason', async () => {
     const signal = { aborted: true, reason: undefined } as unknown as AbortSignal;
-    await expect(sleep(1000, signal)).rejects.toBeInstanceOf(AbortError);
+    await expect(sleep(1000, signal)).rejects.toMatchObject({ code: ErrorCode.ABORTED });
   });
 
   it('rejects with the abort reason when aborted while pending', async () => {
     const controller = new AbortController();
-    const reason = new AbortError('cancelled mid-flight');
+    const reason = abortError('cancelled mid-flight');
     const pending = sleep(10000, controller.signal);
     controller.abort(reason);
     await expect(pending).rejects.toBe(reason);
   });
 
-  it('falls back to a fresh AbortError when an aborted signal exposes no reason', async () => {
+  it('falls back to a fresh ABORTED error when an aborted signal exposes no reason', async () => {
     const listeners: Array<() => void> = [];
     const signal = {
       aborted: false,
@@ -57,14 +57,14 @@ describe('sleep', () => {
     } as unknown as AbortSignal;
     const pending = sleep(10000, signal);
     listeners.forEach((listener) => listener());
-    await expect(pending).rejects.toBeInstanceOf(AbortError);
+    await expect(pending).rejects.toMatchObject({ code: ErrorCode.ABORTED });
   });
 
   it('ignores a repeated abort after it has already settled', async () => {
     const listeners: Array<() => void> = [];
     const signal = {
       aborted: false,
-      reason: new AbortError('first'),
+      reason: abortError('first'),
       addEventListener: (_event: string, listener: () => void) => {
         listeners.push(listener);
       },
@@ -73,7 +73,7 @@ describe('sleep', () => {
     const pending = sleep(10000, signal);
     listeners.forEach((listener) => listener());
     listeners.forEach((listener) => listener());
-    await expect(pending).rejects.toBeInstanceOf(AbortError);
+    await expect(pending).rejects.toMatchObject({ code: ErrorCode.ABORTED });
   });
 
   it('ignores the timer firing after the signal already aborted', async () => {
@@ -81,7 +81,7 @@ describe('sleep', () => {
     let removed = false;
     const signal = {
       aborted: false,
-      reason: new AbortError('aborted-first'),
+      reason: abortError('aborted-first'),
       addEventListener: (_event: string, listener: () => void) => {
         capturedListener = listener;
       },
@@ -93,7 +93,7 @@ describe('sleep', () => {
     try {
       const pending = sleep(0, signal);
       capturedListener?.();
-      await expect(pending).rejects.toBeInstanceOf(AbortError);
+      await expect(pending).rejects.toMatchObject({ code: ErrorCode.ABORTED });
       await new Promise((resolve) => setTimeout(resolve, 25));
     } finally {
       clearSpy.mockRestore();
@@ -131,23 +131,23 @@ describe('sleep leaves nothing pending when attaching the listener fails', () =>
     jest.useFakeTimers();
     const signal = {
       aborted: false,
-      reason: new AbortError('aborted on attach'),
+      reason: abortError('aborted on attach'),
       addEventListener: (_event: string, listener: () => void) => listener(),
       removeEventListener: () => {},
     } as unknown as AbortSignal;
-    await expect(sleep(1000, signal)).rejects.toBeInstanceOf(AbortError);
+    await expect(sleep(1000, signal)).rejects.toMatchObject({ code: ErrorCode.ABORTED });
     expect(jest.getTimerCount()).toBe(0);
   });
 });
 
 describe('sleep abort normalisation (DDB-05)', () => {
-  it('rejects with the library AbortError while pending, keeping the raw reason as cause', async () => {
+  it('rejects with the library ABORTED error while pending, keeping the raw reason as cause', async () => {
     const controller = new AbortController();
     const pending = sleep(10_000, controller.signal);
     controller.abort();
     await expect(pending).rejects.toMatchObject({
       code: ErrorCode.ABORTED,
-      name: 'AbortError',
+      name: 'DynamoDBLangGraphError',
       cause: expect.objectContaining({ name: 'AbortError' }),
     });
   });

@@ -14,15 +14,15 @@ import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client-types';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
-import { HISTORY_KEYS } from '../../shared/validation/adapter-keys';
 import { assertBaseCollaborators } from '../../shared/validation/collaborators';
 import { assertShape } from '../../shared/validation/option-shape';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { CorruptMessagePolicy, DynamoDBChatMessageHistoryOptions } from '../types';
+import { HISTORY_KEYS } from './option-keys';
 
 const CORRUPT_MESSAGE_POLICIES: readonly CorruptMessagePolicy[] = ['skip', 'throw'];
 
@@ -70,7 +70,7 @@ export interface HistorySetup {
  * adapter owns it — a client the caller passed in is never destroyed by
  * `destroy()`.
  *
- * Throws: ValidationError naming the offending option.
+ * Throws: `VALIDATION` naming the offending option.
  *
  * Guarantees: constructing an adapter performs no I/O.
  */
@@ -81,7 +81,7 @@ export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): Histor
     options.onCorruptMessage !== undefined &&
     !CORRUPT_MESSAGE_POLICIES.includes(options.onCorruptMessage)
   ) {
-    throw new ValidationError(
+    throw validationError(
       `onCorruptMessage must be one of ${CORRUPT_MESSAGE_POLICIES.join(' | ')}`,
       'onCorruptMessage',
     );

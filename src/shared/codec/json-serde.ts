@@ -2,8 +2,8 @@ import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
-import { ValidationError } from '../errors/errors';
-import { toError } from '../errors/wrap-error';
+import { validationError } from '../errors/errors';
+import { toError } from '../errors/to-error';
 import { truncateForLog } from '../logging/truncate';
 import { JSON_SERDE_TYPE } from './declared-form';
 
@@ -24,7 +24,7 @@ import { JSON_SERDE_TYPE } from './declared-form';
  * rest. A value it cannot represent — `undefined`, a function, a symbol —
  * stringifies to `undefined` and would be stored as **zero bytes**, which reads
  * back as a parse error; a circular structure or a `BigInt` makes it throw. Both
- * are reported as `ValidationError` naming `value`, at the write, rather than
+ * are reported as `VALIDATION` naming `value`, at the write, rather than
  * as an unreadable row later — with the refusal attached as `cause` and never
  * quoted into the message, which for a circular structure names the caller's
  * own properties and classes.
@@ -37,12 +37,12 @@ import { JSON_SERDE_TYPE } from './declared-form';
  * holds the whole table, against the checkpointer default column by column.
  *
  * `loadsTyped` reads only the `json` form it writes, and says
- * so before it looks at a byte. Any other declared form is a `ValidationError`
+ * so before it looks at a byte. Any other declared form is a `VALIDATION` error
  * naming `serde`, because it says what *this* reader may rebuild and not that
  * the payload is damaged. Bytes of that form which do not parse are
  * `PAYLOAD_CORRUPT`, because they can never be read and the caller should
  * report rather than retry; a `data` that is not bytes at all is a
- * `ValidationError` naming `data`, because that is the caller's mistake and
+ * `VALIDATION` naming `data`, because that is the caller's mistake and
  * not a row's.
  *
  * Frozen for the reason {@link ErrorCode} is: one object, shared by every
@@ -65,7 +65,7 @@ export const JSON_SERDE: SerializerProtocol = {
        * response. `redactedMessage` removes credential shapes, not names, so
        * it never covered this. A caller who wants the path reads `cause`.
        */
-      throw new ValidationError(
+      throw validationError(
         'value cannot be serialized as JSON — a circular structure, or a value JSON has no ' +
           'encoding for such as a BigInt; the refusal itself is attached as `cause`',
         'value',
@@ -73,7 +73,7 @@ export const JSON_SERDE: SerializerProtocol = {
       );
     }
     if (text === undefined) {
-      throw new ValidationError(
+      throw validationError(
         'value has no JSON representation (undefined, a function or a symbol), so it cannot be ' +
           'stored; store null instead to record an absent value',
         'value',
@@ -111,7 +111,7 @@ export const JSON_SERDE: SerializerProtocol = {
      * is bounded, for the reason `truncateForLog` states.
      */
     if (type !== JSON_SERDE_TYPE) {
-      throw new ValidationError(
+      throw validationError(
         `this serializer reads only the \`${JSON_SERDE_TYPE}\` form it writes, and this payload ` +
           `declares ${truncateForLog(String(JSON.stringify(type)))}; read the row with the ` +
           'serializer that wrote it, or rewrite the row',
@@ -132,7 +132,7 @@ export const JSON_SERDE: SerializerProtocol = {
     try {
       text = typeof data === 'string' ? data : new TextDecoder().decode(data);
     } catch (error) {
-      throw new ValidationError(
+      throw validationError(
         'data must be the bytes or text this serializer wrote, as a Uint8Array or a string',
         'data',
         error as Error,

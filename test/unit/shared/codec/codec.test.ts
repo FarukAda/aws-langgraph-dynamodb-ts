@@ -144,7 +144,8 @@ describe('encodePayload / decodePayload', () => {
       s3Key: 'k',
     };
     await expect(decodePayload(descriptor, { serde }, [])).rejects.toMatchObject({
-      name: 'ValidationError',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.VALIDATION,
       message: expect.stringContaining('no `s3` configuration'),
     });
   });

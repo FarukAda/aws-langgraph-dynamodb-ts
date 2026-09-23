@@ -172,7 +172,10 @@ describe('cancellation via { signal } (CORE-04)', () => {
     const h = history(client);
     const options = { signal: controller.signal };
     const expectAborted = (promise: Promise<unknown>) =>
-      expect(promise).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'AbortError' });
+      expect(promise).rejects.toMatchObject({
+        code: ErrorCode.ABORTED,
+        name: 'DynamoDBLangGraphError',
+      });
     await expectAborted(h.getMessages('s1', options));
     await expectAborted(h.addMessages('s1', [new HumanMessage('hi')], options));
     await expectAborted(h.addMessage('s1', new HumanMessage('hi'), options));
@@ -220,7 +223,7 @@ describe('options shape (M-08)', () => {
 
   /**
    * `before: null` passes the `!== undefined` guard and then used to reach
-   * `null.getTime`, a bare `TypeError` the boundary branded `UpstreamError`
+   * `null.getTime`, a bare `TypeError` the boundary branded `UNEXPECTED_ERROR`
    * instead of naming the caller's mistake.
    */
   it('getMessages refuses before: null rather than crashing on it', async () => {
@@ -271,7 +274,7 @@ describe('options shape (M-08)', () => {
 /**
  * `addMessages` validated each message once `messages` was known to be an
  * array, but never that it was one: a non-array reached `.length` directly
- * and raised a bare `TypeError`, branded `UpstreamError` instead of naming
+ * and raised a bare `TypeError`, branded `UNEXPECTED_ERROR` instead of naming
  * the caller's mistake.
  */
 describe('addMessages messages validation', () => {
@@ -305,7 +308,7 @@ describe('addMessages messages validation', () => {
  * `listSessions` refused a `cursor` given without a configured `indexName`,
  * but with one set a non-string `cursor` reached the cursor decoder's
  * `Buffer.from` directly and raised a bare `TypeError`, branded
- * `UpstreamError` instead of naming the caller's mistake.
+ * `UNEXPECTED_ERROR` instead of naming the caller's mistake.
  */
 describe('listSessions cursor validation on the indexed path', () => {
   function indexedHistory(client: DynamoDBDocument) {
@@ -342,14 +345,14 @@ describe('forSession checks its arguments when it is called', () => {
     });
 
   /** A synchronous throw, not a rejection: `forSession` returns an adapter, not a promise. */
-  it('throws ValidationError synchronously for a malformed sessionId', () => {
+  it('throws VALIDATION synchronously for a malformed sessionId', () => {
     const h = history(createStrictDocumentMock().client);
     expect(() => h.forSession('a#b')).toThrow(refusal('sessionId'));
     expect(() => h.forSession('')).toThrow(refusal('sessionId'));
     expect(() => h.forSession(42 as never)).toThrow(refusal('sessionId'));
   });
 
-  it('throws ValidationError synchronously for a malformed window', () => {
+  it('throws VALIDATION synchronously for a malformed window', () => {
     const h = history(createStrictDocumentMock().client);
     expect(() => h.forSession('s1', 'x' as never)).toThrow(refusal('window'));
     expect(() => h.forSession('s1', { limt: 5 } as never)).toThrow(refusal('window.limt'));

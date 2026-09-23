@@ -1,4 +1,4 @@
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import type { IndexTag } from './index-keys';
 import type { DocItem } from './types';
 
@@ -91,7 +91,7 @@ function isTableKeyShape(value: DocItem): boolean {
  * SK }`, both strings, since a plain table `Scan` (no `IndexName`) never
  * returns a `LastEvaluatedKey` shaped any other way.
  *
- * Throws: ValidationError naming `cursor` for anything this tool did not
+ * Throws: `VALIDATION` naming `cursor` for anything this tool did not
  * issue — text that is not base64url, that does not decode to JSON, or that
  * decodes to anything but `{ PK: string, SK: string }`: an array, an object
  * missing either key, carrying an extra one, or carrying a non-string value
@@ -105,6 +105,6 @@ export function decodeScanCursor(cursor: string): DocItem {
     if (!isTableKeyShape(decoded)) throw new Error('not a scan position');
     return decoded;
   } catch {
-    throw new ValidationError('cursor is not one this tool issued', 'cursor');
+    throw validationError('cursor is not one this tool issued', 'cursor');
   }
 }

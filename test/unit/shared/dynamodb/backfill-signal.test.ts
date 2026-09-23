@@ -27,10 +27,10 @@ function abortedSignal(): AbortSignal {
   return controller.signal;
 }
 
-const aborted = { code: ErrorCode.ABORTED, name: 'AbortError' };
+const aborted = { code: ErrorCode.ABORTED, name: 'DynamoDBLangGraphError' };
 
 describe('backfillRecencyIndex retry.signal', () => {
-  /** It was validated and then overwritten by the absent top-level signal: three scans, then `RetryExhaustedError`. */
+  /** It was validated and then overwritten by the absent top-level signal: three scans, then `RETRY_EXHAUSTED`. */
   it('cancels the run when no top-level signal is given, before any scan', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).rejects(throttle());

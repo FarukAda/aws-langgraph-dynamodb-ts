@@ -1,7 +1,7 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { ResultTruncatedError, ValidationError } from '../../../../src/shared/errors/errors';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
@@ -22,18 +22,18 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
 }
 
 describe('searchItems (caps and truncation)', () => {
-  it('throws ValidationError on a negative limit', async () => {
+  it('throws VALIDATION on a negative limit', async () => {
     const { client } = createStrictDocumentMock();
     await expect(
       searchItems(context(client), { namespacePrefix: ['users'], limit: -1 }),
-    ).rejects.toBeInstanceOf(ValidationError);
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
   });
 
-  it('throws ValidationError on a non-integer offset', async () => {
+  it('throws VALIDATION on a non-integer offset', async () => {
     const { client } = createStrictDocumentMock();
     await expect(
       searchItems(context(client), { namespacePrefix: ['users'], offset: 2.5 }),
-    ).rejects.toBeInstanceOf(ValidationError);
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
   });
 
   it('honors a raised maxScanItems for a plain (non-semantic) search over a large namespace', async () => {
@@ -73,7 +73,7 @@ describe('searchItems (caps and truncation)', () => {
     // maxScanItems override must actually reach paginateQuery and truncate.
     await expect(
       searchItems(context(client, { maxScanItems: 2 }), { namespacePrefix: ['users'] }),
-    ).rejects.toThrow(ResultTruncatedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RESULT_TRUNCATED });
 
     // Raising the cap high enough lets the same query succeed, proving the
     // override moves in both directions, not just "small value throws."

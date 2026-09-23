@@ -1,4 +1,4 @@
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { isObjectShape } from './option-shape';
 
 /** The `DynamoDBDocument` methods this package calls on an injected `client`. */
@@ -56,7 +56,7 @@ export const ABORT_SIGNAL_MEMBERS: Readonly<Record<string, 'boolean' | 'function
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field` for a non-object, `null` or an array,
+ * Throws: `VALIDATION` naming `field` for a non-object, `null` or an array,
  * and `field.member` for the first missing method — naming which member is
  * missing is what turns a first-request crash into a startup error a caller
  * can act on. An array is refused as a whole rather than reported as missing
@@ -65,11 +65,11 @@ export const ABORT_SIGNAL_MEMBERS: Readonly<Record<string, 'boolean' | 'function
  */
 export function assertMembers(value: object, members: readonly string[], field: string): void {
   if (!isObjectShape(value)) {
-    throw new ValidationError(`${field} must be an object`, field);
+    throw validationError(`${field} must be an object`, field);
   }
   for (const member of members) {
     if (typeof Reflect.get(value, member) !== 'function') {
-      throw new ValidationError(`${field}.${member} must be a function`, `${field}.${member}`);
+      throw validationError(`${field}.${member} must be a function`, `${field}.${member}`);
     }
   }
 }
@@ -122,7 +122,7 @@ export function isAbortSignalLike(value: AbortSignal | undefined): boolean {
 }
 
 /**
- * Throw {@link ValidationError} naming `field` unless `value` is absent or
+ * Throw `VALIDATION` naming `field` unless `value` is absent or
  * {@link isAbortSignalLike}.
  *
  * Accepts: `value` — a caller's signal, or `undefined`. `field` — what the
@@ -132,7 +132,7 @@ export function isAbortSignalLike(value: AbortSignal | undefined): boolean {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field`. Left unchecked, a value that is not
+ * Throws: `VALIDATION` naming `field`. Left unchecked, a value that is not
  * an `AbortSignal` reaches whatever this package hands it to — an
  * `addEventListener` call, a retry loop reading `.aborted`, a
  * `removeEventListener` call from inside a timer, where nothing can catch it —
@@ -141,6 +141,6 @@ export function isAbortSignalLike(value: AbortSignal | undefined): boolean {
  */
 export function assertSignalLike(value: AbortSignal | undefined, field = 'signal'): void {
   if (value !== undefined && !isAbortSignalLike(value)) {
-    throw new ValidationError(`${field} must be an AbortSignal`, field);
+    throw validationError(`${field} must be an AbortSignal`, field);
   }
 }

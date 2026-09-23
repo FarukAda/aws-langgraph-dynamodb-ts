@@ -63,8 +63,8 @@ async function brandOf(work: Promise<unknown>): Promise<{ code?: string; field?:
  * as two arguments to one call. Arguments are evaluated left to right, so the
  * property read happened *before* the awaited call ran the guard that exists to
  * refuse exactly that descriptor — and a row whose payload is `null` raised a
- * bare `TypeError`, which the public boundary can only rebrand as
- * `UpstreamError`.
+ * bare `TypeError`, which the public boundary can only classify as
+ * `UNEXPECTED_ERROR`, naming no field of the caller's mistake.
  */
 describe('decodePayload reads the bytes before the serde type (L-01)', () => {
   const deps = (): CodecDeps => ({ serde: JSON_SERDE });
@@ -73,12 +73,15 @@ describe('decodePayload reads the bytes before the serde type (L-01)', () => {
     ['null', null],
     ['absent', undefined],
     ['a string', 'not-a-descriptor'],
-  ])('answers a %s descriptor with a ValidationError naming descriptor', async (_label, value) => {
-    expect(await brandOf(decodePayload(value as never, deps(), []))).toEqual({
-      code: ErrorCode.VALIDATION,
-      field: 'descriptor',
-    });
-  });
+  ])(
+    'answers a %s descriptor with a `VALIDATION` error naming descriptor',
+    async (_label, value) => {
+      expect(await brandOf(decodePayload(value as never, deps(), []))).toEqual({
+        code: ErrorCode.VALIDATION,
+        field: 'descriptor',
+      });
+    },
+  );
 
   it('never asks the serde to deserialize a descriptor it refused', async () => {
     const { calls, serde } = countingSerde();
@@ -151,11 +154,12 @@ describe('every read path answers one malformed descriptor the same way (L-01)',
   /**
    * What a caller actually sees. Every public method wraps its work in
    * `guardPublic`, which passes a branded library error through untouched and
-   * can do nothing with an unbranded one but rebrand it — so before the reorder
-   * a `null` payload reached `saver.getTuple`'s caller as `UPSTREAM`, the code
-   * reserved for a failure of the service underneath.
+   * can do nothing with an unbranded one but classify it — so before the
+   * reorder a `null` payload reached `saver.getTuple`'s caller as
+   * `UNEXPECTED_ERROR`, the code a bare, non-AWS-shaped failure earns, rather
+   * than naming the caller's mistake.
    */
-  it('reaches the caller as the error it was branded with, not as an upstream failure', async () => {
+  it('reaches the caller as the error it was branded with, not as an unclassified failure', async () => {
     const caught = await rejection(decodePayload(nullDescriptor, { serde: JSON_SERDE }, []));
 
     const surfaced = toPublicError(caught, 'getTuple') as { code?: string };
@@ -165,6 +169,6 @@ describe('every read path answers one malformed descriptor the same way (L-01)',
 
     expect(surfaced).toBe(caught);
     expect(surfaced.code).toBe(ErrorCode.VALIDATION);
-    expect(wasBare.code).toBe(ErrorCode.UPSTREAM);
+    expect(wasBare.code).toBe(ErrorCode.UNEXPECTED_ERROR);
   });
 });

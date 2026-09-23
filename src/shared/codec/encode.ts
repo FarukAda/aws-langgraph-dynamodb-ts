@@ -1,5 +1,5 @@
 import { MAX_INLINE_PAYLOAD_BYTES } from '../constants';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import {
   type CodecDeps,
   DESCRIPTOR_SCHEMA_VERSION,
@@ -52,7 +52,7 @@ function assertInlinePayloadFits(bytes: Uint8Array, deps: CodecDeps): void {
   const hint = deps.compression?.enabled
     ? ''
     : ', or enable compression if the data compresses well';
-  throw new ValidationError(
+  throw validationError(
     `payload of ${bytes.length} bytes exceeds the ${MAX_INLINE_PAYLOAD_BYTES}-byte inline limit ` +
       `(DynamoDB items are capped at 400 KB); configure s3 offloading${hint}`,
     'payload',
@@ -79,7 +79,7 @@ function assertInlinePayloadFits(bytes: Uint8Array, deps: CodecDeps): void {
  */
 function assertSerialisedToBytes(raw: Uint8Array): void {
   if (raw.length > 0) return;
-  throw new ValidationError(
+  throw validationError(
     'value serialises to zero bytes, which no reader can parse back: a function, a symbol ' +
       'or any value the configured serde drops encodes to nothing. Store a value the serde ' +
       'can represent, or configure one that refuses it.',
@@ -106,10 +106,11 @@ function assertSerialisedToBytes(raw: Uint8Array): void {
  * descriptor carrying the bytes. Both record `serdeType` and `compressed`, so
  * neither is ever inferred from the bytes on read.
  *
- * Throws: whatever `serde.dumpsTyped` throws; `AbortError` when the signal
- * fires during the upload; `S3_OFFLOAD_FAILED` from the upload; and two distinguishable ValidationErrors. One names `payload` — the
- * bytes are too large to store inline — and is raised only when there is **no**
- * offloader and they exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that
+ * Throws: whatever `serde.dumpsTyped` throws; `ABORTED` when the signal
+ * fires during the upload; `S3_OFFLOAD_FAILED` from the upload; and two
+ * distinguishable `VALIDATION` errors. One names `payload` — the bytes are too
+ * large to store inline — and is raised only when there is **no** offloader
+ * and they exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that
  * cell cannot arise: `s3.thresholdBytes` is itself capped at that limit
  * (`src/shared/validation/codec-options.ts`, `validateS3`), so bytes too large
  * to store inline are always at or above the threshold and offload instead.

@@ -1,6 +1,7 @@
 import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
+import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
-import { toError } from '../../shared/errors/wrap-error';
+import { toError } from '../../shared/errors/to-error';
 import type { ChatMessageItem } from '../types';
 import { type CommittedChunk, compensate } from './compensation';
 import { writeMessageChunk } from './message-transaction';
@@ -16,7 +17,7 @@ export interface AppendFields {
 
 /** True for the one failure shape that leaves the outcome ambiguous. */
 function isAmbiguous(error: Error): boolean {
-  return (error as { code?: string }).code === ErrorCode.RETRY_EXHAUSTED;
+  return hasErrorCode(error, ErrorCode.RETRY_EXHAUSTED);
 }
 
 /**
@@ -72,10 +73,10 @@ function asCommitted(chunk: ChatMessageItem[]): CommittedChunk {
  * already-committed chunk is deleted and its count reverted, and the batch's
  * S3 objects are cleaned once their rows are gone, restoring the pre-call
  * state before the error is rethrown. Except on a failed rollback, which
- * surfaces as {@link CompensationFailedError} and deliberately leaves the
+ * surfaces as `COMPENSATION_FAILED` and deliberately leaves the
  * committed chunks' S3 objects behind, since their rows may survive.
  *
- * A `RetryExhaustedError` is ambiguous — the transaction may have committed
+ * A `RETRY_EXHAUSTED` error is ambiguous — the transaction may have committed
  * and lost its response — so the chunk is read back first: present means it
  * committed (continue), absent means it did not (compensate), and a failed
  * read compensates but leaks that chunk's objects rather than delete objects
@@ -88,7 +89,7 @@ function asCommitted(chunk: ChatMessageItem[]): CommittedChunk {
  * Returns: nothing, and only when every chunk is known to have committed.
  *
  * Throws: the first chunk's failure, after the rollback has restored the
- * pre-call state; or {@link CompensationFailedError} carrying both that failure
+ * pre-call state; or `COMPENSATION_FAILED` carrying both that failure
  * and the rollback's own, when the rollback could not finish.
  *
  * Guarantees: each message's S3 key carries its own ULID, so no two rows of any

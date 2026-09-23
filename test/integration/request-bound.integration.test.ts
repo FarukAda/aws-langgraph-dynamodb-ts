@@ -27,10 +27,8 @@ import { downloadObject } from '../../src/shared/codec/s3/read-write';
 import { isTransientS3Error } from '../../src/shared/codec/s3/retry';
 import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_SOCKET_TIMEOUT_MS } from '../../src/shared/constants';
 import { resolveDynamoDBClient } from '../../src/shared/dynamodb/client';
-import {
-  DEFAULT_RETRYABLE_ERRORS,
-  isRetryableError,
-} from '../../src/shared/dynamodb/retry-classifier';
+import { isRetryableError } from '../../src/shared/dynamodb/retry-classifier';
+import { DEFAULT_RETRYABLE_ERRORS } from '../../src/shared/errors/classify';
 import { ErrorCode } from '../../src/shared/errors/error-code';
 import { type MisbehavingServer, startMisbehavingServer } from './helpers/misbehaving-server';
 

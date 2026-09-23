@@ -6,7 +6,7 @@ import type { HistoryContext } from '../../../../src/history/internal/setup';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../../../src/shared/constants';
-import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createUlidFactory } from '../../../../src/shared/ulid';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -263,7 +263,7 @@ describe('writeMessageChunk', () => {
         { sessionId: 's1', count: 1, now: 'u' },
         { rng: () => 0 },
       ),
-    ).rejects.toBeInstanceOf(RetryExhaustedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(MESSAGE_APPEND_RETRY_MAX_ATTEMPTS);
   });
 
@@ -364,7 +364,7 @@ describe('append retry floor under a caller retry policy (DDB-03)', () => {
         { sessionId: 's1', delta: 1, now: 0 } as never,
         { rng: () => 0 },
       ),
-    ).rejects.toMatchObject({ name: RetryExhaustedError.name });
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(MESSAGE_APPEND_RETRY_MAX_ATTEMPTS);
   });
 });

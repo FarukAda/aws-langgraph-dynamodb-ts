@@ -71,11 +71,6 @@ import { createStrictDocumentMock } from '../shared/helpers/ddb-mock';
  * semver decision, so it has to be made here as well as in `src/index.ts`.
  */
 const VALUE_EXPORTS = [
-  'AbortError',
-  'BatchWriteAllIncompleteError',
-  'BatchWriteIncompleteError',
-  'CompensationFailedError',
-  'ConflictError',
   'DynamoDBChatMessageHistory',
   'DynamoDBFactory',
   'DynamoDBLangGraphError',
@@ -85,10 +80,6 @@ const VALUE_EXPORTS = [
   'ErrorCode',
   /** The plain-JSON `serde`: the store/history default, and a checkpointer's alternative. */
   'JSON_SERDE',
-  'ResultTruncatedError',
-  'RetryExhaustedError',
-  'UpstreamError',
-  'ValidationError',
   /** Operator tool: see `backfillRecencyIndex`; run before enabling `indexName`. */
   'backfillRecencyIndex',
   'isDynamoDBLangGraphError',

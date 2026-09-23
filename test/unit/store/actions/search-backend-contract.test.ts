@@ -1,6 +1,7 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
@@ -112,7 +113,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     });
     await expect(
       searchItems(ctx, { namespacePrefix: ['users'], query: 'q' }),
-    ).rejects.toMatchObject({ name: 'ValidationError' });
+    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.VALIDATION });
     expect(vectorBackend.query).not.toHaveBeenCalled();
   });
 
@@ -147,7 +148,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
 
   it('skips a backend match whose namespace is not a valid store namespace (A3)', async () => {
     // getItem validates, so a backend returning a namespace element containing
-    // the reserved separator turned an entire search into a ValidationError
+    // the reserved separator turned an entire search into a `VALIDATION` error
     // instead of dropping the one unusable match.
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };

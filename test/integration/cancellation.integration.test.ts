@@ -149,7 +149,7 @@ describe('(a) a DynamoDB request the server never answers', () => {
     record('(a) getTuple cancelled after', elapsedMs);
     expect(silent.requests()).toBe(before + 1);
     expect(error.code).toBe(ErrorCode.ABORTED);
-    expect(error.name).toBe('AbortError');
+    expect(error.name).toBe('DynamoDBLangGraphError');
     expect(elapsedMs).toBeGreaterThanOrEqual(ABORT_AFTER_MS - 50);
     expect(elapsedMs).toBeLessThan(DEFAULT_SOCKET_TIMEOUT_MS);
   }, 30_000);
@@ -182,7 +182,7 @@ describe('(b) an S3 body that stalls after its headers', () => {
     );
     record('(b) stalled download cancelled after', elapsedMs);
     expect(error.code).toBe(ErrorCode.ABORTED);
-    expect(error.name).toBe('AbortError');
+    expect(error.name).toBe('DynamoDBLangGraphError');
     expect(elapsedMs).toBeGreaterThanOrEqual(ABORT_AFTER_MS - 50);
     expect(elapsedMs).toBeLessThan(UNARMED_SOCKET_TIMEOUT_MS);
   }, 30_000);

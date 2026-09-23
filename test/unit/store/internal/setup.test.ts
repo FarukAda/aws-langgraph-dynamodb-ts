@@ -3,6 +3,7 @@ import {
   DEFAULT_MAX_SEARCH_CANDIDATES,
   MAX_TOTAL_ITEMS_IN_MEMORY,
 } from '../../../../src/shared/constants';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { setUpStore } from '../../../../src/store/internal/setup';
 import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
@@ -208,7 +209,7 @@ describe('index configuration validation (F6)', () => {
       /index\.embeddings/,
     );
     expect(() => setUpStore({ ...base, index: { dims: 1024 } } as never)).toThrow(
-      expect.objectContaining({ name: 'ValidationError' }),
+      expect.objectContaining({ name: 'DynamoDBLangGraphError', code: ErrorCode.VALIDATION }),
     );
   });
 
@@ -246,7 +247,7 @@ describe('index configuration validation (F6)', () => {
       /vectorScoreDirection/,
     );
     expect(() => setUpStore({ ...base, vectorScoreDirection: 'nearest' } as never)).toThrow(
-      expect.objectContaining({ name: 'ValidationError' }),
+      expect.objectContaining({ name: 'DynamoDBLangGraphError', code: ErrorCode.VALIDATION }),
     );
   });
 

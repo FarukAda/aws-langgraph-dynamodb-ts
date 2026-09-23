@@ -1,5 +1,5 @@
 import { mapWithConcurrency } from '../concurrency';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { validateLimit } from '../validation/primitives';
 import { indexPartitions } from './index-keys';
 import {
@@ -45,7 +45,7 @@ function encodeCursor(sortKey: string): string {
  *
  * Returns: the `gsi1sk` to resume below.
  *
- * Throws: ValidationError naming `cursor` when the decoded value carries no
+ * Throws: `VALIDATION` naming `cursor` when the decoded value carries no
  * `#`. `gsi1sk` is `<timestamp>#<id>`, so such a value was issued by something
  * else — a scan cursor, a page token from another API — and using it as a bound
  * would quietly return the wrong page rather than say so. A value that carries
@@ -54,7 +54,7 @@ function encodeCursor(sortKey: string): string {
 function decodeCursor(cursor: string): string {
   const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
   if (!decoded.includes('#')) {
-    throw new ValidationError('cursor is not one this adapter issued', 'cursor');
+    throw validationError('cursor is not one this adapter issued', 'cursor');
   }
   return decoded;
 }
@@ -73,7 +73,7 @@ function isDry(reader: ShardReader): boolean {
  * The loop carries no iteration cap of its own, and that is a decision rather
  * than an omission. Every pass calls {@link readShardPage} on every dry shard,
  * and that call either advances the shard or, once the shard has read
- * `MAX_LOOP_ITERATIONS` pages, throws `ResultTruncatedError` without issuing a
+ * `MAX_LOOP_ITERATIONS` pages, throws `RESULT_TRUNCATED` without issuing a
  * query — so a shard that answers with empty pages forever ends the listing
  * there. A second cap here could only ever fire after that one, which makes it
  * a branch no test could reach. What did once spin was a `mapWithConcurrency`
@@ -152,9 +152,9 @@ function takeNewest(readers: ShardReader[]): DocItem | undefined {
  * exactly. DynamoDB can still report a `LastEvaluatedKey` on a page that ends
  * at a shard's last row, so the page after such a cursor may come back empty.
  *
- * Throws: ValidationError naming `limit` or `cursor`; `ResultTruncatedError`
+ * Throws: `VALIDATION` naming `limit` or `cursor`; `RESULT_TRUNCATED`
  * for a shard whose pages do not end within `MAX_LOOP_ITERATIONS`; whatever
- * the queries throw, including `AbortError`.
+ * the queries throw, including an `ABORTED` error.
  *
  * Guarantees: at most `concurrency` shards are queried at once; each shard is
  * followed across DynamoDB's 1 MB page boundary, but its next page is read only

@@ -175,13 +175,13 @@ async function dropVectorWhenGone(
  * - **A deadline cut and a spent budget are one error.** The transaction's
  *   budget is additionally bounded by `MAX_WRITE_LIFETIME_MS`, so a caller who
  *   configures a long retry policy can see the budget end there rather than at
- *   its own last attempt; both arrive as `RetryExhaustedError` and neither says
+ *   its own last attempt; both arrive as `RETRY_EXHAUSTED` and neither says
  *   which bound stopped it.
  * - **The pre-read is a new way for this call to fail.** It issues no read
  *   today, so a delete of a key with *no row* can now fail where it always
  *   succeeded. Nothing has been written when it does: no row removed, no object
  *   released, no vector touched. The error types a caller sees are unchanged —
- *   `store.delete` already documents `RetryExhaustedError` — but "deleting an
+ *   `store.delete` already documents `RETRY_EXHAUSTED` — but "deleting an
  *   item that is not there is not an error" now describes the outcome rather
  *   than the round trip.
  *
@@ -193,7 +193,7 @@ async function dropVectorWhenGone(
  *
  * Throws: whatever the pre-read throws; whatever the transaction throws other
  * than a guard rejection, which is this call's own business; and
- * `RetryExhaustedError` when the budget is spent and a read cannot confirm the
+ * `RETRY_EXHAUSTED` when the budget is spent and a read cannot confirm the
  * row is gone. Three things about that list are worth saying rather than
  * leaving to be inferred. The **pre-read** is why a delete of a key with no row
  * can now fail at all, and nothing has been written when it does. A **guard

@@ -8,7 +8,7 @@ import type {
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { transactIdempotently } from '../../shared/dynamodb/idempotent-write';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { verifyCheckpointLanded } from '../internal/checkpoint-write-verify';
 import { readConfigurable } from '../internal/configurable';
@@ -41,7 +41,7 @@ import { validateCheckpointId } from '../internal/validation';
  * Returns: the config addressing the stored checkpoint, which is what the
  * caller passes back to continue the thread.
  *
- * Throws: ValidationError naming `config`, `configurable` or `signal` for a
+ * Throws: `VALIDATION` naming `config`, `configurable` or `signal` for a
  * config of the wrong shape, `thread_id`, `checkpoint_ns`, `checkpoint_id` or
  * `thread_ts` for a malformed identifier, `checkpoint` for a `null` or
  * `undefined` checkpoint, `checkpoint_id` for a malformed `checkpoint.id`,
@@ -76,7 +76,7 @@ export async function putCheckpoint(
   const { threadId, checkpointNs, checkpointId: parentCheckpointId } = readConfigurable(config);
   const signal = config.signal;
   if (checkpoint === null || checkpoint === undefined) {
-    throw new ValidationError('checkpoint must be an object', 'checkpoint');
+    throw validationError('checkpoint must be an object', 'checkpoint');
   }
   validateCheckpointId(checkpoint.id);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;

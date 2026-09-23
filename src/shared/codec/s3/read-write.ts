@@ -3,6 +3,7 @@ import type { S3Client, ServerSideEncryption } from '@aws-sdk/client-s3';
 import { isAbortError } from '../../dynamodb/abort';
 import { withRetry } from '../../dynamodb/retry';
 import { DynamoDBLangGraphError } from '../../errors/base-error';
+import { classifyAwsError } from '../../errors/classify';
 import { ErrorCode } from '../../errors/error-code';
 import { redactedMessage } from '../../logging/secret-patterns';
 import { truncateForLog } from '../../logging/truncate';
@@ -44,11 +45,11 @@ function rethrowIfCancelled(error: Error): void {
  * *How to prevent object overwrites with conditional writes*). A key names one
  * write's upload, and only that upload's own requests write it, so the object
  * already there was stored by an earlier attempt of this upload. The upload
- * has nothing left to do, and the 412 is the success case, not a failure.
+ * has nothing left to do, and the 412 is the success case, not a failure. The
+ * classifier maps both `PreconditionFailed` and a bare 412 to the same code.
  */
 function alreadyStored(error: Error): boolean {
-  const failure = error as Error & { $metadata?: { httpStatusCode?: number } };
-  return error.name === 'PreconditionFailed' || failure.$metadata?.httpStatusCode === 412;
+  return classifyAwsError(error) === ErrorCode.CONDITION_CONFLICT;
 }
 
 /**
@@ -73,7 +74,7 @@ function alreadyStored(error: Error): boolean {
  * two are not distinguished because the caller's obligation is identical: the
  * bytes are at that key.
  *
- * Throws: `AbortError` when the signal fires, unwrapped; `S3_OFFLOAD_FAILED`
+ * Throws: `ABORTED` when the signal fires, unwrapped; `S3_OFFLOAD_FAILED`
  * carrying the key and the underlying error, after three attempts on a
  * transient failure. Its message quotes the SDK's, with credential shapes
  * redacted — a signing failure names the key it signed with, and this message
@@ -126,7 +127,7 @@ export async function uploadObject(client: S3Client, params: UploadParams): Prom
  *
  * Returns: the object's bytes.
  *
- * Throws: `AbortError` when the signal fires, unwrapped; `S3_OFFLOAD_FAILED`
+ * Throws: `ABORTED` when the signal fires, unwrapped; `S3_OFFLOAD_FAILED`
  * naming the key — for an object over `maxBytes`, for a response with no body,
  * and for any SDK failure that survives the retries. Its message quotes the
  * underlying one with credential shapes redacted; the SDK error is kept as

@@ -121,7 +121,7 @@ describe('DynamoDBStore get/put/delete/listNamespaces/search refuse input in thi
   it.each(REFUSED)('refuses %s, naming the field, before any request', async (_, call, field) => {
     const { store, mock } = storeWithMock();
     await expect(call(store)).rejects.toMatchObject({
-      name: 'ValidationError',
+      name: 'DynamoDBLangGraphError',
       code: ErrorCode.VALIDATION,
       context: { field },
     });

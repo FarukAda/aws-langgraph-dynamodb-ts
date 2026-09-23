@@ -1,11 +1,10 @@
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
-import {
-  type BatchWriteAllIncompleteError,
-  CompensationFailedError,
-} from '../../shared/errors/errors';
-import { toError } from '../../shared/errors/wrap-error';
+import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
+import { ErrorCode } from '../../shared/errors/error-code';
+import { compensationFailedError } from '../../shared/errors/errors';
+import { toError } from '../../shared/errors/to-error';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { ChatMessageItem } from '../types';
 import { revertSessionCount, revertSessionCreation } from './session-count';
@@ -22,7 +21,7 @@ export interface CommittedChunk {
  *
  * The caller's `Logger` is consumer code, and both lines here are written from
  * inside a rollback: the first is {@link compensate}'s opening statement, the
- * second sits in the `catch` that builds {@link CompensationFailedError}. A
+ * second sits in the `catch` that builds `COMPENSATION_FAILED`. A
  * throw out of either used to take the rollback with it — the first skipping
  * the S3 cleanup, every committed chunk's deletes, the count revert and the
  * rethrow in one go; the second replacing the one error whose job is to say
@@ -91,13 +90,14 @@ async function rollbackCommitted(
     );
   } catch (error) {
     /**
-     * `batchWriteAll` raises a {@link BatchWriteAllIncompleteError} for every
-     * failure but a cancel, and this call passes no signal, so the cancel
-     * cannot arise here — asserted rather than narrowed, since the false
-     * branch is unreachable and this project enforces 100% branch coverage. A
-     * signal reaching this call would have to narrow instead.
+     * `batchWriteAll` raises `BATCH_WRITE_INCOMPLETE` for every failure but a
+     * cancel, and this call passes no signal, so the cancel cannot arise here
+     * — asserted rather than narrowed, since the false branch is unreachable
+     * and this project enforces 100% branch coverage. A signal reaching this
+     * call would have to narrow instead.
      */
-    const deleted = (error as BatchWriteAllIncompleteError).succeededCount;
+    const deleted = (error as DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE>).details
+      .succeededCount;
     await revertSessionCount(context, sessionId, deleted, now);
     throw error;
   }
@@ -110,7 +110,7 @@ async function rollbackCommitted(
  * suffix is cleaned immediately, the committed prefix only after its rows are
  * confirmed deleted. If the rollback itself fails, the committed chunks' S3
  * objects are deliberately left in place (their rows may survive) and it
- * raises {@link CompensationFailedError} carrying both the trigger and the
+ * raises `COMPENSATION_FAILED` carrying both the trigger and the
  * rollback error; otherwise it rethrows the trigger.
  *
  * `uncertain` marks the failed chunk (`chunks[committed.length]`) as one whose
@@ -125,7 +125,7 @@ async function rollbackCommitted(
  *
  * Returns: never; the declared `Promise<never>` is the contract.
  *
- * Throws: `trigger` when the rollback succeeded, {@link CompensationFailedError}
+ * Throws: `trigger` when the rollback succeeded, `COMPENSATION_FAILED`
  * when it did not.
  *
  * Guarantees: an object is deleted only once no row can reference it — the
@@ -176,7 +176,7 @@ export async function compensate(
       committed.length,
     );
     /** Skip S3 cleanup here: rollback may have failed, so committed rows might still reference these objects. */
-    throw new CompensationFailedError(trigger, toError(rollbackError as Error));
+    throw compensationFailedError(trigger, toError(rollbackError as Error));
   }
   /** Only now that committed rows are confirmed deleted is it safe to delete their S3 objects. */
   await cleanBatchS3(context, chunks.slice(0, committed.length));

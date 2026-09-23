@@ -7,11 +7,11 @@ import { isMissingObjectError } from '../../shared/codec/payload-loss';
 import { isExpiredRow } from '../../shared/dynamodb/expiry';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { narrowWholeRecord, readStoreItem } from '../internal/item-mapper';
-import { partitionKey, sortKey } from '../internal/keys';
-import type { StoreContext } from '../internal/setup';
-import { validateStoreKey } from '../internal/validation';
 import type { StoreItemRecord } from '../types';
+import { narrowWholeRecord, readStoreItem } from './item-mapper';
+import { partitionKey, sortKey } from './keys';
+import type { StoreContext } from './setup';
+import { validateStoreKey } from './validation';
 
 /**
  * Read the row strongly consistently and narrow it rather than cast. A
@@ -96,11 +96,11 @@ function sameObject(read: StoreItemRecord, reread: StoreItemRecord): boolean {
  * cannot act on the difference, and reporting a foreign row would leak that a
  * shared table holds one.
  *
- * Throws: ValidationError naming `namespace`, `key` or — for a row whose
+ * Throws: `VALIDATION` naming `namespace`, `key` or — for a row whose
  * descriptor is not one — `descriptor`; `FORMAT_UNSUPPORTED` for
  * a row, or a payload, written by a newer version, which is *not* reported as
  * absent — hiding an item that exists is worse than failing; `PAYLOAD_CORRUPT`
- * or the download's own error for a payload that cannot be read; `AbortError`
+ * or the download's own error for a payload that cannot be read; `ABORTED`
  * when the signal fires.
  *
  * Guarantees: strongly consistent — an item just written is always seen, and
