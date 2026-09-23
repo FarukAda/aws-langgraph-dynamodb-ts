@@ -52,7 +52,7 @@ describe('assertNonEmptyString', () => {
   });
 });
 
-describe('parseKeySegment', () => {
+describe('parseKeySegment: type and the byte budget', () => {
   it.each(NON_STRINGS)('rejects the non-string %p', (value) => {
     expectValidationError(() => parseKeySegment(value, '#', 'key', 8), 'key');
   });
@@ -81,7 +81,7 @@ describe('parseKeySegment', () => {
  * with two floors, because an empty listing and an empty conversation are not
  * the same answer.
  */
-describe('parseLimit', () => {
+describe('parseLimit: the page-limit rule (floors and ceiling)', () => {
   it.each([0, 1, MAX_PAGE_LIMIT])('accepts %p at the page floor', (value) => {
     expect(() => parseLimit(value, 0)).not.toThrow();
   });
@@ -185,7 +185,7 @@ describe('assertNoControlChars', () => {
   });
 });
 
-describe('parseKeySegment', () => {
+describe('parseKeySegment: the separator rule', () => {
   it.each(NON_STRINGS)('rejects the non-string %p', (value) => {
     expectValidationError(() => parseKeySegment(value, '#', 'namespace', 1024), 'namespace');
   });
@@ -227,7 +227,7 @@ describe('assertWellFormed', () => {
   });
 });
 
-describe('parseIdentifier', () => {
+describe('parseIdentifier: rule order and identifier legality', () => {
   it('accepts a value satisfying every rule', () => {
     expect(() => parseIdentifier('thread-1', '#', 'thread_id', 1024)).not.toThrow();
   });
@@ -330,7 +330,7 @@ describe('parseInteger', () => {
   });
 });
 
-describe('parseLimit', () => {
+describe('parseLimit: the PageLimit it returns', () => {
   it('returns the page size, typed as one that was checked', () => {
     const limit = parseLimit(MAX_PAGE_LIMIT, 0);
     expect(limit).toBe(MAX_PAGE_LIMIT);
@@ -345,7 +345,7 @@ describe('parseLimit', () => {
   });
 });
 
-describe('parseKeySegment', () => {
+describe('parseKeySegment: the value it returns, blank allowed', () => {
   it('accepts the empty string, which is a segment and not an absence', () => {
     expect(parseKeySegment('', '#', 'ns', 256)).toBe('');
     expect(parseKeySegment('inner', '#', 'ns', 256)).toBe('inner');
@@ -359,7 +359,7 @@ describe('parseKeySegment', () => {
   });
 });
 
-describe('parseIdentifier', () => {
+describe('parseIdentifier: the value it returns', () => {
   it('returns a well-formed identifier', () => {
     expect(parseIdentifier(`${HIGH}${LOW}`, '#', 'id', 256)).toBe(`${HIGH}${LOW}`);
   });
