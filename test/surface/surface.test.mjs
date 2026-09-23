@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { collectRows } from './harness.mjs';
+import { collectRows, retainedStubCount } from './harness.mjs';
 import { canonicalLines, countBare, countMisnamed, countUpstream, duplicateLabels } from './normalise.mjs';
 
 const BASELINE = 'test/surface/baseline.txt';
@@ -92,5 +92,22 @@ test('every branded error carries the one class name', async () => {
     misnamed,
     0,
     `${misnamed} cases raised a branded error under a name other than DynamoDBLangGraphError; there is one error class`,
+  );
+});
+
+/**
+ * A stub sinon keeps holds the client it replaced and every row it serves.
+ * When the harness stubbed through sinon's global sandbox, nothing released
+ * them: each call kept about 40 MB, and the ~290 MB five calls left at process
+ * exit crashed Node 24 and 26 while they freed it
+ * (`Check failed: node->IsInUse()`), or hung them there.
+ */
+test('a run of the harness leaves no stub behind', async () => {
+  await collectRows();
+  const retained = retainedStubCount();
+  assert.equal(
+    retained,
+    0,
+    `${retained} sinon stubs outlived the harness run that made them; stub through the per-run sandbox so it releases them`,
   );
 });

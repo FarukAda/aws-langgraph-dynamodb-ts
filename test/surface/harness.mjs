@@ -13,9 +13,41 @@ const req = (m) => require(require.resolve(m, { paths: [root] }));
 const lib = require(path.join(root, 'dist/index.js'));
 const { DynamoDBClient } = req('@aws-sdk/client-dynamodb');
 const ddb = req('@aws-sdk/lib-dynamodb');
-const { mockClient } = req('aws-sdk-client-mock');
+const { mockClient: mockClientIn } = req('aws-sdk-client-mock');
 const { GetCommand, QueryCommand, ScanCommand, BatchGetCommand } = ddb;
 const { HumanMessage } = req('@langchain/core/messages');
+
+/**
+ * The sinon that `aws-sdk-client-mock` itself resolves, so the sandbox below is
+ * one it accepts.
+ */
+const sinon = createRequire(require.resolve('aws-sdk-client-mock', { paths: [root] }))('sinon');
+
+/**
+ * The sandbox every stub of one `collectRows()` call is made in; it is restored,
+ * and so emptied, when the call ends.
+ *
+ * `mockClient` without a sandbox stubs through sinon's global default sandbox,
+ * which keeps every stub it ever made — and with it the client and the rows the
+ * stub serves — until something calls `sinon.restore()`. Nothing here did, and a
+ * stub's own `restore()` does not take it out of that collection, so each call
+ * retained about 40 MB that no garbage collection could free; the five calls a
+ * test run makes left a ~290 MB heap at process exit, where Node 24 and 26 then
+ * crashed (`Check failed: node->IsInUse()`) or hung while freeing it. The
+ * defect is theirs — Node 22 frees the same heap cleanly — but a heap this size
+ * is what reaches it, and nothing in the run needs to keep one.
+ */
+let sandbox = null;
+const mockClient = (client) => mockClientIn(client, { sandbox });
+
+/**
+ * The stubs sinon still holds once no `collectRows()` call is running: those
+ * of its global default sandbox, plus any left in a per-call sandbox. It is 0
+ * when every stub was made in, and released with, the sandbox of its call.
+ */
+export function retainedStubCount() {
+  return sinon.getFakes().length + (sandbox === null ? 0 : sandbox.getFakes().length);
+}
 
 function docMock() {
   const client = ddb.DynamoDBDocument.from(new DynamoDBClient({ region: 'us-east-1' }));
@@ -473,17 +505,23 @@ function fuzzErrors() {
  */
 export async function collectRows() {
   rows.length = 0;
-  fuzzConstructors();
-  await fuzzSaver();
-  await fuzzStore();
-  await fuzzHistory();
-  fuzzFactory();
-  await fuzzBackfill();
-  fuzzRedaction();
-  await fuzzSerde();
-  await fuzzStoredRows();
-  fuzzErrors();
-  /** Last: it replaces two SDK methods for the length of its probes and restores them after. */
-  await fuzzTeardown();
+  sandbox = sinon.createSandbox();
+  try {
+    fuzzConstructors();
+    await fuzzSaver();
+    await fuzzStore();
+    await fuzzHistory();
+    fuzzFactory();
+    await fuzzBackfill();
+    fuzzRedaction();
+    await fuzzSerde();
+    await fuzzStoredRows();
+    fuzzErrors();
+    /** Last: it replaces two SDK methods for the length of its probes and restores them after. */
+    await fuzzTeardown();
+  } finally {
+    sandbox.restore();
+    sandbox = null;
+  }
   return rows.map((row) => [...row]);
 }
