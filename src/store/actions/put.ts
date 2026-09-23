@@ -5,11 +5,9 @@ import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { deleteStoreItem } from '../internal/delete-item';
 import type { JsonValue } from '../internal/filter';
 import { syncVectorIndex } from '../internal/index-sync';
-import { buildStoreItem } from '../internal/item-mapper';
-import { partitionKey, sortKey } from '../internal/keys';
 import type { ParsedDelete, ParsedPut } from '../internal/parse';
 import { persistRecord } from '../internal/persist';
-import { readExisting } from '../internal/read-existing';
+import { buildStoreItem, itemRowKey, readExisting } from '../internal/rows';
 import { embedPassages, embedValue } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
 
@@ -67,11 +65,9 @@ export async function putItem(context: StoreContext, op: ParsedPut | ParsedDelet
     return;
   }
   const { namespace, key } = op.address;
-  const pk = partitionKey(namespace);
-  const sk = sortKey(namespace, key);
   const value = op.value;
   const timestamp = nowIso();
-  const existing = await readExisting(context, pk, sk);
+  const existing = await readExisting(context, itemRowKey(op.address));
   /**
    * The two indexing modes are exclusive, so only one of them embeds: the row
    * carries a vector per extracted path, while a configured backend takes one
@@ -81,7 +77,7 @@ export async function putItem(context: StoreContext, op: ParsedPut | ParsedDelet
   const embedding = backend ? await resolveEmbedding(context, op, value) : undefined;
   const embeddings = backend ? undefined : await resolvePassages(context, op, value);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const record = await buildStoreItem(context, namespace, key, value, {
+  const record = await buildStoreItem(context, { namespace, key }, value, {
     createdAt: existing.createdAt ?? timestamp,
     updatedAt: timestamp,
     embeddings,

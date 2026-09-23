@@ -6,7 +6,7 @@ import {
   buildStoreItem,
   narrowStoreRecord,
   readStoreItem,
-} from '../../../../src/store/internal/item-mapper';
+} from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 
 function context(): StoreContext {
@@ -21,12 +21,11 @@ function context(): StoreContext {
   };
 }
 
-describe('store item-mapper', () => {
+describe('store rows: item', () => {
   it('builds a record with keys, namespace, timestamps, and round-trips the value', async () => {
     const record = await buildStoreItem(
       context(),
-      ['users', 'u1'],
-      'profile',
+      { namespace: ['users', 'u1'], key: 'profile' },
       { name: 'Faruk' },
       {
         createdAt: '2024-01-01T00:00:00.000Z',
@@ -56,8 +55,7 @@ describe('store item-mapper', () => {
   it('stores embedding and ttl when provided', async () => {
     const record = await buildStoreItem(
       context(),
-      ['n'],
-      'k',
+      { namespace: ['n'], key: 'k' },
       { a: 1 },
       {
         createdAt: 'x',
@@ -86,7 +84,12 @@ describe('store item-mapper', () => {
       } as never,
     };
     const build = (rev?: string) =>
-      buildStoreItem(ctx, ['n'], 'k', { a: 1 }, { createdAt: 'c', updatedAt: 'u', rev });
+      buildStoreItem(
+        ctx,
+        { namespace: ['n'], key: 'k' },
+        { a: 1 },
+        { createdAt: 'c', updatedAt: 'u', rev },
+      );
     const keyOf = (record: { value: object }) => (record.value as { s3Key: string }).s3Key;
 
     const withRev = await build('abc');
@@ -194,8 +197,7 @@ describe('buildStoreItem stamps the row format version', () => {
   it('writes v on every item', async () => {
     const record = await buildStoreItem(
       { serde: JSON_SERDE } as never,
-      ['n'],
-      'k',
+      { namespace: ['n'], key: 'k' },
       { a: 1 },
       { createdAt: 'c', updatedAt: 'u' },
     );

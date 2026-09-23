@@ -15,7 +15,7 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBStore } from '../../src/index';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../src/shared/dynamodb/conditional-put';
 import type { Logger } from '../../src/shared/logging/logger';
-import { partitionKey, sortKey } from '../../src/store/internal/keys';
+import { partitionKey, sortKey } from '../../src/store/internal/rows';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 import { afterResponse, beforeRequest } from './helpers/fault-injection';
 import { MemoryS3 } from './helpers/memory-s3';
@@ -269,7 +269,7 @@ describe('a delete of a key with no row (D1 in miniature)', () => {
 describe('a row written before revisions existed', () => {
   /**
    * Red if the delete pins on anything the pre-read's projection does not
-   * carry for such a row — `value.writeId`, say, which `read-existing` never
+   * carry for such a row — `value.writeId`, say, which `readExisting` never
    * reads — because the condition then never holds, three refusals follow and
    * a table upgraded in place could never be emptied.
    */

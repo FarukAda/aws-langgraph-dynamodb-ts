@@ -13,7 +13,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 
 import { ErrorCode } from '../../../src/shared/errors/error-code';
-import { partitionKey, sortKey } from '../../../src/store/internal/keys';
+import { partitionKey, sortKey } from '../../../src/store/internal/rows';
 import { DynamoDBStore } from '../../../src/store/store';
 import {
   answerDeleteReads,

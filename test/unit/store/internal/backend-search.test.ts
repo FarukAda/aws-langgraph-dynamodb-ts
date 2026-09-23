@@ -6,7 +6,7 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { truncateForLog } from '../../../../src/shared/logging/truncate';
 import { searchViaBackend } from '../../../../src/store/internal/backend-search';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -38,8 +38,7 @@ describe('searchViaBackend', () => {
     const ctx = context(client);
     const record = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
       {
         createdAt: 'c',
@@ -66,8 +65,7 @@ describe('searchViaBackend', () => {
     const ctx = context(client);
     const record = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
       {
         createdAt: 'c',
@@ -159,8 +157,7 @@ describe('searchViaBackend', () => {
     const ctx = context(client, { maxSearchCandidates: 8 });
     const kept = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'keep',
+      { namespace: ['users', 'u1'], key: 'keep' },
       { keep: true },
       {
         createdAt: 'c',
@@ -169,8 +166,7 @@ describe('searchViaBackend', () => {
     );
     const dropped = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'drop',
+      { namespace: ['users', 'u1'], key: 'drop' },
       { keep: false },
       {
         createdAt: 'c',
@@ -205,8 +201,7 @@ describe('searchViaBackend', () => {
     const ctx = context(client);
     const record = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
       {
         createdAt: 'c',
@@ -234,8 +229,7 @@ describe('searchViaBackend', () => {
     const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });
     const record = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
       {
         createdAt: 'c',
@@ -266,8 +260,7 @@ describe('searchViaBackend', () => {
     const deep = ['users', ...filler];
     const record = await buildStoreItem(
       ctx,
-      deep,
-      'a',
+      { namespace: deep, key: 'a' },
       { a: 1 },
       {
         createdAt: 'c',

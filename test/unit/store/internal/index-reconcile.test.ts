@@ -10,8 +10,8 @@ import {
   pushEmbeddings,
   selectOrphans,
 } from '../../../../src/store/internal/index-reconcile';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import { parseNamespace } from '../../../../src/store/internal/parse';
+import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -199,8 +199,7 @@ describe('collectReconcileTargets', () => {
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
     const record = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { text: 'hello' },
       { createdAt: 'c', updatedAt: 'u' },
     );
@@ -224,8 +223,18 @@ describe('collectReconcileTargets', () => {
       index: { dims: 1, embeddings: embeddings as never, fields: ['text'] },
     });
     const meta = { createdAt: 'c', updatedAt: 'u' };
-    const a = await buildStoreItem(ctx, ['users', 'u1'], 'a', { text: 'ab' }, meta);
-    const b = await buildStoreItem(ctx, ['users', 'u1'], 'b', { text: 'abcd' }, meta);
+    const a = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 'a' },
+      { text: 'ab' },
+      meta,
+    );
+    const b = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 'b' },
+      { text: 'abcd' },
+      meta,
+    );
     mock.on(QueryCommand).resolves({ Items: [a, b] });
 
     const targets = await collectReconcileTargets(
@@ -250,8 +259,7 @@ describe('collectReconcileTargets', () => {
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
     const match = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { text: 'hi' },
       { createdAt: 'c', updatedAt: 'u' },
     );

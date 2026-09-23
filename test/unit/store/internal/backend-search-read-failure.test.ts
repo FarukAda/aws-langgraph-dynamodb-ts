@@ -7,7 +7,7 @@ import { abortError, retryExhaustedError } from '../../../../src/shared/errors/e
 import { wrapForeignError } from '../../../../src/shared/errors/wrap-error';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchViaBackend } from '../../../../src/store/internal/backend-search';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -67,7 +67,12 @@ describe('searchViaBackend when a match cannot be read', () => {
   it.each(propagated)('fails the whole search for %s', async (_label, failure) => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const record = await buildStoreItem(ctx, ['users', 'u1'], 'k1', { a: 1 }, ITEM_TIMES);
+    const record = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 'k1' },
+      { a: 1 },
+      ITEM_TIMES,
+    );
     mock.on(GetCommand).callsFake((input: { Key?: Record<string, unknown> }) => {
       if (String(input.Key?.SK).endsWith('k1')) return { Item: record };
       throw failure;
@@ -82,7 +87,12 @@ describe('searchViaBackend when a match cannot be read', () => {
   it('fails rather than shortening the page when a read is throttled out of its budget', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client, { retry: { maxAttempts: 1 } });
-    const record = await buildStoreItem(ctx, ['users', 'u1'], 'k1', { a: 1 }, ITEM_TIMES);
+    const record = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 'k1' },
+      { a: 1 },
+      ITEM_TIMES,
+    );
     mock.on(GetCommand).callsFake((input: { Key?: Record<string, unknown> }) => {
       if (String(input.Key?.SK).endsWith('k1')) return { Item: record };
       throw Object.assign(new Error('slow down'), {
@@ -108,7 +118,12 @@ describe('searchViaBackend when a match cannot be read', () => {
     const { client, mock } = createStrictDocumentMock();
     const warn = jest.fn();
     const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });
-    const record = await buildStoreItem(ctx, ['users', 'u1'], 'k1', { a: 1 }, ITEM_TIMES);
+    const record = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 'k1' },
+      { a: 1 },
+      ITEM_TIMES,
+    );
     mock.on(GetCommand).callsFake((input: { Key?: Record<string, unknown> }) => {
       if (String(input.Key?.SK).endsWith('k1')) return { Item: record };
       return {
@@ -136,7 +151,12 @@ describe('searchViaBackend when a match cannot be read', () => {
     const { client, mock } = createStrictDocumentMock();
     const warn = jest.fn();
     const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });
-    const record = await buildStoreItem(ctx, ['users', 'u1'], 'k1', { a: 1 }, ITEM_TIMES);
+    const record = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 'k1' },
+      { a: 1 },
+      ITEM_TIMES,
+    );
     mock.on(GetCommand).resolves({ Item: record });
     const backend = backendWith([
       twoMatches[0],

@@ -2,7 +2,7 @@ import { TransactWriteCommand, type TransactWriteCommandInput } from '@aws-sdk/l
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
-import { REVISION_ATTRIBUTE, revisionGuard } from '../../../../src/shared/dynamodb/conditional-put';
+import { revisionGuard } from '../../../../src/shared/dynamodb/conditional-put';
 import {
   deleteIdempotently,
   type IdempotentWriteDeps,
@@ -15,6 +15,9 @@ import type { RetryOptions } from '../../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
+
+/** A shared module's test has no business with the store's row; a sample name suffices. */
+const REVISION_ATTRIBUTE = 'rev';
 
 const TABLE = 'adapter-table';
 const ITEM = {

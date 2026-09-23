@@ -9,12 +9,16 @@ import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { validationError } from '../../shared/errors/errors';
-import type { StoreItemRecord } from '../types';
-import { narrowWholeRecord, readStoreItem } from './item-mapper';
-import { namespaceMatchesPrefix } from './keys';
 import type { ParsedSearch } from './parse';
-import { scopedQuery, storeScan } from './query';
 import type { RankCandidate } from './ranker';
+import {
+  narrowWholeRecord,
+  namespaceMatchesPrefix,
+  readStoreItem,
+  scopedQuery,
+  type StoreItemRecord,
+  storeScan,
+} from './rows';
 import { passesFilter } from './search-filter';
 import type { StoreContext } from './setup';
 

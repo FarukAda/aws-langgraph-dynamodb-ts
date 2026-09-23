@@ -5,7 +5,7 @@ import { MAX_LOGGED_LABELS } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -34,8 +34,18 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
     });
     // Both items were embedded by a 3-dimensional model; the query is 2-dimensional.
     const meta = { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0, 0]] };
-    const stale1 = await buildStoreItem(ctx, ['users', 'u1'], 's1', { v: 1 }, meta);
-    const stale2 = await buildStoreItem(ctx, ['users', 'u1'], 's2', { v: 2 }, meta);
+    const stale1 = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 's1' },
+      { v: 1 },
+      meta,
+    );
+    const stale2 = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 's2' },
+      { v: 2 },
+      meta,
+    );
     mock.on(QueryCommand).resolves({ Items: [stale1, stale2] });
 
     const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
@@ -65,7 +75,7 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
     const deep = ['users', ...filler];
     const meta = { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0, 0]] };
     mock.on(QueryCommand).resolves({
-      Items: [await buildStoreItem(ctx, deep, 's1', { v: 1 }, meta)],
+      Items: [await buildStoreItem(ctx, { namespace: deep, key: 's1' }, { v: 1 }, meta)],
     });
 
     await searchItems(ctx, parsedSearch({ namespacePrefix: deep, query: 'q' }));
@@ -87,7 +97,12 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
       logger: { ...SILENT_LOGGER, warn },
     });
     const meta = { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0]] };
-    const fresh = await buildStoreItem(ctx, ['users', 'u1'], 'f', { v: 1 }, meta);
+    const fresh = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 'f' },
+      { v: 1 },
+      meta,
+    );
     mock.on(QueryCommand).resolves({ Items: [fresh] });
 
     const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
@@ -111,8 +126,7 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
     });
     const row = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'legacy',
+      { namespace: ['users', 'u1'], key: 'legacy' },
       { v: 1 },
       {
         createdAt: 'c',

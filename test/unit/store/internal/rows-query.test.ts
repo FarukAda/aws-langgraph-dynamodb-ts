@@ -1,4 +1,4 @@
-import { scopedQuery, storeScan } from '../../../../src/store/internal/query';
+import { scopedQuery, storeScan } from '../../../../src/store/internal/rows';
 
 describe('scopedQuery', () => {
   it('builds a PK-only query when the prefix has no namespace tail', () => {

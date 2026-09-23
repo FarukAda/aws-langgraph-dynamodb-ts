@@ -1,9 +1,8 @@
 import { collectS3Keys, type DescriptorRef } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import type { StoreItemRecord } from '../types';
 import { putWithRevisionSwap } from './overwrite-swap';
-import type { ExistingRecordMeta } from './read-existing';
+import type { ExistingRecordMeta, StoreItemRecord } from './rows';
 import type { StoreContext } from './setup';
 import { verifyWriteLanded } from './write-verify';
 

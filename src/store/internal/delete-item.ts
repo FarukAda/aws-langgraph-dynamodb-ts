@@ -4,19 +4,21 @@ import {
   isConditionalCheckFailed,
   OVERWRITE_CAS_MAX_ATTEMPTS,
   rejectedItem,
-  REVISION_ATTRIBUTE,
   revisionGuard,
 } from '../../shared/dynamodb/conditional-put';
 import { deleteIdempotently } from '../../shared/dynamodb/idempotent-write';
+import type { RowKey } from '../../shared/dynamodb/table-schema';
 import { syncVectorIndex } from './index-sync';
-import { partitionKey, sortKey } from './keys';
 import type { StoreAddress } from './parse';
-import { type ExistingRecordMeta, existingFrom, readExisting } from './read-existing';
+import {
+  type ExistingRecordMeta,
+  existingFrom,
+  itemRowKey,
+  readExisting,
+  REVISION_ATTRIBUTE,
+} from './rows';
 import type { StoreContext } from './setup';
 import { isRetryExhausted, rowIsAbsent } from './write-verify';
-
-/** The row this delete addresses. A type alias, so it is also a `Key` document. */
-type RowKey = { PK: string; SK: string };
 
 /**
  * What a refused attempt licenses next: the observation to re-pin on, or
@@ -217,11 +219,8 @@ async function dropVectorWhenGone(
  * comes back unnoticed.
  */
 export async function deleteStoreItem(context: StoreContext, address: StoreAddress): Promise<void> {
-  const key: RowKey = {
-    PK: partitionKey(address.namespace),
-    SK: sortKey(address.namespace, address.key),
-  };
-  const existing = await readExisting(context, key.PK, key.SK);
+  const key = itemRowKey(address);
+  const existing = await readExisting(context, key);
   const released = existing.exists ? await removeObservedRow(context, key, existing) : existing;
   if (released === undefined) {
     context.logger.warn('store.delete: compare-and-swap exhausted; the item was not deleted', {

@@ -4,9 +4,8 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { buildStoreItem, type StoreItemRecord } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import type { StoreItemRecord } from '../../../../src/store/types';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
@@ -26,8 +25,7 @@ function context(client: StoreContext['client']): StoreContext {
 async function item(ctx: StoreContext, key: string): Promise<StoreItemRecord> {
   return buildStoreItem(
     ctx,
-    ['users', 'u1'],
-    key,
+    { namespace: ['users', 'u1'], key },
     { kind: 'note' },
     {
       createdAt: 'c',

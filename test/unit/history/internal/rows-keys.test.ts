@@ -6,7 +6,7 @@ import {
   sessionPartition,
   sessionRowKey,
 } from '../../../../src/history/internal/rows';
-import { partitionKey as storePartition } from '../../../../src/store/internal/keys';
+import { partitionKey as storePartition } from '../../../../src/store/internal/rows';
 
 describe('history keys', () => {
   it('tags the partition key with the chat-history adapter prefix (C1, C2)', () => {

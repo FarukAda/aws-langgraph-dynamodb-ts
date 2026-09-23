@@ -8,6 +8,7 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { MAX_KEY_SEGMENT_BYTES, MAX_SORT_KEY_BYTES } from '../../shared/constants';
+import { KEY_SEPARATOR } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
 import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
 import {
@@ -20,8 +21,8 @@ import {
 } from '../../shared/validation/primitives';
 import type { ListNamespacesOptions } from '../types';
 import type { JsonValue } from './filter';
-import { NAMESPACE_SEPARATOR, sortKey } from './keys';
 import { STORE_LIST_NAMESPACES_KEYS } from './option-keys';
+import { sortKey } from './rows';
 
 declare const namespaceBrand: unique symbol;
 declare const namespacePrefixBrand: unique symbol;
@@ -76,9 +77,7 @@ function parseLabels(value: unknown, field: string): string[] {
   }
   const labels: string[] = [];
   for (const label of value) {
-    labels.push(
-      parseIdentifier(label, NAMESPACE_SEPARATOR, `${field} element`, MAX_KEY_SEGMENT_BYTES),
-    );
+    labels.push(parseIdentifier(label, KEY_SEPARATOR, `${field} element`, MAX_KEY_SEGMENT_BYTES));
   }
   return labels;
 }
@@ -137,7 +136,7 @@ export function parseNamespace(value: unknown, field = 'namespace'): Namespace {
  */
 export function parseStoreAddress(namespace: unknown, key: unknown): StoreAddress {
   const parsedNamespace = parseNamespace(namespace);
-  const parsedKey = parseIdentifier(key, NAMESPACE_SEPARATOR, 'key', MAX_KEY_SEGMENT_BYTES);
+  const parsedKey = parseIdentifier(key, KEY_SEPARATOR, 'key', MAX_KEY_SEGMENT_BYTES);
   const bytes = Buffer.byteLength(sortKey(parsedNamespace, parsedKey), 'utf8');
   if (bytes > MAX_SORT_KEY_BYTES) {
     throw validationError(

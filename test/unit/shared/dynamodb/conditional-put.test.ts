@@ -2,13 +2,15 @@ import type { CancellationReason } from '../../../../src/shared/dynamodb/cancell
 import {
   isConditionalCheckFailed,
   rejectedItem,
-  REVISION_ATTRIBUTE,
   revisionGuard,
   WRITE_ID_ATTRIBUTE,
   writeIdGuard,
 } from '../../../../src/shared/dynamodb/conditional-put';
 import { isRetryableError } from '../../../../src/shared/dynamodb/retry-classifier';
 import { DEFAULT_RETRYABLE_ERRORS } from '../../../../src/shared/errors/classify';
+
+/** A shared module's test has no business with the store's row; a sample name suffices. */
+const REVISION_ATTRIBUTE = 'rev';
 
 /** A cancelled transaction, as the SDK delivers one. */
 function cancelled(reasons: CancellationReason[]): Error {

@@ -8,8 +8,8 @@ import {
 import { BaseStore, type Operation, type OperationResults } from '@langchain/langgraph-checkpoint';
 
 import { ErrorCode } from '../../../src/shared/errors/error-code';
-import { partitionKey, sortKey } from '../../../src/store/internal/keys';
 import { parseOperation, type ParsedOperation } from '../../../src/store/internal/parse';
+import { partitionKey, sortKey } from '../../../src/store/internal/rows';
 import { DynamoDBStore } from '../../../src/store/store';
 import {
   answerDeleteReads,

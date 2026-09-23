@@ -13,7 +13,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 
 import { sessionPartition } from '../../src/history/internal/rows';
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
-import { partitionKey, sortKey } from '../../src/store/internal/keys';
+import { partitionKey, sortKey } from '../../src/store/internal/rows';
 import { liveRegion } from './helpers/env';
 
 const clientConfig = { region: liveRegion() };

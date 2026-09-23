@@ -2,13 +2,18 @@ import {
   isConditionalCheckFailed,
   OVERWRITE_CAS_MAX_ATTEMPTS,
   rejectedItem,
-  REVISION_ATTRIBUTE,
   revisionGuard,
 } from '../../shared/dynamodb/conditional-put';
 import { putIdempotently, referencesS3Object } from '../../shared/dynamodb/idempotent-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import type { StoreItemRecord } from '../types';
-import { type ExistingRecordMeta, existingFrom, readExisting } from './read-existing';
+import { rowKeyOf } from '../../shared/dynamodb/table-schema';
+import {
+  type ExistingRecordMeta,
+  existingFrom,
+  readExisting,
+  REVISION_ATTRIBUTE,
+  type StoreItemRecord,
+} from './rows';
 import type { StoreContext } from './setup';
 
 /**
@@ -137,9 +142,7 @@ export async function putWithRevisionSwap(
       if (!isConditionalCheckFailed(rejection)) throw rejection;
       /** The rejection carries the row that turned it away; the read is spent only when it does not. */
       const rejected = rejectedItem(rejection);
-      observed = rejected
-        ? existingFrom(rejected)
-        : await readExisting(context, record.PK, record.SK);
+      observed = rejected ? existingFrom(rejected) : await readExisting(context, rowKeyOf(record));
       if (record.rev !== undefined && observed.revision === record.rev) return attempted;
       /** A row that vanished between attempts (a concurrent delete) makes this a fresh creation. */
       record.createdAt = observed.exists

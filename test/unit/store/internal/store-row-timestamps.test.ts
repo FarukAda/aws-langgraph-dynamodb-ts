@@ -5,12 +5,12 @@ import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
 import { getItem } from '../../../../src/store/internal/get-item';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import {
   buildStoreItem,
   narrowStoreRecord,
   narrowWholeRecord,
-} from '../../../../src/store/internal/item-mapper';
-import { parseStoreAddress } from '../../../../src/store/internal/parse';
+} from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -33,8 +33,7 @@ const AT = '2026-01-01T00:00:00.000Z';
 async function rowWithout(ctx: StoreContext, key: string, ...missing: string[]): Promise<DocItem> {
   const record = await buildStoreItem(
     ctx,
-    ['users', 'u1'],
-    key,
+    { namespace: ['users', 'u1'], key },
     { kind: 'note' },
     { createdAt: AT, updatedAt: AT },
   );

@@ -5,13 +5,17 @@ import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema';
 import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
-import type { StoreItemRecord } from '../types';
 import type { VectorBackend, VectorRef } from '../vector-backend';
 import type { JsonValue } from './filter';
-import { narrowWholeRecord, readStoreItem } from './item-mapper';
-import { namespaceMatchesPrefix, partitionKey, sortKey } from './keys';
 import type { Namespace } from './parse';
-import { scopedQuery } from './query';
+import {
+  itemRowKey,
+  namespaceMatchesPrefix,
+  narrowWholeRecord,
+  readStoreItem,
+  scopedQuery,
+  type StoreItemRecord,
+} from './rows';
 import { embedValues } from './semantic-search';
 import type { StoreContext } from './setup';
 import { rowIsAbsent } from './write-verify';
@@ -169,10 +173,7 @@ export function selectOrphans(backendRefs: VectorRef[], live: ReconcileTarget[])
  * its vector would silently drop a just-written item out of semantic search.
  */
 async function confirmedGone(context: StoreContext, ref: VectorRef): Promise<boolean> {
-  return rowIsAbsent(context, {
-    PK: partitionKey(ref.namespace),
-    SK: sortKey(ref.namespace, ref.key),
-  });
+  return rowIsAbsent(context, itemRowKey(ref));
 }
 
 /**

@@ -8,13 +8,6 @@ import type { DocItem } from './client';
 import { PARTITION_KEY_ATTRIBUTE } from './table-schema';
 
 /**
- * Attribute holding a row's revision token on adapters that need one. The
- * checkpointer's special writes reuse their existing per-call `writeGroup`
- * instead, so `revisionGuard` takes the attribute name rather than assuming it.
- */
-export const REVISION_ATTRIBUTE = 'rev';
-
-/**
  * Compare-and-swap attempts before a caller gives up and overwrites
  * unconditionally. Kept small on purpose: DynamoDB charges write capacity for a
  * *failed* conditional write too, sized on the existing item, so an aggressive

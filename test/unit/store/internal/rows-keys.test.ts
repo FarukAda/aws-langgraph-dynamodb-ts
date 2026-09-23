@@ -1,11 +1,12 @@
+import { KEY_SEPARATOR } from '../../../../src/shared/dynamodb/table-schema';
 import {
-  NAMESPACE_SEPARATOR,
+  itemRowKey,
   namespaceMatchesPrefix,
   partitionKey,
   sortKey,
   sortKeyPrefix,
   storePartitionPrefix,
-} from '../../../../src/store/internal/keys';
+} from '../../../../src/store/internal/rows';
 
 describe('store keys', () => {
   it('uses namespace[0] as the partition key', () => {
@@ -30,11 +31,20 @@ describe('store keys', () => {
   });
 
   it('exposes the separator', () => {
-    expect(NAMESPACE_SEPARATOR).toBe('#');
+    expect(KEY_SEPARATOR).toBe('#');
   });
 
   it('exposes the partition tag the rootless scan restricts on', () => {
     expect(storePartitionPrefix()).toBe('STORE#');
     expect(partitionKey(['users']).startsWith(storePartitionPrefix())).toBe(true);
+  });
+});
+
+describe('itemRowKey', () => {
+  it('keys an item by its namespace root and the rest of its address', () => {
+    expect(itemRowKey({ namespace: ['users', 'u1'], key: 'k' })).toEqual({
+      PK: partitionKey(['users', 'u1']),
+      SK: sortKey(['users', 'u1'], 'k'),
+    });
   });
 });

@@ -14,9 +14,8 @@ import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-los
 import { toPublicError } from '../../../../src/shared/errors/boundary';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { readStoreItem } from '../../../../src/store/internal/item-mapper';
+import { readStoreItem, type StoreItemRecord } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import type { StoreItemRecord } from '../../../../src/store/types';
 
 /** A serde that records whether anything ever asked it to deserialize. */
 function countingSerde() {

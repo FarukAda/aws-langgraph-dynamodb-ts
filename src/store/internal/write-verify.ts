@@ -1,8 +1,8 @@
-import { REVISION_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
 import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { readRow, verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
 import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
+import { REVISION_ATTRIBUTE } from './rows';
 import type { StoreContext } from './setup';
 
 /**

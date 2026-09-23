@@ -13,12 +13,12 @@ import { ADAPTER_TAGS } from '../../../src/shared/dynamodb/table-schema';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { searchItems } from '../../../src/store/actions/search';
-import { buildStoreItem } from '../../../src/store/internal/item-mapper';
 import {
+  buildStoreItem,
   partitionKey as storePartition,
   sortKey,
   storePartitionPrefix,
-} from '../../../src/store/internal/keys';
+} from '../../../src/store/internal/rows';
 import type { StoreContext } from '../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../shared/helpers/parsed-inputs';
@@ -125,8 +125,7 @@ describe('a cross-partition scan reads only its own adapter key space', () => {
     const context = storeContext(client);
     const mine = await buildStoreItem(
       context,
-      ['users', 'u1'],
-      'k0',
+      { namespace: ['users', 'u1'], key: 'k0' },
       { kind: 'note' },
       { createdAt: 'c', updatedAt: 'u' },
     );
@@ -171,8 +170,18 @@ describe('a cross-partition scan reads only its own adapter key space', () => {
     const { client, mock } = createStrictDocumentMock();
     const context = storeContext(client);
     const rows = await Promise.all([
-      buildStoreItem(context, ['users', 'u1'], 'k0', { n: 1 }, { createdAt: 'c', updatedAt: 'u' }),
-      buildStoreItem(context, ['agents'], 'k1', { n: 2 }, { createdAt: 'c', updatedAt: 'u' }),
+      buildStoreItem(
+        context,
+        { namespace: ['users', 'u1'], key: 'k0' },
+        { n: 1 },
+        { createdAt: 'c', updatedAt: 'u' },
+      ),
+      buildStoreItem(
+        context,
+        { namespace: ['agents'], key: 'k1' },
+        { n: 2 },
+        { createdAt: 'c', updatedAt: 'u' },
+      ),
     ]);
     mock.on(ScanCommand).callsFake(simulatedScan(rows));
 
@@ -212,8 +221,7 @@ describe('the forward-version refusal still fires inside the key space', () => {
     const context = storeContext(client);
     const mine = await buildStoreItem(
       context,
-      ['users', 'u1'],
-      'k0',
+      { namespace: ['users', 'u1'], key: 'k0' },
       { kind: 'note' },
       { createdAt: 'c', updatedAt: 'u' },
     );

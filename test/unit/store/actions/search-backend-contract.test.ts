@@ -4,7 +4,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -33,8 +33,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const record = await buildStoreItem(
       context(client),
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
       { createdAt: 'c', updatedAt: 'u' },
     );
@@ -80,8 +79,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const recA = await buildStoreItem(
       context(client),
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },
       { createdAt: 'c', updatedAt: 'u' },
     );
@@ -126,8 +124,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const recA = await buildStoreItem(
       context(client),
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },
       { createdAt: 'c', updatedAt: 'u' },
     );
@@ -158,8 +155,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const recA = await buildStoreItem(
       context(client),
-      ['users', 'u1'],
-      'ok',
+      { namespace: ['users', 'u1'], key: 'ok' },
       { score: 1 },
       { createdAt: 'c', updatedAt: 'u' },
     );
@@ -193,8 +189,7 @@ describe('vectorScoreDirection (F4)', () => {
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const recA = await buildStoreItem(
       context(client),
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },
       { createdAt: 'c', updatedAt: 'u' },
     );
@@ -228,8 +223,7 @@ describe('vectorScoreDirection (F4)', () => {
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const recA = await buildStoreItem(
       context(client),
-      ['users', 'u1'],
-      'a',
+      { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },
       { createdAt: 'c', updatedAt: 'u' },
     );

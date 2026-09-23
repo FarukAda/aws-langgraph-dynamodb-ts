@@ -1,8 +1,7 @@
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putWithRevisionSwap } from '../../../../src/store/internal/overwrite-swap';
-import type { ExistingRecordMeta } from '../../../../src/store/internal/read-existing';
-import type { StoreItemRecord } from '../../../../src/store/types';
+import type { ExistingRecordMeta, StoreItemRecord } from '../../../../src/store/internal/rows';
 
 const descriptor = (s3Key: string) => ({
   location: PayloadLocation.S3 as const,

@@ -5,10 +5,9 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { listNamespaces } from '../../../../src/store/actions/list-namespaces';
 import { searchItems } from '../../../../src/store/actions/search';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import { parseListOperation } from '../../../../src/store/internal/parse';
+import { buildStoreItem, type StoreItemRecord } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import type { StoreItemRecord } from '../../../../src/store/types';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
@@ -44,8 +43,7 @@ async function rows(
     out.push(
       await buildStoreItem(
         ctx,
-        ['users', 'u1'],
-        `k${i}`,
+        { namespace: ['users', 'u1'], key: `k${i}` },
         { kind: kindOf(i), i },
         { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0]] },
       ),

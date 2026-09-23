@@ -2,8 +2,7 @@ import { MAX_SCAN_ITEMS, MAX_SEARCH_CANDIDATES } from '../../../../src/shared/co
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { assertStoreOptions } from '../../../../src/store/internal/option-validation';
 import { parseListOperation } from '../../../../src/store/internal/parse';
-import { projectKeys, scopedQuery } from '../../../../src/store/internal/query';
-import { existingFrom } from '../../../../src/store/internal/read-existing';
+import { projectKeys, scopedQuery, existingFrom } from '../../../../src/store/internal/rows';
 import { passesFilter } from '../../../../src/store/internal/search-filter';
 
 describe('projectKeys', () => {
