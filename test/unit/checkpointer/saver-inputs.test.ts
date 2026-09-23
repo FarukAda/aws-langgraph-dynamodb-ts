@@ -1,4 +1,6 @@
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
@@ -14,6 +16,33 @@ const serde = {
 function newSaver() {
   const { client, mock } = createStrictDocumentMock();
   return { saver: new DynamoDBSaver({ tableName: 'ckpt', client, serde }), mock };
+}
+
+const s3Mock = mockClient(S3Client);
+
+afterEach(() => {
+  s3Mock.reset();
+});
+
+/**
+ * A saver whose every payload offloads (`thresholdBytes: 1`), so a write that
+ * reached the encode loop would necessarily name an S3 object — proving that a
+ * request the parse step refuses first never reaches it.
+ */
+function newOffloadingSaver() {
+  const { client, mock } = createStrictDocumentMock();
+  const saver = new DynamoDBSaver({
+    tableName: 'ckpt',
+    client,
+    serde,
+    s3: {
+      bucketName: 'b',
+      keyPrefix: 'ckpt/',
+      thresholdBytes: 1,
+      createS3Client: () => new S3Client({ region: 'us-east-1' }),
+    },
+  });
+  return { saver, mock };
 }
 
 /**
@@ -221,5 +250,42 @@ describe('putWrites writes validation', () => {
     mock.on(PutCommand).resolves({});
     await saver.putWrites(config, [['ch', 'v']], 'task-1');
     expect(mock.commandCalls(PutCommand)).toHaveLength(1);
+  });
+});
+
+/**
+ * The composed WRITE sort key and the channel are both checked before
+ * anything of the call is encoded or uploaded — a refusal here must reject
+ * the whole call rather than one write of it.
+ */
+describe('putWrites refuses a request the parse step catches, before any write', () => {
+  const LONG_CONFIG = {
+    configurable: {
+      thread_id: 't',
+      checkpoint_ns: 'n'.repeat(256),
+      checkpoint_id: 'i'.repeat(256),
+    },
+  };
+
+  it('refuses an oversized composed sort key, naming sortKey, before anything is written or uploaded', async () => {
+    const { saver, mock } = newOffloadingSaver();
+    await expect(
+      saver.putWrites(LONG_CONFIG, [['c'.repeat(256), 'v']], 't'.repeat(256)),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'sortKey' } });
+    expect(mock.commandCalls(PutCommand)).toHaveLength(0);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(0);
+  });
+
+  it('refuses a bad channel, naming channel, before anything is written or uploaded', async () => {
+    const { saver, mock } = newOffloadingSaver();
+    const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
+    await expect(saver.putWrites(config, [['a#b', 'v']], 'task-1')).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'channel' },
+    });
+    expect(mock.commandCalls(PutCommand)).toHaveLength(0);
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(0);
   });
 });

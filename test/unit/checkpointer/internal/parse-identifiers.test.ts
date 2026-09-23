@@ -111,12 +111,9 @@ describe('the writes shape parsePutWritesRequest checks', () => {
   });
 
   /**
-   * `validateWrites` used to leave a non-string first element unchecked,
-   * deferring to `buildWriteItems`'s own `validateChannel` call so the error
-   * would name `channel` rather than `writes` — two functions dividing the
-   * work. They are one function now: `parsePutWritesRequest` parses every
-   * channel itself, in the same pass that checks the tuple shape, so there is
-   * no later call left to defer to.
+   * Every channel is parsed in the same pass that checks the tuple shape, so a
+   * non-string first element is refused here, naming `channel`, rather than
+   * reaching a later call that would have to defer to it.
    */
   it('refuses an entry whose first element is not a string, naming channel', () => {
     expect(() => parsePutWritesRequest(WRITES_CONFIG, [[123, 'v']] as never, 'task')).toThrow(
