@@ -14,6 +14,7 @@ import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { getItem } from '../../../../src/store/internal/get-item';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -84,7 +85,7 @@ async function readStore(): Promise<unknown> {
       value: forwardDescriptor(),
     },
   });
-  return getItem(context, ['users', 'u1'], 'profile');
+  return getItem(context, parseStoreAddress(['users', 'u1'], 'profile'));
 }
 
 /** `saver.getTuple`, reading one such checkpoint payload row. */

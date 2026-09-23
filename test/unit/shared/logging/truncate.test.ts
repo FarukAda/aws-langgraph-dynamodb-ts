@@ -123,7 +123,7 @@ describe('truncateLabelsForLog', () => {
   });
 
   /**
-   * These lines report a namespace `validateStoreKey` has just refused, and a
+   * These lines report a namespace `parseStoreAddress` has just refused, and a
    * namespace that is not an array at all is one of the things it refuses, so
    * the non-array is the reported value rather than a defensive guard.
    */

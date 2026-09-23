@@ -20,6 +20,7 @@ import {
 } from '../../../src/store/internal/keys';
 import type { StoreContext } from '../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../shared/helpers/parsed-inputs';
 import { simulatedScan } from '../../shared/helpers/simulated-scan';
 
 /**
@@ -136,7 +137,7 @@ describe('a cross-partition scan reads only its own adapter key space', () => {
     };
     mock.on(ScanCommand).callsFake(simulatedScan([mine, foreign]));
 
-    const items = await searchItems(context, { namespacePrefix: [], limit: 10 });
+    const items = await searchItems(context, parsedSearch({ namespacePrefix: [], limit: 10 }));
 
     expect(items.map((item) => item.key)).toEqual(['k0']);
   });
@@ -173,7 +174,7 @@ describe('a cross-partition scan reads only its own adapter key space', () => {
     ]);
     mock.on(ScanCommand).callsFake(simulatedScan(rows));
 
-    const items = await searchItems(context, { namespacePrefix: [], limit: 10 });
+    const items = await searchItems(context, parsedSearch({ namespacePrefix: [], limit: 10 }));
 
     expect(items.map((item) => item.key).sort()).toEqual(['k0', 'k1']);
   });
@@ -216,7 +217,9 @@ describe('the forward-version refusal still fires inside the key space', () => {
     );
     mock.on(ScanCommand).callsFake(simulatedScan([{ ...mine, v: 2 }]));
 
-    await expect(searchItems(context, { namespacePrefix: [], limit: 10 })).rejects.toMatchObject({
+    await expect(
+      searchItems(context, parsedSearch({ namespacePrefix: [], limit: 10 })),
+    ).rejects.toMatchObject({
       code: ErrorCode.FORMAT_UNSUPPORTED,
       context: { field: 'v' },
     });

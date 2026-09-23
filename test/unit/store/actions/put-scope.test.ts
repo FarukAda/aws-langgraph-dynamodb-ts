@@ -11,6 +11,7 @@ import {
   createStrictDocumentMock,
   observableRow,
 } from '../../../shared/helpers/ddb-mock';
+import { parsedPut } from '../../../shared/helpers/parsed-inputs';
 
 jest.mock('../../../../src/shared/codec/s3/orphans', () => ({
   cleanUpS3Orphans: jest.fn(() => undefined),
@@ -60,11 +61,14 @@ describe('store put/delete bind row-sourced S3 keys to the item (SEC-03)', () =>
           : { Item: { rev: 'r1', value: { location: PayloadLocation.INLINE } } },
       );
     mock.on(PutCommand).resolves({});
-    await putItem(context(client), {
-      namespace: ['users', 'u1'],
-      key: 'profile',
-      value: { name: 'x' },
-    });
+    await putItem(
+      context(client),
+      parsedPut({
+        namespace: ['users', 'u1'],
+        key: 'profile',
+        value: { name: 'x' },
+      }),
+    );
     expect(cleanUpMock).toHaveBeenCalledWith(
       expect.anything(),
       ['p/previous.bin'],
@@ -78,7 +82,10 @@ describe('store put/delete bind row-sourced S3 keys to the item (SEC-03)', () =>
     const { client, mock } = createStrictDocumentMock();
     answerDeleteReads(mock, observableRow(previous));
     mock.on(TransactWriteCommand).resolves({});
-    await putItem(context(client), { namespace: ['users', 'u1'], key: 'profile', value: null });
+    await putItem(
+      context(client),
+      parsedPut({ namespace: ['users', 'u1'], key: 'profile', value: null }),
+    );
     expect(cleanUpMock).toHaveBeenCalledWith(
       expect.anything(),
       ['p/previous.bin'],

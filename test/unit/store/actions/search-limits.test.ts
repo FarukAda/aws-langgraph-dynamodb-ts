@@ -7,6 +7,7 @@ import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -21,21 +22,12 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
   };
 }
 
+/**
+ * A negative limit and a non-integer offset are refused by the parser before
+ * `searchItems` ever runs (see `parseSearch` in `test/unit/store/internal/parse.test.ts`);
+ * this action no longer checks its input's shape.
+ */
 describe('searchItems (caps and truncation)', () => {
-  it('throws VALIDATION on a negative limit', async () => {
-    const { client } = createStrictDocumentMock();
-    await expect(
-      searchItems(context(client), { namespacePrefix: ['users'], limit: -1 }),
-    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
-  });
-
-  it('throws VALIDATION on a non-integer offset', async () => {
-    const { client } = createStrictDocumentMock();
-    await expect(
-      searchItems(context(client), { namespacePrefix: ['users'], offset: 2.5 }),
-    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
-  });
-
   it('honors a raised maxScanItems for a plain (non-semantic) search over a large namespace', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
@@ -72,14 +64,20 @@ describe('searchItems (caps and truncation)', () => {
     // With the default cap (10,000) all 3 items would return fine; a small
     // maxScanItems override must actually reach paginateQuery and truncate.
     await expect(
-      searchItems(context(client, { maxScanItems: 2 }), { namespacePrefix: ['users'] }),
+      searchItems(
+        context(client, { maxScanItems: 2 }),
+        parsedSearch({ namespacePrefix: ['users'] }),
+      ),
     ).rejects.toMatchObject({ code: ErrorCode.RESULT_TRUNCATED });
 
     // Raising the cap high enough lets the same query succeed, proving the
     // override moves in both directions, not just "small value throws."
-    const items = await searchItems(context(client, { maxScanItems: 3 }), {
-      namespacePrefix: ['users'],
-    });
+    const items = await searchItems(
+      context(client, { maxScanItems: 3 }),
+      parsedSearch({
+        namespacePrefix: ['users'],
+      }),
+    );
     expect(items.map((i) => i.key).sort()).toEqual(['a', 'b', 'c']);
   });
 });

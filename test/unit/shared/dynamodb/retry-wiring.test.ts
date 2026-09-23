@@ -8,6 +8,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { getItem } from '../../../../src/store/internal/get-item';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -46,7 +47,7 @@ describe('context.retry reaches every DynamoDB call (DDB-03)', () => {
       vectorScoreDirection: 'relevance',
       retry,
     };
-    await expect(getItem(context, ['users'], 'k')).rejects.toMatchObject({
+    await expect(getItem(context, parseStoreAddress(['users'], 'k'))).rejects.toMatchObject({
       code: ErrorCode.RETRY_EXHAUSTED,
     });
     expect(mock.commandCalls(GetCommand)).toHaveLength(2);

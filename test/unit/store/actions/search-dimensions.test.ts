@@ -8,6 +8,7 @@ import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -37,7 +38,7 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
     const stale2 = await buildStoreItem(ctx, ['users', 'u1'], 's2', { v: 2 }, meta);
     mock.on(QueryCommand).resolves({ Items: [stale1, stale2] });
 
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
 
     expect(items.every((i) => i.score === undefined)).toBe(true);
     expect(warn).toHaveBeenCalledTimes(1);
@@ -67,7 +68,7 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
       Items: [await buildStoreItem(ctx, deep, 's1', { v: 1 }, meta)],
     });
 
-    await searchItems(ctx, { namespacePrefix: deep, query: 'q' });
+    await searchItems(ctx, parsedSearch({ namespacePrefix: deep, query: 'q' }));
 
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('dimension'),
@@ -89,7 +90,7 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
     const fresh = await buildStoreItem(ctx, ['users', 'u1'], 'f', { v: 1 }, meta);
     mock.on(QueryCommand).resolves({ Items: [fresh] });
 
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
 
     expect(items[0].score).toBeDefined();
     expect(warn).not.toHaveBeenCalled();
@@ -120,7 +121,7 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
     );
     mock.on(QueryCommand).resolves({ Items: [{ ...row, embedding: [0, 1] }] });
 
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
 
     expect(items[0].score).toBe(1);
     expect(warn).not.toHaveBeenCalled();
@@ -133,7 +134,7 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
     mock.on(QueryCommand).resolves({ Items: [] });
 
     await expect(
-      searchItems(ctx, { namespacePrefix: ['users'], query: 'q' }),
+      searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' })),
     ).rejects.toMatchObject({
       name: 'DynamoDBLangGraphError',
       code: ErrorCode.VALIDATION,

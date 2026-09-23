@@ -15,6 +15,7 @@ import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-los
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { getItem } from '../../../../src/store/internal/get-item';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -124,7 +125,7 @@ async function readStore(serde: SerializerProtocol): Promise<unknown> {
       value: foreignDescriptor(),
     },
   });
-  return getItem(context, ['users', 'u1'], 'profile');
+  return getItem(context, parseStoreAddress(['users', 'u1'], 'profile'));
 }
 
 /** `saver.getTuple`, reading one such checkpoint payload row. */

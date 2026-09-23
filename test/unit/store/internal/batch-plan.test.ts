@@ -1,13 +1,13 @@
-import type { Operation } from '@langchain/langgraph-checkpoint';
-
 import { runBatch } from '../../../../src/store/internal/batch-plan';
+import { parseOperation, type ParsedOperation } from '../../../../src/store/internal/parse';
 
 describe('runBatch preserves the order the caller wrote (STORE-09)', () => {
   const ns = ['a'];
-  const put = (key: string, value: unknown) => ({ namespace: ns, key, value }) as Operation;
-  const del = (key: string) => ({ namespace: ns, key, value: null }) as Operation;
-  const get = (key: string) => ({ namespace: ns, key }) as Operation;
-  const search = () => ({ namespacePrefix: ns, limit: 10, offset: 0 }) as Operation;
+  const put = (key: string, value: number) =>
+    parseOperation({ namespace: ns, key, value: { value } });
+  const del = (key: string) => parseOperation({ namespace: ns, key, value: null });
+  const get = (key: string) => parseOperation({ namespace: ns, key });
+  const search = () => parseOperation({ namespacePrefix: ns, limit: 10, offset: 0 });
 
   /** Records the order operations were dispatched in, and answers a get from a tiny store. */
   function recorder() {
@@ -20,16 +20,16 @@ describe('runBatch preserves the order the caller wrote (STORE-09)', () => {
      * satisfy `require-await` — the other two are plain values that `async`
      * itself still wraps in a `Promise`, so they are left as they are.
      */
-    const dispatch = async (op: Operation): Promise<unknown> => {
-      if ('value' in op) {
-        order.push(`put:${op.key}`);
-        if (op.value === null) store.delete(op.key);
-        else store.set(op.key, op.value);
+    const dispatch = async (op: ParsedOperation): Promise<unknown> => {
+      if (op.kind === 'put' || op.kind === 'delete') {
+        order.push(`put:${op.address.key}`);
+        if (op.kind === 'delete') store.delete(op.address.key);
+        else store.set(op.address.key, op.value.value);
         return Promise.resolve(undefined);
       }
-      if ('key' in op) {
-        order.push(`get:${op.key}`);
-        return store.get(op.key) ?? null;
+      if (op.kind === 'get') {
+        order.push(`get:${op.address.key}`);
+        return store.get(op.address.key) ?? null;
       }
       order.push('search');
       return [...store.keys()];
@@ -81,5 +81,58 @@ describe('runBatch preserves the order the caller wrote (STORE-09)', () => {
     const { order, dispatch } = recorder();
     await runBatch([get('x'), get('y'), get('z')], dispatch);
     expect(order).toHaveLength(3);
+  });
+});
+
+/**
+ * An operation object carrying both `namespacePrefix` and `value` parses as a
+ * search — `parseOperation` tests `namespacePrefix` first, as `dispatch` does
+ * — so the planner must schedule it as the broad read it is, not as a write
+ * addressing whatever `namespace`/`key` such an object happens to also carry.
+ * Before this planner asked `touchOf` the same question `parseOperation` had
+ * already answered, it tested `'value' in op` first and planned such an
+ * operation as a write instead, so it could run beside an unrelated write in
+ * the same segment where a search never may. Nothing observable changes for
+ * any operation `parseOperation` builds from an upstream `Operation`, since
+ * none of its five shapes carries both keys; this is a scheduling change only,
+ * reachable by an operation object no public caller builds today.
+ */
+describe('the planner schedules a hybrid namespacePrefix+value object as the search it parses to', () => {
+  const ns = ['a'];
+
+  it('is planned as a broad read, not a write on its (absent) address', () => {
+    const hybrid = parseOperation({
+      namespacePrefix: ns,
+      value: { x: 1 },
+      limit: 10,
+      offset: 0,
+    });
+    expect(hybrid.kind).toBe('search');
+  });
+
+  it('does not run beside an unrelated write, where a shape-based write plan would have let it', async () => {
+    const hybrid = parseOperation({
+      namespacePrefix: ns,
+      value: { x: 1 },
+      limit: 10,
+      offset: 0,
+    });
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const dispatch = async (): Promise<unknown> => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setImmediate(resolve));
+      inFlight -= 1;
+      return null;
+    };
+
+    await runBatch(
+      [parseOperation({ namespace: ns, key: 'other', value: { v: 1 } }), hybrid],
+      dispatch,
+      2,
+    );
+
+    expect(maxInFlight).toBe(1);
   });
 });

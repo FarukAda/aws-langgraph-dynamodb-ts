@@ -4,6 +4,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { listNamespaces } from '../../../../src/store/actions/list-namespaces';
 import { partitionKey, sortKey } from '../../../../src/store/internal/keys';
+import { parseListOperation } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -55,7 +56,9 @@ async function pagedByOffset(): Promise<string[][]> {
   for (const offset of [0, 1]) {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: items });
-    pages.push(...(await listNamespaces(context(client), { limit: 1, offset })));
+    pages.push(
+      ...(await listNamespaces(context(client), parseListOperation({ limit: 1, offset }))),
+    );
   }
   return pages;
 }

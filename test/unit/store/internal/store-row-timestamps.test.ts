@@ -10,8 +10,10 @@ import {
   narrowStoreRecord,
   narrowWholeRecord,
 } from '../../../../src/store/internal/item-mapper';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client']): StoreContext {
   return {
@@ -102,7 +104,7 @@ describe('a store listing over a mix of good and bad rows (L-05b)', () => {
       ],
     });
 
-    const items = await searchItems(ctx, { namespacePrefix: ['users'] });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'] }));
 
     expect(items.map((item) => item.key)).toEqual(['first', 'second']);
   });
@@ -117,6 +119,6 @@ describe('a store listing over a mix of good and bad rows (L-05b)', () => {
     const ctx = context(client);
     mock.on(GetCommand).resolves({ Item: await rowWithout(ctx, 'rotten', 'createdAt') });
 
-    await expect(getItem(ctx, ['users', 'u1'], 'rotten')).resolves.toBeNull();
+    await expect(getItem(ctx, parseStoreAddress(['users', 'u1'], 'rotten'))).resolves.toBeNull();
   });
 });

@@ -7,8 +7,10 @@ import { reconcileVectorIndex } from '../../../../src/store/actions/reconcile-ve
 import { searchItems } from '../../../../src/store/actions/search';
 import { getItem } from '../../../../src/store/internal/get-item';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { parseListOperation, parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 const NOW = Math.floor(FROZEN_NOW_MS / 1000);
@@ -58,7 +60,7 @@ describe('expired rows are filtered on every store read path (STORE-04)', () => 
     const ctx = context(client);
     const { expired } = await rows(ctx);
     mock.on(GetCommand).resolves({ Item: expired });
-    await expect(getItem(ctx, ['users', 'u2'], 'gone')).resolves.toBeNull();
+    await expect(getItem(ctx, parseStoreAddress(['users', 'u2'], 'gone'))).resolves.toBeNull();
   });
 
   it('search drops an expired candidate and asks DynamoDB to filter them too', async () => {
@@ -66,7 +68,7 @@ describe('expired rows are filtered on every store read path (STORE-04)', () => 
     const ctx = context(client);
     const { live, expired } = await rows(ctx);
     mock.on(QueryCommand).resolves({ Items: [live, expired] });
-    const items = await searchItems(ctx, { namespacePrefix: ['users'] });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'] }));
     expect(items.map((item) => item.key)).toEqual(['live']);
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.FilterExpression).toContain('#ttl');
   });
@@ -76,7 +78,9 @@ describe('expired rows are filtered on every store read path (STORE-04)', () => 
     const ctx = context(client);
     const { live, expired } = await rows(ctx);
     mock.on(ScanCommand).resolves({ Items: [expired, live] });
-    await expect(listNamespaces(ctx, { limit: 10, offset: 0 })).resolves.toEqual([['users', 'u1']]);
+    await expect(
+      listNamespaces(ctx, parseListOperation({ limit: 10, offset: 0 })),
+    ).resolves.toEqual([['users', 'u1']]);
     const filter = mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression ?? '';
     expect(filter).toContain('attribute_exists(#ns)');
     expect(filter).toContain('#ttl');

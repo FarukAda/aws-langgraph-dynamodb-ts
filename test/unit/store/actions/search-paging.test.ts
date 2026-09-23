@@ -6,9 +6,11 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { listNamespaces } from '../../../../src/store/actions/list-namespaces';
 import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { parseListOperation } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import type { StoreItemRecord } from '../../../../src/store/types';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -58,7 +60,7 @@ describe('plain search pages stop at offset + limit (STORE-02)', () => {
     const { serde, loads } = countingSerde();
     const ctx = context(client, { serde, maxScanItems: 2 });
     mock.on(QueryCommand).resolves({ Items: await rows(ctx, 3, () => 'note') });
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], limit: 1 });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], limit: 1 }));
     expect(items.map((item) => item.key)).toEqual(['k0']);
     expect(loads).toHaveBeenCalledTimes(1);
   });
@@ -74,11 +76,14 @@ describe('plain search pages stop at offset + limit (STORE-02)', () => {
         ? { Items: first, LastEvaluatedKey: { PK: 'STORE#users', SK: 'x' } }
         : { Items: [] };
     });
-    const items = await searchItems(ctx, {
-      namespacePrefix: ['users'],
-      filter: { kind: 'note' },
-      limit: 1,
-    });
+    const items = await searchItems(
+      ctx,
+      parsedSearch({
+        namespacePrefix: ['users'],
+        filter: { kind: 'note' },
+        limit: 1,
+      }),
+    );
     expect(items.map((item) => item.key)).toEqual(['k1']);
     expect(pages).toBe(1);
   });
@@ -96,7 +101,7 @@ describe('semantic search fails fast at the candidate cap (STORE-09)', () => {
     });
     mock.on(QueryCommand).resolves({ Items: await rows(ctx, 3, () => 'note') });
     await expect(
-      searchItems(ctx, { namespacePrefix: ['users'], query: 'hello' }),
+      searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'hello' })),
     ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 'maxSearchCandidates' },
@@ -140,12 +145,15 @@ describe('backend refill hitting the cap (STORE-05)', () => {
       vectorBackend: backend,
     });
     await expect(
-      searchItems(ctx, {
-        namespacePrefix: ['users'],
-        query: 'q',
-        filter: { kind: 'note' },
-        limit: 5,
-      }),
+      searchItems(
+        ctx,
+        parsedSearch({
+          namespacePrefix: ['users'],
+          query: 'q',
+          filter: { kind: 'note' },
+          limit: 5,
+        }),
+      ),
     ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 'maxSearchCandidates' },
@@ -158,7 +166,7 @@ describe('listNamespaces projects only the key attributes (STORE-02)', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [] });
     mock.on(QueryCommand).resolves({ Items: [] });
-    await listNamespaces(context(client), { limit: 10, offset: 0 });
+    await listNamespaces(context(client), parseListOperation({ limit: 10, offset: 0 }));
     const scan = mock.commandCalls(ScanCommand)[0].args[0].input;
     expect(scan.ProjectionExpression).toBe('PK, SK, #ns, #key, #v');
     expect(scan.ExpressionAttributeNames).toMatchObject({
@@ -166,11 +174,14 @@ describe('listNamespaces projects only the key attributes (STORE-02)', () => {
       '#key': 'key',
       '#v': 'v',
     });
-    await listNamespaces(context(client), {
-      limit: 10,
-      offset: 0,
-      matchConditions: [{ matchType: 'prefix', path: ['users'] }],
-    });
+    await listNamespaces(
+      context(client),
+      parseListOperation({
+        limit: 10,
+        offset: 0,
+        matchConditions: [{ matchType: 'prefix', path: ['users'] }],
+      }),
+    );
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.ProjectionExpression).toBe(
       'PK, SK, #ns, #key, #v',
     );
@@ -183,8 +194,12 @@ describe('empty namespace on both paths', () => {
     mock.on(QueryCommand).resolves({ Items: [] });
     const embeddings = { embedQuery: jest.fn(() => [1, 0]), embedDocuments: jest.fn() };
     const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
-    await expect(searchItems(ctx, { namespacePrefix: ['users'] })).resolves.toEqual([]);
-    await expect(searchItems(ctx, { namespacePrefix: ['users'], query: 'q' })).resolves.toEqual([]);
+    await expect(searchItems(ctx, parsedSearch({ namespacePrefix: ['users'] }))).resolves.toEqual(
+      [],
+    );
+    await expect(
+      searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' })),
+    ).resolves.toEqual([]);
   });
 });
 
@@ -203,9 +218,14 @@ describe('a page of zero costs no read (STORE-02)', () => {
     mock.on(QueryCommand).resolves({ Items: await rows(ctx0, 3, () => 'note') });
     const embeddings = { embedQuery: jest.fn(() => [1, 0]), embedDocuments: jest.fn() };
     const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
-    await expect(searchItems(ctx, { namespacePrefix: ['users'], limit: 0 })).resolves.toEqual([]);
     await expect(
-      searchItems(ctx, { namespacePrefix: ['users'], query: 'q', limit: 0, offset: 2 }),
+      searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], limit: 0 })),
+    ).resolves.toEqual([]);
+    await expect(
+      searchItems(
+        ctx,
+        parsedSearch({ namespacePrefix: ['users'], query: 'q', limit: 0, offset: 2 }),
+      ),
     ).resolves.toEqual([]);
     expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
     expect(mock.commandCalls(ScanCommand)).toHaveLength(0);
@@ -214,13 +234,18 @@ describe('a page of zero costs no read (STORE-02)', () => {
 
   it('answers listNamespaces with nothing without a Query or a Scan', async () => {
     const { client, mock } = createStrictDocumentMock();
-    await expect(listNamespaces(context(client), { limit: 0, offset: 0 })).resolves.toEqual([]);
     await expect(
-      listNamespaces(context(client), {
-        limit: 0,
-        offset: 0,
-        matchConditions: [{ matchType: 'prefix', path: ['users'] }],
-      }),
+      listNamespaces(context(client), parseListOperation({ limit: 0, offset: 0 })),
+    ).resolves.toEqual([]);
+    await expect(
+      listNamespaces(
+        context(client),
+        parseListOperation({
+          limit: 0,
+          offset: 0,
+          matchConditions: [{ matchType: 'prefix', path: ['users'] }],
+        }),
+      ),
     ).resolves.toEqual([]);
     expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
     expect(mock.commandCalls(ScanCommand)).toHaveLength(0);
@@ -234,11 +259,14 @@ describe('a filtered batch that leaves the page short keeps reading', () => {
     mock
       .on(QueryCommand)
       .resolves({ Items: await rows(ctx, 10, (i) => (i === 9 ? 'note' : 'doc')) });
-    const items = await searchItems(ctx, {
-      namespacePrefix: ['users'],
-      filter: { kind: 'note' },
-      limit: 1,
-    });
+    const items = await searchItems(
+      ctx,
+      parsedSearch({
+        namespacePrefix: ['users'],
+        filter: { kind: 'note' },
+        limit: 1,
+      }),
+    );
     expect(items.map((item) => item.key)).toEqual(['k9']);
   });
 });

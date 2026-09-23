@@ -5,6 +5,7 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { listNamespaces } from '../../../../src/store/actions/list-namespaces';
 import { partitionKey, sortKey } from '../../../../src/store/internal/keys';
+import { parseListOperation } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -35,29 +36,22 @@ const items = [
   row(['orgs', 'o1']),
 ];
 
-describe('listNamespaces maxDepth validation (M10)', () => {
-  it('rejects a non-positive maxDepth instead of silently inverting truncation', async () => {
-    // Array.prototype.slice(0, -1) drops the *last* element, so a negative
-    // maxDepth silently returned a truncated-from-the-end namespace instead
-    // of erroring.
-    const { client } = createStrictDocumentMock();
-    await expect(
-      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: -1 }),
-    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
-    await expect(
-      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: 0 }),
-    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
-    await expect(
-      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: 1.5 }),
-    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
-  });
-});
-
+/**
+ * A non-positive or non-integer `maxDepth` — Array.prototype.slice(0, -1)
+ * drops the *last* element, so a negative one silently returned a
+ * truncated-from-the-end namespace instead of erroring — is refused by the
+ * parser before `listNamespaces` ever runs (see `parseListOperation` in
+ * `test/unit/store/internal/parse.test.ts`); this action no longer checks its
+ * input's shape.
+ */
 describe('listNamespaces', () => {
   it('returns distinct namespaces, sorted', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: items });
-    const out = await listNamespaces(context(client), { limit: 100, offset: 0 });
+    const out = await listNamespaces(
+      context(client),
+      parseListOperation({ limit: 100, offset: 0 }),
+    );
     expect(out).toEqual([
       ['orgs', 'o1'],
       ['users', 'u1'],
@@ -68,7 +62,10 @@ describe('listNamespaces', () => {
   it('truncates to maxDepth and dedupes', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: items });
-    const out = await listNamespaces(context(client), { limit: 100, offset: 0, maxDepth: 1 });
+    const out = await listNamespaces(
+      context(client),
+      parseListOperation({ limit: 100, offset: 0, maxDepth: 1 }),
+    );
     expect(out).toEqual([['orgs'], ['users']]);
   });
 
@@ -77,18 +74,24 @@ describe('listNamespaces', () => {
     mock.on(ScanCommand).resolves({
       Items: [row(['a b', 'c']), row(['a', 'b c'])],
     });
-    const out = await listNamespaces(context(client), { limit: 100, offset: 0 });
+    const out = await listNamespaces(
+      context(client),
+      parseListOperation({ limit: 100, offset: 0 }),
+    );
     expect(out).toHaveLength(2);
   });
 
   it('scopes to a Query and applies match conditions for a concrete prefix root', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: items });
-    const out = await listNamespaces(context(client), {
-      limit: 100,
-      offset: 0,
-      matchConditions: [{ matchType: 'prefix', path: ['users'] }],
-    });
+    const out = await listNamespaces(
+      context(client),
+      parseListOperation({
+        limit: 100,
+        offset: 0,
+        matchConditions: [{ matchType: 'prefix', path: ['users'] }],
+      }),
+    );
     expect(out).toEqual([
       ['users', 'u1'],
       ['users', 'u2'],
@@ -103,11 +106,14 @@ describe('listNamespaces', () => {
   it('falls back to a Scan when a prefix condition starts with a wildcard', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: items });
-    const out = await listNamespaces(context(client), {
-      limit: 100,
-      offset: 0,
-      matchConditions: [{ matchType: 'prefix', path: ['*', 'u1'] }],
-    });
+    const out = await listNamespaces(
+      context(client),
+      parseListOperation({
+        limit: 100,
+        offset: 0,
+        matchConditions: [{ matchType: 'prefix', path: ['*', 'u1'] }],
+      }),
+    );
     expect(out).toEqual([['users', 'u1']]);
   });
 
@@ -123,7 +129,7 @@ describe('listNamespaces', () => {
     const page = async (rows: ReturnType<typeof row>[]): Promise<string[][]> => {
       const { client, mock } = createStrictDocumentMock();
       mock.on(ScanCommand).resolves({ Items: rows });
-      return listNamespaces(context(client), { limit: 1, offset: 0 });
+      return listNamespaces(context(client), parseListOperation({ limit: 1, offset: 0 }));
     };
     const forwards = await page([row(precomposed), row(decomposed)]);
     const backwards = await page([row(decomposed), row(precomposed)]);
@@ -133,28 +139,17 @@ describe('listNamespaces', () => {
   it('applies offset and limit', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: items });
-    const out = await listNamespaces(context(client), { limit: 1, offset: 1 });
+    const out = await listNamespaces(context(client), parseListOperation({ limit: 1, offset: 1 }));
     expect(out).toEqual([['users', 'u1']]);
-  });
-
-  it('throws VALIDATION on a negative offset', async () => {
-    const { client } = createStrictDocumentMock();
-    await expect(listNamespaces(context(client), { limit: 10, offset: -1 })).rejects.toMatchObject({
-      code: ErrorCode.VALIDATION,
-    });
-  });
-
-  it('throws VALIDATION on a non-integer limit', async () => {
-    const { client } = createStrictDocumentMock();
-    await expect(listNamespaces(context(client), { limit: 1.5, offset: 0 })).rejects.toMatchObject({
-      code: ErrorCode.VALIDATION,
-    });
   });
 
   it('filters to store items and skips foreign rows on a shared table', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [{ SK: 'META##c' }, row(['users', 'u1'])] });
-    const out = await listNamespaces(context(client), { limit: 100, offset: 0 });
+    const out = await listNamespaces(
+      context(client),
+      parseListOperation({ limit: 100, offset: 0 }),
+    );
     expect(out).toEqual([['users', 'u1']]);
     expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toContain(
       'attribute_exists(#ns)',
@@ -167,7 +162,9 @@ describe('listNamespaces', () => {
     const ctx = { ...context(client), maxScanItems: 3 };
     // 4 items under a 3-item cap must throw `RESULT_TRUNCATED`, proving the
     // configured cap (not the old unconfigurable 10,000 default) is in effect.
-    await expect(listNamespaces(ctx, { limit: 100, offset: 0 })).rejects.toMatchObject({
+    await expect(
+      listNamespaces(ctx, parseListOperation({ limit: 100, offset: 0 })),
+    ).rejects.toMatchObject({
       code: ErrorCode.RESULT_TRUNCATED,
     });
   });

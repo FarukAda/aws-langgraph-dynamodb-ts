@@ -1,9 +1,9 @@
 import {
-  assertMatchType,
   matchNamespace,
   prefixRoot,
   truncateDepth,
 } from '../../../../src/store/internal/namespace-match';
+import { parseListOperation } from '../../../../src/store/internal/parse';
 
 describe('matchNamespace', () => {
   it('matches a prefix condition, honoring * wildcards', () => {
@@ -59,25 +59,33 @@ describe('prefixRoot', () => {
  * The contract defines exactly two match types
  * (@langchain/langgraph-checkpoint@1.1.5 dist/store/base.d.ts:211). An
  * unrecognised one took the suffix branch and answered as if the caller had
- * asked for a suffix match — a wrong answer, not an obvious failure.
+ * asked for a suffix match — a wrong answer, not an obvious failure. The
+ * parser that builds every condition `matchNamespace` sees now refuses it
+ * before construction; `matchNamespace` itself trusts the type it is handed
+ * and no longer checks it (see `Throws: nothing`).
  */
-describe('matchNamespace refuses a match type it does not define', () => {
-  it.each(['contains', '', undefined, 42])('rejects %p', (matchType) => {
-    expect(() => matchNamespace(['users', 'u1'], { matchType, path: ['u1'] } as never)).toThrow(
-      /matchType/,
-    );
+describe('an unrecognised match type is refused before matchNamespace ever sees it', () => {
+  const listing = (matchType: unknown) =>
+    parseListOperation({
+      offset: 0,
+      limit: 0,
+      matchConditions: [{ matchType: matchType as never, path: [] }],
+    });
+
+  it.each(['contains', '', undefined, 42])('parseListOperation rejects %p', (matchType) => {
+    expect(() => listing(matchType)).toThrow(/matchType/);
   });
 
-  it('accepts the two it does define', () => {
+  it('matchNamespace accepts the two types the parser ever hands it', () => {
     expect(matchNamespace(['users', 'u1'], { matchType: 'prefix', path: ['users'] })).toBe(true);
     expect(matchNamespace(['users', 'u1'], { matchType: 'suffix', path: ['u1'] })).toBe(true);
   });
 
-  it('assertMatchType echoes a string and describes anything else by type, a bigint included', () => {
-    expect(() => assertMatchType('contains' as never)).toThrow(/received "contains"/);
-    expect(() => assertMatchType(10n as never)).toThrow(
+  it('echoes a string and describes anything else by type, a bigint included', () => {
+    expect(() => listing('contains')).toThrow(/received "contains"/);
+    expect(() => listing(10n)).toThrow(
       expect.objectContaining({ message: expect.stringMatching(/received bigint/) }),
     );
-    expect(() => assertMatchType('suffix')).not.toThrow();
+    expect(() => listing('suffix')).not.toThrow();
   });
 });

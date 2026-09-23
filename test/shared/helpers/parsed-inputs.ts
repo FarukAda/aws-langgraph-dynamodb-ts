@@ -1,5 +1,11 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
-import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
+import type {
+  Checkpoint,
+  CheckpointMetadata,
+  PendingWrite,
+  PutOperation,
+  SearchOperation,
+} from '@langchain/langgraph-checkpoint';
 
 import {
   buildCheckpointItems,
@@ -12,6 +18,14 @@ import {
   type ThreadAddress,
 } from '../../../src/checkpointer/internal/parse';
 import type { CheckpointerContext } from '../../../src/checkpointer/internal/setup';
+import {
+  parseNamespacePrefix,
+  parseOperation,
+  parseSearch,
+  type ParsedDelete,
+  type ParsedPut,
+  type ParsedSearch,
+} from '../../../src/store/internal/parse';
 
 /**
  * Builders for the parsed inputs internal functions take. Every one goes
@@ -76,4 +90,22 @@ export async function writeItems(
     taskId,
   );
   return buildWriteItems(context, request, writeGroup, ttlTimestamp);
+}
+
+/** A batch put (or, for a `null` value, delete) as the store dispatches it. */
+export function parsedPut(op: PutOperation): ParsedPut | ParsedDelete {
+  const parsed = parseOperation(op);
+  if (parsed.kind !== 'put' && parsed.kind !== 'delete') {
+    throw new Error(`expected a put or a delete, parsed a ${parsed.kind}`);
+  }
+  return parsed;
+}
+
+/** A search as the store runs it; `offset` and `limit` override the operation's own. */
+export function parsedSearch(op: SearchOperation, offset?: number, limit?: number): ParsedSearch {
+  return parseSearch(parseNamespacePrefix(op.namespacePrefix, 'namespacePrefix'), {
+    ...op,
+    offset: offset ?? op.offset,
+    limit: limit ?? op.limit,
+  });
 }

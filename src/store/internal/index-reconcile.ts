@@ -10,6 +10,7 @@ import type { VectorBackend, VectorRef } from '../vector-backend';
 import type { JsonValue } from './filter';
 import { narrowWholeRecord, readStoreItem } from './item-mapper';
 import { namespaceMatchesPrefix, partitionKey, sortKey } from './keys';
+import type { Namespace } from './parse';
 import { scopedQuery } from './query';
 import { embedValues } from './semantic-search';
 import type { StoreContext } from './setup';
@@ -77,7 +78,7 @@ async function drainPending(
  */
 export async function collectReconcileTargets(
   context: StoreContext,
-  prefix: string[],
+  prefix: Namespace,
   signal?: AbortSignal,
 ): Promise<ReconcileTarget[]> {
   const now = nowSeconds();
@@ -194,7 +195,7 @@ async function confirmedGone(context: StoreContext, ref: VectorRef): Promise<boo
 export async function pruneOrphans(
   context: StoreContext,
   backend: VectorBackend,
-  prefix: string[],
+  prefix: Namespace,
   live: ReconcileTarget[],
 ): Promise<number> {
   if (!backend.listKeys) {

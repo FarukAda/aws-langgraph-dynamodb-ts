@@ -21,10 +21,17 @@ import {
 } from './actions/reconcile-vector-index';
 import { searchItems } from './actions/search';
 import { runBatch } from './internal/batch-plan';
-import { assertPutArguments, listNamespacesOperation } from './internal/call-arguments';
 import { getItem } from './internal/get-item';
-import { assertOperations, assertSearchPrefix } from './internal/operation-validation';
 import { STORE_SEARCH_KEYS } from './internal/option-keys';
+import {
+  parseListNamespacesOptions,
+  parseNamespacePrefix,
+  parseOperations,
+  type ParsedOperation,
+  parsePutArguments,
+  parseSearch,
+  parseStoreAddress,
+} from './internal/parse';
 import { type StoreContext, setUpStore } from './internal/setup';
 import type { DynamoDBStoreOptions, ListNamespacesOptions, SearchOptions } from './types';
 
@@ -67,37 +74,40 @@ export class DynamoDBStore extends BaseStore {
   /**
    * One operation's result: the item for a get, the page for a search, the
    * namespaces for a listing, and `null` for a put or a delete — the value the
-   * reference store's `batch` answers a put or a delete with.
+   * reference store's `batch` answers a put or a delete with. The kind was
+   * decided once, by the parser that built `operation`, so this switches on it
+   * instead of asking the operation's shape again.
    */
-  private async dispatch(operation: Operation): Promise<SingleResult> {
-    if ('namespacePrefix' in operation) return searchItems(this.context, operation);
-    if ('value' in operation) {
-      await putItem(this.context, operation);
-      return null;
+  private async dispatch(operation: ParsedOperation): Promise<SingleResult> {
+    switch (operation.kind) {
+      case 'search':
+        return searchItems(this.context, operation);
+      case 'put':
+      case 'delete':
+        await putItem(this.context, operation);
+        return null;
+      case 'get':
+        return getItem(this.context, operation.address);
+      case 'list':
+        return listNamespaces(this.context, operation);
     }
-    if ('key' in operation) return getItem(this.context, operation.namespace, operation.key);
-    return listNamespaces(this.context, operation);
   }
 
   /**
-   * Validate and run a batch, with no boundary of its own.
+   * Run a batch of already-parsed operations, with no boundary of its own.
    *
    * The guard is the caller's method, not this: a nested `guardPublic` keeps
    * the brand the *inner* one assigned, so routing `get`, `put`, `delete` and
    * `listNamespaces` through the public {@link batch} reported all four as
    * `store.batch` and left an operator counting AWS failures by
-   * `context.operation` unable to tell them apart. What each method validates
-   * is unchanged: every rule still lives here, where LangGraph's own calls
-   * arrive too.
+   * `context.operation` unable to tell them apart.
    */
-  private async run<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
-    assertOperations(operations);
-    const results = await runBatch(
+  private async execute(operations: readonly ParsedOperation[]): Promise<SingleResult[]> {
+    return runBatch(
       operations,
       (operation) => this.dispatch(operation),
       this.context.readConcurrency,
     );
-    return results as OperationResults<Op>;
   }
 
   /**
@@ -105,15 +115,14 @@ export class DynamoDBStore extends BaseStore {
    * order.
    *
    * Accepts: `operations` — an array of operation objects, in the order they
-   * are to be observed; an empty batch does nothing and returns `[]`. `get`,
-   * `put`, `delete` and `listNamespaces` build their operation and run it
-   * through the same validation and dispatch, as upstream's implementations
-   * do: `get` and `delete` check nothing first, `listNamespaces` checks only
-   * its options object, and `put` checks only what is about the method
-   * (upstream's `.` and `"langgraph"` namespace rules, and a `null` value).
-   * Every other rule is checked here, where LangGraph's own calls arrive too.
-   * Each of the four keeps its own name in `context.operation`, so a failure
-   * says which method the caller called rather than reporting all five alike.
+   * are to be observed; an empty batch does nothing and returns `[]`, parsed
+   * by {@link parseOperations} before any of them runs. `get`, `put`, `delete`
+   * and `listNamespaces` parse their own call the same way and run the same
+   * dispatch, as upstream's implementations do, so the field a malformed call
+   * names is the same whichever of the five reached it — `put` alone adds
+   * upstream's own `.` and `"langgraph"` namespace rules. Each of the four
+   * keeps its own name in `context.operation`, so a failure says which method
+   * the caller called rather than reporting all five alike.
    *
    * Returns: the results in operation order — an item or `null` for a get,
    * matches for a search, namespaces for a listing, `null` for a put or a
@@ -138,7 +147,10 @@ export class DynamoDBStore extends BaseStore {
    * about one round trip rather than ten (see `runBatch`).
    */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
-    return guardPublic('store.batch', () => this.run(operations));
+    return guardPublic('store.batch', async () => {
+      const results = await this.execute(parseOperations(operations));
+      return results as OperationResults<Op>;
+    });
   }
 
   /**
@@ -170,7 +182,12 @@ export class DynamoDBStore extends BaseStore {
    * signal to fire.
    */
   override async get(namespace: string[], key: string): Promise<Item | null> {
-    return guardPublic('store.get', async () => (await this.run([{ namespace, key }]))[0]);
+    return guardPublic('store.get', async () => {
+      const [item] = await this.execute([
+        { kind: 'get', address: parseStoreAddress(namespace, key) },
+      ]);
+      return item as Item | null;
+    });
   }
 
   /**
@@ -197,8 +214,7 @@ export class DynamoDBStore extends BaseStore {
     index?: Parameters<BaseStore['put']>[3],
   ): Promise<void> {
     return guardPublic('store.put', async () => {
-      assertPutArguments(namespace, key, value);
-      await this.run([{ namespace, key, value, index }]);
+      await this.execute([parsePutArguments(namespace, key, value, index)]);
     });
   }
 
@@ -233,7 +249,7 @@ export class DynamoDBStore extends BaseStore {
    */
   override async delete(namespace: string[], key: string): Promise<void> {
     return guardPublic('store.delete', async () => {
-      await this.run([{ namespace, key, value: null }]);
+      await this.execute([{ kind: 'delete', address: parseStoreAddress(namespace, key) }]);
     });
   }
 
@@ -254,10 +270,10 @@ export class DynamoDBStore extends BaseStore {
    * for an item written by a newer version; a classified AWS failure.
    */
   override async listNamespaces(options: ListNamespacesOptions = {}): Promise<string[][]> {
-    return guardPublic(
-      'store.listNamespaces',
-      async () => (await this.run([listNamespacesOperation(options)]))[0],
-    );
+    return guardPublic('store.listNamespaces', async () => {
+      const [namespaces] = await this.execute([parseListNamespacesOptions(options)]);
+      return namespaces as string[][];
+    });
   }
 
   /**
@@ -292,12 +308,11 @@ export class DynamoDBStore extends BaseStore {
     options: SearchOptions = {},
   ): Promise<SearchItem[]> {
     return guardPublic('store.search', () => {
-      /** The search action checks the prefix too; this call names it before `options`. */
-      assertSearchPrefix(namespacePrefix);
+      const prefix = parseNamespacePrefix(namespacePrefix, 'namespacePrefix');
       assertShape(options, STORE_SEARCH_KEYS, 'options');
       assertSignalLike(options.signal);
       const { signal, ...rest } = options;
-      return searchItems(this.context, { namespacePrefix, ...rest }, signal);
+      return searchItems(this.context, parseSearch(prefix, rest), signal);
     });
   }
 

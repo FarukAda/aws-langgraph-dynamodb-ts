@@ -7,6 +7,7 @@ import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -39,7 +40,10 @@ describe('searchItems offloaded reads (CODEC-14)', () => {
       );
     }
     mock.on(QueryCommand).resolves({ Items: records });
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], filter: { i: 3 } });
+    const items = await searchItems(
+      ctx,
+      parsedSearch({ namespacePrefix: ['users'], filter: { i: 3 } }),
+    );
     expect(items.map((item) => item.key)).toEqual(['k3']);
     expect(maxInFlight()).toBeGreaterThan(1);
     expect(maxInFlight()).toBeLessThanOrEqual(8);

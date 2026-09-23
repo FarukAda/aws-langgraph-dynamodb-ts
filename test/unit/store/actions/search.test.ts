@@ -7,6 +7,7 @@ import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -51,7 +52,7 @@ describe('searchItems', () => {
   it('queries the scoped partition and returns only items under the prefix', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: await records(context(client)) });
-    const items = await searchItems(context(client), { namespacePrefix: ['users'] });
+    const items = await searchItems(context(client), parsedSearch({ namespacePrefix: ['users'] }));
     expect(items.map((i) => i.key).sort()).toEqual(['a', 'b']);
     expect(
       mock.commandCalls(QueryCommand)[0].args[0].input.ExpressionAttributeValues,
@@ -63,10 +64,13 @@ describe('searchItems', () => {
   it('applies metadata filters with operators', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: await records(context(client)) });
-    const items = await searchItems(context(client), {
-      namespacePrefix: ['users'],
-      filter: { score: { $gte: 5 } },
-    });
+    const items = await searchItems(
+      context(client),
+      parsedSearch({
+        namespacePrefix: ['users'],
+        filter: { score: { $gte: 5 } },
+      }),
+    );
     expect(items.map((i) => i.key)).toEqual(['b']);
   });
 
@@ -75,7 +79,10 @@ describe('searchItems', () => {
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
     mock.on(QueryCommand).resolves({ Items: await records(ctx) });
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'find b' });
+    const items = await searchItems(
+      ctx,
+      parsedSearch({ namespacePrefix: ['users'], query: 'find b' }),
+    );
     expect(items.map((i) => i.key)).toEqual(['b', 'a']);
     expect(items[0].score).toBeGreaterThan(items[1].score ?? 0);
   });
@@ -83,11 +90,14 @@ describe('searchItems', () => {
   it('honors offset and limit', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: await records(context(client)) });
-    const items = await searchItems(context(client), {
-      namespacePrefix: ['users'],
-      limit: 1,
-      offset: 1,
-    });
+    const items = await searchItems(
+      context(client),
+      parsedSearch({
+        namespacePrefix: ['users'],
+        limit: 1,
+        offset: 1,
+      }),
+    );
     expect(items).toHaveLength(1);
   });
 
@@ -110,7 +120,7 @@ describe('searchItems', () => {
       { createdAt: 'c', updatedAt: 'u' },
     );
     mock.on(QueryCommand).resolves({ Items: [withVec, noVec] });
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
     expect(items.map((i) => i.key)).toEqual(['b', 'x']);
     expect(items[1].score).toBeUndefined();
   });
@@ -122,7 +132,7 @@ describe('searchItems', () => {
     mock.on(ScanCommand).resolves({
       Items: [{ PK: 'thread-1', SK: 'META##ckpt-1' }, { PK: 'sess-1', SK: 'SESSION' }, storeItem!],
     });
-    const items = await searchItems(ctx, { namespacePrefix: [] });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: [] }));
     expect(items.map((i) => i.key)).toEqual(['a']);
     expect(mock.commandCalls(ScanCommand)[0].args[0].input.FilterExpression).toContain(
       'attribute_exists(#ns)',
@@ -132,10 +142,13 @@ describe('searchItems', () => {
   it('ignores a query when no index is configured (unranked matches)', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: await records(context(client)) });
-    const items = await searchItems(context(client), {
-      namespacePrefix: ['users'],
-      query: 'anything',
-    });
+    const items = await searchItems(
+      context(client),
+      parsedSearch({
+        namespacePrefix: ['users'],
+        query: 'anything',
+      }),
+    );
     expect(items.map((i) => i.key).sort()).toEqual(['a', 'b']);
     expect(items.every((i) => i.score === undefined)).toBe(true);
   });
@@ -170,7 +183,7 @@ describe('searchItems', () => {
       index: { dims: 2, embeddings: embeddings as never },
       vectorBackend: vectorBackend,
     });
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
     expect(items.map((i) => i.key)).toEqual(['b', 'a']);
     expect(items.map((i) => i.score)).toEqual([0.9, 0.5]);
     expect(vectorBackend.query).toHaveBeenCalledWith(['users'], [0, 1], 10);
@@ -189,7 +202,7 @@ describe('searchItems', () => {
       index: { dims: 2, embeddings: embeddings as never },
       vectorBackend: vectorBackend,
     });
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
     expect(items).toEqual([]);
   });
 
@@ -216,7 +229,7 @@ describe('searchItems', () => {
       index: { dims: 2, embeddings: embeddings as never },
       vectorBackend: vectorBackend,
     });
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
     expect(items.map((i) => i.key)).toEqual(['a']);
     /** getItem must only be called for the in-prefix match, not the skipped one. */
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
@@ -262,12 +275,15 @@ describe('searchItems', () => {
       index: { dims: 2, embeddings: embeddings as never },
       vectorBackend: vectorBackend,
     });
-    const items = await searchItems(fullCtx, {
-      namespacePrefix: ['users'],
-      query: 'q',
-      limit: 1,
-      filter: { status: 'active' },
-    });
+    const items = await searchItems(
+      fullCtx,
+      parsedSearch({
+        namespacePrefix: ['users'],
+        query: 'q',
+        limit: 1,
+        filter: { status: 'active' },
+      }),
+    );
     expect(items.map((i) => i.key)).toEqual(['a']);
     expect(vectorBackend.query).toHaveBeenCalledTimes(2);
     const [, , firstTopK] = vectorBackend.query.mock.calls[0];
@@ -290,7 +306,10 @@ describe('searchItems', () => {
       maxSearchCandidates: 5,
     });
     await expect(
-      searchItems(ctx, { namespacePrefix: ['users'], query: 'q', offset: 4, limit: 3 }),
+      searchItems(
+        ctx,
+        parsedSearch({ namespacePrefix: ['users'], query: 'q', offset: 4, limit: 3 }),
+      ),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
     // The guard must fail loud *before* ever querying the backend with a
     // clamped (and therefore wrong) topK — this was the under-return bug.
@@ -329,44 +348,37 @@ describe('searchItems', () => {
       index: { dims: 2, embeddings: embeddings as never },
       vectorBackend: vectorBackend,
     });
-    const items = await searchItems(ctx, {
-      namespacePrefix: ['users'],
-      query: 'q',
-      offset: 1,
-      limit: 1,
-    });
+    const items = await searchItems(
+      ctx,
+      parsedSearch({
+        namespacePrefix: ['users'],
+        query: 'q',
+        offset: 1,
+        limit: 1,
+      }),
+    );
     expect(items).toHaveLength(1);
     expect(items[0].key).toBe('a');
   });
 });
 
+/**
+ * A non-object filter and a non-string query are refused by the parser before
+ * `searchItems` ever runs (see `parseSearch` in `test/unit/store/internal/parse.test.ts`);
+ * this action no longer checks its input's shape.
+ */
 describe('filter and query shape', () => {
-  it('refuses a non-object filter, naming it', async () => {
-    const { client } = createStrictDocumentMock();
-    for (const filter of ['x', [], null] as never[]) {
-      await expect(
-        searchItems(context(client), { namespacePrefix: [], filter }),
-      ).rejects.toMatchObject({ code: 'VALIDATION', context: { field: 'filter' } });
-    }
-  });
-
-  it('refuses a non-string query, naming it', async () => {
-    const { client } = createStrictDocumentMock();
-    for (const query of [123, ['x'], null] as never[]) {
-      await expect(
-        searchItems(context(client), { namespacePrefix: [], query }),
-      ).rejects.toMatchObject({ code: 'VALIDATION', context: { field: 'query' } });
-    }
-  });
-
   it('accepts an empty query and a filter clause carrying a non-operator key', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [] });
-    await expect(searchItems(context(client), { namespacePrefix: [], query: '' })).resolves.toEqual(
-      [],
-    );
     await expect(
-      searchItems(context(client), { namespacePrefix: [], filter: { a: { $foo: 1 } } }),
+      searchItems(context(client), parsedSearch({ namespacePrefix: [], query: '' })),
+    ).resolves.toEqual([]);
+    await expect(
+      searchItems(
+        context(client),
+        parsedSearch({ namespacePrefix: [], filter: { a: { $foo: 1 } } }),
+      ),
     ).resolves.toEqual([]);
   });
 });

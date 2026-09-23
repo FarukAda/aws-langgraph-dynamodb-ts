@@ -12,6 +12,7 @@ import {
   rejectRowWrites,
   resolveRowWrites,
 } from '../../../shared/helpers/ddb-mock';
+import { parsedPut } from '../../../shared/helpers/parsed-inputs';
 
 function trackingOffloader() {
   return {
@@ -60,7 +61,7 @@ async function rowCommittedBy(value: PutOperation['value']): Promise<CommittedRo
       row = { rev: committed.rev, value: committed.value };
       return {};
     });
-  await putItem(context(client, trackingOffloader()), { ...OP, value });
+  await putItem(context(client, trackingOffloader()), parsedPut({ ...OP, value }));
   return row!;
 }
 
@@ -97,7 +98,7 @@ describe("store.put never releases a racer's committed object when its own write
       );
     rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
 
-    await expect(putItem(context(client, offloader), OP)).rejects.toMatchObject({
+    await expect(putItem(context(client, offloader), parsedPut(OP))).rejects.toMatchObject({
       code: ErrorCode.RETRY_EXHAUSTED,
       name: 'DynamoDBLangGraphError',
     });
@@ -131,7 +132,7 @@ describe('store.put releases the payload a successful overwrite superseded witho
     resolveRowWrites(mock);
 
     await expect(
-      putItem(context(client, offloader), { ...OP, value: { note: 'C2' } }),
+      putItem(context(client, offloader), parsedPut({ ...OP, value: { note: 'C2' } })),
     ).resolves.toBeUndefined();
 
     expect(racer.value.s3Key).not.toBe(superseded.value.s3Key);
@@ -150,7 +151,7 @@ describe('store.put releases the payload a successful overwrite superseded witho
       mock.on(GetCommand).resolves(existing);
       resolveRowWrites(mock);
 
-      await putItem(context(client, offloader), { ...OP, value: { note: 'C2' } });
+      await putItem(context(client, offloader), parsedPut({ ...OP, value: { note: 'C2' } }));
 
       expect(mock.commandCalls(GetCommand)).toHaveLength(1);
       expect(deletedBy(offloader)).toEqual([]);

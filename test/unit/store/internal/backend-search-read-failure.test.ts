@@ -10,6 +10,7 @@ import { searchViaBackend } from '../../../../src/store/internal/backend-search'
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -27,7 +28,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
 const index = { dims: 2, embeddings: { embedQuery: () => [0, 1] } as never };
 
 const ITEM_TIMES = { createdAt: 'c', updatedAt: 'u' };
-const PREFIX_QUERY = { namespacePrefix: ['users'], query: 'q' };
+const PREFIX_QUERY = parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2);
 
 const backendWith = (matches: unknown[]) => ({
   upsert: jest.fn(),
@@ -73,7 +74,7 @@ describe('searchViaBackend when a match cannot be read', () => {
     });
     const backend = backendWith(twoMatches);
     await expect(
-      searchViaBackend(ctx, backend as never, index, PREFIX_QUERY, 0, 2),
+      searchViaBackend(ctx, backend as never, index, PREFIX_QUERY),
     ).rejects.toMatchObject({ code: (failure as DynamoDBLangGraphError).code });
   });
 
@@ -90,7 +91,7 @@ describe('searchViaBackend when a match cannot be read', () => {
     });
     const backend = backendWith(twoMatches);
     await expect(
-      searchViaBackend(ctx, backend as never, index, PREFIX_QUERY, 0, 2),
+      searchViaBackend(ctx, backend as never, index, PREFIX_QUERY),
     ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
   });
 
@@ -121,7 +122,7 @@ describe('searchViaBackend when a match cannot be read', () => {
     });
     const backend = backendWith(twoMatches);
     await expect(
-      searchViaBackend(ctx, backend as never, index, PREFIX_QUERY, 0, 2),
+      searchViaBackend(ctx, backend as never, index, PREFIX_QUERY),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 's3' } });
     expect(warn).not.toHaveBeenCalled();
   });
@@ -141,7 +142,7 @@ describe('searchViaBackend when a match cannot be read', () => {
       twoMatches[0],
       { namespace: ['users', 'u#1'], key: 'k2', score: 0.8 },
     ]);
-    const found = await searchViaBackend(ctx, backend, index, PREFIX_QUERY, 0, 2);
+    const found = await searchViaBackend(ctx, backend, index, PREFIX_QUERY);
     expect(found.map((item) => item.key)).toEqual(['k1']);
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
     expect(warn).toHaveBeenCalledWith(

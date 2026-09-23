@@ -11,6 +11,7 @@ import {
   selectOrphans,
 } from '../../../../src/store/internal/index-reconcile';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { parseNamespace } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -80,7 +81,12 @@ describe('pruneOrphans', () => {
   it('returns 0 and logs when the backend has no listKeys', async () => {
     const backend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
-    const count = await pruneOrphans(context(undefined as never, { logger }), backend, ['n'], []);
+    const count = await pruneOrphans(
+      context(undefined as never, { logger }),
+      backend,
+      parseNamespace(['n'], 'namespacePrefix'),
+      [],
+    );
     expect(count).toBe(0);
     expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('prune skipped'), {
       prefix: ['n'],
@@ -92,7 +98,12 @@ describe('pruneOrphans', () => {
     const backend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const deep = Array.from({ length: MAX_LOGGED_LABELS + 2 }, (_unused, at) => `d${at}`);
-    await pruneOrphans(context(undefined as never, { logger }), backend, deep, []);
+    await pruneOrphans(
+      context(undefined as never, { logger }),
+      backend,
+      parseNamespace(deep, 'namespacePrefix'),
+      [],
+    );
     expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('prune skipped'), {
       prefix: [...deep.slice(0, MAX_LOGGED_LABELS), `…(len ${deep.length})`],
     });
@@ -113,7 +124,7 @@ describe('pruneOrphans', () => {
     const count = await pruneOrphans(
       context(client),
       backend,
-      ['n'],
+      parseNamespace(['n'], 'namespacePrefix'),
       [{ namespace: ['n'], key: 'live', embedding: [1] }],
     );
     expect(count).toBe(1);
@@ -135,7 +146,12 @@ describe('pruneOrphans', () => {
         .fn()
         .mockResolvedValue([{ namespace: ['n'], key: 'written-during-reconcile' }]),
     };
-    const count = await pruneOrphans(context(client), backend, ['n'], []);
+    const count = await pruneOrphans(
+      context(client),
+      backend,
+      parseNamespace(['n'], 'namespacePrefix'),
+      [],
+    );
     expect(count).toBe(0);
     expect(backend.delete).not.toHaveBeenCalled();
   });
@@ -159,7 +175,9 @@ describe('pruneOrphans', () => {
       query: jest.fn(),
       listKeys: jest.fn().mockResolvedValue([{ namespace, key }]),
     };
-    await expect(pruneOrphans(ctx, backend, ['n'], [])).resolves.toBe(0);
+    await expect(
+      pruneOrphans(ctx, backend, parseNamespace(['n'], 'namespacePrefix'), []),
+    ).resolves.toBe(0);
     expect(info).toHaveBeenCalledWith(expect.stringContaining('item reappeared'), {
       namespace: [
         truncateForLog(label),
@@ -188,7 +206,10 @@ describe('collectReconcileTargets', () => {
     );
     mock.on(QueryCommand).resolves({ Items: [record] });
 
-    const targets = await collectReconcileTargets(ctx, ['users', 'u1']);
+    const targets = await collectReconcileTargets(
+      ctx,
+      parseNamespace(['users', 'u1'], 'namespacePrefix'),
+    );
 
     expect(targets).toEqual([{ namespace: ['users', 'u1'], key: 'a', embedding: [0.5] }]);
     expect(embeddings.embedDocuments).toHaveBeenCalledTimes(1);
@@ -207,7 +228,10 @@ describe('collectReconcileTargets', () => {
     const b = await buildStoreItem(ctx, ['users', 'u1'], 'b', { text: 'abcd' }, meta);
     mock.on(QueryCommand).resolves({ Items: [a, b] });
 
-    const targets = await collectReconcileTargets(ctx, ['users', 'u1']);
+    const targets = await collectReconcileTargets(
+      ctx,
+      parseNamespace(['users', 'u1'], 'namespacePrefix'),
+    );
 
     expect(targets.map((t) => [t.key, t.embedding])).toEqual([
       ['a', [2]],
@@ -234,7 +258,10 @@ describe('collectReconcileTargets', () => {
     const sibling = { ...match, namespace: ['users', 'u10'] };
     mock.on(QueryCommand).resolves({ Items: [match, sibling] });
 
-    const targets = await collectReconcileTargets(ctx, ['users', 'u1']);
+    const targets = await collectReconcileTargets(
+      ctx,
+      parseNamespace(['users', 'u1'], 'namespacePrefix'),
+    );
     expect(targets.map((t) => t.namespace)).toEqual([['users', 'u1']]);
   });
 
@@ -248,7 +275,9 @@ describe('collectReconcileTargets', () => {
       Items: [{ PK: 'STORE#n', SK: 'foreign', namespace: 'not-an-array', key: 'k' }],
     });
 
-    await expect(collectReconcileTargets(ctx, ['n'])).resolves.toEqual([]);
+    await expect(
+      collectReconcileTargets(ctx, parseNamespace(['n'], 'namespacePrefix')),
+    ).resolves.toEqual([]);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('skipped a row'),
       expect.objectContaining({ sortKey: 'foreign' }),
@@ -269,7 +298,9 @@ describe('collectReconcileTargets', () => {
       Items: [{ PK: 'STORE#n', SK: sortKey, namespace: 'not-an-array', key: 'k' }],
     });
 
-    await expect(collectReconcileTargets(ctx, ['n'])).resolves.toEqual([]);
+    await expect(
+      collectReconcileTargets(ctx, parseNamespace(['n'], 'namespacePrefix')),
+    ).resolves.toEqual([]);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('skipped a row'), {
       sortKey: truncateForLog(sortKey),
     });

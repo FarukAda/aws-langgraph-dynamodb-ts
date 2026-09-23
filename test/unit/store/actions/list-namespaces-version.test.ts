@@ -5,6 +5,7 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { listNamespaces } from '../../../../src/store/actions/list-namespaces';
 import { partitionKey, sortKey } from '../../../../src/store/internal/keys';
+import { parseListOperation } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -74,7 +75,7 @@ describe.each([
     serve(mock, [row(['users', 'a']), row(['users', 'b'], { v: 2 })]);
 
     await expect(
-      listNamespaces(context(client), { limit: 10, offset: 0, ...scope }),
+      listNamespaces(context(client), parseListOperation({ limit: 10, offset: 0, ...scope })),
     ).rejects.toMatchObject({ code: ErrorCode.FORMAT_UNSUPPORTED, context: { field: 'v' } });
   });
 
@@ -82,7 +83,10 @@ describe.each([
     const { client, mock } = createStrictDocumentMock();
     serve(mock, [row(['users', 'a'], { v: 1 }), row(['users', 'b'])]);
 
-    const namespaces = await listNamespaces(context(client), { limit: 10, offset: 0, ...scope });
+    const namespaces = await listNamespaces(
+      context(client),
+      parseListOperation({ limit: 10, offset: 0, ...scope }),
+    );
 
     expect(namespaces).toEqual([
       ['users', 'a'],
@@ -102,7 +106,7 @@ describe.each([
     serve(mock, [{ PK: 'STORE#users', SK: 'other', v: 9 }, row(['users', 'a'])]);
 
     await expect(
-      listNamespaces(context(client), { limit: 10, offset: 0, ...scope }),
+      listNamespaces(context(client), parseListOperation({ limit: 10, offset: 0, ...scope })),
     ).rejects.toMatchObject({ code: ErrorCode.FORMAT_UNSUPPORTED, context: { field: 'v' } });
   });
 
@@ -115,7 +119,10 @@ describe.each([
     const { client, mock } = createStrictDocumentMock();
     serve(mock, [{ PK: 'STORE#users', SK: 'other', v: 1 }, row(['users', 'a'])]);
 
-    const namespaces = await listNamespaces(context(client), { limit: 10, offset: 0, ...scope });
+    const namespaces = await listNamespaces(
+      context(client),
+      parseListOperation({ limit: 10, offset: 0, ...scope }),
+    );
 
     expect(namespaces).toEqual([['users', 'a']]);
   });

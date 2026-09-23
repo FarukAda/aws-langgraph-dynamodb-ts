@@ -1,7 +1,7 @@
 import { validationError } from '../../shared/errors/errors';
 import { collectReconcileTargets, pruneOrphans, pushEmbeddings } from '../internal/index-reconcile';
+import { parseNamespace } from '../internal/parse';
 import type { StoreContext } from '../internal/setup';
-import { validateNamespace } from '../internal/validation';
 
 /** Counts returned by {@link reconcileVectorIndex}. */
 export interface VectorReconcileResult {
@@ -38,7 +38,7 @@ export async function reconcileVectorIndex(
   namespacePrefix: string[],
   options: { signal?: AbortSignal } = {},
 ): Promise<VectorReconcileResult> {
-  validateNamespace(namespacePrefix, 'namespacePrefix');
+  const prefix = parseNamespace(namespacePrefix, 'namespacePrefix');
   if (!context.index || !context.vectorBackend) {
     throw validationError(
       'reconcileVectorIndex requires a configured index and vectorBackend',
@@ -46,8 +46,8 @@ export async function reconcileVectorIndex(
     );
   }
   const backend = context.vectorBackend;
-  const targets = await collectReconcileTargets(context, namespacePrefix, options.signal);
+  const targets = await collectReconcileTargets(context, prefix, options.signal);
   const upserted = await pushEmbeddings(backend, targets);
-  const pruned = await pruneOrphans(context, backend, namespacePrefix, targets);
+  const pruned = await pruneOrphans(context, backend, prefix, targets);
   return { upserted, pruned };
 }

@@ -9,6 +9,7 @@ import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import type { LogArgument, Logger } from '../../../../src/shared/logging/logger';
 import { getItem } from '../../../../src/store/internal/get-item';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -102,7 +103,7 @@ describe('critical paths leave an operational trace (I7)', () => {
       maxScanItems: 10000,
       vectorScoreDirection: 'relevance',
     };
-    await expect(getItem(context, ['ns'], 'k')).resolves.toBeNull();
+    await expect(getItem(context, parseStoreAddress(['ns'], 'k'))).resolves.toBeNull();
     expect(notable(lines)).toHaveLength(1);
     expect(notable(lines)[0].level).toBe('warn');
   });

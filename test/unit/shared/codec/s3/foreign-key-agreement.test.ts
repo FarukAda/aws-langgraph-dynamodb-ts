@@ -14,6 +14,7 @@ import { assertKeyInScope } from '../../../../../src/shared/codec/s3/key-scope';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../../src/shared/logging/logger';
 import { getItem } from '../../../../../src/store/internal/get-item';
+import { parseStoreAddress } from '../../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../../shared/helpers/ddb-mock';
 
@@ -103,7 +104,7 @@ async function readStore(offloader: ReturnType<typeof scopedOffloader>): Promise
       value: foreignDescriptor(['victims', 'v1', 'secret']),
     },
   });
-  return getItem(context, ['users', 'u1'], 'profile');
+  return getItem(context, parseStoreAddress(['users', 'u1'], 'profile'));
 }
 
 /** `saver.getTuple`, reading one foreign checkpoint payload row. */
