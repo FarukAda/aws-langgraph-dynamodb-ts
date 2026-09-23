@@ -31,8 +31,10 @@ declare const parsedWindowBrand: unique symbol;
  * A session id checked as the partition key it becomes. {@link parseSessionId}
  * is the only way to obtain one, so an internal function that asks for a
  * `SessionId` cannot be handed one nobody checked, and does not check it again.
- * It used to be checked by each of the five history actions and again by the
- * session adapter. The brand is phantom: at run time it is the caller's string.
+ * Each of the four history actions that take one — add, clear, get and
+ * reconcile — parses it on every call, and the session adapter parses the id
+ * it is bound to when it is built. The brand is phantom: at run time it is the
+ * caller's string.
  */
 export type SessionId = string & { readonly [sessionIdBrand]: true };
 
@@ -91,18 +93,24 @@ export function parseSessionId(value: unknown): SessionId {
  * `redactedMessage`'s own and is not applied again here — a second cut would
  * mark the length of the first cut's output instead of the length the caller's
  * text really had, which is the one thing the mark exists to state.
+ *
+ * Walked by index rather than with `Array.prototype.map`, which keeps a hole
+ * in a sparse array without visiting it: a hole is read as the `undefined` it
+ * is and refused like any other value that is not a message.
  */
 function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
-  return messages.map((message, index) => {
+  const stored: StoredMessage[] = [];
+  for (let index = 0; index < messages.length; index += 1) {
     try {
-      return mapChatMessagesToStoredMessages([message])[0];
+      stored.push(mapChatMessagesToStoredMessages([messages[index]])[0]);
     } catch (error) {
       throw validationError(
         `messages[${index}] is not a LangChain message: ` + redactedMessage(error as Error),
         'messages',
       );
     }
-  });
+  }
+  return stored;
 }
 
 /**
@@ -111,7 +119,7 @@ function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
  * Accepts: `stored` — the stored form of one call's messages. The check *is*
  * the read side's own rebuild (`mapStoredMessagesToChatMessages`), so write and
  * read agree by construction rather than by two lists of types kept in step by
- * hand (HIST-04).
+ * hand.
  *
  * Returns: `stored`, as {@link StorableMessages}.
  *
@@ -125,10 +133,16 @@ function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
  * again here. `context` still names `messages`, which is what a caller
  * branches on. A `RemoveMessage`, or a tool, function or generic message
  * missing its required field, is refused here instead of being persisted and
- * then skipped or thrown by `getMessages`.
+ * then skipped or thrown by `getMessages`. A hole in a sparse array is refused
+ * as missing, naming its index: the array is walked by index, where
+ * `Array.prototype.forEach` would skip the hole and let it through.
  */
 export function parseStoredMessages(stored: StoredMessage[]): StorableMessages {
-  stored.forEach((message, index) => {
+  for (let index = 0; index < stored.length; index += 1) {
+    const message: StoredMessage | undefined = stored[index];
+    if (message === undefined) {
+      throw validationError(`messages[${index}] is missing`, 'messages');
+    }
     try {
       mapStoredMessagesToChatMessages([message]);
     } catch (error) {
@@ -138,7 +152,7 @@ export function parseStoredMessages(stored: StoredMessage[]): StorableMessages {
         'messages',
       );
     }
-  });
+  }
   return stored as StorableMessages;
 }
 

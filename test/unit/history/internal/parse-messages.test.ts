@@ -86,6 +86,21 @@ describe('parseMessages (serialization)', () => {
   });
 
   /**
+   * `Array.prototype.map` keeps a hole without visiting it and `forEach` skips
+   * one, so a sparse `messages` array used to pass both passes with its hole
+   * intact and fail later with a raw `TypeError`. Walked by index, the hole is
+   * read as the `undefined` it is and refused like any other non-message.
+   * Built with `Array(3)` rather than a sparse literal, which lint forbids.
+   */
+  it('refuses a hole in a sparse array, naming messages and the missing index', () => {
+    const sparse: HumanMessage[] = new Array<HumanMessage>(3);
+    sparse[0] = new HumanMessage('ok');
+    sparse[2] = new HumanMessage('also ok');
+    expect(() => parseMessages(sparse)).toThrow(/messages\[1\]/);
+    expectValidationError(() => parseMessages(sparse));
+  });
+
+  /**
    * LangChain renders the value it refused into the text it throws, so the
    * relayed half is as long as the caller's own object makes it. It is prose
    * rather than an identifier, so it takes the relay cap.
@@ -140,6 +155,21 @@ describe('parseStoredMessages (HIST-04)', () => {
 
   it('accepts an empty list', () => {
     expect(() => parseStoredMessages([])).not.toThrow();
+  });
+
+  it('refuses a hole in a sparse array, naming messages and the missing index', () => {
+    const sparse: StoredMessage[] = new Array<StoredMessage>(3);
+    sparse[0] = stored('human', {});
+    sparse[2] = stored('ai', {});
+    try {
+      parseStoredMessages(sparse);
+      throw new Error('should have thrown');
+    } catch (error) {
+      const coded = error as { code?: ErrorCode; context?: { field?: string }; message: string };
+      expect(coded.code).toBe(ErrorCode.VALIDATION);
+      expect(coded.context?.field).toBe('messages');
+      expect(coded.message).toMatch(/messages\[1\]/);
+    }
   });
 
   /**
