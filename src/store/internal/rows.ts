@@ -18,7 +18,7 @@ import { type CodecDeps, decodePayload, type PayloadDescriptor } from '../../sha
 import type { DescriptorRef } from '../../shared/codec/descriptor-keys';
 import { encodePayload } from '../../shared/codec/encode';
 import type { DocItem } from '../../shared/dynamodb/client';
-import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
+import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/recency-index';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import {
   ADAPTER_TAGS,

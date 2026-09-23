@@ -1,4 +1,4 @@
-import { paginatePages } from '../../../../src/shared/dynamodb/paginate-core';
+import { paginatePages } from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
 async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {

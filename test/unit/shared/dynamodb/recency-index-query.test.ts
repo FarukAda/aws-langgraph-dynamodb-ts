@@ -10,7 +10,7 @@ import { DEFAULT_READ_CONCURRENCY } from '../../../../src/shared/constants';
 import {
   iterateRecencyIndex,
   queryRecencyIndex,
-} from '../../../../src/shared/dynamodb/index-query';
+} from '../../../../src/shared/dynamodb/recency-index';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { parseLimit } from '../../../../src/shared/validation/primitives';

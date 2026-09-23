@@ -1,6 +1,6 @@
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 
-import { paginateScan } from '../../../../src/shared/dynamodb/scan';
+import { paginateScan } from '../../../../src/shared/dynamodb/paginate';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {

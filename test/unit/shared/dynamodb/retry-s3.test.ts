@@ -1,4 +1,4 @@
-import { isTransientS3Error } from '../../../../../src/shared/codec/s3/retry';
+import { isTransientS3Error } from '../../../../src/shared/dynamodb/retry';
 
 const withStatus = (status: number, name: string): Error =>
   Object.assign(new Error(name), { name, $metadata: { httpStatusCode: status } });

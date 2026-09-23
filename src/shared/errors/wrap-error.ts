@@ -26,7 +26,7 @@ interface CauseChain {
  * whose own `cause` is a raw transport failure, still classifies on the
  * AWS/network failure underneath rather than losing it one level up — the
  * same failure the retry layer's cause-chain walk (`isRetryableError` in
- * `shared/dynamodb/retry-classifier.ts`) already sees. `error` itself when
+ * `shared/dynamodb/retry.ts`) already sees. `error` itself when
  * nothing in its chain classifies either. The walk gives up after
  * {@link MAX_CAUSE_DEPTH} nodes, and a cycle in the chain stops it rather than
  * looping, exactly as that other walk does.

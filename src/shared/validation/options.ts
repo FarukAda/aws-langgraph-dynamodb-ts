@@ -4,7 +4,7 @@ import {
   MAX_RETRY_ATTEMPTS,
   MAX_RETRY_DELAY_MS,
 } from '../constants';
-import type { RetryPolicy } from '../dynamodb/retry-policy';
+import type { RetryPolicy } from '../dynamodb/retry';
 import { validationError } from '../errors/errors';
 import type { BaseAdapterOptions, CodecOptions } from '../options';
 import { assertCompression, assertS3 } from './codec-options';

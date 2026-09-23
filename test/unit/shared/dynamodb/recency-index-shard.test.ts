@@ -1,7 +1,7 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { MAX_LOOP_ITERATIONS } from '../../../../src/shared/constants';
-import { readShardPage, shardReader } from '../../../../src/shared/dynamodb/index-shard';
+import { readShardPage, shardReader } from '../../../../src/shared/dynamodb/recency-index';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { parseLimit } from '../../../../src/shared/validation/primitives';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

@@ -26,9 +26,8 @@ import { classifyAwsError } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
 import { conditionalCheckFailure } from './cancellation';
 import type { DynamoDBDocumentLike, DocItem } from './client';
-import { withDynamoDBRetry } from './retry';
+import { withDynamoDBRetry, retryFor } from './retry';
 import type { RetryOptions } from './retry';
-import { retryFor } from './retry-policy';
 import { PARTITION_KEY_ATTRIBUTE, type RowKey } from './table-schema';
 
 /**

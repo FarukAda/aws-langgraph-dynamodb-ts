@@ -1,5 +1,5 @@
 import { deletePartitionRows } from '../../shared/dynamodb/partition-delete';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { retryFor } from '../../shared/dynamodb/retry';
 import { parseThreadId } from '../internal/parse';
 import {
   checkpointRowDescriptors,

@@ -11,7 +11,7 @@ import type {
   CheckpointPayloadItem,
 } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import { DEFAULT_INDEX_SHARDS } from '../../../../src/shared/dynamodb/index-keys';
+import { DEFAULT_INDEX_SHARDS } from '../../../../src/shared/dynamodb/recency-index';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { checkpointItems } from '../../../shared/helpers/parsed-inputs';

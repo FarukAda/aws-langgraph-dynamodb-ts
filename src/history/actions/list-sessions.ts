@@ -1,9 +1,8 @@
 import { nowSeconds as currentSeconds } from '../../shared/clock';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
-import { queryRecencyIndex } from '../../shared/dynamodb/index-query';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { paginateScan } from '../../shared/dynamodb/scan';
+import { paginateScan } from '../../shared/dynamodb/paginate';
+import { DEFAULT_INDEX_SHARDS, queryRecencyIndex } from '../../shared/dynamodb/recency-index';
+import { retryFor } from '../../shared/dynamodb/retry';
 import { PARTITION_KEY_ATTRIBUTE, SORT_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
 import { type PageLimit, parseLimit } from '../../shared/validation/primitives';
 import { type ListSessionsRequest, parseListSessionsRequest } from '../internal/parse';

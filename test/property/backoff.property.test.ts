@@ -1,7 +1,6 @@
 import fc from 'fast-check';
 
-import { fullJitter, nextBackoffDelay } from '../../src/shared/dynamodb/backoff';
-import { withRetry } from '../../src/shared/dynamodb/retry';
+import { fullJitter, nextBackoffDelay, withRetry } from '../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../src/shared/errors/error-code';
 
 const unit = fc.double({ min: 0, max: 0.999999, noNaN: true });

@@ -70,8 +70,7 @@ export type { Redactable } from './shared/logging/redaction-walk';
 
 export type { CancelOptions, BaseAdapterOptions, CodecOptions } from './shared/options';
 export type { DynamoDBDocumentLike } from './shared/dynamodb/client';
-export type { RetryAttemptInfo, RetryOptions } from './shared/dynamodb/retry';
-export type { RetryPolicy } from './shared/dynamodb/retry-policy';
+export type { RetryAttemptInfo, RetryOptions, RetryPolicy } from './shared/dynamodb/retry';
 export type { TtlOption } from './shared/validation/ttl';
 export type { CompressionConfig } from './shared/codec/compression';
 export type { S3OffloadConfig } from './shared/codec/s3/config';

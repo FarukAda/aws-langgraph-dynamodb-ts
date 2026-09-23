@@ -1,4 +1,4 @@
-import { fullJitter, nextBackoffDelay, sleep } from '../../../../src/shared/dynamodb/backoff';
+import { fullJitter, nextBackoffDelay, sleep } from '../../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { abortError } from '../../../../src/shared/errors/errors';
 

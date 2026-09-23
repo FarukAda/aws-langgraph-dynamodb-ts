@@ -1,9 +1,8 @@
-import { fullJitter, nextBackoffDelay, sleep } from '../../dynamodb/backoff';
+import { fullJitter, nextBackoffDelay, sleep, isTransientS3Error } from '../../dynamodb/retry';
 import { failureLabel } from '../../errors/base-error';
 import { absorbLoggerFailure, type Logger } from '../../logging/logger';
 import { truncateForLog } from '../../logging/truncate';
 import type { S3Offloader } from './offloader';
-import { isTransientS3Error } from './retry';
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 100;

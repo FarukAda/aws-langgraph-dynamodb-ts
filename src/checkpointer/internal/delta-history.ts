@@ -18,8 +18,7 @@ import type {
 
 import { nowSeconds } from '../../shared/clock';
 import type { DocItem } from '../../shared/dynamodb/client';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';

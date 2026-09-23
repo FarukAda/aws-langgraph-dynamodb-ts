@@ -1,9 +1,9 @@
 import { DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { readBodyBounded } from '../../../src/shared/codec/s3/bounded-body';
-import { iterateRecencyIndex } from '../../../src/shared/dynamodb/index-query';
 import { deletePartitionRows } from '../../../src/shared/dynamodb/partition-delete';
-import { retryFor } from '../../../src/shared/dynamodb/retry-policy';
+import { iterateRecencyIndex } from '../../../src/shared/dynamodb/recency-index';
+import { retryFor } from '../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { walkObject } from '../../../src/shared/logging/redaction-walk';

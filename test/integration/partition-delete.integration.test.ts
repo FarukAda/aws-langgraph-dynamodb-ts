@@ -128,8 +128,8 @@ async function sortKeysIn(partitionKey: string): Promise<string[]> {
 
 describe('deleteThread deletes exactly the rows it observed (D2)', () => {
   /**
-   * THE SEAM GATE. `partition-flush.ts` detects the refusal and
-   * `partition-delete.ts` owns the set of refused units, so both halves can
+   * THE SEAM GATE. `partition-delete.ts`'s flush detects the refusal and its
+   * pass owns the set of refused units, so both halves can
    * pass their own unit tests while the composition is inert. This is the only
    * test that spans them: a checkpoint re-put during the pass must keep its
    * META and PAYLOAD rows *and* the pending writes that belong to the same

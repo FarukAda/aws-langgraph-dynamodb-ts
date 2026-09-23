@@ -21,9 +21,8 @@ import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   transactIdempotently,
 } from '../../shared/dynamodb/idempotent-write';
-import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/recency-index';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import {
   assertReadableRow,
   isExpiredRow,

@@ -21,9 +21,9 @@ import {
 } from '../../shared/constants';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
 import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client';
-import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
+import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/recency-index';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
-import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
+import { resolveRetryPolicy } from '../../shared/dynamodb/retry';
 import { validationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';

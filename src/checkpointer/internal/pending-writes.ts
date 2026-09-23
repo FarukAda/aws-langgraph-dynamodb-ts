@@ -28,8 +28,7 @@ import {
   verifyRow,
   type WriteVerdict,
 } from '../../shared/dynamodb/idempotent-write';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { ThreadId } from './parse';

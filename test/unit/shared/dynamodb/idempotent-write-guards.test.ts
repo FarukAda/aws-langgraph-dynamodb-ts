@@ -6,7 +6,7 @@ import {
   WRITE_ID_ATTRIBUTE,
   writeIdGuard,
 } from '../../../../src/shared/dynamodb/idempotent-write';
-import { isRetryableError } from '../../../../src/shared/dynamodb/retry-classifier';
+import { isRetryableError } from '../../../../src/shared/dynamodb/retry';
 import { DEFAULT_RETRYABLE_ERRORS } from '../../../../src/shared/errors/classify';
 
 /** A shared module's test has no business with the store's row; a sample name suffices. */

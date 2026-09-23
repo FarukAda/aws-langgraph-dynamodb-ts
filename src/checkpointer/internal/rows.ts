@@ -30,8 +30,8 @@ import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import type { DocItem } from '../../shared/dynamodb/client';
-import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
 import { namedDescriptor, type NamedDescriptor } from '../../shared/dynamodb/partition-delete';
+import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/recency-index';
 import {
   ADAPTER_TAGS,
   assertReadableRow,

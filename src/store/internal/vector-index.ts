@@ -17,7 +17,7 @@ import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { isRowAbsent } from '../../shared/dynamodb/idempotent-write';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema';
 import { failureLabel } from '../../shared/errors/base-error';
 import { validationError } from '../../shared/errors/errors';

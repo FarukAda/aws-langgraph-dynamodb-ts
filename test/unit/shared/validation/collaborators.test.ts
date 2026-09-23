@@ -151,7 +151,7 @@ describe('isAbortSignalLike', () => {
     expect(isAbortSignalLike(double as never)).toBe(true);
   });
 
-  /** Every member the package touches on a signal, checked against `backoff.ts` and `retry.ts`. */
+  /** Every member the package touches on a signal, checked against `retry.ts`. */
   it('checks exactly the members this package uses, by the type each must have', () => {
     expect(ABORT_SIGNAL_MEMBERS).toEqual({
       aborted: 'boolean',

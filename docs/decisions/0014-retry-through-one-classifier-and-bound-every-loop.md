@@ -28,10 +28,10 @@ forever waiting for capacity that never arrives.
 ## Decision
 
 We decide retryability in one function, `isRetryableError`
-(`src/shared/dynamodb/retry-classifier.ts`). Every DynamoDB call reaches it
+(`src/shared/dynamodb/retry.ts`). Every DynamoDB call reaches it
 through `withRetry` / `withDynamoDBRetry` (`src/shared/dynamodb/retry.ts`);
 S3's own transient signals (`isTransientS3Error`,
-`src/shared/codec/s3/retry.ts`) are `isRetryableError` given a longer token
+`src/shared/dynamodb/retry.ts`) are `isRetryableError` given a longer token
 list, plugged into `withRetry` as `isRetryable` on the read and write
 paths, and consulted directly by the one hand-rolled, best-effort loop —
 orphan cleanup after a failed write — that is not itself built on
@@ -52,7 +52,7 @@ inside the token's idempotency window (record 6). A page walk
 (`paginateQuery`, `paginateScan`) takes `maxItems` and `maxIterations`,
 raising `ResultTruncatedError` rather than returning a silently partial
 result when either is reached. A `BatchWriteItem` drain
-(`drainUnprocessedWrites`, `src/shared/dynamodb/drain-unprocessed.ts`)
+(`drainUnprocessedWrites`, `src/shared/dynamodb/batch-write.ts`)
 re-submits `UnprocessedItems` for at most `maxRetries` rounds before
 raising `BatchWriteIncompleteError` naming what did and did not persist.
 

@@ -3,8 +3,7 @@ import {
   MAX_WRITE_LIFETIME_MS,
   MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
 } from '../../../../src/shared/constants';
-import { withRetry } from '../../../../src/shared/dynamodb/retry';
-import { resolveRetryPolicy } from '../../../../src/shared/dynamodb/retry-policy';
+import { withRetry, resolveRetryPolicy } from '../../../../src/shared/dynamodb/retry';
 import { truncateForLog } from '../../../../src/shared/logging/truncate';
 
 const fakeLogger = () => ({ debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() });

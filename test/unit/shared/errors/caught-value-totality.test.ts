@@ -2,10 +2,9 @@ import {
   isPermanentPayloadLoss,
   isMissingObjectError,
 } from '../../../../src/shared/codec/payload-loss';
-import { isTransientS3Error } from '../../../../src/shared/codec/s3/retry';
 import { isAbortError } from '../../../../src/shared/dynamodb/abort';
 import { getCancellationReasons } from '../../../../src/shared/dynamodb/cancellation';
-import { isRetryableError } from '../../../../src/shared/dynamodb/retry-classifier';
+import { isTransientS3Error, isRetryableError } from '../../../../src/shared/dynamodb/retry';
 import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { toPublicError } from '../../../../src/shared/errors/boundary';
 import { toError } from '../../../../src/shared/errors/to-error';

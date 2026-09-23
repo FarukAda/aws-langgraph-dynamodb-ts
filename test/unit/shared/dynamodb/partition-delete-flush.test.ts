@@ -13,7 +13,7 @@ import {
   type FlushDeps,
   flushPendingDeletes,
   type PendingDelete,
-} from '../../../../src/shared/dynamodb/partition-flush';
+} from '../../../../src/shared/dynamodb/partition-delete';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 

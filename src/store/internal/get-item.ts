@@ -4,8 +4,7 @@ import { nowSeconds } from '../../shared/clock';
 import { PayloadLocation } from '../../shared/codec/codec';
 import type { DescriptorRef } from '../../shared/codec/descriptor-keys';
 import { isMissingObjectError } from '../../shared/codec/payload-loss';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import type { StoreAddress } from './parse';
 import {

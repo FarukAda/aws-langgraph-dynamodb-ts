@@ -2,7 +2,7 @@ import {
   DEFAULT_INDEX_SHARDS,
   indexKeys,
   indexPartitions,
-} from '../../../../src/shared/dynamodb/index-keys';
+} from '../../../../src/shared/dynamodb/recency-index';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
 describe('indexKeys', () => {

@@ -23,8 +23,7 @@ import { nowSeconds } from '../../shared/clock';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
 import type { DocItem } from '../../shared/dynamodb/client';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import {
   isExpiredRow,
   withoutExpired,

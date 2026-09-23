@@ -26,7 +26,7 @@ still finds the row exactly as before.
 
 We offer a sharded recency GSI, on `gsi1pk`/`gsi1sk`
 (`src/checkpointer/internal/listing.ts`,
-`src/shared/dynamodb/index-keys.ts`), only when an adapter is constructed
+`src/shared/dynamodb/recency-index.ts`), only when an adapter is constructed
 with `indexName`. `gsi1pk`/`gsi1sk` are written on every row a listing
 crosses partitions for — checkpointer META, store items, history SESSION —
 whether or not the table defines the index at all, so enabling `indexName`

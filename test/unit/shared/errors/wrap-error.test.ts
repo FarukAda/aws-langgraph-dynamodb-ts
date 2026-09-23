@@ -49,7 +49,7 @@ describe('wrapForeignError', () => {
 /**
  * `classifyAwsError` reads only an error's own fields, while the retry layer
  * walks the whole `cause` chain (`isRetryableError` in
- * `shared/dynamodb/retry-classifier.ts`). Without a matching walk here, an AWS
+ * `shared/dynamodb/retry.ts`). Without a matching walk here, an AWS
  * or network failure that reaches the boundary one level down — wrapped by a
  * caller's own error, or sitting under an SDK error's own transport `cause` —
  * classified as `UNEXPECTED_ERROR`, even though the same failure would have

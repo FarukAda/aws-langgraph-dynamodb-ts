@@ -1,7 +1,7 @@
 import type { S3Client, ServerSideEncryption } from '@aws-sdk/client-s3';
 
 import { isAbortError } from '../../dynamodb/abort';
-import { withRetry } from '../../dynamodb/retry';
+import { withRetry, isTransientS3Error } from '../../dynamodb/retry';
 import { DynamoDBLangGraphError } from '../../errors/base-error';
 import { classifyAwsError } from '../../errors/classify';
 import { ErrorCode } from '../../errors/error-code';
@@ -9,7 +9,6 @@ import { redactedMessage } from '../../logging/secret-patterns';
 import { truncateForLog } from '../../logging/truncate';
 import { oversizedObjectError, readBodyBounded } from './bounded-body';
 import { loadS3Sdk } from './client';
-import { isTransientS3Error } from './retry';
 
 /** Parameters for {@link uploadObject}. */
 export interface UploadParams {

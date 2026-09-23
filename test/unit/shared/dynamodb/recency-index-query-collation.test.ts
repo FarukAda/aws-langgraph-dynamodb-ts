@@ -1,7 +1,7 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import type { DocItem } from '../../../../src/shared/dynamodb/client';
-import { queryRecencyIndex } from '../../../../src/shared/dynamodb/index-query';
+import { queryRecencyIndex } from '../../../../src/shared/dynamodb/recency-index';
 import { compareSortKeys } from '../../../../src/shared/dynamodb/table-schema';
 import { parseLimit } from '../../../../src/shared/validation/primitives';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

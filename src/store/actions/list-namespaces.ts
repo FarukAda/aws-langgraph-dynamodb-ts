@@ -1,8 +1,7 @@
 import type { MatchCondition } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import { paginateQuery } from '../../shared/dynamodb/paginate';
-import { paginateScan } from '../../shared/dynamodb/scan';
+import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
 import { isExpiredRow, KEY_SEPARATOR, withoutExpired } from '../../shared/dynamodb/table-schema';
 import type { ParsedList } from '../internal/parse';
 import { narrowStoreRecord, projectKeys, scopedQuery, storeScan } from '../internal/rows';

@@ -4,7 +4,7 @@ import { listSessions } from '../../../../src/history/actions/list-sessions';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
-import { DEFAULT_INDEX_SHARDS } from '../../../../src/shared/dynamodb/index-keys';
+import { DEFAULT_INDEX_SHARDS } from '../../../../src/shared/dynamodb/recency-index';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -254,7 +254,7 @@ describe('options shape (M-08)', () => {
 
   /**
    * `Infinity` is the paginator's own documented way to ask for no cap
-   * (`paginate-core.ts`'s `assertPositiveCap`) and must stay legal.
+   * (`paginate.ts`'s `assertPositiveCap`) and must stay legal.
    */
   it('accepts Infinity for maxItems and maxIterations', async () => {
     const { client, mock } = createStrictDocumentMock();

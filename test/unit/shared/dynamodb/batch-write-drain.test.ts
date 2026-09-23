@@ -1,6 +1,6 @@
 import { BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 
-import { drainUnprocessedWrites } from '../../../../src/shared/dynamodb/drain-unprocessed';
+import { drainUnprocessedWrites } from '../../../../src/shared/dynamodb/batch-write';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
