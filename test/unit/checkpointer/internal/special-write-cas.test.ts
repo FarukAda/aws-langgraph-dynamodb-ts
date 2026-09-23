@@ -1,6 +1,6 @@
+import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
 import { writeSpecialItem } from '../../../../src/checkpointer/internal/special-write-cas';
 import { readSpecialRow } from '../../../../src/checkpointer/internal/special-write-verify';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../../../src/shared/dynamodb/conditional-put';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';

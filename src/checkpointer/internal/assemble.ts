@@ -1,10 +1,9 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointMetadata, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
-import type { CheckpointMetaItem } from '../types';
 import { fetchPayload, fetchPendingWrites } from './fetch';
-import { readCheckpoint, readMetadata } from './item-reader';
 import { migratePendingSends } from './pending-sends';
+import { type CheckpointMetaItem, readCheckpoint, readMetadata } from './rows';
 import type { CheckpointerContext } from './setup';
 
 /** How a tuple is assembled: cancellation, read consistency, and metadata already decoded by the caller. */

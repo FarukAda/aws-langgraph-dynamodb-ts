@@ -6,18 +6,18 @@ import {
   PARTITION_KEY_ATTRIBUTE,
   SORT_KEY_ATTRIBUTE,
 } from '../../shared/dynamodb/table-schema';
-import type { CheckpointMetaItem } from '../types';
 import { matchesFilter } from './filter-match';
-import { readMetadata } from './item-reader';
+import type { ListScope, ThreadId } from './parse';
 import {
+  beginsWithQuery,
   checkpointerPartitionPrefix,
+  type CheckpointMetaItem,
   metaAnyNamespacePrefix,
   metaSortKey,
   metaSortKeyPrefix,
   partitionKey,
-} from './keys';
-import type { ListScope, ThreadId } from './parse';
-import { beginsWithQuery } from './query';
+  readMetadata,
+} from './rows';
 import type { CheckpointerContext } from './setup';
 
 /**

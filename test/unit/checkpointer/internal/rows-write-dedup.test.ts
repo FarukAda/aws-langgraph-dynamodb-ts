@@ -1,5 +1,7 @@
-import { dropSupersededWrites } from '../../../../src/checkpointer/internal/write-dedup';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
+import {
+  type CheckpointWriteItem,
+  dropSupersededWrites,
+} from '../../../../src/checkpointer/internal/rows';
 
 function row(writeGroup: string | undefined, value: string): CheckpointWriteItem {
   return {

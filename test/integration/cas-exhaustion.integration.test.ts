@@ -2,7 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
-import { partitionKey, writeSortKeyPrefix } from '../../src/checkpointer/internal/keys';
+import { partitionKey, writeSortKeyPrefix } from '../../src/checkpointer/internal/rows';
 import { DynamoDBSaver, DynamoDBStore, ErrorCode, type Logger } from '../../src/index';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../src/shared/dynamodb/conditional-put';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';

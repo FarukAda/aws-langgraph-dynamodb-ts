@@ -1,6 +1,6 @@
 import { rejectedItem } from '../../shared/dynamodb/conditional-put';
 import { truncateForLog } from '../../shared/logging/truncate';
-import type { CheckpointWriteItem } from '../types';
+import type { CheckpointWriteItem } from './rows';
 import type { CheckpointerContext } from './setup';
 
 /**

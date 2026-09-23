@@ -10,8 +10,8 @@ import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { transactIdempotently } from '../../shared/dynamodb/idempotent-write';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { verifyCheckpointLanded } from '../internal/checkpoint-write-verify';
-import { buildCheckpointItems } from '../internal/item-writer';
 import { parsePutRequest } from '../internal/parse';
+import { buildCheckpointItems } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
 
 /**

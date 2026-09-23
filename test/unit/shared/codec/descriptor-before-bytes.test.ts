@@ -1,6 +1,8 @@
-import { toPendingWrites } from '../../../../src/checkpointer/internal/item-reader';
+import {
+  type CheckpointWriteItem,
+  toPendingWrites,
+} from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import {
   type CodecDeps,
   decodePayload,

@@ -1,8 +1,11 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import { verifyCheckpointLanded } from '../../../../src/checkpointer/internal/checkpoint-write-verify';
+import type {
+  CheckpointMetaItem,
+  CheckpointPayloadItem,
+} from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import type { CheckpointMetaItem, CheckpointPayloadItem } from '../../../../src/checkpointer/types';
 import { type PayloadDescriptor, PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

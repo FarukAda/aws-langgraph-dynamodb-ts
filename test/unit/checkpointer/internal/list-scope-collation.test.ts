@@ -1,12 +1,11 @@
-import { metaSortKey } from '../../../../src/checkpointer/internal/keys';
 import { listQuery, passesKeyFilters } from '../../../../src/checkpointer/internal/list-scope';
 import {
   type ListScope,
   parseListScope,
   type ThreadId,
 } from '../../../../src/checkpointer/internal/parse';
+import { type CheckpointMetaItem, metaSortKey } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import type { CheckpointMetaItem } from '../../../../src/checkpointer/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 

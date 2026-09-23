@@ -8,7 +8,7 @@ import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
-import { metaSortKey, partitionKey } from './keys';
+import { metaRowKey } from './rows';
 import type { CheckpointerContext } from './setup';
 
 /** Where an ancestor walk stopped, and whether that stop is a hole in the thread. */
@@ -63,7 +63,7 @@ export async function probeAncestor(
       context.client.get(
         {
           TableName: context.tableName,
-          Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
+          Key: metaRowKey({ threadId, checkpointNs, checkpointId }),
           ConsistentRead: true,
         },
         request,

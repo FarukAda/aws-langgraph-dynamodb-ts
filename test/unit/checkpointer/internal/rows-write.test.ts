@@ -2,16 +2,16 @@ import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/la
 import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
 import {
-  buildCheckpointItems,
-  buildWriteItems,
-  codecDeps,
-} from '../../../../src/checkpointer/internal/item-writer';
-import {
   parsePutRequest,
   parsePutWritesRequest,
 } from '../../../../src/checkpointer/internal/parse';
+import {
+  buildCheckpointItems,
+  buildWriteItems,
+  codecDeps,
+  resolveWriteIndices,
+} from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import { resolveWriteIndices } from '../../../../src/checkpointer/internal/write-index';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { checkpointItems, writeItems } from '../../../shared/helpers/parsed-inputs';

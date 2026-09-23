@@ -15,8 +15,8 @@ import {
   parseListScope,
   type ThreadId,
 } from '../internal/parse';
+import type { CheckpointMetaItem } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
-import type { CheckpointMetaItem } from '../types';
 
 /**
  * The tuple for one META item that passes every filter, assembled eventually

@@ -1,6 +1,6 @@
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 
-import { partitionKey as checkpointerPartition } from '../../../src/checkpointer/internal/keys';
+import { partitionKey as checkpointerPartition } from '../../../src/checkpointer/internal/rows';
 import { listSessions } from '../../../src/history/actions/list-sessions';
 import {
   SESSION_SORT_KEY,
@@ -9,6 +9,7 @@ import {
 } from '../../../src/history/internal/keys';
 import type { HistoryContext } from '../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../src/shared/codec/json-serde';
+import { ADAPTER_TAGS } from '../../../src/shared/dynamodb/table-schema';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { searchItems } from '../../../src/store/actions/search';
@@ -41,6 +42,7 @@ describe('cross-adapter partition-key disjointness (C1, C2)', () => {
       storePartition([shared]),
     ];
     expect(new Set(keys).size).toBe(3);
+    expect(new Set(Object.values(ADAPTER_TAGS).map((tag) => tag[0])).size).toBe(3);
   });
 
   it('tags each partition with its own adapter', () => {

@@ -23,6 +23,20 @@ export const PARTITION_KEY_ATTRIBUTE = 'PK';
 /** The attribute every row is sorted by within its partition. */
 export const SORT_KEY_ATTRIBUTE = 'SK';
 
+/**
+ * The separator between the segments of every key this package composes. No
+ * caller-supplied identifier may contain it (the parsers refuse it), which is
+ * what lets a key be read back into its parts and matched by prefix (record 2).
+ */
+export const KEY_SEPARATOR = '#';
+
+/**
+ * The tag each adapter's partition keys open with. The three differ in their
+ * first character, so no two adapters' partitions can collide on a shared
+ * table, whatever identifiers their callers reuse (record 2).
+ */
+export const ADAPTER_TAGS = { checkpointer: 'CHKPT', store: 'STORE', history: 'HIST' } as const;
+
 /** A row's primary key, as a `Key` document and as the key half of an item. */
 export interface RowKey {
   PK: string;

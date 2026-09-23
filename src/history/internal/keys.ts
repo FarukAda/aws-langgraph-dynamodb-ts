@@ -19,7 +19,7 @@ const MESSAGE_PREFIX = `${ADAPTER_PREFIX}MSG#`;
 
 /**
  * Adapter tag prefixed to every chat-history partition key — see the
- * equivalent in checkpointer/internal/keys.ts for why the three adapters'
+ * equivalent in checkpointer/internal/rows.ts for why the three adapters'
  * partitions must not overlap on a shared table.
  */
 const ADAPTER_PARTITION_PREFIX = `HIST${SORT_KEY_SEPARATOR}`;

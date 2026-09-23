@@ -10,8 +10,8 @@ import {
   parseListScope,
   type ThreadId,
 } from '../../../../src/checkpointer/internal/parse';
+import type { CheckpointMetaItem } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import type { CheckpointMetaItem } from '../../../../src/checkpointer/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';

@@ -11,17 +11,20 @@ import {
   withoutExpired,
   assertReadableRow,
 } from '../../shared/dynamodb/table-schema';
-import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
-import { narrowHead, toPendingWrites } from './item-reader';
-import {
-  metaSortKey,
-  metaSortKeyPrefix,
-  partitionKey,
-  payloadSortKey,
-  writeSortKeyPrefix,
-} from './keys';
 import type { ThreadAddress } from './parse';
-import { beginsWithQuery } from './query';
+import {
+  beginsWithQuery,
+  type CheckpointMetaItem,
+  type CheckpointPayloadItem,
+  type CheckpointWriteItem,
+  metaRowKey,
+  metaSortKeyPrefix,
+  narrowHead,
+  partitionKey,
+  payloadRowKey,
+  toPendingWrites,
+  writeSortKeyPrefix,
+} from './rows';
 import type { CheckpointerContext } from './setup';
 
 /**
@@ -86,7 +89,7 @@ export async function fetchTargetMeta(
         context.client.get(
           {
             TableName: context.tableName,
-            Key: { PK: partitionKey(threadId), SK: metaSortKey(checkpointNs, checkpointId) },
+            Key: metaRowKey({ threadId, checkpointNs, checkpointId }),
             ConsistentRead: true,
           },
           request,
@@ -157,7 +160,7 @@ export async function fetchPayload(
       context.client.get(
         {
           TableName: context.tableName,
-          Key: { PK: partitionKey(threadId), SK: payloadSortKey(checkpointNs, checkpointId) },
+          Key: payloadRowKey({ threadId, checkpointNs, checkpointId }),
           ConsistentRead: read.consistent ?? true,
         },
         request,

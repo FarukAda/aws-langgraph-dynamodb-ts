@@ -5,12 +5,12 @@ import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
-import { buildWriteItems } from '../internal/item-writer';
 import { parsePutWritesRequest } from '../internal/parse';
 import { writeRegularItems } from '../internal/regular-write';
+import { buildWriteItems } from '../internal/rows';
+import type { CheckpointWriteItem } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
-import type { CheckpointWriteItem } from '../types';
 
 /**
  * Stamps each `putWrites` call, identifying its rows as one group.

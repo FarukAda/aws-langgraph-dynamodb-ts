@@ -1,12 +1,12 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
+import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import {
   readSpecialRow,
   specialRowProbe,
   verifyAfterFailure,
 } from '../../../../src/checkpointer/internal/special-write-verify';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

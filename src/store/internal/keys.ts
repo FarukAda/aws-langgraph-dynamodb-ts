@@ -3,7 +3,7 @@ export const NAMESPACE_SEPARATOR = '#';
 
 /**
  * Adapter tag prefixed to every store partition key — see the equivalent in
- * checkpointer/internal/keys.ts for why the three adapters' partitions must
+ * checkpointer/internal/rows.ts for why the three adapters' partitions must
  * not overlap on a shared table.
  */
 const ADAPTER_PARTITION_PREFIX = `STORE${NAMESPACE_SEPARATOR}`;

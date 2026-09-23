@@ -8,15 +8,12 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import {
-  buildCheckpointItems,
-  buildWriteItems,
-} from '../../../src/checkpointer/internal/item-writer';
-import {
   parsePutRequest,
   parsePutWritesRequest,
   parseThreadConfig,
   type ThreadAddress,
 } from '../../../src/checkpointer/internal/parse';
+import { buildCheckpointItems, buildWriteItems } from '../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../src/checkpointer/internal/setup';
 import {
   parseNamespacePrefix,

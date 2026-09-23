@@ -1,9 +1,11 @@
 import { type PendingWrite, WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 import fc from 'fast-check';
 
-import { dropSupersededWrites } from '../../src/checkpointer/internal/write-dedup';
-import { resolveWriteIndices } from '../../src/checkpointer/internal/write-index';
-import type { CheckpointWriteItem } from '../../src/checkpointer/types';
+import {
+  type CheckpointWriteItem,
+  dropSupersededWrites,
+  resolveWriteIndices,
+} from '../../src/checkpointer/internal/rows';
 import { PayloadLocation } from '../../src/shared/codec/codec';
 
 const isSpecial = (channel: string): boolean => Object.hasOwn(WRITES_IDX_MAP, channel);

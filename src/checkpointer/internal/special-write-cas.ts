@@ -7,11 +7,10 @@ import {
 import { putIdempotently, referencesS3Object } from '../../shared/dynamodb/idempotent-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import type { CheckpointWriteItem } from '../types';
+import { type CheckpointWriteItem, WRITE_GROUP_ATTRIBUTE } from './rows';
 import type { CheckpointerContext } from './setup';
 import {
   readSpecialRow,
-  SPECIAL_REVISION_ATTRIBUTE,
   type SpecialRowState,
   type SpecialWriteOutcome,
   verifyAfterFailure,
@@ -118,7 +117,7 @@ async function attemptCasWrites(
       await commitSpecialRow(
         context,
         item,
-        revisionGuard(SPECIAL_REVISION_ATTRIBUTE, attempted),
+        revisionGuard(WRITE_GROUP_ATTRIBUTE, attempted),
         signal,
       );
       return { done: true, outcome: { committed: true, superseded: attempted.value } };

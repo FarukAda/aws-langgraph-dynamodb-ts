@@ -5,7 +5,7 @@ import {
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 
-import { beginsWithQuery, partitionQuery } from '../../../../src/checkpointer/internal/query';
+import { beginsWithQuery, partitionQuery } from '../../../../src/checkpointer/internal/rows';
 import { parseSessionId } from '../../../../src/history/internal/parse';
 import { sessionItemsQuery } from '../../../../src/history/internal/query';
 import { type PayloadDescriptor, PayloadLocation } from '../../../../src/shared/codec/codec';

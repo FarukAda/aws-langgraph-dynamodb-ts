@@ -4,7 +4,7 @@ import {
   MIN_ENCODABLE_WRITE_INDEX,
   writeSortKey,
   writeSortKeyPrefix,
-} from '../../src/checkpointer/internal/keys';
+} from '../../src/checkpointer/internal/rows';
 
 /** The largest index whose offset form still fits the 10-digit pad. */
 const MAX_ENCODABLE_WRITE_INDEX = 10 ** 10 - 1 + MIN_ENCODABLE_WRITE_INDEX;
@@ -19,8 +19,20 @@ describe('writeSortKey (property)', () => {
   it('orders keys exactly like their indices, for any two indices in range', () => {
     fc.assert(
       fc.property(index, index, segment, segment, segment, (a, b, ns, cp, task) => {
-        const left = writeSortKey(ns, cp, task, a, 'ch');
-        const right = writeSortKey(ns, cp, task, b, 'ch');
+        const left = writeSortKey({
+          checkpointNs: ns,
+          checkpointId: cp,
+          taskId: task,
+          index: a,
+          channel: 'ch',
+        });
+        const right = writeSortKey({
+          checkpointNs: ns,
+          checkpointId: cp,
+          taskId: task,
+          index: b,
+          channel: 'ch',
+        });
         expect(left < right).toBe(a < b);
         expect(left === right).toBe(a === b);
       }),
@@ -31,9 +43,15 @@ describe('writeSortKey (property)', () => {
   it('always lies under the checkpoint prefix that begins_with reads use', () => {
     fc.assert(
       fc.property(index, segment, segment, segment, segment, (i, ns, cp, task, channel) => {
-        expect(writeSortKey(ns, cp, task, i, channel).startsWith(writeSortKeyPrefix(ns, cp))).toBe(
-          true,
-        );
+        expect(
+          writeSortKey({
+            checkpointNs: ns,
+            checkpointId: cp,
+            taskId: task,
+            index: i,
+            channel,
+          }).startsWith(writeSortKeyPrefix(ns, cp)),
+        ).toBe(true);
       }),
     );
   });
@@ -45,7 +63,15 @@ describe('writeSortKey (property)', () => {
     );
     fc.assert(
       fc.property(outside, (i) => {
-        expect(() => writeSortKey('ns', 'cp', 't', i, 'ch')).toThrow(/encodable/);
+        expect(() =>
+          writeSortKey({
+            checkpointNs: 'ns',
+            checkpointId: 'cp',
+            taskId: 't',
+            index: i,
+            channel: 'ch',
+          }),
+        ).toThrow(/encodable/);
       }),
     );
   });

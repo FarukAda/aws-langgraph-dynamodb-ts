@@ -11,6 +11,7 @@ import {
   MAX_PARTITION_ID_BYTES,
   MAX_SORT_KEY_BYTES,
 } from '../../shared/constants';
+import { KEY_SEPARATOR } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
 import { assertSignalLike } from '../../shared/validation/collaborators';
 import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
@@ -23,8 +24,8 @@ import {
 } from '../../shared/validation/primitives';
 import type { CheckpointConfigurable, DeltaChannelHistoryOptions } from '../types';
 import type { FilterValue } from './filter-match';
-import { SORT_KEY_SEPARATOR, writeSortKeyBytes } from './keys';
 import { DELTA_CHANNEL_HISTORY_KEYS, SAVER_LIST_KEYS } from './option-keys';
+import { writeSortKeyBytes } from './rows';
 
 declare const threadIdBrand: unique symbol;
 declare const checkpointNsBrand: unique symbol;
@@ -63,12 +64,7 @@ export type WriteChannel = string & { readonly [writeChannelBrand]: true };
  * Throws: `VALIDATION` naming `thread_id`.
  */
 export function parseThreadId(value: unknown): ThreadId {
-  return parseIdentifier(
-    value,
-    SORT_KEY_SEPARATOR,
-    'thread_id',
-    MAX_PARTITION_ID_BYTES,
-  ) as ThreadId;
+  return parseIdentifier(value, KEY_SEPARATOR, 'thread_id', MAX_PARTITION_ID_BYTES) as ThreadId;
 }
 
 /**
@@ -84,7 +80,7 @@ export function parseThreadId(value: unknown): ThreadId {
 export function parseCheckpointNs(value: unknown): CheckpointNs {
   return parseKeySegment(
     value,
-    SORT_KEY_SEPARATOR,
+    KEY_SEPARATOR,
     'checkpoint_ns',
     MAX_KEY_SEGMENT_BYTES,
   ) as CheckpointNs;
@@ -106,7 +102,7 @@ export function parseCheckpointId(
   value: unknown,
   field: 'checkpoint_id' | 'thread_ts' | 'before' = 'checkpoint_id',
 ): CheckpointId {
-  return parseIdentifier(value, SORT_KEY_SEPARATOR, field, MAX_KEY_SEGMENT_BYTES) as CheckpointId;
+  return parseIdentifier(value, KEY_SEPARATOR, field, MAX_KEY_SEGMENT_BYTES) as CheckpointId;
 }
 
 /**
@@ -120,7 +116,7 @@ export function parseCheckpointId(
  * Throws: `VALIDATION` naming `taskId`.
  */
 export function parseTaskId(value: unknown): TaskId {
-  return parseIdentifier(value, SORT_KEY_SEPARATOR, 'taskId', MAX_KEY_SEGMENT_BYTES) as TaskId;
+  return parseIdentifier(value, KEY_SEPARATOR, 'taskId', MAX_KEY_SEGMENT_BYTES) as TaskId;
 }
 
 /**
@@ -134,12 +130,7 @@ export function parseTaskId(value: unknown): TaskId {
  * Throws: `VALIDATION` naming `channel`.
  */
 export function parseWriteChannel(value: unknown): WriteChannel {
-  return parseIdentifier(
-    value,
-    SORT_KEY_SEPARATOR,
-    'channel',
-    MAX_KEY_SEGMENT_BYTES,
-  ) as WriteChannel;
+  return parseIdentifier(value, KEY_SEPARATOR, 'channel', MAX_KEY_SEGMENT_BYTES) as WriteChannel;
 }
 
 /** The root namespace, which a config that names none addresses. */
@@ -355,7 +346,12 @@ function checkWriteKeyFits(
   taskId: TaskId,
   channel: WriteChannel,
 ): void {
-  const bytes = writeSortKeyBytes(address.checkpointNs, address.checkpointId, taskId, channel);
+  const bytes = writeSortKeyBytes({
+    checkpointNs: address.checkpointNs,
+    checkpointId: address.checkpointId,
+    taskId,
+    channel,
+  });
   if (bytes > MAX_SORT_KEY_BYTES) {
     throw validationError(
       `checkpoint_ns, checkpoint_id, taskId and channel compose a ${bytes}-byte sort key; ` +

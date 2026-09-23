@@ -5,9 +5,9 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { assembleTuple } from '../../../src/checkpointer/internal/assemble';
+import type { CheckpointMetaItem } from '../../../src/checkpointer/internal/rows';
 import { setUpCheckpointer } from '../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
-import type { CheckpointMetaItem } from '../../../src/checkpointer/types';
 import { isMissingObjectError } from '../../../src/shared/codec/payload-loss';
 import type { DocItem } from '../../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../../src/shared/errors/error-code';

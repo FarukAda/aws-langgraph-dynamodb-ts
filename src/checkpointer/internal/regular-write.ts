@@ -7,7 +7,7 @@ import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { PARTITION_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
 import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
-import type { CheckpointWriteItem } from '../types';
+import type { CheckpointWriteItem } from './rows';
 import type { CheckpointerContext } from './setup';
 import { specialRowProbe } from './special-write-verify';
 import { rejectionProvesForeignRow, reportGuardRejection } from './write-guard';

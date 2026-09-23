@@ -1,8 +1,8 @@
+import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
 import {
   rejectionProvesForeignRow,
   reportGuardRejection,
 } from '../../../../src/checkpointer/internal/write-guard';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { truncateForLog } from '../../../../src/shared/logging/truncate';
 

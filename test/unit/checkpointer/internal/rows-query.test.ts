@@ -1,4 +1,4 @@
-import { beginsWithQuery, partitionQuery } from '../../../../src/checkpointer/internal/query';
+import { beginsWithQuery, partitionQuery } from '../../../../src/checkpointer/internal/rows';
 
 describe('partitionQuery', () => {
   it('selects every item in the partition with an aliased PK equality', () => {

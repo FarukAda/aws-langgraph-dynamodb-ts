@@ -1,5 +1,5 @@
 import { writeRegularItems } from '../../../../src/checkpointer/internal/regular-write';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
+import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';

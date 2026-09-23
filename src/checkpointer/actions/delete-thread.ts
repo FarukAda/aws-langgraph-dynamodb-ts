@@ -1,47 +1,16 @@
-import type { DocItem } from '../../shared/dynamodb/client';
-import {
-  deletePartitionRows,
-  namedDescriptor,
-  type NamedDescriptor,
-} from '../../shared/dynamodb/partition-delete';
+import { deletePartitionRows } from '../../shared/dynamodb/partition-delete';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { isCheckpointerSortKey, partitionKey, SORT_KEY_SEPARATOR } from '../internal/keys';
 import { parseThreadId } from '../internal/parse';
-import { partitionQuery } from '../internal/query';
+import {
+  checkpointRowDescriptors,
+  checkpointRowKind,
+  checkpointRowUnit,
+  isCheckpointerSortKey,
+  partitionKey,
+  partitionQuery,
+  WRITE_GROUP_ATTRIBUTE,
+} from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
-import { SPECIAL_REVISION_ATTRIBUTE } from '../internal/special-write-verify';
-
-/** The attributes a checkpointer row can hold an offloaded payload under. */
-const PAYLOAD_ATTRIBUTES = ['metadata', 'checkpoint', 'value'] as const;
-
-/**
- * The offloaded payloads a checkpointer row references, each named by the
- * attribute holding it, because a row is pinned through a document path over
- * that name. An attribute the row leaves out and one it holds `null` in both
- * name no payload, which is what `namedDescriptor` decides.
- */
-function descriptorsOf(row: DocItem): NamedDescriptor[] {
-  const named: NamedDescriptor[] = [];
-  for (const attribute of PAYLOAD_ATTRIBUTES) {
-    const entry = namedDescriptor(row, attribute);
-    if (entry !== undefined) named.push(entry);
-  }
-  return named;
-}
-
-/**
- * The checkpoint a row belongs to: the namespace and id its sort key carries in
- * the same two segments whatever its kind, which is exact rather than hopeful
- * because the separator is forbidden inside every segment.
- */
-function unitOf(row: DocItem): string {
-  return (row.SK as string).split(SORT_KEY_SEPARATOR).slice(1, 3).join(SORT_KEY_SEPARATOR);
-}
-
-/** The row kind, which is the sort key's leading segment. */
-function kindOf(row: DocItem): string {
-  return (row.SK as string).split(SORT_KEY_SEPARATOR)[0];
-}
 
 /**
  * Delete exactly the checkpoint, payload and write rows of one thread that the
@@ -96,10 +65,10 @@ export async function deleteThread(
     offloader: context.offloader,
     operation: 'deleteThread',
     ownsSortKey: isCheckpointerSortKey,
-    descriptorsOf,
-    idAttribute: SPECIAL_REVISION_ATTRIBUTE,
-    unitOf,
-    kindOf,
+    descriptorsOf: checkpointRowDescriptors,
+    idAttribute: WRITE_GROUP_ATTRIBUTE,
+    unitOf: checkpointRowUnit,
+    kindOf: checkpointRowKind,
     scope: [thread],
   });
 }

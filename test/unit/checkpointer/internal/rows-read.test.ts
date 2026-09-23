@@ -1,15 +1,15 @@
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import {
+  type CheckpointWriteItem,
+  dropSupersededWrites,
   narrowHead,
   narrowMetaItem,
   readCheckpoint,
   readMetadata,
   toPendingWrites,
-} from '../../../../src/checkpointer/internal/item-reader';
+} from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import { dropSupersededWrites } from '../../../../src/checkpointer/internal/write-dedup';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';

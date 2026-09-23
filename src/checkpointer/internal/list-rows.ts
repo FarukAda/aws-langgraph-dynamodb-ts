@@ -7,10 +7,9 @@ import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import { withoutExpired } from '../../shared/dynamodb/table-schema';
 import { truncateForLog } from '../../shared/logging/truncate';
-import type { CheckpointMetaItem } from '../types';
-import { narrowMetaItem } from './item-reader';
 import { listQuery, listScan } from './list-scope';
 import type { ListScope } from './parse';
+import { type CheckpointMetaItem, narrowMetaItem } from './rows';
 import type { CheckpointerContext } from './setup';
 
 /**

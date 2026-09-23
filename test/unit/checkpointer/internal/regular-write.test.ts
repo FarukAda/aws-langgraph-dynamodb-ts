@@ -1,8 +1,8 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import { writeRegularItems } from '../../../../src/checkpointer/internal/regular-write';
+import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';

@@ -5,7 +5,7 @@ import {
   verifyRow,
   type WriteVerdict,
 } from '../../shared/dynamodb/write-verify';
-import type { CheckpointMetaItem, CheckpointPayloadItem } from '../types';
+import type { CheckpointMetaItem, CheckpointPayloadItem } from './rows';
 import type { CheckpointerContext } from './setup';
 
 /**

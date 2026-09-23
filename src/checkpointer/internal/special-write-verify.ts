@@ -3,14 +3,8 @@ import type { DocItem } from '../../shared/dynamodb/client';
 import { isConditionalCheckFailed, rejectedItem } from '../../shared/dynamodb/conditional-put';
 import { rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { readRow, type RowProbe, verdictFor, verifyRow } from '../../shared/dynamodb/write-verify';
-import type { CheckpointWriteItem } from '../types';
+import { type CheckpointWriteItem, WRITE_GROUP_ATTRIBUTE } from './rows';
 import type { CheckpointerContext } from './setup';
-
-/**
- * A special row already carries a per-call ULID in `writeGroup`, so it needs no
- * extra revision attribute to compare and swap on.
- */
-export const SPECIAL_REVISION_ATTRIBUTE = 'writeGroup';
 
 /** What a special item's row held before this call tried to overwrite it. */
 export interface SpecialRowState {
@@ -56,7 +50,7 @@ export function specialRowProbe(item: CheckpointWriteItem): RowProbe {
   return {
     key: rowKeyOf(item),
     kind: 'attribute',
-    attribute: SPECIAL_REVISION_ATTRIBUTE,
+    attribute: WRITE_GROUP_ATTRIBUTE,
     expected: item.writeGroup,
     also: ['value'],
   };
@@ -68,7 +62,7 @@ function stateOf(row: DocItem | undefined): SpecialRowState {
   return {
     exists: true,
     value: row.value as PayloadDescriptor | undefined,
-    revision: row[SPECIAL_REVISION_ATTRIBUTE] as string | undefined,
+    revision: row[WRITE_GROUP_ATTRIBUTE] as string | undefined,
   };
 }
 
