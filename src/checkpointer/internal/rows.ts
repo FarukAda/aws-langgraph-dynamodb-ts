@@ -791,8 +791,9 @@ export function narrowHead(
  *
  * Accepts: `threadId` — the **caller's**, from the config, never the row's: it
  * scopes which S3 object the row may point at, so it must come from the
- * partition the caller asked for. `signal` — cancels the download an offloaded
- * payload costs.
+ * partition the caller asked for. A row that names an object outside that scope
+ * is refused by the codec rather than downloaded. `signal` — cancels the
+ * download an offloaded payload costs.
  *
  * Returns: the checkpoint.
  *
@@ -988,7 +989,8 @@ const PAYLOAD_ATTRIBUTES = ['metadata', 'checkpoint', 'value'] as const;
 
 /**
  * The offloaded payloads a checkpointer row references, each named by the
- * attribute holding it.
+ * attribute holding it, because a row is pinned through a document path over
+ * that name.
  *
  * Accepts: `row` — a row of this adapter's partition.
  *

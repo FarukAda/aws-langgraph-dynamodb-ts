@@ -37,13 +37,13 @@ const checkpoint: Checkpoint = {
 };
 const metadata: CheckpointMetadata = { source: 'loop', step: 3, parents: {} };
 
-describe('item-reader', () => {
-  it('round-trips the checkpoint written by the item-writer', async () => {
+describe('rows: read', () => {
+  it('round-trips a checkpoint written by buildCheckpointItems', async () => {
     const { payload } = await checkpointItems(context(), 't', '', checkpoint, metadata);
     expect(await readCheckpoint(context(), payload, 't')).toEqual(checkpoint);
   });
 
-  it('round-trips the metadata written by the item-writer', async () => {
+  it('round-trips metadata written by buildCheckpointItems', async () => {
     const { meta } = await checkpointItems(context(), 't', '', checkpoint, metadata);
     expect(await readMetadata(context(), meta, 't')).toEqual(metadata);
   });

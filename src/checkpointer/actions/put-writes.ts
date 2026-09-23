@@ -7,8 +7,7 @@ import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { parsePutWritesRequest } from '../internal/parse';
 import { writeRegularItems } from '../internal/regular-write';
-import { buildWriteItems } from '../internal/rows';
-import type { CheckpointWriteItem } from '../internal/rows';
+import { buildWriteItems, type CheckpointWriteItem } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
 
