@@ -117,3 +117,35 @@ describe('error constructors copy the lists they are handed', () => {
     expect(error.failedChunks).toHaveLength(1);
   });
 });
+
+describe('the subclasses fill details', () => {
+  it('BatchWriteIncompleteError carries a drain record', () => {
+    const error = new BatchWriteIncompleteError(2, [], 3);
+    expect(error.details).toEqual({
+      kind: 'drain',
+      succeededCount: 2,
+      unprocessed: [],
+      retries: 3,
+    });
+  });
+
+  it('BatchWriteAllIncompleteError carries a pass record, in rows when asked', () => {
+    const failure = new Error('x');
+    const error = new BatchWriteAllIncompleteError(1, 2, [failure], 5, 'row');
+    expect(error.details).toEqual({
+      kind: 'pass',
+      unit: 'row',
+      succeededChunks: 1,
+      totalChunks: 2,
+      failedChunks: [failure],
+      succeededCount: 5,
+    });
+  });
+
+  it('CompensationFailedError carries the rollback failure', () => {
+    const rollback = new Error('rollback');
+    expect(new CompensationFailedError(new Error('t'), rollback).details).toEqual({
+      rollbackError: rollback,
+    });
+  });
+});

@@ -43,7 +43,16 @@ export type {
 export { JSON_SERDE } from './shared/codec/json-serde';
 
 export { DynamoDBLangGraphError, isDynamoDBLangGraphError } from './shared/errors/base-error';
-export type { ErrorContext } from './shared/errors/base-error';
+export type {
+  AnyDynamoDBLangGraphError,
+  BatchDrainDetails,
+  BatchPassDetails,
+  BatchWriteIncompleteDetails,
+  CompensationFailedDetails,
+  ErrorContext,
+  ErrorDetailsByCode,
+  ErrorDetailsFor,
+} from './shared/errors/base-error';
 export { ErrorCode } from './shared/errors/error-code';
 export {
   AbortError,

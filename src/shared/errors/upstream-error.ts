@@ -18,7 +18,7 @@ interface SdkMetadata {
  * while losing nothing a support ticket needs: the SDK's own error name, the
  * request id and HTTP status when present, and the original as `cause`.
  */
-export class UpstreamError extends DynamoDBLangGraphError {
+export class UpstreamError extends DynamoDBLangGraphError<ErrorCode.UPSTREAM> {
   readonly upstreamName: string;
   /** Declared, not emitted: absent metadata leaves no `undefined`-valued own property behind. */
   declare readonly requestId?: string;

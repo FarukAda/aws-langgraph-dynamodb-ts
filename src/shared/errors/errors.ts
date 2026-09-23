@@ -5,7 +5,7 @@ import { ErrorCode } from './error-code';
 import { toError } from './wrap-error';
 
 /** Input failed a validation rule before any AWS call was made; `context.field` names the input. */
-export class ValidationError extends DynamoDBLangGraphError {
+export class ValidationError extends DynamoDBLangGraphError<ErrorCode.VALIDATION> {
   /**
    * Accepts: `field` — the option, argument or cap that failed, dotted for a
    * nested one (`s3.bucketName`). Omitted only where no single input is at
@@ -24,7 +24,7 @@ export class ValidationError extends DynamoDBLangGraphError {
 }
 
 /** A conditional write failed because the precondition no longer holds. */
-export class ConflictError extends DynamoDBLangGraphError {
+export class ConflictError extends DynamoDBLangGraphError<ErrorCode.CONDITION_CONFLICT> {
   /**
    * Accepts: `message` — what precondition no longer held. `cause` — the rejection
    * beneath it, when there is one.
@@ -41,7 +41,7 @@ export class ConflictError extends DynamoDBLangGraphError {
 }
 
 /** A retried operation exhausted its attempt budget. */
-export class RetryExhaustedError extends DynamoDBLangGraphError {
+export class RetryExhaustedError extends DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED> {
   /**
    * Accepts: `attempts` — how many were made before the budget ran out. `cause` —
    * the last failure, kept so a caller can classify what actually went wrong.
@@ -65,7 +65,7 @@ export class RetryExhaustedError extends DynamoDBLangGraphError {
  * query (filter/prefix) or raise the cap rather than trusting a partial result.
  * `context.field` names the cap that was hit.
  */
-export class ResultTruncatedError extends DynamoDBLangGraphError {
+export class ResultTruncatedError extends DynamoDBLangGraphError<ErrorCode.RESULT_TRUNCATED> {
   /**
    * Accepts: `cap` — which cap was hit (`maxItems`, `maxIterations`). `limit` —
    * its value, quoted in the message so the fix is obvious.
@@ -87,7 +87,7 @@ export class ResultTruncatedError extends DynamoDBLangGraphError {
 }
 
 /** An operation was cancelled via its AbortSignal. */
-export class AbortError extends DynamoDBLangGraphError {
+export class AbortError extends DynamoDBLangGraphError<ErrorCode.ABORTED> {
   /**
    * Accepts: `cause` — the `AbortSignal`'s own reason, when it carried one.
    *
@@ -111,7 +111,7 @@ export class AbortError extends DynamoDBLangGraphError {
  * non-UnprocessedItems error from a retry round) rather than a clean exhaustion
  * of the UnprocessedItems retry budget.
  */
-export class BatchWriteIncompleteError extends DynamoDBLangGraphError {
+export class BatchWriteIncompleteError extends DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE> {
   readonly succeededCount: number;
   readonly unprocessed: WriteRequest[];
 
@@ -137,6 +137,7 @@ export class BatchWriteIncompleteError extends DynamoDBLangGraphError {
       ErrorCode.BATCH_WRITE_INCOMPLETE,
       {},
       cause,
+      { kind: 'drain', succeededCount, unprocessed: items, retries },
     );
     this.name = 'BatchWriteIncompleteError';
     this.succeededCount = succeededCount;
@@ -160,7 +161,7 @@ export class BatchWriteIncompleteError extends DynamoDBLangGraphError {
  * sends one conditional request per row rather than a batch of twenty-five, so
  * it counts rows where this counts chunks and says so in its message.
  */
-export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
+export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE> {
   readonly succeededChunks: number;
   readonly totalChunks: number;
   readonly failedChunks: Error[];
@@ -199,6 +200,7 @@ export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
       ErrorCode.BATCH_WRITE_INCOMPLETE,
       {},
       failed[0],
+      { kind: 'pass', unit, succeededChunks, totalChunks, failedChunks: failed, succeededCount },
     );
     this.name = 'BatchWriteAllIncompleteError';
     this.succeededChunks = succeededChunks;
@@ -214,7 +216,7 @@ export class BatchWriteAllIncompleteError extends DynamoDBLangGraphError {
  * `cause` and the rollback failure as {@link rollbackError}; the session's
  * `messageCount` may have drifted — repair it with `reconcileMessageCount`.
  */
-export class CompensationFailedError extends DynamoDBLangGraphError {
+export class CompensationFailedError extends DynamoDBLangGraphError<ErrorCode.COMPENSATION_FAILED> {
   readonly rollbackError: Error;
 
   /**
@@ -240,6 +242,7 @@ export class CompensationFailedError extends DynamoDBLangGraphError {
       ErrorCode.COMPENSATION_FAILED,
       {},
       trigger,
+      { rollbackError: rollback },
     );
     this.name = 'CompensationFailedError';
     this.rollbackError = rollback;
