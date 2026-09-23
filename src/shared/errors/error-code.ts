@@ -61,8 +61,9 @@ export enum ErrorCode {
   NOT_FOUND = 'NOT_FOUND',
   /**
    * AWS rejected the request as malformed: `ValidationException`,
-   * `VALIDATION`, `IdempotentParameterMismatchException`, or a request body
-   * it could not read or accept. Retrying the same request fails the same way.
+   * AWS's `ValidationError` common error, `IdempotentParameterMismatchException`,
+   * or a request body it could not read or accept. Retrying the same request
+   * fails the same way.
    */
   AWS_REJECTED = 'AWS_REJECTED',
   /** An AWS request failed and no narrower code applies; `context.awsErrorName` names it. */

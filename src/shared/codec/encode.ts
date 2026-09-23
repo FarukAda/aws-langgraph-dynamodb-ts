@@ -107,9 +107,10 @@ function assertSerialisedToBytes(raw: Uint8Array): void {
  * neither is ever inferred from the bytes on read.
  *
  * Throws: whatever `serde.dumpsTyped` throws; `ABORTED` when the signal
- * fires during the upload; `S3_OFFLOAD_FAILED` from the upload; and two distinguishable ValidationErrors. One names `payload` — the
- * bytes are too large to store inline — and is raised only when there is **no**
- * offloader and they exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that
+ * fires during the upload; `S3_OFFLOAD_FAILED` from the upload; and two
+ * distinguishable `VALIDATION` errors. One names `payload` — the bytes are too
+ * large to store inline — and is raised only when there is **no** offloader
+ * and they exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that
  * cell cannot arise: `s3.thresholdBytes` is itself capped at that limit
  * (`src/shared/validation/codec-options.ts`, `validateS3`), so bytes too large
  * to store inline are always at or above the threshold and offload instead.

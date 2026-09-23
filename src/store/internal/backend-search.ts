@@ -46,7 +46,7 @@ function warnOnNonDescendingScores(
  * Whether the match names an address this store can form at all — the one case
  * a match is dropped for, because a backend returning a namespace element that
  * holds the reserved separator would otherwise turn a whole search into a
- * `VALIDATION` over one bad key. The address is checked here rather than
+ * `VALIDATION` error over one bad key. The address is checked here rather than
  * read back off the error `getItem` raises: the read raises a `VALIDATION` error
  * of its own for a payload it cannot honour — an offloaded row read with no
  * `s3` configured, a descriptor that is not one, an `s3Key` outside the row's
@@ -58,7 +58,7 @@ function warnOnNonDescendingScores(
  * nothing this package ran bounded either the labels or how many of them there
  * are. The `reason` goes through the same cap, though it is the only one of
  * these that cannot exceed it: what this `catch` binds is always
- * `validateStoreKey`'s own `VALIDATION` error, whose name is a literal of this
+ * `validateStoreKey`'s own `VALIDATION` error, whose code is a literal of this
  * package's. It is cut anyway so the rule reads the same at every site that
  * names a failure — a name and a message are the two halves of what the
  * failure was, and `message` is bounded where `redactedMessage` relays it —

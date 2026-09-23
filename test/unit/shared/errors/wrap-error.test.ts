@@ -1,5 +1,10 @@
+import {
+  MAX_LOGGED_VALUE_CHARS,
+  MAX_RELAYED_MESSAGE_CHARS,
+} from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { wrapForeignError } from '../../../../src/shared/errors/wrap-error';
+import { truncateForLog, truncateRelayedText } from '../../../../src/shared/logging/truncate';
 
 describe('wrapForeignError', () => {
   const throttled = Object.assign(new Error('Rate exceeded'), {
@@ -116,5 +121,28 @@ describe('wrapForeignError classifies a foreign or network failure found down th
     const error = wrapForeignError(a, 'store.put');
 
     expect(error.code).toBe(ErrorCode.UNEXPECTED_ERROR);
+  });
+});
+
+describe('wrapForeignError bounds what it quotes', () => {
+  /**
+   * The name takes the identifier cap because it is one; the text takes the
+   * relay cap because it is prose. `cause` and `context.awsErrorName` keep the
+   * name whole, because the structured fields are what a caller branches on
+   * and the message never was.
+   */
+  it('cuts an oversized name at the log cap and its text at the relay cap', () => {
+    const name = 'N'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const text = 'm'.repeat(MAX_RELAYED_MESSAGE_CHARS * 4);
+    const below = Object.assign(new Error(text), {
+      name,
+      $metadata: { httpStatusCode: 400, requestId: 'req-1' },
+    });
+    const error = wrapForeignError(below, 'store.get');
+    expect(error.message).toBe(`store.get: ${truncateForLog(name)}: ${truncateRelayedText(text)}`);
+    expect(error.message).not.toContain(name);
+    expect(error.cause).toBe(below);
+    expect((error.cause as Error).name).toBe(name);
+    expect(error.context.awsErrorName).toBe(name);
   });
 });
