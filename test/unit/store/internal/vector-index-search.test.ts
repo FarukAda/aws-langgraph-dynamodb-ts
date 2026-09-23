@@ -5,9 +5,9 @@ import { MAX_LOGGED_LABELS, MAX_LOGGED_VALUE_CHARS } from '../../../../src/share
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { truncateForLog } from '../../../../src/shared/logging/truncate';
-import { searchViaBackend } from '../../../../src/store/internal/backend-search';
 import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
+import { searchViaBackend } from '../../../../src/store/internal/vector-index';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
@@ -51,9 +51,7 @@ describe('searchViaBackend', () => {
       { namespace: ['users', 'u1'], key: 'a', score: 0.4 },
     ]);
     const found = await searchViaBackend(
-      ctx,
-      backend,
-      index,
+      { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
     expect(found.map((item) => item.score)).toEqual([0.9, 0.4]);
@@ -78,9 +76,7 @@ describe('searchViaBackend', () => {
       { namespace: ['users', 'u1'], key: 'a', score: 0.4 },
     ]);
     const found = await searchViaBackend(
-      ctx,
-      backend,
-      index,
+      { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
     expect(found).toHaveLength(1);
@@ -97,9 +93,7 @@ describe('searchViaBackend', () => {
     mock.on(GetCommand).resolves({});
     const backend = backendWith([{ namespace: ['users', 'u1'], key: 'gone', score: 0.9 }]);
     const found = await searchViaBackend(
-      context(client),
-      backend,
-      index,
+      { ...context(client), vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 1),
     );
     expect(found).toEqual([]);
@@ -110,9 +104,7 @@ describe('searchViaBackend', () => {
     const backend = backendWith([]);
     await expect(
       searchViaBackend(
-        context(client, { maxSearchCandidates: 10 }),
-        backend as never,
-        index,
+        { ...context(client, { maxSearchCandidates: 10 }), vectorBackend: backend, index },
         parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 5, 10),
       ),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
@@ -124,9 +116,11 @@ describe('searchViaBackend', () => {
     const backend = backendWith([]);
     await expect(
       searchViaBackend(
-        context(client),
-        backend as never,
-        { dims: 3, embeddings: { embedQuery: () => [0, 1] } as never },
+        {
+          ...context(client),
+          vectorBackend: backend,
+          index: { dims: 3, embeddings: { embedQuery: () => [0, 1] } as never },
+        },
         parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 1),
       ),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
@@ -138,9 +132,7 @@ describe('searchViaBackend', () => {
     mock.on(GetCommand).resolves({});
     const backend = backendWith([]);
     const found = await searchViaBackend(
-      context(client),
-      backend,
-      index,
+      { ...context(client), vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 5),
     );
     expect(found).toEqual([]);
@@ -183,9 +175,7 @@ describe('searchViaBackend', () => {
     ];
     const backend = backendWith(matches);
     const found = await searchViaBackend(
-      ctx,
-      backend,
-      index,
+      { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q', filter: { keep: true } }, 0, 2),
     );
     /** The page stays short because the backend is exhausted, not because it was cut. */
@@ -214,9 +204,7 @@ describe('searchViaBackend', () => {
       { namespace: ['users', 'u1'], key: 'a', score: 0.4 },
     ]);
     const found = await searchViaBackend(
-      ctx,
-      backend,
-      index,
+      { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
     expect(found.map((item) => item.score)).toEqual([0.9, 0.4]);
@@ -242,9 +230,7 @@ describe('searchViaBackend', () => {
       { namespace: ['users', 'u1'], key: 'a', score: 0.9 },
     ]);
     const found = await searchViaBackend(
-      ctx,
-      backend,
-      index,
+      { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('relevance'), expect.anything());
@@ -273,9 +259,7 @@ describe('searchViaBackend', () => {
       { namespace: deep, key: 'a', score: 0.9 },
     ]);
     await searchViaBackend(
-      ctx,
-      backend,
-      index,
+      { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: deep, query: 'q' }, 0, 2),
     );
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('relevance'), {
@@ -297,9 +281,7 @@ describe('searchViaBackend', () => {
     const key = 'k'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
     const backend = backendWith([{ namespace: ['users', label], key, score: 0.9 }]);
     await searchViaBackend(
-      ctx,
-      backend,
-      index,
+      { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 1),
     );
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('unusable vectorBackend match'), {
@@ -318,9 +300,7 @@ describe('searchViaBackend', () => {
     const deep = ['users', ...filler, 'a#b'];
     const backend = backendWith([{ namespace: deep, key: 'k', score: 0.9 }]);
     await searchViaBackend(
-      ctx,
-      backend,
-      index,
+      { ...ctx, vectorBackend: backend, index },
       parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 1),
     );
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('unusable vectorBackend match'), {

@@ -1,8 +1,12 @@
 export { DynamoDBSaver } from './checkpointer/saver';
 export type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './checkpointer/types';
 export { DynamoDBStore } from './store/store';
-export type { DynamoDBStoreOptions, ListNamespacesOptions, SearchOptions } from './store/types';
-export type { VectorReconcileResult } from './store/actions/reconcile-vector-index';
+export type {
+  DynamoDBStoreOptions,
+  ListNamespacesOptions,
+  SearchOptions,
+  VectorReconcileResult,
+} from './store/types';
 export type {
   VectorBackend,
   VectorMatch,

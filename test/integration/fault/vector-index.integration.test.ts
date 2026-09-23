@@ -117,7 +117,7 @@ describe('vector index self-heal + reconcile against real DynamoDB', () => {
     // The 'text' field is now missing entirely, so extractText yields an empty
     // string and embedValue returns undefined for this item. put() itself
     // would normally self-heal by syncing that undefined embedding as a
-    // delete — fail that one sync call (mirroring syncVectorIndex's own
+    // delete — fail that one sync call (mirroring syncItemVector's own
     // swallow-and-let-reconcile-repair contract) so the stale vector survives
     // to actually exercise reconcile's prune path instead of never reaching it.
     driftBackend.failNextDelete = true;

@@ -1,19 +1,30 @@
 import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
+import type { Logger } from '../../../../src/shared/logging/logger';
 import { truncateForLog } from '../../../../src/shared/logging/truncate';
-import { syncVectorIndex } from '../../../../src/store/internal/index-sync';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
+import type { StoreContext } from '../../../../src/store/internal/setup';
+import { syncItemVector } from '../../../../src/store/internal/vector-index';
+import type { VectorBackend } from '../../../../src/store/vector-backend';
+
+const backendContext = (backend: VectorBackend, logger: Logger): StoreContext =>
+  ({ vectorBackend: backend, logger }) as StoreContext;
 
 function fakeLogger() {
   return { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 }
 
-describe('syncVectorIndex', () => {
+describe('syncItemVector', () => {
   it('upserts when an embedding is present', async () => {
     const backend = {
       upsert: jest.fn().mockResolvedValue(undefined),
       delete: jest.fn(),
       query: jest.fn(),
     };
-    await syncVectorIndex(backend, ['users', 'u1'], 'k', [0.1, 0.2], fakeLogger());
+    await syncItemVector(
+      backendContext(backend, fakeLogger()),
+      parseStoreAddress(['users', 'u1'], 'k'),
+      [0.1, 0.2],
+    );
     expect(backend.upsert).toHaveBeenCalledWith(['users', 'u1'], 'k', [0.1, 0.2]);
     expect(backend.delete).not.toHaveBeenCalled();
   });
@@ -24,7 +35,11 @@ describe('syncVectorIndex', () => {
       delete: jest.fn().mockResolvedValue(undefined),
       query: jest.fn(),
     };
-    await syncVectorIndex(backend, ['users'], 'k', undefined, fakeLogger());
+    await syncItemVector(
+      backendContext(backend, fakeLogger()),
+      parseStoreAddress(['users'], 'k'),
+      undefined,
+    );
     expect(backend.delete).toHaveBeenCalledWith(['users'], 'k');
     expect(backend.upsert).not.toHaveBeenCalled();
   });
@@ -36,7 +51,9 @@ describe('syncVectorIndex', () => {
       query: jest.fn(),
     };
     const logger = fakeLogger();
-    await expect(syncVectorIndex(backend, ['n'], 'k', [1], logger)).resolves.toBeUndefined();
+    await expect(
+      syncItemVector(backendContext(backend, logger), parseStoreAddress(['n'], 'k'), [1]),
+    ).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('vector-index sync failed'),
       /**
@@ -61,7 +78,7 @@ describe('syncVectorIndex', () => {
       query: jest.fn(),
     };
     const logger = fakeLogger();
-    await syncVectorIndex(backend, ['n'], 'k', [1], logger);
+    await syncItemVector(backendContext(backend, logger), parseStoreAddress(['n'], 'k'), [1]);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ reason: truncateForLog(reason) }),

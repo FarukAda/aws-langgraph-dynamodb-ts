@@ -15,10 +15,7 @@ import { assertShape } from '../shared/validation/option-shape';
 import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { listNamespaces } from './actions/list-namespaces';
 import { putItem } from './actions/put';
-import {
-  reconcileVectorIndex as reconcileVectorIndexAction,
-  type VectorReconcileResult,
-} from './actions/reconcile-vector-index';
+import { reconcileVectorIndex as reconcileVectorIndexAction } from './actions/reconcile-vector-index';
 import { searchItems } from './actions/search';
 import { runBatch } from './internal/batch-plan';
 import { getItem } from './internal/get-item';
@@ -33,7 +30,12 @@ import {
   parseStoreAddress,
 } from './internal/parse';
 import { type StoreContext, setUpStore } from './internal/setup';
-import type { DynamoDBStoreOptions, ListNamespacesOptions, SearchOptions } from './types';
+import type {
+  DynamoDBStoreOptions,
+  ListNamespacesOptions,
+  SearchOptions,
+  VectorReconcileResult,
+} from './types';
 
 type SingleResult = Item | null | SearchItem[] | string[][];
 

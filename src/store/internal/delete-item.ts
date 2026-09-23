@@ -8,7 +8,6 @@ import {
 } from '../../shared/dynamodb/conditional-put';
 import { deleteIdempotently } from '../../shared/dynamodb/idempotent-write';
 import type { RowKey } from '../../shared/dynamodb/table-schema';
-import { syncVectorIndex } from './index-sync';
 import type { StoreAddress } from './parse';
 import {
   type ExistingRecordMeta,
@@ -18,6 +17,7 @@ import {
   REVISION_ATTRIBUTE,
 } from './rows';
 import type { StoreContext } from './setup';
+import { dropVectorWhenGone } from './vector-index';
 import { isRetryExhausted, rowIsAbsent } from './write-verify';
 
 /**
@@ -99,39 +99,6 @@ async function removeObservedRow(
     }
   }
   return undefined;
-}
-
-/**
- * Drop the item's vector, but only on a fresh read that finds no row at the
- * key.
- *
- * The question is deliberately **not** "did this call remove the row" — that
- * one is true in exactly the interleaving that goes wrong. It is "does the key
- * hold a row *now*", which a racing put that recreated it and a
- * compare-and-swap that left it alone both answer the same way, and which costs
- * a point read of this library's own table rather than anything the backend has
- * to offer. The reconciler already asks it before pruning a vector, so the
- * delete path is no longer the less careful of the two.
- *
- * A read that itself fails answers "not confirmed" and keeps the vector: a
- * stale vector for a deleted item, which `reconcileVectorIndex` removes, rather
- * than a missing one for a live item, which is the defect this exists for.
- */
-async function dropVectorWhenGone(
-  context: StoreContext,
-  address: StoreAddress,
-  key: RowKey,
-): Promise<void> {
-  const backend = context.vectorBackend;
-  if (backend === undefined) return;
-  if (!(await rowIsAbsent(context, key))) {
-    context.logger.info('store.delete: kept a vector whose item was not confirmed gone', {
-      namespace: address.namespace,
-      key: address.key,
-    });
-    return;
-  }
-  await syncVectorIndex(backend, address.namespace, address.key, undefined, context.logger);
 }
 
 /**
@@ -229,7 +196,7 @@ export async function deleteStoreItem(context: StoreContext, address: StoreAddre
       attempts: OVERWRITE_CAS_MAX_ATTEMPTS,
     });
   }
-  await dropVectorWhenGone(context, address, key);
+  await dropVectorWhenGone(context, address);
   if (context.offloader && released?.value) {
     await cleanUpS3Orphans(
       context.offloader,

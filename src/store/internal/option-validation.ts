@@ -7,8 +7,7 @@ import { allKeysOf, assertShape } from '../../shared/validation/option-shape';
 import { assertBaseAdapterOptions } from '../../shared/validation/options';
 import { assertInteger, assertStringArray } from '../../shared/validation/primitives';
 import type { DynamoDBStoreOptions } from '../types';
-import type { VectorScoreDirection } from '../vector-backend';
-import { VECTOR_SCORE_DIRECTIONS } from './score-direction';
+import { VECTOR_SCORE_DIRECTIONS, type VectorScoreDirection } from '../vector-backend';
 
 /**
  * The keys `IndexConfig` declares. The type is upstream's, but this package is

@@ -86,3 +86,9 @@ export interface ListNamespacesOptions {
   /** How many namespaces to skip first, a non-negative integer; default 0. */
   offset?: number;
 }
+
+/** Counts returned by {@link reconcileVectorIndex}. */
+export interface VectorReconcileResult {
+  upserted: number;
+  pruned: number;
+}
