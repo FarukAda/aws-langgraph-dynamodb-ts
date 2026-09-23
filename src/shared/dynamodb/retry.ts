@@ -117,7 +117,7 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
  * exactly as it was, since a zero-argument function still satisfies the type.
  *
  * Accepts: `options.maxAttempts` — total attempts including the first, default
- * {@link DEFAULT_RETRY_MAX_ATTEMPTS}; at least 1, which `validateRetryPolicy`
+ * {@link DEFAULT_RETRY_MAX_ATTEMPTS}; at least 1, which `assertRetryPolicy`
  * enforces for every caller-supplied policy. `options.baseDelayMs` /
  * `maxDelayMs` — the backoff schedule. `options.isRetryable` — replaces
  * `retryableErrors` entirely, so a call site can share one classifier with

@@ -15,7 +15,7 @@ import {
   assertShape,
   isObjectShape,
 } from '../shared/validation/option-shape';
-import { validateClientChoice } from '../shared/validation/options';
+import { assertClientChoice } from '../shared/validation/options';
 import { DynamoDBStore } from '../store/store';
 import type { DynamoDBStoreOptions } from '../store/types';
 import type { CreateAllOptions, CreatedAdapters, FactoryBaseOptions } from './types';
@@ -125,7 +125,7 @@ export class DynamoDBFactory {
    */
   constructor(private readonly base: FactoryBaseOptions = {}) {
     assertShape(base, FACTORY_BASE_KEYS, 'options');
-    validateClientChoice(base);
+    assertClientChoice(base);
     if (base.logger !== undefined) assertMembers(base.logger, LOGGER_MEMBERS, 'logger');
   }
 

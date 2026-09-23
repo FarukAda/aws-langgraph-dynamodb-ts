@@ -1,5 +1,5 @@
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { validateCompression, validateS3 } from '../../../../src/shared/validation/codec-options';
+import { assertCompression, assertS3 } from '../../../../src/shared/validation/codec-options';
 
 function expectValidationError(fn: () => void, field: string): void {
   try {
@@ -14,28 +14,28 @@ function expectValidationError(fn: () => void, field: string): void {
 
 /**
  * Direct unit coverage of the module extracted from `options.ts`;
- * `validateBaseAdapterOptions`'s own tests exercise every
+ * `assertBaseAdapterOptions`'s own tests exercise every
  * branch through the composed entry point, this exercises the unit itself.
  */
-describe('validateCompression', () => {
+describe('assertCompression', () => {
   it('accepts a minimal valid configuration', () => {
-    expect(() => validateCompression({ enabled: true })).not.toThrow();
+    expect(() => assertCompression({ enabled: true })).not.toThrow();
   });
 
   it('rejects a non-boolean enabled flag', () => {
     expectValidationError(
-      () => validateCompression({ enabled: 'yes' as never }),
+      () => assertCompression({ enabled: 'yes' as never }),
       'compression.enabled',
     );
   });
 });
 
-describe('validateS3', () => {
+describe('assertS3', () => {
   it('accepts a minimal valid configuration', () => {
-    expect(() => validateS3({ bucketName: 'b' })).not.toThrow();
+    expect(() => assertS3({ bucketName: 'b' })).not.toThrow();
   });
 
   it('rejects an empty bucket name', () => {
-    expectValidationError(() => validateS3({ bucketName: '' }), 's3.bucketName');
+    expectValidationError(() => assertS3({ bucketName: '' }), 's3.bucketName');
   });
 });

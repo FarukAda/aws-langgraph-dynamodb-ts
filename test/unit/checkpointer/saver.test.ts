@@ -172,7 +172,7 @@ describe('DynamoDBSaver', () => {
     /**
      * `0`, `false` and `NaN` are falsy in JS but none can be a checkpoint id;
      * the boundary is exactly `undefined`/`null`/`''`, not JS truthiness, so
-     * each must reach `validateIdentifier` and be refused as a non-string
+     * each must reach `parseIdentifier` and be refused as a non-string
      * rather than silently read as "no bound".
      */
     it('refuses 0, false and NaN as a checkpoint_id rather than treating them as absent', async () => {

@@ -13,7 +13,7 @@ import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { assertBaseCollaborators } from '../../shared/validation/collaborators';
 import { assertShape } from '../../shared/validation/option-shape';
-import { validateBaseAdapterOptions } from '../../shared/validation/options';
+import { assertBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBSaverOptions } from '../types';
 import { SAVER_KEYS } from './option-keys';
@@ -67,7 +67,7 @@ export function setUpCheckpointer(
   serde: SerializerProtocol,
 ): CheckpointerSetup {
   assertShape(options, SAVER_KEYS, 'options');
-  validateBaseAdapterOptions(options);
+  assertBaseAdapterOptions(options);
   assertBaseCollaborators(options);
   const logger = resolveLogger(options.logger);
   const resolved = resolveDynamoDBClient(options);

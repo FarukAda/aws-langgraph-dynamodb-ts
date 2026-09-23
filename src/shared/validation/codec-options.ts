@@ -3,7 +3,7 @@ import { assertScopedKeyPrefix, type S3OffloadConfig } from '../codec/s3/config'
 import { MAX_INLINE_PAYLOAD_BYTES, MAX_PAYLOAD_BUFFER_BYTES } from '../constants';
 import { validationError } from '../errors/errors';
 import { allKeysOf, assertObjectShape, assertShape } from './option-shape';
-import { validateInteger, validateNonEmptyString } from './primitives';
+import { assertInteger, assertNonEmptyString } from './primitives';
 
 /** Server-side encryption algorithms S3 accepts for `PutObject`. */
 const SSE_ALGORITHMS: readonly string[] = ['AES256', 'aws:kms', 'aws:kms:dsse'];
@@ -30,18 +30,19 @@ const S3_KEYS = allKeysOf<S3OffloadConfig>({
  *
  * Accepts: `config` — an object naming only {@link CompressionConfig}'s keys.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming the offending field, dotted under
  * `compression`.
  */
-export function validateCompression(config: CompressionConfig): void {
+export function assertCompression(config: CompressionConfig): void {
   assertShape(config, COMPRESSION_KEYS, 'compression');
   if (typeof config.enabled !== 'boolean') {
     throw validationError('compression.enabled must be a boolean', 'compression.enabled');
   }
   if (config.level !== undefined) {
-    validateInteger(config.level, 'compression.level', { min: 0, max: 9 });
+    assertInteger(config.level, 'compression.level', { min: 0, max: 9 });
   }
   if (config.minSizeBytes !== undefined) {
     /**
@@ -56,13 +57,13 @@ export function validateCompression(config: CompressionConfig): void {
      * only value it can never act on is one larger than any payload this
      * package can read back.
      */
-    validateInteger(config.minSizeBytes, 'compression.minSizeBytes', {
+    assertInteger(config.minSizeBytes, 'compression.minSizeBytes', {
       min: 0,
       max: MAX_PAYLOAD_BUFFER_BYTES,
     });
   }
   if (config.maxDecompressedBytes !== undefined) {
-    validateInteger(config.maxDecompressedBytes, 'compression.maxDecompressedBytes', {
+    assertInteger(config.maxDecompressedBytes, 'compression.maxDecompressedBytes', {
       min: 1,
       max: MAX_PAYLOAD_BUFFER_BYTES,
     });
@@ -76,14 +77,15 @@ export function validateCompression(config: CompressionConfig): void {
  * `config.sseKmsKeyId` — absent, or a non-empty string. Only its type is
  * checked; whether it names a real key, by id or by ARN, is for S3 to answer.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `s3.serverSideEncryption` or
  * `s3.sseKmsKeyId`. Unchecked, a truthy key id that is not a string was
  * handed to `PutObject` at the first offload, and a falsy one (`''`, `null`,
  * `0`) was dropped, uploading without the key the caller named.
  */
-function validateS3Encryption(config: S3OffloadConfig): void {
+function assertS3Encryption(config: S3OffloadConfig): void {
   if (
     config.serverSideEncryption !== undefined &&
     !SSE_ALGORITHMS.includes(config.serverSideEncryption)
@@ -94,7 +96,7 @@ function validateS3Encryption(config: S3OffloadConfig): void {
     );
   }
   if (config.sseKmsKeyId !== undefined) {
-    validateNonEmptyString(config.sseKmsKeyId, 's3.sseKmsKeyId');
+    assertNonEmptyString(config.sseKmsKeyId, 's3.sseKmsKeyId');
   }
 }
 
@@ -106,13 +108,14 @@ function validateS3Encryption(config: S3OffloadConfig): void {
  * nor an array; its own keys are not checked. `config.createS3Client`, when
  * given, must be a function.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming the offending field, dotted under `s3`.
  */
-export function validateS3(config: S3OffloadConfig): void {
+export function assertS3(config: S3OffloadConfig): void {
   assertShape(config, S3_KEYS, 's3');
-  validateNonEmptyString(config.bucketName, 's3.bucketName');
+  assertNonEmptyString(config.bucketName, 's3.bucketName');
   /**
    * The shape only, never the keys: they are the AWS SDK's `S3ClientConfig`,
    * which gains keys between SDK releases, and an application may install a
@@ -121,19 +124,19 @@ export function validateS3(config: S3OffloadConfig): void {
    */
   if (config.clientConfig !== undefined) assertObjectShape(config.clientConfig, 's3.clientConfig');
   if (config.thresholdBytes !== undefined) {
-    validateInteger(config.thresholdBytes, 's3.thresholdBytes', {
+    assertInteger(config.thresholdBytes, 's3.thresholdBytes', {
       min: 1,
       max: MAX_INLINE_PAYLOAD_BYTES,
     });
   }
   if (config.keyPrefix !== undefined) assertScopedKeyPrefix(config.keyPrefix);
   if (config.maxDownloadBytes !== undefined) {
-    validateInteger(config.maxDownloadBytes, 's3.maxDownloadBytes', {
+    assertInteger(config.maxDownloadBytes, 's3.maxDownloadBytes', {
       min: 1,
       max: MAX_PAYLOAD_BUFFER_BYTES,
     });
   }
-  validateS3Encryption(config);
+  assertS3Encryption(config);
   /**
    * Called to build the S3 client at the first offload, where a value that is
    * not a function threw a bare `TypeError`.

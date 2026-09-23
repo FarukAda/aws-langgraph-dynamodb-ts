@@ -6,7 +6,7 @@ import {
   checkedShape,
   isObjectShape,
 } from '../../../../src/shared/validation/option-shape';
-import { validateClientChoice } from '../../../../src/shared/validation/options';
+import { assertClientChoice } from '../../../../src/shared/validation/options';
 
 interface Sample {
   alpha?: number;
@@ -87,21 +87,21 @@ describe('checkedShape', () => {
   });
 });
 
-describe('validateClientChoice', () => {
+describe('assertClientChoice', () => {
   it('accepts either way of getting a client, or neither', () => {
-    expect(() => validateClientChoice({})).not.toThrow();
-    expect(() => validateClientChoice({ client: {} as never })).not.toThrow();
-    expect(() => validateClientChoice({ clientConfig: { region: 'eu-west-1' } })).not.toThrow();
-    expect(() => validateClientChoice({ createClient: (() => ({})) as never })).not.toThrow();
+    expect(() => assertClientChoice({})).not.toThrow();
+    expect(() => assertClientChoice({ client: {} as never })).not.toThrow();
+    expect(() => assertClientChoice({ clientConfig: { region: 'eu-west-1' } })).not.toThrow();
+    expect(() => assertClientChoice({ createClient: (() => ({})) as never })).not.toThrow();
   });
 
   /** An injected client is used as-is, so the configuration beside it would be ignored. */
   it('refuses a client alongside a configuration for building one', () => {
     expect(() =>
-      validateClientChoice({ client: {} as never, clientConfig: { region: 'eu-west-1' } }),
+      assertClientChoice({ client: {} as never, clientConfig: { region: 'eu-west-1' } }),
     ).toThrow(/either `client` or `clientConfig`/);
     expect(() =>
-      validateClientChoice({ client: {} as never, createClient: (() => ({})) as never }),
+      assertClientChoice({ client: {} as never, createClient: (() => ({})) as never }),
     ).toThrow(/either `client` or `clientConfig`/);
   });
 
@@ -111,18 +111,18 @@ describe('validateClientChoice', () => {
    */
   it('refuses a clientConfig that is not an object, naming it, and never checks its keys', () => {
     for (const clientConfig of [null, [], 'x', 7]) {
-      expect(() => validateClientChoice({ clientConfig: clientConfig as never })).toThrow(
+      expect(() => assertClientChoice({ clientConfig: clientConfig as never })).toThrow(
         expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'clientConfig' } }),
       );
     }
     expect(() =>
-      validateClientChoice({ clientConfig: { newerSdkOption: true } as never }),
+      assertClientChoice({ clientConfig: { newerSdkOption: true } as never }),
     ).not.toThrow();
   });
 
   it('names `client` on the error it raises', () => {
     try {
-      validateClientChoice({ client: {} as never, clientConfig: {} });
+      assertClientChoice({ client: {} as never, clientConfig: {} });
       throw new Error('should have thrown');
     } catch (error) {
       expect((error as { context: { field?: string } }).context.field).toBe('client');

@@ -1,6 +1,6 @@
 import { MAX_SCAN_ITEMS, MAX_SEARCH_CANDIDATES } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { validateStoreOptions } from '../../../../src/store/internal/option-validation';
+import { assertStoreOptions } from '../../../../src/store/internal/option-validation';
 import { parseListOperation } from '../../../../src/store/internal/parse';
 import { projectKeys, scopedQuery } from '../../../../src/store/internal/query';
 import { existingFrom } from '../../../../src/store/internal/read-existing';
@@ -103,20 +103,20 @@ describe('parseListOperation maxDepth', () => {
   });
 });
 
-describe('validateStoreOptions', () => {
+describe('assertStoreOptions', () => {
   const embeddings = { embedQuery: () => [], embedDocuments: () => [] } as never;
 
   it('accepts a minimal store and one with a complete index', () => {
-    expect(() => validateStoreOptions({ tableName: 'store' })).not.toThrow();
+    expect(() => assertStoreOptions({ tableName: 'store' })).not.toThrow();
     expect(() =>
-      validateStoreOptions({ tableName: 'store', index: { dims: 2, embeddings } }),
+      assertStoreOptions({ tableName: 'store', index: { dims: 2, embeddings } }),
     ).not.toThrow();
   });
 
   /** Without embeddings every put would clear the vector and every query rank nothing. */
   it('refuses a vectorBackend without an index', () => {
     try {
-      validateStoreOptions({ tableName: 'store', vectorBackend: {} as never });
+      assertStoreOptions({ tableName: 'store', vectorBackend: {} as never });
       throw new Error('should have thrown');
     } catch (error) {
       expect((error as { context: { field?: string } }).context.field).toBe('vectorBackend');
@@ -125,10 +125,10 @@ describe('validateStoreOptions', () => {
 
   it('refuses an index whose embeddings cannot embed', () => {
     expect(() =>
-      validateStoreOptions({ tableName: 'store', index: { dims: 2, embeddings: {} as never } }),
+      assertStoreOptions({ tableName: 'store', index: { dims: 2, embeddings: {} as never } }),
     ).toThrow(/embedQuery/);
     expect(() =>
-      validateStoreOptions({
+      assertStoreOptions({
         tableName: 'store',
         index: { dims: 2, embeddings: { embedQuery: () => [] } as never },
       }),
@@ -137,7 +137,7 @@ describe('validateStoreOptions', () => {
 
   it('refuses a score direction outside its union, which would rank a backend backwards', () => {
     expect(() =>
-      validateStoreOptions({
+      assertStoreOptions({
         tableName: 'store',
         vectorScoreDirection: 'Distance' as never,
         index: { dims: 2, embeddings },
@@ -147,10 +147,10 @@ describe('validateStoreOptions', () => {
   });
 
   it('refuses a non-positive in-memory cap, which would return nothing', () => {
-    expect(() => validateStoreOptions({ tableName: 'store', maxScanItems: 0 })).toThrow(
+    expect(() => assertStoreOptions({ tableName: 'store', maxScanItems: 0 })).toThrow(
       /maxScanItems/,
     );
-    expect(() => validateStoreOptions({ tableName: 'store', maxSearchCandidates: 0 })).toThrow(
+    expect(() => assertStoreOptions({ tableName: 'store', maxSearchCandidates: 0 })).toThrow(
       /maxSearchCandidates/,
     );
   });
@@ -161,17 +161,17 @@ describe('validateStoreOptions', () => {
    */
   it('refuses an in-memory cap above its named ceiling, accepts it at the ceiling', () => {
     expect(() =>
-      validateStoreOptions({ tableName: 'store', maxScanItems: MAX_SCAN_ITEMS + 1 }),
+      assertStoreOptions({ tableName: 'store', maxScanItems: MAX_SCAN_ITEMS + 1 }),
     ).toThrow(/maxScanItems/);
     expect(() =>
-      validateStoreOptions({ tableName: 'store', maxScanItems: MAX_SCAN_ITEMS }),
+      assertStoreOptions({ tableName: 'store', maxScanItems: MAX_SCAN_ITEMS }),
     ).not.toThrow();
 
     expect(() =>
-      validateStoreOptions({ tableName: 'store', maxSearchCandidates: MAX_SEARCH_CANDIDATES + 1 }),
+      assertStoreOptions({ tableName: 'store', maxSearchCandidates: MAX_SEARCH_CANDIDATES + 1 }),
     ).toThrow(/maxSearchCandidates/);
     expect(() =>
-      validateStoreOptions({ tableName: 'store', maxSearchCandidates: MAX_SEARCH_CANDIDATES }),
+      assertStoreOptions({ tableName: 'store', maxSearchCandidates: MAX_SEARCH_CANDIDATES }),
     ).not.toThrow();
   });
 });

@@ -60,29 +60,17 @@ function parseNonBlankString(value: unknown, field: string): string {
  * The rule is {@link parseNonBlankString}'s; this form is for a value the
  * caller keeps under its declared type.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`.
  */
-export function validateNonEmptyString(value: string, field: string): void {
+export function assertNonEmptyString(value: string, field: string): void {
   parseNonBlankString(value, field);
 }
 
-/**
- * Throw `VALIDATION` unless `value` encodes to at most `maxBytes` of
- * UTF-8.
- *
- * Accepts: `value` — any type, non-strings rejected first. `maxBytes` — a byte
- * budget from `shared/constants`, measured in UTF-8 bytes rather than UTF-16
- * code units because that is what DynamoDB and S3 count. The rule is
- * {@link parseString}'s; this form is for a value the caller keeps under its
- * declared type.
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: `VALIDATION` naming `field`.
- */
-export function assertMaxBytes(value: string, field: string, maxBytes: number): void {
+/** Throw `VALIDATION` unless `value` encodes to at most `maxBytes` of UTF-8. */
+function assertMaxBytes(value: string, field: string, maxBytes: number): void {
   parseString(value, field);
   const bytes = Buffer.byteLength(value, 'utf8');
   if (bytes > maxBytes) {
@@ -131,12 +119,13 @@ export function parseInteger(
  * The rule is {@link parseInteger}'s; this form is for a value the caller
  * keeps under its declared type.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`; the integer rule is reported before
  * either bound.
  */
-export function validateInteger(
+export function assertInteger(
   value: number,
   field: string,
   bounds: { min?: number; max?: number } = {},
@@ -183,46 +172,6 @@ export function parseLimit(value: unknown, min: 0 | 1): PageLimit {
 }
 
 /**
- * Throw `VALIDATION` unless `value` is a page size this package will
- * serve: an integer from `min` to {@link MAX_PAGE_LIMIT}. The rule is
- * {@link parseLimit}'s; this form is for a value the caller keeps under its
- * declared type.
- *
- * Accepts: `value` — any type; a non-number, a fraction, `NaN` and `Infinity`
- * are all rejected by the integer rule. `min` — `0` where an empty result is a
- * request the call site answers without issuing a read, `1` where an empty
- * result would be mistaken for an empty conversation. A negative value is
- * refused at either floor rather than read as zero: it is a page size that was
- * computed, and the computation went wrong.
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: `VALIDATION` naming `limit`, quoting the bound broken — the floor
- * or {@link MAX_PAGE_LIMIT} — so the caller is told what the rule is rather
- * than only that it has one.
- */
-export function validateLimit(value: number, min: 0 | 1): void {
-  parseLimit(value, min);
-}
-
-/**
- * Throw `VALIDATION` unless `value` is an array holding at least one
- * element.
- *
- * Accepts: `value` — any type; a non-array and `[]` are both rejected. The
- * elements themselves are not inspected.
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: `VALIDATION` naming `field`.
- */
-export function validateNonEmptyArray<T>(value: T[], field: string): void {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw validationError(`${field} must be a non-empty array`, field);
-  }
-}
-
-/**
  * The value as an array of strings, copied.
  *
  * Accepts: `value` — anything; a non-array is refused, as is an array holding
@@ -248,11 +197,12 @@ export function parseStringArray(value: unknown, field: string): string[] {
  * string. An empty array is valid. The rule is {@link parseStringArray}'s;
  * this form is for a value the caller keeps under its declared type.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`.
  */
-export function validateStringArray(value: readonly string[], field: string): void {
+export function assertStringArray(value: readonly string[], field: string): void {
   parseStringArray(value, field);
 }
 
@@ -318,20 +268,8 @@ export function assertWellFormed(value: string, field: string): void {
   }
 }
 
-/**
- * Throw `VALIDATION` if `value` contains `separator`.
- *
- * Accepts: `value` — any type, non-strings rejected first. `separator` — the
- * reserved character joining key segments, `'#'` for every key this package
- * composes (`src/checkpointer/internal/keys.ts:5`). The rule is
- * {@link parseString}'s; this form is for a value the caller keeps under its
- * declared type.
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: `VALIDATION` naming `field`.
- */
-export function assertNoSeparator(value: string, separator: string, field: string): void {
+/** Throw `VALIDATION` if `value` contains `separator`. */
+function assertNoSeparator(value: string, separator: string, field: string): void {
   parseString(value, field);
   if (value.includes(separator)) {
     throw validationError(`${field} must not contain the reserved "${separator}" separator`, field);
@@ -423,29 +361,4 @@ export function parseIdentifier(
   maxBytes: number,
 ): string {
   return parseKeySegment(parseNonBlankString(value, field), separator, field, maxBytes);
-}
-
-/**
- * Throw `VALIDATION` unless `value` is a valid caller-supplied identifier that
- * reaches a DynamoDB key or an S3 object key. The rule is
- * {@link parseIdentifier}'s; this form is for a value the caller keeps under
- * its declared type.
- *
- * Accepts: `value` — any type. `separator`, `field`, `maxBytes` — as the rules
- * below.
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: `VALIDATION` naming `field`. The rules apply in this order, and
- * the order is part of the contract because a caller branches on which one
- * failed: string, non-blank, at most `maxBytes` of UTF-8, free of `separator`,
- * free of control characters, well-formed UTF-16.
- */
-export function validateIdentifier(
-  value: string,
-  separator: string,
-  field: string,
-  maxBytes: number,
-): void {
-  parseIdentifier(value, separator, field, maxBytes);
 }

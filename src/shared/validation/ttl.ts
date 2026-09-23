@@ -1,7 +1,7 @@
 import { MAX_TTL_DAYS, MAX_TTL_SECONDS, S3_LIFECYCLE_SWEEP_MARGIN_DAYS } from '../constants';
 import { validationError } from '../errors/errors';
 import { allKeysOf, assertShape } from './option-shape';
-import { validateInteger } from './primitives';
+import { assertInteger } from './primitives';
 
 const SECONDS_PER_DAY = 24 * 60 * 60;
 
@@ -29,8 +29,8 @@ const TTL_KEYS = allKeysOf<Record<KeyOfEachShape<TtlOption>, number>>({
 });
 
 /** Positive integer no greater than `max`, with a message that names what the cap means. */
-function validateWithinCap(value: number, field: string, max: number): void {
-  validateInteger(value, field, { min: 1 });
+function assertWithinCap(value: number, field: string, max: number): void {
+  assertInteger(value, field, { min: 1 });
   if (value > max) {
     throw validationError(`${field} must be <= ${max} (five years)`, field);
   }
@@ -76,10 +76,10 @@ function assertOneUnit(ttl: TtlOption): void {
 export function resolveTtlSeconds(ttl: TtlOption): number {
   assertOneUnit(ttl);
   if ('days' in ttl) {
-    validateWithinCap(ttl.days, 'ttl.days', MAX_TTL_DAYS);
+    assertWithinCap(ttl.days, 'ttl.days', MAX_TTL_DAYS);
     return ttl.days * SECONDS_PER_DAY;
   }
-  validateWithinCap(ttl.seconds, 'ttl.seconds', MAX_TTL_SECONDS);
+  assertWithinCap(ttl.seconds, 'ttl.seconds', MAX_TTL_SECONDS);
   return ttl.seconds;
 }
 

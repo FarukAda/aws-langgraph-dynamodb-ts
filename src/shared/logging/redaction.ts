@@ -1,7 +1,7 @@
 import { validationError } from '../errors/errors';
 import { assertMembers, LOGGER_MEMBERS } from '../validation/collaborators';
 import { assertObjectShape } from '../validation/option-shape';
-import { validateStringArray } from '../validation/primitives';
+import { assertStringArray } from '../validation/primitives';
 import { absorbLoggerFailure, type LogArgument, type Logger } from './logger';
 import { type Redactable, walkObject } from './redaction-walk';
 import {
@@ -74,7 +74,7 @@ export function redactSecrets(
   patterns: readonly string[] = DEFAULT_SECRET_KEY_PATTERNS,
   valuePatterns: readonly RegExp[] = DEFAULT_SECRET_VALUE_PATTERNS,
 ): Redactable {
-  validateStringArray(patterns, 'patterns');
+  assertStringArray(patterns, 'patterns');
   assertRegExpArray(valuePatterns, 'valuePatterns');
   /**
    * `walking` detects a cycle; `done` memoises a finished node. Both are
@@ -145,7 +145,7 @@ export interface RedactLoggerOptions {
  */
 function assertRedactionOptions(options: RedactLoggerOptions): void {
   assertObjectShape(options, 'options');
-  if (options.extraKeys !== undefined) validateStringArray(options.extraKeys, 'extraKeys');
+  if (options.extraKeys !== undefined) assertStringArray(options.extraKeys, 'extraKeys');
   if (options.extraValuePatterns !== undefined) {
     assertRegExpArray(options.extraValuePatterns, 'extraValuePatterns');
   }

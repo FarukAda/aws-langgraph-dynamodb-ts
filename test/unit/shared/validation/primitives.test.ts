@@ -3,9 +3,7 @@ import { expectTypeOf } from 'expect-type';
 import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
-  assertMaxBytes,
   assertNoControlChars,
-  assertNoSeparator,
   assertWellFormed,
   parseIdentifier,
   parseInteger,
@@ -14,12 +12,9 @@ import {
   parseString,
   parseStringArray,
   type PageLimit,
-  validateIdentifier,
-  validateInteger,
-  validateLimit,
-  validateNonEmptyArray,
-  validateNonEmptyString,
-  validateStringArray,
+  assertInteger,
+  assertNonEmptyString,
+  assertStringArray,
 } from '../../../../src/shared/validation/primitives';
 
 /** The states a caller can reach that the declared `string` type rules out. */
@@ -39,42 +34,42 @@ function expectValidationError(fn: () => void, field: string): void {
   }
 }
 
-describe('validateNonEmptyString', () => {
+describe('assertNonEmptyString', () => {
   it.each(NON_STRINGS)('rejects the non-string %p', (value) => {
-    expectValidationError(() => validateNonEmptyString(value, 'threadId'), 'threadId');
+    expectValidationError(() => assertNonEmptyString(value, 'threadId'), 'threadId');
   });
 
   it('rejects an empty string', () => {
-    expectValidationError(() => validateNonEmptyString('', 'threadId'), 'threadId');
+    expectValidationError(() => assertNonEmptyString('', 'threadId'), 'threadId');
   });
 
   it('rejects a whitespace-only string (SEC-10)', () => {
-    expectValidationError(() => validateNonEmptyString('   ', 'threadId'), 'threadId');
+    expectValidationError(() => assertNonEmptyString('   ', 'threadId'), 'threadId');
   });
 
   it('accepts a string with one non-whitespace character', () => {
-    expect(() => validateNonEmptyString(' a ', 'threadId')).not.toThrow();
+    expect(() => assertNonEmptyString(' a ', 'threadId')).not.toThrow();
   });
 });
 
-describe('assertMaxBytes', () => {
+describe('parseKeySegment', () => {
   it.each(NON_STRINGS)('rejects the non-string %p', (value) => {
-    expectValidationError(() => assertMaxBytes(value, 'key', 8), 'key');
+    expectValidationError(() => parseKeySegment(value, '#', 'key', 8), 'key');
   });
 
   it('accepts a value under the budget and one exactly at it', () => {
-    expect(() => assertMaxBytes('abc', 'key', 8)).not.toThrow();
-    expect(() => assertMaxBytes('abcdefgh', 'key', 8)).not.toThrow();
+    expect(() => parseKeySegment('abc', '#', 'key', 8)).not.toThrow();
+    expect(() => parseKeySegment('abcdefgh', '#', 'key', 8)).not.toThrow();
   });
 
   it('rejects a value over the budget', () => {
-    expectValidationError(() => assertMaxBytes('abcdefghi', 'key', 8), 'key');
+    expectValidationError(() => parseKeySegment('abcdefghi', '#', 'key', 8), 'key');
   });
 
   /** DynamoDB and S3 count UTF-8 bytes; a code-unit count would accept too much. */
   it('measures UTF-8 bytes, not UTF-16 code units', () => {
-    expect(() => assertMaxBytes('é', 'key', 2)).not.toThrow();
-    expectValidationError(() => assertMaxBytes('é', 'key', 1), 'key');
+    expect(() => parseKeySegment('é', '#', 'key', 2)).not.toThrow();
+    expectValidationError(() => parseKeySegment('é', '#', 'key', 1), 'key');
   });
 });
 
@@ -86,15 +81,15 @@ describe('assertMaxBytes', () => {
  * with two floors, because an empty listing and an empty conversation are not
  * the same answer.
  */
-describe('validateLimit', () => {
+describe('parseLimit', () => {
   it.each([0, 1, MAX_PAGE_LIMIT])('accepts %p at the page floor', (value) => {
-    expect(() => validateLimit(value, 0)).not.toThrow();
+    expect(() => parseLimit(value, 0)).not.toThrow();
   });
 
   it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '5' as never, null as never])(
     'refuses %p, naming limit',
     (value) => {
-      expectValidationError(() => validateLimit(value, 0), 'limit');
+      expectValidationError(() => parseLimit(value, 0), 'limit');
     },
   );
 
@@ -105,85 +100,67 @@ describe('validateLimit', () => {
    * nothing else.
    */
   it('refuses zero at the window floor while the ceiling and the wording hold', () => {
-    expectValidationError(() => validateLimit(0, 1), 'limit');
-    expect(() => validateLimit(1, 1)).not.toThrow();
-    expect(() => validateLimit(0, 1)).toThrow('limit must be >= 1');
-    expect(() => validateLimit(MAX_PAGE_LIMIT + 1, 1)).toThrow(
-      `limit must be <= ${MAX_PAGE_LIMIT}`,
-    );
+    expectValidationError(() => parseLimit(0, 1), 'limit');
+    expect(() => parseLimit(1, 1)).not.toThrow();
+    expect(() => parseLimit(0, 1)).toThrow('limit must be >= 1');
+    expect(() => parseLimit(MAX_PAGE_LIMIT + 1, 1)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
   });
 
   /** Being told the ceiling exists is no use without being told what it is. */
   it('names the ceiling when it refuses a limit above it', () => {
-    expect(() => validateLimit(MAX_PAGE_LIMIT + 1, 0)).toThrow(
-      `limit must be <= ${MAX_PAGE_LIMIT}`,
-    );
-    expect(() => validateLimit(1e12, 0)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
+    expect(() => parseLimit(MAX_PAGE_LIMIT + 1, 0)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
+    expect(() => parseLimit(1e12, 0)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
   });
 });
 
-describe('validateInteger', () => {
+describe('assertInteger', () => {
   it.each([undefined, null, '5', true, {}] as never[])('rejects the non-number %p', (value) => {
-    expectValidationError(() => validateInteger(value, 'ttl'), 'ttl');
+    expectValidationError(() => assertInteger(value, 'ttl'), 'ttl');
   });
 
   it.each([1.5, Number.NaN, Number.POSITIVE_INFINITY])('rejects %p as not an integer', (value) => {
-    expect(() => validateInteger(value, 'ttl')).toThrow(/integer/);
+    expect(() => assertInteger(value, 'ttl')).toThrow(/integer/);
   });
 
   it('accepts any integer when no bounds are given', () => {
-    expect(() => validateInteger(42, 'count')).not.toThrow();
-    expect(() => validateInteger(-7, 'count')).not.toThrow();
-    expect(() => validateInteger(0, 'count', {})).not.toThrow();
+    expect(() => assertInteger(42, 'count')).not.toThrow();
+    expect(() => assertInteger(-7, 'count')).not.toThrow();
+    expect(() => assertInteger(0, 'count', {})).not.toThrow();
   });
 
   it('treats min as inclusive', () => {
-    expect(() => validateInteger(1, 'ttl', { min: 1 })).not.toThrow();
-    expect(() => validateInteger(0, 'ttl', { min: 1 })).toThrow(/>= 1/);
+    expect(() => assertInteger(1, 'ttl', { min: 1 })).not.toThrow();
+    expect(() => assertInteger(0, 'ttl', { min: 1 })).toThrow(/>= 1/);
   });
 
   it('treats max as inclusive', () => {
-    expect(() => validateInteger(10, 'ttl', { max: 10 })).not.toThrow();
-    expect(() => validateInteger(11, 'ttl', { max: 10 })).toThrow(/<= 10/);
+    expect(() => assertInteger(10, 'ttl', { max: 10 })).not.toThrow();
+    expect(() => assertInteger(11, 'ttl', { max: 10 })).toThrow(/<= 10/);
   });
 
   it('applies both bounds when both are given', () => {
-    expect(() => validateInteger(5, 'ttl', { min: 1, max: 10 })).not.toThrow();
-    expect(() => validateInteger(0, 'ttl', { min: 1, max: 10 })).toThrow(/>= 1/);
-    expect(() => validateInteger(11, 'ttl', { min: 1, max: 10 })).toThrow(/<= 10/);
+    expect(() => assertInteger(5, 'ttl', { min: 1, max: 10 })).not.toThrow();
+    expect(() => assertInteger(0, 'ttl', { min: 1, max: 10 })).toThrow(/>= 1/);
+    expect(() => assertInteger(11, 'ttl', { min: 1, max: 10 })).toThrow(/<= 10/);
   });
 
   it('reports the integer rule before either bound', () => {
-    expect(() => validateInteger(0.5, 'ttl', { min: 1 })).toThrow(/integer/);
+    expect(() => assertInteger(0.5, 'ttl', { min: 1 })).toThrow(/integer/);
   });
 });
 
-describe('validateNonEmptyArray', () => {
+describe('assertStringArray', () => {
   it.each([undefined, null, 'abc', 42, {}] as never[])('rejects the non-array %p', (value) => {
-    expectValidationError(() => validateNonEmptyArray(value, 'namespace'), 'namespace');
-  });
-
-  it('rejects an empty array', () => {
-    expectValidationError(() => validateNonEmptyArray([], 'namespace'), 'namespace');
-  });
-
-  it('accepts a non-empty array without inspecting its elements', () => {
-    expect(() => validateNonEmptyArray([''], 'namespace')).not.toThrow();
-  });
-});
-
-describe('validateStringArray', () => {
-  it.each([undefined, null, 'abc', 42, {}] as never[])('rejects the non-array %p', (value) => {
-    expectValidationError(() => validateStringArray(value, 'channels'), 'channels');
+    expectValidationError(() => assertStringArray(value, 'channels'), 'channels');
   });
 
   it('rejects an array holding a non-string element', () => {
-    expectValidationError(() => validateStringArray(['a', 1 as never], 'channels'), 'channels');
+    expectValidationError(() => assertStringArray(['a', 1 as never], 'channels'), 'channels');
   });
 
   it('accepts an empty array and an array of strings', () => {
-    expect(() => validateStringArray([], 'channels')).not.toThrow();
-    expect(() => validateStringArray(['a', 'b'], 'channels')).not.toThrow();
+    expect(() => assertStringArray([], 'channels')).not.toThrow();
+    expect(() => assertStringArray(['a', 'b'], 'channels')).not.toThrow();
   });
 });
 
@@ -208,17 +185,17 @@ describe('assertNoControlChars', () => {
   });
 });
 
-describe('assertNoSeparator', () => {
+describe('parseKeySegment', () => {
   it.each(NON_STRINGS)('rejects the non-string %p', (value) => {
-    expectValidationError(() => assertNoSeparator(value, '#', 'namespace'), 'namespace');
+    expectValidationError(() => parseKeySegment(value, '#', 'namespace', 1024), 'namespace');
   });
 
   it('rejects a value containing the separator', () => {
-    expectValidationError(() => assertNoSeparator('a#b', '#', 'namespace'), 'namespace');
+    expectValidationError(() => parseKeySegment('a#b', '#', 'namespace', 1024), 'namespace');
   });
 
   it('accepts a value without it', () => {
-    expect(() => assertNoSeparator('ab', '#', 'namespace')).not.toThrow();
+    expect(() => parseKeySegment('ab', '#', 'namespace', 1024)).not.toThrow();
   });
 });
 
@@ -250,9 +227,9 @@ describe('assertWellFormed', () => {
   });
 });
 
-describe('validateIdentifier', () => {
+describe('parseIdentifier', () => {
   it('accepts a value satisfying every rule', () => {
-    expect(() => validateIdentifier('thread-1', '#', 'thread_id', 1024)).not.toThrow();
+    expect(() => parseIdentifier('thread-1', '#', 'thread_id', 1024)).not.toThrow();
   });
 
   /**
@@ -267,12 +244,12 @@ describe('validateIdentifier', () => {
     ['separator before control chars', 'a#\u0001', 1024, /separator/],
     ['control chars before well-formedness', `\u0001${HIGH}`, 1024, /control characters/],
   ])('reports %s', (_name, value, maxBytes, message) => {
-    expect(() => validateIdentifier(value, '#', 'thread_id', maxBytes)).toThrow(message);
+    expect(() => parseIdentifier(value, '#', 'thread_id', maxBytes)).toThrow(message);
   });
 
   it('rejects an ill-formed identifier that breaks no other rule', () => {
     expectValidationError(
-      () => validateIdentifier(`tenant${HIGH}`, '#', 'thread_id', 1024),
+      () => parseIdentifier(`tenant${HIGH}`, '#', 'thread_id', 1024),
       'thread_id',
     );
   });
@@ -294,7 +271,7 @@ describe('validateIdentifier', () => {
     ['line separator', 'a\u2028b'],
     ['paragraph separator', 'a\u2029b'],
   ])('accepts an identifier holding a %s', (_name, value) => {
-    expect(() => validateIdentifier(value, '#', 'thread_id', 1024)).not.toThrow();
+    expect(() => parseIdentifier(value, '#', 'thread_id', 1024)).not.toThrow();
   });
 
   /**
@@ -307,8 +284,8 @@ describe('validateIdentifier', () => {
     const decomposed = 'cafe\u0301';
     expect(composed).not.toBe(decomposed);
     expect(composed.normalize('NFC')).toBe(decomposed.normalize('NFC'));
-    expect(() => validateIdentifier(composed, '#', 'thread_id', 1024)).not.toThrow();
-    expect(() => validateIdentifier(decomposed, '#', 'thread_id', 1024)).not.toThrow();
+    expect(() => parseIdentifier(composed, '#', 'thread_id', 1024)).not.toThrow();
+    expect(() => parseIdentifier(decomposed, '#', 'thread_id', 1024)).not.toThrow();
     expect(Buffer.from(composed, 'utf8').toString('base64url')).not.toBe(
       Buffer.from(decomposed, 'utf8').toString('base64url'),
     );
@@ -321,8 +298,8 @@ describe('validateIdentifier', () => {
     expect(Buffer.from(lossy, 'utf8').toString('base64url')).toBe(
       Buffer.from(replacement, 'utf8').toString('base64url'),
     );
-    expect(() => validateIdentifier(lossy, '#', 'thread_id', 1024)).toThrow();
-    expect(() => validateIdentifier(replacement, '#', 'thread_id', 1024)).not.toThrow();
+    expect(() => parseIdentifier(lossy, '#', 'thread_id', 1024)).toThrow();
+    expect(() => parseIdentifier(replacement, '#', 'thread_id', 1024)).not.toThrow();
   });
 });
 
