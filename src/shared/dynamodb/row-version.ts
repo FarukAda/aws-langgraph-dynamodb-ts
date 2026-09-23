@@ -44,7 +44,8 @@ export function rowVersionOf(row: VersionedRow): number {
  * written before the attribute existed. `what` — the row kind, named in the
  * message.
  *
- * Returns: nothing; acceptance is the absence of a throw.
+ * Returns: nothing: `row` is kept under its declared type, and this checks
+ * it.
  *
  * Throws: `FORMAT_UNSUPPORTED` naming the field `v`. Guessing at a shape this
  * version does not know is how a reader returns a checkpoint with silently

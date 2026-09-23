@@ -9,6 +9,7 @@ import type { DocItem } from '../../shared/dynamodb/types';
 import { validationError } from '../../shared/errors/errors';
 import type { ChatMessageItem } from '../types';
 import { narrowMessageItem } from './item-mapper';
+import type { SessionId } from './parse';
 import { messageQuery } from './query';
 import type { HistoryContext } from './setup';
 
@@ -25,7 +26,7 @@ import type { HistoryContext } from './setup';
  * open — a number that is not merely stale but describes nothing. The repair
  * refuses instead, and the read's own `warn` is what names the row.
  */
-function requireCountableRow(raw: DocItem, sessionId: string): ChatMessageItem {
+function requireCountableRow(raw: DocItem, sessionId: SessionId): ChatMessageItem {
   assertReadableRow(raw, 'message');
   const item = narrowMessageItem(raw);
   if (item) return item;
@@ -72,7 +73,7 @@ function requireCountableRow(raw: DocItem, sessionId: string): ChatMessageItem {
  */
 export async function countLiveMessages(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   signal?: AbortSignal,
 ): Promise<number> {
   const now = nowSeconds();

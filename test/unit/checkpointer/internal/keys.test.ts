@@ -7,6 +7,7 @@ import {
   partitionKey,
   payloadSortKey,
   writeSortKey,
+  writeSortKeyBytes,
   writeSortKeyPrefix,
 } from '../../../../src/checkpointer/internal/keys';
 
@@ -63,16 +64,31 @@ describe('checkpointer keys', () => {
   });
 });
 
-describe('writeSortKey composed length (SEC-10)', () => {
-  it('rejects a composed sort key over the 1024 bytes DynamoDB allows, even from capped segments', () => {
+describe('the composed WRITE sort key (SEC-10)', () => {
+  it('is measured, not refused, by the key builder: the parser refuses it before anything is encoded', () => {
     const segment = 'x'.repeat(256);
-    expect(() => writeSortKey(segment, segment, segment, 0, segment)).toThrow(
-      /sort key.*1024 bytes/,
-    );
+    expect(() => writeSortKey(segment, segment, segment, 0, segment)).not.toThrow();
+    expect(writeSortKeyBytes(segment, segment, segment, segment)).toBeGreaterThan(1024);
   });
 
-  it('accepts a composed sort key at the limit', () => {
-    expect(() => writeSortKey('ns', 'c'.repeat(256), 't'.repeat(256), 0, 'ch')).not.toThrow();
+  it('fits at the limit', () => {
+    expect(writeSortKeyBytes('ns', 'c'.repeat(256), 't'.repeat(256), 'ch')).toBeLessThanOrEqual(
+      1024,
+    );
+  });
+});
+
+describe('writeSortKeyBytes', () => {
+  it('measures the WRITE sort key, which is as long at every index a write can take', () => {
+    const bytes = writeSortKeyBytes('ns', 'cp', 'task', 'ch');
+    expect(bytes).toBe(Buffer.byteLength(writeSortKey('ns', 'cp', 'task', 0, 'ch'), 'utf8'));
+    expect(bytes).toBe(Buffer.byteLength(writeSortKey('ns', 'cp', 'task', -4, 'ch'), 'utf8'));
+    expect(bytes).toBe(Buffer.byteLength(writeSortKey('ns', 'cp', 'task', 99, 'ch'), 'utf8'));
+  });
+
+  it('measures past the cap without refusing, so a parser can name the cap itself', () => {
+    const segment = 'x'.repeat(256);
+    expect(writeSortKeyBytes(segment, segment, segment, segment)).toBeGreaterThan(1024);
   });
 });
 

@@ -1,6 +1,7 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { messageSortKeyPrefix, sessionPartition } from './keys';
+import type { SessionId } from './parse';
 
 /** Options for {@link sessionItemsQuery}. */
 export interface SessionItemsQueryOptions {
@@ -20,7 +21,7 @@ export interface SessionItemsQueryOptions {
  */
 export function sessionItemsQuery(
   tableName: string,
-  sessionId: string,
+  sessionId: SessionId,
   options: SessionItemsQueryOptions = {},
 ): QueryCommandInput {
   const params: QueryCommandInput = {
@@ -63,7 +64,7 @@ export interface MessageQueryOptions extends SessionItemsQueryOptions {
  */
 export function messageQuery(
   tableName: string,
-  sessionId: string,
+  sessionId: SessionId,
   options: MessageQueryOptions = {},
 ): QueryCommandInput {
   const params: QueryCommandInput = {

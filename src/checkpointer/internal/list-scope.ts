@@ -1,19 +1,9 @@
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
-import type { RunnableConfig } from '@langchain/core/runnables';
-import type { CheckpointListOptions, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
+import type { CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { compareSortKeys } from '../../shared/dynamodb/sort-key-order';
-import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
-import { validateLimit } from '../../shared/validation/primitives';
 import type { CheckpointMetaItem } from '../types';
-import {
-  isAbsentId,
-  isThreadless,
-  readConfigurable,
-  readThreadlessConfigurable,
-  type ResolvedConfigurable,
-} from './configurable';
-import { type FilterValue, matchesFilter } from './filter-match';
+import { matchesFilter } from './filter-match';
 import { readMetadata } from './item-reader';
 import {
   checkpointerPartitionPrefix,
@@ -22,143 +12,9 @@ import {
   metaSortKeyPrefix,
   partitionKey,
 } from './keys';
-import { SAVER_LIST_KEYS } from './option-keys';
+import type { ListScope, ThreadId } from './parse';
 import { beginsWithQuery } from './query';
 import type { CheckpointerContext } from './setup';
-import { validateCheckpointId } from './validation';
-
-/** What one `list()` call covers, read once from its config and options. */
-export interface ListScope {
-  /** Undefined when the caller gave no `thread_id`: every thread in the table is listed. */
-  threadId: string | undefined;
-  /** Undefined when the caller gave no `checkpoint_ns`: every namespace of the thread is listed. */
-  checkpointNs: string | undefined;
-  checkpointId: string | undefined;
-  before: string | undefined;
-  filter: Record<string, FilterValue> | undefined;
-  limit: number | undefined;
-  signal: AbortSignal | undefined;
-}
-
-/** The identifiers a list config names; a config without a thread is still validated for the ids it gives. */
-function resolveListIds(
-  config: RunnableConfig,
-): Omit<ResolvedConfigurable, 'threadId'> & { threadId: string | undefined } {
-  if (isThreadless(config)) {
-    return { ...readThreadlessConfigurable(config), threadId: undefined };
-  }
-  return readConfigurable(config);
-}
-
-/**
- * `options.before`'s `checkpoint_id`, validated the way this package's own
- * `configurable.ts` reads the same field off `config`, with the same two
- * rules: {@link isAbsentId} — exactly `undefined`, `null` or `''` means no
- * bound — and anything else, including `0`, `false` or `NaN`, none of which
- * JS truthiness alone would catch, is validated by {@link validateCheckpointId}
- * as the sort-key segment it becomes. Checking equality against exactly those
- * three values, rather than truthiness, is deliberately stricter: a bare
- * truthiness check would treat `0`, `false` and `NaN` as absent instead of
- * validating them.
- *
- * Left as an unchecked cast, a caller-supplied non-string reached
- * `ListScope.before`, which is typed `string | undefined`, and then
- * `passesKeyFilters`'s `meta.checkpointId < scope.before` compared a stored
- * string against it — `'1f0a…' < 123` is `false` for every row, so every
- * checkpoint failed the filter and the listing came back silently empty
- * instead of naming the bad value. The same comparison made an *empty*
- * `checkpoint_id` fail every row too, and a malformed one (`'a#b'`) was
- * accepted outright — both are the same defect reached differently, and
- * both are H-10.
- *
- * Accepts: `before` — the caller's `options.before`. Absent is no bound.
- * When given, must be an object — `{}` is legal, since it names no id.
- * `before.configurable.checkpoint_id` is the only field read; the legacy
- * `thread_ts` alias `configurable.ts` falls back to for a *thread's*
- * checkpoint id does not apply here.
- *
- * Returns: the checkpoint id to filter on, or `undefined` for no filter.
- *
- * Throws: `VALIDATION` naming `before` for a non-object `before`, or for
- * a `checkpoint_id` — anything but `undefined`, `null` or `''` — that is not
- * a well-formed identifier (H-10).
- */
-function beforeCheckpointId(before: RunnableConfig | undefined): string | undefined {
-  if (before === undefined) return undefined;
-  assertObjectShape(before, 'before');
-  const checkpointId = before.configurable?.checkpoint_id;
-  if (isAbsentId(checkpointId)) return undefined;
-  validateCheckpointId(checkpointId, 'before');
-  return checkpointId;
-}
-
-/**
- * Reject an `options` bag carrying a key this package does not read, or a
- * `filter` that is not an object. Kept apart from {@link readListScope}: that
- * function reads the scope, this one only checks the options bag's shape.
- *
- * Accepts: `options` — absent is left alone.
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: `VALIDATION` naming `options.<key>` for an unknown key, or
- * `filter` for a non-object one.
- */
-function assertListOptionsShape(options: CheckpointListOptions | undefined): void {
-  if (options === undefined) return;
-  assertShape(options, SAVER_LIST_KEYS, 'options');
-  if (options.filter !== undefined) assertObjectShape(options.filter, 'filter');
-}
-
-/**
- * What one `list()` call covers, read from its config and options.
- *
- * Accepts: `config` — must be an object; `null`, `undefined`, an array or any
- * other non-object value is refused naming `config`, before any property is
- * read off it. `config.configurable` — absent or an object, refused naming
- * `configurable` otherwise; `thread_id` omitted lists every thread and
- * `checkpoint_ns` omitted every namespace, as the reference savers do; every
- * identifier that *is* given is validated either way. `options.limit` — an
- * integer from 0 to the page ceiling; `0` asks for nothing, which
- * `asksForNothing` answers before a request is built, so it is not refused
- * here, while a negative value is refused rather than read as zero — it can
- * only be a page size whose computation went wrong, and answering it with an
- * empty listing hides that. `options.before` —
- * an object naming, at most, a `checkpoint_id`; see {@link beforeCheckpointId}.
- * `options.filter` — metadata equality clauses, applied in process; must be an
- * object when given. `config.signal` — absent or `AbortSignal`-shaped.
- *
- * Returns: the scope every later step reads instead of the raw config.
- *
- * Throws: `VALIDATION` for a malformed identifier; naming `config` for a
- * non-object config, `configurable` for a non-object `configurable` and
- * `signal` for a signal that is not `AbortSignal`-shaped — all checked before
- * `options`, so a call with both malformed (e.g. `list('x', { bogus: 1 })`)
- * names `config`, not `options.bogus`; naming `limit` for anything that is not
- * an integer in range — a non-integer is one DynamoDB would otherwise refuse
- * with a raw `ValidationException` after the round trip, and a value above the
- * ceiling names the ceiling; naming `before` for a non-object `before` or a malformed
- * `checkpoint_id` (H-10); naming `filter` for a non-object filter; naming
- * `options.<key>` for a key this package does not read.
- */
-export function readListScope(config: RunnableConfig, options?: CheckpointListOptions): ListScope {
-  const { threadId, checkpointNs, checkpointId } = resolveListIds(config);
-  assertListOptionsShape(options);
-  /**
-   * Zero floor: `list` is an iterator a caller drains, so a zero page ends it
-   * immediately and visibly. Only a conversation window refuses zero.
-   */
-  if (options?.limit !== undefined) validateLimit(options.limit, 0);
-  return {
-    threadId,
-    checkpointNs: config.configurable?.checkpoint_ns === undefined ? undefined : checkpointNs,
-    checkpointId,
-    before: beforeCheckpointId(options?.before),
-    filter: options?.filter as Record<string, FilterValue> | undefined,
-    limit: options?.limit,
-    signal: config.signal,
-  };
-}
 
 /**
  * The META query for a scope that names a thread.
@@ -177,7 +33,7 @@ export function readListScope(config: RunnableConfig, options?: CheckpointListOp
  */
 export function listQuery(
   context: CheckpointerContext,
-  scope: ListScope & { threadId: string },
+  scope: ListScope & { threadId: ThreadId },
 ): QueryCommandInput {
   const partition = partitionKey(scope.threadId);
   const limit = scope.filter === undefined ? scope.limit : undefined;

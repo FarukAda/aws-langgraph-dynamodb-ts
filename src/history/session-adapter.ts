@@ -4,7 +4,12 @@ import type { BaseMessage } from '@langchain/core/messages';
 import { guardPublic } from '../shared/errors/boundary';
 import { assertMembers } from '../shared/validation/collaborators';
 import { allKeysOf, assertShape } from '../shared/validation/option-shape';
-import { validateMessageWindow, validateSessionId } from './internal/validation';
+import {
+  parseMessageWindow,
+  parseSessionId,
+  type ParsedWindow,
+  type SessionId,
+} from './internal/parse';
 
 /** The read window an adapter applies to every `getMessages`. */
 export type AdapterWindow = { limit?: number };
@@ -31,6 +36,9 @@ const SESSION_BACKEND_MEMBERS: readonly string[] = ['getMessages', 'addMessages'
 export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistory {
   lc_namespace = ['langchain', 'stores', 'message', 'dynamodb'];
 
+  private readonly sessionId: SessionId;
+  private readonly window: ParsedWindow | undefined;
+
   /**
    * Accepts: `backend` — the multi-session adapter this view delegates to,
    * checked structurally for {@link SessionBackend}'s own members. `sessionId`
@@ -43,6 +51,8 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    *
    * Returns: the view. Normally built through
    * `DynamoDBChatMessageHistory.forSession`, which is the supported route.
+   * The adapter keeps the window it parsed, not the caller's object, so
+   * changing that object afterwards changes nothing.
    *
    * Throws: `VALIDATION` naming `backend`, `backend.<member>` for the first
    * missing method, `sessionId`, `window` for a window that is not an object,
@@ -51,16 +61,14 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    */
   constructor(
     private readonly backend: SessionBackend,
-    private readonly sessionId: string,
-    private readonly window?: AdapterWindow,
+    sessionId: string,
+    window?: AdapterWindow,
   ) {
     super();
     assertMembers(backend, SESSION_BACKEND_MEMBERS, 'backend');
-    validateSessionId(sessionId);
-    if (window !== undefined) {
-      assertShape(window, ADAPTER_WINDOW_KEYS, 'window');
-      validateMessageWindow(window);
-    }
+    this.sessionId = parseSessionId(sessionId);
+    if (window !== undefined) assertShape(window, ADAPTER_WINDOW_KEYS, 'window');
+    this.window = window === undefined ? undefined : parseMessageWindow(window);
   }
 
   /**

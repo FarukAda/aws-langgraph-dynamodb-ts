@@ -10,8 +10,8 @@ import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { StoreItemRecord } from '../types';
 import { narrowWholeRecord, readStoreItem } from './item-mapper';
 import { partitionKey, sortKey } from './keys';
+import type { StoreAddress } from './parse';
 import type { StoreContext } from './setup';
-import { validateStoreKey } from './validation';
 
 /**
  * Read the row strongly consistently and narrow it rather than cast. A
@@ -86,8 +86,8 @@ function sameObject(read: StoreItemRecord, reread: StoreItemRecord): boolean {
  * descriptor at all is a replacement like any other: it is decoded, and refused
  * by its own coded error. Any other download failure propagates.
  *
- * Accepts: `namespace` and `key` — validated as the item address they form.
- * `signal` — aborts the reads.
+ * Accepts: `address` — parsed; no check is repeated here. `signal` — aborts
+ * the reads.
  *
  * Returns: the item, or `null` for one that does not exist, has expired, or
  * whose key holds a row this adapter does not own — which includes a row whose
@@ -96,8 +96,8 @@ function sameObject(read: StoreItemRecord, reread: StoreItemRecord): boolean {
  * cannot act on the difference, and reporting a foreign row would leak that a
  * shared table holds one.
  *
- * Throws: `VALIDATION` naming `namespace`, `key` or — for a row whose
- * descriptor is not one — `descriptor`; `FORMAT_UNSUPPORTED` for
+ * Throws: `VALIDATION` naming — for a row whose descriptor is not one —
+ * `descriptor`; `FORMAT_UNSUPPORTED` for
  * a row, or a payload, written by a newer version, which is *not* reported as
  * absent — hiding an item that exists is worse than failing; `PAYLOAD_CORRUPT`
  * or the download's own error for a payload that cannot be read; `ABORTED`
@@ -108,11 +108,10 @@ function sameObject(read: StoreItemRecord, reread: StoreItemRecord): boolean {
  */
 export async function getItem(
   context: StoreContext,
-  namespace: string[],
-  key: string,
+  address: StoreAddress,
   signal?: AbortSignal,
 ): Promise<Item | null> {
-  validateStoreKey(namespace, key);
+  const { namespace, key } = address;
   const record = await readRow(context, namespace, key, signal);
   if (!record) return null;
   try {

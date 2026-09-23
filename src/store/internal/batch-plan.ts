@@ -1,7 +1,6 @@
-import type { Operation } from '@langchain/langgraph-checkpoint';
-
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import type { ParsedOperation, StoreAddress } from './parse';
 
 /** What one operation touches, which is what decides whether it may run beside another. */
 type Touch =
@@ -19,18 +18,21 @@ interface Segment {
   hasBroad: boolean;
 }
 
-function itemOf(op: { namespace: string[]; key: string }): string {
-  return JSON.stringify([op.namespace, op.key]);
+function itemOf(address: StoreAddress): string {
+  return JSON.stringify([address.namespace, address.key]);
 }
 
-function touchOf(op: Operation): Touch {
-  const addressed = op as { namespace?: string[]; key?: string };
-  if ('value' in op)
-    return { kind: 'write', item: itemOf(addressed as { namespace: string[]; key: string }) };
-  if (addressed.key !== undefined && addressed.namespace !== undefined) {
-    return { kind: 'get', item: itemOf(addressed as { namespace: string[]; key: string }) };
+/** What `op` touches, decided by the kind the parser already assigned — the only place that asks. */
+function touchOf(op: ParsedOperation): Touch {
+  switch (op.kind) {
+    case 'put':
+    case 'delete':
+      return { kind: 'write', item: itemOf(op.address) };
+    case 'get':
+      return { kind: 'get', item: itemOf(op.address) };
+    default:
+      return { kind: 'broad' };
   }
-  return { kind: 'broad' };
 }
 
 /**
@@ -74,7 +76,7 @@ function emptySegment(): Segment {
  * returns null. `AsyncBatchedStore` coalesces everything enqueued in one tick
  * into a single `batch()`, so that difference is reachable from ordinary code.
  */
-function planBatch(operations: readonly Operation[]): number[][] {
+function planBatch(operations: readonly ParsedOperation[]): number[][] {
   const runs: number[][] = [];
   let segment = emptySegment();
   operations.forEach((op, index) => {
@@ -105,8 +107,8 @@ function planBatch(operations: readonly Operation[]): number[][] {
  * error is the one thrown.
  */
 export async function runBatch<R>(
-  operations: readonly Operation[],
-  dispatch: (operation: Operation) => Promise<R>,
+  operations: readonly ParsedOperation[],
+  dispatch: (operation: ParsedOperation) => Promise<R>,
   limit: number = DEFAULT_READ_CONCURRENCY,
 ): Promise<R[]> {
   const results: R[] = [];

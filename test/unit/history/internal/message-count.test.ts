@@ -3,6 +3,7 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { messageSortKey } from '../../../../src/history/internal/keys';
 import { countLiveMessages } from '../../../../src/history/internal/message-count';
 import { readWindow } from '../../../../src/history/internal/message-window';
+import { parseMessageWindow, parseSessionId } from '../../../../src/history/internal/parse';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -25,6 +26,7 @@ function context(client: HistoryContext['client']): HistoryContext {
 type Row = Record<string, string | number | object | undefined>;
 
 const NOW = Math.floor(FROZEN_NOW_MS / 1000);
+const SESSION_ID = parseSessionId('s1');
 
 /** A message row as this package writes it, optionally with a ttl and a format version. */
 const message = (ulid: string, extra: { ttl?: number; v?: number } = {}): Row => ({
@@ -92,7 +94,7 @@ describe('countLiveMessages', () => {
         message('01D', { ttl: NOW + 60 }),
       ],
     ]);
-    await expect(countLiveMessages(context(client), 's1')).resolves.toBe(3);
+    await expect(countLiveMessages(context(client), SESSION_ID)).resolves.toBe(3);
   });
 
   /**
@@ -104,7 +106,7 @@ describe('countLiveMessages', () => {
   it('asks for no message payload', async () => {
     const { client, mock } = createStrictDocumentMock();
     serve(mock, [[]]);
-    await countLiveMessages(context(client), 's1');
+    await countLiveMessages(context(client), SESSION_ID);
     const input = mock.commandCalls(QueryCommand)[0].args[0].input;
     expect(input.ProjectionExpression).toBe('#pk, #sid, #msg.#loc, #v, #ttl');
     expect(input.ExpressionAttributeNames).toEqual({
@@ -122,7 +124,7 @@ describe('countLiveMessages', () => {
   it('sums every page, since a partial count is a wrong number', async () => {
     const { client, mock } = createStrictDocumentMock();
     serve(mock, [[message('01A'), message('01B')], [message('01C')]]);
-    await expect(countLiveMessages(context(client), 's1')).resolves.toBe(3);
+    await expect(countLiveMessages(context(client), SESSION_ID)).resolves.toBe(3);
     expect(mock.commandCalls(QueryCommand)[1].args[0].input.ExclusiveStartKey).toEqual({
       PK: 'HIST#s1',
       SK: 'p1',
@@ -132,7 +134,7 @@ describe('countLiveMessages', () => {
   it('answers zero for a session with no messages', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({});
-    await expect(countLiveMessages(context(client), 's1')).resolves.toBe(0);
+    await expect(countLiveMessages(context(client), SESSION_ID)).resolves.toBe(0);
   });
 
   /**
@@ -144,13 +146,15 @@ describe('countLiveMessages', () => {
     const { client, mock } = createStrictDocumentMock();
     const rows = [message('01A'), message('01B', { v: 2 })];
     serve(mock, [rows]);
-    await expect(countLiveMessages(context(client), 's1')).rejects.toMatchObject({
+    await expect(countLiveMessages(context(client), SESSION_ID)).rejects.toMatchObject({
       code: ErrorCode.FORMAT_UNSUPPORTED,
       context: { field: 'v' },
     });
     mock.reset();
     mock.on(QueryCommand).resolves({ Items: rows });
-    await expect(readWindow(context(client), 's1', {})).rejects.toMatchObject({
+    await expect(
+      readWindow(context(client), SESSION_ID, parseMessageWindow({})),
+    ).rejects.toMatchObject({
       code: ErrorCode.FORMAT_UNSUPPORTED,
       context: { field: 'v' },
     });
@@ -171,13 +175,15 @@ describe('countLiveMessages', () => {
     const { client, mock } = createStrictDocumentMock();
     const rows = [message('01A'), { ...message('01B'), ...over }];
     serve(mock, [rows]);
-    await expect(countLiveMessages(context(client), 's1')).rejects.toMatchObject({
+    await expect(countLiveMessages(context(client), SESSION_ID)).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 'message' },
     });
     mock.reset();
     mock.on(QueryCommand).resolves({ Items: rows });
-    await expect(readWindow(context(client), 's1', {})).rejects.toMatchObject({
+    await expect(
+      readWindow(context(client), SESSION_ID, parseMessageWindow({})),
+    ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 'message' },
     });
@@ -187,7 +193,7 @@ describe('countLiveMessages', () => {
   it('refuses a newer message row even when it has expired', async () => {
     const { client, mock } = createStrictDocumentMock();
     serve(mock, [[message('01A', { v: 2, ttl: NOW - 60 })]]);
-    await expect(countLiveMessages(context(client), 's1')).rejects.toMatchObject({
+    await expect(countLiveMessages(context(client), SESSION_ID)).rejects.toMatchObject({
       code: ErrorCode.FORMAT_UNSUPPORTED,
       context: { field: 'v' },
     });

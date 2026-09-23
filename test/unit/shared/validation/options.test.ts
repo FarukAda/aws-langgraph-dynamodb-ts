@@ -7,7 +7,7 @@ import {
 } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import type { BaseAdapterOptions, CodecOptions } from '../../../../src/shared/options';
-import { validateBaseAdapterOptions } from '../../../../src/shared/validation/options';
+import { assertBaseAdapterOptions } from '../../../../src/shared/validation/options';
 
 type Options = BaseAdapterOptions & CodecOptions;
 
@@ -27,22 +27,22 @@ function expectValidationError(fn: () => void, field: string): void {
 
 /** Rejects `ceiling + 1` naming `field`, accepts `ceiling`: proves a named `max:` bound is live. */
 function expectCeiling(build: (value: number) => Options, field: string, ceiling: number): void {
-  expectValidationError(() => validateBaseAdapterOptions(build(ceiling + 1)), field);
-  expect(() => validateBaseAdapterOptions(build(ceiling))).not.toThrow();
+  expectValidationError(() => assertBaseAdapterOptions(build(ceiling + 1)), field);
+  expect(() => assertBaseAdapterOptions(build(ceiling))).not.toThrow();
 }
 
-describe('validateBaseAdapterOptions', () => {
+describe('assertBaseAdapterOptions', () => {
   describe('tableName', () => {
     it.each(['', 'ab', 'a'.repeat(256), 'bad name', 'tab/le', 'täble', 42 as never])(
       "rejects %j with DynamoDB's naming rule",
       (tableName) => {
-        expectValidationError(() => validateBaseAdapterOptions({ tableName, client }), 'tableName');
+        expectValidationError(() => assertBaseAdapterOptions({ tableName, client }), 'tableName');
       },
     );
 
     it('accepts DynamoDB-legal names', () => {
       for (const tableName of ['abc', 'lang-graph_v1.0', 'A'.repeat(255)]) {
-        expect(() => validateBaseAdapterOptions({ tableName, client })).not.toThrow();
+        expect(() => assertBaseAdapterOptions({ tableName, client })).not.toThrow();
       }
     });
   });
@@ -50,31 +50,31 @@ describe('validateBaseAdapterOptions', () => {
   describe('client configuration', () => {
     it('rejects an injected client together with clientConfig or createClient', () => {
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, clientConfig: { region: 'eu-central-1' } }),
+        () => assertBaseAdapterOptions({ ...base, clientConfig: { region: 'eu-central-1' } }),
         'client',
       );
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, createClient: () => client }),
+        () => assertBaseAdapterOptions({ ...base, createClient: () => client }),
         'client',
       );
     });
 
     it('accepts a client alone, a clientConfig alone, or neither', () => {
-      expect(() => validateBaseAdapterOptions(base)).not.toThrow();
+      expect(() => assertBaseAdapterOptions(base)).not.toThrow();
       expect(() =>
-        validateBaseAdapterOptions({
+        assertBaseAdapterOptions({
           tableName: 'langgraph',
           clientConfig: { region: 'eu-central-1' },
         }),
       ).not.toThrow();
-      expect(() => validateBaseAdapterOptions({ tableName: 'langgraph' })).not.toThrow();
+      expect(() => assertBaseAdapterOptions({ tableName: 'langgraph' })).not.toThrow();
     });
   });
 
   describe('ttl', () => {
     it('is validated eagerly instead of on the first write', () => {
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, ttl: { days: 0 } }),
+        () => assertBaseAdapterOptions({ ...base, ttl: { days: 0 } }),
         'ttl.days',
       );
     });
@@ -83,31 +83,29 @@ describe('validateBaseAdapterOptions', () => {
   describe('retry', () => {
     it('rejects each malformed tunable by name', () => {
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, retry: { maxAttempts: 0 } }),
+        () => assertBaseAdapterOptions({ ...base, retry: { maxAttempts: 0 } }),
         'retry.maxAttempts',
       );
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, retry: { maxAttempts: 101 } }),
+        () => assertBaseAdapterOptions({ ...base, retry: { maxAttempts: 101 } }),
         'retry.maxAttempts',
       );
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, retry: { baseDelayMs: 0 } }),
+        () => assertBaseAdapterOptions({ ...base, retry: { baseDelayMs: 0 } }),
         'retry.baseDelayMs',
       );
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, retry: { baseDelayMs: 500, maxDelayMs: 100 } }),
+        () => assertBaseAdapterOptions({ ...base, retry: { baseDelayMs: 500, maxDelayMs: 100 } }),
         'retry.maxDelayMs',
       );
     });
 
     it('bounds maxDelayMs on its own when no baseDelayMs is given', () => {
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, retry: { maxDelayMs: 0 } }),
+        () => assertBaseAdapterOptions({ ...base, retry: { maxDelayMs: 0 } }),
         'retry.maxDelayMs',
       );
-      expect(() =>
-        validateBaseAdapterOptions({ ...base, retry: { maxDelayMs: 10 } }),
-      ).not.toThrow();
+      expect(() => assertBaseAdapterOptions({ ...base, retry: { maxDelayMs: 10 } })).not.toThrow();
     });
 
     /** An unbounded delay turns a retry loop into a de facto hang. */
@@ -126,7 +124,7 @@ describe('validateBaseAdapterOptions', () => {
 
     it('accepts a complete valid policy', () => {
       expect(() =>
-        validateBaseAdapterOptions({
+        assertBaseAdapterOptions({
           ...base,
           retry: { maxAttempts: 10, baseDelayMs: 50, maxDelayMs: 2000 },
         }),
@@ -137,21 +135,21 @@ describe('validateBaseAdapterOptions', () => {
   describe('compression', () => {
     it('rejects each malformed field by name', () => {
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, compression: { enabled: 'yes' as never } }),
+        () => assertBaseAdapterOptions({ ...base, compression: { enabled: 'yes' as never } }),
         'compression.enabled',
       );
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, compression: { enabled: true, level: 10 } }),
+        () => assertBaseAdapterOptions({ ...base, compression: { enabled: true, level: 10 } }),
         'compression.level',
       );
       expectValidationError(
         () =>
-          validateBaseAdapterOptions({ ...base, compression: { enabled: true, minSizeBytes: -1 } }),
+          assertBaseAdapterOptions({ ...base, compression: { enabled: true, minSizeBytes: -1 } }),
         'compression.minSizeBytes',
       );
       expectValidationError(
         () =>
-          validateBaseAdapterOptions({
+          assertBaseAdapterOptions({
             ...base,
             compression: { enabled: true, maxDecompressedBytes: 0 },
           }),
@@ -161,7 +159,7 @@ describe('validateBaseAdapterOptions', () => {
 
     it('accepts a complete valid configuration', () => {
       expect(() =>
-        validateBaseAdapterOptions({
+        assertBaseAdapterOptions({
           ...base,
           compression: { enabled: false, level: 0, minSizeBytes: 0, maxDecompressedBytes: 1 },
         }),
@@ -194,7 +192,7 @@ describe('validateBaseAdapterOptions', () => {
      */
     it('accepts a minSizeBytes above the inline cap when s3 offload is configured', () => {
       expect(() =>
-        validateBaseAdapterOptions({
+        assertBaseAdapterOptions({
           ...base,
           compression: { enabled: true, minSizeBytes: 500_000 },
           s3: { bucketName: 'b' },
@@ -206,7 +204,7 @@ describe('validateBaseAdapterOptions', () => {
   describe('s3', () => {
     it('rejects an empty bucket name', () => {
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, s3: { bucketName: '' } }),
+        () => assertBaseAdapterOptions({ ...base, s3: { bucketName: '' } }),
         's3.bucketName',
       );
     });
@@ -214,7 +212,7 @@ describe('validateBaseAdapterOptions', () => {
     it('rejects a threshold that cannot fit a DynamoDB item', () => {
       for (const thresholdBytes of [0, MAX_INLINE_PAYLOAD_BYTES + 1, 1.5]) {
         expectValidationError(
-          () => validateBaseAdapterOptions({ ...base, s3: { bucketName: 'b', thresholdBytes } }),
+          () => assertBaseAdapterOptions({ ...base, s3: { bucketName: 'b', thresholdBytes } }),
           's3.thresholdBytes',
         );
       }
@@ -223,7 +221,7 @@ describe('validateBaseAdapterOptions', () => {
     it('rejects an empty, root, or slash-less key prefix (a lifecycle rule would be bucket-wide or match siblings)', () => {
       for (const keyPrefix of ['', '/', 'app/langgraph']) {
         expectValidationError(
-          () => validateBaseAdapterOptions({ ...base, s3: { bucketName: 'b', keyPrefix } }),
+          () => assertBaseAdapterOptions({ ...base, s3: { bucketName: 'b', keyPrefix } }),
           's3.keyPrefix',
         );
       }
@@ -232,7 +230,7 @@ describe('validateBaseAdapterOptions', () => {
     it('rejects a non-positive or fractional maxDownloadBytes', () => {
       for (const maxDownloadBytes of [0, 1.5]) {
         expectValidationError(
-          () => validateBaseAdapterOptions({ ...base, s3: { bucketName: 'b', maxDownloadBytes } }),
+          () => assertBaseAdapterOptions({ ...base, s3: { bucketName: 'b', maxDownloadBytes } }),
           's3.maxDownloadBytes',
         );
       }
@@ -250,7 +248,7 @@ describe('validateBaseAdapterOptions', () => {
     it('rejects an unknown server-side encryption algorithm', () => {
       expectValidationError(
         () =>
-          validateBaseAdapterOptions({
+          assertBaseAdapterOptions({
             ...base,
             s3: { bucketName: 'b', serverSideEncryption: 'rot13' },
           }),
@@ -260,7 +258,7 @@ describe('validateBaseAdapterOptions', () => {
 
     it('accepts a complete valid configuration', () => {
       expect(() =>
-        validateBaseAdapterOptions({
+        assertBaseAdapterOptions({
           ...base,
           s3: {
             bucketName: 'b',
@@ -289,10 +287,7 @@ describe('validateBaseAdapterOptions', () => {
       ['compression', { compression: { enabled: true, minSize: 10 } }, 'compression.minSize'],
       ['s3', { s3: { bucketName: 'b', bucket: 'b' } }, 's3.bucket'],
     ])('rejects a misspelt %s key by name', (_name, extra, field) => {
-      expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, ...extra } as never),
-        field,
-      );
+      expectValidationError(() => assertBaseAdapterOptions({ ...base, ...extra } as never), field);
     });
 
     it.each([
@@ -300,15 +295,12 @@ describe('validateBaseAdapterOptions', () => {
       ['compression', { compression: 'on' }, 'compression'],
       ['s3', { s3: ['bucket'] }, 's3'],
     ])('rejects a %s that is not an object', (_name, extra, field) => {
-      expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, ...extra } as never),
-        field,
-      );
+      expectValidationError(() => assertBaseAdapterOptions({ ...base, ...extra } as never), field);
     });
 
     it('accepts every key each nested option actually declares', () => {
       expect(() =>
-        validateBaseAdapterOptions({
+        assertBaseAdapterOptions({
           ...base,
           retry: { maxAttempts: 3, baseDelayMs: 10, maxDelayMs: 20 },
           compression: { enabled: true, level: 6, minSizeBytes: 10, maxDecompressedBytes: 1024 },
@@ -328,20 +320,20 @@ describe('validateBaseAdapterOptions', () => {
 
   describe('the options object itself', () => {
     it.each([undefined, null, 'table', 42] as never[])('rejects %p', (options) => {
-      expectValidationError(() => validateBaseAdapterOptions(options), 'options');
+      expectValidationError(() => assertBaseAdapterOptions(options), 'options');
     });
   });
 
   describe('readConcurrency', () => {
     it.each([0, -1, 1.5, '8' as never])('rejects %j', (readConcurrency) => {
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, readConcurrency }),
+        () => assertBaseAdapterOptions({ ...base, readConcurrency }),
         'readConcurrency',
       );
     });
 
     it('accepts a positive integer', () => {
-      expect(() => validateBaseAdapterOptions({ ...base, readConcurrency: 2 })).not.toThrow();
+      expect(() => assertBaseAdapterOptions({ ...base, readConcurrency: 2 })).not.toThrow();
     });
 
     /** Unbounded concurrency multiplies the memory ceiling and floods the backend with requests. */
@@ -362,21 +354,21 @@ describe('validateBaseAdapterOptions', () => {
   describe('the recency index', () => {
     it.each([0, -1, 1.5, '8' as never])('rejects indexShards %j', (indexShards) => {
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, indexShards }),
+        () => assertBaseAdapterOptions({ ...base, indexShards }),
         'indexShards',
       );
     });
 
     it('rejects an empty indexName', () => {
       expectValidationError(
-        () => validateBaseAdapterOptions({ ...base, indexName: '' }),
+        () => assertBaseAdapterOptions({ ...base, indexName: '' }),
         'indexName',
       );
     });
 
     it('accepts a named index with an explicit shard count', () => {
       expect(() =>
-        validateBaseAdapterOptions({ ...base, indexName: 'gsi1', indexShards: 4 }),
+        assertBaseAdapterOptions({ ...base, indexName: 'gsi1', indexShards: 4 }),
       ).not.toThrow();
     });
 
@@ -387,7 +379,7 @@ describe('validateBaseAdapterOptions', () => {
     it('refuses an indexShards value that would fan out unboundedly, bounded at MAX_INDEX_SHARDS', () => {
       expectCeiling((v) => ({ ...base, indexShards: v }), 'indexShards', MAX_INDEX_SHARDS);
       expectValidationError(
-        () => validateBaseAdapterOptions({ tableName: 'tbl', client, indexShards: 1e12 }),
+        () => assertBaseAdapterOptions({ tableName: 'tbl', client, indexShards: 1e12 }),
         'indexShards',
       );
     });

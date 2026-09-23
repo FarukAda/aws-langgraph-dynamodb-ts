@@ -7,12 +7,14 @@ import { isExpiredRow } from '../../shared/dynamodb/expiry';
 import { assembleTuple } from '../internal/assemble';
 import { fetchTargetMeta } from '../internal/fetch';
 import { metaRows, narrowOrWarn } from '../internal/list-rows';
+import { passesKeyFilters, passesMetadataFilter } from '../internal/list-scope';
 import {
+  type CheckpointId,
+  type CheckpointNs,
   type ListScope,
-  passesKeyFilters,
-  passesMetadataFilter,
-  readListScope,
-} from '../internal/list-scope';
+  parseListScope,
+  type ThreadId,
+} from '../internal/parse';
 import type { CheckpointerContext } from '../internal/setup';
 import type { CheckpointMetaItem } from '../types';
 
@@ -44,9 +46,11 @@ async function* listOne(
 ): AsyncGenerator<CheckpointTuple> {
   const meta = await fetchTargetMeta(
     context,
-    scope.threadId,
-    scope.checkpointNs,
-    scope.checkpointId,
+    {
+      threadId: scope.threadId,
+      checkpointNs: scope.checkpointNs,
+      checkpointId: scope.checkpointId,
+    },
     scope.signal,
   );
   if (!meta) return;
@@ -62,7 +66,7 @@ async function* listOne(
  * `dist/memory.js:172`).
  *
  * Exactly `0`, not "zero or less": a negative limit is refused by
- * {@link readListScope} before this runs, so treating one as a request for
+ * {@link parseListScope} before this runs, so treating one as a request for
  * nothing would be a branch no call could reach.
  */
 function asksForNothing(scope: ListScope): boolean {
@@ -70,7 +74,11 @@ function asksForNothing(scope: ListScope): boolean {
 }
 
 /** A scope that names one row: a thread, a namespace and a checkpoint. */
-type OneRowScope = ListScope & { threadId: string; checkpointNs: string; checkpointId: string };
+type OneRowScope = ListScope & {
+  threadId: ThreadId;
+  checkpointNs: CheckpointNs;
+  checkpointId: CheckpointId;
+};
 
 /**
  * True when the scope names exactly one row, which is only so once the
@@ -113,7 +121,7 @@ function addressesOneRow(scope: ListScope): scope is OneRowScope {
  * Throws: `VALIDATION`, from the first `.next()` and before any read, for
  * a config of the wrong shape (`config`, `configurable`, `signal`), a
  * malformed identifier, or options that fail the checks
- * {@link readListScope} makes;
+ * {@link parseListScope} makes;
  * `FORMAT_UNSUPPORTED` for a row of ours written by a newer version; whatever
  * the reads and decodes throw.
  *
@@ -129,7 +137,7 @@ export async function* listCheckpoints(
   config: RunnableConfig,
   options?: CheckpointListOptions,
 ): AsyncGenerator<CheckpointTuple> {
-  const scope = readListScope(config, options);
+  const scope = parseListScope(config, options);
   if (asksForNothing(scope)) return;
   if (addressesOneRow(scope)) {
     yield* listOne(context, scope);

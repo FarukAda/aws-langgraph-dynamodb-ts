@@ -26,7 +26,7 @@ import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions } from '../types';
 import type { VectorBackend, VectorScoreDirection } from '../vector-backend';
 import { STORE_KEYS } from './option-keys';
-import { validateStoreOptions } from './option-validation';
+import { assertStoreOptions } from './option-validation';
 
 /** Resolved collaborators shared by every store action. */
 export interface StoreContext {
@@ -81,7 +81,7 @@ export interface StoreSetup {
  */
 export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
   assertShape(options, STORE_KEYS, 'options');
-  validateStoreOptions(options);
+  assertStoreOptions(options);
   assertBaseCollaborators(options);
   if (options.vectorBackend !== undefined) {
     assertMembers(options.vectorBackend, VECTOR_BACKEND_MEMBERS, 'vectorBackend');

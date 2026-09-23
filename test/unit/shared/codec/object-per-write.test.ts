@@ -10,6 +10,7 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock, resolveRowWrites } from '../../../shared/helpers/ddb-mock';
+import { parsedPut } from '../../../shared/helpers/parsed-inputs';
 
 /**
  * An offloader that builds real keys and records every key it is asked to
@@ -70,7 +71,7 @@ describe('each write call uploads to its own objects, even for identical bytes',
     };
     const op = { namespace: ['users', 'u1'], key: 'profile', value: { name: 'Faruk' } };
 
-    expectDisjoint(await twoCalls(() => putItem(context, op), uploaded));
+    expectDisjoint(await twoCalls(() => putItem(context, parsedPut(op)), uploaded));
   });
 
   it('two saver.put calls of one checkpoint', async () => {

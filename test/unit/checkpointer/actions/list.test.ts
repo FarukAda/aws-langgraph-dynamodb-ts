@@ -6,7 +6,6 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
-import { buildCheckpointItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import type { CheckpointMetaItem, CheckpointPayloadItem } from '../../../../src/checkpointer/types';
 import {
@@ -16,6 +15,7 @@ import {
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { checkpointItems } from '../../../shared/helpers/parsed-inputs';
 
 const serde = {
   dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
@@ -55,12 +55,12 @@ describe('listCheckpoints', () => {
 
   async function fixtures(client: CheckpointerContext['client']) {
     const ctx = context(client);
-    const a = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), {
+    const a = await checkpointItems(ctx, 't', '', checkpoint('c2'), {
       source: 'loop',
       step: 2,
       parents: {},
     });
-    const b = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), {
+    const b = await checkpointItems(ctx, 't', '', checkpoint('c1'), {
       source: 'input',
       step: 1,
       parents: {},
@@ -235,8 +235,8 @@ describe('list passes its limit to DynamoDB (DDB-13)', () => {
   it('still yields a checkpoint from a later page when `before` filters the first page out', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const newer = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), meta);
-    const older = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    const newer = await checkpointItems(ctx, 't', '', checkpoint('c2'), meta);
+    const older = await checkpointItems(ctx, 't', '', checkpoint('c1'), meta);
     let metaPages = 0;
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
@@ -271,7 +271,7 @@ describe('listCheckpoints refuses a PAYLOAD row a newer release wrote (C-03)', (
   it('rejects a PAYLOAD row above the supported format version', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), {
+    const { meta, payload } = await checkpointItems(ctx, 't', '', checkpoint('c1'), {
       source: 'loop',
       step: 1,
       parents: {},

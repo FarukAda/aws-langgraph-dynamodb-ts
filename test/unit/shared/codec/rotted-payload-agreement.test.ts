@@ -7,6 +7,7 @@ import type { CheckpointerContext } from '../../../../src/checkpointer/internal/
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
+import { parseSessionId } from '../../../../src/history/internal/parse';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { loadPayloadValue, PayloadLocation } from '../../../../src/shared/codec/codec';
 import { bytesHoldDeclaredForm } from '../../../../src/shared/codec/declared-form';
@@ -16,6 +17,7 @@ import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { getItem } from '../../../../src/store/internal/get-item';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -101,9 +103,9 @@ async function historyReading(
     onCorruptMessage: policy,
   };
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('still here')]);
-  const rotted = await buildMessageItem(context, 's1', '01A', human);
+  const rotted = await buildMessageItem(context, parseSessionId('s1'), '01A', human);
   rotted.message = rottedDescriptor() as never;
-  const intact = await buildMessageItem(context, 's1', '01B', human);
+  const intact = await buildMessageItem(context, parseSessionId('s1'), '01B', human);
   mock.on(QueryCommand).resolves({ Items: [rotted, intact] });
   return { context, read: () => getMessages(context, 's1') };
 }
@@ -136,7 +138,7 @@ async function readStore(serde: SerializerProtocol): Promise<unknown> {
       value: rottedDescriptor(),
     },
   });
-  return getItem(context, ['users', 'u1'], 'profile');
+  return getItem(context, parseStoreAddress(['users', 'u1'], 'profile'));
 }
 
 /** `saver.getTuple`, reading one rotted checkpoint payload row. */

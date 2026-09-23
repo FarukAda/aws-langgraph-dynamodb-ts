@@ -3,6 +3,7 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { queryRecencyIndex } from '../../../../src/shared/dynamodb/index-query';
 import { compareSortKeys } from '../../../../src/shared/dynamodb/sort-key-order';
 import type { DocItem } from '../../../../src/shared/dynamodb/types';
+import { parseLimit } from '../../../../src/shared/validation/primitives';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { indexRow, simulatedIndex } from '../../../shared/helpers/simulated-index';
 
@@ -30,7 +31,7 @@ async function drain(client: StrictMock['client'], limit: number): Promise<strin
       tag: 'SESS',
       shards: 2,
       concurrency: 2,
-      limit,
+      limit: parseLimit(limit, 0),
       ...(cursor === undefined ? {} : { cursor }),
     });
     seen.push(...ids(result.items));

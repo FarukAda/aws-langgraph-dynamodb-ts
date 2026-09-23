@@ -1,4 +1,4 @@
-import { buildWriteItems } from '../../../../src/checkpointer/internal/item-writer';
+import { parseThreadId } from '../../../../src/checkpointer/internal/parse';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { writeSpecialItemsWithCleanup } from '../../../../src/checkpointer/internal/special-write-cleanup';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
@@ -6,6 +6,7 @@ import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { rowWrite } from '../../../shared/helpers/ddb-mock';
+import { writeItems } from '../../../shared/helpers/parsed-inputs';
 
 /** The bytes are immaterial here, but they may not be none: a payload that
  * serialises to nothing is refused at the encoder. */
@@ -77,7 +78,11 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: () => Promise.resolve({}),
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', []);
+    const result = await writeSpecialItemsWithCleanup(
+      context(client, offloader),
+      parseThreadId('t'),
+      [],
+    );
     expect(result).toBeUndefined();
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
@@ -88,9 +93,11 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: () => Promise.resolve({}),
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
-      specialItem('new.bin'),
-    ]);
+    const result = await writeSpecialItemsWithCleanup(
+      context(client, offloader),
+      parseThreadId('t'),
+      [specialItem('new.bin')],
+    );
     expect(result).toBeUndefined();
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old.bin']);
@@ -104,9 +111,11 @@ describe('writeSpecialItemsWithCleanup', () => {
       },
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
-      specialItem('new.bin'),
-    ]);
+    const result = await writeSpecialItemsWithCleanup(
+      context(client, offloader),
+      parseThreadId('t'),
+      [specialItem('new.bin')],
+    );
     expect(result).toMatchObject({ message: 'boom' });
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['new.bin']);
@@ -124,10 +133,14 @@ describe('writeSpecialItemsWithCleanup', () => {
       },
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
-      specialItem('one.bin', 'WRITE##c1#task-1#0000000007#one'),
-      specialItem('two.bin', 'WRITE##c1#task-1#0000000008#two'),
-    ]);
+    const result = await writeSpecialItemsWithCleanup(
+      context(client, offloader),
+      parseThreadId('t'),
+      [
+        specialItem('one.bin', 'WRITE##c1#task-1#0000000007#one'),
+        specialItem('two.bin', 'WRITE##c1#task-1#0000000008#two'),
+      ],
+    );
     expect(result).toMatchObject({ message: 'first' });
   });
 
@@ -137,7 +150,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: () => Promise.resolve({}),
     };
     await expect(
-      writeSpecialItemsWithCleanup(context(client), 't', [specialItem('new.bin')]),
+      writeSpecialItemsWithCleanup(context(client), parseThreadId('t'), [specialItem('new.bin')]),
     ).resolves.toBeUndefined();
   });
 
@@ -147,9 +160,11 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: () => Promise.resolve({}),
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
-      specialItem('new.bin'),
-    ]);
+    const result = await writeSpecialItemsWithCleanup(
+      context(client, offloader),
+      parseThreadId('t'),
+      [specialItem('new.bin')],
+    );
     expect(result).toBeUndefined();
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
@@ -174,10 +189,14 @@ describe('writeSpecialItemsWithCleanup', () => {
       },
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
-      specialItem('committed-new.bin', 'WRITE##c1#task-1#0000000007#committed'),
-      specialItem('failed-new.bin', 'WRITE##c1#task-1#0000000008#failed'),
-    ]);
+    const result = await writeSpecialItemsWithCleanup(
+      context(client, offloader),
+      parseThreadId('t'),
+      [
+        specialItem('committed-new.bin', 'WRITE##c1#task-1#0000000007#committed'),
+        specialItem('failed-new.bin', 'WRITE##c1#task-1#0000000008#failed'),
+      ],
+    );
     expect(result).toMatchObject({ message: 'boom' });
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['committed-old.bin']);
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['failed-new.bin']);
@@ -193,7 +212,7 @@ async function builtItem(value: unknown, writeGroup: string): Promise<Checkpoint
     { get: () => Promise.resolve({}), put: () => Promise.resolve({}) },
     trackingOffloader(),
   );
-  const [built] = await buildWriteItems(
+  const [built] = await writeItems(
     offloading,
     't',
     '',
@@ -234,7 +253,7 @@ async function raceOnSpecialRow(racerValue: object | null) {
     ...context(client, offloader),
     retry: { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
   } as CheckpointerContext;
-  const error = await writeSpecialItemsWithCleanup(ctx, 't', [own]);
+  const error = await writeSpecialItemsWithCleanup(ctx, parseThreadId('t'), [own]);
   const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
   return { error, deleted, own: keyOf(own) };
 }
@@ -284,9 +303,11 @@ describe("writeSpecialItemsWithCleanup never releases a racer's committed object
       },
     };
     const offloader = trackingOffloader();
-    const error = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [
-      specialItem('new.bin'),
-    ]);
+    const error = await writeSpecialItemsWithCleanup(
+      context(client, offloader),
+      parseThreadId('t'),
+      [specialItem('new.bin')],
+    );
     expect(error).toMatchObject({ message: 'read down' });
     expect(puts).toBe(0);
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
@@ -321,7 +342,11 @@ describe('writeSpecialItemsWithCleanup releases a superseded object without read
     };
     const offloader = trackingOffloader();
 
-    const error = await writeSpecialItemsWithCleanup(context(client, offloader), 't', [own]);
+    const error = await writeSpecialItemsWithCleanup(
+      context(client, offloader),
+      parseThreadId('t'),
+      [own],
+    );
 
     const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
     expect(error).toBeUndefined();
@@ -345,7 +370,7 @@ describe('writeSpecialItemsWithCleanup S3 key binding (SEC-03)', () => {
       logger: { ...SILENT_LOGGER, warn },
     } as CheckpointerContext;
     await expect(
-      writeSpecialItemsWithCleanup(ctx, 't', [specialItem('new.bin')]),
+      writeSpecialItemsWithCleanup(ctx, parseThreadId('t'), [specialItem('new.bin')]),
     ).resolves.toBeUndefined();
     expect(offloader.ownsKey).toHaveBeenCalledWith('foreign/old.bin', ['t']);
     expect(offloader.deleteBatch).not.toHaveBeenCalled();

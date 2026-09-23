@@ -7,9 +7,9 @@ import {
 import type { RetryPolicy } from '../dynamodb/retry-policy';
 import { validationError } from '../errors/errors';
 import type { BaseAdapterOptions, CodecOptions } from '../options';
-import { validateCompression, validateS3 } from './codec-options';
+import { assertCompression, assertS3 } from './codec-options';
 import { allKeysOf, assertObjectShape, assertShape } from './option-shape';
-import { validateInteger, validateNonEmptyString } from './primitives';
+import { assertInteger, assertNonEmptyString } from './primitives';
 import { resolveTtlSeconds } from './ttl';
 
 /** DynamoDB's table-name rule: 3–255 characters from `[A-Za-z0-9_.-]`. */
@@ -26,11 +26,12 @@ const RETRY_KEYS = allKeysOf<RetryPolicy>({
  *
  * Accepts: `tableName` — as the caller gave it.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `tableName`.
  */
-export function validateTableName(tableName: string): void {
+export function assertTableName(tableName: string): void {
   if (typeof tableName !== 'string' || !TABLE_NAME_PATTERN.test(tableName)) {
     throw validationError(
       'tableName must be 3-255 characters from [A-Za-z0-9_.-], as DynamoDB requires',
@@ -50,12 +51,13 @@ export function validateTableName(tableName: string): void {
  * be an object that is neither `null` nor an array; what it holds is the AWS
  * SDK's to judge.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `client` for both ways at once, then
  * `clientConfig` for one that is not an object.
  */
-export function validateClientChoice(
+export function assertClientChoice(
   options: Pick<BaseAdapterOptions, 'client' | 'clientConfig' | 'createClient'>,
 ): void {
   if (
@@ -84,28 +86,29 @@ export function validateClientChoice(
  * with a wider surface than {@link RetryPolicy} (`backfillRecencyIndex`'s
  * `RetryOptions`, which also exposes `onRetry`, `isRetryable` and friends)
  * can reuse the identical bounds without going through {@link
- * validateRetryPolicy}'s narrower `assertShape`, which would refuse those
+ * assertRetryPolicy}'s narrower `assertShape`, which would refuse those
  * extra keys outright.
  *
  * Accepts: `policy` — its `maxAttempts`, `baseDelayMs` and `maxDelayMs`, each
  * optional.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `retry.maxAttempts`, `retry.baseDelayMs` or
  * `retry.maxDelayMs`.
  */
-export function validateRetryBounds(
+export function assertRetryBounds(
   policy: Pick<RetryPolicy, 'maxAttempts' | 'baseDelayMs' | 'maxDelayMs'>,
 ): void {
   if (policy.maxAttempts !== undefined) {
-    validateInteger(policy.maxAttempts, 'retry.maxAttempts', { min: 1, max: MAX_RETRY_ATTEMPTS });
+    assertInteger(policy.maxAttempts, 'retry.maxAttempts', { min: 1, max: MAX_RETRY_ATTEMPTS });
   }
   if (policy.baseDelayMs !== undefined) {
-    validateInteger(policy.baseDelayMs, 'retry.baseDelayMs', { min: 1, max: MAX_RETRY_DELAY_MS });
+    assertInteger(policy.baseDelayMs, 'retry.baseDelayMs', { min: 1, max: MAX_RETRY_DELAY_MS });
   }
   if (policy.maxDelayMs !== undefined) {
-    validateInteger(policy.maxDelayMs, 'retry.maxDelayMs', {
+    assertInteger(policy.maxDelayMs, 'retry.maxDelayMs', {
       min: policy.baseDelayMs ?? 1,
       max: MAX_RETRY_DELAY_MS,
     });
@@ -118,21 +121,22 @@ export function validateRetryBounds(
  * Accepts: `policy` — must be an object naming only `maxAttempts`,
  * `baseDelayMs` and `maxDelayMs`; each, if given, is a bounded integer.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `retry` or `retry.<key>`.
  */
-export function validateRetryPolicy(policy: RetryPolicy): void {
+export function assertRetryPolicy(policy: RetryPolicy): void {
   assertShape(policy, RETRY_KEYS, 'retry');
-  validateRetryBounds(policy);
+  assertRetryBounds(policy);
 }
 
 /** The recency index: a named GSI, and the partition count rows are sharded across. */
-function validateRecencyIndex(options: BaseAdapterOptions): void {
+function assertRecencyIndex(options: BaseAdapterOptions): void {
   if (options.indexShards !== undefined) {
-    validateInteger(options.indexShards, 'indexShards', { min: 1, max: MAX_INDEX_SHARDS });
+    assertInteger(options.indexShards, 'indexShards', { min: 1, max: MAX_INDEX_SHARDS });
   }
-  if (options.indexName !== undefined) validateNonEmptyString(options.indexName, 'indexName');
+  if (options.indexName !== undefined) assertNonEmptyString(options.indexName, 'indexName');
 }
 
 /**
@@ -147,7 +151,8 @@ function validateRecencyIndex(options: BaseAdapterOptions): void {
  * to the AWS SDK and are not checked. Keys of `options` itself are not checked
  * here — the adapter types differ and this validator sees only the shared ones.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` whose `context.field` names the offending option,
  * dotted for a nested one (`s3.bucketName`). The order is `tableName`, client
@@ -157,21 +162,21 @@ function validateRecencyIndex(options: BaseAdapterOptions): void {
  * Guarantees: a misconfiguration surfaces at construction, naming the option,
  * rather than as a raw AWS error on the first request.
  */
-export function validateBaseAdapterOptions(options: BaseAdapterOptions & CodecOptions): void {
+export function assertBaseAdapterOptions(options: BaseAdapterOptions & CodecOptions): void {
   if (typeof options !== 'object' || options === null) {
     throw validationError('options must be an object naming at least a tableName', 'options');
   }
-  validateTableName(options.tableName);
-  validateClientChoice(options);
+  assertTableName(options.tableName);
+  assertClientChoice(options);
   if (options.ttl !== undefined) resolveTtlSeconds(options.ttl);
-  if (options.retry !== undefined) validateRetryPolicy(options.retry);
-  if (options.compression !== undefined) validateCompression(options.compression);
-  if (options.s3 !== undefined) validateS3(options.s3);
+  if (options.retry !== undefined) assertRetryPolicy(options.retry);
+  if (options.compression !== undefined) assertCompression(options.compression);
+  if (options.s3 !== undefined) assertS3(options.s3);
   if (options.readConcurrency !== undefined) {
-    validateInteger(options.readConcurrency, 'readConcurrency', {
+    assertInteger(options.readConcurrency, 'readConcurrency', {
       min: 1,
       max: MAX_READ_CONCURRENCY,
     });
   }
-  validateRecencyIndex(options);
+  assertRecencyIndex(options);
 }

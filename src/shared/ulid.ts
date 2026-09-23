@@ -67,7 +67,7 @@ function encodeTime(timeMs: number): string {
  *
  * Throws: `VALIDATION` for a millisecond outside the range, naming no field:
  * no caller-supplied option is at fault here, and the rule a caller meets is
- * `validateMessageWindow`'s, which names `before`. This guard is the invariant
+ * `parseMessageWindow`'s, which names `before`. This guard is the invariant
  * underneath it, so no second caller can rebuild the bound that broke.
  *
  * Guarantees: exactly ten characters, all of them from the ULID alphabet.

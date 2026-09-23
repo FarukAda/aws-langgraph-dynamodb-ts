@@ -2,6 +2,7 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { MAX_LOOP_ITERATIONS } from '../constants';
 import { resultTruncatedError } from '../errors/errors';
+import type { PageLimit } from '../validation/primitives';
 import type { DynamoDBDocumentLike } from './client-types';
 import type { IndexTag } from './index-keys';
 import { withDynamoDBRetry } from './retry';
@@ -17,8 +18,8 @@ export interface IndexQueryOptions {
   shards: number;
   /** Shards queried at once: the adapter's `readConcurrency`. */
   concurrency: number;
-  /** Rows per page. */
-  limit: number;
+  /** Rows per page, checked by the caller's parser, so the query does not check it again. */
+  limit: PageLimit;
   /** Opaque, from a previous page. */
   cursor?: string;
   retry?: RetryOptions;

@@ -2,10 +2,10 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { marshall } from '@aws-sdk/util-dynamodb';
 
 import { putWrites } from '../../../../src/checkpointer/actions/put-writes';
-import { buildWriteItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock, rejectRowWrites } from '../../../shared/helpers/ddb-mock';
+import { writeItems } from '../../../shared/helpers/parsed-inputs';
 
 const serde = {
   dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
@@ -53,7 +53,7 @@ describe('putWrites when another call already won the row for the same write', (
       const ctx = context(client, offloader);
 
       /** The row the winning call left behind, carrying its own writeGroup. */
-      const [winner] = await buildWriteItems(
+      const [winner] = await writeItems(
         ctx,
         't',
         '',

@@ -6,6 +6,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 
 import { beginsWithQuery, partitionQuery } from '../../../../src/checkpointer/internal/query';
+import { parseSessionId } from '../../../../src/history/internal/parse';
 import { sessionItemsQuery } from '../../../../src/history/internal/query';
 import { type PayloadDescriptor, PayloadLocation } from '../../../../src/shared/codec/codec';
 import {
@@ -356,7 +357,7 @@ describe('the partition read this pass depends on', () => {
    */
   it('scans ascending, which is what puts a refusal before the rows it suppresses', () => {
     expect(partitionQuery('t', 'CHKPT#t').ScanIndexForward).toBeUndefined();
-    expect(sessionItemsQuery('t', 's').ScanIndexForward).toBeUndefined();
+    expect(sessionItemsQuery('t', parseSessionId('s')).ScanIndexForward).toBeUndefined();
     expect(beginsWithQuery('t', 'CHKPT#t', 'META#').ScanIndexForward).toBe(false);
   });
 });

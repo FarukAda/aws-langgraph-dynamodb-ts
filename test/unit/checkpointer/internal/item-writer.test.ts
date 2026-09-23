@@ -6,10 +6,15 @@ import {
   buildWriteItems,
   codecDeps,
 } from '../../../../src/checkpointer/internal/item-writer';
+import {
+  parsePutRequest,
+  parsePutWritesRequest,
+} from '../../../../src/checkpointer/internal/parse';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { resolveWriteIndices } from '../../../../src/checkpointer/internal/write-index';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { checkpointItems, writeItems } from '../../../shared/helpers/parsed-inputs';
 
 const serde = {
   dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
@@ -53,11 +58,11 @@ describe('buildCheckpointItems', () => {
   it('builds META and PAYLOAD items with the right keys and inline descriptors', async () => {
     const { meta, payload } = await buildCheckpointItems(
       context(),
-      'thread-1',
-      '',
-      checkpoint,
-      metadata,
-      'parent-0',
+      parsePutRequest(
+        { configurable: { thread_id: 'thread-1', checkpoint_ns: '', checkpoint_id: 'parent-0' } },
+        checkpoint,
+        metadata,
+      ),
     );
     expect(meta.PK).toBe('CHKPT#thread-1');
     expect(meta.SK).toBe('META##ckpt-1');
@@ -70,7 +75,7 @@ describe('buildCheckpointItems', () => {
   });
 
   it('sets the ttl attribute when a timestamp is supplied', async () => {
-    const { meta, payload } = await buildCheckpointItems(
+    const { meta, payload } = await checkpointItems(
       context(),
       't',
       'ns',
@@ -91,7 +96,7 @@ describe('buildCheckpointItems', () => {
    */
   it("addresses each payload under its own row, below which the call's one object id sits", async () => {
     const ctx = offloadingContext();
-    const { meta, payload } = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
+    const { meta, payload } = await checkpointItems(ctx, 't1', '', checkpoint, metadata);
     const checkpointKey = s3Key({ value: payload.checkpoint });
     expect(checkpointKey).toMatch(new RegExp('^t1//ckpt-1/checkpoint/[0-9A-HJKMNP-TV-Z]{26}$'));
     const objectId = checkpointKey.slice('t1//ckpt-1/checkpoint/'.length);
@@ -105,8 +110,8 @@ describe('buildCheckpointItems', () => {
    */
   it('gives a re-put of identical content keys of its own', async () => {
     const ctx = offloadingContext();
-    const first = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
-    const second = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
+    const first = await checkpointItems(ctx, 't1', '', checkpoint, metadata);
+    const second = await checkpointItems(ctx, 't1', '', checkpoint, metadata);
     expect(s3Key({ value: second.payload.checkpoint })).not.toBe(
       s3Key({ value: first.payload.checkpoint }),
     );
@@ -115,8 +120,8 @@ describe('buildCheckpointItems', () => {
 
   it('gives a re-put of changed content a different key', async () => {
     const ctx = offloadingContext();
-    const first = await buildCheckpointItems(ctx, 't1', '', checkpoint, metadata);
-    const changed = await buildCheckpointItems(ctx, 't1', '', checkpoint, {
+    const first = await checkpointItems(ctx, 't1', '', checkpoint, metadata);
+    const changed = await checkpointItems(ctx, 't1', '', checkpoint, {
       ...metadata,
       step: metadata.step + 1,
     });
@@ -128,14 +133,14 @@ describe('buildWriteItems', () => {
   it('builds one item per write with task id, index, and channel', async () => {
     const items = await buildWriteItems(
       context(),
-      't',
-      '',
-      'ckpt-1',
-      'task-7',
-      [
-        ['messages', 'a'],
-        ['counter', 5],
-      ],
+      parsePutWritesRequest(
+        { configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: 'ckpt-1' } },
+        [
+          ['messages', 'a'],
+          ['counter', 5],
+        ],
+        'task-7',
+      ),
       'nonce-1',
     );
     expect(items).toHaveLength(2);
@@ -150,7 +155,7 @@ describe('buildWriteItems', () => {
   });
 
   it('indexes special channels at their fixed WRITES_IDX_MAP slot, ordered before regular writes', async () => {
-    const items = await buildWriteItems(
+    const items = await writeItems(
       context(),
       't',
       '',
@@ -176,7 +181,7 @@ describe('buildWriteItems', () => {
    * below it as the object id.
    */
   it('addresses every write S3 key under its own row, regular or special', async () => {
-    const items = await buildWriteItems(
+    const items = await writeItems(
       offloadingContext(),
       't',
       '',
@@ -206,8 +211,8 @@ describe('buildWriteItems', () => {
     ['regular', ['ch', 'v']],
   ])('gives a repeated %s write of the same value a key per call', async (_kind, write) => {
     const ctx = offloadingContext();
-    const first = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [write], 'group-1');
-    const second = await buildWriteItems(ctx, 't', '', 'ckpt-1', 'task-7', [write], 'group-2');
+    const first = await writeItems(ctx, 't', '', 'ckpt-1', 'task-7', [write], 'group-1');
+    const second = await writeItems(ctx, 't', '', 'ckpt-1', 'task-7', [write], 'group-2');
     expect(s3Key(first[0]).endsWith('/group-1')).toBe(true);
     expect(s3Key(second[0])).toBe(s3Key(first[0]).replace(/group-1$/, 'group-2'));
   });
@@ -277,56 +282,6 @@ describe('resolveWriteIndices', () => {
       ['__error__', 'e'],
     ]);
     expect(resolved.map((w) => w.channel)).toEqual(['__error__', 'regular']);
-  });
-});
-
-describe('channel validation (SEC-09)', () => {
-  it('rejects a channel with the reserved separator or a control character before encoding anything', async () => {
-    const upload = jest.fn((key: string) => key);
-    const offloader = {
-      shouldOffload: () => true,
-      buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-      upload,
-      deleteBatch: () => [],
-    };
-    const ctx = { ...context(), offloader: offloader as never };
-    await expect(
-      buildWriteItems(
-        ctx,
-        't',
-        '',
-        'ckpt-1',
-        'task-7',
-        [
-          ['ok', 1],
-          ['bad#channel', 2],
-        ],
-        'n',
-      ),
-    ).rejects.toThrow(/channel must not contain the reserved/);
-    await expect(
-      buildWriteItems(
-        ctx,
-        't',
-        '',
-        'ckpt-1',
-        'task-7',
-        [['esc' + String.fromCharCode(27), 1]],
-        'n',
-      ),
-    ).rejects.toThrow(/channel must not contain control/);
-    expect(upload).not.toHaveBeenCalled();
-  });
-
-  it('accepts ordinary and special LangGraph channel names', async () => {
-    const writes: PendingWrite[] = [
-      ['branch:to:node', 1],
-      ['__error__', 2],
-      ['messages', 3],
-    ];
-    await expect(
-      buildWriteItems(context(), 't', '', 'ckpt-1', 'task-7', writes, 'n'),
-    ).resolves.toHaveLength(3);
   });
 });
 

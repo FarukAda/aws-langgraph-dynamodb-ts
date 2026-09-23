@@ -4,6 +4,7 @@ import { MAX_LOOP_ITERATIONS } from '../../../../src/shared/constants';
 import { queryRecencyIndex } from '../../../../src/shared/dynamodb/index-query';
 import type { DocItem } from '../../../../src/shared/dynamodb/types';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { parseLimit } from '../../../../src/shared/validation/primitives';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { indexRow, indexRows, simulatedIndex } from '../../../shared/helpers/simulated-index';
 
@@ -17,7 +18,7 @@ function base(client: StrictMock['client'], limit: number) {
     tag: 'SESS' as const,
     shards: 2,
     concurrency: 2,
-    limit,
+    limit: parseLimit(limit, 0),
   };
 }
 

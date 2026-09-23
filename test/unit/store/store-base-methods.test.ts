@@ -9,6 +9,7 @@ import { BaseStore, type Operation, type OperationResults } from '@langchain/lan
 
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { partitionKey, sortKey } from '../../../src/store/internal/keys';
+import { parseOperation, type ParsedOperation } from '../../../src/store/internal/parse';
 import { DynamoDBStore } from '../../../src/store/store';
 import {
   answerDeleteReads,
@@ -93,6 +94,7 @@ const REFUSED: [string, Call, string][] = [
   ['a separator in a suffix label', (s) => s.listNamespaces({ suffix: ['a#b'] }), 'suffix element'],
   ['listNamespaces with limit -1', (s) => s.listNamespaces({ limit: -1 }), 'limit'],
   ['listNamespaces with maxDepth 0', (s) => s.listNamespaces({ maxDepth: 0 }), 'maxDepth'],
+  ['listNamespaces with offset -1', (s) => s.listNamespaces({ offset: -1 }), 'offset'],
   ['search with a string prefix', (s) => s.search('x' as never), 'namespacePrefix'],
   ['search with a null prefix', (s) => s.search(null as never), 'namespacePrefix'],
   ['search with a number label', (s) => s.search([123 as never]), 'namespacePrefix element'],
@@ -104,6 +106,8 @@ const REFUSED: [string, Call, string][] = [
     (s) => s.search(['a#b'], null as never),
     'namespacePrefix element',
   ],
+  ['search with limit -1', (s) => s.search(['ns'], { limit: -1 }), 'limit'],
+  ['search with a non-integer offset', (s) => s.search(['ns'], { offset: 2.5 }), 'offset'],
   ['reconcileVectorIndex with no prefix', (s) => s.reconcileVectorIndex([]), 'namespacePrefix'],
   [
     'reconcileVectorIndex with a separator label',
@@ -279,23 +283,33 @@ const SAME_OPERATIONS: [string, (store: BaseStore) => Promise<unknown>][] = [
 ];
 
 /**
- * The private runner the four overrides share with `batch`. They call it
+ * The private executor the four overrides share with `batch`. They call it
  * rather than the public `batch` so each keeps its own `context.operation`
  * brand, which is why this spy reaches past the public method.
  */
-type Runner = { run: (operations: Operation[]) => Promise<unknown[]> };
+type Executor = { execute: (operations: ParsedOperation[]) => Promise<unknown[]> };
 
-describe('the overrides build exactly the operations upstream BaseStore builds', () => {
+/**
+ * Each override now parses its own arguments directly rather than building
+ * the raw `Operation` shape upstream's own convenience methods build and
+ * handing it to a shared runner, so what a spy on the executor sees is
+ * already a `ParsedOperation`. What is still worth pinning is that it is the
+ * *same* one a generic `parseOperation` would build from the identical raw
+ * operation upstream's `BaseStore` builds — i.e. the direct path and the
+ * batch path agree — which is why the comparison parses `reference.operations`
+ * before comparing rather than comparing the raw operations themselves.
+ */
+describe('the overrides build exactly the operations upstream BaseStore builds, once parsed', () => {
   it.each(SAME_OPERATIONS)('%s', async (_, call) => {
     const reference = new ReferenceStore();
     await call(reference);
     const { store } = storeWithMock();
-    const run = jest
-      .spyOn(store as unknown as Runner, 'run')
+    const execute = jest
+      .spyOn(store as unknown as Executor, 'execute')
       .mockImplementation((operations) => Promise.resolve(operations.map(() => null)));
     await call(store);
-    expect(run.mock.calls.flatMap(([operations]) => operations)).toStrictEqual(
-      reference.operations,
+    expect(execute.mock.calls.flatMap(([operations]) => operations)).toStrictEqual(
+      reference.operations.map((operation) => parseOperation(operation)),
     );
   });
 });

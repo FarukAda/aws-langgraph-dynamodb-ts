@@ -2,10 +2,6 @@ import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { getCheckpointTuple } from '../../../../src/checkpointer/actions/get-tuple';
-import {
-  buildCheckpointItems,
-  buildWriteItems,
-} from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { buildS3Key } from '../../../../src/shared/codec/s3/config';
@@ -13,6 +9,7 @@ import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { checkpointItems, writeItems } from '../../../shared/helpers/parsed-inputs';
 
 const serde = {
   dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
@@ -47,15 +44,8 @@ describe('getCheckpointTuple', () => {
   it('assembles the full tuple (checkpoint, metadata, writes, parent) for the newest checkpoint', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta, payload } = await buildCheckpointItems(
-      ctx,
-      't',
-      '',
-      checkpoint,
-      metadata,
-      'parent-0',
-    );
-    const writeItems = await buildWriteItems(
+    const { meta, payload } = await checkpointItems(ctx, 't', '', checkpoint, metadata, 'parent-0');
+    const writeRows = await writeItems(
       ctx,
       't',
       '',
@@ -66,7 +56,7 @@ describe('getCheckpointTuple', () => {
     );
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
-      return prefix.startsWith('META') ? { Items: [meta] } : { Items: writeItems };
+      return prefix.startsWith('META') ? { Items: [meta] } : { Items: writeRows };
     });
     mock.on(GetCommand).resolves({ Item: payload });
 
@@ -81,7 +71,7 @@ describe('getCheckpointTuple', () => {
   it('omits parentConfig when the checkpoint has no parent', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta, payload } = await checkpointItems(ctx, 't', '', checkpoint, metadata);
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
@@ -95,7 +85,7 @@ describe('getCheckpointTuple', () => {
   it('returns undefined when the payload item is missing', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta } = await checkpointItems(ctx, 't', '', checkpoint, metadata);
     mock.on(QueryCommand).resolves({ Items: [meta] });
     mock.on(GetCommand).resolves({});
     expect(await getCheckpointTuple(ctx, { configurable: { thread_id: 't' } })).toBeUndefined();
@@ -157,7 +147,7 @@ describe('getCheckpointTuple with a foreign head row (CKPT-08)', () => {
     const { client, mock } = createStrictDocumentMock();
     const warn = jest.fn();
     const ctx = { ...context(client), logger: { ...SILENT_LOGGER, warn } };
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta, payload } = await checkpointItems(ctx, 't', '', checkpoint, metadata);
     let metaPages = 0;
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
@@ -181,7 +171,7 @@ describe('getCheckpointTuple reads strongly consistently (CKPT-07)', () => {
   it('sets ConsistentRead on the payload get and the writes query', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta, payload } = await checkpointItems(ctx, 't', '', checkpoint, metadata);
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
@@ -218,9 +208,9 @@ describe('getCheckpointTuple validation-suite behaviours', () => {
       channel_values: {},
       channel_versions: {},
     };
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', legacy, metadata, 'c0');
+    const { meta, payload } = await checkpointItems(ctx, 't', '', legacy, metadata, 'c0');
     const parentWrites = [
-      ...(await buildWriteItems(
+      ...(await writeItems(
         ctx,
         't',
         '',
@@ -232,7 +222,7 @@ describe('getCheckpointTuple validation-suite behaviours', () => {
         ],
         'g1',
       )),
-      ...(await buildWriteItems(
+      ...(await writeItems(
         ctx,
         't',
         '',
@@ -268,8 +258,8 @@ describe('getCheckpointTuple validation-suite behaviours', () => {
       channel_values: {},
       channel_versions: { a: 2, b: 5 },
     };
-    const child = await buildCheckpointItems(ctx, 't', '', legacy, metadata, 'c0');
-    const root = await buildCheckpointItems(ctx, 't', '', { ...legacy, id: 'c0' }, metadata);
+    const child = await checkpointItems(ctx, 't', '', legacy, metadata, 'c0');
+    const root = await checkpointItems(ctx, 't', '', { ...legacy, id: 'c0' }, metadata);
     let head = child;
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
@@ -325,7 +315,7 @@ describe('getCheckpointTuple refuses a PAYLOAD or WRITE row a newer release wrot
   it("rejects a PAYLOAD row above this release's format version, even though its META is readable", async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta, payload } = await checkpointItems(ctx, 't', '', checkpoint, metadata);
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
@@ -339,7 +329,7 @@ describe('getCheckpointTuple refuses a PAYLOAD or WRITE row a newer release wrot
   it('resolves when the PAYLOAD row carries the supported version, and when it carries none', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta, payload } = await checkpointItems(ctx, 't', '', checkpoint, metadata);
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };
@@ -358,8 +348,8 @@ describe('getCheckpointTuple refuses a PAYLOAD or WRITE row a newer release wrot
   it("rejects a WRITE row above this release's format version, among otherwise readable pending writes", async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
-    const writeItems = await buildWriteItems(
+    const { meta, payload } = await checkpointItems(ctx, 't', '', checkpoint, metadata);
+    const writeRows = await writeItems(
       ctx,
       't',
       '',
@@ -374,7 +364,7 @@ describe('getCheckpointTuple refuses a PAYLOAD or WRITE row a newer release wrot
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       if (prefix.startsWith('META')) return { Items: [meta] };
-      return { Items: [writeItems[0], { ...writeItems[1], v: 2 }] };
+      return { Items: [writeRows[0], { ...writeRows[1], v: 2 }] };
     });
     mock.on(GetCommand).resolves({ Item: payload });
     await expect(
@@ -385,7 +375,7 @@ describe('getCheckpointTuple refuses a PAYLOAD or WRITE row a newer release wrot
   it('a META row above the format version still rejects, whatever version its PAYLOAD carries (control)', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const { meta, payload } = await buildCheckpointItems(ctx, 't', '', checkpoint, metadata);
+    const { meta, payload } = await checkpointItems(ctx, 't', '', checkpoint, metadata);
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [{ ...meta, v: 2 }] } : { Items: [] };

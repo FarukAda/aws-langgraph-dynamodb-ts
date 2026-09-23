@@ -1,11 +1,11 @@
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
-import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import type { DocItem } from '../../../../src/shared/dynamodb/types';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { deleteStoreItem } from '../../../../src/store/internal/delete-item';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { revisionGuardedTable } from '../../../shared/helpers/conditional-delete';
 import { answerDeleteReads, createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -15,7 +15,7 @@ const SK = 'u1#profile';
 const ROW_KEY = `${PK}|${SK}`;
 const S3_KEY = 'users/u1/profile.bin';
 
-const op: PutOperation = { namespace: ['users', 'u1'], key: 'profile', value: null };
+const address = parseStoreAddress(['users', 'u1'], 'profile');
 
 /** A whole row as the table holds it, offloaded so its release is observable. */
 const row = (rev: string): DocItem => ({
@@ -93,7 +93,7 @@ describe('the vector delete is gated on a confirmation that the row is gone', ()
     answerDeleteReads(h.mock, projected(row('r0')), undefined);
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(h.backend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
     expect(h.mock.commandCalls(GetCommand)[1].args[0].input).toEqual({
@@ -121,7 +121,7 @@ describe('the vector delete is gated on a confirmation that the row is gone', ()
     answerDeleteReads(h.mock, projected(row('r0')), stillThere);
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(table.rows.size).toBe(0);
     expect(h.backend.delete).not.toHaveBeenCalled();
@@ -141,7 +141,7 @@ describe('the vector delete is gated on a confirmation that the row is gone', ()
     answerDeleteReads(h.mock, projected(row('r0')), stillThere);
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(table.rows.size).toBe(1);
     expect(h.backend.delete).not.toHaveBeenCalled();
@@ -165,7 +165,7 @@ describe('the vector delete is gated on a confirmation that the row is gone', ()
     });
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(table.rows.size).toBe(0);
     expect(h.backend.delete).not.toHaveBeenCalled();
@@ -178,7 +178,7 @@ describe('the confirmation has no carve-out', () => {
     const h = harness();
     answerDeleteReads(h.mock, undefined, undefined);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     /** No write at all, and still two reads: the pre-read does not double as the confirmation. */
     expect(h.mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
@@ -196,7 +196,7 @@ describe('the confirmation has no carve-out', () => {
     const h = harness();
     answerDeleteReads(h.mock, undefined, stillThere);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(h.backend.delete).not.toHaveBeenCalled();
     expect(h.info).toHaveBeenCalledWith(KEPT, { namespace: ['users', 'u1'], key: 'profile' });
@@ -208,7 +208,7 @@ describe('the confirmation has no carve-out', () => {
     answerDeleteReads(h.mock, projected(row('r0')), stillThere);
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(h.mock.commandCalls(GetCommand)).toHaveLength(1);
     expect(h.info).not.toHaveBeenCalled();

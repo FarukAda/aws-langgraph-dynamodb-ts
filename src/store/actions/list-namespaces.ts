@@ -1,5 +1,3 @@
-import type { ListNamespacesOperation } from '@langchain/langgraph-checkpoint';
-
 import { nowSeconds } from '../../shared/clock';
 import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
@@ -7,11 +5,11 @@ import { paginateScan } from '../../shared/dynamodb/scan';
 import { narrowStoreRecord } from '../internal/item-mapper';
 import { NAMESPACE_SEPARATOR } from '../internal/keys';
 import { matchNamespace, prefixRoot, truncateDepth } from '../internal/namespace-match';
-import { assertListOperation } from '../internal/operation-validation';
+import type { ParsedList } from '../internal/parse';
 import { projectKeys, scopedQuery, storeScan } from '../internal/query';
 import type { StoreContext } from '../internal/setup';
 
-function namespaceSource(context: StoreContext, op: ListNamespacesOperation, now: number) {
+function namespaceSource(context: StoreContext, op: ParsedList, now: number) {
   const root = prefixRoot(op.matchConditions);
   if (root.length > 0) {
     return paginateQuery({
@@ -75,22 +73,18 @@ function compareNamespaces(a: string[], b: string[]): number {
 /**
  * The distinct namespaces satisfying every match condition.
  *
- * Accepts: `op.matchConditions` — every one must hold; absent or empty matches
- * every namespace; each path holds labels a namespace can hold, checked before
- * any read. A concrete prefix root scopes the read to one partition's
- * Query, and anything else — a suffix condition, a leading `*`, no conditions —
- * spans the table and is one of the four reads allowed to Scan
+ * Accepts: `op` — parsed; every match condition must hold, absent or empty
+ * matches every namespace. A concrete prefix root scopes the read to one
+ * partition's Query, and anything else — a suffix condition, a leading `*`, no
+ * conditions — spans the table and is one of the four reads allowed to Scan
  * (`test/static/guards/scan-sites.ts`).
- * `op.maxDepth` — at least 1; namespaces are truncated to it and then
+ * `op.maxDepth` — namespaces are truncated to it and then
  * deduplicated, so `['a','b']` and `['a','c']` list once as `['a']`.
- * `op.offset` and `op.limit` — required non-negative integers, as the operation
- * type declares them; a `limit` of 0 returns an empty listing without reading.
+ * `op.offset` and `op.limit` — a `limit` of 0 returns an empty listing without reading.
  *
  * Returns: the namespaces, sorted, then `limit` of them from `offset`.
  *
- * Throws: `VALIDATION` naming `offset`, `limit`, `maxDepth`,
- * `matchConditions`, `prefix`, `prefix element`, `suffix` or `suffix element`;
- * `RESULT_TRUNCATED` when `maxScanItems` is reached while rows
+ * Throws: `RESULT_TRUNCATED` when `maxScanItems` is reached while rows
  * remain, so a partial listing is never returned as a complete one;
  * `FORMAT_UNSUPPORTED` for a store item a newer release wrote.
  *
@@ -99,11 +93,7 @@ function compareNamespaces(a: string[], b: string[]): number {
  * is also why the sort is total (see {@link compareNamespaces}), and why a
  * `limit` of 0 is answered ahead of the read rather than by slicing one.
  */
-export async function listNamespaces(
-  context: StoreContext,
-  op: ListNamespacesOperation,
-): Promise<string[][]> {
-  assertListOperation(op);
+export async function listNamespaces(context: StoreContext, op: ParsedList): Promise<string[][]> {
   /**
    * A zero page is answered before the read. This listing is the one that can
    * never stop early — every live row must be seen before the namespaces can

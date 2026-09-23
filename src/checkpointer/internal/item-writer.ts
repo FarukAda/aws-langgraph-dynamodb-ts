@@ -1,5 +1,3 @@
-import type { Checkpoint, CheckpointMetadata, PendingWrite } from '@langchain/langgraph-checkpoint';
-
 import { nowIso } from '../../shared/clock';
 import { type CodecDeps, type PayloadDescriptor } from '../../shared/codec/codec';
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
@@ -10,8 +8,8 @@ import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
 import { createUlidFactory } from '../../shared/ulid';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { metaSortKey, partitionKey, payloadSortKey, writeSortKey } from './keys';
+import type { PutRequest, PutWritesRequest } from './parse';
 import type { CheckpointerContext } from './setup';
-import { validateChannel } from './validation';
 import { resolveWriteIndices } from './write-index';
 
 /**
@@ -86,10 +84,11 @@ const nextPutObjectId = createUlidFactory();
  * uploaded, and the verification after a failed transaction can tell the two
  * puts' rows apart by the key alone.
  *
- * Accepts: `checkpoint` — every channel value it carries is stored; see
- * `putCheckpoint` for why nothing is narrowed away. `parentCheckpointId` — the
- * checkpoint this one continues, absent for a root. `ttlTimestamp` — stamped on
- * both rows so they expire together. `signal` — cancels the uploads.
+ * Accepts: `request` — parsed by `parsePutRequest`: the address the rows are
+ * keyed by (its `checkpointId` is `checkpoint.id`), the parent, the checkpoint
+ * — every channel value it carries is stored; see `putCheckpoint` for why
+ * nothing is narrowed away — the metadata, and the signal that cancels the
+ * uploads. `ttlTimestamp` — stamped on both rows so they expire together.
  *
  * Returns: the META row (light: ids, metadata, index keys) and the PAYLOAD row
  * (heavy: the checkpoint itself), which the caller writes in that order —
@@ -104,21 +103,17 @@ const nextPutObjectId = createUlidFactory();
  */
 export async function buildCheckpointItems(
   context: CheckpointerContext,
-  threadId: string,
-  checkpointNs: string,
-  checkpoint: Checkpoint,
-  metadata: CheckpointMetadata,
-  parentCheckpointId?: string,
+  request: PutRequest,
   ttlTimestamp?: number,
-  signal?: AbortSignal,
 ): Promise<{ meta: CheckpointMetaItem; payload: CheckpointPayloadItem }> {
-  const deps = codecDeps(context, signal);
+  const { threadId, checkpointNs, checkpointId } = request.address;
+  const deps = codecDeps(context, request.signal);
   const pk = partitionKey(threadId);
   const objectId = nextPutObjectId();
-  const checkpointDescriptor = await encodePayload(checkpoint, deps, {
-    keyParts: [threadId, checkpointNs, checkpoint.id, 'checkpoint'],
+  const checkpointDescriptor = await encodePayload(request.checkpoint, deps, {
+    keyParts: [threadId, checkpointNs, checkpointId, 'checkpoint'],
     objectId,
-    row: { pk, sk: payloadSortKey(checkpointNs, checkpoint.id) },
+    row: { pk, sk: payloadSortKey(checkpointNs, checkpointId) },
   });
   /**
    * The checkpoint's object is already uploaded by the time the metadata is
@@ -128,10 +123,10 @@ export async function buildCheckpointItems(
    */
   let metadataDescriptor: PayloadDescriptor;
   try {
-    metadataDescriptor = await encodePayload(metadata, deps, {
-      keyParts: [threadId, checkpointNs, checkpoint.id, 'metadata'],
+    metadataDescriptor = await encodePayload(request.metadata, deps, {
+      keyParts: [threadId, checkpointNs, checkpointId, 'metadata'],
       objectId,
-      row: { pk, sk: metaSortKey(checkpointNs, checkpoint.id) },
+      row: { pk, sk: metaSortKey(checkpointNs, checkpointId) },
     });
   } catch (error) {
     await releaseUploads(context, [checkpointDescriptor], 'put.encode');
@@ -147,24 +142,25 @@ export async function buildCheckpointItems(
    */
   const index = indexKeys(
     'CHKPT',
-    checkpoint.id,
+    checkpointId,
     nowIso(),
     context.indexShards ?? DEFAULT_INDEX_SHARDS,
   );
   const meta: CheckpointMetaItem = {
     PK: pk,
-    SK: metaSortKey(checkpointNs, checkpoint.id),
+    SK: metaSortKey(checkpointNs, checkpointId),
     v: ROW_FORMAT_VERSION,
     ...index,
     threadId,
     checkpointNs,
-    checkpointId: checkpoint.id,
+    checkpointId,
     metadata: metadataDescriptor,
   };
-  if (parentCheckpointId !== undefined) meta.parentCheckpointId = parentCheckpointId;
+  if (request.parentCheckpointId !== undefined)
+    meta.parentCheckpointId = request.parentCheckpointId;
   const payload: CheckpointPayloadItem = {
     PK: pk,
-    SK: payloadSortKey(checkpointNs, checkpoint.id),
+    SK: payloadSortKey(checkpointNs, checkpointId),
     v: ROW_FORMAT_VERSION,
     checkpoint: checkpointDescriptor,
   };
@@ -174,39 +170,33 @@ export async function buildCheckpointItems(
 /**
  * Encode a task's pending writes into one item per write.
  *
- * Accepts: `writes` — one call's, in order; their channels are validated
- * before any payload is encoded or uploaded, so a bad channel costs no S3
- * object. `writeGroup` — unique per `putWrites` *call*, not per write, and
- * stored on every row the call produces: it is what tells one call's writes
- * apart from another's when `dropSupersededWrites` resolves first-write-wins,
- * and it is the object id every offloaded write of the call is uploaded under.
- * Two calls writing the same bytes for the same row therefore upload two
- * objects, and each row names only its own call's.
- *
- * `signal` — cancels the uploads.
+ * Accepts: `request` — parsed by `parsePutWritesRequest`, so every channel is
+ * well-formed and every composed sort key fits before this runs, and a bad one
+ * costs no S3 object. `writeGroup` — unique per `putWrites` *call*, not per
+ * write, and stored on every row the call produces: it is what tells one
+ * call's writes apart from another's when `dropSupersededWrites` resolves
+ * first-write-wins, and it is the object id every offloaded write of the call
+ * is uploaded under. Two calls writing the same bytes for the same row
+ * therefore upload two objects, and each row names only its own call's.
+ * `ttlTimestamp` — stamped on every row.
  *
  * Returns: one row per write, special channels first, each carrying its
  * `occurrence` so a channel emitted twice by one call keeps both values.
  *
- * Throws: `VALIDATION` naming `channel` or `value`; `S3_OFFLOAD_FAILED`. A
- * payload refused partway through releases the objects the earlier writes of
- * the same call had already uploaded (see {@link releaseUploads}), so a build
- * that throws returns the caller to where it started.
+ * Throws: `VALIDATION` naming `value`; `S3_OFFLOAD_FAILED`. A payload refused
+ * partway through releases the objects the earlier writes of the same call had
+ * already uploaded (see {@link releaseUploads}), so a build that throws
+ * returns the caller to where it started.
  */
 export async function buildWriteItems(
   context: CheckpointerContext,
-  threadId: string,
-  checkpointNs: string,
-  checkpointId: string,
-  taskId: string,
-  writes: PendingWrite[],
+  request: PutWritesRequest,
   writeGroup: string,
   ttlTimestamp?: number,
-  signal?: AbortSignal,
 ): Promise<CheckpointWriteItem[]> {
-  /** Reject a bad channel before any payload is encoded or uploaded. */
-  for (const [channel] of writes) validateChannel(channel);
-  const deps = codecDeps(context, signal);
+  const { threadId, checkpointNs, checkpointId } = request.address;
+  const { taskId } = request;
+  const deps = codecDeps(context, request.signal);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];
   /**
@@ -216,7 +206,7 @@ export async function buildWriteItems(
    * {@link releaseUploads} for why they are safe to delete unconditionally.
    */
   try {
-    for (const { channel, value, index, occurrence } of resolveWriteIndices(writes)) {
+    for (const { channel, value, index, occurrence } of resolveWriteIndices(request.writes)) {
       /**
        * `channel` is part of the key as well as the index: two channels can
        * share an index (each channel's first occurrence is 0), so without it

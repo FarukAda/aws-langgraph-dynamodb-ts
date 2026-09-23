@@ -7,6 +7,7 @@ import { compensationFailedError } from '../../shared/errors/errors';
 import { toError } from '../../shared/errors/to-error';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { ChatMessageItem } from '../types';
+import type { SessionId } from './parse';
 import { revertSessionCount, revertSessionCreation } from './session-count';
 import type { HistoryContext } from './setup';
 
@@ -39,7 +40,7 @@ function reportStep(
   context: HistoryContext,
   level: 'warn' | 'error',
   message: string,
-  sessionId: string,
+  sessionId: SessionId,
   committedChunks: number,
 ): void {
   absorbLoggerFailure(() => context.logger[level](message, { sessionId, committedChunks }));
@@ -70,7 +71,7 @@ async function cleanBatchS3(context: HistoryContext, chunks: ChatMessageItem[][]
  */
 async function rollbackCommitted(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   committed: CommittedChunk[],
   now: string,
   title: string | undefined,
@@ -142,7 +143,7 @@ async function rollbackCommitted(
  */
 export async function compensate(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   chunks: ChatMessageItem[][],
   committed: CommittedChunk[],
   trigger: Error,

@@ -1,5 +1,3 @@
-import type { SearchOperation } from '@langchain/langgraph-checkpoint';
-
 import { nowSeconds } from '../../shared/clock';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
@@ -14,6 +12,7 @@ import { validationError } from '../../shared/errors/errors';
 import type { StoreItemRecord } from '../types';
 import { narrowWholeRecord, readStoreItem } from './item-mapper';
 import { namespaceMatchesPrefix } from './keys';
+import type { ParsedSearch } from './parse';
 import { scopedQuery, storeScan } from './query';
 import type { RankCandidate } from './ranker';
 import { passesFilter } from './search-filter';
@@ -45,16 +44,16 @@ interface Collector {
 
 function candidateSource(
   context: StoreContext,
-  op: SearchOperation,
+  search: ParsedSearch,
   signal: AbortSignal | undefined,
   now: number,
 ): AsyncGenerator<DocItem> {
-  return op.namespacePrefix.length > 0
+  return search.namespacePrefix.length > 0
     ? paginateQuery({
         retry: retryFor(context, signal),
         signal,
         client: context.client,
-        params: withoutExpired(scopedQuery(context.tableName, op.namespacePrefix), now),
+        params: withoutExpired(scopedQuery(context.tableName, search.namespacePrefix), now),
         maxItems: context.maxScanItems,
       })
     : paginateScan({
@@ -67,16 +66,16 @@ function candidateSource(
 }
 
 /** The store record a raw row denotes, or undefined for a foreign, malformed, expired or out-of-prefix row. */
-function liveRecord(raw: DocItem, op: SearchOperation, now: number): StoreItemRecord | undefined {
+function liveRecord(raw: DocItem, search: ParsedSearch, now: number): StoreItemRecord | undefined {
   const record = narrowWholeRecord(raw);
   if (!record || isExpiredRow(record, now)) return undefined;
-  return namespaceMatchesPrefix(record.namespace, op.namespacePrefix) ? record : undefined;
+  return namespaceMatchesPrefix(record.namespace, search.namespacePrefix) ? record : undefined;
 }
 
 /** Decode the pending rows concurrently (each offloaded row is one S3 GET) and keep the ones passing the filter. */
 async function flush(
   context: StoreContext,
-  op: SearchOperation,
+  search: ParsedSearch,
   state: Collector,
   signal: AbortSignal | undefined,
 ): Promise<void> {
@@ -89,7 +88,7 @@ async function flush(
     (record) => readStoreItem(context, record, signal),
   );
   batch.forEach((record, index) => {
-    if (passesFilter(items[index], op)) {
+    if (passesFilter(items[index], search.filter)) {
       state.collected.push({ item: items[index], embeddings: storedVectors(record) });
     }
   });
@@ -100,8 +99,8 @@ async function flush(
  * one, since any row may be dropped; without one every decoded row is a match,
  * so the batch never exceeds what the page still needs.
  */
-function batchSize(op: SearchOperation, need: number, collected: number, limit: number): number {
-  return op.filter === undefined ? Math.min(limit, need - collected) : limit;
+function batchSize(search: ParsedSearch, need: number, collected: number, limit: number): number {
+  return search.filter === undefined ? Math.min(limit, need - collected) : limit;
 }
 
 function tooManyCandidates(
@@ -118,12 +117,12 @@ function tooManyCandidates(
 /**
  * Collect the live rows under the prefix and decode them within `bound`.
  *
- * Accepts: `op.namespacePrefix` — a non-empty prefix is a Query on one
+ * Accepts: `search.namespacePrefix` — a non-empty prefix is a Query on one
  * partition; an empty one spans every partition and is the Scan this adapter
  * reserves for exactly that (`test/static/guards/scan-sites.ts`). `bound` — a
  * page stops as soon as
  * `need` matching items are in hand; a semantic collection needs every
- * candidate and is refused past `cap`. `op.filter` — applied after decoding,
+ * candidate and is refused past `cap`. `search.filter` — applied after decoding,
  * since the filter reads the value.
  *
  * Returns: the matching candidates with the vectors their rows carry, in the
@@ -149,15 +148,15 @@ function tooManyCandidates(
  */
 export async function collectCandidates(
   context: StoreContext,
-  op: SearchOperation,
+  search: ParsedSearch,
   bound: CollectBound,
   signal?: AbortSignal,
 ): Promise<RankCandidate[]> {
   const now = nowSeconds();
   const limit = context.readConcurrency ?? DEFAULT_READ_CONCURRENCY;
   const state: Collector = { pending: [], collected: [] };
-  for await (const raw of candidateSource(context, op, signal, now)) {
-    const record = liveRecord(raw, op, now);
+  for await (const raw of candidateSource(context, search, signal, now)) {
+    const record = liveRecord(raw, search, now);
     if (!record) continue;
     state.pending.push(record);
     if (bound.kind === 'semantic') {
@@ -165,10 +164,12 @@ export async function collectCandidates(
         throw tooManyCandidates(state.pending.length, bound.cap);
       continue;
     }
-    if (state.pending.length < batchSize(op, bound.need, state.collected.length, limit)) continue;
-    await flush(context, op, state, signal);
+    if (state.pending.length < batchSize(search, bound.need, state.collected.length, limit)) {
+      continue;
+    }
+    await flush(context, search, state, signal);
     if (state.collected.length >= bound.need) return state.collected;
   }
-  await flush(context, op, state, signal);
+  await flush(context, search, state, signal);
   return state.collected;
 }

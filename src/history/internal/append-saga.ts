@@ -5,6 +5,7 @@ import { toError } from '../../shared/errors/to-error';
 import type { ChatMessageItem } from '../types';
 import { type CommittedChunk, compensate } from './compensation';
 import { writeMessageChunk } from './message-transaction';
+import type { SessionId } from './parse';
 import type { HistoryContext } from './setup';
 
 /** Shared per-append metadata applied to every chunk's session update. */
@@ -45,7 +46,7 @@ async function verifyChunkLanded(
 /** Run one chunk's transaction, returning its error instead of throwing. */
 async function commitChunk(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   chunk: ChatMessageItem[],
   fields: AppendFields,
   signal?: AbortSignal,
@@ -100,7 +101,7 @@ function asCommitted(chunk: ChatMessageItem[]): CommittedChunk {
  */
 export async function appendChunks(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   chunks: ChatMessageItem[][],
   fields: AppendFields,
   signal?: AbortSignal,

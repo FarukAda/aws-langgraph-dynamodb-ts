@@ -9,6 +9,7 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { getItem } from '../../../../src/store/internal/get-item';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -28,7 +29,9 @@ describe('getItem', () => {
   it('returns null when the item is absent', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    expect(await getItem(context(client), ['users', 'u1'], 'profile')).toBeNull();
+    expect(
+      await getItem(context(client), parseStoreAddress(['users', 'u1'], 'profile')),
+    ).toBeNull();
   });
 
   it('returns null and warns for a row that is not a store item (C2, I7)', async () => {
@@ -48,22 +51,8 @@ describe('getItem', () => {
     });
     const warn = jest.fn();
     const ctx = { ...context(client), logger: { ...SILENT_LOGGER, warn } };
-    await expect(getItem(ctx, ['users', 'u1'], 'profile')).resolves.toBeNull();
+    await expect(getItem(ctx, parseStoreAddress(['users', 'u1'], 'profile'))).resolves.toBeNull();
     expect(warn).toHaveBeenCalledTimes(1);
-  });
-
-  it('throws VALIDATION on an empty namespace', async () => {
-    const { client } = createStrictDocumentMock();
-    await expect(getItem(context(client), [], 'k1')).rejects.toMatchObject({
-      code: ErrorCode.VALIDATION,
-    });
-  });
-
-  it('throws VALIDATION when the key contains the reserved separator', async () => {
-    const { client } = createStrictDocumentMock();
-    await expect(getItem(context(client), ['users'], 'a#b')).rejects.toMatchObject({
-      code: ErrorCode.VALIDATION,
-    });
   });
 
   it('returns the decoded item with namespace, key, value, and dates', async () => {
@@ -79,7 +68,7 @@ describe('getItem', () => {
       },
     );
     mock.on(GetCommand).resolves({ Item: record });
-    const item = await getItem(context(client), ['users', 'u1'], 'profile');
+    const item = await getItem(context(client), parseStoreAddress(['users', 'u1'], 'profile'));
     expect(item?.value).toEqual({ name: 'Faruk' });
     expect(item?.key).toBe('profile');
     expect(item?.namespace).toEqual(['users', 'u1']);
@@ -170,7 +159,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     downloads[keyOf(old)] = gone;
     downloads[keyOf(replaced)] = fresh;
     mock.on(GetCommand).resolvesOnce({ Item: old }).resolvesOnce({ Item: replaced });
-    const item = await getItem(ctx, ['users', 'u1'], 'p');
+    const item = await getItem(ctx, parseStoreAddress(['users', 'u1'], 'p'));
     expect(item?.value).toEqual({ name: 'fresh' });
     expect(mock.commandCalls(GetCommand)).toHaveLength(2);
   });
@@ -182,7 +171,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     const { old } = await records(ctx);
     downloads[keyOf(old)] = gone;
     mock.on(GetCommand).resolvesOnce({ Item: old }).resolvesOnce({});
-    await expect(getItem(ctx, ['users', 'u1'], 'p')).resolves.toBeNull();
+    await expect(getItem(ctx, parseStoreAddress(['users', 'u1'], 'p'))).resolves.toBeNull();
   });
 
   it('rethrows when the re-read still points at the missing object (a genuine loss)', async () => {
@@ -192,7 +181,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     const { old } = await records(ctx);
     downloads[keyOf(old)] = gone;
     mock.on(GetCommand).resolves({ Item: old });
-    await expect(getItem(ctx, ['users', 'u1'], 'p')).rejects.toMatchObject({
+    await expect(getItem(ctx, parseStoreAddress(['users', 'u1'], 'p'))).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,
     });
     expect(mock.commandCalls(GetCommand)).toHaveLength(2);
@@ -215,7 +204,9 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
       .on(GetCommand)
       .resolvesOnce({ Item: old })
       .resolvesOnce({ Item: { ...old, value: null } });
-    const error = await getItem(ctx, ['users', 'u1'], 'p').catch((caught: unknown) => caught);
+    const error = await getItem(ctx, parseStoreAddress(['users', 'u1'], 'p')).catch(
+      (caught: unknown) => caught,
+    );
     expect(error).toBeInstanceOf(DynamoDBLangGraphError);
     expect(error).toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'descriptor' } });
   });
@@ -231,7 +222,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     const { old } = await records(ctx);
     downloads[keyOf(old)] = throttled;
     mock.on(GetCommand).resolves({ Item: old });
-    await expect(getItem(ctx, ['users', 'u1'], 'p')).rejects.toMatchObject({
+    await expect(getItem(ctx, parseStoreAddress(['users', 'u1'], 'p'))).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,
     });
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
@@ -262,7 +253,10 @@ describe('getItem S3 key binding (SEC-03)', () => {
       assertOwnedKey: (key: string, scope: readonly string[]) => assertKeyInScope(key, 'p/', scope),
     };
     await expect(
-      getItem({ ...context(client), offloader: offloader as never }, ['users', 'u1'], 'profile'),
+      getItem(
+        { ...context(client), offloader: offloader as never },
+        parseStoreAddress(['users', 'u1'], 'profile'),
+      ),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 's3Key' } });
     expect(offloader.download).not.toHaveBeenCalled();
   });

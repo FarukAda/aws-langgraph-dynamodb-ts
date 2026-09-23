@@ -1,7 +1,7 @@
 import { validationError } from '../errors/errors';
 import { assertMembers, LOGGER_MEMBERS } from '../validation/collaborators';
 import { assertObjectShape } from '../validation/option-shape';
-import { validateStringArray } from '../validation/primitives';
+import { assertStringArray } from '../validation/primitives';
 import { absorbLoggerFailure, type LogArgument, type Logger } from './logger';
 import { type Redactable, walkObject } from './redaction-walk';
 import {
@@ -21,8 +21,9 @@ const UNREDACTABLE = '[UNREDACTABLE]';
  * Accepts: `value` — the list as the caller gave it. `field` — what the error
  * names.
  *
- * Returns: nothing; validity is the absence of a throw. An empty list is
- * valid, and is how a caller turns value matching off.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it. An empty list is valid, and is how a caller turns value matching
+ * off.
  *
  * Throws: `VALIDATION` naming `field` for a non-array or an entry that is
  * not a `RegExp`. {@link redactText} skips such an entry, which protects
@@ -74,7 +75,7 @@ export function redactSecrets(
   patterns: readonly string[] = DEFAULT_SECRET_KEY_PATTERNS,
   valuePatterns: readonly RegExp[] = DEFAULT_SECRET_VALUE_PATTERNS,
 ): Redactable {
-  validateStringArray(patterns, 'patterns');
+  assertStringArray(patterns, 'patterns');
   assertRegExpArray(valuePatterns, 'valuePatterns');
   /**
    * `walking` detects a cycle; `done` memoises a finished node. Both are
@@ -142,10 +143,17 @@ export interface RedactLoggerOptions {
  * rule to begin with, and was read as "none given", leaving the caller running
  * on a default it believed it had overridden. All three are refused here,
  * once, where they are configured.
+ *
+ * Accepts: `options` — as the caller gave it.
+ *
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
+ *
+ * Throws: `VALIDATION` naming `options`, `extraKeys` or `extraValuePatterns`.
  */
 function assertRedactionOptions(options: RedactLoggerOptions): void {
   assertObjectShape(options, 'options');
-  if (options.extraKeys !== undefined) validateStringArray(options.extraKeys, 'extraKeys');
+  if (options.extraKeys !== undefined) assertStringArray(options.extraKeys, 'extraKeys');
   if (options.extraValuePatterns !== undefined) {
     assertRegExpArray(options.extraValuePatterns, 'extraValuePatterns');
   }

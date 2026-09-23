@@ -5,6 +5,7 @@ import { MAX_WRITE_LIFETIME_MS } from '../../shared/constants';
 import { conditionFailedAt } from '../../shared/dynamodb/cancellation';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
+import type { SessionId } from './parse';
 import { removeRolledBackTitle } from './session-title';
 import type { HistoryContext } from './setup';
 
@@ -80,7 +81,7 @@ function isCancelledByCondition(error: Error): boolean {
  */
 export async function revertSessionCount(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   delta: number,
   createdBefore: string,
 ): Promise<void> {
@@ -156,7 +157,7 @@ export async function revertSessionCount(
  */
 export async function revertSessionCreation(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   total: number,
   createdAt: string,
   title?: string,

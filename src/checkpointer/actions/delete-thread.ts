@@ -6,10 +6,10 @@ import {
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { isCheckpointerSortKey, partitionKey, SORT_KEY_SEPARATOR } from '../internal/keys';
+import { parseThreadId } from '../internal/parse';
 import { partitionQuery } from '../internal/query';
 import type { CheckpointerContext } from '../internal/setup';
 import { SPECIAL_REVISION_ATTRIBUTE } from '../internal/special-write-verify';
-import { validateThreadId } from '../internal/validation';
 
 /** The attributes a checkpointer row can hold an offloaded payload under. */
 const PAYLOAD_ATTRIBUTES = ['metadata', 'checkpoint', 'value'] as const;
@@ -85,11 +85,11 @@ export async function deleteThread(
   threadId: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<void> {
-  validateThreadId(threadId);
+  const thread = parseThreadId(threadId);
   await deletePartitionRows({
     client: context.client,
     tableName: context.tableName,
-    params: partitionQuery(context.tableName, partitionKey(threadId), { consistent: true }),
+    params: partitionQuery(context.tableName, partitionKey(thread), { consistent: true }),
     logger: context.logger,
     retry: retryFor(context, options.signal),
     signal: options.signal,
@@ -100,6 +100,6 @@ export async function deleteThread(
     idAttribute: SPECIAL_REVISION_ATTRIBUTE,
     unitOf,
     kindOf,
-    scope: [threadId],
+    scope: [thread],
   });
 }

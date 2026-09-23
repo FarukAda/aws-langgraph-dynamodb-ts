@@ -7,17 +7,14 @@ import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { assertReadableRow } from '../../shared/dynamodb/row-version';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import type { DocItem } from '../../shared/dynamodb/types';
-import { validationError } from '../../shared/errors/errors';
-import { assertSignalLike } from '../../shared/validation/collaborators';
-import { assertShape } from '../../shared/validation/option-shape';
-import { validateInteger, validateLimit } from '../../shared/validation/primitives';
+import { type PageLimit, parseLimit } from '../../shared/validation/primitives';
 import { SESSION_SORT_KEY, historyPartitionPrefix, sessionPartition } from '../internal/keys';
-import { LIST_SESSIONS_KEYS } from '../internal/option-keys';
+import { type ListSessionsRequest, parseListSessionsRequest } from '../internal/parse';
 import type { HistoryContext } from '../internal/setup';
 import type { ChatSessionItem, ListSessionsOptions, SessionMetadata, SessionPage } from '../types';
 
 /** Rows per page when the caller names none. */
-const DEFAULT_PAGE_SIZE = 100;
+const DEFAULT_PAGE_SIZE: PageLimit = parseLimit(100, 0);
 
 /**
  * Whether a row's `ttl` is an instant this listing can both judge and render.
@@ -103,7 +100,7 @@ function summarise(raw: DocItem, nowSeconds: number): SessionMetadata | undefine
 async function pageFromIndex(
   context: HistoryContext,
   indexName: string,
-  options: ListSessionsOptions,
+  request: ListSessionsRequest,
 ): Promise<SessionPage> {
   const nowSeconds = currentSeconds();
   const page = await queryRecencyIndex({
@@ -113,10 +110,10 @@ async function pageFromIndex(
     tag: 'SESS',
     shards: context.indexShards ?? DEFAULT_INDEX_SHARDS,
     concurrency: context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
-    limit: options.limit ?? DEFAULT_PAGE_SIZE,
-    cursor: options.cursor,
-    retry: retryFor(context, options.signal),
-    signal: options.signal,
+    limit: request.limit ?? DEFAULT_PAGE_SIZE,
+    cursor: request.cursor,
+    retry: retryFor(context, request.signal),
+    signal: request.signal,
   });
   const sessions = page.items
     .map((raw) => summarise(raw, nowSeconds))
@@ -150,13 +147,13 @@ async function pageFromIndex(
  */
 async function allByScan(
   context: HistoryContext,
-  options: ListSessionsOptions,
+  request: ListSessionsRequest,
 ): Promise<SessionPage> {
   const sessions: SessionMetadata[] = [];
   const nowSeconds = currentSeconds();
   for await (const raw of paginateScan({
-    retry: retryFor(context, options.signal),
-    signal: options.signal,
+    retry: retryFor(context, request.signal),
+    signal: request.signal,
     client: context.client,
     params: {
       TableName: context.tableName,
@@ -167,8 +164,8 @@ async function allByScan(
         ':session': SESSION_SORT_KEY,
       },
     },
-    maxIterations: options.maxIterations,
-    maxItems: options.maxItems,
+    maxIterations: request.maxIterations,
+    maxItems: request.maxItems,
   })) {
     const session = summarise(raw, nowSeconds);
     if (session) sessions.push(session);
@@ -180,64 +177,7 @@ async function allByScan(
    * are not guaranteed to agree with it in every locale.
    */
   sessions.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
-  return { sessions: options.limit === undefined ? sessions : sessions.slice(0, options.limit) };
-}
-
-/**
- * Reject a scan-path cap `paginatePages` would otherwise accept as its
- * default (an explicit `undefined` or `null` both reach it through `??`,
- * which cannot tell "the caller said so" from "the caller said nothing") or
- * misuse as a page count (a fraction, which passed its own `>= 1` check
- * without being an integer).
- *
- * Accepts: `value` — absent is left to the paginator's own default.
- * `Infinity` is legal and left alone too: it is the paginator's own documented
- * way to ask for no cap, not a value this check owns.
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: `VALIDATION` naming `field` for anything else that is not an
- * integer of at least 1 — the same bound `paginatePages`'s own
- * `assertPositiveCap` already enforces, just checked before a `null` can be
- * mistaken for "no value" and silently replaced by the default.
- */
-function assertScanCap(value: number | undefined, field: string): void {
-  if (value === undefined || value === Infinity) return;
-  validateInteger(value, field, { min: 1 });
-}
-
-/**
- * Reject a page request neither path could honour.
- *
- * `limit` is validated on both paths, not just the index one: the same call
- * must not be checked on one table and silently accepted on another. A `cursor`
- * without the index names a position in an index that is not there — answering
- * it with the first page would hand back page one while the caller waits for
- * page two. A `cursor` that is present but not a string is refused here too,
- * before it reaches the cursor decoder: `Buffer.from` raises a raw `TypeError`
- * on anything but a string, one property access into the index query this
- * check runs ahead of.
- */
-function assertPageOptions(context: HistoryContext, options: ListSessionsOptions): void {
-  /**
-   * Zero floor: a session listing hands back an empty page the caller can see
-   * is empty. The conversation window is the one `limit` that refuses zero,
-   * because there the empty answer is read by a model instead.
-   */
-  if (options.limit !== undefined) validateLimit(options.limit, 0);
-  assertScanCap(options.maxItems, 'maxItems');
-  assertScanCap(options.maxIterations, 'maxIterations');
-  if (options.cursor === undefined) return;
-  if (context.indexName === undefined) {
-    throw validationError(
-      'paging by cursor needs a configured `indexName`: without the recency index a listing is ' +
-        'one table scan, which has no position to resume from',
-      'cursor',
-    );
-  }
-  if (typeof options.cursor !== 'string') {
-    throw validationError('cursor must be a string', 'cursor');
-  }
+  return { sessions: request.limit === undefined ? sessions : sessions.slice(0, request.limit) };
 }
 
 /**
@@ -286,11 +226,9 @@ export async function listSessions(
   context: HistoryContext,
   options: ListSessionsOptions = {},
 ): Promise<SessionPage> {
-  assertShape(options, LIST_SESSIONS_KEYS, 'options');
-  assertSignalLike(options.signal);
-  assertPageOptions(context, options);
-  if (options.limit === 0) return { sessions: [] };
+  const request = parseListSessionsRequest(options, context.indexName);
+  if (request.limit === 0) return { sessions: [] };
   return context.indexName === undefined
-    ? allByScan(context, options)
-    : pageFromIndex(context, context.indexName, options);
+    ? allByScan(context, request)
+    : pageFromIndex(context, context.indexName, request);
 }

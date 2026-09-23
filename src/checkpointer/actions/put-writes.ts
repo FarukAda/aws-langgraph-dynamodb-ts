@@ -3,15 +3,13 @@ import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
-import { validationError } from '../../shared/errors/errors';
 import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
-import { readConfigurable } from '../internal/configurable';
 import { buildWriteItems } from '../internal/item-writer';
+import { parsePutWritesRequest } from '../internal/parse';
 import { writeRegularItems } from '../internal/regular-write';
 import type { CheckpointerContext } from '../internal/setup';
 import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
-import { validateTaskId, validateWrites } from '../internal/validation';
 import type { CheckpointWriteItem } from '../types';
 
 /**
@@ -61,9 +59,10 @@ async function cleanUpItems(
  * Throws: `VALIDATION` naming `config`, `configurable` or `signal` for a
  * config of the wrong shape; `thread_id`, `checkpoint_ns`, `checkpoint_id` or
  * `thread_ts` for a malformed identifier, and `checkpoint_id` when the config
- * names none; `taskId`, `writes`, `channel`, `sortKey`, `payload` or `s3Key`;
- * the first genuine write failure, after every write has settled and the
- * cleanup has run.
+ * names none; `taskId`, `writes`, `channel`, `sortKey` — every one of them
+ * before anything is encoded or uploaded — `payload` or `s3Key`; the first
+ * genuine write failure, after every write has settled and the cleanup has
+ * run.
  *
  * Guarantees: regular writes are first-write-wins, matching the reference
  * checkpointer; special negative-index writes always overwrite (see
@@ -85,31 +84,15 @@ export async function putWrites(
   writes: PendingWrite[],
   taskId: string,
 ): Promise<void> {
-  validateTaskId(taskId);
-  const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
-  const signal = config.signal;
-  if (checkpointId === undefined) {
-    throw validationError('checkpoint_id is required to store writes', 'checkpoint_id');
-  }
-  validateWrites(writes);
-  if (writes.length === 0) return;
+  const request = parsePutWritesRequest(config, writes, taskId);
+  if (request.writes.length === 0) return;
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const items = await buildWriteItems(
-    context,
-    threadId,
-    checkpointNs,
-    checkpointId,
-    taskId,
-    writes,
-    nextWriteGroup(),
-    ttlTimestamp,
-    signal,
-  );
+  const items = await buildWriteItems(context, request, nextWriteGroup(), ttlTimestamp);
   const special = items.filter((item) => item.index < 0);
   const regular = items.filter((item) => item.index >= 0);
   const [specialError, regularOutcome] = await Promise.all([
-    writeSpecialItemsWithCleanup(context, threadId, special, signal),
-    writeRegularItems(context, regular, signal),
+    writeSpecialItemsWithCleanup(context, request.address.threadId, special, request.signal),
+    writeRegularItems(context, regular, request.signal),
   ]);
   await cleanUpItems(context, regularOutcome.deadUploads);
   const firstError = specialError ?? regularOutcome.error;

@@ -1,5 +1,3 @@
-import type { PutOperation } from '@langchain/langgraph-checkpoint';
-
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import {
@@ -11,6 +9,8 @@ import {
 } from '../../shared/dynamodb/conditional-put';
 import { deleteIdempotently } from '../../shared/dynamodb/idempotent-write';
 import { syncVectorIndex } from './index-sync';
+import { partitionKey, sortKey } from './keys';
+import type { StoreAddress } from './parse';
 import { type ExistingRecordMeta, existingFrom, readExisting } from './read-existing';
 import type { StoreContext } from './setup';
 import { isRetryExhausted, rowIsAbsent } from './write-verify';
@@ -117,19 +117,19 @@ async function removeObservedRow(
  */
 async function dropVectorWhenGone(
   context: StoreContext,
-  op: PutOperation,
+  address: StoreAddress,
   key: RowKey,
 ): Promise<void> {
   const backend = context.vectorBackend;
   if (backend === undefined) return;
   if (!(await rowIsAbsent(context, key))) {
     context.logger.info('store.delete: kept a vector whose item was not confirmed gone', {
-      namespace: op.namespace,
-      key: op.key,
+      namespace: address.namespace,
+      key: address.key,
     });
     return;
   }
-  await syncVectorIndex(backend, op.namespace, op.key, undefined, context.logger);
+  await syncVectorIndex(backend, address.namespace, address.key, undefined, context.logger);
 }
 
 /**
@@ -185,8 +185,8 @@ async function dropVectorWhenGone(
  *   item that is not there is not an error" now describes the outcome rather
  *   than the round trip.
  *
- * Accepts: `op` — the delete operation, for the namespace and key the cleanup
- * is scoped and logged by. `pk`/`sk` — the row's key.
+ * Accepts: `address` — parsed; the namespace and key the cleanup is scoped and
+ * logged by, and the row's key is derived from it.
  *
  * Returns: nothing. The item is gone, was already gone, or — on
  * compare-and-swap exhaustion — is still there and was left alone.
@@ -216,30 +216,28 @@ async function dropVectorWhenGone(
  * exception, because an exception on a repair-shaped path is where the erasure
  * comes back unnoticed.
  */
-export async function deleteStoreItem(
-  context: StoreContext,
-  op: PutOperation,
-  pk: string,
-  sk: string,
-): Promise<void> {
-  const key: RowKey = { PK: pk, SK: sk };
-  const existing = await readExisting(context, pk, sk);
+export async function deleteStoreItem(context: StoreContext, address: StoreAddress): Promise<void> {
+  const key: RowKey = {
+    PK: partitionKey(address.namespace),
+    SK: sortKey(address.namespace, address.key),
+  };
+  const existing = await readExisting(context, key.PK, key.SK);
   const released = existing.exists ? await removeObservedRow(context, key, existing) : existing;
   if (released === undefined) {
     context.logger.warn('store.delete: compare-and-swap exhausted; the item was not deleted', {
-      namespace: op.namespace,
-      key: op.key,
+      namespace: address.namespace,
+      key: address.key,
       attempts: OVERWRITE_CAS_MAX_ATTEMPTS,
     });
   }
-  await dropVectorWhenGone(context, op, key);
+  await dropVectorWhenGone(context, address, key);
   if (context.offloader && released?.value) {
     await cleanUpS3Orphans(
       context.offloader,
       collectS3Keys([released.value]),
       'store.delete',
       context.logger,
-      { scope: [...op.namespace, op.key] },
+      { scope: [...address.namespace, address.key] },
     );
   }
 }

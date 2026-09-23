@@ -1,6 +1,7 @@
 import { BatchWriteCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { compensate } from '../../../../src/history/internal/compensation';
+import { parseSessionId } from '../../../../src/history/internal/parse';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -60,6 +61,8 @@ function offloaderSpy() {
   };
 }
 
+const SESSION_ID = parseSessionId('s1');
+
 describe('compensate', () => {
   const trigger = new Error('chunk failed');
 
@@ -72,7 +75,7 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { offloader: spy.offloader as never }),
-        's1',
+        SESSION_ID,
         chunks,
         [],
         trigger,
@@ -93,7 +96,7 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { offloader: spy.offloader as never }),
-        's1',
+        SESSION_ID,
         chunks,
         [],
         trigger,
@@ -115,7 +118,7 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { offloader: spy.offloader as never }),
-        's1',
+        SESSION_ID,
         chunks,
         committed,
         trigger,
@@ -139,7 +142,7 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { offloader: spy.offloader as never }),
-        's1',
+        SESSION_ID,
         chunks,
         committed,
         trigger,
@@ -167,7 +170,7 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { offloader: spy.offloader as never, logger: throwingLogger() }),
-        's1',
+        SESSION_ID,
         [[item('a')], [item('b')]],
         committed,
         trigger,
@@ -189,7 +192,7 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { logger: throwingLogger() }),
-        's1',
+        SESSION_ID,
         [[item('a')]],
         committed,
         trigger,
@@ -204,7 +207,7 @@ describe('compensate', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
     await expect(
-      compensate(context(client), 's1', [[item('a')]], [], trigger, 'now', undefined, false),
+      compensate(context(client), SESSION_ID, [[item('a')]], [], trigger, 'now', undefined, false),
     ).rejects.toBe(trigger);
   });
 });

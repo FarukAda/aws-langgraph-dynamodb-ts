@@ -13,6 +13,7 @@ import {
 } from '../../../../src/shared/dynamodb/index-query';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { parseLimit } from '../../../../src/shared/validation/primitives';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { indexRow, indexRows, simulatedIndex } from '../../../shared/helpers/simulated-index';
 
@@ -36,7 +37,7 @@ function base(client: StrictMock['client'], limit: number) {
     tag: 'SESS' as const,
     shards: 2,
     concurrency: 2,
-    limit,
+    limit: parseLimit(limit, 0),
   };
 }
 
@@ -110,13 +111,6 @@ describe('queryRecencyIndex', () => {
     const input = mock.commandCalls(QueryCommand)[0].args[0].input;
     expect(input.IndexName).toBe('gsi1');
     expect(input.ScanIndexForward).toBe(false);
-  });
-
-  it.each([-1, 1.5])('refuses a limit of %p', async (limit) => {
-    const { client } = createStrictDocumentMock();
-    await expect(queryRecencyIndex(base(client, limit))).rejects.toMatchObject({
-      code: ErrorCode.VALIDATION,
-    });
   });
 
   /** DynamoDB omits `Items` for a shard that holds nothing, rather than sending an empty list. */

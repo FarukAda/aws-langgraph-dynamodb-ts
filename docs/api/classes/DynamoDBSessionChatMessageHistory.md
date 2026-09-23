@@ -6,7 +6,7 @@
 
 # Class: DynamoDBSessionChatMessageHistory
 
-Defined in: [history/session-adapter.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L31)
+Defined in: [history/session-adapter.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L36)
 
 Single-session view over a [SessionBackend](../interfaces/SessionBackend.md), implementing LangChain's
 `BaseListChatMessageHistory` so it can drive `RunnableWithMessageHistory`.
@@ -23,7 +23,7 @@ the newest fifty messages instead of the whole session.
 
 > **new DynamoDBSessionChatMessageHistory**(`backend`, `sessionId`, `window?`): `DynamoDBSessionChatMessageHistory`
 
-Defined in: [history/session-adapter.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L52)
+Defined in: [history/session-adapter.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L62)
 
 Accepts: `backend` — the multi-session adapter this view delegates to,
 checked structurally for [SessionBackend](../interfaces/SessionBackend.md)'s own members. `sessionId`
@@ -36,6 +36,8 @@ empty one is indistinguishable from a conversation that never happened.
 
 Returns: the view. Normally built through
 `DynamoDBChatMessageHistory.forSession`, which is the supported route.
+The adapter keeps the window it parsed, not the caller's object, so
+changing that object afterwards changes nothing.
 
 Throws: `VALIDATION` naming `backend`, `backend.<member>` for the first
 missing method, `sessionId`, `window` for a window that is not an object,
@@ -70,7 +72,7 @@ construction instead of rebranding it as an upstream failure on first use.
 
 > **lc\_namespace**: `string`[]
 
-Defined in: [history/session-adapter.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L32)
+Defined in: [history/session-adapter.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L37)
 
 A path to the module that contains the class, eg. ["langchain", "llms"]
 Usually should be the same as the entrypoint the class is exported from.
@@ -85,7 +87,7 @@ Usually should be the same as the entrypoint the class is exported from.
 
 > **addMessage**(`message`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:95](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L95)
+Defined in: [history/session-adapter.ts:103](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L103)
 
 Append one message to this session.
 
@@ -115,7 +117,7 @@ Throws: as [addMessages](#addmessages).
 
 > **addMessages**(`messages`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:115](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L115)
+Defined in: [history/session-adapter.ts:123](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L123)
 
 Append messages to this session.
 
@@ -150,7 +152,7 @@ session keeps every message appended to it.
 
 > **clear**(): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:135](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L135)
+Defined in: [history/session-adapter.ts:143](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L143)
 
 Delete this session's messages, metadata and offloaded objects.
 
@@ -179,7 +181,7 @@ is asking for exactly that.
 
 > **getMessages**(): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/session-adapter.ts:80](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L80)
+Defined in: [history/session-adapter.ts:88](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L88)
 
 This session's messages in chronological order.
 

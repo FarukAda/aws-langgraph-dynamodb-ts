@@ -3,7 +3,7 @@ import { DEFAULT_READ_CONCURRENCY } from '../constants';
 import { guardPublic } from '../errors/boundary';
 import { decodeScanCursor, encodeScanCursor, indexTargetOf } from './backfill-target';
 import type { BackfillOptions, BackfillResult } from './backfill-types';
-import { validateBackfillOptions } from './backfill-validation';
+import { assertBackfillOptions } from './backfill-validation';
 import { isConditionalCheckFailed } from './conditional-put';
 import { DEFAULT_INDEX_SHARDS, type IndexKeys, indexKeys } from './index-keys';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
@@ -178,7 +178,7 @@ async function backfillPage(
  */
 export async function backfillRecencyIndex(options: BackfillOptions): Promise<BackfillResult> {
   return guardPublic('backfillRecencyIndex', async () => {
-    validateBackfillOptions(options);
+    assertBackfillOptions(options);
     const shards = options.indexShards ?? DEFAULT_INDEX_SHARDS;
     let startKey = options.cursor === undefined ? undefined : decodeScanCursor(options.cursor);
     let scanned = 0;

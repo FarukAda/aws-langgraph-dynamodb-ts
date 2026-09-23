@@ -1,6 +1,6 @@
 import { mapWithConcurrency } from '../concurrency';
 import { validationError } from '../errors/errors';
-import { validateLimit } from '../validation/primitives';
+import { type PageLimit, parseLimit } from '../validation/primitives';
 import { indexPartitions } from './index-keys';
 import {
   type IndexQueryOptions,
@@ -137,13 +137,14 @@ function takeNewest(readers: ShardReader[]): DocItem | undefined {
  * read capacity for every row *evaluated*, collected the whole table in memory
  * and sorted it there.
  *
- * Accepts: `limit` — the package-wide page rule, an integer from 0 to the page
- * ceiling; rows per page. `0` returns an empty page with no cursor and issues
- * no query — and is answered here rather than left to the merge, where an
- * empty page with shards still unread would have read `items[items.length - 1]`
- * off an empty array to build the cursor. `cursor` — from a previous page, or
- * none to start at the newest. `shards` — must match what the writers used.
- * `concurrency` — how many shards are queried at once.
+ * Accepts: `limit` — a `PageLimit`, already checked against the package-wide
+ * page rule by the caller's parser. `0` returns an empty page with no cursor
+ * and issues no query — and is answered here rather than left to the merge,
+ * where an empty page with shards still unread would have read
+ * `items[items.length - 1]` off an empty array to build the cursor. `cursor`
+ * — from a previous page, or none to start at the newest. `shards` — must
+ * match what the writers used. `concurrency` — how many shards are queried at
+ * once.
  *
  * Returns: the page, newest first, and a `nextCursor` exactly while rows may
  * remain: a shard still buffers a row the page did not take, or has not
@@ -152,7 +153,7 @@ function takeNewest(readers: ShardReader[]): DocItem | undefined {
  * exactly. DynamoDB can still report a `LastEvaluatedKey` on a page that ends
  * at a shard's last row, so the page after such a cursor may come back empty.
  *
- * Throws: `VALIDATION` naming `limit` or `cursor`; `RESULT_TRUNCATED`
+ * Throws: `VALIDATION` naming `cursor`; `RESULT_TRUNCATED`
  * for a shard whose pages do not end within `MAX_LOOP_ITERATIONS`; whatever
  * the queries throw, including an `ABORTED` error.
  *
@@ -163,8 +164,6 @@ function takeNewest(readers: ShardReader[]): DocItem | undefined {
  * held at a time.
  */
 export async function queryRecencyIndex(options: IndexQueryOptions): Promise<IndexPage> {
-  /** Zero floor: this is `listSessions`'s index page, and an empty page is exactly what it returns. */
-  validateLimit(options.limit, 0);
   if (options.limit === 0) return { items: [] };
   const before = options.cursor === undefined ? undefined : decodeCursor(options.cursor);
   const readers = indexPartitions(options.tag, options.shards).map((partition) =>
@@ -190,7 +189,7 @@ export async function queryRecencyIndex(options: IndexQueryOptions): Promise<Ind
 }
 
 /** Rows per page when a caller streams the whole index rather than paging it. */
-const STREAM_PAGE_SIZE = 100;
+const STREAM_PAGE_SIZE: PageLimit = parseLimit(100, 0);
 
 /**
  * Every row of one adapter's recency index, newest first, page by page.

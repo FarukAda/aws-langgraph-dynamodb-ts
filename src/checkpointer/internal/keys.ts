@@ -1,4 +1,3 @@
-import { MAX_SORT_KEY_BYTES } from '../../shared/constants';
 import { validationError } from '../../shared/errors/errors';
 
 /** Reserved separator joining sort-key segments; forbidden inside any segment. */
@@ -131,26 +130,28 @@ export function payloadSortKey(checkpointNs: string, checkpointId: string): stri
 /**
  * Sort key for a single pending write. The trailing `channel` segment is what
  * keeps two *different* channels from ever occupying one row: without it, a
- * retried task whose write mix changed could compute an index another
- * channel already holds, and the first-write-wins guard — which cannot tell a
+ * retried task whose write mix changed could compute an index another channel
+ * already holds, and the first-write-wins guard — which cannot tell a
  * genuine retry from an unrelated write — would silently discard it. The
  * channel is appended verbatim as the final segment, so two sort keys collide
  * only when their channels are byte-identical; `writeSortKeyPrefix` stops at
  * the checkpoint id, ahead of this segment, so `begins_with` reads are
  * unaffected.
  *
+ * The composed length is not checked here: `parsePutWritesRequest` refuses a
+ * write whose key would pass the cap, measured by {@link writeSortKeyBytes},
+ * before anything is encoded.
+ *
  * Accepts: `index` — an integer; padding a fraction produced `00000009.5`,
  * which no longer orders numerically. `channel` — separator-free, which
- * `validateChannel` establishes before any key is built. The other segments are
- * the validated identifiers.
+ * `parseWriteChannel` establishes before any key is built. The other segments
+ * are the parsed identifiers.
  *
  * Returns: the sort key, its index zero-padded to a fixed width so the special
  * negative slots order below the positional ones.
  *
  * Throws: `VALIDATION` naming `index` for an index this encoding cannot
- * represent, and `sortKey` for a composed key over
- * {@link MAX_SORT_KEY_BYTES} — identifiers that each pass their own length rule
- * can still compose a key DynamoDB would refuse with a raw error.
+ * represent.
  */
 export function writeSortKey(
   checkpointNs: string,
@@ -172,23 +173,30 @@ export function writeSortKey(
     );
   }
   const paddedIndex = offsetIndex.toString().padStart(WRITE_INDEX_PAD_WIDTH, '0');
-  const sortKey = [
-    CheckpointItemKind.WRITE,
-    checkpointNs,
-    checkpointId,
-    taskId,
-    paddedIndex,
-    channel,
-  ].join(SORT_KEY_SEPARATOR);
-  const bytes = Buffer.byteLength(sortKey, 'utf8');
-  if (bytes > MAX_SORT_KEY_BYTES) {
-    throw validationError(
-      `checkpoint_ns, checkpoint_id, taskId and channel compose a ${bytes}-byte sort key; ` +
-        `DynamoDB caps sort keys at ${MAX_SORT_KEY_BYTES} bytes`,
-      'sortKey',
-    );
-  }
-  return sortKey;
+  return [CheckpointItemKind.WRITE, checkpointNs, checkpointId, taskId, paddedIndex, channel].join(
+    SORT_KEY_SEPARATOR,
+  );
+}
+
+/**
+ * The UTF-8 length of the WRITE sort key a write would get, without refusing
+ * one over DynamoDB's cap.
+ *
+ * Accepts: the four segments of a WRITE sort key other than the index. The
+ * index is zero-padded to a fixed width, so the length is the same for every
+ * index a write can take, and index 0 stands for them all.
+ *
+ * Returns: the byte length DynamoDB measures the composed key by.
+ *
+ * Throws: nothing.
+ */
+export function writeSortKeyBytes(
+  checkpointNs: string,
+  checkpointId: string,
+  taskId: string,
+  channel: string,
+): number {
+  return Buffer.byteLength(writeSortKey(checkpointNs, checkpointId, taskId, 0, channel), 'utf8');
 }
 
 /**

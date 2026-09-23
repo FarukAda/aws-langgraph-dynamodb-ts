@@ -7,10 +7,6 @@ import {
   readMetadata,
   toPendingWrites,
 } from '../../../../src/checkpointer/internal/item-reader';
-import {
-  buildCheckpointItems,
-  buildWriteItems,
-} from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { dropSupersededWrites } from '../../../../src/checkpointer/internal/write-dedup';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
@@ -18,6 +14,7 @@ import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
+import { checkpointItems, writeItems } from '../../../shared/helpers/parsed-inputs';
 
 const serde = {
   dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
@@ -42,17 +39,17 @@ const metadata: CheckpointMetadata = { source: 'loop', step: 3, parents: {} };
 
 describe('item-reader', () => {
   it('round-trips the checkpoint written by the item-writer', async () => {
-    const { payload } = await buildCheckpointItems(context(), 't', '', checkpoint, metadata);
+    const { payload } = await checkpointItems(context(), 't', '', checkpoint, metadata);
     expect(await readCheckpoint(context(), payload, 't')).toEqual(checkpoint);
   });
 
   it('round-trips the metadata written by the item-writer', async () => {
-    const { meta } = await buildCheckpointItems(context(), 't', '', checkpoint, metadata);
+    const { meta } = await checkpointItems(context(), 't', '', checkpoint, metadata);
     expect(await readMetadata(context(), meta, 't')).toEqual(metadata);
   });
 
   it('assembles pending writes as [taskId, channel, value] tuples', async () => {
-    const items = await buildWriteItems(
+    const items = await writeItems(
       context(),
       't',
       '',
@@ -192,7 +189,7 @@ describe('toPendingWrites offloaded reads (CODEC-14)', () => {
   it('decodes offloaded pending writes up to 8 at a time, preserving order', async () => {
     const { offloader, maxInFlight } = overlapOffloader();
     const ctx = { ...context(), offloader: offloader as never };
-    const items = await buildWriteItems(
+    const items = await writeItems(
       ctx,
       't',
       '',

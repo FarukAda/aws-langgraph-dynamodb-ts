@@ -19,6 +19,7 @@ import {
   resolveRowWrites,
 } from '../../../shared/helpers/ddb-mock';
 import { stubEmbeddings } from '../../../shared/helpers/embeddings-stub';
+import { parsedPut } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -76,7 +77,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    await putItem(context(client), op({}));
+    await putItem(context(client), parsedPut(op({})));
     const item = mock.commandCalls(PutCommand)[0].args[0].input.Item!;
     expect(item.PK).toBe('STORE#users');
     expect(item.SK).toBe('u1#profile');
@@ -88,7 +89,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { createdAt: '2000-01-01T00:00:00.000Z' } });
     mock.on(PutCommand).resolves({});
-    await putItem(context(client), op({}));
+    await putItem(context(client), parsedPut(op({})));
     const item = mock.commandCalls(PutCommand)[0].args[0].input.Item!;
     expect(item.createdAt).toBe('2000-01-01T00:00:00.000Z');
     expect(item.updatedAt).not.toBe(item.createdAt);
@@ -98,14 +99,14 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     answerDeleteReads(mock, observableRow());
     resolveRowDeletes(mock);
-    await putItem(context(client), op({ value: null }));
+    await putItem(context(client), parsedPut(op({ value: null })));
     expect(deletedKeys(mock)).toEqual([{ PK: 'STORE#users', SK: 'u1#profile' }]);
   });
 
   it('rejects an invalid namespace element', async () => {
     const { client } = createStrictDocumentMock();
     try {
-      await putItem(context(client), op({ namespace: ['a#b'] }));
+      await putItem(context(client), parsedPut(op({ namespace: ['a#b'] })));
       throw new Error('should have thrown');
     } catch (error) {
       expect((error as { code: ErrorCode }).code).toBe(ErrorCode.VALIDATION);
@@ -122,7 +123,10 @@ describe('putItem', () => {
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
     const embeddings = stubEmbeddings([0.1, 0.2]);
-    await putItem(context(client, { index: { dims: 2, embeddings: embeddings as never } }), op({}));
+    await putItem(
+      context(client, { index: { dims: 2, embeddings: embeddings as never } }),
+      parsedPut(op({})),
+    );
     expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embeddings).toEqual([[0.1, 0.2]]);
   });
 
@@ -133,7 +137,7 @@ describe('putItem', () => {
     const embeddings = { embedQuery: jest.fn(), embedDocuments: jest.fn() };
     await putItem(
       context(client, { index: { dims: 2, embeddings: embeddings as never } }),
-      op({ index: false }),
+      parsedPut(op({ index: false })),
     );
     expect(embeddings.embedDocuments).not.toHaveBeenCalled();
     expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toBeUndefined();
@@ -146,7 +150,7 @@ describe('putItem', () => {
     const embeddings = stubEmbeddings([1, 2]);
     await putItem(
       context(client, { index: { dims: 2, embeddings: embeddings as never } }),
-      op({ value: { name: 'Faruk', bio: 'builds things' }, index: ['bio'] }),
+      parsedPut(op({ value: { name: 'Faruk', bio: 'builds things' }, index: ['bio'] })),
     );
     expect(embeddings.embedDocuments).toHaveBeenCalledWith(['builds things']);
   });
@@ -155,14 +159,14 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
-    await expect(putItem(context(client), op({}))).rejects.toThrow('down');
+    await expect(putItem(context(client), parsedPut(op({})))).rejects.toThrow('down');
   });
 
   it('stamps ttl when configured', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    await putItem(context(client, { ttl: { seconds: 100 } }), op({}));
+    await putItem(context(client, { ttl: { seconds: 100 } }), parsedPut(op({})));
     expect(typeof mock.commandCalls(PutCommand)[0].args[0].input.Item!.ttl).toBe('number');
   });
 
@@ -172,7 +176,7 @@ describe('putItem', () => {
     rejectRowWrites(mock, Object.assign(new Error('boom'), { name: 'ValidationException' }));
     const offloader = trackingOffloader();
     await expect(
-      putItem(context(client, { offloader: offloader as never }), op({})),
+      putItem(context(client, { offloader: offloader as never }), parsedPut(op({}))),
     ).rejects.toThrow('boom');
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
@@ -191,7 +195,7 @@ describe('putItem', () => {
     });
     const offloader = trackingOffloader();
     const ctx = context(client, { offloader: offloader as never });
-    await expect(putItem(ctx, op({}))).resolves.toBeUndefined();
+    await expect(putItem(ctx, parsedPut(op({})))).resolves.toBeUndefined();
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
   it('cleans up the new S3 object and rethrows when an ambiguous retry-exhaustion write genuinely did not land', async () => {
@@ -200,7 +204,7 @@ describe('putItem', () => {
     rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
     const offloader = trackingOffloader();
     const ctx = context(client, { offloader: offloader as never });
-    await expect(putItem(ctx, op({}))).rejects.toThrow('timeout');
+    await expect(putItem(ctx, parsedPut(op({})))).rejects.toThrow('timeout');
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
   });
 
@@ -218,7 +222,7 @@ describe('putItem', () => {
       },
     });
     mock.on(PutCommand).resolves({});
-    await putItem(context(client), op({}));
+    await putItem(context(client), parsedPut(op({})));
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
     const read = mock.commandCalls(GetCommand)[0].args[0].input;
     expect(read.ProjectionExpression).toBe('#c, #r, #v.#loc, #v.#s3k');
@@ -241,9 +245,9 @@ describe('putItem', () => {
       },
     });
     const ctx = context(client, { offloader: offloader as never });
-    await putItem(ctx, op({}));
-    await putItem(ctx, op({}));
-    await putItem(ctx, op({ value: { name: 'someone else' } }));
+    await putItem(ctx, parsedPut(op({})));
+    await putItem(ctx, parsedPut(op({})));
+    await putItem(ctx, parsedPut(op({ value: { name: 'someone else' } })));
     const revs = committedRows(mock).map((row) => row.rev);
     expect(uploaded).toEqual(revs.map((rev) => `users/u1/profile/${rev}`));
     expect(new Set(uploaded).size).toBe(3);
@@ -265,7 +269,7 @@ describe('putItem', () => {
     rejectRowWrites(mock, Object.assign(new Error('boom'), { name: 'ValidationException' }));
     const offloader = trackingOffloader({ buildKey: binKey });
     await expect(
-      putItem(context(client, { offloader: offloader as never }), op({})),
+      putItem(context(client, { offloader: offloader as never }), parsedPut(op({}))),
     ).rejects.toThrow('boom');
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     const [keys] = offloader.deleteBatch.mock.calls[0] as [string[]];
@@ -289,7 +293,7 @@ describe('putItem', () => {
     mock.on(GetCommand).resolves({ Item: first });
     resolveRowWrites(mock);
 
-    await putItem(ctx, op({}));
+    await putItem(ctx, parsedPut(op({})));
 
     const surviving = committedRows(mock)[0].value as { s3Key: string };
     expect(surviving.s3Key).not.toBe((first.value as { s3Key: string }).s3Key);
@@ -314,7 +318,7 @@ describe('putItem', () => {
     mock.on(GetCommand).resolves({ Item: first });
     rejectRowWrites(mock, Object.assign(new Error('boom'), { name: 'ValidationException' }));
 
-    await expect(putItem(ctx, op({}))).rejects.toThrow('boom');
+    await expect(putItem(ctx, parsedPut(op({})))).rejects.toThrow('boom');
 
     const own = committedRows(mock)[0].value as { s3Key: string };
     expect(own.s3Key).not.toBe((first.value as { s3Key: string }).s3Key);
@@ -327,7 +331,7 @@ describe('putItem', () => {
     answerExisting(mock);
     resolveRowWrites(mock);
     const offloader = trackingOffloader({ buildKey: binKey });
-    await putItem(context(client, { offloader: offloader as never }), op({}));
+    await putItem(context(client, { offloader: offloader as never }), parsedPut(op({})));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
   });
@@ -337,7 +341,7 @@ describe('putItem', () => {
     answerExisting(mock);
     mock.on(PutCommand).resolves({});
     const offloader = trackingOffloader({ shouldOffload: false, buildKey: binKey });
-    await putItem(context(client, { offloader: offloader as never }), op({}));
+    await putItem(context(client, { offloader: offloader as never }), parsedPut(op({})));
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
   });
 
@@ -358,7 +362,10 @@ describe('putItem', () => {
     );
     mock.on(TransactWriteCommand).resolves({});
     const offloader = trackingOffloader();
-    await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
+    await putItem(
+      context(client, { offloader: offloader as never }),
+      parsedPut(op({ value: null })),
+    );
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['users/u1/profile.bin']);
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
     expect(mock.calls()).toHaveLength(2);
@@ -368,7 +375,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     answerDeleteReads(mock, observableRow());
     mock.on(TransactWriteCommand).resolves({});
-    await putItem(context(client), op({ value: null }));
+    await putItem(context(client), parsedPut(op({ value: null })));
     expect(mock.calls()).toHaveLength(2);
   });
 
@@ -377,7 +384,10 @@ describe('putItem', () => {
     answerDeleteReads(mock, observableRow({ location: PayloadLocation.INLINE }));
     mock.on(TransactWriteCommand).resolves({});
     const offloader = trackingOffloader();
-    await putItem(context(client, { offloader: offloader as never }), op({ value: null }));
+    await putItem(
+      context(client, { offloader: offloader as never }),
+      parsedPut(op({ value: null })),
+    );
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 });

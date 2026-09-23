@@ -7,9 +7,9 @@ import {
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { isHistorySortKey } from '../internal/keys';
+import { parseSessionId } from '../internal/parse';
 import { sessionItemsQuery } from '../internal/query';
 import type { HistoryContext } from '../internal/setup';
-import { validateSessionId } from '../internal/validation';
 
 /**
  * The offloaded payload a chat-history row references, named by the attribute
@@ -64,11 +64,11 @@ export async function clearSession(
   sessionId: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<void> {
-  validateSessionId(sessionId);
+  const session = parseSessionId(sessionId);
   await deletePartitionRows({
     client: context.client,
     tableName: context.tableName,
-    params: sessionItemsQuery(context.tableName, sessionId, { consistent: true }),
+    params: sessionItemsQuery(context.tableName, session, { consistent: true }),
     logger: context.logger,
     retry: retryFor(context, options.signal),
     signal: options.signal,
@@ -77,6 +77,6 @@ export async function clearSession(
     ownsSortKey: isHistorySortKey,
     descriptorsOf,
     idAttribute: WRITE_ID_ATTRIBUTE,
-    scope: [sessionId],
+    scope: [session],
   });
 }

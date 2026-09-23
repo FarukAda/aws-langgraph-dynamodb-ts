@@ -1,10 +1,10 @@
 import { MAX_SCAN_ITEMS, MAX_SEARCH_CANDIDATES } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { validateStoreOptions } from '../../../../src/store/internal/option-validation';
+import { assertStoreOptions } from '../../../../src/store/internal/option-validation';
+import { parseListOperation } from '../../../../src/store/internal/parse';
 import { projectKeys, scopedQuery } from '../../../../src/store/internal/query';
 import { existingFrom } from '../../../../src/store/internal/read-existing';
 import { passesFilter } from '../../../../src/store/internal/search-filter';
-import { validateMaxDepth } from '../../../../src/store/internal/validation';
 
 describe('projectKeys', () => {
   it('projects a row s identity and version and keeps the input s own attribute names', () => {
@@ -59,41 +59,41 @@ describe('passesFilter', () => {
   const item = { namespace: ['users'], key: 'u1', value: { score: 5 } } as never;
 
   it('passes every item when the search names no filter', () => {
-    expect(passesFilter(item, { namespacePrefix: ['users'] })).toBe(true);
+    expect(passesFilter(item, undefined)).toBe(true);
   });
 
   it('passes an item that satisfies every clause and fails one that does not', () => {
-    expect(passesFilter(item, { namespacePrefix: ['users'], filter: { score: 5 } })).toBe(true);
-    expect(passesFilter(item, { namespacePrefix: ['users'], filter: { score: 6 } })).toBe(false);
-    expect(passesFilter(item, { namespacePrefix: ['users'], filter: { score: { $gt: 4 } } })).toBe(
-      true,
-    );
+    expect(passesFilter(item, { score: 5 })).toBe(true);
+    expect(passesFilter(item, { score: 6 })).toBe(false);
+    expect(passesFilter(item, { score: { $gt: 4 } })).toBe(true);
   });
 
   /** An empty filter constrains nothing, as the reference store answers it. */
   it('passes every item for an empty filter object', () => {
-    expect(passesFilter(item, { namespacePrefix: ['users'], filter: {} })).toBe(true);
+    expect(passesFilter(item, {})).toBe(true);
   });
 
   /** One row whose value is not an object must not fail a search over many. */
   it('fails, rather than throws, for a value that is not an object', () => {
     const odd = { namespace: ['users'], key: 'u2', value: null } as never;
-    expect(passesFilter(odd, { namespacePrefix: ['users'], filter: { score: 5 } })).toBe(false);
+    expect(passesFilter(odd, { score: 5 })).toBe(false);
   });
 });
 
-describe('validateMaxDepth', () => {
+describe('parseListOperation maxDepth', () => {
+  const listing = (maxDepth?: number) => parseListOperation({ offset: 0, limit: 0, maxDepth });
+
   it('accepts an absent depth and any positive integer', () => {
-    expect(() => validateMaxDepth(undefined)).not.toThrow();
-    expect(() => validateMaxDepth(1)).not.toThrow();
-    expect(() => validateMaxDepth(10)).not.toThrow();
+    expect(() => listing(undefined)).not.toThrow();
+    expect(() => listing(1)).not.toThrow();
+    expect(() => listing(10)).not.toThrow();
   });
 
   /** A negative depth silently inverted truncation through `slice(0, -n)`. */
   it('refuses a depth that would truncate from the wrong end or to nothing', () => {
     for (const depth of [0, -1, 1.5, Number.NaN]) {
       try {
-        validateMaxDepth(depth);
+        listing(depth);
         throw new Error(`should have thrown for ${depth}`);
       } catch (error) {
         expect((error as { code: ErrorCode }).code).toBe(ErrorCode.VALIDATION);
@@ -103,20 +103,20 @@ describe('validateMaxDepth', () => {
   });
 });
 
-describe('validateStoreOptions', () => {
+describe('assertStoreOptions', () => {
   const embeddings = { embedQuery: () => [], embedDocuments: () => [] } as never;
 
   it('accepts a minimal store and one with a complete index', () => {
-    expect(() => validateStoreOptions({ tableName: 'store' })).not.toThrow();
+    expect(() => assertStoreOptions({ tableName: 'store' })).not.toThrow();
     expect(() =>
-      validateStoreOptions({ tableName: 'store', index: { dims: 2, embeddings } }),
+      assertStoreOptions({ tableName: 'store', index: { dims: 2, embeddings } }),
     ).not.toThrow();
   });
 
   /** Without embeddings every put would clear the vector and every query rank nothing. */
   it('refuses a vectorBackend without an index', () => {
     try {
-      validateStoreOptions({ tableName: 'store', vectorBackend: {} as never });
+      assertStoreOptions({ tableName: 'store', vectorBackend: {} as never });
       throw new Error('should have thrown');
     } catch (error) {
       expect((error as { context: { field?: string } }).context.field).toBe('vectorBackend');
@@ -125,10 +125,10 @@ describe('validateStoreOptions', () => {
 
   it('refuses an index whose embeddings cannot embed', () => {
     expect(() =>
-      validateStoreOptions({ tableName: 'store', index: { dims: 2, embeddings: {} as never } }),
+      assertStoreOptions({ tableName: 'store', index: { dims: 2, embeddings: {} as never } }),
     ).toThrow(/embedQuery/);
     expect(() =>
-      validateStoreOptions({
+      assertStoreOptions({
         tableName: 'store',
         index: { dims: 2, embeddings: { embedQuery: () => [] } as never },
       }),
@@ -137,7 +137,7 @@ describe('validateStoreOptions', () => {
 
   it('refuses a score direction outside its union, which would rank a backend backwards', () => {
     expect(() =>
-      validateStoreOptions({
+      assertStoreOptions({
         tableName: 'store',
         vectorScoreDirection: 'Distance' as never,
         index: { dims: 2, embeddings },
@@ -147,10 +147,10 @@ describe('validateStoreOptions', () => {
   });
 
   it('refuses a non-positive in-memory cap, which would return nothing', () => {
-    expect(() => validateStoreOptions({ tableName: 'store', maxScanItems: 0 })).toThrow(
+    expect(() => assertStoreOptions({ tableName: 'store', maxScanItems: 0 })).toThrow(
       /maxScanItems/,
     );
-    expect(() => validateStoreOptions({ tableName: 'store', maxSearchCandidates: 0 })).toThrow(
+    expect(() => assertStoreOptions({ tableName: 'store', maxSearchCandidates: 0 })).toThrow(
       /maxSearchCandidates/,
     );
   });
@@ -161,17 +161,17 @@ describe('validateStoreOptions', () => {
    */
   it('refuses an in-memory cap above its named ceiling, accepts it at the ceiling', () => {
     expect(() =>
-      validateStoreOptions({ tableName: 'store', maxScanItems: MAX_SCAN_ITEMS + 1 }),
+      assertStoreOptions({ tableName: 'store', maxScanItems: MAX_SCAN_ITEMS + 1 }),
     ).toThrow(/maxScanItems/);
     expect(() =>
-      validateStoreOptions({ tableName: 'store', maxScanItems: MAX_SCAN_ITEMS }),
+      assertStoreOptions({ tableName: 'store', maxScanItems: MAX_SCAN_ITEMS }),
     ).not.toThrow();
 
     expect(() =>
-      validateStoreOptions({ tableName: 'store', maxSearchCandidates: MAX_SEARCH_CANDIDATES + 1 }),
+      assertStoreOptions({ tableName: 'store', maxSearchCandidates: MAX_SEARCH_CANDIDATES + 1 }),
     ).toThrow(/maxSearchCandidates/);
     expect(() =>
-      validateStoreOptions({ tableName: 'store', maxSearchCandidates: MAX_SEARCH_CANDIDATES }),
+      assertStoreOptions({ tableName: 'store', maxSearchCandidates: MAX_SEARCH_CANDIDATES }),
     ).not.toThrow();
   });
 });

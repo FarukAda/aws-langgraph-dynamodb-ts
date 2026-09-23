@@ -1,6 +1,5 @@
 import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { marshall } from '@aws-sdk/util-dynamodb';
-import type { PutOperation } from '@langchain/langgraph-checkpoint';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -8,6 +7,7 @@ import type { DocItem } from '../../../../src/shared/dynamodb/types';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { deleteStoreItem } from '../../../../src/store/internal/delete-item';
+import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { revisionGuardedTable } from '../../../shared/helpers/conditional-delete';
 import { answerDeleteReads, createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -16,7 +16,7 @@ const PK = 'STORE#users';
 const SK = 'u1#profile';
 const ROW_KEY = `${PK}|${SK}`;
 
-const op: PutOperation = { namespace: ['users', 'u1'], key: 'profile', value: null };
+const address = parseStoreAddress(['users', 'u1'], 'profile');
 
 const throttled = (): Error =>
   Object.assign(new Error('slow down'), { name: 'ThrottlingException' });
@@ -96,7 +96,7 @@ describe('deleteStoreItem deletes only the row the caller observed', () => {
     answerDeleteReads(h.mock, projected(row('r0')));
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(table.rows.size).toBe(0);
     expect(table.tokens).toHaveLength(1);
@@ -128,7 +128,7 @@ describe('deleteStoreItem deletes only the row the caller observed', () => {
     answerDeleteReads(h.mock, undefined);
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(h.mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     expect(h.mock.calls()).toHaveLength(2);
@@ -149,7 +149,7 @@ describe('deleteStoreItem deletes only the row the caller observed', () => {
     answerDeleteReads(h.mock, projected(row('r0')));
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(table.rows.size).toBe(0);
     expect(table.tokens).toHaveLength(2);
@@ -167,7 +167,7 @@ describe('deleteStoreItem deletes only the row the caller observed', () => {
     answerDeleteReads(h.mock, projected(row('r0')));
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(table.tokens).toHaveLength(3);
     expect(new Set(table.tokens).size).toBe(3);
@@ -186,7 +186,7 @@ describe('deleteStoreItem deletes only the row the caller observed', () => {
     answerDeleteReads(h.mock, projected(row('r0')));
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(table.tokens).toHaveLength(1);
     expect(h.warn).not.toHaveBeenCalled();
@@ -201,7 +201,7 @@ describe('deleteStoreItem across the upgrade that introduced revisions', () => {
     answerDeleteReads(h.mock, projected(row(undefined)));
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(sentDelete(h.mock)).toMatchObject({
       ConditionExpression: 'attribute_not_exists(#rev)',
@@ -216,7 +216,7 @@ describe('deleteStoreItem across the upgrade that introduced revisions', () => {
     answerDeleteReads(h.mock, projected(row(undefined)));
     h.mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(table.tokens).toHaveLength(2);
     expect(sentDelete(h.mock, 1).ExpressionAttributeValues).toEqual({ ':rev': 'stamped' });
@@ -230,7 +230,7 @@ describe('deleteStoreItem when the transaction budget is spent', () => {
     answerDeleteReads(h.mock, projected(row('r0')), undefined);
     h.mock.on(TransactWriteCommand).rejects(throttled());
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(h.ctx, address)).resolves.toBeUndefined();
 
     expect(h.released()).toEqual(['users/u1/profile.bin']);
   });
@@ -240,7 +240,7 @@ describe('deleteStoreItem when the transaction budget is spent', () => {
     answerDeleteReads(h.mock, projected(row('r0')), row('r0'));
     h.mock.on(TransactWriteCommand).rejects(throttled());
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).rejects.toMatchObject({
+    await expect(deleteStoreItem(h.ctx, address)).rejects.toMatchObject({
       code: ErrorCode.RETRY_EXHAUSTED,
     });
     expect(h.released()).toEqual([]);
@@ -265,7 +265,7 @@ describe('deleteStoreItem when the transaction budget is spent', () => {
       throw throttled();
     });
 
-    return expect(deleteStoreItem(h.ctx, op, PK, SK))
+    return expect(deleteStoreItem(h.ctx, address))
       .resolves.toBeUndefined()
       .then(() => {
         expect(h.released()).toEqual(['theirs.bin']);
@@ -279,7 +279,7 @@ describe('deleteStoreItem when the transaction budget is spent', () => {
       .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('bad'), { name: 'ValidationException' }));
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).rejects.toThrow('bad');
+    await expect(deleteStoreItem(h.ctx, address)).rejects.toThrow('bad');
     expect(h.released()).toEqual([]);
   });
 });
@@ -292,7 +292,7 @@ describe('deleteStoreItem now issues a read before anything else', () => {
       .rejects(Object.assign(new Error('read down'), { name: 'ValidationException' }));
     h.mock.on(TransactWriteCommand).resolves({});
 
-    await expect(deleteStoreItem(h.ctx, op, PK, SK)).rejects.toThrow('read down');
+    await expect(deleteStoreItem(h.ctx, address)).rejects.toThrow('read down');
     expect(h.mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
     expect(h.released()).toEqual([]);
   });
@@ -303,7 +303,7 @@ describe('deleteStoreItem now issues a read before anything else', () => {
     answerDeleteReads(mock, projected(row('r0')));
     mock.on(TransactWriteCommand).callsFake(table.handler);
 
-    await expect(deleteStoreItem(context(client), op, PK, SK)).resolves.toBeUndefined();
+    await expect(deleteStoreItem(context(client), address)).resolves.toBeUndefined();
 
     expect(mock.calls()).toHaveLength(2);
     expect(table.rows.size).toBe(0);

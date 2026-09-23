@@ -8,6 +8,7 @@ import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import type { StoreItemRecord } from '../../../../src/store/types';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client']): StoreContext {
   return {
@@ -59,7 +60,9 @@ describe.each([
     const ctx = context(client);
     serve(mock, [{ ...(await item(ctx, 'k0')), v: 2 }]);
 
-    await expect(searchItems(ctx, { namespacePrefix, limit: 10 })).rejects.toMatchObject({
+    await expect(
+      searchItems(ctx, parsedSearch({ namespacePrefix, limit: 10 })),
+    ).rejects.toMatchObject({
       code: ErrorCode.FORMAT_UNSUPPORTED,
       context: { field: 'v' },
     });
@@ -76,7 +79,7 @@ describe.each([
     const foreign = { PK: 'STORE#users', SK: 'u1#other', namespace: 'not-an-array', v: 1 };
     serve(mock, [foreign, { ...(await item(ctx, 'k0')) }]);
 
-    const items = await searchItems(ctx, { namespacePrefix, limit: 10 });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix, limit: 10 }));
 
     expect(items.map((found) => found.key)).toEqual(['k0']);
   });

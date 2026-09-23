@@ -1,9 +1,4 @@
-import type {
-  IndexConfig,
-  Item,
-  SearchItem,
-  SearchOperation,
-} from '@langchain/langgraph-checkpoint';
+import type { IndexConfig, Item, SearchItem } from '@langchain/langgraph-checkpoint';
 
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
@@ -13,11 +8,11 @@ import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/trunc
 import type { VectorBackend, VectorMatch } from '../vector-backend';
 import { getItem } from './get-item';
 import { namespaceMatchesPrefix } from './keys';
+import { type ParsedSearch, parseStoreAddress, type StoreAddress } from './parse';
 import { toRelevanceScores } from './score-direction';
 import { passesFilter } from './search-filter';
 import { assertVectorDims } from './semantic-search';
 import type { StoreContext } from './setup';
-import { validateStoreKey } from './validation';
 
 /**
  * Warn when a backend's own ordering disagrees with its scores. A backend
@@ -43,9 +38,9 @@ function warnOnNonDescendingScores(
 }
 
 /**
- * Whether the match names an address this store can form at all — the one case
- * a match is dropped for, because a backend returning a namespace element that
- * holds the reserved separator would otherwise turn a whole search into a
+ * The address a backend match names, parsed, or `undefined` — logged — when it
+ * names one this store cannot form. A backend returning a namespace element
+ * that holds the reserved separator would otherwise turn a whole search into a
  * `VALIDATION` error over one bad key. The address is checked here rather than
  * read back off the error `getItem` raises: the read raises a `VALIDATION` error
  * of its own for a payload it cannot honour — an offloaded row read with no
@@ -54,34 +49,33 @@ function warnOnNonDescendingScores(
  * there, so telling them apart by code alone dropped them as well.
  *
  * The line quotes the address the backend gave, bounded: this fires in the
- * branch where `validateStoreKey` refused it, one line per bad match, and
+ * branch where `parseStoreAddress` refused it, one line per bad match, and
  * nothing this package ran bounded either the labels or how many of them there
  * are. The `reason` goes through the same cap, though it is the only one of
  * these that cannot exceed it: what this `catch` binds is always
- * `validateStoreKey`'s own `VALIDATION` error, whose code is a literal of this
+ * `parseStoreAddress`'s own `VALIDATION` error, whose code is a literal of this
  * package's. It is cut anyway so the rule reads the same at every site that
  * names a failure — a name and a message are the two halves of what the
  * failure was, and `message` is bounded where `redactedMessage` relays it —
  * and so that a later refusal thrown from somewhere else does not arrive
  * unbounded because this one site was reasoned about individually.
  */
-function addressable(context: StoreContext, match: VectorMatch): boolean {
+function addressOf(context: StoreContext, match: VectorMatch): StoreAddress | undefined {
   try {
-    validateStoreKey(match.namespace, match.key);
-    return true;
+    return parseStoreAddress(match.namespace, match.key);
   } catch (error) {
     context.logger.warn('search: skipped an unusable vectorBackend match', {
       namespace: truncateLabelsForLog(match.namespace),
       key: truncateForLog(match.key),
       reason: truncateForLog(failureLabel(error as Error)),
     });
-    return false;
+    return undefined;
   }
 }
 
 /**
  * Read the canonical item a backend match points at, or `null` when the match
- * names an address this store cannot form (see {@link addressable}).
+ * names an address this store cannot form (see {@link addressOf}).
  *
  * Every failure of the read itself reaches the caller. A throttled or cancelled
  * read says nothing about whether the item is there, so treating it as an
@@ -94,8 +88,9 @@ async function fetchMatch(
   match: VectorMatch,
   signal?: AbortSignal,
 ): Promise<Item | null> {
-  if (!addressable(context, match)) return null;
-  return getItem(context, match.namespace, match.key, signal);
+  const address = addressOf(context, match);
+  if (address === undefined) return null;
+  return getItem(context, address, signal);
 }
 
 /** Stable, collision-free identity for a match, so one call reads each item once. */
@@ -141,11 +136,12 @@ async function fetchUnseen(
 /**
  * Rank a search through a configured vector backend.
  *
- * Accepts: `op.query` — non-empty; the caller checks that before choosing this
- * path. `offset`/`limit` — the page, whose end (`offset + limit`) must fit
- * within `maxSearchCandidates`, since that many matches have to be fetched to
- * fill it. `op.filter` — applied to the canonical item, not to whatever the
- * backend stored, so a filter is never answered from a stale vector.
+ * Accepts: `search.query` — non-empty; the caller checks that before choosing
+ * this path. `search.offset`/`search.limit` — the page, whose end (`offset + limit`)
+ * must fit within `maxSearchCandidates`, since that many matches have to be
+ * fetched to fill it. `search.filter` — applied to the canonical item, not to
+ * whatever the backend stored, so a filter is never answered from a stale
+ * vector.
  *
  * Returns: the page's items in the backend's order, each carrying the relevance
  * score for its vector. Fewer than `limit` items means the backend has no more
@@ -158,7 +154,7 @@ async function fetchUnseen(
  * silently short page. Whatever a canonical read throws — a read that did not
  * happen is not an item that is not there — since a match this store cannot
  * address is dropped before its read rather than caught after it (see
- * {@link addressable}). Whatever the embeddings model and the backend throw.
+ * {@link addressOf}). Whatever the embeddings model and the backend throw.
  *
  * Guarantees: DynamoDB stays canonical. A match whose item has since been
  * deleted or lies outside the prefix is dropped and the search asks the backend
@@ -173,12 +169,11 @@ export async function searchViaBackend(
   context: StoreContext,
   backend: VectorBackend,
   index: IndexConfig,
-  op: SearchOperation,
-  offset: number,
-  limit: number,
+  search: ParsedSearch,
   signal?: AbortSignal,
 ): Promise<SearchItem[]> {
-  const queryVector = await index.embeddings.embedQuery(op.query as string);
+  const { offset, limit } = search;
+  const queryVector = await index.embeddings.embedQuery(search.query as string);
   assertVectorDims(index, queryVector, 'query');
   const need = offset + limit;
   if (need > context.maxSearchCandidates) {
@@ -193,18 +188,18 @@ export async function searchViaBackend(
   const fetched = new Map<string, Item | null>();
   for (;;) {
     const matches = toRelevanceScores(
-      await backend.query(op.namespacePrefix, queryVector, topK),
+      await backend.query(search.namespacePrefix, queryVector, topK),
       context.vectorScoreDirection,
     );
-    warnOnNonDescendingScores(context, matches, op.namespacePrefix);
+    warnOnNonDescendingScores(context, matches, search.namespacePrefix);
     const scoped = matches.filter((match) =>
-      namespaceMatchesPrefix(match.namespace, op.namespacePrefix),
+      namespaceMatchesPrefix(match.namespace, search.namespacePrefix),
     );
     await fetchUnseen(context, scoped, fetched, signal);
     results = [];
     for (const match of scoped) {
       const item = fetched.get(matchIdentity(match));
-      if (item && passesFilter(item, op)) results.push({ ...item, score: match.score });
+      if (item && passesFilter(item, search.filter)) results.push({ ...item, score: match.score });
     }
     if (results.length >= need || matches.length < topK) break;
     if (topK >= context.maxSearchCandidates) {

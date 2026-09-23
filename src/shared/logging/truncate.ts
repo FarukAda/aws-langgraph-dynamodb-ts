@@ -104,7 +104,7 @@ export function truncateRelayedText(value: string): string {
  * one is, so a bound on one of them is not a bound. {@link truncateForLog}
  * covers the labels; the count is covered here.
  *
- * A `namespace` and `key` pair that passed `validateStoreKey` is already
+ * A `namespace` and `key` pair that passed `parseStoreAddress` is already
  * bounded in both — that check measures the sort key they compose — and goes
  * in whole. A search or listing prefix is not: nothing composes it into a key,
  * so however carefully each label was checked, how many there are was not.
@@ -121,7 +121,7 @@ export function truncateRelayedText(value: string): string {
  * `string[]` because that is what the interfaces say; anything else is
  * returned untouched, for the reason {@link truncateForLog} gives, and that
  * case is reached rather than defensive — a `namespace` that is not an array
- * is one of the things `validateStoreKey` refuses, and the line reporting the
+ * is one of the things `parseStoreAddress` refuses, and the line reporting the
  * refusal quotes what was refused.
  *
  * Returns: at most {@link MAX_LOGGED_LABELS} labels, each bounded by

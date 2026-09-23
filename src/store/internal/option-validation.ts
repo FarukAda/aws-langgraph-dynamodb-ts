@@ -4,8 +4,8 @@ import { MAX_SCAN_ITEMS, MAX_SEARCH_CANDIDATES } from '../../shared/constants';
 import { validationError } from '../../shared/errors/errors';
 import { assertMembers, EMBEDDINGS_MEMBERS } from '../../shared/validation/collaborators';
 import { allKeysOf, assertShape } from '../../shared/validation/option-shape';
-import { validateBaseAdapterOptions } from '../../shared/validation/options';
-import { validateInteger, validateStringArray } from '../../shared/validation/primitives';
+import { assertBaseAdapterOptions } from '../../shared/validation/options';
+import { assertInteger, assertStringArray } from '../../shared/validation/primitives';
 import type { DynamoDBStoreOptions } from '../types';
 import type { VectorScoreDirection } from '../vector-backend';
 import { VECTOR_SCORE_DIRECTIONS } from './score-direction';
@@ -42,7 +42,7 @@ function assertUsableIndex(index: IndexConfig | undefined): void {
   if (index === undefined) return;
   assertShape(index, INDEX_KEYS, 'index');
   assertMembers(index.embeddings, EMBEDDINGS_MEMBERS, 'index.embeddings');
-  if (index.fields !== undefined) validateStringArray(index.fields, 'index.fields');
+  if (index.fields !== undefined) assertStringArray(index.fields, 'index.fields');
 }
 
 /**
@@ -66,12 +66,12 @@ function assertScoreDirection(direction?: VectorScoreDirection): void {
 }
 
 /** Both in-memory caps must be positive integers; 0 would silently return nothing. */
-function validateLimits(options: DynamoDBStoreOptions): void {
+function assertLimits(options: DynamoDBStoreOptions): void {
   if (options.maxScanItems !== undefined) {
-    validateInteger(options.maxScanItems, 'maxScanItems', { min: 1, max: MAX_SCAN_ITEMS });
+    assertInteger(options.maxScanItems, 'maxScanItems', { min: 1, max: MAX_SCAN_ITEMS });
   }
   if (options.maxSearchCandidates !== undefined) {
-    validateInteger(options.maxSearchCandidates, 'maxSearchCandidates', {
+    assertInteger(options.maxSearchCandidates, 'maxSearchCandidates', {
       min: 1,
       max: MAX_SEARCH_CANDIDATES,
     });
@@ -95,14 +95,15 @@ function validateLimits(options: DynamoDBStoreOptions): void {
  * key `IndexConfig` does not declare, an `embeddings` object missing a method,
  * a direction outside its union.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming the offending option. Every failure is raised
  * at construction, where the fix is, rather than at the first put or search.
  */
-export function validateStoreOptions(options: DynamoDBStoreOptions): void {
-  validateBaseAdapterOptions(options);
-  validateLimits(options);
+export function assertStoreOptions(options: DynamoDBStoreOptions): void {
+  assertBaseAdapterOptions(options);
+  assertLimits(options);
   if (options.vectorBackend && !options.index) {
     throw validationError(
       'vectorBackend requires a configured `index` (embeddings); without one no embedding ' +

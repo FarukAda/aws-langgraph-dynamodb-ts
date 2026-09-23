@@ -18,6 +18,7 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedPut } from '../../../shared/helpers/parsed-inputs';
 
 type Row = Record<string, NativeAttributeValue> | undefined;
 
@@ -123,11 +124,10 @@ describe('every row a write leaves carries that write id inside its descriptor',
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     mock.on(PutCommand).resolves({});
-    await putItem(storeContext(client), {
-      namespace: ['users', 'u1'],
-      key: 'profile',
-      value: { name: 'a' },
-    });
+    await putItem(
+      storeContext(client),
+      parsedPut({ namespace: ['users', 'u1'], key: 'profile', value: { name: 'a' } }),
+    );
     const row = mock.commandCalls(PutCommand)[0].args[0].input.Item;
     expect(writeIdOn(row, 'value')).toBe(row?.rev);
   });

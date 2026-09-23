@@ -1,7 +1,7 @@
 import { QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 import { metaRows, narrowOrWarn } from '../../../../src/checkpointer/internal/list-rows';
-import type { ListScope } from '../../../../src/checkpointer/internal/list-scope';
+import { type ListScope, parseListScope } from '../../../../src/checkpointer/internal/parse';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { MAX_LOGGED_VALUE_CHARS, MAX_SORT_KEY_BYTES } from '../../../../src/shared/constants';
@@ -22,16 +22,12 @@ function context(
   };
 }
 
-const scope = (over: Partial<ListScope> = {}): ListScope => ({
-  threadId: 't',
-  checkpointNs: '',
-  checkpointId: undefined,
-  before: undefined,
-  filter: undefined,
-  limit: undefined,
-  signal: undefined,
-  ...over,
-});
+/** A `ListScope` built through the real parser: thread `t`, the root namespace, no bound. */
+function scope(over: { threadId?: string } = {}): ListScope {
+  return parseListScope({
+    configurable: { thread_id: over.threadId ?? 't', checkpoint_ns: '' },
+  });
+}
 
 const row = (id: string) => ({
   PK: 'CHKPT#t',
@@ -61,7 +57,9 @@ describe('metaRows', () => {
   it('scans the table when the scope names no thread and there is no index', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [row('c1')] });
-    const rows = await collect(metaRows(context(client), scope({ threadId: undefined }), 1_000));
+    const rows = await collect(
+      metaRows(context(client), parseListScope({ configurable: {} }), 1_000),
+    );
     expect(rows).toHaveLength(1);
     expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
   });
@@ -70,7 +68,7 @@ describe('metaRows', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });
     const rows = await collect(
-      metaRows(context(client, { indexName: 'gsi1' }), scope({ threadId: undefined }), 1_000),
+      metaRows(context(client, { indexName: 'gsi1' }), parseListScope({ configurable: {} }), 1_000),
     );
     expect(rows).toEqual([]);
     expect(mock.commandCalls(ScanCommand)).toHaveLength(0);

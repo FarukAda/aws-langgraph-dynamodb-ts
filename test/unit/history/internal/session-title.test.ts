@@ -1,5 +1,6 @@
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
+import { parseSessionId } from '../../../../src/history/internal/parse';
 import { removeRolledBackTitle } from '../../../../src/history/internal/session-title';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -10,6 +11,7 @@ function context(client: HistoryContext['client']): HistoryContext {
 }
 
 const NOW = '2026-08-29T00:00:00.000Z';
+const SESSION_ID = parseSessionId('s1');
 
 /**
  * C4 residual: when a rolled-back append cannot delete the session row it
@@ -22,7 +24,7 @@ describe('removeRolledBackTitle', () => {
   it('removes a title this call contributed to a row it created', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(UpdateCommand).resolves({});
-    await removeRolledBackTitle(context(client), 's1', NOW, 'tiny message 0');
+    await removeRolledBackTitle(context(client), SESSION_ID, NOW, 'tiny message 0');
     const input = mock.commandCalls(UpdateCommand)[0].args[0].input;
     expect(input.UpdateExpression).toBe('REMOVE #title');
     expect(input.ConditionExpression).toBe('#c = :now AND #title = :title');
@@ -38,7 +40,7 @@ describe('removeRolledBackTitle', () => {
       .on(UpdateCommand)
       .rejects(Object.assign(new Error('nope'), { name: 'ConditionalCheckFailedException' }));
     await expect(
-      removeRolledBackTitle(context(client), 's1', NOW, 'ours'),
+      removeRolledBackTitle(context(client), SESSION_ID, NOW, 'ours'),
     ).resolves.toBeUndefined();
   });
 
@@ -47,6 +49,8 @@ describe('removeRolledBackTitle', () => {
     mock
       .on(UpdateCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    await expect(removeRolledBackTitle(context(client), 's1', NOW, 'ours')).rejects.toThrow('boom');
+    await expect(removeRolledBackTitle(context(client), SESSION_ID, NOW, 'ours')).rejects.toThrow(
+      'boom',
+    );
   });
 });

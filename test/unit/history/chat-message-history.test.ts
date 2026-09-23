@@ -288,6 +288,23 @@ describe('addMessages messages validation', () => {
     }
   });
 
+  /**
+   * A hole in a sparse `messages` array used to survive both parse passes
+   * (`map` keeps a hole, `forEach` skips one) and fail later with a raw
+   * `TypeError`, reported as `UNEXPECTED_ERROR`.
+   */
+  it('refuses a hole in a sparse messages array, naming messages, before any write', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const sparse: HumanMessage[] = new Array<HumanMessage>(2);
+    sparse[1] = new HumanMessage('hi');
+    await expect(history(client).addMessages('s1', sparse)).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'messages' },
+      message: expect.stringContaining('messages[0]'),
+    });
+    expect(mock.calls()).toHaveLength(0);
+  });
+
   it('accepts messages: [], a no-op that writes nothing', async () => {
     const { client, mock } = createStrictDocumentMock();
     await expect(history(client).addMessages('s1', [])).resolves.toBeUndefined();

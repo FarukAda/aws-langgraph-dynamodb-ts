@@ -7,6 +7,7 @@ import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -60,7 +61,10 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
       index: { dims: 2, embeddings: embeddings as never },
       vectorBackend: vectorBackend,
     });
-    const found = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q', limit: 6 });
+    const found = await searchItems(
+      ctx,
+      parsedSearch({ namespacePrefix: ['users'], query: 'q', limit: 6 }),
+    );
     expect(found).toHaveLength(6);
     expect(found.map((item) => item.score)).toEqual(matches.map((match) => match.score));
     expect(maxInFlight).toBeGreaterThan(1);
@@ -96,7 +100,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
       vectorBackend: vectorBackend,
       logger: { ...SILENT_LOGGER, warn },
     });
-    await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('relevance'),
       expect.objectContaining({ namespacePrefix: ['users'] }),
@@ -112,7 +116,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
       vectorBackend: vectorBackend,
     });
     await expect(
-      searchItems(ctx, { namespacePrefix: ['users'], query: 'q' }),
+      searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' })),
     ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.VALIDATION });
     expect(vectorBackend.query).not.toHaveBeenCalled();
   });
@@ -142,7 +146,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
       vectorBackend: vectorBackend,
       logger: { ...SILENT_LOGGER, warn },
     });
-    await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -174,7 +178,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
       vectorBackend: vectorBackend,
       logger: { ...SILENT_LOGGER, warn },
     });
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
     expect(items.map((i) => i.key)).toEqual(['ok']);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('unusable'),
@@ -211,7 +215,7 @@ describe('vectorScoreDirection (F4)', () => {
       vectorScoreDirection: 'distance',
       logger: { ...SILENT_LOGGER, warn },
     });
-    const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    const items = await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
     expect(warn).not.toHaveBeenCalledWith(
       expect.stringContaining('ascending scores'),
       expect.anything(),
@@ -245,7 +249,7 @@ describe('vectorScoreDirection (F4)', () => {
       vectorScoreDirection: 'relevance',
       logger: { ...SILENT_LOGGER, warn },
     });
-    await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
+    await searchItems(ctx, parsedSearch({ namespacePrefix: ['users'], query: 'q' }));
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('ascending scores'),
       expect.anything(),

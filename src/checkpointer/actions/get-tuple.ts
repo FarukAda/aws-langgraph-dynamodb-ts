@@ -2,12 +2,8 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
 import { assembleTuple } from '../internal/assemble';
-import {
-  isThreadless,
-  readConfigurable,
-  readThreadlessConfigurable,
-} from '../internal/configurable';
 import { fetchTargetMeta } from '../internal/fetch';
+import { parseConfig, ROOT_NAMESPACE, type ThreadAddress } from '../internal/parse';
 import type { CheckpointerContext } from '../internal/setup';
 
 /**
@@ -36,15 +32,17 @@ export async function getCheckpointTuple(
   context: CheckpointerContext,
   config: RunnableConfig,
 ): Promise<CheckpointTuple | undefined> {
-  if (isThreadless(config)) {
-    readThreadlessConfigurable(config);
-    return undefined;
-  }
-  const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
-  const meta = await fetchTargetMeta(context, threadId, checkpointNs, checkpointId, config.signal);
+  const parsed = parseConfig(config);
+  if (parsed.threadId === undefined) return undefined;
+  const address: ThreadAddress = {
+    threadId: parsed.threadId,
+    checkpointNs: parsed.checkpointNs ?? ROOT_NAMESPACE,
+    checkpointId: parsed.checkpointId,
+  };
+  const meta = await fetchTargetMeta(context, address, parsed.signal);
   if (!meta) return undefined;
-  return assembleTuple(context, threadId, checkpointNs, meta, {
-    signal: config.signal,
+  return assembleTuple(context, address.threadId, address.checkpointNs, meta, {
+    signal: parsed.signal,
     consistent: true,
   });
 }

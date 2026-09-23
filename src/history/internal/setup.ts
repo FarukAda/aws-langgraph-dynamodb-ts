@@ -19,7 +19,7 @@ import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
 import { assertBaseCollaborators } from '../../shared/validation/collaborators';
 import { assertShape } from '../../shared/validation/option-shape';
-import { validateBaseAdapterOptions } from '../../shared/validation/options';
+import { assertBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { CorruptMessagePolicy, DynamoDBChatMessageHistoryOptions } from '../types';
 import { HISTORY_KEYS } from './option-keys';
@@ -76,7 +76,7 @@ export interface HistorySetup {
  */
 export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): HistorySetup {
   assertShape(options, HISTORY_KEYS, 'options');
-  validateBaseAdapterOptions(options);
+  assertBaseAdapterOptions(options);
   if (
     options.onCorruptMessage !== undefined &&
     !CORRUPT_MESSAGE_POLICIES.includes(options.onCorruptMessage)

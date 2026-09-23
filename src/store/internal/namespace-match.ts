@@ -1,7 +1,5 @@
 import type { MatchCondition } from '@langchain/langgraph-checkpoint';
 
-import { validationError } from '../../shared/errors/errors';
-
 const WILDCARD = '*';
 
 function segmentMatches(actual: string[], path: string[]): boolean {
@@ -9,42 +7,19 @@ function segmentMatches(actual: string[], path: string[]): boolean {
 }
 
 /**
- * Refuse a match type the contract does not define.
+ * Whether `namespace` satisfies one match condition. `condition.matchType` is
+ * `'prefix'` or `'suffix'`, already refused otherwise by the parser that built
+ * `condition` (`parseMatchCondition` in `parse.ts`).
  *
- * Accepts: `matchType` — `'prefix'` or `'suffix'`, the only two the contract
- * defines (`@langchain/langgraph-checkpoint@1.1.5` `dist/store/base.d.ts:211`).
- * Anything else is refused rather than resolved: an unrecognised type took the
- * suffix branch and answered as if the caller had asked for a suffix match.
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: `VALIDATION` naming `matchConditions`. A string is echoed in the
- * message and anything else is described by its type, since `JSON.stringify`
- * itself throws on a bigint.
- */
-export function assertMatchType(matchType: MatchCondition['matchType']): void {
-  if (matchType === 'prefix' || matchType === 'suffix') return;
-  const received = typeof matchType === 'string' ? JSON.stringify(matchType) : typeof matchType;
-  throw validationError(
-    `matchType must be "prefix" or "suffix" (received ${received})`,
-    'matchConditions',
-  );
-}
-
-/**
- * Whether `namespace` satisfies one match condition.
- *
- * Accepts: `condition.matchType` — as {@link assertMatchType}.
- * `condition.path` — elements, where `'*'` matches any one element; longer than
- * the namespace never matches, and empty matches every namespace.
+ * Accepts: `condition.path` — elements, where `'*'` matches any one element;
+ * longer than the namespace never matches, and empty matches every namespace.
  *
  * Returns: whether the condition holds.
  *
- * Throws: `VALIDATION` naming `matchConditions` for an unknown `matchType`.
+ * Throws: nothing.
  */
 export function matchNamespace(namespace: string[], condition: MatchCondition): boolean {
   const { matchType, path } = condition;
-  assertMatchType(matchType);
   if (path.length > namespace.length) return false;
   const slice =
     matchType === 'prefix'
@@ -57,7 +32,7 @@ export function matchNamespace(namespace: string[], condition: MatchCondition): 
  * Cap a namespace to at most `maxDepth` elements.
  *
  * Accepts: `maxDepth` — absent returns the namespace unchanged; otherwise a
- * validated positive integer (see `validateMaxDepth` for what a negative or
+ * parsed positive integer (see `parseListOperation` for what a negative or
  * zero value did here).
  *
  * Returns: the namespace, truncated from the end; shorter than `maxDepth` is

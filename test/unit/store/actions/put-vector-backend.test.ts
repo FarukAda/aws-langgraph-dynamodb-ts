@@ -11,6 +11,7 @@ import {
   observableRow,
 } from '../../../shared/helpers/ddb-mock';
 import { stubEmbeddings } from '../../../shared/helpers/embeddings-stub';
+import { parsedPut } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -48,7 +49,7 @@ describe('putItem with a vector backend', () => {
         index: { dims: 2, embeddings: embeddings as never },
         vectorBackend: vectorBackend,
       }),
-      op({}),
+      parsedPut(op({})),
     );
     expect(mock.commandCalls(PutCommand)[0].args[0].input.Item!.embedding).toBeUndefined();
     expect(vectorBackend.upsert).toHaveBeenCalledWith(['users', 'u1'], 'profile', [0.5, 0.6]);
@@ -69,7 +70,7 @@ describe('putItem with a vector backend', () => {
         index: { dims: 2, embeddings: embeddings as never },
         vectorBackend: vectorBackend,
       }),
-      op({ value: { name: 'Faruk', bio: 'builds things' }, index: ['bio'] }),
+      parsedPut(op({ value: { name: 'Faruk', bio: 'builds things' }, index: ['bio'] })),
     );
     expect(embeddings.embedDocuments).toHaveBeenCalledWith(['builds things']);
     expect(vectorBackend.upsert).toHaveBeenCalledWith(['users', 'u1'], 'profile', [0.5, 0.6]);
@@ -86,7 +87,7 @@ describe('putItem with a vector backend', () => {
         index: { dims: 2, embeddings: embeddings as never },
         vectorBackend: vectorBackend,
       }),
-      op({ index: false }),
+      parsedPut(op({ index: false })),
     );
     expect(vectorBackend.upsert).not.toHaveBeenCalled();
     expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
@@ -97,7 +98,10 @@ describe('putItem with a vector backend', () => {
     answerDeleteReads(mock, observableRow());
     mock.on(TransactWriteCommand).resolves({});
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
-    await putItem(context(client, { vectorBackend: vectorBackend }), op({ value: null }));
+    await putItem(
+      context(client, { vectorBackend: vectorBackend }),
+      parsedPut(op({ value: null })),
+    );
     expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
   });
 
@@ -117,7 +121,7 @@ describe('putItem with a vector backend', () => {
       vectorBackend: vectorBackend,
       logger,
     });
-    await expect(putItem(ctx, op({}))).resolves.toBeUndefined();
+    await expect(putItem(ctx, parsedPut(op({})))).resolves.toBeUndefined();
     expect(mock.commandCalls(PutCommand)).toHaveLength(1);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('vector-index sync failed'),
@@ -136,7 +140,7 @@ describe('putItem with a vector backend', () => {
     };
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const ctx = context(client, { vectorBackend: vectorBackend, logger });
-    await expect(putItem(ctx, op({ value: null }))).resolves.toBeUndefined();
+    await expect(putItem(ctx, parsedPut(op({ value: null })))).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalled();
   });
 });

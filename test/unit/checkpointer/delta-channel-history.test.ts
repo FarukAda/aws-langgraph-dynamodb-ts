@@ -1,13 +1,13 @@
 import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
-import { buildCheckpointItems } from '../../../src/checkpointer/internal/item-writer';
 import { metaSortKey } from '../../../src/checkpointer/internal/keys';
 import type { CheckpointerContext } from '../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import { checkpointItems } from '../../shared/helpers/parsed-inputs';
 import { FROZEN_NOW_MS } from '../../shared/helpers/test-setup';
 
 const serde = {
@@ -57,7 +57,7 @@ async function saverOver(
   const ctx: CheckpointerContext = { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
   const built = await Promise.all(
     rows.map((row) =>
-      buildCheckpointItems(
+      checkpointItems(
         ctx,
         't',
         '',

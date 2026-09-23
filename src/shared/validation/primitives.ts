@@ -1,22 +1,54 @@
 import { MAX_PAGE_LIMIT } from '../constants';
 import { validationError } from '../errors/errors';
 
+declare const pageLimitBrand: unique symbol;
+
 /**
- * Throw `VALIDATION` unless `value` is a string.
+ * A page size checked against the package-wide page rule: an integer from the
+ * call site's floor to {@link MAX_PAGE_LIMIT}. {@link parseLimit} is the only
+ * way to obtain one, so a reader that asks for a `PageLimit` cannot be handed a
+ * size nobody checked, and does not check it again. The brand is phantom: at
+ * run time it is the caller's own number.
+ */
+export type PageLimit = number & { readonly [pageLimitBrand]: true };
+
+/**
+ * The value as a string, or a refusal.
  *
- * Accepts: `value` — declared `string`; a JavaScript caller, or a TypeScript
- * caller whose config came from JSON, can pass any other type, and every check
- * below would otherwise reach a string method and raise a raw `TypeError`
- * instead of this package's error.
+ * Accepts: `value` — anything. A JavaScript caller, or a TypeScript caller
+ * whose input came from JSON, can pass any type where a string is declared, and
+ * every rule after this one reaches a string method.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: `value`, typed as the string it was checked to be.
  *
  * Throws: `VALIDATION` naming `field`, for anything that is not a string.
  */
-function assertString(value: string, field: string): void {
+export function parseString(value: unknown, field: string): string {
   if (typeof value !== 'string') {
     throw validationError(`${field} must be a string`, field);
   }
+  return value;
+}
+
+/**
+ * The value as a string holding at least one non-whitespace character.
+ *
+ * Accepts: `value` — anything; `''` and whitespace-only are refused alongside
+ * non-strings.
+ *
+ * Returns: `value`, typed as a string.
+ *
+ * Throws: `VALIDATION` naming `field`.
+ */
+function parseNonBlankString(value: unknown, field: string): string {
+  const text = parseString(value, field);
+  if (text.trim().length === 0) {
+    throw validationError(
+      `${field} must be a non-empty string (whitespace-only counts as empty)`,
+      field,
+    );
+  }
+  return text;
 }
 
 /**
@@ -25,35 +57,21 @@ function assertString(value: string, field: string): void {
  *
  * Accepts: `value` — any type; `''` and whitespace-only are rejected alongside
  * non-strings. `field` — the option or identifier name carried on the error.
+ * The rule is {@link parseNonBlankString}'s; this form is for a value the
+ * caller keeps under its declared type.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`.
  */
-export function validateNonEmptyString(value: string, field: string): void {
-  assertString(value, field);
-  if (value.trim().length === 0) {
-    throw validationError(
-      `${field} must be a non-empty string (whitespace-only counts as empty)`,
-      field,
-    );
-  }
+export function assertNonEmptyString(value: string, field: string): void {
+  parseNonBlankString(value, field);
 }
 
-/**
- * Throw `VALIDATION` unless `value` encodes to at most `maxBytes` of
- * UTF-8.
- *
- * Accepts: `value` — any type, non-strings rejected first. `maxBytes` — a byte
- * budget from `shared/constants`, measured in UTF-8 bytes rather than UTF-16
- * code units because that is what DynamoDB and S3 count.
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: `VALIDATION` naming `field`.
- */
-export function assertMaxBytes(value: string, field: string, maxBytes: number): void {
-  assertString(value, field);
+/** Throw `VALIDATION` unless `value` encodes to at most `maxBytes` of UTF-8. */
+function assertMaxBytes(value: string, field: string, maxBytes: number): void {
+  parseString(value, field);
   const bytes = Buffer.byteLength(value, 'utf8');
   if (bytes > maxBytes) {
     throw validationError(
@@ -64,22 +82,22 @@ export function assertMaxBytes(value: string, field: string, maxBytes: number): 
 }
 
 /**
- * Throw `VALIDATION` unless `value` is an integer inside `bounds`.
+ * The value as an integer inside `bounds`.
  *
- * Accepts: `value` — any type; a non-number, a fraction, `NaN` and `Infinity`
- * are all rejected by the integer rule. `bounds` — omitted or `{}` bounds
- * nothing, `min` and `max` are inclusive and may be given together or alone.
+ * Accepts: `value` — anything; a non-number, a fraction, `NaN` and `Infinity`
+ * are all refused by the integer rule. `bounds` — omitted or `{}` bounds
+ * nothing; `min` and `max` are inclusive.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: `value`, typed as a number.
  *
  * Throws: `VALIDATION` naming `field`; the integer rule is reported before
  * either bound.
  */
-export function validateInteger(
-  value: number,
+export function parseInteger(
+  value: unknown,
   field: string,
   bounds: { min?: number; max?: number } = {},
-): void {
+): number {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     throw validationError(`${field} must be an integer`, field);
   }
@@ -89,11 +107,35 @@ export function validateInteger(
   if (bounds.max !== undefined && value > bounds.max) {
     throw validationError(`${field} must be <= ${bounds.max}`, field);
   }
+  return value;
 }
 
 /**
- * Throw `VALIDATION` unless `value` is a page size this package will
- * serve: an integer from `min` to {@link MAX_PAGE_LIMIT}.
+ * Throw `VALIDATION` unless `value` is an integer inside `bounds`.
+ *
+ * Accepts: `value` — any type; a non-number, a fraction, `NaN` and `Infinity`
+ * are all rejected by the integer rule. `bounds` — omitted or `{}` bounds
+ * nothing, `min` and `max` are inclusive and may be given together or alone.
+ * The rule is {@link parseInteger}'s; this form is for a value the caller
+ * keeps under its declared type.
+ *
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
+ *
+ * Throws: `VALIDATION` naming `field`; the integer rule is reported before
+ * either bound.
+ */
+export function assertInteger(
+  value: number,
+  field: string,
+  bounds: { min?: number; max?: number } = {},
+): void {
+  parseInteger(value, field, bounds);
+}
+
+/**
+ * The value as a page size this package will serve: an integer from `min` to
+ * {@link MAX_PAGE_LIMIT}.
  *
  * One rule for every `limit` a public method takes. They used to disagree three
  * ways — no minimum on `saver.list`, so `limit: -1` resolved; `0` refused by the
@@ -109,7 +151,7 @@ export function validateInteger(
  * conversation is indistinguishable from one that never happened, and the
  * answer the model gives is persisted as the transcript. So every call site
  * passes its floor and says why; `1` is passed from exactly one place,
- * `validateMessageWindow` in `src/history/internal/validation.ts`, which is the
+ * `parseMessageWindow` in `src/history/internal/parse.ts`, which is the
  * check behind `history.getMessages` and `history.forSession` alike.
  *
  * Accepts: `value` — any type; a non-number, a fraction, `NaN` and `Infinity`
@@ -119,31 +161,32 @@ export function validateInteger(
  * refused at either floor rather than read as zero: it is a page size that was
  * computed, and the computation went wrong.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: `value` as a {@link PageLimit}.
  *
  * Throws: `VALIDATION` naming `limit`, quoting the bound broken — the floor
  * or {@link MAX_PAGE_LIMIT} — so the caller is told what the rule is rather
  * than only that it has one.
  */
-export function validateLimit(value: number, min: 0 | 1): void {
-  validateInteger(value, 'limit', { min, max: MAX_PAGE_LIMIT });
+export function parseLimit(value: unknown, min: 0 | 1): PageLimit {
+  return parseInteger(value, 'limit', { min, max: MAX_PAGE_LIMIT }) as PageLimit;
 }
 
 /**
- * Throw `VALIDATION` unless `value` is an array holding at least one
- * element.
+ * The value as an array of strings, copied.
  *
- * Accepts: `value` — any type; a non-array and `[]` are both rejected. The
- * elements themselves are not inspected.
+ * Accepts: `value` — anything; a non-array is refused, as is an array holding
+ * anything but a string. An empty array is valid.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: a copy of `value`, so a caller changing its own array afterwards
+ * changes nothing this package acts on.
  *
  * Throws: `VALIDATION` naming `field`.
  */
-export function validateNonEmptyArray<T>(value: T[], field: string): void {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw validationError(`${field} must be a non-empty array`, field);
+export function parseStringArray(value: unknown, field: string): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw validationError(`${field} must be an array of strings`, field);
   }
+  return value.slice();
 }
 
 /**
@@ -151,16 +194,16 @@ export function validateNonEmptyArray<T>(value: T[], field: string): void {
  *
  * Accepts: `value` — declared `readonly string[]` for a caller whose types
  * hold; a non-array is rejected, as is an array holding anything but a
- * string. An empty array is valid.
+ * string. An empty array is valid. The rule is {@link parseStringArray}'s;
+ * this form is for a value the caller keeps under its declared type.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`.
  */
-export function validateStringArray(value: readonly string[], field: string): void {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-    throw validationError(`${field} must be an array of strings`, field);
-  }
+export function assertStringArray(value: readonly string[], field: string): void {
+  parseStringArray(value, field);
 }
 
 /** True when `value` holds a C0 control character, DEL, or a C1 control character. */
@@ -175,10 +218,15 @@ function hasControlChar(value: string): boolean {
 /**
  * Throw `VALIDATION` unless `value` is free of control characters.
  *
- * Accepts: `value` — any type, non-strings rejected first. Rejected code points
- * are C0 (`U+0000`–`U+001F`), DEL (`U+007F`) and C1 (`U+0080`–`U+009F`).
+ * Accepts: `value` — any type, non-strings rejected first by
+ * {@link parseString}. Rejected code points are C0 (`U+0000`–`U+001F`), DEL
+ * (`U+007F`) and C1 (`U+0080`–`U+009F`). The rule is this function's own:
+ * {@link parseKeySegment} applies it to every key segment and identifier by
+ * calling this one, and this form serves a value the caller keeps under its
+ * declared type.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`.
  *
@@ -189,7 +237,7 @@ function hasControlChar(value: string): boolean {
  * (https://cwe.mitre.org/data/definitions/117.html).
  */
 export function assertNoControlChars(value: string, field: string): void {
-  assertString(value, field);
+  parseString(value, field);
   if (hasControlChar(value)) {
     throw validationError(`${field} must not contain control characters`, field);
   }
@@ -199,9 +247,14 @@ export function assertNoControlChars(value: string, field: string): void {
  * Throw `VALIDATION` unless every surrogate in `value` is part of a
  * pair.
  *
- * Accepts: `value` — any type, non-strings rejected first.
+ * Accepts: `value` — any type, non-strings rejected first by
+ * {@link parseString}. The rule is this function's own:
+ * {@link parseKeySegment} applies it to every key segment and identifier by
+ * calling this one, and this form serves a value the caller keeps under its
+ * declared type.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`.
  *
@@ -211,7 +264,7 @@ export function assertNoControlChars(value: string, field: string): void {
  * where that encoding is a storage key, address one object.
  */
 export function assertWellFormed(value: string, field: string): void {
-  assertString(value, field);
+  parseString(value, field);
   if (!value.isWellFormed()) {
     throw validationError(
       `${field} must be well-formed UTF-16 (it contains an unpaired surrogate, which does not ` +
@@ -221,32 +274,52 @@ export function assertWellFormed(value: string, field: string): void {
   }
 }
 
-/**
- * Throw `VALIDATION` if `value` contains `separator`.
- *
- * Accepts: `value` — any type, non-strings rejected first. `separator` — the
- * reserved character joining key segments, `'#'` for every key this package
- * composes (`src/checkpointer/internal/keys.ts:5`).
- *
- * Returns: nothing; validity is the absence of a throw.
- *
- * Throws: `VALIDATION` naming `field`.
- */
-export function assertNoSeparator(value: string, separator: string, field: string): void {
-  assertString(value, field);
+/** Throw `VALIDATION` if `value` contains `separator`. */
+function assertNoSeparator(value: string, separator: string, field: string): void {
+  parseString(value, field);
   if (value.includes(separator)) {
     throw validationError(`${field} must not contain the reserved "${separator}" separator`, field);
   }
 }
 
 /**
- * Validate a caller-supplied identifier that reaches a DynamoDB key or an S3
- * object key.
+ * One segment of a key, which may be empty: every rule of
+ * {@link parseIdentifier} except non-blank. The checkpoint namespace is the one
+ * such value — `''` *is* the root namespace — and it is still a segment of both
+ * the sort key and the offloaded object's key, so a lone surrogate or a control
+ * character in it is as damaging as in any other.
+ *
+ * Accepts: `value` — anything. `separator`, `field`, `maxBytes` — as
+ * {@link parseIdentifier}.
+ *
+ * Returns: `value`, typed as a string.
+ *
+ * Throws: `VALIDATION` naming `field`, in this order: string, at most
+ * `maxBytes` of UTF-8, free of `separator`, free of control characters,
+ * well-formed UTF-16.
+ */
+export function parseKeySegment(
+  value: unknown,
+  separator: string,
+  field: string,
+  maxBytes: number,
+): string {
+  const text = parseString(value, field);
+  assertMaxBytes(text, field, maxBytes);
+  assertNoSeparator(text, separator, field);
+  assertNoControlChars(text, field);
+  assertWellFormed(text, field);
+  return text;
+}
+
+/**
+ * The value as a caller-supplied identifier that reaches a DynamoDB key or an
+ * S3 object key, checked.
  *
  * Accepts: `value` — any type. `separator`, `field`, `maxBytes` — as the rules
  * below.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: `value`, typed as a string. The caller's parser brands it.
  *
  * Throws: `VALIDATION` naming `field`. The rules apply in this order, and
  * the order is part of the contract because a caller branches on which one
@@ -287,15 +360,11 @@ export function assertNoSeparator(value: string, separator: string, field: strin
  * loss on upgrade, bought with a rendering nicety. A caller who wants either
  * rule can apply it to its own identifiers before passing them.
  */
-export function validateIdentifier(
-  value: string,
+export function parseIdentifier(
+  value: unknown,
   separator: string,
   field: string,
   maxBytes: number,
-): void {
-  validateNonEmptyString(value, field);
-  assertMaxBytes(value, field, maxBytes);
-  assertNoSeparator(value, separator, field);
-  assertNoControlChars(value, field);
-  assertWellFormed(value, field);
+): string {
+  return parseKeySegment(parseNonBlankString(value, field), separator, field, maxBytes);
 }

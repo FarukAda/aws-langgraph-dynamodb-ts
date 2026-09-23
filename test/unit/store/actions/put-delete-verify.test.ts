@@ -13,6 +13,7 @@ import {
   observableRow,
   rejectRowWrites,
 } from '../../../shared/helpers/ddb-mock';
+import { parsedPut } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -74,7 +75,7 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
     await expect(
       putItem(
         context(client, { vectorBackend: vectorBackend, offloader: offloader as never }),
-        op({ value: null }),
+        parsedPut(op({ value: null })),
       ),
     ).resolves.toBeUndefined();
     expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
@@ -88,7 +89,7 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
     answerDeleteReads(mock, observableRow(inlineDescriptor), observableRow(inlineDescriptor));
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await expect(
-      putItem(context(client, { vectorBackend: vectorBackend }), op({ value: null })),
+      putItem(context(client, { vectorBackend: vectorBackend }), parsedPut(op({ value: null }))),
     ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(vectorBackend.delete).not.toHaveBeenCalled();
   });
@@ -101,7 +102,7 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
     answerDeleteReads(mock, observableRow(inlineDescriptor));
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await expect(
-      putItem(context(client, { vectorBackend: vectorBackend }), op({ value: null })),
+      putItem(context(client, { vectorBackend: vectorBackend }), parsedPut(op({ value: null }))),
     ).rejects.toThrow('bad');
     expect(vectorBackend.delete).not.toHaveBeenCalled();
   });
@@ -125,7 +126,7 @@ describe('persistRecord ambiguous-failure verification', () => {
     rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
     const offloader = trackingOffloader();
     await expect(
-      putItem(context(client, { offloader: offloader as never }), op({})),
+      putItem(context(client, { offloader: offloader as never }), parsedPut(op({}))),
     ).rejects.toThrow(/timeout/);
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
@@ -148,7 +149,7 @@ describe('persistRecord ambiguous-failure verification', () => {
     );
     const offloader = trackingOffloader();
     await expect(
-      putItem(context(client, { offloader: offloader as never }), op({})),
+      putItem(context(client, { offloader: offloader as never }), parsedPut(op({}))),
     ).rejects.toThrow(/read down/);
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
@@ -159,7 +160,7 @@ describe('persistRecord ambiguous-failure verification', () => {
     rejectRowWrites(mock, Object.assign(new Error('bad'), { name: 'ValidationException' }));
     const offloader = trackingOffloader();
     await expect(
-      putItem(context(client, { offloader: offloader as never }), op({})),
+      putItem(context(client, { offloader: offloader as never }), parsedPut(op({}))),
     ).rejects.toThrow('bad');
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
   });
@@ -176,7 +177,10 @@ async function valueCommittedBy(value: PutOperation['value']): Promise<{ s3Key: 
       committed = input.TransactItems[0].Put.Item.value;
       return {};
     });
-  await putItem(context(client, { offloader: trackingOffloader() as never }), op({ value }));
+  await putItem(
+    context(client, { offloader: trackingOffloader() as never }),
+    parsedPut(op({ value })),
+  );
   return committed!;
 }
 
@@ -187,7 +191,7 @@ async function deleteReturning(removed: object) {
   mock.on(TransactWriteCommand).resolves({});
   const offloader = trackingOffloader();
   await expect(
-    putItem(context(client, { offloader: offloader as never }), op({ value: null })),
+    putItem(context(client, { offloader: offloader as never }), parsedPut(op({ value: null }))),
   ).resolves.toBeUndefined();
   const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
   return { deleted, reads: mock.commandCalls(GetCommand) };
@@ -251,7 +255,7 @@ describe('persistRecord verifies an ambiguous inline overwrite by rev (STORE-13)
       offloader: offloader as never,
       retry: { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
     });
-    await expect(putItem(ctx, op({}))).resolves.toBeUndefined();
+    await expect(putItem(ctx, parsedPut(op({})))).resolves.toBeUndefined();
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['old-key.bin']);
   });
 });

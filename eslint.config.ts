@@ -34,6 +34,27 @@ const NO_UNKNOWN = {
   message:
     'The `unknown` type is banned in src. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
 };
+/**
+ * The modules that turn a caller's input into a checked type. A `parse*`
+ * function here may declare a parameter `unknown`, because that is the honest
+ * type of a value no check has seen yet; nothing else may use it, here or
+ * anywhere in `src` — not a local, a field, a return type or a rest parameter.
+ * `test/static/guards/parser-modules.ts` lists the same files, and
+ * `test/static/no-any-unknown.test.ts` applies the same rule and checks that
+ * the two lists agree.
+ */
+const PARSER_MODULES = [
+  'src/shared/validation/primitives.ts',
+  'src/checkpointer/internal/parse.ts',
+  'src/history/internal/parse.ts',
+  'src/store/internal/parse.ts',
+];
+const NO_UNKNOWN_OUTSIDE_PARSER_PARAMETERS = {
+  selector:
+    'TSUnknownKeyword:not(FunctionDeclaration[id.name=/^parse[A-Z]/] > Identifier.params > TSTypeAnnotation > TSUnknownKeyword)',
+  message:
+    '`unknown` is allowed only as the type of a parameter of a `parse*` function in a parser module. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
+};
 const NO_EXPORT_ALL = {
   selector: 'ExportAllDeclaration',
   message:
@@ -106,6 +127,17 @@ export default defineConfig([
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+  {
+    files: PARSER_MODULES,
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        NO_UNKNOWN_OUTSIDE_PARSER_PARAMETERS,
+        NO_EXPORT_ALL,
+        NO_REEXPORT,
+      ],
     },
   },
   {

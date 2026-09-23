@@ -9,6 +9,7 @@ import { searchViaBackend } from '../../../../src/store/internal/backend-search'
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
 
 function context(client: StoreContext['client'], extra?: Partial<StoreContext>): StoreContext {
   return {
@@ -54,9 +55,7 @@ describe('searchViaBackend', () => {
       ctx,
       backend,
       index,
-      { namespacePrefix: ['users'], query: 'q' },
-      0,
-      2,
+      parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
     expect(found.map((item) => item.score)).toEqual([0.9, 0.4]);
   });
@@ -84,9 +83,7 @@ describe('searchViaBackend', () => {
       ctx,
       backend,
       index,
-      { namespacePrefix: ['users'], query: 'q' },
-      0,
-      2,
+      parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
     expect(found).toHaveLength(1);
     /** Only the in-prefix match is ever addressed; the other is dropped unread. */
@@ -105,9 +102,7 @@ describe('searchViaBackend', () => {
       context(client),
       backend,
       index,
-      { namespacePrefix: ['users'], query: 'q' },
-      0,
-      1,
+      parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 1),
     );
     expect(found).toEqual([]);
   });
@@ -120,9 +115,7 @@ describe('searchViaBackend', () => {
         context(client, { maxSearchCandidates: 10 }),
         backend as never,
         index,
-        { namespacePrefix: ['users'], query: 'q' },
-        5,
-        10,
+        parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 5, 10),
       ),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
     expect(backend.query).not.toHaveBeenCalled();
@@ -136,9 +129,7 @@ describe('searchViaBackend', () => {
         context(client),
         backend as never,
         { dims: 3, embeddings: { embedQuery: () => [0, 1] } as never },
-        { namespacePrefix: ['users'], query: 'q' },
-        0,
-        1,
+        parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 1),
       ),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
   });
@@ -152,9 +143,7 @@ describe('searchViaBackend', () => {
       context(client),
       backend,
       index,
-      { namespacePrefix: ['users'], query: 'q' },
-      0,
-      5,
+      parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 5),
     );
     expect(found).toEqual([]);
     expect(backend.query).toHaveBeenCalledTimes(1);
@@ -201,9 +190,7 @@ describe('searchViaBackend', () => {
       ctx,
       backend,
       index,
-      { namespacePrefix: ['users'], query: 'q', filter: { keep: true } },
-      0,
-      2,
+      parsedSearch({ namespacePrefix: ['users'], query: 'q', filter: { keep: true } }, 0, 2),
     );
     /** The page stays short because the backend is exhausted, not because it was cut. */
     expect(found.map((item) => item.key)).toEqual(['keep']);
@@ -235,9 +222,7 @@ describe('searchViaBackend', () => {
       ctx,
       backend,
       index,
-      { namespacePrefix: ['users'], query: 'q' },
-      0,
-      2,
+      parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
     expect(found.map((item) => item.score)).toEqual([0.9, 0.4]);
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
@@ -266,9 +251,7 @@ describe('searchViaBackend', () => {
       ctx,
       backend,
       index,
-      { namespacePrefix: ['users'], query: 'q' },
-      0,
-      2,
+      parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 2),
     );
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('relevance'), expect.anything());
     expect(found.map((item) => item.score)).toEqual([0.1, 0.9]);
@@ -296,14 +279,19 @@ describe('searchViaBackend', () => {
       { namespace: deep, key: 'a', score: 0.1 },
       { namespace: deep, key: 'a', score: 0.9 },
     ]);
-    await searchViaBackend(ctx, backend, index, { namespacePrefix: deep, query: 'q' }, 0, 2);
+    await searchViaBackend(
+      ctx,
+      backend,
+      index,
+      parsedSearch({ namespacePrefix: deep, query: 'q' }, 0, 2),
+    );
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('relevance'), {
       namespacePrefix: [...deep.slice(0, MAX_LOGGED_LABELS), `…(len ${deep.length})`],
     });
   });
 
   /**
-   * This line fires in the branch where `validateStoreKey` refused the match,
+   * This line fires in the branch where `parseStoreAddress` refused the match,
    * once per bad match, so a backend answering with many of them writes one
    * unbounded line each. The namespace is bounded in both of its dimensions:
    * a label of a megabyte and a million labels cost the same line otherwise.
@@ -315,7 +303,12 @@ describe('searchViaBackend', () => {
     const label = 'n'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
     const key = 'k'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
     const backend = backendWith([{ namespace: ['users', label], key, score: 0.9 }]);
-    await searchViaBackend(ctx, backend, index, { namespacePrefix: ['users'], query: 'q' }, 0, 1);
+    await searchViaBackend(
+      ctx,
+      backend,
+      index,
+      parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 1),
+    );
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('unusable vectorBackend match'), {
       namespace: ['users', truncateForLog(label)],
       key: truncateForLog(key),
@@ -327,11 +320,16 @@ describe('searchViaBackend', () => {
     const { client } = createStrictDocumentMock();
     const warn = jest.fn();
     const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });
-    /** A `#` in the last label is what `validateStoreKey` refuses here. */
+    /** A `#` in the last label is what `parseStoreAddress` refuses here. */
     const filler = Array.from({ length: MAX_LOGGED_LABELS }, (_unused, at) => `d${at}`);
     const deep = ['users', ...filler, 'a#b'];
     const backend = backendWith([{ namespace: deep, key: 'k', score: 0.9 }]);
-    await searchViaBackend(ctx, backend, index, { namespacePrefix: ['users'], query: 'q' }, 0, 1);
+    await searchViaBackend(
+      ctx,
+      backend,
+      index,
+      parsedSearch({ namespacePrefix: ['users'], query: 'q' }, 0, 1),
+    );
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('unusable vectorBackend match'), {
       namespace: [...deep.slice(0, MAX_LOGGED_LABELS), `…(len ${deep.length})`],
       key: 'k',
