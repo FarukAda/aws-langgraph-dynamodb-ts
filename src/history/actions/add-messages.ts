@@ -13,7 +13,7 @@ import type { HistoryContext } from '../internal/setup';
  * TTL (resolved by read, set in the transaction via `if_not_exists`) gives every
  * item one shared expiry. Batches larger than the 100-item / 4 MB transaction
  * limits are split into chunks and applied with caller-observed atomicity: if a
- * later chunk fails, the committed chunks are rolled back (see {@link appendChunks}).
+ * later chunk fails, the committed chunks are rolled back (see {@link appendMessages}).
  *
  * Per item the 400 KB DynamoDB limit still applies; enable S3 offloading so
  * large payloads become small descriptors and stay well under the limits.

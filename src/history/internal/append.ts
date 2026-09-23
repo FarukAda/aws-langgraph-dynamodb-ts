@@ -41,6 +41,31 @@ import {
 } from './session';
 import type { HistoryContext } from './setup';
 
+/** One append, parsed: the session, its messages in stored form, and the session's ttl anchor. */
+export interface AppendRequest {
+  readonly sessionId: SessionId;
+  readonly messages: StorableMessages;
+  /** The session's creation-anchored ttl, when the adapter has a ttl. */
+  readonly anchor: TtlAnchorResult | undefined;
+  readonly signal?: AbortSignal;
+}
+
+/** Shared per-append metadata applied to every chunk's session update. */
+interface AppendFields {
+  now: string;
+  title?: string;
+  ttlTimestamp?: number;
+  forceTtlRefresh?: boolean;
+}
+
+/** An append cut into chunks, with the fields every chunk's SESSION update stamps. */
+export interface ChunkedAppend {
+  readonly sessionId: SessionId;
+  readonly chunks: ChatMessageItem[][];
+  readonly fields: AppendFields;
+  readonly signal?: AbortSignal;
+}
+
 /** A chunk that committed, retained so it can be rolled back on a later failure. */
 interface CommittedChunk {
   keys: RowKey[];
@@ -53,6 +78,89 @@ export interface FailedAppend {
   readonly trigger: Error;
   /** True when the failing chunk's own outcome could not be read back. */
   readonly uncertain: boolean;
+}
+
+/** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
+const MAX_MESSAGES_PER_TRANSACTION = 99;
+
+/**
+ * Aggregate byte budget per transaction. Held ~500 KB below DynamoDB's 4 MB
+ * `TransactWriteItems` ceiling so the conservative per-item estimate (see
+ * `ITEM_OVERHEAD_BYTES`) cannot push a chunk over the real limit at commit time.
+ */
+const MAX_TRANSACTION_BYTES = 3_500_000;
+
+/**
+ * Encode every message, cleaning up after itself if one fails partway.
+ *
+ * Offloaded messages upload sequentially here, *before* the append saga's
+ * compensation machinery is ever reached, so a failure on message N used to
+ * strand messages 1..N-1's already-uploaded S3 objects with no cleanup path —
+ * the one gap in this subsystem's otherwise complete no-orphan guarantee.
+ * Nothing will ever reference those objects, so they are safe to delete
+ * unconditionally on the way out.
+ */
+async function buildItems(
+  context: HistoryContext,
+  request: AppendRequest,
+): Promise<ChatMessageItem[]> {
+  const { sessionId, signal } = request;
+  const ttlTimestamp = request.anchor?.ttlTimestamp;
+  const items: ChatMessageItem[] = [];
+  try {
+    for (const message of request.messages) {
+      items.push(
+        await buildMessageItem(
+          context,
+          { sessionId, messageId: context.ulid(), message, ttlTimestamp },
+          signal,
+        ),
+      );
+    }
+  } catch (error) {
+    if (context.offloader) {
+      await cleanUpS3Orphans(
+        context.offloader,
+        collectS3Keys(items.map((item) => item.message)),
+        'history.addMessages.encode',
+        context.logger,
+      );
+    }
+    throw error;
+  }
+  return items;
+}
+
+/**
+ * Append messages to a session: encode them, cut them into transactions, and
+ * commit them all or undo what committed.
+ *
+ * Accepts: `request` — the parsed session and messages, the ttl anchor, and
+ * the caller's signal.
+ *
+ * Returns: nothing, once every chunk has committed.
+ *
+ * Throws: the first chunk's failure after the append is rolled back;
+ * `COMPENSATION_FAILED` when the rollback itself fails; whatever encoding a
+ * message throws, after this call's own uploads are released.
+ */
+export async function appendMessages(
+  context: HistoryContext,
+  request: AppendRequest,
+): Promise<void> {
+  const items = await buildItems(context, request);
+  const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
+  await appendChunks(context, {
+    sessionId: request.sessionId,
+    chunks,
+    fields: {
+      now: nowIso(),
+      title: deriveTitle(request.messages),
+      ttlTimestamp: request.anchor?.ttlTimestamp,
+      forceTtlRefresh: request.anchor?.refresh,
+    },
+    signal: request.signal,
+  });
 }
 
 /**
@@ -165,7 +273,7 @@ async function rollbackCommitted(
  *
  * Returns: never; the declared `Promise<never>` is the contract.
  *
- * Throws: `trigger` when the rollback succeeded, `COMPENSATION_FAILED`
+ * Throws: `failure.trigger` when the rollback succeeded, `COMPENSATION_FAILED`
  * when it did not.
  *
  * Guarantees: an object is deleted only once no row can reference it — the
@@ -216,22 +324,6 @@ export async function compensate(
   /** Only now that committed rows are confirmed deleted is it safe to delete their S3 objects. */
   await cleanBatchS3(context, chunks.slice(0, committed.length));
   throw trigger;
-}
-
-/** Shared per-append metadata applied to every chunk's session update. */
-interface AppendFields {
-  now: string;
-  title?: string;
-  ttlTimestamp?: number;
-  forceTtlRefresh?: boolean;
-}
-
-/** An append cut into chunks, with the fields every chunk's SESSION update stamps. */
-export interface ChunkedAppend {
-  readonly sessionId: SessionId;
-  readonly chunks: ChatMessageItem[][];
-  readonly fields: AppendFields;
-  readonly signal?: AbortSignal;
 }
 
 /** True for the one failure shape that leaves the outcome ambiguous. */
@@ -568,96 +660,4 @@ export function chunkBySize(
   }
   if (current.length > 0) chunks.push(current);
   return chunks;
-}
-
-/** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
-const MAX_MESSAGES_PER_TRANSACTION = 99;
-
-/**
- * Aggregate byte budget per transaction. Held ~500 KB below DynamoDB's 4 MB
- * `TransactWriteItems` ceiling so the conservative per-item estimate (see
- * `ITEM_OVERHEAD_BYTES`) cannot push a chunk over the real limit at commit time.
- */
-const MAX_TRANSACTION_BYTES = 3_500_000;
-
-/** One append, parsed: the session, its messages in stored form, and the session's ttl anchor. */
-export interface AppendRequest {
-  readonly sessionId: SessionId;
-  readonly messages: StorableMessages;
-  /** The session's creation-anchored ttl, when the adapter has a ttl. */
-  readonly anchor: TtlAnchorResult | undefined;
-  readonly signal?: AbortSignal;
-}
-
-/**
- * Encode every message, cleaning up after itself if one fails partway.
- *
- * Offloaded messages upload sequentially here, *before* the append saga's
- * compensation machinery is ever reached, so a failure on message N used to
- * strand messages 1..N-1's already-uploaded S3 objects with no cleanup path —
- * the one gap in this subsystem's otherwise complete no-orphan guarantee.
- * Nothing will ever reference those objects, so they are safe to delete
- * unconditionally on the way out.
- */
-async function buildItems(
-  context: HistoryContext,
-  request: AppendRequest,
-): Promise<ChatMessageItem[]> {
-  const { sessionId, signal } = request;
-  const ttlTimestamp = request.anchor?.ttlTimestamp;
-  const items: ChatMessageItem[] = [];
-  try {
-    for (const message of request.messages) {
-      items.push(
-        await buildMessageItem(
-          context,
-          { sessionId, messageId: context.ulid(), message, ttlTimestamp },
-          signal,
-        ),
-      );
-    }
-  } catch (error) {
-    if (context.offloader) {
-      await cleanUpS3Orphans(
-        context.offloader,
-        collectS3Keys(items.map((item) => item.message)),
-        'history.addMessages.encode',
-        context.logger,
-      );
-    }
-    throw error;
-  }
-  return items;
-}
-
-/**
- * Append messages to a session: encode them, cut them into transactions, and
- * commit them all or undo what committed.
- *
- * Accepts: `request` — the parsed session and messages, the ttl anchor, and
- * the caller's signal.
- *
- * Returns: nothing, once every chunk has committed.
- *
- * Throws: the first chunk's failure after the append is rolled back;
- * `COMPENSATION_FAILED` when the rollback itself fails; whatever encoding a
- * message throws, after this call's own uploads are released.
- */
-export async function appendMessages(
-  context: HistoryContext,
-  request: AppendRequest,
-): Promise<void> {
-  const items = await buildItems(context, request);
-  const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
-  await appendChunks(context, {
-    sessionId: request.sessionId,
-    chunks,
-    fields: {
-      now: nowIso(),
-      title: deriveTitle(request.messages),
-      ttlTimestamp: request.anchor?.ttlTimestamp,
-      forceTtlRefresh: request.anchor?.refresh,
-    },
-    signal: request.signal,
-  });
 }
