@@ -1,4 +1,4 @@
-import type { WriteRequest } from '../dynamodb/types';
+import type { WriteRequest } from '../dynamodb/client';
 import { redactedMessage } from '../logging/secret-patterns';
 import { DynamoDBLangGraphError, type ErrorContext, type ErrorDetailsFor } from './base-error';
 import { ErrorCode } from './error-code';

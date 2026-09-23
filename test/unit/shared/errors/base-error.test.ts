@@ -1,4 +1,4 @@
-import type { WriteRequest } from '../../../../src/shared/dynamodb/types';
+import type { WriteRequest } from '../../../../src/shared/dynamodb/client';
 import {
   DynamoDBLangGraphError,
   failureLabel,

@@ -1,9 +1,9 @@
 import { nowSeconds } from '../../shared/clock';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema';
 import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
 import type { StoreItemRecord } from '../types';
 import type { VectorBackend, VectorRef } from '../vector-backend';

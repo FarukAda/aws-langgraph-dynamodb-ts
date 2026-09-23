@@ -1,7 +1,7 @@
 import type { DescriptorRef } from '../../shared/codec/descriptor-keys';
+import type { DocItem } from '../../shared/dynamodb/client';
 import { REVISION_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import type { DocItem } from '../../shared/dynamodb/types';
 import type { StoreContext } from './setup';
 
 /** The previous row's createdAt, payload descriptor and revision. */

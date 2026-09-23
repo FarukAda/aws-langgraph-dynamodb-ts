@@ -10,7 +10,7 @@ import {
   MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
 } from '../../shared/constants';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
-import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client-types';
+import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';

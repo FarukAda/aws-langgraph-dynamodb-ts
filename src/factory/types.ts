@@ -6,7 +6,7 @@ import type { DynamoDBChatMessageHistory } from '../history/chat-message-history
 import type { DynamoDBChatMessageHistoryOptions } from '../history/types';
 import type { CompressionConfig } from '../shared/codec/compression';
 import type { S3OffloadConfig } from '../shared/codec/s3/config';
-import type { DynamoDBDocumentLike } from '../shared/dynamodb/client-types';
+import type { DynamoDBDocumentLike } from '../shared/dynamodb/client';
 import type { RetryPolicy } from '../shared/dynamodb/retry-policy';
 import type { Logger } from '../shared/logging/logger';
 import type { TtlOption } from '../shared/validation/ttl';

@@ -1,3 +1,4 @@
+import type { DocItem } from '../../shared/dynamodb/client';
 import { WRITE_ID_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
 import {
   deletePartitionRows,
@@ -5,7 +6,6 @@ import {
   type NamedDescriptor,
 } from '../../shared/dynamodb/partition-delete';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import type { DocItem } from '../../shared/dynamodb/types';
 import { isHistorySortKey } from '../internal/keys';
 import { parseSessionId } from '../internal/parse';
 import { sessionItemsQuery } from '../internal/query';

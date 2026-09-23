@@ -6,12 +6,11 @@ import { nowMs } from '../clock';
 import { PayloadLocation } from '../codec/codec';
 import type { DescriptorRef } from '../codec/descriptor-keys';
 import { MAX_WRITE_LIFETIME_MS } from '../constants';
-import type { DynamoDBDocumentLike } from './client-types';
+import type { DynamoDBDocumentLike, DocItem } from './client';
 import type { RevisionGuard } from './conditional-put';
 import { withDynamoDBRetry } from './retry';
 import type { RetryOptions } from './retry';
 import { retryFor } from './retry-policy';
-import type { DocItem } from './types';
 
 /**
  * What one tokened write needs of its adapter: the document client, the table

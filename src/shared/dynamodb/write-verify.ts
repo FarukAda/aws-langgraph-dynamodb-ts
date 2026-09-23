@@ -1,8 +1,7 @@
 import { type PayloadDescriptor, PayloadLocation } from '../codec/codec';
-import type { DynamoDBDocumentLike } from './client-types';
+import type { DynamoDBDocumentLike, DocItem } from './client';
 import { withDynamoDBRetry } from './retry';
 import type { RetryOptions } from './retry';
-import type { DocItem } from './types';
 
 /**
  * What a post-failure read established about a write whose outcome was

@@ -3,7 +3,7 @@ import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgrap
 
 import { nowSeconds } from '../../shared/clock';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
-import { isExpiredRow } from '../../shared/dynamodb/expiry';
+import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import { assembleTuple } from '../internal/assemble';
 import { fetchTargetMeta } from '../internal/fetch';
 import { metaRows, narrowOrWarn } from '../internal/list-rows';

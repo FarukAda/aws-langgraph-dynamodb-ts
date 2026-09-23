@@ -2,12 +2,15 @@ import type { CheckpointPendingWrite } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
-import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
+import type { DocItem } from '../../shared/dynamodb/client';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { assertReadableRow } from '../../shared/dynamodb/row-version';
-import type { DocItem } from '../../shared/dynamodb/types';
+import {
+  isExpiredRow,
+  withoutExpired,
+  assertReadableRow,
+} from '../../shared/dynamodb/table-schema';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { narrowHead, toPendingWrites } from './item-reader';
 import {

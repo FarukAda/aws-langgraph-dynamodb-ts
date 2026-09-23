@@ -1,10 +1,10 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 
 import { nowSeconds } from '../../shared/clock';
-import { isExpiredRow } from '../../shared/dynamodb/expiry';
+import type { DocItem } from '../../shared/dynamodb/client';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import type { DocItem } from '../../shared/dynamodb/types';
+import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';

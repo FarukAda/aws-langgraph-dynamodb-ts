@@ -1,12 +1,16 @@
 import { nowSeconds as currentSeconds } from '../../shared/clock';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { isExpiredRow } from '../../shared/dynamodb/expiry';
+import type { DocItem } from '../../shared/dynamodb/client';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import { queryRecencyIndex } from '../../shared/dynamodb/index-query';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { assertReadableRow } from '../../shared/dynamodb/row-version';
 import { paginateScan } from '../../shared/dynamodb/scan';
-import type { DocItem } from '../../shared/dynamodb/types';
+import {
+  assertReadableRow,
+  isExpiredRow,
+  PARTITION_KEY_ATTRIBUTE,
+  SORT_KEY_ATTRIBUTE,
+} from '../../shared/dynamodb/table-schema';
 import { type PageLimit, parseLimit } from '../../shared/validation/primitives';
 import { SESSION_SORT_KEY, historyPartitionPrefix, sessionPartition } from '../internal/keys';
 import { type ListSessionsRequest, parseListSessionsRequest } from '../internal/parse';
@@ -158,7 +162,7 @@ async function allByScan(
     params: {
       TableName: context.tableName,
       FilterExpression: 'begins_with(#pk, :pkp) AND #sk = :session',
-      ExpressionAttributeNames: { '#pk': 'PK', '#sk': 'SK' },
+      ExpressionAttributeNames: { '#pk': PARTITION_KEY_ATTRIBUTE, '#sk': SORT_KEY_ATTRIBUTE },
       ExpressionAttributeValues: {
         ':pkp': historyPartitionPrefix(),
         ':session': SESSION_SORT_KEY,

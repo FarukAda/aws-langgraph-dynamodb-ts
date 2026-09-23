@@ -27,7 +27,7 @@ quietly missing, which is worse than refusing to read it at all.
 ## Decision
 
 We stamp every row this package writes with its format version, `v`
-(`src/shared/dynamodb/row-version.ts`), and every read that returns a row's
+(`src/shared/dynamodb/table-schema.ts`), and every read that returns a row's
 content checks that version *before* it checks the row's shape. A row
 without `v` reads as version 0, under the rules that applied when it was
 written, so nothing already on a table needs migrating. A row whose `v`

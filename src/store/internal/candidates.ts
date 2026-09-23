@@ -1,11 +1,11 @@
 import { nowSeconds } from '../../shared/clock';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/expiry';
+import type { DocItem } from '../../shared/dynamodb/client';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
-import type { DocItem } from '../../shared/dynamodb/types';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema';
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { validationError } from '../../shared/errors/errors';

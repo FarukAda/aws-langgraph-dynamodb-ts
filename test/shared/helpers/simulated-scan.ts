@@ -1,6 +1,6 @@
 import type { ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import type { DocItem } from '../../../src/shared/dynamodb/types';
+import type { DocItem } from '../../../src/shared/dynamodb/client';
 
 /** The scalar kinds the filters this package emits compare. */
 type Scalar = string | number | boolean | null | undefined;

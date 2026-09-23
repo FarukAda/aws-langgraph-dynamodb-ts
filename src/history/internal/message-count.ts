@@ -1,11 +1,10 @@
 import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 
 import { nowSeconds } from '../../shared/clock';
-import { isExpiredRow } from '../../shared/dynamodb/expiry';
+import type { DocItem } from '../../shared/dynamodb/client';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { assertReadableRow } from '../../shared/dynamodb/row-version';
-import type { DocItem } from '../../shared/dynamodb/types';
+import { isExpiredRow, assertReadableRow } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
 import type { ChatMessageItem } from '../types';
 import { narrowMessageItem } from './item-mapper';

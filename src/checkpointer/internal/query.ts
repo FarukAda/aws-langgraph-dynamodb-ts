@@ -1,5 +1,7 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
+import { PARTITION_KEY_ATTRIBUTE, SORT_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
+
 /** Options for {@link partitionQuery}. */
 export interface PartitionQueryOptions {
   consistent?: boolean;
@@ -34,7 +36,7 @@ export function partitionQuery(
   const params: QueryCommandInput = {
     TableName: tableName,
     KeyConditionExpression: '#pk = :pk',
-    ExpressionAttributeNames: { '#pk': 'PK' },
+    ExpressionAttributeNames: { '#pk': PARTITION_KEY_ATTRIBUTE },
     ExpressionAttributeValues: { ':pk': partition },
   };
   if (options.consistent) params.ConsistentRead = true;
@@ -65,7 +67,7 @@ export function beginsWithQuery(
     KeyConditionExpression: bounded
       ? '#pk = :pk AND #sk BETWEEN :skPrefix AND :before'
       : '#pk = :pk AND begins_with(#sk, :skPrefix)',
-    ExpressionAttributeNames: { '#pk': 'PK', '#sk': 'SK' },
+    ExpressionAttributeNames: { '#pk': PARTITION_KEY_ATTRIBUTE, '#sk': SORT_KEY_ATTRIBUTE },
     ExpressionAttributeValues: {
       ':pk': partition,
       ':skPrefix': skPrefix,

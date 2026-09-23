@@ -1,7 +1,11 @@
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
-import { compareSortKeys } from '../../shared/dynamodb/sort-key-order';
+import {
+  compareSortKeys,
+  PARTITION_KEY_ATTRIBUTE,
+  SORT_KEY_ATTRIBUTE,
+} from '../../shared/dynamodb/table-schema';
 import type { CheckpointMetaItem } from '../types';
 import { matchesFilter } from './filter-match';
 import { readMetadata } from './item-reader';
@@ -65,7 +69,7 @@ export function listScan(context: CheckpointerContext, scope: ListScope): ScanCo
   return {
     TableName: context.tableName,
     FilterExpression: 'begins_with(#pk, :pk) AND begins_with(#sk, :sk)',
-    ExpressionAttributeNames: { '#pk': 'PK', '#sk': 'SK' },
+    ExpressionAttributeNames: { '#pk': PARTITION_KEY_ATTRIBUTE, '#sk': SORT_KEY_ATTRIBUTE },
     ExpressionAttributeValues: {
       ':pk': checkpointerPartitionPrefix(),
       ':sk':

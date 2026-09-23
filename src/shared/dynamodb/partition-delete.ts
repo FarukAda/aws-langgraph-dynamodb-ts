@@ -7,12 +7,12 @@ import { batchWriteAllIncompleteError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
 import { truncateForLog } from '../logging/truncate';
 import { isAbortError } from './abort';
-import type { DynamoDBDocumentLike } from './client-types';
+import type { DynamoDBDocumentLike, DocItem } from './client';
 import { type RevisionGuard, WRITE_ID_ATTRIBUTE, writeIdGuard } from './conditional-put';
 import { paginateQuery } from './paginate';
 import { flushPendingDeletes, type PendingDelete } from './partition-flush';
 import type { RetryOptions } from './retry';
-import type { DocItem } from './types';
+import { rowKeyOf } from './table-schema';
 
 /**
  * One offloaded payload a row references, named by the attribute holding it.
@@ -137,7 +137,7 @@ function pinFor(
 function pendingDelete(options: PartitionDeleteOptions, row: DocItem): PendingDelete {
   const named = options.descriptorsOf(row);
   return {
-    key: { PK: row.PK as string, SK: row.SK as string },
+    key: rowKeyOf(row),
     guard: pinFor(options.idAttribute, row, named),
     descriptors: named.map((entry) => entry.descriptor),
     unit: options.unitOf?.(row),

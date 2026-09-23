@@ -4,6 +4,7 @@ import { nowMs } from '../../shared/clock';
 import { MAX_WRITE_LIFETIME_MS } from '../../shared/constants';
 import { conditionFailedAt } from '../../shared/dynamodb/cancellation';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { PARTITION_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
 import type { SessionId } from './parse';
 import { removeRolledBackTitle } from './session-title';
@@ -90,7 +91,7 @@ export async function revertSessionCount(
     TableName: context.tableName,
     Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
     UpdateExpression: 'ADD #count :neg',
-    ConditionExpression: 'attribute_exists(PK) AND #c <= :now',
+    ConditionExpression: `attribute_exists(${PARTITION_KEY_ATTRIBUTE}) AND #c <= :now`,
     ExpressionAttributeNames: { '#count': 'messageCount', '#c': 'createdAt' },
     ExpressionAttributeValues: { ':neg': -delta, ':now': createdBefore },
   };

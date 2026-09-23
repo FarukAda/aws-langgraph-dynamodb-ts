@@ -4,7 +4,8 @@ import { unmarshall } from '@aws-sdk/util-dynamodb';
 import { classifyAwsError } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
 import { conditionalCheckFailure } from './cancellation';
-import type { DocItem } from './types';
+import type { DocItem } from './client';
+import { PARTITION_KEY_ATTRIBUTE } from './table-schema';
 
 /**
  * Attribute holding a row's revision token on adapters that need one. The
@@ -96,7 +97,10 @@ const RETURN_REJECTED_ROW = { ReturnValuesOnConditionCheckFailure: 'ALL_OLD' } a
  */
 export function revisionGuard(attribute: string, observed: ObservedRow): RevisionGuard {
   if (!observed.exists)
-    return { ...RETURN_REJECTED_ROW, ConditionExpression: 'attribute_not_exists(PK)' };
+    return {
+      ...RETURN_REJECTED_ROW,
+      ConditionExpression: `attribute_not_exists(${PARTITION_KEY_ATTRIBUTE})`,
+    };
   if (observed.revision === undefined) {
     return {
       ...RETURN_REJECTED_ROW,

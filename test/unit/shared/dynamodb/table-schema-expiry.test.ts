@@ -1,6 +1,6 @@
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import { isExpiredRow, withoutExpired } from '../../../../src/shared/dynamodb/expiry';
+import { isExpiredRow, withoutExpired } from '../../../../src/shared/dynamodb/table-schema';
 
 describe('isExpiredRow', () => {
   it('is true at or past the ttl and false before it or without one', () => {

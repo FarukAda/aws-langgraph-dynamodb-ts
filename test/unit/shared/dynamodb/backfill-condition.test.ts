@@ -2,7 +2,7 @@ import { ScanCommand, UpdateCommand, type UpdateCommandInput } from '@aws-sdk/li
 
 import { backfillRecencyIndex } from '../../../../src/shared/dynamodb/backfill-index';
 import type { BackfillResult } from '../../../../src/shared/dynamodb/backfill-types';
-import type { DocItem } from '../../../../src/shared/dynamodb/types';
+import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 

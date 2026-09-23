@@ -1,6 +1,7 @@
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { PARTITION_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
 import { classifyAwsError } from '../../shared/errors/classify';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { conflictError } from '../../shared/errors/errors';
@@ -50,10 +51,12 @@ function countGuard(observed: ObservedCount): {
   ExpressionAttributeValues?: Record<string, number>;
 } {
   if (observed.count === undefined) {
-    return { ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(#count)' };
+    return {
+      ConditionExpression: `attribute_exists(${PARTITION_KEY_ATTRIBUTE}) AND attribute_not_exists(#count)`,
+    };
   }
   return {
-    ConditionExpression: 'attribute_exists(PK) AND #count = :expected',
+    ConditionExpression: `attribute_exists(${PARTITION_KEY_ATTRIBUTE}) AND #count = :expected`,
     ExpressionAttributeValues: { ':expected': observed.count },
   };
 }

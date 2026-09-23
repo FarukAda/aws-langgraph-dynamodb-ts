@@ -6,7 +6,7 @@ import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
-import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client-types';
+import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';

@@ -2,7 +2,7 @@ import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import type { DocItem } from '../../../../src/shared/dynamodb/types';
+import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { deleteStoreItem } from '../../../../src/store/internal/delete-item';
 import { parseStoreAddress } from '../../../../src/store/internal/parse';

@@ -7,8 +7,8 @@ import type {
 import { decodePayload } from '../../shared/codec/codec';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { assertReadableRow } from '../../shared/dynamodb/row-version';
-import type { DocItem } from '../../shared/dynamodb/types';
+import type { DocItem } from '../../shared/dynamodb/client';
+import { assertReadableRow } from '../../shared/dynamodb/table-schema';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { codecDeps } from './item-writer';

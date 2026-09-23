@@ -8,7 +8,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
-import type { DocItem } from '../../../src/shared/dynamodb/types';
+import type { DocItem } from '../../../src/shared/dynamodb/client';
 
 /**
  * Build a `DynamoDBDocument` whose every command rejects unless explicitly

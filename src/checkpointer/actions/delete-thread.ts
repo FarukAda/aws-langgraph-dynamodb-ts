@@ -1,10 +1,10 @@
+import type { DocItem } from '../../shared/dynamodb/client';
 import {
   deletePartitionRows,
   namedDescriptor,
   type NamedDescriptor,
 } from '../../shared/dynamodb/partition-delete';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import type { DocItem } from '../../shared/dynamodb/types';
 import { isCheckpointerSortKey, partitionKey, SORT_KEY_SEPARATOR } from '../internal/keys';
 import { parseThreadId } from '../internal/parse';
 import { partitionQuery } from '../internal/query';

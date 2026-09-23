@@ -1,10 +1,9 @@
 import { nowSeconds } from '../../shared/clock';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
-import { isExpiredRow } from '../../shared/dynamodb/expiry';
+import type { DocItem } from '../../shared/dynamodb/client';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { assertReadableRow } from '../../shared/dynamodb/row-version';
-import type { DocItem } from '../../shared/dynamodb/types';
+import { isExpiredRow, assertReadableRow } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
 import { truncateForLog } from '../../shared/logging/truncate';
 import { ulidTimePrefix } from '../../shared/ulid';

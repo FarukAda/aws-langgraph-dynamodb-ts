@@ -26,8 +26,10 @@ import type {
   VectorMatch,
   VectorRef,
   VectorScoreDirection,
+  DynamoDBChatMessageHistory,
+  DynamoDBSaver,
+  DynamoDBStore,
 } from '../../src/index';
-import type { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 
 describe('public API types', () => {
   it('models the ttl option as days | seconds', () => {

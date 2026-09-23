@@ -1,5 +1,6 @@
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
+import { PARTITION_KEY_ATTRIBUTE, SORT_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
 import { partitionKey, sortKeyPrefix, storePartitionPrefix } from './keys';
 
 /**
@@ -21,14 +22,14 @@ export function scopedQuery(tableName: string, prefix: string[]): QueryCommandIn
     return {
       TableName: tableName,
       KeyConditionExpression: '#pk = :pk',
-      ExpressionAttributeNames: { '#pk': 'PK' },
+      ExpressionAttributeNames: { '#pk': PARTITION_KEY_ATTRIBUTE },
       ExpressionAttributeValues: { ':pk': partitionKey(prefix) },
     };
   }
   return {
     TableName: tableName,
     KeyConditionExpression: '#pk = :pk AND begins_with(#sk, :skp)',
-    ExpressionAttributeNames: { '#pk': 'PK', '#sk': 'SK' },
+    ExpressionAttributeNames: { '#pk': PARTITION_KEY_ATTRIBUTE, '#sk': SORT_KEY_ATTRIBUTE },
     ExpressionAttributeValues: { ':pk': partitionKey(prefix), ':skp': skPrefix },
   };
 }
@@ -66,7 +67,7 @@ export function storeScan(tableName: string): ScanCommandInput {
   return {
     TableName: tableName,
     FilterExpression: 'begins_with(#pk, :pkp) AND attribute_exists(#ns)',
-    ExpressionAttributeNames: { '#pk': 'PK', '#ns': 'namespace' },
+    ExpressionAttributeNames: { '#pk': PARTITION_KEY_ATTRIBUTE, '#ns': 'namespace' },
     ExpressionAttributeValues: { ':pkp': storePartitionPrefix() },
   };
 }
@@ -92,7 +93,7 @@ export function storeScan(tableName: string): ScanCommandInput {
 export function projectKeys<T extends QueryCommandInput | ScanCommandInput>(params: T): T {
   return {
     ...params,
-    ProjectionExpression: 'PK, SK, #ns, #key, #v',
+    ProjectionExpression: `${PARTITION_KEY_ATTRIBUTE}, ${SORT_KEY_ATTRIBUTE}, #ns, #key, #v`,
     ExpressionAttributeNames: {
       ...params.ExpressionAttributeNames,
       '#ns': 'namespace',

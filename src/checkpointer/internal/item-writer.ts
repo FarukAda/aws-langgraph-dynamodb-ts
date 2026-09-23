@@ -4,7 +4,7 @@ import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { encodePayload } from '../../shared/codec/encode';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
-import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
+import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/table-schema';
 import { createUlidFactory } from '../../shared/ulid';
 import type { CheckpointMetaItem, CheckpointPayloadItem, CheckpointWriteItem } from '../types';
 import { metaSortKey, partitionKey, payloadSortKey, writeSortKey } from './keys';

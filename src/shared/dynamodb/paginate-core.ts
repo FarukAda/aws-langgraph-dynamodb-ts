@@ -1,8 +1,8 @@
 import { MAX_LOOP_ITERATIONS, MAX_TOTAL_ITEMS_IN_MEMORY } from '../constants';
 import { resultTruncatedError, validationError } from '../errors/errors';
 import { abortErrorFrom } from './abort';
+import type { DocItem } from './client';
 import type { RetryOptions } from './retry';
-import type { DocItem } from './types';
 
 /** One page of results plus the key to resume from (undefined when exhausted). */
 export interface PageResult {

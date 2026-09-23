@@ -1,5 +1,6 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
+import { PARTITION_KEY_ATTRIBUTE, SORT_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
 import { messageSortKeyPrefix, sessionPartition } from './keys';
 import type { SessionId } from './parse';
 
@@ -27,7 +28,7 @@ export function sessionItemsQuery(
   const params: QueryCommandInput = {
     TableName: tableName,
     KeyConditionExpression: '#pk = :pk',
-    ExpressionAttributeNames: { '#pk': 'PK' },
+    ExpressionAttributeNames: { '#pk': PARTITION_KEY_ATTRIBUTE },
     ExpressionAttributeValues: { ':pk': sessionPartition(sessionId) },
   };
   if (options.consistent) params.ConsistentRead = true;
@@ -70,7 +71,7 @@ export function messageQuery(
   const params: QueryCommandInput = {
     TableName: tableName,
     KeyConditionExpression: '#pk = :pk AND begins_with(#sk, :skp)',
-    ExpressionAttributeNames: { '#pk': 'PK', '#sk': 'SK' },
+    ExpressionAttributeNames: { '#pk': PARTITION_KEY_ATTRIBUTE, '#sk': SORT_KEY_ATTRIBUTE },
     ExpressionAttributeValues: {
       ':pk': sessionPartition(sessionId),
       ':skp': messageSortKeyPrefix(),

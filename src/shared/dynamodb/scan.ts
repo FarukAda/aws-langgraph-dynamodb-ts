@@ -1,9 +1,8 @@
 import type { ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import type { DynamoDBDocumentLike } from './client-types';
+import type { DynamoDBDocumentLike, DocItem } from './client';
 import { type PaginateCoreOptions, paginatePages } from './paginate-core';
 import { withDynamoDBRetry } from './retry';
-import type { DocItem } from './types';
 
 /** Options for {@link paginateScan}. */
 export interface ScanOptions extends PaginateCoreOptions {

@@ -1,4 +1,4 @@
-import type { WriteRequest } from '../dynamodb/types';
+import type { WriteRequest } from '../dynamodb/client';
 import { ErrorCode } from './error-code';
 
 const ERROR_BRAND = Symbol.for('@farukada/aws-langgraph-dynamodb-ts/error');

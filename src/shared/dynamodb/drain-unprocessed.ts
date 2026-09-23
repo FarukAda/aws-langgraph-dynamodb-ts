@@ -6,9 +6,8 @@ import {
 import { batchWriteIncompleteError } from '../errors/errors';
 import { isAbortError } from './abort';
 import { fullJitter, nextBackoffDelay, sleep } from './backoff';
-import type { DynamoDBDocumentLike } from './client-types';
+import type { DynamoDBDocumentLike, WriteRequest } from './client';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
-import type { WriteRequest } from './types';
 
 /** Backoff/abort options shared by the drain helpers. */
 export interface DrainOptions {

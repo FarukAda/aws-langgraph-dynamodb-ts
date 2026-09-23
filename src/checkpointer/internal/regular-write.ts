@@ -5,6 +5,7 @@ import {
 import { putIdempotently, referencesS3Object } from '../../shared/dynamodb/idempotent-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { PARTITION_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
 import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
@@ -33,7 +34,7 @@ export interface RegularWriteOutcome {
  * call committed without spending a read.
  */
 const FIRST_WRITE_WINS: RevisionGuard = {
-  ConditionExpression: 'attribute_not_exists(PK)',
+  ConditionExpression: `attribute_not_exists(${PARTITION_KEY_ATTRIBUTE})`,
   ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
 };
 

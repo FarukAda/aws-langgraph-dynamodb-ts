@@ -65,7 +65,7 @@ export type { RedactLoggerOptions } from './shared/logging/redaction';
 export type { Redactable } from './shared/logging/redaction-walk';
 
 export type { CancelOptions, BaseAdapterOptions, CodecOptions } from './shared/options';
-export type { DynamoDBDocumentLike } from './shared/dynamodb/client-types';
+export type { DynamoDBDocumentLike } from './shared/dynamodb/client';
 export type { RetryAttemptInfo, RetryOptions } from './shared/dynamodb/retry';
 export type { RetryPolicy } from './shared/dynamodb/retry-policy';
 export type { TtlOption } from './shared/validation/ttl';

@@ -1,8 +1,8 @@
 import { writeSpecialItem } from '../../../../src/checkpointer/internal/special-write-cas';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../../../src/shared/dynamodb/conditional-put';
-import type { DocItem } from '../../../../src/shared/dynamodb/types';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 
 /** The request a plain put takes, and the item shape a transaction wraps. */

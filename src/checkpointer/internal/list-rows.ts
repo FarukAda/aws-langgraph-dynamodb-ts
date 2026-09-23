@@ -1,11 +1,11 @@
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { withoutExpired } from '../../shared/dynamodb/expiry';
+import type { DocItem } from '../../shared/dynamodb/client';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import { iterateRecencyIndex } from '../../shared/dynamodb/index-query';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
-import type { DocItem } from '../../shared/dynamodb/types';
+import { withoutExpired } from '../../shared/dynamodb/table-schema';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { CheckpointMetaItem } from '../types';
 import { narrowMetaItem } from './item-reader';

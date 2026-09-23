@@ -1,6 +1,6 @@
 import { validationError } from '../errors/errors';
+import type { DocItem } from './client';
 import type { IndexTag } from './index-keys';
-import type { DocItem } from './types';
 
 /**
  * The timestamp a row written before the index gets.

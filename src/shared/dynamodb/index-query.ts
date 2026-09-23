@@ -1,6 +1,7 @@
 import { mapWithConcurrency } from '../concurrency';
 import { validationError } from '../errors/errors';
 import { type PageLimit, parseLimit } from '../validation/primitives';
+import type { DocItem } from './client';
 import { indexPartitions } from './index-keys';
 import {
   type IndexQueryOptions,
@@ -8,8 +9,7 @@ import {
   type ShardReader,
   shardReader,
 } from './index-shard';
-import { compareSortKeys } from './sort-key-order';
-import type { DocItem } from './types';
+import { compareSortKeys } from './table-schema';
 
 /** One page of a recency listing, and where the next one resumes. */
 export interface IndexPage {

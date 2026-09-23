@@ -2,7 +2,7 @@ import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynam
 
 import type { CompressionConfig } from './codec/compression';
 import type { S3OffloadConfig } from './codec/s3/config';
-import type { DynamoDBDocumentLike } from './dynamodb/client-types';
+import type { DynamoDBDocumentLike } from './dynamodb/client';
 import type { RetryPolicy } from './dynamodb/retry-policy';
 import type { Logger } from './logging/logger';
 import type { TtlOption } from './validation/ttl';

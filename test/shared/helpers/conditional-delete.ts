@@ -1,7 +1,7 @@
 import type { DeleteCommandInput, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 import { marshall } from '@aws-sdk/util-dynamodb';
 
-import type { DocItem } from '../../../src/shared/dynamodb/types';
+import type { DocItem } from '../../../src/shared/dynamodb/client';
 
 /** A table a conditional delete is evaluated against. */
 export interface ConditionalTable {

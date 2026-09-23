@@ -4,9 +4,9 @@ import type { Item } from '@langchain/langgraph-checkpoint';
 
 import { type CodecDeps, decodePayload } from '../../shared/codec/codec';
 import { encodePayload } from '../../shared/codec/encode';
+import type { DocItem } from '../../shared/dynamodb/client';
 import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
-import { assertReadableRow, ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
-import type { DocItem } from '../../shared/dynamodb/types';
+import { assertReadableRow, ROW_FORMAT_VERSION } from '../../shared/dynamodb/table-schema';
 import type { StoreItemRecord } from '../types';
 import type { JsonValue } from './filter';
 import { partitionKey, sortKey } from './keys';

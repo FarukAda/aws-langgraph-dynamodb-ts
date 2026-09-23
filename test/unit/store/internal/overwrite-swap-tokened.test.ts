@@ -1,5 +1,5 @@
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import type { DocItem } from '../../../../src/shared/dynamodb/types';
+import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putWithRevisionSwap } from '../../../../src/store/internal/overwrite-swap';
 import type { ExistingRecordMeta } from '../../../../src/store/internal/read-existing';

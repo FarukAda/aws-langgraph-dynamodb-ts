@@ -4,7 +4,7 @@ import {
   rowVersionOf,
   SUPPORTED_ROW_FORMAT_VERSION,
   withRowVersion,
-} from '../../../../src/shared/dynamodb/row-version';
+} from '../../../../src/shared/dynamodb/table-schema';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
 describe('rowVersionOf', () => {

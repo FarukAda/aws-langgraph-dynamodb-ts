@@ -1,6 +1,7 @@
 import type { PayloadDescriptor } from '../../shared/codec/codec';
+import type { DocItem } from '../../shared/dynamodb/client';
 import { isConditionalCheckFailed, rejectedItem } from '../../shared/dynamodb/conditional-put';
-import type { DocItem } from '../../shared/dynamodb/types';
+import { rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { readRow, type RowProbe, verdictFor, verifyRow } from '../../shared/dynamodb/write-verify';
 import type { CheckpointWriteItem } from '../types';
 import type { CheckpointerContext } from './setup';
@@ -53,7 +54,7 @@ export interface VerifiedFailure {
  */
 export function specialRowProbe(item: CheckpointWriteItem): RowProbe {
   return {
-    key: { PK: item.PK, SK: item.SK },
+    key: rowKeyOf(item),
     kind: 'attribute',
     attribute: SPECIAL_REVISION_ATTRIBUTE,
     expected: item.writeGroup,

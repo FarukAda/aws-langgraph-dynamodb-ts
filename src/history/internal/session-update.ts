@@ -1,7 +1,7 @@
 import type { NativeAttributeValue, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
-import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
+import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/table-schema';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
 
 /** One member of a {@link TransactWriteCommandInput} `TransactItems` list. */

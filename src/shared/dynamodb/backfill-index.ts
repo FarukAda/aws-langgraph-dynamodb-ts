@@ -4,10 +4,11 @@ import { guardPublic } from '../errors/boundary';
 import { decodeScanCursor, encodeScanCursor, indexTargetOf } from './backfill-target';
 import type { BackfillOptions, BackfillResult } from './backfill-types';
 import { assertBackfillOptions } from './backfill-validation';
+import type { DocItem } from './client';
 import { isConditionalCheckFailed } from './conditional-put';
 import { DEFAULT_INDEX_SHARDS, type IndexKeys, indexKeys } from './index-keys';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
-import type { DocItem } from './types';
+import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from './table-schema';
 
 /**
  * The retry policy every request of one run uses: the caller's `retry`, with
@@ -63,7 +64,7 @@ async function writeIndexKeys(
       options.client.update(
         {
           TableName: options.tableName,
-          Key: { PK: row.PK, SK: row.SK },
+          Key: rowKeyOf(row),
           UpdateExpression: 'SET #gpk = :gpk, #gsk = :gsk',
           ExpressionAttributeNames: { '#gpk': 'gsi1pk', '#gsk': 'gsi1sk' },
           ExpressionAttributeValues: { ':gpk': keys.gsi1pk, ':gsk': keys.gsi1sk },
@@ -84,7 +85,7 @@ async function writeIndexKeys(
            * the cross-partition listings read. The tool exists to give keys to
            * rows that are already there, so nothing legitimate is refused.
            */
-          ConditionExpression: 'attribute_exists(PK) AND attribute_not_exists(#gpk)',
+          ConditionExpression: `attribute_exists(${PARTITION_KEY_ATTRIBUTE}) AND attribute_not_exists(#gpk)`,
         },
         request,
       ),

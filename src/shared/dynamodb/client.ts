@@ -1,9 +1,20 @@
+/**
+ * Hides the DynamoDB client: the part of the DocumentClient this package calls,
+ * the item shapes that part speaks, and how a client this package builds bounds
+ * each request.
+ *
+ * The structural type is what lets a caller inject any DocumentClient-shaped
+ * object, and it is public; the item shapes travel through every module that
+ * reads or writes a row; the construction is the one place a request timeout
+ * and a socket timeout are set, and the one place that knows whether the
+ * adapter owns the client it holds.
+ */
+
 import { DynamoDBClient, type DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocument, type NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 
 import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_SOCKET_TIMEOUT_MS } from '../constants';
 import type { Logger } from '../logging/logger';
-import type { DynamoDBDocumentLike } from './client-types';
 
 /** A resolved DynamoDB client plus its ownership flag. */
 export interface ResolvedDynamoDBClient {
@@ -131,3 +142,49 @@ export async function warnOnStackedRetries(
     /** A client that cannot report its retry setting is left alone. */
   }
 }
+
+/**
+ * A DynamoDB item as returned/accepted by the DocumentClient. Reads that we
+ * wrote ourselves are narrowed with a single structural `as` at the mapper
+ * boundary (never `as any`/`as unknown`); untrusted shared-table scans go
+ * through `narrowStoreRecord`.
+ */
+export type DocItem = Record<string, NativeAttributeValue>;
+
+/** A BatchWriteItem PutRequest. */
+interface PutWriteRequest {
+  PutRequest: { Item: DocItem };
+}
+
+/** A BatchWriteItem DeleteRequest. */
+interface DeleteWriteRequest {
+  DeleteRequest: { Key: DocItem };
+}
+
+/** A single BatchWriteItem write request. */
+export type WriteRequest = PutWriteRequest | DeleteWriteRequest;
+
+/**
+ * The DocumentClient surface this library uses, named by shape rather than by
+ * identity. A `DynamoDBDocument` satisfies it, and so does a client built from
+ * a different copy of `@aws-sdk/lib-dynamodb`.
+ *
+ * That second case is the reason it exists. A consumer pinned to an older SDK
+ * than this package depends on gets a second, newer copy nested under the
+ * package; naming `DynamoDBDocument` in an option type would name *that* copy,
+ * and the client the consumer built is then a different type with the same
+ * name — refused at compile time for a method this library never calls, on the
+ * injection path the documentation recommends. Injection always worked at
+ * runtime; only the compiler stood in the way.
+ *
+ * The members are the eight the runtime collaborator check already requires,
+ * pinned equal to that list by a test — a client this type accepts and the
+ * constructor then rejects, or the reverse, would be worse than either rule
+ * alone. Picking them off `DynamoDBDocument` keeps each signature the SDK's
+ * own, so the internals stay exactly as type-safe as they were and the
+ * signatures cannot drift from the SDK this package installs.
+ */
+export type DynamoDBDocumentLike = Pick<
+  DynamoDBDocument,
+  'batchWrite' | 'delete' | 'get' | 'put' | 'query' | 'scan' | 'transactWrite' | 'update'
+>;

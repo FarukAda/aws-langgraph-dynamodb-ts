@@ -1,4 +1,5 @@
 import { REVISION_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
+import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { readRow, verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
 import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
@@ -40,7 +41,7 @@ export async function rowIsAbsent(
   key: { PK: string; SK: string },
 ): Promise<boolean> {
   try {
-    const row = await readRow(context, { key, attribute: 'PK' });
+    const row = await readRow(context, { key, attribute: PARTITION_KEY_ATTRIBUTE });
     return row === undefined;
   } catch {
     return false;
@@ -71,7 +72,7 @@ export async function verifyWriteLanded(
   record: { PK: string; SK: string; rev?: string },
 ): Promise<WriteVerdict> {
   const { verdict } = await verifyRow(context, {
-    key: { PK: record.PK, SK: record.SK },
+    key: rowKeyOf(record),
     kind: 'attribute',
     attribute: REVISION_ATTRIBUTE,
     expected: record.rev,

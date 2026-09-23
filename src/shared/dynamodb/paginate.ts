@@ -1,9 +1,8 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import type { DynamoDBDocumentLike } from './client-types';
+import type { DynamoDBDocumentLike, DocItem } from './client';
 import { type PaginateCoreOptions, paginatePages } from './paginate-core';
 import { withDynamoDBRetry } from './retry';
-import type { DocItem } from './types';
 
 /** Options for {@link paginateQuery}. */
 export interface PaginateOptions extends PaginateCoreOptions {

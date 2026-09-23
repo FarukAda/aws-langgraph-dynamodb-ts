@@ -2,8 +2,8 @@ import type { StoredMessage } from '@langchain/core/messages';
 
 import { type CodecDeps } from '../../shared/codec/codec';
 import { encodePayload } from '../../shared/codec/encode';
-import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
-import type { DocItem } from '../../shared/dynamodb/types';
+import type { DocItem } from '../../shared/dynamodb/client';
+import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/table-schema';
 import type { ChatMessageItem } from '../types';
 import { messageSortKey, sessionPartition } from './keys';
 import type { SessionId } from './parse';

@@ -64,7 +64,7 @@ describe('the checks', () => {
 
 describe('the source tree', () => {
   it('finds the imports to check, so a broken scan cannot pass silently', () => {
-    expect(sourceEdges().length).toBeGreaterThanOrEqual(800);
+    expect(sourceEdges().length).toBeGreaterThanOrEqual(sourceFiles().length);
   });
 
   it('places every module of src/ in a layer', () => {

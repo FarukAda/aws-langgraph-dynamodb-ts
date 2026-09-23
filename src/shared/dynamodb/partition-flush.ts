@@ -5,10 +5,9 @@ import { mapWithConcurrency } from '../concurrency';
 import { DELETE_CONCURRENCY } from '../constants';
 import type { Logger } from '../logging/logger';
 import { truncateForLog } from '../logging/truncate';
-import type { DynamoDBDocumentLike } from './client-types';
+import type { DynamoDBDocumentLike, DocItem } from './client';
 import { isConditionalCheckFailed, rejectedItem, type RevisionGuard } from './conditional-put';
 import { withDynamoDBRetry, type RetryOptions } from './retry';
-import type { DocItem } from './types';
 
 /** One row a pass has read and means to delete. */
 export interface PendingDelete {

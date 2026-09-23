@@ -1,3 +1,4 @@
+import { rowKeyOf } from '../../shared/dynamodb/table-schema';
 import {
   offloadedKey,
   type RowProbe,
@@ -18,7 +19,7 @@ function chooseProbe(meta: CheckpointMetaItem, payload: CheckpointPayloadItem): 
   const metaKey = offloadedKey(meta.metadata);
   if (metaKey !== undefined) {
     return {
-      key: { PK: meta.PK, SK: meta.SK },
+      key: rowKeyOf(meta),
       kind: 'descriptor',
       attribute: 'metadata',
       expected: metaKey,
@@ -26,7 +27,7 @@ function chooseProbe(meta: CheckpointMetaItem, payload: CheckpointPayloadItem): 
     };
   }
   return {
-    key: { PK: payload.PK, SK: payload.SK },
+    key: rowKeyOf(payload),
     kind: 'descriptor',
     attribute: 'checkpoint',
     expected: offloadedKey(payload.checkpoint),

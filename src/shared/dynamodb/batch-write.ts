@@ -2,9 +2,8 @@ import { BATCH_WRITE_MAX } from '../constants';
 import { hasErrorCode } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { batchWriteAllIncompleteError } from '../errors/errors';
-import type { DynamoDBDocumentLike } from './client-types';
+import type { DynamoDBDocumentLike, WriteRequest } from './client';
 import { DrainOptions, drainUnprocessedWrites } from './drain-unprocessed';
-import type { WriteRequest } from './types';
 
 /**
  * Write an arbitrary number of requests, chunked into batches of 25 (the

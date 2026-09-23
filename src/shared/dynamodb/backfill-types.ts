@@ -1,4 +1,4 @@
-import type { DynamoDBDocumentLike } from './client-types';
+import type { DynamoDBDocumentLike } from './client';
 import type { RetryOptions } from './retry';
 
 /** What one pass of the backfill did, and where to resume. */

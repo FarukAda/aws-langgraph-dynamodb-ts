@@ -1,3 +1,4 @@
+import { SORT_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
 import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
@@ -35,9 +36,9 @@ async function verifyChunkLanded(
   chunk: ChatMessageItem[],
 ): Promise<WriteVerdict> {
   const { verdict } = await verifyRow(context, {
-    key: { PK: chunk[0].PK, SK: chunk[0].SK },
+    key: rowKeyOf(chunk[0]),
     kind: 'attribute',
-    attribute: 'SK',
+    attribute: SORT_KEY_ATTRIBUTE,
     expected: chunk[0].SK,
   });
   return verdict;
@@ -65,7 +66,7 @@ async function commitChunk(
 }
 
 function asCommitted(chunk: ChatMessageItem[]): CommittedChunk {
-  return { keys: chunk.map((item) => ({ PK: item.PK, SK: item.SK })), count: chunk.length };
+  return { keys: chunk.map((item) => rowKeyOf(item)), count: chunk.length };
 }
 
 /**

@@ -3,7 +3,7 @@ import { marshall } from '@aws-sdk/util-dynamodb';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import type { DocItem } from '../../../../src/shared/dynamodb/types';
+import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { deleteStoreItem } from '../../../../src/store/internal/delete-item';
