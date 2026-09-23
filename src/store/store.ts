@@ -115,14 +115,16 @@ export class DynamoDBStore extends BaseStore {
    * order.
    *
    * Accepts: `operations` — an array of operation objects, in the order they
-   * are to be observed; an empty batch does nothing and returns `[]`, parsed
-   * by {@link parseOperations} before any of them runs. `get`, `put`, `delete`
-   * and `listNamespaces` parse their own call the same way and run the same
-   * dispatch, as upstream's implementations do, so the field a malformed call
-   * names is the same whichever of the five reached it — `put` alone adds
-   * upstream's own `.` and `"langgraph"` namespace rules. Each of the four
-   * keeps its own name in `context.operation`, so a failure says which method
-   * the caller called rather than reporting all five alike.
+   * are to be observed; an empty batch does nothing and returns `[]`. Every
+   * operation is checked before any of them runs. A put carrying a `null`
+   * value deletes its item. `get`, `put`, `delete` and `listNamespaces` check
+   * their own call by the same rules and run the same dispatch, as upstream's
+   * implementations do, so the field a malformed call names is the same
+   * whichever of the five reached it — `put` alone adds what is about the
+   * method: upstream's own `.` and `"langgraph"` namespace rules, and a refusal
+   * of a `null` value, since `delete` is how an item is removed. Each of the
+   * four keeps its own name in `context.operation`, so a failure says which
+   * method the caller called rather than reporting all five alike.
    *
    * Returns: the results in operation order — an item or `null` for a get,
    * matches for a search, namespaces for a listing, `null` for a put or a

@@ -86,11 +86,14 @@ function parseLabels(value: unknown, field: string): string[] {
 /**
  * Parse a namespace prefix.
  *
- * Accepts: `value` — anything; an array of labels, possibly empty. `field` —
- * the argument the caller set (`namespacePrefix`, or `prefix`/`suffix` for a
- * match condition's path), named on a refusal.
+ * Accepts: `value` — anything; an array of labels a namespace can hold,
+ * possibly empty, which spans every namespace. `field` — the argument the
+ * caller set (`namespacePrefix`, or `prefix`/`suffix` for a match condition's
+ * path), named on a refusal.
  *
- * Returns: a copy of the labels, as a {@link NamespacePrefix}.
+ * Returns: a copy of the labels, as a {@link NamespacePrefix}. A prefix no
+ * stored namespace could ever match is refused rather than answered with a
+ * silent empty page.
  *
  * Throws: `VALIDATION` naming `field` for a non-array, or `<field> element` for
  * a malformed label.

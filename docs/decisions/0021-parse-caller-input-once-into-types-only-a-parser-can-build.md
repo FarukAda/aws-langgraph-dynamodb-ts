@@ -10,18 +10,17 @@ Every public method takes values a typed caller could not get wrong and an
 untyped one can: a `RunnableConfig` whose `configurable` is typed
 `Record<string, any>` upstream, a session id, a store namespace and key, a
 batch of operations, a list of pending writes. They were checked by functions
-that returned nothing — fifty-four exported `validate*` and `assert*`
+that returned nothing — fifty-five exported `validate*` and `assert*`
 functions — which left a checked value indistinguishable from an unchecked one.
 
 That had three costs, all visible in the code. The same value was checked
 again wherever a later function could not tell it had been: a store `put` checked
-its namespace and key three times on one call, a search its prefix twice, a
-session id was checked by each of five history actions and again by the session
-adapter, and `store.ts` re-derived an operation's kind from its shape after the
-batch check had already done so. Some checks ran in the middle of processing
-instead of before it: a `putWrites` call checked its channel names and its
-composed sort-key length inside the encode loop, after earlier writes of the same
-call had been serialized and uploaded. And because the checked value kept its
+its namespace and key three times on one call, a search its prefix twice, and
+`store.ts` re-derived an operation's kind from its shape after the batch check
+had already done so. Some checks ran in the middle of processing instead of
+before it: a `putWrites` call checked its composed sort-key length inside the
+encode loop, after earlier writes of the same call had been serialized and
+uploaded. And because the checked value kept its
 loose type, functions downstream took it loose too: a thread, namespace and
 checkpoint travelled as three positional strings through the write path, and
 `buildWriteItems` took nine parameters.

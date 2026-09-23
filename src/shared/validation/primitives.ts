@@ -218,10 +218,12 @@ function hasControlChar(value: string): boolean {
 /**
  * Throw `VALIDATION` unless `value` is free of control characters.
  *
- * Accepts: `value` — any type, non-strings rejected first. Rejected code points
- * are C0 (`U+0000`–`U+001F`), DEL (`U+007F`) and C1 (`U+0080`–`U+009F`). The
- * rule is {@link parseString}'s; this form is for a value the caller keeps
- * under its declared type.
+ * Accepts: `value` — any type, non-strings rejected first by
+ * {@link parseString}. Rejected code points are C0 (`U+0000`–`U+001F`), DEL
+ * (`U+007F`) and C1 (`U+0080`–`U+009F`). The rule is this function's own:
+ * {@link parseKeySegment} applies it to every key segment and identifier by
+ * calling this one, and this form serves a value the caller keeps under its
+ * declared type.
  *
  * Returns: nothing: the value is kept under its declared type, and this
  * checks it.
@@ -245,8 +247,10 @@ export function assertNoControlChars(value: string, field: string): void {
  * Throw `VALIDATION` unless every surrogate in `value` is part of a
  * pair.
  *
- * Accepts: `value` — any type, non-strings rejected first. The rule is
- * {@link parseString}'s; this form is for a value the caller keeps under its
+ * Accepts: `value` — any type, non-strings rejected first by
+ * {@link parseString}. The rule is this function's own:
+ * {@link parseKeySegment} applies it to every key segment and identifier by
+ * calling this one, and this form serves a value the caller keeps under its
  * declared type.
  *
  * Returns: nothing: the value is kept under its declared type, and this
