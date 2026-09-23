@@ -12,7 +12,7 @@ import { failureLabel } from '../../shared/errors/base-error';
 import { toError } from '../../shared/errors/to-error';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';
-import { readWindow } from '../internal/message-window';
+import { readWindow } from '../internal/message-read';
 import { parseGetMessagesRequest, type SessionId } from '../internal/parse';
 import type { ChatMessageItem } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';

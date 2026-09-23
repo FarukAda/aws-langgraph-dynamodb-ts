@@ -1,13 +1,13 @@
 import * as ts from 'typescript';
 
 /**
- * The one file allowed to write a row inside the chat-history adapter. Every
- * message row is written by that file's transaction, which carries the
- * session-metadata update beside it — the property the delete side pins on:
- * the SESSION row's `writeId` changes **if and only if** a message row was
- * added.
+ * The one file allowed to write a row inside the chat-history adapter: the
+ * append. Every message row is written by that file's transaction, which
+ * carries the session-metadata update beside it — the property the delete side
+ * pins on: the SESSION row's `writeId` changes **if and only if** a message row
+ * was added.
  */
-export const MESSAGE_PUT_OWNER = 'history/internal/message-transaction.ts';
+export const MESSAGE_PUT_OWNER = 'history/internal/append.ts';
 
 /** A source file as this guard reads it: a repository-relative path and its text. */
 export interface ScannedFile {

@@ -21,7 +21,7 @@ import {
   parseString,
 } from '../../shared/validation/primitives';
 import type { GetMessagesOptions, ListSessionsOptions, MessageWindow } from '../types';
-import { GET_MESSAGES_KEYS, LIST_SESSIONS_KEYS } from './option-keys';
+import { GET_MESSAGES_KEYS, LIST_SESSIONS_KEYS } from './setup';
 
 declare const sessionIdBrand: unique symbol;
 declare const storableMessagesBrand: unique symbol;

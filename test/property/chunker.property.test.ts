@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 
-import { chunkBySize, estimateItemBytes } from '../../src/history/internal/message-chunker';
+import { chunkBySize, estimateItemBytes } from '../../src/history/internal/append';
 import type { ChatMessageItem } from '../../src/history/internal/rows';
 import { PayloadLocation } from '../../src/shared/codec/codec';
 

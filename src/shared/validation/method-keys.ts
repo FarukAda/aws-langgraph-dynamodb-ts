@@ -5,8 +5,8 @@ import { allKeysOf, assertShape } from './option-shape';
 /**
  * The keys of a cancellation-only option bag, exhaustive in both directions.
  *
- * Every feature's own option-bag lists live in that feature's
- * `internal/option-keys.ts`, beside the types they are checked against;
+ * Every feature's own option-bag lists live in that feature's `internal/`
+ * directory, beside the types they are checked against;
  * `shared/` knows no feature. This one stays here because `CancelOptions` is
  * shared by all three. `allKeysOf<T>` keeps the list from drifting from the
  * type it guards: an exhaustive list compiles, omitting or inventing a key

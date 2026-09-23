@@ -1,6 +1,6 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
-import { readWindow } from '../../../../src/history/internal/message-window';
+import { readWindow } from '../../../../src/history/internal/message-read';
 import { parseMessageWindow, parseSessionId } from '../../../../src/history/internal/parse';
 import {
   isHistorySortKey,

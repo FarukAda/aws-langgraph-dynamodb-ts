@@ -1,72 +1,10 @@
 import type { BaseMessage } from '@langchain/core/messages';
 
-import { nowIso } from '../../shared/clock';
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
-import { appendChunks } from '../internal/append-saga';
-import { chunkBySize } from '../internal/message-chunker';
-import {
-  parseMessages,
-  parseSessionId,
-  type SessionId,
-  type StorableMessages,
-} from '../internal/parse';
-import { buildMessageItem, type ChatMessageItem } from '../internal/rows';
-import { deriveTitle, resolveTtlAnchor } from '../internal/session';
+import { appendMessages } from '../internal/append';
+import { parseMessages, parseSessionId } from '../internal/parse';
+import { resolveTtlAnchor } from '../internal/session';
 import type { HistoryContext } from '../internal/setup';
-
-/** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
-const MAX_MESSAGES_PER_TRANSACTION = 99;
-
-/**
- * Aggregate byte budget per transaction. Held ~500 KB below DynamoDB's 4 MB
- * `TransactWriteItems` ceiling so the conservative per-item estimate (see
- * `ITEM_OVERHEAD_BYTES`) cannot push a chunk over the real limit at commit time.
- */
-const MAX_TRANSACTION_BYTES = 3_500_000;
-
-/**
- * Encode every message, cleaning up after itself if one fails partway.
- *
- * Offloaded messages upload sequentially here, *before* the append saga's
- * compensation machinery is ever reached, so a failure on message N used to
- * strand messages 1..N-1's already-uploaded S3 objects with no cleanup path —
- * the one gap in this subsystem's otherwise complete no-orphan guarantee.
- * Nothing will ever reference those objects, so they are safe to delete
- * unconditionally on the way out.
- */
-async function buildItems(
-  context: HistoryContext,
-  sessionId: SessionId,
-  stored: StorableMessages,
-  ttlTimestamp: number | undefined,
-  signal: AbortSignal | undefined,
-): Promise<ChatMessageItem[]> {
-  const items: ChatMessageItem[] = [];
-  try {
-    for (const message of stored) {
-      items.push(
-        await buildMessageItem(
-          context,
-          { sessionId, messageId: context.ulid(), message, ttlTimestamp },
-          signal,
-        ),
-      );
-    }
-  } catch (error) {
-    if (context.offloader) {
-      await cleanUpS3Orphans(
-        context.offloader,
-        collectS3Keys(items.map((item) => item.message)),
-        'history.addMessages.encode',
-        context.logger,
-      );
-    }
-    throw error;
-  }
-  return items;
-}
 
 /**
  * Append messages as one item per message. Each chunk writes its message Puts
@@ -110,18 +48,5 @@ export async function addMessages(
   const anchor = context.ttl
     ? await resolveTtlAnchor(context, session, calculateTtlTimestamp(context.ttl), signal)
     : undefined;
-  const items = await buildItems(context, session, stored, anchor?.ttlTimestamp, signal);
-  const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
-  await appendChunks(
-    context,
-    session,
-    chunks,
-    {
-      now: nowIso(),
-      title: deriveTitle(stored),
-      ttlTimestamp: anchor?.ttlTimestamp,
-      forceTtlRefresh: anchor?.refresh,
-    },
-    signal,
-  );
+  await appendMessages(context, { sessionId: session, messages: stored, anchor, signal });
 }

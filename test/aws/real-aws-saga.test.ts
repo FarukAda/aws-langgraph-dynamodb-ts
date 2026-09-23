@@ -9,7 +9,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
-import { appendChunks } from '../../src/history/internal/append-saga';
+import { appendChunks } from '../../src/history/internal/append';
 import { parseSessionId } from '../../src/history/internal/parse';
 import {
   type ChatMessageItem,
@@ -125,7 +125,7 @@ describe('append saga unrecoverable rollback against real AWS', () => {
     const chunks = [[messageItem('chunk1')], [messageItem('chunk2')]];
 
     await expect(
-      appendChunks(wrappedContext(), SESSION_ID, chunks, { now: 'now' }),
+      appendChunks(wrappedContext(), { sessionId: SESSION_ID, chunks, fields: { now: 'now' } }),
     ).rejects.toEqual(
       expect.objectContaining({
         name: 'DynamoDBLangGraphError',
@@ -143,9 +143,11 @@ describe('append saga unrecoverable rollback against real AWS', () => {
     transactCalls = 0;
     const chunks = [[messageItem('again1')], [messageItem('again2')]];
 
-    const error = (await appendChunks(wrappedContext(), SESSION_ID, chunks, { now: 'now' }).catch(
-      (caught: RaisedCompensation) => caught,
-    )) as RaisedCompensation;
+    const error = (await appendChunks(wrappedContext(), {
+      sessionId: SESSION_ID,
+      chunks,
+      fields: { now: 'now' },
+    }).catch((caught: RaisedCompensation) => caught)) as RaisedCompensation;
 
     expect(error.cause?.message).toBe('chunk-2 transaction failed');
     // rollbackCommitted's batchWriteAll attempts every chunk and reports an

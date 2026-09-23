@@ -1,6 +1,6 @@
 import { BatchWriteCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
-import { compensate } from '../../../../src/history/internal/compensation';
+import { compensate } from '../../../../src/history/internal/append';
 import { parseSessionId } from '../../../../src/history/internal/parse';
 import type { ChatMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
@@ -75,13 +75,8 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { offloader: spy.offloader as never }),
-        SESSION_ID,
-        chunks,
-        [],
-        trigger,
-        'now',
-        undefined,
-        false,
+        { sessionId: SESSION_ID, chunks, fields: { now: 'now', title: undefined } },
+        { committed: [], trigger, uncertain: false },
       ),
     ).rejects.toBe(trigger);
     expect(spy.deleted).toEqual(['history/s1/a/k.bin', 'history/s1/b/k.bin']);
@@ -96,13 +91,8 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { offloader: spy.offloader as never }),
-        SESSION_ID,
-        chunks,
-        [],
-        trigger,
-        'now',
-        undefined,
-        true,
+        { sessionId: SESSION_ID, chunks, fields: { now: 'now', title: undefined } },
+        { committed: [], trigger, uncertain: true },
       ),
     ).rejects.toBe(trigger);
     expect(spy.deleted).toEqual(['history/s1/b/k.bin', 'history/s1/c/k.bin']);
@@ -118,13 +108,8 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { offloader: spy.offloader as never }),
-        SESSION_ID,
-        chunks,
-        committed,
-        trigger,
-        'now',
-        undefined,
-        false,
+        { sessionId: SESSION_ID, chunks, fields: { now: 'now', title: undefined } },
+        { committed, trigger, uncertain: false },
       ),
     ).rejects.toBe(trigger);
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
@@ -142,13 +127,8 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { offloader: spy.offloader as never }),
-        SESSION_ID,
-        chunks,
-        committed,
-        trigger,
-        'now',
-        undefined,
-        false,
+        { sessionId: SESSION_ID, chunks, fields: { now: 'now', title: undefined } },
+        { committed, trigger, uncertain: false },
       ),
     ).rejects.toMatchObject({ code: ErrorCode.COMPENSATION_FAILED });
     expect(spy.deleted).not.toContain('history/s1/a/k.bin');
@@ -170,13 +150,12 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { offloader: spy.offloader as never, logger: throwingLogger() }),
-        SESSION_ID,
-        [[item('a')], [item('b')]],
-        committed,
-        trigger,
-        'now',
-        undefined,
-        false,
+        {
+          sessionId: SESSION_ID,
+          chunks: [[item('a')], [item('b')]],
+          fields: { now: 'now', title: undefined },
+        },
+        { committed, trigger, uncertain: false },
       ),
     ).rejects.toBe(trigger);
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(1);
@@ -192,13 +171,8 @@ describe('compensate', () => {
     await expect(
       compensate(
         context(client, { logger: throwingLogger() }),
-        SESSION_ID,
-        [[item('a')]],
-        committed,
-        trigger,
-        'now',
-        undefined,
-        false,
+        { sessionId: SESSION_ID, chunks: [[item('a')]], fields: { now: 'now', title: undefined } },
+        { committed, trigger, uncertain: false },
       ),
     ).rejects.toMatchObject({ code: ErrorCode.COMPENSATION_FAILED });
   });
@@ -207,7 +181,11 @@ describe('compensate', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
     await expect(
-      compensate(context(client), SESSION_ID, [[item('a')]], [], trigger, 'now', undefined, false),
+      compensate(
+        context(client),
+        { sessionId: SESSION_ID, chunks: [[item('a')]], fields: { now: 'now', title: undefined } },
+        { committed: [], trigger, uncertain: false },
+      ),
     ).rejects.toBe(trigger);
   });
 });

@@ -34,7 +34,7 @@ import { classifyAwsError } from '../../shared/errors/classify';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { conflictError } from '../../shared/errors/errors';
 import type { SessionMetadata } from '../types';
-import { countLiveMessages } from './message-count';
+import { countLiveMessages } from './message-read';
 import type { SessionId } from './parse';
 import { SESSION_SORT_KEY, sessionPartition, sessionRowKey } from './rows';
 import type { HistoryContext } from './setup';
@@ -267,7 +267,7 @@ export interface SessionUpdateFields {
  * being permanently blocked by `if_not_exists`. When forceTtlRefresh is set,
  * the SET is additionally guarded by a ConditionExpression so a concurrent
  * caller's already-healed anchor can never be regressed backward — see
- * message-transaction.ts for how a lost race is retried without forcing.
+ * append.ts for how a lost race is retried without forcing.
  *
  * Accepts: `count` — how many messages this append adds, which `ADD` applies to
  * whatever the row holds, so two concurrent appends both count. `title` —

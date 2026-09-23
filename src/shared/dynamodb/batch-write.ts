@@ -26,7 +26,7 @@ import { DrainOptions, drainUnprocessedWrites } from './drain-unprocessed';
  * what the cancel asked for. Otherwise `BATCH_WRITE_INCOMPLETE`,
  * once every chunk has been attempted, reporting how many chunks succeeded and
  * how many individual writes persisted. Its one caller — the rollback in
- * history/internal/compensation.ts — type-asserts a caught error straight to
+ * history/internal/append.ts — type-asserts a caught error straight to
  * its code's details (not `instanceof`, banned repo-wide) instead of
  * narrowing it, on the narrower guarantee that it passes no signal, so the
  * abort path cannot arise there; a call site that does pass one must narrow

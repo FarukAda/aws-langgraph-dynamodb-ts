@@ -1,3 +1,13 @@
+/**
+ * Hides which options the history and its methods accept, and how the history
+ * is assembled from them.
+ *
+ * The exhaustive key list of every option bag — the constructor's,
+ * `getMessages`', `listSessions`' — lives here, compiler-checked against its
+ * type, beside the code that resolves the constructor's options into the
+ * context every action receives.
+ */
+
 import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
@@ -18,11 +28,54 @@ import { validationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
 import { assertBaseCollaborators } from '../../shared/validation/collaborators';
-import { assertShape } from '../../shared/validation/option-shape';
+import { allKeysOf, assertShape } from '../../shared/validation/option-shape';
 import { assertBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
-import type { CorruptMessagePolicy, DynamoDBChatMessageHistoryOptions } from '../types';
-import { HISTORY_KEYS } from './option-keys';
+import type {
+  CorruptMessagePolicy,
+  DynamoDBChatMessageHistoryOptions,
+  GetMessagesOptions,
+  ListSessionsOptions,
+} from '../types';
+
+/**
+ * The keys of each chat-history option bag, exhaustive in both directions:
+ * `allKeysOf<T>` makes omitting or inventing one a compile error, so a list
+ * cannot rot away from the type it guards. They live with the feature because
+ * the types they are checked against do; `shared/` knows no feature.
+ */
+export const HISTORY_KEYS = allKeysOf<DynamoDBChatMessageHistoryOptions>({
+  tableName: 'tableName',
+  client: 'client',
+  clientConfig: 'clientConfig',
+  createClient: 'createClient',
+  ttl: 'ttl',
+  logger: 'logger',
+  retry: 'retry',
+  indexShards: 'indexShards',
+  indexName: 'indexName',
+  readConcurrency: 'readConcurrency',
+  compression: 'compression',
+  s3: 's3',
+  serde: 'serde',
+  onCorruptMessage: 'onCorruptMessage',
+});
+
+/** See {@link HISTORY_KEYS}. */
+export const GET_MESSAGES_KEYS = allKeysOf<GetMessagesOptions>({
+  limit: 'limit',
+  before: 'before',
+  signal: 'signal',
+});
+
+/** See {@link HISTORY_KEYS}. */
+export const LIST_SESSIONS_KEYS = allKeysOf<ListSessionsOptions>({
+  limit: 'limit',
+  cursor: 'cursor',
+  maxIterations: 'maxIterations',
+  maxItems: 'maxItems',
+  signal: 'signal',
+});
 
 const CORRUPT_MESSAGE_POLICIES: readonly CorruptMessagePolicy[] = ['skip', 'throw'];
 

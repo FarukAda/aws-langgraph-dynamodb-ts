@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 
-import { estimateItemBytes } from '../../src/history/internal/message-chunker';
+import { estimateItemBytes } from '../../src/history/internal/append';
 import {
   type ChatMessageItem,
   messageSortKey,
