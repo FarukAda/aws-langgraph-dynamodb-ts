@@ -52,7 +52,7 @@
     "test:scripts": "node --test \"test/scripts/**/*.test.mjs\"",
     "test:package-smoke": "node --test test/package-smoke/smoke.test.mjs",
     "test:consumer-types": "node --test test/package-smoke/consumer-types.test.mjs",
-    "test:surface": "node --test test/surface/surface.test.mjs",
+    "test:surface": "node scripts/run-with-timeout.mjs 150 -- node --test --test-timeout=120000 test/surface/surface.test.mjs",
     "test:surface:update": "node scripts/update-surface-baseline.mjs",
     "prepublishOnly": "npm run typecheck && npm run typecheck:all && npm run lint && npm run build && npm test",
     "docs": "typedoc",

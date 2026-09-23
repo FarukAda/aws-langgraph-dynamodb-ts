@@ -49,8 +49,39 @@ export function retainedStubCount() {
   return sinon.getFakes().length + (sandbox === null ? 0 : sandbox.getFakes().length);
 }
 
+/**
+ * Fixed, fake identity for every client `docMock()`/`rowMock()` build. A bare
+ * `new DynamoDBClient({ region })` starts the SDK's default provider chain,
+ * which reads `~/.aws/config` and `~/.aws/credentials` off disk as soon as the
+ * client is constructed — not lazily on first send. Nothing here ever signs a
+ * real request (`send` is stubbed below), so a real identity was never needed;
+ * a static one removes that disk I/O, which used to still be pending when the
+ * last test of a run ended.
+ */
+const REGION = 'us-east-1';
+const CREDENTIALS = { accessKeyId: 'fake-access-key-id', secretAccessKey: 'fake-secret-access-key' };
+
+/**
+ * The one low-level client every `docMock()`/`rowMock()` call of a
+ * `collectRows()` pass wraps, instead of each building its own. `fuzzConstructors`
+ * alone calls one or the other roughly 200 times, and each `new DynamoDBClient(...)`
+ * carries its own ~200 KB of resolved config and middleware — reused here since
+ * `DynamoDBDocument.from()` still returns a distinct wrapper object per call (see
+ * below), so the per-case stub isolation `mockClient` relies on is unaffected.
+ * Set at the start of `collectRows()` and destroyed in its `finally`.
+ */
+let sharedClient = null;
+
+/**
+ * A fresh wrapper is still built per mock, not the shared client itself:
+ * `mockClient` stubs `send` as an own property of the instance it is given
+ * (`sinon.stub(instance, 'send')`), so two mocks sharing one instance would
+ * overwrite each other's stubbed behaviour. `DynamoDBDocument.from()` returns
+ * a new object each call even when the low-level client underneath is the
+ * same one, which is what keeps every case's mock independent of the others.
+ */
 function docMock() {
-  const client = ddb.DynamoDBDocument.from(new DynamoDBClient({ region: 'us-east-1' }));
+  const client = ddb.DynamoDBDocument.from(sharedClient);
   const mock = mockClient(client);
   mock.rejects(new Error('unstubbed write')); mock.on(GetCommand).resolves({}); mock.on(QueryCommand).resolves({ Items: [] }); mock.on(ScanCommand).resolves({ Items: [] }); mock.on(BatchGetCommand).resolves({ Responses: {} });
   return client;
@@ -74,7 +105,7 @@ function docMock() {
  * would prove only that this mock and the code disagree.
  */
 function rowMock(served) {
-  const client = ddb.DynamoDBDocument.from(new DynamoDBClient({ region: 'us-east-1' }));
+  const client = ddb.DynamoDBDocument.from(sharedClient);
   const mock = mockClient(client);
   const selected = (input) => {
     const values = input.ExpressionAttributeValues || {};
@@ -506,6 +537,7 @@ function fuzzErrors() {
 export async function collectRows() {
   rows.length = 0;
   sandbox = sinon.createSandbox();
+  sharedClient = new DynamoDBClient({ region: REGION, credentials: CREDENTIALS });
   try {
     fuzzConstructors();
     await fuzzSaver();
@@ -522,6 +554,8 @@ export async function collectRows() {
   } finally {
     sandbox.restore();
     sandbox = null;
+    sharedClient.destroy();
+    sharedClient = null;
   }
   return rows.map((row) => [...row]);
 }
