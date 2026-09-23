@@ -116,6 +116,11 @@ export const AWS_ERROR_CODES: Readonly<Record<string, ErrorCode>> = {
   /** Its reasons are read first; this is the answer when they settle nothing. */
   TransactionCanceledException: ErrorCode.AWS_REQUEST_FAILED,
 
+  /**
+   * Read by name, not from the caller's signal: a collaborator — a
+   * `vectorBackend`, `index.embeddings` — rejecting with an `AbortError` from
+   * its own timeout is `ABORTED` too, even when the caller's signal never fired.
+   */
   AbortError: ErrorCode.ABORTED,
 };
 
@@ -129,8 +134,11 @@ const RETRYABLE_CODES: readonly ErrorCode[] = [
 /**
  * The retry layer's default tokens: every name {@link AWS_ERROR_CODES} maps to
  * a retryable code, and the network codes. Derived rather than listed, so the
- * retry layer and the code a caller sees cannot disagree about what is
- * transient.
+ * retry layer and the code a caller sees share one list of transient names.
+ * They differ at two edges: the retry layer also retries on the SDK's
+ * `$retryable` trait, which {@link classifyAwsError} does not read, and it
+ * walks the cause chain matching `errno` and `syscall` too, where the
+ * classifier reads one error's `name`, `code` and status.
  */
 export const DEFAULT_RETRYABLE_ERRORS: readonly string[] = [
   ...Object.entries(AWS_ERROR_CODES)
@@ -250,5 +258,25 @@ export function awsDiagnostics(
 export function isMissingObject(error: Error): boolean {
   return (
     typeof error === 'object' && error !== null && (error as AwsErrorFields).name === 'NoSuchKey'
+  );
+}
+
+/**
+ * Whether reading a bucket's lifecycle configuration failed because the bucket
+ * has none.
+ *
+ * Accepts: anything a `catch` can bind.
+ *
+ * Returns: true for `NoSuchLifecycleConfiguration` only. `NOT_FOUND` also
+ * covers a missing bucket, table or object; reading one of those as "no rules
+ * yet" would start a rule set for a bucket that is not there.
+ *
+ * Throws: nothing, for any value.
+ */
+export function isMissingLifecycleConfiguration(error: Error): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as AwsErrorFields).name === 'NoSuchLifecycleConfiguration'
   );
 }

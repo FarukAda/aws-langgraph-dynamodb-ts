@@ -3,6 +3,7 @@ import {
   awsDiagnostics,
   classifyAwsError,
   DEFAULT_RETRYABLE_ERRORS,
+  isMissingLifecycleConfiguration,
   isMissingObject,
 } from '../../../../src/shared/errors/classify';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -138,6 +139,17 @@ describe('isMissingObject', () => {
     expect(isMissingObject(sdkError('NoSuchKey'))).toBe(true);
     expect(isMissingObject(sdkError('NoSuchBucket'))).toBe(false);
     expect(isMissingObject(null as never)).toBe(false);
+  });
+});
+
+describe('isMissingLifecycleConfiguration', () => {
+  it('is NoSuchLifecycleConfiguration and no other NOT_FOUND name', () => {
+    expect(isMissingLifecycleConfiguration(sdkError('NoSuchLifecycleConfiguration'))).toBe(true);
+    for (const name of ['NoSuchBucket', 'ResourceNotFoundException', 'NoSuchKey']) {
+      expect(classifyAwsError(sdkError(name))).toBe(ErrorCode.NOT_FOUND);
+      expect(isMissingLifecycleConfiguration(sdkError(name))).toBe(false);
+    }
+    expect(isMissingLifecycleConfiguration(null as never)).toBe(false);
   });
 });
 
