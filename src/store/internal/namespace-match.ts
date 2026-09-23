@@ -32,7 +32,7 @@ export function matchNamespace(namespace: string[], condition: MatchCondition): 
  * Cap a namespace to at most `maxDepth` elements.
  *
  * Accepts: `maxDepth` — absent returns the namespace unchanged; otherwise a
- * validated positive integer (see `validateMaxDepth` for what a negative or
+ * parsed positive integer (see `parseListOperation` for what a negative or
  * zero value did here).
  *
  * Returns: the namespace, truncated from the end; shorter than `maxDepth` is

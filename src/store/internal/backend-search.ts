@@ -136,8 +136,8 @@ async function fetchUnseen(
 /**
  * Rank a search through a configured vector backend.
  *
- * Accepts: `op.query` — non-empty; the caller checks that before choosing this
- * path. `search.offset`/`search.limit` — the page, whose end (`offset + limit`)
+ * Accepts: `search.query` — non-empty; the caller checks that before choosing
+ * this path. `search.offset`/`search.limit` — the page, whose end (`offset + limit`)
  * must fit within `maxSearchCandidates`, since that many matches have to be
  * fetched to fill it. `search.filter` — applied to the canonical item, not to
  * whatever the backend stored, so a filter is never answered from a stale

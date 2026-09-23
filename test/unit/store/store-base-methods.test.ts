@@ -94,6 +94,7 @@ const REFUSED: [string, Call, string][] = [
   ['a separator in a suffix label', (s) => s.listNamespaces({ suffix: ['a#b'] }), 'suffix element'],
   ['listNamespaces with limit -1', (s) => s.listNamespaces({ limit: -1 }), 'limit'],
   ['listNamespaces with maxDepth 0', (s) => s.listNamespaces({ maxDepth: 0 }), 'maxDepth'],
+  ['listNamespaces with offset -1', (s) => s.listNamespaces({ offset: -1 }), 'offset'],
   ['search with a string prefix', (s) => s.search('x' as never), 'namespacePrefix'],
   ['search with a null prefix', (s) => s.search(null as never), 'namespacePrefix'],
   ['search with a number label', (s) => s.search([123 as never]), 'namespacePrefix element'],
@@ -105,6 +106,8 @@ const REFUSED: [string, Call, string][] = [
     (s) => s.search(['a#b'], null as never),
     'namespacePrefix element',
   ],
+  ['search with limit -1', (s) => s.search(['ns'], { limit: -1 }), 'limit'],
+  ['search with a non-integer offset', (s) => s.search(['ns'], { offset: 2.5 }), 'offset'],
   ['reconcileVectorIndex with no prefix', (s) => s.reconcileVectorIndex([]), 'namespacePrefix'],
   [
     'reconcileVectorIndex with a separator label',

@@ -348,7 +348,7 @@ export const MAX_LOGGED_VALUE_CHARS = 256;
  * states the depth it really had, so a deeper one is cut without being
  * misreported.
  *
- * A `namespace` and `key` pair that passed `validateStoreKey` needs none of
+ * A `namespace` and `key` pair that passed `parseStoreAddress` needs none of
  * this and goes in whole: that check measures the sort key they *compose*, so
  * it bounds how many labels there are as well as how long each one is. A
  * search or listing **prefix** passes no such check — nothing composes it into

@@ -33,7 +33,7 @@ describe('parsePutArguments', () => {
   });
 
   /**
-   * `assertPutArguments` used to leave a non-object, non-null value to the
+   * The retired put-argument check left a non-object, non-null value to the
    * shared check `batch()` (and so `store.put`, which routed through it) ran
    * next — a value such as a bare string reached `store.put` unrefused here
    * and was refused one step later. `parsePutArguments` is now that one step:
@@ -84,10 +84,11 @@ describe('parseListNamespacesOptions', () => {
   });
 
   /**
-   * `listNamespacesOperation` used to pass every field on to the listing
-   * action untouched, including a malformed `prefix`/`maxDepth`/`limit`/
-   * `offset`, for it to refuse. `parseListNamespacesOptions` now refuses them
-   * itself, in the same order `parseListOperation`'s own tests pin.
+   * The retired options-to-operation builder used to pass every field on to
+   * the listing action untouched, including a malformed `prefix`/`maxDepth`/
+   * `limit`/`offset`, for it to refuse. `parseListNamespacesOptions` now
+   * refuses them itself, in the same order `parseListOperation`'s own tests
+   * pin.
    */
   it('refuses malformed paths, maxDepth, limit and offset itself now, rather than deferring them', () => {
     expect(() => parseListNamespacesOptions({ prefix: null as never })).toThrow(refusal('prefix'));
