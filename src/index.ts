@@ -3,8 +3,12 @@ export type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './checkpo
 export { DynamoDBStore } from './store/store';
 export type { DynamoDBStoreOptions, ListNamespacesOptions, SearchOptions } from './store/types';
 export type { VectorReconcileResult } from './store/actions/reconcile-vector-index';
-export type { VectorBackend, VectorMatch, VectorRef } from './store/vector-backend';
-export type { VectorScoreDirection } from './store/internal/score-direction';
+export type {
+  VectorBackend,
+  VectorMatch,
+  VectorRef,
+  VectorScoreDirection,
+} from './store/vector-backend';
 export { DynamoDBChatMessageHistory } from './history/chat-message-history';
 export { DynamoDBSessionChatMessageHistory } from './history/session-adapter';
 export type { AdapterWindow, SessionBackend } from './history/session-adapter';

@@ -7,7 +7,7 @@ import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { getItem } from '../../../../src/store/actions/get';
+import { getItem } from '../../../../src/store/internal/get-item';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

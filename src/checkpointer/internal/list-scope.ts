@@ -3,7 +3,6 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { compareSortKeys } from '../../shared/dynamodb/sort-key-order';
-import { SAVER_LIST_KEYS } from '../../shared/validation/method-keys';
 import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
 import { validateLimit } from '../../shared/validation/primitives';
 import type { CheckpointMetaItem } from '../types';
@@ -23,6 +22,7 @@ import {
   metaSortKeyPrefix,
   partitionKey,
 } from './keys';
+import { SAVER_LIST_KEYS } from './option-keys';
 import { beginsWithQuery } from './query';
 import type { CheckpointerContext } from './setup';
 import { validateCheckpointId } from './validation';

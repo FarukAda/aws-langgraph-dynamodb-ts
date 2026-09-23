@@ -11,12 +11,12 @@ import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
-import { SAVER_KEYS } from '../../shared/validation/adapter-keys';
 import { assertBaseCollaborators } from '../../shared/validation/collaborators';
 import { assertShape } from '../../shared/validation/option-shape';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBSaverOptions } from '../types';
+import { SAVER_KEYS } from './option-keys';
 
 /** Resolved collaborators shared by every checkpointer action. */
 export interface CheckpointerContext {

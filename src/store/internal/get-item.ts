@@ -7,11 +7,11 @@ import { isMissingObjectError } from '../../shared/codec/payload-loss';
 import { isExpiredRow } from '../../shared/dynamodb/expiry';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { narrowWholeRecord, readStoreItem } from '../internal/item-mapper';
-import { partitionKey, sortKey } from '../internal/keys';
-import type { StoreContext } from '../internal/setup';
-import { validateStoreKey } from '../internal/validation';
 import type { StoreItemRecord } from '../types';
+import { narrowWholeRecord, readStoreItem } from './item-mapper';
+import { partitionKey, sortKey } from './keys';
+import type { StoreContext } from './setup';
+import { validateStoreKey } from './validation';
 
 /**
  * Read the row strongly consistently and narrow it rather than cast. A

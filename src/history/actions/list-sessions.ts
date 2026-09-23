@@ -9,10 +9,10 @@ import { paginateScan } from '../../shared/dynamodb/scan';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { validationError } from '../../shared/errors/errors';
 import { assertSignalLike } from '../../shared/validation/collaborators';
-import { LIST_SESSIONS_KEYS } from '../../shared/validation/method-keys';
 import { assertShape } from '../../shared/validation/option-shape';
 import { validateInteger, validateLimit } from '../../shared/validation/primitives';
 import { SESSION_SORT_KEY, historyPartitionPrefix, sessionPartition } from '../internal/keys';
+import { LIST_SESSIONS_KEYS } from '../internal/option-keys';
 import type { HistoryContext } from '../internal/setup';
 import type { ChatSessionItem, ListSessionsOptions, SessionMetadata, SessionPage } from '../types';
 

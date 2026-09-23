@@ -6,8 +6,7 @@ import type {
 
 import type { PayloadDescriptor } from '../shared/codec/codec';
 import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';
-import type { VectorScoreDirection } from './internal/score-direction';
-import type { VectorBackend } from './vector-backend';
+import type { VectorBackend, VectorScoreDirection } from './vector-backend';
 
 /** Options for {@link DynamoDBStore}. */
 export type DynamoDBStoreOptions = BaseAdapterOptions &

@@ -1,22 +1,9 @@
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import {
-  assertCancelOptions,
-  CANCEL_KEYS,
-  GET_MESSAGES_KEYS,
-  LIST_SESSIONS_KEYS,
-  SAVER_LIST_KEYS,
-  STORE_LIST_NAMESPACES_KEYS,
-  STORE_SEARCH_KEYS,
-} from '../../../../src/shared/validation/method-keys';
+import { assertCancelOptions, CANCEL_KEYS } from '../../../../src/shared/validation/method-keys';
 
-describe('the method-bag key lists (compiler-verified against the types)', () => {
-  it('lists exactly what each public method reads from its options bag', () => {
+describe('the cancellation key list (compiler-verified against the type)', () => {
+  it('lists exactly what a cancellation-only options bag carries', () => {
     expect(CANCEL_KEYS).toEqual(['signal']);
-    expect(GET_MESSAGES_KEYS).toEqual(['limit', 'before', 'signal']);
-    expect(LIST_SESSIONS_KEYS).toEqual(['limit', 'cursor', 'maxIterations', 'maxItems', 'signal']);
-    expect(STORE_SEARCH_KEYS).toEqual(['filter', 'limit', 'offset', 'query', 'signal']);
-    expect(STORE_LIST_NAMESPACES_KEYS).toEqual(['prefix', 'suffix', 'maxDepth', 'limit', 'offset']);
-    expect(SAVER_LIST_KEYS).toEqual(['limit', 'before', 'filter']);
   });
 });
 

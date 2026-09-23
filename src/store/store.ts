@@ -10,10 +10,9 @@ import { guardPublic } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { releaseOwned } from '../shared/release';
 import { assertSignalLike } from '../shared/validation/collaborators';
-import { assertCancelOptions, STORE_SEARCH_KEYS } from '../shared/validation/method-keys';
+import { assertCancelOptions } from '../shared/validation/method-keys';
 import { assertShape } from '../shared/validation/option-shape';
 import { lifecycleExpirationDays } from '../shared/validation/ttl';
-import { getItem } from './actions/get';
 import { listNamespaces } from './actions/list-namespaces';
 import { putItem } from './actions/put';
 import {
@@ -23,7 +22,9 @@ import {
 import { searchItems } from './actions/search';
 import { runBatch } from './internal/batch-plan';
 import { assertPutArguments, listNamespacesOperation } from './internal/call-arguments';
+import { getItem } from './internal/get-item';
 import { assertOperations, assertSearchPrefix } from './internal/operation-validation';
+import { STORE_SEARCH_KEYS } from './internal/option-keys';
 import { type StoreContext, setUpStore } from './internal/setup';
 import type { DynamoDBStoreOptions, ListNamespacesOptions, SearchOptions } from './types';
 

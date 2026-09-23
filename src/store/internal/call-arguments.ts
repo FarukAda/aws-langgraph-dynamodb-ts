@@ -5,9 +5,9 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { validationError } from '../../shared/errors/errors';
-import { STORE_LIST_NAMESPACES_KEYS } from '../../shared/validation/method-keys';
 import { assertShape } from '../../shared/validation/option-shape';
 import type { ListNamespacesOptions } from '../types';
+import { STORE_LIST_NAMESPACES_KEYS } from './option-keys';
 import { validateStoreKey } from './validation';
 
 /**

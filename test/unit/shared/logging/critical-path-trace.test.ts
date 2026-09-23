@@ -8,7 +8,7 @@ import { clearSession } from '../../../../src/history/actions/clear';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import type { LogArgument, Logger } from '../../../../src/shared/logging/logger';
-import { getItem } from '../../../../src/store/actions/get';
+import { getItem } from '../../../../src/store/internal/get-item';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 

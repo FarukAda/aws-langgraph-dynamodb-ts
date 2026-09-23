@@ -1,7 +1,4 @@
-import type { VectorMatch } from '../vector-backend';
-
-/** Which direction a {@link VectorBackend} reports its score in. */
-export type VectorScoreDirection = 'relevance' | 'distance';
+import type { VectorMatch, VectorScoreDirection } from '../vector-backend';
 
 /** Every direction {@link toRelevanceScores} recognises, for validating input. */
 export const VECTOR_SCORE_DIRECTIONS: readonly VectorScoreDirection[] = ['relevance', 'distance'];

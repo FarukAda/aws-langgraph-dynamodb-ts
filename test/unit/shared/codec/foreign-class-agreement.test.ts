@@ -13,7 +13,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-loss';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { getItem } from '../../../../src/store/actions/get';
+import { getItem } from '../../../../src/store/internal/get-item';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 

@@ -23,6 +23,9 @@ export interface VectorRef {
   key: string;
 }
 
+/** Which direction a {@link VectorBackend} reports its score in. */
+export type VectorScoreDirection = 'relevance' | 'distance';
+
 /**
  * Pluggable vector index. When provided to the store, embeddings live here and
  * similarity search is delegated to it; DynamoDB still holds the canonical item.

@@ -13,8 +13,7 @@ import {
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { releaseOwned } from '../shared/release';
-import { SAVER_KEYS } from '../shared/validation/adapter-keys';
-import { assertCancelOptions, DELTA_CHANNEL_HISTORY_KEYS } from '../shared/validation/method-keys';
+import { assertCancelOptions } from '../shared/validation/method-keys';
 import { assertShape, checkedShape } from '../shared/validation/option-shape';
 import { validateStringArray } from '../shared/validation/primitives';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
@@ -25,6 +24,7 @@ import { putCheckpoint } from './actions/put';
 import { putWrites as putWritesAction } from './actions/put-writes';
 import { assertConfigShape } from './internal/configurable';
 import { deltaChannelHistory } from './internal/delta-history';
+import { DELTA_CHANNEL_HISTORY_KEYS, SAVER_KEYS } from './internal/option-keys';
 import { type CheckpointerContext, setUpCheckpointer } from './internal/setup';
 import type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './types';
 

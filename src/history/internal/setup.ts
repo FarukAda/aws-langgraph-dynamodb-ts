@@ -17,12 +17,12 @@ import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
 import { validationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
-import { HISTORY_KEYS } from '../../shared/validation/adapter-keys';
 import { assertBaseCollaborators } from '../../shared/validation/collaborators';
 import { assertShape } from '../../shared/validation/option-shape';
 import { validateBaseAdapterOptions } from '../../shared/validation/options';
 import type { TtlOption } from '../../shared/validation/ttl';
 import type { CorruptMessagePolicy, DynamoDBChatMessageHistoryOptions } from '../types';
+import { HISTORY_KEYS } from './option-keys';
 
 const CORRUPT_MESSAGE_POLICIES: readonly CorruptMessagePolicy[] = ['skip', 'throw'];
 
