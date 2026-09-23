@@ -248,7 +248,10 @@ describe("writeSpecialItemsWithCleanup never releases a racer's committed object
     async (_label, value) => {
       const racer = await builtItem(value, 'group-racer');
       const { error, deleted, own } = await raceOnSpecialRow(racer.value);
-      expect(error).toMatchObject({ name: 'RetryExhaustedError', code: ErrorCode.RETRY_EXHAUSTED });
+      expect(error).toMatchObject({
+        name: 'DynamoDBLangGraphError',
+        code: ErrorCode.RETRY_EXHAUSTED,
+      });
       expect(own).not.toBe(keyOf(racer));
       expect(deleted).toEqual([own]);
     },
@@ -257,7 +260,10 @@ describe("writeSpecialItemsWithCleanup never releases a racer's committed object
   /** A row this library did not write can hold anything; it names no object, and must not throw. */
   it("still deletes the item's upload, and settles, when the live row's value is null", async () => {
     const { error, deleted, own } = await raceOnSpecialRow(null);
-    expect(error).toMatchObject({ name: 'RetryExhaustedError', code: ErrorCode.RETRY_EXHAUSTED });
+    expect(error).toMatchObject({
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.RETRY_EXHAUSTED,
+    });
     expect(deleted).toEqual([own]);
   });
 

@@ -179,7 +179,7 @@ export async function transactIdempotently(
  * rather than as a `ConditionalCheckFailedException`; both answer
  * `isConditionalCheckFailed` and both carry the rejected row to
  * `rejectedItem`, so a caller reads them the same way. A spent budget
- * throws `RetryExhaustedError` as any other call does.
+ * throws `RETRY_EXHAUSTED` as any other call does.
  */
 export async function putIdempotently(
   deps: IdempotentWriteDeps,

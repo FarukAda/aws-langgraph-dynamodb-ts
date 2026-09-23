@@ -100,10 +100,10 @@ function shardQuery(
  * Returns: nothing. The reader's buffer holds the page's rows, and its key,
  * `exhausted` and page count describe what is left.
  *
- * Throws: {@link ResultTruncatedError} naming `maxIterations`, without issuing
+ * Throws: `RESULT_TRUNCATED` naming `maxIterations`, without issuing
  * a query, when the shard has already read {@link MAX_LOOP_ITERATIONS} pages —
  * a listing fails rather than hand back a partial shard; whatever the query
- * throws, including `AbortError`.
+ * throws, including an `ABORTED` error.
  */
 export async function readShardPage(
   options: IndexQueryOptions,

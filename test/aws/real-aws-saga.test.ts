@@ -27,6 +27,12 @@ const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-sagatest-${randomUUID()}`;
 const sessionId = 'saga-session';
 
+/** What the saga raises when its rollback fails too: the trigger and the rollback failure. */
+interface RaisedCompensation {
+  cause?: Error;
+  details: { rollbackError: Error & { cause?: Error } };
+}
+
 function messageItem(ulid: string): ChatMessageItem {
   return {
     PK: sessionPartition(sessionId),
@@ -47,7 +53,7 @@ function messageItem(ulid: string): ChatMessageItem {
  * commit (the message and the `messageCount` ADD genuinely land). A thin client
  * wrapper then injects the two failures that do not occur naturally against
  * DynamoDB — the second chunk's transaction fails, and the rollback's
- * `BatchWriteItem` fails — so the code raises {@link CompensationFailedError}
+ * `BatchWriteItem` fails — so the code raises `COMPENSATION_FAILED`
  * and the partially-committed real state is left behind exactly as the error
  * warns. The committed state and the read-back are real DynamoDB; only the
  * failure points are injected.
@@ -113,12 +119,12 @@ describe('append saga unrecoverable rollback against real AWS', () => {
     }
   });
 
-  it('raises CompensationFailedError and leaves the committed chunk in the real table', async () => {
+  it('raises COMPENSATION_FAILED and leaves the committed chunk in the real table', async () => {
     const chunks = [[messageItem('chunk1')], [messageItem('chunk2')]];
 
     await expect(appendChunks(wrappedContext(), sessionId, chunks, { now: 'now' })).rejects.toEqual(
       expect.objectContaining({
-        name: 'CompensationFailedError',
+        name: 'DynamoDBLangGraphError',
         code: ErrorCode.COMPENSATION_FAILED,
       }),
     );
@@ -134,19 +140,23 @@ describe('append saga unrecoverable rollback against real AWS', () => {
     const chunks = [[messageItem('again1')], [messageItem('again2')]];
 
     const error = (await appendChunks(wrappedContext(), sessionId, chunks, { now: 'now' }).catch(
-      (caught: { cause?: Error; rollbackError?: Error & { cause?: Error } }) => caught,
-    )) as { cause?: Error; rollbackError?: Error & { cause?: Error } };
+      (caught: RaisedCompensation) => caught,
+    )) as RaisedCompensation;
 
     expect(error.cause?.message).toBe('chunk-2 transaction failed');
     // rollbackCommitted's batchWriteAll attempts every chunk and reports an
-    // aggregate BatchWriteAllIncompleteError rather than surfacing the raw
+    // aggregate BATCH_WRITE_INCOMPLETE pass error rather than surfacing the raw
     // injected error. The chain is two levels deep, not one: the aggregate's
-    // cause is the failing *chunk's* BatchWriteIncompleteError, and the raw
-    // error is that chunk error's own cause. This assertion previously looked
-    // one level up and could never have matched.
-    expect(error.rollbackError?.name).toBe('BatchWriteAllIncompleteError');
-    expect(error.rollbackError?.cause?.name).toBe('BatchWriteIncompleteError');
-    expect((error.rollbackError?.cause as Error & { cause?: Error })?.cause?.message).toBe(
+    // cause is the failing *chunk's* BATCH_WRITE_INCOMPLETE drain error, and the
+    // raw error is that chunk error's own cause. This assertion previously
+    // looked one level up and could never have matched.
+    const rollbackError = error.details.rollbackError;
+    expect(rollbackError).toMatchObject({
+      code: ErrorCode.BATCH_WRITE_INCOMPLETE,
+      details: { kind: 'pass' },
+      cause: { code: ErrorCode.BATCH_WRITE_INCOMPLETE, details: { kind: 'drain' } },
+    });
+    expect((rollbackError.cause as Error & { cause?: Error }).cause?.message).toBe(
       'rollback batch failed',
     );
   });

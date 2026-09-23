@@ -1,11 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
-import {
-  DynamoDBStore,
-  ResultTruncatedError,
-  type VectorBackend,
-  type VectorMatch,
-} from '../../src/index';
+import { DynamoDBStore, type VectorBackend, type VectorMatch } from '../../src/index';
+import { ErrorCode } from '../../src/shared/errors/error-code';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 import { FakeEmbeddings } from './helpers/fake-embeddings';
 
@@ -147,7 +143,7 @@ describe('DynamoDBStore end-to-end against real DynamoDB', () => {
     expect(results.map((item) => item.key)).toEqual(['active-1']);
   });
 
-  it('throws ResultTruncatedError when a plain search exceeds maxScanItems, and succeeds once raised', async () => {
+  it('throws RESULT_TRUNCATED when a plain search exceeds maxScanItems, and succeeds once raised', async () => {
     const cappedStore = new DynamoDBStore({
       tableName,
       clientConfig: DDB_LOCAL_CONFIG,
@@ -157,7 +153,9 @@ describe('DynamoDBStore end-to-end against real DynamoDB', () => {
     await cappedStore.put(['cap-test', 'u1'], 'b', { v: 2 });
     await cappedStore.put(['cap-test', 'u1'], 'c', { v: 3 });
 
-    await expect(cappedStore.search(['cap-test', 'u1'])).rejects.toThrow(ResultTruncatedError);
+    await expect(cappedStore.search(['cap-test', 'u1'])).rejects.toMatchObject({
+      code: ErrorCode.RESULT_TRUNCATED,
+    });
     cappedStore.destroy();
 
     const uncappedStore = new DynamoDBStore({

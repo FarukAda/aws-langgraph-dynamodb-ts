@@ -31,8 +31,8 @@ function descriptorsOf(row: DocItem): NamedDescriptor[] {
  * Returns: nothing. Clearing a session that does not exist is not an error;
  * there is simply nothing in the partition.
  *
- * Throws: ValidationError naming `sessionId`; `BatchWriteAllIncompleteError`
- * when a row's delete fails, carrying what did succeed; `AbortError` when the
+ * Throws: `VALIDATION` naming `sessionId`; `BATCH_WRITE_INCOMPLETE`
+ * when a row's delete fails, carrying what did succeed; `ABORTED` when the
  * signal fires, whether between pages or during a row's delete — a cancel is
  * reported as a cancel and never as an incomplete delete, and no further row
  * is issued after it. A refused
@@ -41,8 +41,8 @@ function descriptorsOf(row: DocItem): NamedDescriptor[] {
  * would remove the `messageCount`, the `updatedAt` and the recency-index entry
  * of a session that is still alive — leaving it is the safe answer. The error's
  * two counts are **rows**, not batches — rows deleted and rows attempted,
- * summed across every flush of the pass, with `succeededCount` repeating the
- * first and `failedChunks` holding each failing row's own error — and its
+ * summed across every flush of the pass, with `details.succeededCount` repeating
+ * the first and `details.failedChunks` holding each failing row's own error — and its
  * message says so, because a pass that sends one request per row is not a batch
  * that did not drain. Refused rows are in neither count; each is reported at
  * `warn` with its sort key and counted as skipped. The remedy is to re-run once

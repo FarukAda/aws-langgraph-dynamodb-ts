@@ -130,10 +130,10 @@ function tooManyCandidates(
  * order read: sort-key order within a partition, unspecified across partitions.
  * A page therefore pages stably within a namespace, and only there.
  *
- * Throws: ValidationError naming `maxSearchCandidates` before any decode when a
- * semantic collection exceeds `cap`; {@link ResultTruncatedError} when
+ * Throws: `VALIDATION` naming `maxSearchCandidates` before any decode when a
+ * semantic collection exceeds `cap`; `RESULT_TRUNCATED` when
  * `maxScanItems` is reached while rows remain — a search never silently answers
- * from part of the table; `AbortError` when the signal fires between pages;
+ * from part of the table; `ABORTED` when the signal fires between pages;
  * whatever a decode throws for a corrupt or unreadable row.
  *
  * Guarantees: a page closes the paginator as soon as it is full, so a namespace

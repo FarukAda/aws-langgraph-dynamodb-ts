@@ -42,7 +42,7 @@ export function isAbsentId(value: string | undefined): boolean {
  * Returns: the id to use, or `undefined` for "the latest" — chosen only when
  * both `checkpoint_id` and `thread_ts` are one of the three absence markers.
  *
- * Throws: ValidationError naming `checkpoint_id` or `thread_ts`, matching
+ * Throws: `VALIDATION` naming `checkpoint_id` or `thread_ts`, matching
  * whichever field's value was chosen and failed validation.
  */
 function resolveCheckpointId(configurable: CheckpointConfigurable): string | undefined {
@@ -69,13 +69,13 @@ function resolveCheckpointId(configurable: CheckpointConfigurable): string | und
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `config`, `configurable` or `signal`. A
+ * Throws: `VALIDATION` naming `config`, `configurable` or `signal`. A
  * `null` or `undefined` config reached a bare `TypeError` reading
- * `configurable`, reported as an `UpstreamError`. A `configurable` that is
+ * `configurable`, reported as an `UNEXPECTED_ERROR`. A `configurable` that is
  * not an object, `null` included, has no `thread_id` to read, so it was taken
  * for a config naming no thread: `list` scanned every thread in the table. A
  * signal that is not `AbortSignal`-shaped failed only once a request was
- * throttled, inside the wait between retries — as an `UpstreamError`, or as an
+ * throttled, inside the wait between retries — as an `UNEXPECTED_ERROR`, or as an
  * uncaught exception from that wait's timer.
  */
 export function assertConfigShape(config: RunnableConfig): void {
@@ -96,7 +96,7 @@ export function assertConfigShape(config: RunnableConfig): void {
  *
  * Returns: whether `config.configurable.thread_id` is absent.
  *
- * Throws: ValidationError naming `config`, `configurable` or `signal`.
+ * Throws: `VALIDATION` naming `config`, `configurable` or `signal`.
  */
 export function isThreadless(config: RunnableConfig): boolean {
   assertConfigShape(config);
@@ -112,7 +112,7 @@ export function isThreadless(config: RunnableConfig): boolean {
  * Returns: the resolved identifiers with an empty `threadId`; the caller
  * decides what a missing thread means for its own operation.
  *
- * Throws: ValidationError naming `config`, `configurable` or `signal` for a
+ * Throws: `VALIDATION` naming `config`, `configurable` or `signal` for a
  * config of the wrong shape, or naming a malformed `checkpoint_ns`,
  * `checkpoint_id` or `thread_ts`. A config without a thread is still checked
  * for the identifiers it *does* give, which is what the reference saver does
@@ -138,7 +138,7 @@ export function readThreadlessConfigurable(config: RunnableConfig): ResolvedConf
  *
  * Returns: the three identifiers, with `checkpointId` undefined for "latest".
  *
- * Throws: ValidationError naming `config`, `configurable` or `signal` for a
+ * Throws: `VALIDATION` naming `config`, `configurable` or `signal` for a
  * config of the wrong shape, or `thread_id`, `checkpoint_ns`, `checkpoint_id`
  * or `thread_ts` for a malformed identifier.
  */

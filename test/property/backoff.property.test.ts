@@ -2,7 +2,7 @@ import fc from 'fast-check';
 
 import { fullJitter, nextBackoffDelay } from '../../src/shared/dynamodb/backoff';
 import { withRetry } from '../../src/shared/dynamodb/retry';
-import { RetryExhaustedError } from '../../src/shared/errors/errors';
+import { ErrorCode } from '../../src/shared/errors/error-code';
 
 const unit = fc.double({ min: 0, max: 0.999999, noNaN: true });
 
@@ -55,7 +55,7 @@ describe('backoff (property)', () => {
                 onRetry: (info) => delays.push(info.delayMs),
               },
             ),
-          ).rejects.toBeInstanceOf(RetryExhaustedError);
+          ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
           expect(calls).toBe(maxAttempts);
           expect(delays).toEqual(
             Array.from({ length: maxAttempts - 1 }, (_, i) => r * Math.min(base * 2 ** i, max)),

@@ -182,7 +182,7 @@ describe('deleteThread', () => {
     });
     await expect(deleteThread(context(client), 't')).rejects.toMatchObject({
       code: ErrorCode.BATCH_WRITE_INCOMPLETE,
-      succeededCount: 25,
+      details: { succeededCount: 25 },
     });
   });
 
@@ -303,7 +303,7 @@ describe('a cancelled deleteThread', () => {
     });
     await expect(
       deleteThread(context(client), 't', { signal: controller.signal }),
-    ).rejects.toMatchObject({ name: 'AbortError', code: ErrorCode.ABORTED });
+    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.ABORTED });
     expect(mock.commandCalls(DeleteCommand)).toHaveLength(1);
   });
 });

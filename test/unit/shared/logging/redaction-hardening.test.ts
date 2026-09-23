@@ -4,7 +4,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 import { downloadObject, uploadObject } from '../../../../src/shared/codec/s3/read-write';
 import { withRetry } from '../../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { CompensationFailedError } from '../../../../src/shared/errors/errors';
+import { compensationFailedError } from '../../../../src/shared/errors/errors';
 import { redactLogger, redactSecrets } from '../../../../src/shared/logging/redaction';
 import { redactText } from '../../../../src/shared/logging/secret-patterns';
 
@@ -12,7 +12,7 @@ type Redacted = Record<string, unknown>;
 
 /**
  * Assert the refusal a caller can actually branch on: this package's own
- * `ValidationError`, naming the argument at fault — not merely "it did not
+ * `VALIDATION` error, naming the argument at fault — not merely "it did not
  * raise a `TypeError`".
  */
 function expectRedactionRefusal(run: () => void, field: string): void {
@@ -21,7 +21,7 @@ function expectRedactionRefusal(run: () => void, field: string): void {
     throw new Error(`expected a refusal naming ${field}`);
   } catch (error) {
     const refusal = error as { name?: string; code?: string; context?: { field?: string } };
-    expect(refusal.name).toBe('ValidationError');
+    expect(refusal.name).toBe('DynamoDBLangGraphError');
     expect(refusal.code).toBe(ErrorCode.VALIDATION);
     expect(refusal.context?.field).toBe(field);
   }
@@ -317,7 +317,7 @@ describe('redactLogger never throws into the caller (CORE-10)', () => {
 });
 
 describe('error messages that embed an upstream message (CORE-23)', () => {
-  it('redacts a credential inside the cause message of a RetryExhaustedError', async () => {
+  it('redacts a credential inside the cause message of a RETRY_EXHAUSTED error', async () => {
     const cause = Object.assign(new Error('connect failed: password=hunter2 host=db'), {
       name: 'ECONNRESET',
     });
@@ -329,13 +329,14 @@ describe('error messages that embed an upstream message (CORE-23)', () => {
         { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
       ),
     ).rejects.toMatchObject({
-      name: 'RetryExhaustedError',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.RETRY_EXHAUSTED,
       message: expect.stringContaining('password=[REDACTED]'),
     });
   });
 
-  it('redacts credentials inside both messages of a CompensationFailedError', () => {
-    const error = new CompensationFailedError(
+  it('redacts credentials inside both messages of a COMPENSATION_FAILED error', () => {
+    const error = compensationFailedError(
       new Error('trigger token=abc123'),
       new Error('rollback secret_access_key=xyz'),
     );

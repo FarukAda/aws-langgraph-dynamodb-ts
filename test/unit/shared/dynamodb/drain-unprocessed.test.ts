@@ -1,7 +1,7 @@
 import { BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { drainUnprocessedWrites } from '../../../../src/shared/dynamodb/drain-unprocessed';
-import { BatchWriteIncompleteError } from '../../../../src/shared/errors/errors';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 const put = (pk: string) => ({ PutRequest: { Item: { pk } } });
@@ -25,12 +25,12 @@ describe('drainUnprocessedWrites', () => {
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
   });
 
-  it('throws BatchWriteIncompleteError after the retry budget', async () => {
+  it('throws BATCH_WRITE_INCOMPLETE after the retry budget', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: { t: [put('a')] } });
     await expect(
       drainUnprocessedWrites(client, 't', [put('a')], { rng: () => 0, maxRetries: 1 }),
-    ).rejects.toBeInstanceOf(BatchWriteIncompleteError);
+    ).rejects.toMatchObject({ code: ErrorCode.BATCH_WRITE_INCOMPLETE });
   });
 
   it('reports the confirmed persisted count when a retry hard-fails after an earlier partial drain', async () => {
@@ -42,7 +42,12 @@ describe('drainUnprocessedWrites', () => {
     mock
       .on(BatchWriteCommand)
       .resolvesOnce({ UnprocessedItems: { t: [put('d'), put('e')] } })
-      .rejectsOnce(Object.assign(new Error('throttled'), { name: 'RetryExhaustedError' }));
+      .rejectsOnce(
+        Object.assign(new Error('throttled'), {
+          name: 'DynamoDBLangGraphError',
+          code: ErrorCode.RETRY_EXHAUSTED,
+        }),
+      );
     const error = await drainUnprocessedWrites(
       client,
       't',
@@ -50,14 +55,14 @@ describe('drainUnprocessedWrites', () => {
       { rng: () => 0 },
     ).catch((e: unknown) => e);
     expect(error).toMatchObject({
-      name: 'BatchWriteIncompleteError',
-      succeededCount: 3,
-      unprocessed: [put('d'), put('e')],
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.BATCH_WRITE_INCOMPLETE,
+      details: { kind: 'drain', succeededCount: 3, unprocessed: [put('d'), put('e')] },
     });
     expect((error as { cause?: Error }).cause?.message).toBe('throttled');
   });
 
-  it('raises the AbortError unchanged when the signal aborts during backoff', async () => {
+  it('raises the ABORTED error unchanged when the signal aborts during backoff', async () => {
     const { client, mock } = createStrictDocumentMock();
     const controller = new AbortController();
     // Round 1: 5 in, 3 persist (a,b,c), 2 (d,e) unprocessed — same partial
@@ -78,7 +83,7 @@ describe('drainUnprocessedWrites', () => {
      * contradicted the ABORTED that every cancellable method documents, and
      * left a caller branching on the wrong code for their own cancellation.
      */
-    expect(error).toMatchObject({ name: 'AbortError', code: 'ABORTED' });
+    expect(error).toMatchObject({ name: 'DynamoDBLangGraphError', code: 'ABORTED' });
   });
 });
 

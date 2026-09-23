@@ -185,3 +185,21 @@ export function hasErrorCode<C extends ErrorCode>(
 ): value is DynamoDBLangGraphError<C> {
   return isDynamoDBLangGraphError(value) && value.code === code;
 }
+
+/**
+ * What a log line calls a failure.
+ *
+ * Accepts: any error a `catch` bound.
+ *
+ * Returns: the `code` of one of this library's errors, and the `name` of any
+ * other. Every library error shares one name, so the name alone would log
+ * `DynamoDBLangGraphError` for a refused input and a spent retry budget alike;
+ * the code is what tells them apart, and like a name it is an identifier, never
+ * a payload.
+ *
+ * Throws: nothing for an error. A value that cannot carry a property raises
+ * the `TypeError` reading its `name` raises, as reading it directly would.
+ */
+export function failureLabel(error: Error): string {
+  return isDynamoDBLangGraphError(error) ? error.code : error.name;
+}

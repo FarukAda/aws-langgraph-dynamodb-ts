@@ -67,7 +67,7 @@ function assertOneUnit(ttl: TtlOption): void {
  *
  * Returns: whole seconds, `days × 86400` for the days form.
  *
- * Throws: ValidationError, in this order, naming `ttl` for a value that is not
+ * Throws: `VALIDATION`, in this order, naming `ttl` for a value that is not
  * an object, `ttl.<key>` for a key other than `days` or `seconds`, `ttl` for
  * an object naming neither unit or both, and `ttl.days` or `ttl.seconds` for a
  * value outside 1..five years. Both forms share that cap, so the two spellings

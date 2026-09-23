@@ -51,7 +51,7 @@ export class DynamoDBStore extends BaseStore {
    * Returns: a store that owns the client it built, or borrows the one it was
    * given.
    *
-   * Throws: ValidationError naming the offending option.
+   * Throws: `VALIDATION` naming the offending option.
    *
    * Guarantees: no I/O. Constructing a store issues no request.
    */
@@ -84,7 +84,7 @@ export class DynamoDBStore extends BaseStore {
    * The guard is the caller's method, not this: a nested `guardPublic` keeps
    * the brand the *inner* one assigned, so routing `get`, `put`, `delete` and
    * `listNamespaces` through the public {@link batch} reported all four as
-   * `store.batch` and left an operator counting `UpstreamError` by
+   * `store.batch` and left an operator counting AWS failures by
    * `context.operation` unable to tell them apart. What each method validates
    * is unchanged: every rule still lives here, where LangGraph's own calls
    * arrive too.
@@ -118,7 +118,7 @@ export class DynamoDBStore extends BaseStore {
    * matches for a search, namespaces for a listing, `null` for a put or a
    * delete, as the reference store answers them.
    *
-   * Throws: ValidationError, raised for every operation before any operation
+   * Throws: `VALIDATION`, raised for every operation before any operation
    * runs, naming `operations` for a value that is not an array or an entry that
    * is not an object; `namespace`, `namespace element`, `key` or `sortKey` for an
    * item address; `value` or `index` for a put; `namespacePrefix`,
@@ -126,8 +126,8 @@ export class DynamoDBStore extends BaseStore {
    * search; `offset`, `limit`, `maxDepth`, `matchConditions`, `prefix`,
    * `prefix element`, `suffix` or `suffix element` for a listing; and later,
    * from a running operation, `value` for one JSON cannot represent,
-   * `maxSearchCandidates` or `index.dims`. UpstreamError; RetryExhaustedError;
-   * ResultTruncatedError from a search or a listing that reads past
+   * `maxSearchCandidates` or `index.dims`. A classified AWS failure; `RETRY_EXHAUSTED`;
+   * `RESULT_TRUNCATED` from a search or a listing that reads past
    * `maxScanItems`. One failing operation rejects the whole batch.
    *
    * Guarantees: the order the caller wrote is the order the caller observes — a
@@ -155,7 +155,7 @@ export class DynamoDBStore extends BaseStore {
    *
    * Returns: the item, or `null` for one that does not exist or has expired.
    *
-   * Throws: ValidationError naming `namespace`, `namespace element`, `key` or
+   * Throws: `VALIDATION` naming `namespace`, `namespace element`, `key` or
    * `sortKey`, and — from the row rather than from the call — `descriptor` for
    * a payload descriptor no reader could make sense of, `s3` for an offloaded
    * row with no offloader configured, `s3Key` for a row addressing an object
@@ -165,7 +165,7 @@ export class DynamoDBStore extends BaseStore {
    * absent; `PAYLOAD_CORRUPT` for a payload that is no longer the form its row
    * declares; `S3_OFFLOAD_FAILED` for an offloaded payload that cannot be
    * downloaded; `COMPRESSION_LIMIT` for one whose decompressed size would pass
-   * the cap; UpstreamError; RetryExhaustedError. Not AbortError: there is no
+   * the cap; a classified AWS failure; `RETRY_EXHAUSTED`. Not `ABORTED`: there is no
    * signal to fire.
    */
   override async get(namespace: string[], key: string): Promise<Item | null> {
@@ -186,8 +186,8 @@ export class DynamoDBStore extends BaseStore {
    *
    * Returns: nothing.
    *
-   * Throws: ValidationError naming `namespace`, `namespace element`, `key`,
-   * `sortKey`, `value` or `index`; UpstreamError; RetryExhaustedError.
+   * Throws: `VALIDATION` naming `namespace`, `namespace element`, `key`,
+   * `sortKey`, `value` or `index`; a classified AWS failure; `RETRY_EXHAUSTED`.
    */
   override async put(
     namespace: string[],
@@ -210,8 +210,8 @@ export class DynamoDBStore extends BaseStore {
    * which now describes the outcome rather than the round trip, since the row
    * is read before it is removed.
    *
-   * Throws: ValidationError naming `namespace`, `namespace element`, `key` or
-   * `sortKey`; UpstreamError; RetryExhaustedError. The set of types is
+   * Throws: `VALIDATION` naming `namespace`, `namespace element`, `key` or
+   * `sortKey`; a classified AWS failure; `RETRY_EXHAUSTED`. The set of types is
    * unchanged, but the occasions are not: that pre-read is a request like any
    * other, so a delete of a key with **no row** can now fail where it always
    * succeeded. Nothing has been written when it does — no row removed, no
@@ -247,10 +247,10 @@ export class DynamoDBStore extends BaseStore {
    *
    * Returns: at most `limit` namespaces from `offset`.
    *
-   * Throws: ValidationError naming `options`, `options.<key>`, `prefix`,
+   * Throws: `VALIDATION` naming `options`, `options.<key>`, `prefix`,
    * `prefix element`, `suffix`, `suffix element`, `maxDepth`, `limit` or
-   * `offset`; ResultTruncatedError past `maxScanItems`; `FORMAT_UNSUPPORTED`
-   * for an item written by a newer version; UpstreamError.
+   * `offset`; `RESULT_TRUNCATED` past `maxScanItems`; `FORMAT_UNSUPPORTED`
+   * for an item written by a newer version; a classified AWS failure.
    */
   override async listNamespaces(options: ListNamespacesOptions = {}): Promise<string[][]> {
     return guardPublic(
@@ -274,13 +274,13 @@ export class DynamoDBStore extends BaseStore {
    * Returns: at most `limit` items from `offset`, each carrying a `score` when
    * a query and an index are configured.
    *
-   * Throws: ValidationError naming `namespacePrefix`, `namespacePrefix element`,
+   * Throws: `VALIDATION` naming `namespacePrefix`, `namespacePrefix element`,
    * `filter`, `query`, `offset`, `limit`, `maxSearchCandidates`, `index.dims`,
    * `signal`, or
-   * `options.<key>` for a key this package does not read; AbortError;
+   * `options.<key>` for a key this package does not read; `ABORTED`;
    * `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
    * version — a search reads rows it did not name, so one such row anywhere in
-   * the prefix it walks reports rather than being passed over; UpstreamError.
+   * the prefix it walks reports rather than being passed over; a classified AWS failure.
    *
    * Guarantees: a plain search stops reading once `offset + limit` matches are
    * in hand; a query ranks in-process up to `maxSearchCandidates`, or through
@@ -309,13 +309,13 @@ export class DynamoDBStore extends BaseStore {
    *
    * Returns: how many vectors were upserted and how many pruned.
    *
-   * Throws: ValidationError without both an `index` and a `vectorBackend`, for
+   * Throws: `VALIDATION` without both an `index` and a `vectorBackend`, for
    * an empty prefix, for an invalid `signal`, or for `options.<key>` naming a
-   * key this package does not read; ResultTruncatedError past `maxScanItems`;
+   * key this package does not read; `RESULT_TRUNCATED` past `maxScanItems`;
    * `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
    * version — repairing a backend from a view of the prefix that silently
    * omitted such a row would prune the vectors of items that are still there;
-   * UpstreamError.
+   * a classified AWS failure.
    *
    * Guarantees: DynamoDB is never written — only the backend is repaired — and
    * a vector is deleted only on evidence that its item is gone.
@@ -375,8 +375,8 @@ export class DynamoDBStore extends BaseStore {
    * Returns: nothing. Installing a rule that is already there is a no-op too,
    * so calling it on every deploy is safe.
    *
-   * Throws: ValidationError naming `s3.keyPrefix` on a rule-id collision;
-   * UpstreamError when the bucket's lifecycle cannot be read or written.
+   * Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
+   * a classified AWS failure when the bucket's lifecycle cannot be read or written.
    * @remarks Requires the bucket-level `s3:GetLifecycleConfiguration` /
    * `s3:PutLifecycleConfiguration` permissions, broader than the object-level
    * CRUD the rest of S3 offload needs — call it once during provisioning, not

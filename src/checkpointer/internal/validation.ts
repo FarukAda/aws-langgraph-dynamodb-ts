@@ -20,7 +20,7 @@ import { SORT_KEY_SEPARATOR } from './keys';
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `thread_id`.
+ * Throws: `VALIDATION` naming `thread_id`.
  */
 export function validateThreadId(threadId: string): void {
   validateIdentifier(threadId, SORT_KEY_SEPARATOR, 'thread_id', MAX_PARTITION_ID_BYTES);
@@ -38,7 +38,7 @@ export function validateThreadId(threadId: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `checkpoint_ns`, including for a value that is
+ * Throws: `VALIDATION` naming `checkpoint_ns`, including for a value that is
  * not a string — that case used to reach `Buffer.byteLength` and surface as a
  * raw Node `TypeError` out of a public method.
  */
@@ -60,7 +60,7 @@ export function validateCheckpointNs(checkpointNs: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field`.
+ * Throws: `VALIDATION` naming `field`.
  */
 export function validateCheckpointId(checkpointId: string, field = 'checkpoint_id'): void {
   validateIdentifier(checkpointId, SORT_KEY_SEPARATOR, field, MAX_KEY_SEGMENT_BYTES);
@@ -75,7 +75,7 @@ export function validateCheckpointId(checkpointId: string, field = 'checkpoint_i
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `taskId`.
+ * Throws: `VALIDATION` naming `taskId`.
  */
 export function validateTaskId(taskId: string): void {
   validateIdentifier(taskId, SORT_KEY_SEPARATOR, 'taskId', MAX_KEY_SEGMENT_BYTES);
@@ -90,7 +90,7 @@ export function validateTaskId(taskId: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `channel`.
+ * Throws: `VALIDATION` naming `channel`.
  */
 export function validateChannel(channel: string): void {
   validateIdentifier(channel, SORT_KEY_SEPARATOR, 'channel', MAX_KEY_SEGMENT_BYTES);
@@ -114,7 +114,7 @@ export function validateChannel(channel: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `writes`, with the offending index for an
+ * Throws: `VALIDATION` naming `writes`, with the offending index for an
  * entry that is not an array — before either reaches `writes.length` or a
  * destructuring `for...of` over an entry, both of which raise a raw
  * `TypeError` rather than this package's own error.

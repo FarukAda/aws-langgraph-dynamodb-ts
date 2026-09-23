@@ -82,7 +82,7 @@ describe('cleanUpS3Orphans with a logger that throws', () => {
  * The same thing as a caller meets it. The refusal a payload of zero bytes
  * raises is a convenient trigger: the first write uploads, the second is
  * refused, and the builder releases what it had already uploaded — a release
- * that runs while the caller's `ValidationError` is in flight.
+ * that runs while the caller's `VALIDATION` is in flight.
  */
 describe('DynamoDBSaver.putWrites with a logger that throws', () => {
   it('reports the refusal, not the logger, when the release cannot finish', async () => {
@@ -119,7 +119,8 @@ describe('DynamoDBSaver.putWrites with a logger that throws', () => {
     expect(error).toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 'value' } });
     expect((error as Error).message).toContain('zero bytes');
     /** Unchanged means unchanged: the refusal's own stack, not a rethrow's. */
-    expect((error as Error).stack).toContain('ValidationError');
+    const [header] = ((error as Error).stack ?? '').split('\n');
+    expect(header).toBe(`DynamoDBLangGraphError: ${(error as Error).message}`);
     /**
      * Asserted, not assumed: the refusal reaches the caller just as well when
      * no release was attempted, so without this the test could not fail for

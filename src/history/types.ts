@@ -74,9 +74,9 @@ export interface ListSessionsOptions extends CancelOptions {
    * refused rather than answered with the first page again.
    */
   cursor?: string;
-  /** Cap on scan pages before `ResultTruncatedError` (default 1000). Scan path only. */
+  /** Cap on scan pages before `RESULT_TRUNCATED` (default 1000). Scan path only. */
   maxIterations?: number;
-  /** Cap on rows read into memory before `ResultTruncatedError` (default 10 000). Scan path only. */
+  /** Cap on rows read into memory before `RESULT_TRUNCATED` (default 10 000). Scan path only. */
   maxItems?: number;
 }
 

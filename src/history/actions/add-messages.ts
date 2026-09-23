@@ -84,9 +84,9 @@ async function buildItems(
  *
  * Returns: nothing, and only once every message has landed.
  *
- * Throws: ValidationError naming `sessionId` or `messages` (with the offending
+ * Throws: `VALIDATION` naming `sessionId` or `messages` (with the offending
  * index) before any write; `S3_OFFLOAD_FAILED`; whatever the transaction
- * throws, after the rollback; {@link CompensationFailedError} when that
+ * throws, after the rollback; `COMPENSATION_FAILED` when that
  * rollback could not finish.
  *
  * Guarantees: a caller observes all messages or none. `messageCount` always

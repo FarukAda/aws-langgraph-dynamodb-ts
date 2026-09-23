@@ -10,7 +10,6 @@
 import { type SdkRequestOptions, withRetry } from '../../../../src/shared/dynamodb/retry';
 import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
 
 const throttled = (): Error =>
   Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
@@ -77,7 +76,7 @@ describe('the request options withRetry hands each attempt', () => {
 });
 
 describe('an attempt that fails while the signal is set', () => {
-  it('is reported as the library AbortError, not as the transport failure', async () => {
+  it('is reported as the library ABORTED error, not as the transport failure', async () => {
     const controller = new AbortController();
     const error = (await withRetry(
       () => {
@@ -87,7 +86,7 @@ describe('an attempt that fails while the signal is set', () => {
       { signal: controller.signal, baseDelayMs: 0, rng: () => 0 },
     ).catch((e: Error) => e)) as Error & { code?: string };
     expect(isDynamoDBLangGraphError(error)).toBe(true);
-    expect(error).toMatchObject({ code: ErrorCode.ABORTED, name: 'AbortError' });
+    expect(error).toMatchObject({ code: ErrorCode.ABORTED, name: 'DynamoDBLangGraphError' });
   });
 
   /**
@@ -109,7 +108,7 @@ describe('an attempt that fails while the signal is set', () => {
     ).catch((e: Error) => e)) as Error & { code?: string };
     expect(calls).toBe(1);
     expect(error.code).toBe(ErrorCode.ABORTED);
-    expect(error).not.toBeInstanceOf(RetryExhaustedError);
+    expect(error).not.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
   });
 
   /** A signal that has not fired changes nothing: the failure is classified as it always was. */
@@ -124,7 +123,7 @@ describe('an attempt that fails while the signal is set', () => {
         },
         { signal: controller.signal, maxAttempts: 2, baseDelayMs: 0, rng: () => 0 },
       ),
-    ).rejects.toBeInstanceOf(RetryExhaustedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(calls).toBe(2);
   });
 });

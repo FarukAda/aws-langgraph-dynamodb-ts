@@ -145,7 +145,7 @@ describe('the batch delete path, its cost and its contention, against real AWS',
    * Five deleters race one row, each pinned on the revision it observed, each
    * under its own token and the library's own retry budget. The claim is
    * bounded rather than numeric: exactly one wins, every loser reaches a clean
-   * terminal outcome, and none ends in `RetryExhaustedError`.
+   * terminal outcome, and none ends in `RETRY_EXHAUSTED`.
    *
    * The losers' shape is the part worth having. Each one meets a row that the
    * winner has already removed, so each rejection carries **no** row — which is

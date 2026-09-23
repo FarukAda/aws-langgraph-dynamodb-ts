@@ -30,7 +30,7 @@ function codecDeps(context: HistoryContext, signal?: AbortSignal): CodecDeps {
  * Returns: the row, keyed by the session partition and a `MSG#<ulid>` sort key,
  * its payload inline or offloaded to `<keyPrefix><sessionId, base64url>/<ulid>.bin`.
  *
- * Throws: ValidationError naming `value` for a message the serializer cannot
+ * Throws: `VALIDATION` naming `value` for a message the serializer cannot
  * represent; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded.
  * Encoding precedes the transaction, so a message that cannot be stored never
  * half-writes a turn.

@@ -58,7 +58,7 @@ export interface CheckpointerSetup {
  * saver owns it — a client the caller passed in is never destroyed by
  * `destroy()`.
  *
- * Throws: ValidationError naming the offending option.
+ * Throws: `VALIDATION` naming the offending option.
  *
  * Guarantees: constructing a saver performs no I/O.
  */

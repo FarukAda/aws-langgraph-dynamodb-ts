@@ -62,7 +62,7 @@ describe.each(ROUTES)('saver.%s config shape', (_name, call) => {
   /**
    * `{}` and `'x'` reached the retry loop's backoff wait, whose
    * `addEventListener` call threw a `TypeError` the boundary reported as an
-   * `UpstreamError`; the one without `removeEventListener` threw from inside
+   * `UNEXPECTED_ERROR`; the one without `removeEventListener` threw from inside
    * the wait's timer instead, an uncaught exception, and the call never
    * settled.
    */

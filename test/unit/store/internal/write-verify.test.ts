@@ -1,7 +1,7 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
+import { retryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import {
@@ -93,7 +93,7 @@ describe('rowIsAbsent (I4, STORE-07)', () => {
   });
 
   it('recognises a spent retry budget by brand and code, not instanceof', () => {
-    expect(isRetryExhausted(new RetryExhaustedError('m', 1))).toBe(true);
+    expect(isRetryExhausted(retryExhaustedError('m', 1))).toBe(true);
     expect(isRetryExhausted(new Error('x'))).toBe(false);
   });
 });

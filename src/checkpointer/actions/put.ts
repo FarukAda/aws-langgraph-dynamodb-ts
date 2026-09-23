@@ -41,7 +41,7 @@ import { validateCheckpointId } from '../internal/validation';
  * Returns: the config addressing the stored checkpoint, which is what the
  * caller passes back to continue the thread.
  *
- * Throws: ValidationError naming `config`, `configurable` or `signal` for a
+ * Throws: `VALIDATION` naming `config`, `configurable` or `signal` for a
  * config of the wrong shape, `thread_id`, `checkpoint_ns`, `checkpoint_id` or
  * `thread_ts` for a malformed identifier, `checkpoint` for a `null` or
  * `undefined` checkpoint, `checkpoint_id` for a malformed `checkpoint.id`,

@@ -68,7 +68,7 @@ async function drainPending(
  * Throws: whatever the reads, the decodes and the embeddings model throw; a
  * failed embedding rejects the whole reconcile, because a skipped item would
  * leave the live set and {@link selectOrphans} would prune its still-valid
- * vector. {@link ResultTruncatedError} when `maxScanItems` is reached while rows
+ * vector. `RESULT_TRUNCATED` when `maxScanItems` is reached while rows
  * remain — reconciling from a partial view would prune live vectors.
  *
  * Guarantees: rows are decoded in bounded batches, so a namespace of offloaded

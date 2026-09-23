@@ -156,7 +156,7 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
 
   it('keeps the uploads and returns the config when a retried transaction landed but lost its response', async () => {
     // Attempt 1 commits server-side; every re-issue times out at the transport,
-    // so the budget is spent on RetryExhaustedError although the rows are live.
+    // so the budget is spent on `RETRY_EXHAUSTED` although the rows are live.
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(transientTimeout());
     answerBySortKey(
@@ -213,7 +213,7 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
     const context = { ...contextWith(client), offloader: offloader as never, retry: fastRetry };
     await expect(
       putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
-    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED, name: 'RetryExhaustedError' });
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED, name: 'DynamoDBLangGraphError' });
     const own = attempted(mock);
     const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
     expect(deleted).toEqual([own.metadata.s3Key, own.checkpoint.s3Key]);

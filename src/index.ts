@@ -54,17 +54,6 @@ export type {
   ErrorDetailsFor,
 } from './shared/errors/base-error';
 export { ErrorCode } from './shared/errors/error-code';
-export {
-  AbortError,
-  BatchWriteAllIncompleteError,
-  BatchWriteIncompleteError,
-  CompensationFailedError,
-  ConflictError,
-  ResultTruncatedError,
-  RetryExhaustedError,
-  ValidationError,
-} from './shared/errors/errors';
-export { UpstreamError } from './shared/errors/upstream-error';
 
 export type { Logger, LogArgument } from './shared/logging/logger';
 export { redactLogger, redactSecrets } from './shared/logging/redaction';

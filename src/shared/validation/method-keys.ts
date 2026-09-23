@@ -86,7 +86,7 @@ export const DELTA_CHANNEL_HISTORY_KEYS = allKeysOf<DeltaChannelHistoryOptions>(
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `options.<key>` for the first key this
+ * Throws: `VALIDATION` naming `options.<key>` for the first key this
  * package does not read, or `signal` for a value that is not AbortSignal-like.
  */
 export function assertCancelOptions(options: CancelOptions | undefined): void {

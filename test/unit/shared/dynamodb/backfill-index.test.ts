@@ -289,7 +289,7 @@ describe('backfillRecencyIndex input validation', () => {
 
   /**
    * A malformed retry policy used to reach the retry loop itself and exhaust
-   * its (nonsensical) attempt budget, reporting `RetryExhaustedError` — an
+   * its (nonsensical) attempt budget, reporting `RETRY_EXHAUSTED` — an
    * AWS-side failure — for what is a caller's config mistake.
    */
   it('refuses a malformed retry policy, naming it, rather than exhausting retries', async () => {

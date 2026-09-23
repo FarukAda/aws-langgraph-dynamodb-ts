@@ -77,7 +77,7 @@ async function putRules(
  * containment a released payload depends on is missing or present regardless
  * of whether this particular call had a rule to write.
  *
- * Throws: ValidationError naming `s3.keyPrefix` for an unscoped prefix, or when
+ * Throws: `VALIDATION` naming `s3.keyPrefix` for an unscoped prefix, or when
  * either rule id this prefix produces is already held by a different prefix
  * (see {@link assertNoIdCollision}); otherwise whatever the SDK rejects with. A
  * bucket with no lifecycle configuration at all is not an error — S3 reports

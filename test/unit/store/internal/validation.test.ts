@@ -1,6 +1,5 @@
 import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { ValidationError } from '../../../../src/shared/errors/errors';
 import {
   validateKey,
   validateNamespace,
@@ -18,15 +17,21 @@ describe('validateNamespace', () => {
   });
 
   it('throws on an empty namespace array', () => {
-    expect(() => validateNamespace([])).toThrow(ValidationError);
+    expect(() => validateNamespace([])).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION }),
+    );
   });
 
   it('throws on an empty namespace element', () => {
-    expect(() => validateNamespace(['users', ''])).toThrow(ValidationError);
+    expect(() => validateNamespace(['users', ''])).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION }),
+    );
   });
 
   it('throws when an element contains the reserved separator', () => {
-    expect(() => validateNamespace(['users', 'a#b'])).toThrow(ValidationError);
+    expect(() => validateNamespace(['users', 'a#b'])).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION }),
+    );
   });
 
   it('throws when an element contains a control character (M7)', () => {
@@ -67,11 +72,13 @@ describe('validateKey', () => {
   });
 
   it('throws on an empty key', () => {
-    expect(() => validateKey('')).toThrow(ValidationError);
+    expect(() => validateKey('')).toThrow(expect.objectContaining({ code: ErrorCode.VALIDATION }));
   });
 
   it('throws when the key contains the reserved separator', () => {
-    expect(() => validateKey('b#c')).toThrow(ValidationError);
+    expect(() => validateKey('b#c')).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION }),
+    );
   });
 
   it('throws when the key contains a control character (M7)', () => {
@@ -99,8 +106,10 @@ describe('validateStoreKey (STORE-14)', () => {
   });
 
   it('rejects a whitespace-only element or key', () => {
-    expect(() => validateNamespace(['users', '  '])).toThrow(ValidationError);
-    expect(() => validateKey(' ')).toThrow(ValidationError);
+    expect(() => validateNamespace(['users', '  '])).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION }),
+    );
+    expect(() => validateKey(' ')).toThrow(expect.objectContaining({ code: ErrorCode.VALIDATION }));
   });
 });
 
@@ -110,11 +119,15 @@ describe('validatePaging', () => {
   });
 
   it('throws on a negative offset', () => {
-    expect(() => validatePaging(-1, 10)).toThrow(ValidationError);
+    expect(() => validatePaging(-1, 10)).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION }),
+    );
   });
 
   it('throws on a non-integer limit', () => {
-    expect(() => validatePaging(0, 1.5)).toThrow(ValidationError);
+    expect(() => validatePaging(0, 1.5)).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION }),
+    );
   });
 
   /**

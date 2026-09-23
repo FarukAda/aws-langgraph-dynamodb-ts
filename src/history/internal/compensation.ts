@@ -21,7 +21,7 @@ export interface CommittedChunk {
  *
  * The caller's `Logger` is consumer code, and both lines here are written from
  * inside a rollback: the first is {@link compensate}'s opening statement, the
- * second sits in the `catch` that builds {@link CompensationFailedError}. A
+ * second sits in the `catch` that builds `COMPENSATION_FAILED`. A
  * throw out of either used to take the rollback with it — the first skipping
  * the S3 cleanup, every committed chunk's deletes, the count revert and the
  * rethrow in one go; the second replacing the one error whose job is to say
@@ -110,7 +110,7 @@ async function rollbackCommitted(
  * suffix is cleaned immediately, the committed prefix only after its rows are
  * confirmed deleted. If the rollback itself fails, the committed chunks' S3
  * objects are deliberately left in place (their rows may survive) and it
- * raises {@link CompensationFailedError} carrying both the trigger and the
+ * raises `COMPENSATION_FAILED` carrying both the trigger and the
  * rollback error; otherwise it rethrows the trigger.
  *
  * `uncertain` marks the failed chunk (`chunks[committed.length]`) as one whose
@@ -125,7 +125,7 @@ async function rollbackCommitted(
  *
  * Returns: never; the declared `Promise<never>` is the contract.
  *
- * Throws: `trigger` when the rollback succeeded, {@link CompensationFailedError}
+ * Throws: `trigger` when the rollback succeeded, `COMPENSATION_FAILED`
  * when it did not.
  *
  * Guarantees: an object is deleted only once no row can reference it — the

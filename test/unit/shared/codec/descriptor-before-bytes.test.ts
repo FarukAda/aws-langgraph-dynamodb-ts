@@ -73,12 +73,15 @@ describe('decodePayload reads the bytes before the serde type (L-01)', () => {
     ['null', null],
     ['absent', undefined],
     ['a string', 'not-a-descriptor'],
-  ])('answers a %s descriptor with a ValidationError naming descriptor', async (_label, value) => {
-    expect(await brandOf(decodePayload(value as never, deps(), []))).toEqual({
-      code: ErrorCode.VALIDATION,
-      field: 'descriptor',
-    });
-  });
+  ])(
+    'answers a %s descriptor with a `VALIDATION` error naming descriptor',
+    async (_label, value) => {
+      expect(await brandOf(decodePayload(value as never, deps(), []))).toEqual({
+        code: ErrorCode.VALIDATION,
+        field: 'descriptor',
+      });
+    },
+  );
 
   it('never asks the serde to deserialize a descriptor it refused', async () => {
     const { calls, serde } = countingSerde();

@@ -61,7 +61,7 @@ export enum ErrorCode {
   NOT_FOUND = 'NOT_FOUND',
   /**
    * AWS rejected the request as malformed: `ValidationException`,
-   * `ValidationError`, `IdempotentParameterMismatchException`, or a request body
+   * `VALIDATION`, `IdempotentParameterMismatchException`, or a request body
    * it could not read or accept. Retrying the same request fails the same way.
    */
   AWS_REJECTED = 'AWS_REJECTED',
@@ -74,7 +74,6 @@ export enum ErrorCode {
    * `cause`.
    */
   UNEXPECTED_ERROR = 'UNEXPECTED_ERROR',
-  UPSTREAM = 'UPSTREAM',
 }
 
 /**

@@ -27,7 +27,7 @@ import {
  * namespace could ever match is refused rather than answered with a silent
  * empty page.
  *
- * Throws: ValidationError naming `namespacePrefix` or `namespacePrefix element`.
+ * Throws: `VALIDATION` naming `namespacePrefix` or `namespacePrefix element`.
  */
 export function assertSearchPrefix(namespacePrefix: string[]): void {
   validateNamespaceLabels(namespacePrefix, 'namespacePrefix');
@@ -47,7 +47,7 @@ export function assertSearchPrefix(namespacePrefix: string[]): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `namespacePrefix`, `namespacePrefix element`,
+ * Throws: `VALIDATION` naming `namespacePrefix`, `namespacePrefix element`,
  * `filter`, `query`, `offset` or `limit`.
  */
 export function assertSearchOperation(op: SearchOperation): void {
@@ -79,7 +79,7 @@ function assertMatchCondition(condition: MatchCondition): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `offset`, `limit` or `maxDepth`;
+ * Throws: `VALIDATION` naming `offset`, `limit` or `maxDepth`;
  * `matchConditions` for a non-array, an entry that is not an object or an
  * unknown match type; and `prefix`, `prefix element`, `suffix` or
  * `suffix element` for a path, named after the condition's type so a listing
@@ -110,7 +110,7 @@ export function assertListOperation(op: ListNamespacesOperation): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `namespace`, `namespace element`, `key`,
+ * Throws: `VALIDATION` naming `namespace`, `namespace element`, `key`,
  * `sortKey`, `value` or `index`.
  */
 export function assertPutOperation(op: PutOperation): void {
@@ -130,7 +130,7 @@ export function assertPutOperation(op: PutOperation): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `operations` for an operation that is not an
+ * Throws: `VALIDATION` naming `operations` for an operation that is not an
  * object, and otherwise the field, as the per-kind checks above.
  */
 export function assertOperation(operation: Operation): void {
@@ -166,7 +166,7 @@ export function assertOperation(operation: Operation): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `operations` for a value that is not an array
+ * Throws: `VALIDATION` naming `operations` for a value that is not an array
  * or an entry that is not an object, and otherwise the offending operation's
  * field.
  */

@@ -65,7 +65,7 @@ function encodeTime(timeMs: number): string {
  * Returns: the prefix, usable as a sort-key bound — every id from that
  * millisecond onward sorts at or after it, every earlier id before it.
  *
- * Throws: ValidationError for a millisecond outside the range, naming no field:
+ * Throws: `VALIDATION` for a millisecond outside the range, naming no field:
  * no caller-supplied option is at fault here, and the rule a caller meets is
  * `validateMessageWindow`'s, which names `before`. This guard is the invariant
  * underneath it, so no second caller can rebuild the bound that broke.

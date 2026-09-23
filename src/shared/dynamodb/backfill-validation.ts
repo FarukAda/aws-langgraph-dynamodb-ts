@@ -65,7 +65,7 @@ const BACKFILL_RETRY_KEYS = allKeysOf<Omit<RetryOptions, 'deadlineAt'>>({
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `retry`, `retry.<numeric key>`,
+ * Throws: `VALIDATION` naming `retry`, `retry.<numeric key>`,
  * `retry.retryableErrors`, `retry.isRetryable`, `retry.onRetry`, `retry.rng`
  * or `retry.signal`.
  */
@@ -96,7 +96,7 @@ function validateBackfillRetryOptions(retry: RetryOptions): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field` — including for `null`, which is a
+ * Throws: `VALIDATION` naming `field` — including for `null`, which is a
  * caller's explicit (wrong) value, not "unset", so it is refused rather than
  * silently falling through to the default the way `??` alone would.
  */
@@ -121,7 +121,7 @@ function validatePositiveBound(value: number | undefined, field: string, max?: n
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `options.<key>` for an unknown key;
+ * Throws: `VALIDATION` naming `options.<key>` for an unknown key;
  * `tableName`; `client` or `client.<member>`; `indexShards`, `pageSize` or
  * `maxPages` for a non-positive-integer bound (`indexShards` is additionally
  * capped); `dryRun` for a non-boolean; `retry`/`retry.<key>`; `signal`.

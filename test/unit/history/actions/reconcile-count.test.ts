@@ -84,11 +84,11 @@ describe('reconcileMessageCount', () => {
     });
   });
 
-  it('throws ConflictError instead of creating a junk row when the session does not exist', async () => {
+  it('throws CONDITION_CONFLICT instead of creating a junk row when the session does not exist', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     await expect(reconcileMessageCount(context(client), 'ghost')).rejects.toMatchObject({
-      name: 'ConflictError',
+      name: 'DynamoDBLangGraphError',
       code: ErrorCode.CONDITION_CONFLICT,
     });
     expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
@@ -132,13 +132,13 @@ describe('reconcileMessageCount is safe on a live session (HIST-09)', () => {
     expect(second.ExpressionAttributeValues?.[':expected']).toBe(6);
   });
 
-  it('gives up with a ConflictError when the session never settles', async () => {
+  it('gives up with a CONDITION_CONFLICT error when the session never settles', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { messageCount: 1 } });
     mock.on(QueryCommand).resolves(messages(1, 'busy'));
     mock.on(UpdateCommand).rejects(rejected());
     await expect(reconcileMessageCount(context(client), 'busy')).rejects.toMatchObject({
-      name: 'ConflictError',
+      name: 'DynamoDBLangGraphError',
       code: ErrorCode.CONDITION_CONFLICT,
     });
   });

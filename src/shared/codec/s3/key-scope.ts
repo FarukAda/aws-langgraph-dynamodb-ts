@@ -63,7 +63,7 @@ export function isKeyInScope(key: string, prefix: string, parts: readonly string
  *
  * Returns: nothing; acceptance is the absence of a throw.
  *
- * Throws: ValidationError naming `s3Key`, quoting the key and the path the
+ * Throws: `VALIDATION` naming `s3Key`, quoting the key and the path the
  * row may reference, each bounded by {@link truncateForLog}: the key comes off
  * the row and the path is composed from an `s3.keyPrefix` checked for shape
  * and never for length, so neither is bounded by anything this package ran.

@@ -304,7 +304,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
    * budget is supposed to absorb. What this asserts is that it does: every
    * logical write reaches a clean terminal outcome — one winner, the rest
    * turned away by the condition — and none of them ends in
-   * `RetryExhaustedError`.
+   * `RETRY_EXHAUSTED`.
    *
    * It deliberately does **not** pin the conflict percentage. 38 % / 65 % /
    * 86 % at 2 / 5 / 20 writers is what AWS did on one day in one region (E-5);

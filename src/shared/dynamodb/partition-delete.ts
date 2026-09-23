@@ -55,7 +55,7 @@ export interface PartitionDeleteOptions {
   logger: Logger;
   /** The adapter's retry options for the page reads and the row deletes. */
   retry?: RetryOptions;
-  /** Aborting it stops the read between pages and rejects with the library's AbortError. */
+  /** Aborting it stops the read between pages and rejects with an `ABORTED` error. */
   signal?: AbortSignal;
   offloader?: S3Offloader;
   /** Label for log lines and S3-cleanup diagnostics, e.g. `deleteThread`. */
@@ -196,9 +196,9 @@ async function flushBuffer(options: PartitionDeleteOptions, state: PassState): P
  *
  * Returns: how many rows were deleted, not counting the ones left in place.
  *
- * Throws: `AbortError` when the signal fires, whether between pages or during
+ * Throws: `ABORTED` when the signal fires, whether between pages or during
  * a row's delete, unwrapped and with no further row issued — a cancel is not a
- * delete that half-landed. Otherwise {@link BatchWriteAllIncompleteError} when
+ * delete that half-landed. Otherwise `BATCH_WRITE_INCOMPLETE` when
  * a row's delete fails, carrying what did succeed across every earlier flush.
  * S3 cleanup never throws, whatever it finds.
  *

@@ -44,7 +44,7 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    * Returns: the view. Normally built through
    * `DynamoDBChatMessageHistory.forSession`, which is the supported route.
    *
-   * Throws: ValidationError naming `backend`, `backend.<member>` for the first
+   * Throws: `VALIDATION` naming `backend`, `backend.<member>` for the first
    * missing method, `sessionId`, `window` for a window that is not an object,
    * `window.<key>` for a key `AdapterWindow` does not declare, or `limit`. Checking here reports a caller's mistake at
    * construction instead of rebranding it as an upstream failure on first use.
@@ -73,8 +73,9 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    * this on every chain invocation, so the window is what keeps a long session
    * from growing the prompt without limit.
    *
-   * Throws: whatever the backend's `getMessages` throws, wrapped as
-   * `UpstreamError` unless it is already one of this library's own errors.
+   * Throws: whatever the backend's `getMessages` throws, wrapped with
+   * the code the classifier assigns unless it is already one of this library's
+   * own errors.
    */
   getMessages(): Promise<BaseMessage[]> {
     return guardPublic('session.getMessages', () =>
@@ -104,8 +105,9 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    *
    * Returns: nothing, and only once every message has landed.
    *
-   * Throws: whatever the backend's `addMessages` throws, wrapped as
-   * `UpstreamError` unless it is already one of this library's own errors.
+   * Throws: whatever the backend's `addMessages` throws, wrapped with
+   * the code the classifier assigns unless it is already one of this library's
+   * own errors.
    *
    * Guarantees: the window bounds what is *read*, never what is written — the
    * session keeps every message appended to it.
@@ -123,8 +125,8 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    *
    * Returns: nothing. Clearing a session that does not exist is not an error.
    *
-   * Throws: whatever the backend's `clear` throws, wrapped as `UpstreamError`
-   * unless it is already one of this library's own errors.
+   * Throws: whatever the backend's `clear` throws, wrapped with the code the
+   * classifier assigns unless it is already one of this library's own errors.
    *
    * Guarantees: the whole session goes, not the window.
    * `BaseListChatMessageHistory` declares `clear()`, and a chain that calls it

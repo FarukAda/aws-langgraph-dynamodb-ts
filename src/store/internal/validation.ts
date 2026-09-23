@@ -22,7 +22,7 @@ import { NAMESPACE_SEPARATOR, sortKey } from './keys';
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `offset` or `limit`.
+ * Throws: `VALIDATION` naming `offset` or `limit`.
  */
 export function validatePaging(offset: number, limit: number): void {
   validateInteger(offset, 'offset', { min: 0 });
@@ -49,7 +49,7 @@ export function validatePaging(offset: number, limit: number): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field` for a value that is not an array, and
+ * Throws: `VALIDATION` naming `field` for a value that is not an array, and
  * `<field> element` for a label that is not a usable key segment.
  */
 export function validateNamespaceLabels(labels: string[], field: string): void {
@@ -71,7 +71,7 @@ export function validateNamespaceLabels(labels: string[], field: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field` for an empty or non-array value, and
+ * Throws: `VALIDATION` naming `field` for an empty or non-array value, and
  * `<field> element` for an element that is not a usable key segment.
  */
 export function validateNamespace(namespace: string[], field = 'namespace'): void {
@@ -88,7 +88,7 @@ export function validateNamespace(namespace: string[], field = 'namespace'): voi
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `key`.
+ * Throws: `VALIDATION` naming `key`.
  */
 export function validateKey(key: string): void {
   validateIdentifier(key, NAMESPACE_SEPARATOR, 'key', MAX_KEY_SEGMENT_BYTES);
@@ -105,7 +105,7 @@ export function validateKey(key: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `namespace`, `namespace element`, `key`, or
+ * Throws: `VALIDATION` naming `namespace`, `namespace element`, `key`, or
  * `sortKey` for the composition.
  */
 export function validateStoreKey(namespace: string[], key: string): void {
@@ -131,7 +131,7 @@ export function validateStoreKey(namespace: string[], key: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `maxDepth`.
+ * Throws: `VALIDATION` naming `maxDepth`.
  */
 export function validateMaxDepth(maxDepth?: number): void {
   if (maxDepth === undefined) return;

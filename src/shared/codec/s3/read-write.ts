@@ -74,7 +74,7 @@ function alreadyStored(error: Error): boolean {
  * two are not distinguished because the caller's obligation is identical: the
  * bytes are at that key.
  *
- * Throws: `AbortError` when the signal fires, unwrapped; `S3_OFFLOAD_FAILED`
+ * Throws: `ABORTED` when the signal fires, unwrapped; `S3_OFFLOAD_FAILED`
  * carrying the key and the underlying error, after three attempts on a
  * transient failure. Its message quotes the SDK's, with credential shapes
  * redacted — a signing failure names the key it signed with, and this message
@@ -127,7 +127,7 @@ export async function uploadObject(client: S3Client, params: UploadParams): Prom
  *
  * Returns: the object's bytes.
  *
- * Throws: `AbortError` when the signal fires, unwrapped; `S3_OFFLOAD_FAILED`
+ * Throws: `ABORTED` when the signal fires, unwrapped; `S3_OFFLOAD_FAILED`
  * naming the key — for an object over `maxBytes`, for a response with no body,
  * and for any SDK failure that survives the retries. Its message quotes the
  * underlying one with credential shapes redacted; the SDK error is kept as

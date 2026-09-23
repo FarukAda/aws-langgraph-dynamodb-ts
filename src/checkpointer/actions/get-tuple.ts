@@ -25,7 +25,7 @@ import type { CheckpointerContext } from '../internal/setup';
  * checkpoint, a config naming no thread, or a META row whose PAYLOAD row is not
  * there yet — the window the ordered write leaves open.
  *
- * Throws: ValidationError, before any read, naming `config`, `configurable` or
+ * Throws: `VALIDATION`, before any read, naming `config`, `configurable` or
  * `signal` for a config of the wrong shape, or `thread_id`, `checkpoint_ns`,
  * `checkpoint_id` or `thread_ts` for a malformed identifier; whatever the
  * reads throw.

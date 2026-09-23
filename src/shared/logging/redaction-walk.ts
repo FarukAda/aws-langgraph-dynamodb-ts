@@ -100,7 +100,7 @@ function redactMap(value: Map<Redactable, Redactable>, deps: WalkDeps): Redactab
  * defined *non-enumerable* per spec, so `Object.entries` never sees them.
  * Without this the whole chain vanished on every rebuild — and the rebuild
  * always fires for this library's own error types, since each attaches an
- * enumerable `code`/`context`. A redacted `RetryExhaustedError` would then no
+ * enumerable `code`/`context`. A redacted `RETRY_EXHAUSTED` would then no
  * longer say whether the underlying failure was a throttle, a validation error
  * or a network fault, which is the entire reason it carries a cause. A bare
  * Error *with* a cause is rebuilt for the same reason: passing it by reference

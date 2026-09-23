@@ -21,10 +21,10 @@ export interface VectorReconcileResult {
  *
  * Returns: how many vectors were upserted and how many pruned.
  *
- * Throws: ValidationError naming `namespacePrefix` or `namespacePrefix element`
+ * Throws: `VALIDATION` naming `namespacePrefix` or `namespacePrefix element`
  * for an empty or malformed prefix, as `search` names it, and `vectorBackend`
  * when the store has no index or backend to reconcile;
- * {@link ResultTruncatedError} past `maxScanItems`, since repairing from a
+ * `RESULT_TRUNCATED` past `maxScanItems`, since repairing from a
  * partial view would prune live vectors; whatever the reads, the embeddings
  * model and the backend throw.
  *

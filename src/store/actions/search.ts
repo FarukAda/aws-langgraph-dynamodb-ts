@@ -29,7 +29,7 @@ const DEFAULT_LIMIT = 10;
  * item carries a `score`; without one none does. Scores rank best-first; an item
  * that cannot be scored ranks last rather than being dropped.
  *
- * Throws: ValidationError naming `namespacePrefix`, `namespacePrefix element`,
+ * Throws: `VALIDATION` naming `namespacePrefix`, `namespacePrefix element`,
  * `offset`, `limit`, `maxSearchCandidates`, `index.dims`, `filter` or `query`;
  * whatever the reads, decodes and the embeddings model throw.
  *

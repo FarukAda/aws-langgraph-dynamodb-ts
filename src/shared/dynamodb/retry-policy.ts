@@ -4,6 +4,7 @@ import {
   MAX_BACKOFF_DELAY_MS,
   MAX_WRITE_LIFETIME_MS,
 } from '../constants';
+import { failureLabel } from '../errors/base-error';
 import type { Logger } from '../logging/logger';
 import { truncateForLog } from '../logging/truncate';
 import type { RetryOptions } from './retry';
@@ -15,7 +16,7 @@ import type { RetryOptions } from './retry';
  * message-append path never goes below its own contention floor.
  */
 export interface RetryPolicy {
-  /** Attempts per call before `RetryExhaustedError` (default 5). */
+  /** Attempts per call before `RETRY_EXHAUSTED` (default 5). */
   maxAttempts?: number;
   /** First backoff delay in milliseconds (default 100). */
   baseDelayMs?: number;
@@ -66,7 +67,7 @@ function nominalBudgetMs(policy: ResolvedPolicy): number {
  * Warn, never refuse. A long policy is the caller's own choice, it stays
  * legal, and the deadline already makes it safe — what it is not, without this
  * line, is visible: a deadline that ends a budget early and a budget that is
- * simply spent both surface as the same `RetryExhaustedError`, so the first
+ * simply spent both surface as the same `RETRY_EXHAUSTED` error, so the first
  * evidence that a configured policy can never run to its end would otherwise
  * be an incident. Said once, at construction, it is said before the first
  * write rather than after.
@@ -136,7 +137,7 @@ export function resolveRetryPolicy(
       logger.debug('retrying after a transient error', {
         attempt,
         delayMs,
-        error: truncateForLog(error.name),
+        error: truncateForLog(failureLabel(error)),
       }),
   };
 }

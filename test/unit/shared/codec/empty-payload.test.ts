@@ -25,7 +25,7 @@ describe('encodePayload refuses a payload that serialises to nothing', () => {
       (e: unknown) => e,
     );
     expect(error).toMatchObject({
-      name: 'ValidationError',
+      name: 'DynamoDBLangGraphError',
       code: ErrorCode.VALIDATION,
       context: { field: 'value' },
     });
@@ -63,7 +63,7 @@ describe('encodePayload refuses a payload that serialises to nothing', () => {
  * The repro: a pending write whose value is a function. Under the default
  * `JsonPlusSerializer` it serialises to zero bytes, was written with an
  * ordinary `INLINE` descriptor, and every later `getTuple` of that checkpoint
- * then failed with `UpstreamError(SyntaxError)`.
+ * then failed with a wrapped `SyntaxError`.
  */
 describe('a function-valued pending write', () => {
   it('is refused, and no row is written for it', async () => {

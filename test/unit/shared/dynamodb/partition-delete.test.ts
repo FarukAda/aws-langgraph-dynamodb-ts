@@ -16,7 +16,7 @@ import {
 } from '../../../../src/shared/dynamodb/partition-delete';
 import type { DocItem } from '../../../../src/shared/dynamodb/types';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { AbortError } from '../../../../src/shared/errors/errors';
+import { abortError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { conditionalTable } from '../../../shared/helpers/conditional-delete';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -325,8 +325,7 @@ describe('deletePartitionRows reports a failure', () => {
     });
     await expect(deletePartitionRows(checkpointerOptions(client))).rejects.toMatchObject({
       code: ErrorCode.BATCH_WRITE_INCOMPLETE,
-      succeededCount: 1,
-      failedChunks: [denied],
+      details: { kind: 'pass', succeededCount: 1, failedChunks: [denied] },
     });
     expect(table.rows.size).toBe(1);
   });
@@ -339,7 +338,7 @@ describe('deletePartitionRows reports a failure', () => {
    */
   it('rethrows an abort from a row delete and issues no request after it', async () => {
     const observed = [meta('c1', 'w1'), payload('c1', 'w1')];
-    const aborted = new AbortError();
+    const aborted = abortError();
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: observed });
     mock.on(DeleteCommand).rejectsOnce(aborted).resolves({});

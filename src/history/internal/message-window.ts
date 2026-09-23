@@ -75,9 +75,9 @@ function requireMessageItem(
  *
  * Throws: `FORMAT_UNSUPPORTED` for a row a newer version wrote — checked before
  * the row's ttl, so the answer does not depend on the reading machine's clock;
- * ValidationError naming `message` for a row in this session's message key
+ * `VALIDATION` naming `message` for a row in this session's message key
  * space that this adapter did not write, checked before the ttl for the same
- * reason; `AbortError`; whatever the query throws.
+ * reason; `ABORTED`; whatever the query throws.
  *
  * Guarantees: strongly consistent, so the turn just appended is visible to the
  * very next read. An unlimited window is deliberately uncapped — silently

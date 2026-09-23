@@ -1,7 +1,7 @@
 import { GetCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { ValidationError } from '../../../../src/shared/errors/errors';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
@@ -275,7 +275,7 @@ describe('searchItems', () => {
     expect(secondTopK).toBeGreaterThan(firstTopK);
   });
 
-  it('throws ValidationError instead of silently under-returning when the requested page (offset+limit) exceeds maxSearchCandidates', async () => {
+  it('throws VALIDATION instead of silently under-returning when the requested page (offset+limit) exceeds maxSearchCandidates', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     mock.on(GetCommand).resolves({});
@@ -291,7 +291,7 @@ describe('searchItems', () => {
     });
     await expect(
       searchItems(ctx, { namespacePrefix: ['users'], query: 'q', offset: 4, limit: 3 }),
-    ).rejects.toBeInstanceOf(ValidationError);
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
     // The guard must fail loud *before* ever querying the backend with a
     // clamped (and therefore wrong) topK — this was the under-return bug.
     expect(vectorBackend.query).not.toHaveBeenCalled();

@@ -2,7 +2,6 @@ import { QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { ValidationError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { listNamespaces } from '../../../../src/store/actions/list-namespaces';
 import { partitionKey, sortKey } from '../../../../src/store/internal/keys';
@@ -138,18 +137,18 @@ describe('listNamespaces', () => {
     expect(out).toEqual([['users', 'u1']]);
   });
 
-  it('throws ValidationError on a negative offset', async () => {
+  it('throws VALIDATION on a negative offset', async () => {
     const { client } = createStrictDocumentMock();
-    await expect(listNamespaces(context(client), { limit: 10, offset: -1 })).rejects.toBeInstanceOf(
-      ValidationError,
-    );
+    await expect(listNamespaces(context(client), { limit: 10, offset: -1 })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+    });
   });
 
-  it('throws ValidationError on a non-integer limit', async () => {
+  it('throws VALIDATION on a non-integer limit', async () => {
     const { client } = createStrictDocumentMock();
-    await expect(listNamespaces(context(client), { limit: 1.5, offset: 0 })).rejects.toBeInstanceOf(
-      ValidationError,
-    );
+    await expect(listNamespaces(context(client), { limit: 1.5, offset: 0 })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+    });
   });
 
   it('filters to store items and skips foreign rows on a shared table', async () => {
@@ -166,7 +165,7 @@ describe('listNamespaces', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: items });
     const ctx = { ...context(client), maxScanItems: 3 };
-    // 4 items under a 3-item cap must throw ResultTruncatedError, proving the
+    // 4 items under a 3-item cap must throw `RESULT_TRUNCATED`, proving the
     // configured cap (not the old unconfigurable 10,000 default) is in effect.
     await expect(listNamespaces(ctx, { limit: 100, offset: 0 })).rejects.toMatchObject({
       code: ErrorCode.RESULT_TRUNCATED,

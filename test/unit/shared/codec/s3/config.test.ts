@@ -1,6 +1,5 @@
 import { buildLifecycleRuleId, buildS3Key } from '../../../../../src/shared/codec/s3/config';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
-import { ValidationError } from '../../../../../src/shared/errors/errors';
 
 /** A write's object id, shaped like the ULIDs this package draws. */
 const ID = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';
@@ -72,7 +71,9 @@ describe('buildS3Key length cap (CODEC-11)', () => {
   });
 
   it('rejects a produced key over the 1024-byte S3 limit with a typed error', () => {
-    expect(() => buildS3Key('p/', [part, part], ID)).toThrow(ValidationError);
+    expect(() => buildS3Key('p/', [part, part], ID)).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION }),
+    );
     expect(() => buildS3Key('p/', [part, part], ID)).toThrow(
       expect.objectContaining({
         code: ErrorCode.VALIDATION,

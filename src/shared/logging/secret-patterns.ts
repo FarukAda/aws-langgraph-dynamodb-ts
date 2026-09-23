@@ -115,8 +115,8 @@ export function isSecretKey(key: string, patterns: readonly string[]): boolean {
  * an application may print without a redacting logger.
  *
  * The bound is here rather than at the sites that quote the result, so no call
- * site can get it wrong and no future one has to remember: a `RetryExhausted`
- * report, an `UpstreamError`, a compensation failure and both S3 transfer
+ * site can get it wrong and no future one has to remember: a `RETRY_EXHAUSTED`
+ * report, a wrapped AWS failure, a compensation failure and both S3 transfer
  * errors all inherit it from this one line. Redaction runs **before** the cut,
  * because cutting first could split a credential shape past the pattern that
  * would have caught it. Its own cap rather than the identifier cap: this is

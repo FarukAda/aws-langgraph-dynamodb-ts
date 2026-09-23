@@ -96,11 +96,11 @@ function sameObject(read: StoreItemRecord, reread: StoreItemRecord): boolean {
  * cannot act on the difference, and reporting a foreign row would leak that a
  * shared table holds one.
  *
- * Throws: ValidationError naming `namespace`, `key` or — for a row whose
+ * Throws: `VALIDATION` naming `namespace`, `key` or — for a row whose
  * descriptor is not one — `descriptor`; `FORMAT_UNSUPPORTED` for
  * a row, or a payload, written by a newer version, which is *not* reported as
  * absent — hiding an item that exists is worse than failing; `PAYLOAD_CORRUPT`
- * or the download's own error for a payload that cannot be read; `AbortError`
+ * or the download's own error for a payload that cannot be read; `ABORTED`
  * when the signal fires.
  *
  * Guarantees: strongly consistent — an item just written is always seen, and

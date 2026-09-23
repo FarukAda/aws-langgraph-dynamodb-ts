@@ -24,7 +24,7 @@ import { JSON_SERDE_TYPE } from './declared-form';
  * rest. A value it cannot represent — `undefined`, a function, a symbol —
  * stringifies to `undefined` and would be stored as **zero bytes**, which reads
  * back as a parse error; a circular structure or a `BigInt` makes it throw. Both
- * are reported as `ValidationError` naming `value`, at the write, rather than
+ * are reported as `VALIDATION` naming `value`, at the write, rather than
  * as an unreadable row later — with the refusal attached as `cause` and never
  * quoted into the message, which for a circular structure names the caller's
  * own properties and classes.
@@ -37,12 +37,12 @@ import { JSON_SERDE_TYPE } from './declared-form';
  * holds the whole table, against the checkpointer default column by column.
  *
  * `loadsTyped` reads only the `json` form it writes, and says
- * so before it looks at a byte. Any other declared form is a `ValidationError`
+ * so before it looks at a byte. Any other declared form is a `VALIDATION` error
  * naming `serde`, because it says what *this* reader may rebuild and not that
  * the payload is damaged. Bytes of that form which do not parse are
  * `PAYLOAD_CORRUPT`, because they can never be read and the caller should
  * report rather than retry; a `data` that is not bytes at all is a
- * `ValidationError` naming `data`, because that is the caller's mistake and
+ * `VALIDATION` naming `data`, because that is the caller's mistake and
  * not a row's.
  *
  * Frozen for the reason {@link ErrorCode} is: one object, shared by every

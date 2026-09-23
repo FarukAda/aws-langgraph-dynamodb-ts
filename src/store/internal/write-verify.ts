@@ -8,10 +8,8 @@ import type { StoreContext } from './setup';
  * Whether `error` is a spent retry budget.
  *
  * Accepts: any error, and equally anything else a `throw` can produce.
- * Recognised by brand and code, not by its class name: `RetryExhaustedError`
- * is the constructor that stamps `RETRY_EXHAUSTED`, but the class name is not
- * a contract an error crossing a module or realm boundary can be relied on to
- * keep, the way the code is.
+ * Recognised by brand and code: the code is the one thing an error crossing a
+ * module or realm boundary can be relied on to keep.
  *
  * Returns: whether the write is ambiguous for the reason retries were spent,
  * which is the only failure a verification read is allowed to resolve.

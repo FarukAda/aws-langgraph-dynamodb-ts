@@ -147,7 +147,7 @@ export function payloadSortKey(checkpointNs: string, checkpointId: string): stri
  * Returns: the sort key, its index zero-padded to a fixed width so the special
  * negative slots order below the positional ones.
  *
- * Throws: ValidationError naming `index` for an index this encoding cannot
+ * Throws: `VALIDATION` naming `index` for an index this encoding cannot
  * represent, and `sortKey` for a composed key over
  * {@link MAX_SORT_KEY_BYTES} — identifiers that each pass their own length rule
  * can still compose a key DynamoDB would refuse with a raw error.

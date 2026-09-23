@@ -32,7 +32,7 @@ const S3_KEYS = allKeysOf<S3OffloadConfig>({
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming the offending field, dotted under
+ * Throws: `VALIDATION` naming the offending field, dotted under
  * `compression`.
  */
 export function validateCompression(config: CompressionConfig): void {
@@ -78,7 +78,7 @@ export function validateCompression(config: CompressionConfig): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `s3.serverSideEncryption` or
+ * Throws: `VALIDATION` naming `s3.serverSideEncryption` or
  * `s3.sseKmsKeyId`. Unchecked, a truthy key id that is not a string was
  * handed to `PutObject` at the first offload, and a falsy one (`''`, `null`,
  * `0`) was dropped, uploading without the key the caller named.
@@ -108,7 +108,7 @@ function validateS3Encryption(config: S3OffloadConfig): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming the offending field, dotted under `s3`.
+ * Throws: `VALIDATION` naming the offending field, dotted under `s3`.
  */
 export function validateS3(config: S3OffloadConfig): void {
   assertShape(config, S3_KEYS, 's3');

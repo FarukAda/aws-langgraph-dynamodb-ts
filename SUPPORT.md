@@ -7,4 +7,4 @@ This is an open-source project maintained by one person in their own time. Respo
 - **Security**: see [SECURITY.md](SECURITY.md) — never in a public issue.
 - **What is stable**: see the README's [*Versioning and compatibility*](README.md#versioning-and-compatibility) section for the API, storage-layout and peer-range promises of `1.x`.
 
-Before reporting, check the [README](README.md) *Error handling*, *Logging* and *Operations* sections: most runtime surprises (throttling budgets, table scans, orphaned S3 objects, `UpstreamError` causes) are described there together with what to do.
+Before reporting, check the [README](README.md) *Error handling*, *Logging* and *Operations* sections: most runtime surprises (throttling budgets, table scans, orphaned S3 objects, the `cause` of a wrapped AWS failure) are described there together with what to do.

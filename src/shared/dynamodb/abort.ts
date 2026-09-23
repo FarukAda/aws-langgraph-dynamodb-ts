@@ -3,7 +3,10 @@ import { ErrorCode } from '../errors/error-code';
 import { abortError } from '../errors/errors';
 import { toError } from '../errors/to-error';
 
-/** True when the abort reason already is this library's `AbortError` (a string or DOMException is not). */
+/**
+ * True when the abort reason already is this library's own `ABORTED` error (a
+ * string or DOMException is not).
+ */
 function isLibraryAbort(
   reason: Error | undefined,
 ): reason is DynamoDBLangGraphError<ErrorCode.ABORTED> {
@@ -34,12 +37,12 @@ export function isAbortError(error: Error): boolean {
  * This library's error for an aborted `signal`.
  *
  * Accepts: `signal` — aborted; its `reason` may be this library's own
- * `AbortError`, the `DOMException` a bare `controller.abort()` produces, a
+ * `ABORTED` error, the `DOMException` a bare `controller.abort()` produces, a
  * string, any other error, or `undefined`.
  *
- * Returns: the reason unchanged when it already is this library's `AbortError`,
- * so an error does not accumulate wrappers across layers; otherwise a fresh
- * `AbortError` carrying the reason as `cause` (`undefined` reason carries
+ * Returns: the reason unchanged when it already is this library's own
+ * `ABORTED` error, so an error does not accumulate wrappers across layers;
+ * otherwise a fresh `ABORTED` error carrying the reason as `cause` (`undefined` reason carries
  * none).
  *
  * Throws: nothing.

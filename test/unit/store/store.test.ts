@@ -169,7 +169,7 @@ describe('cancellation via { signal } (CORE-04)', () => {
     });
     await expect(store.search(['ns'], { signal: controller.signal })).rejects.toMatchObject({
       code: ErrorCode.ABORTED,
-      name: 'AbortError',
+      name: 'DynamoDBLangGraphError',
     });
     await expect(
       store.reconcileVectorIndex(['ns'], { signal: controller.signal }),

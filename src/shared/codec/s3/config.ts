@@ -57,7 +57,7 @@ export interface S3OffloadConfig {
  * never compose one key, and the same prefix, parts and id always compose the
  * same one.
  *
- * Throws: ValidationError naming `s3Key` for an empty `parts` — an object with
+ * Throws: `VALIDATION` naming `s3Key` for an empty `parts` — an object with
  * no row above it is outside every row's scope and could never be read back —
  * and for a key over the 1024-byte cap. The encoding grows every part by a
  * third, so identifiers that each pass their own length rule can still compose
@@ -99,7 +99,7 @@ const UNSCOPED_SEGMENTS = new Set(['', '.', '..']);
  *
  * Returns: nothing; acceptance is the absence of a throw.
  *
- * Throws: ValidationError naming `s3.keyPrefix`. The shape rule is reported
+ * Throws: `VALIDATION` naming `s3.keyPrefix`. The shape rule is reported
  * before the segment rule, so a prefix breaking both is named by its shape.
  *
  * Guarantees: the prefix scopes both the objects and the lifecycle rule built

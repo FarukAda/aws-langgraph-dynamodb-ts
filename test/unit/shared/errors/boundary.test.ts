@@ -4,7 +4,7 @@ import {
   toPublicError,
 } from '../../../../src/shared/errors/boundary';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { ValidationError } from '../../../../src/shared/errors/errors';
+import { validationError } from '../../../../src/shared/errors/errors';
 
 function raw(name: string, message = name): Error {
   return Object.assign(new Error(message), { name });
@@ -12,7 +12,7 @@ function raw(name: string, message = name): Error {
 
 describe('toPublicError', () => {
   it('returns a library error unchanged', () => {
-    const validation = new ValidationError('bad');
+    const validation = validationError('bad');
     expect(toPublicError(validation, 'op')).toBe(validation);
   });
 
@@ -45,7 +45,7 @@ describe('guardPublic', () => {
         throw raw('ThrottlingException');
       }),
     ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.THROTTLED });
-    const validation = new ValidationError('bad');
+    const validation = validationError('bad');
     await expect(
       guardPublic('op', () => {
         throw validation;

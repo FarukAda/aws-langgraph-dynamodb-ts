@@ -45,7 +45,7 @@ function isDimensionMismatch(candidate: RankCandidate, queryVector: number[]): b
 
 /**
  * Rank candidates by cosine similarity to `queryVector`, descending. Throws a
- * {@link ValidationError} when the candidate count exceeds `maxCandidates`
+ * `VALIDATION` when the candidate count exceeds `maxCandidates`
  * (steer large corpora to an external VectorBackend).
  *
  * An item is scored by its best-matching vector, as the reference store scores
@@ -67,7 +67,7 @@ function isDimensionMismatch(candidate: RankCandidate, queryVector: number[]): b
  * an unscorable item still belongs to the namespace the caller searched, and
  * dropping it would turn a model mismatch into a silently empty result.
  *
- * Throws: ValidationError naming `maxSearchCandidates` when more candidates
+ * Throws: `VALIDATION` naming `maxSearchCandidates` when more candidates
  * arrive than may be ranked in memory — a bound on this process's memory, not
  * on the corpus, which is what a `vectorBackend` is for.
  *

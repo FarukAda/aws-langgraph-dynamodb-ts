@@ -3,6 +3,7 @@ import { readSpecialRow } from '../../../../src/checkpointer/internal/special-wr
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../../../src/shared/dynamodb/conditional-put';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { rowWrite } from '../../../shared/helpers/ddb-mock';
 
@@ -39,7 +40,8 @@ const conditionalFailure = () =>
 
 const retryExhausted = () =>
   Object.assign(new Error('Operation failed after 5 attempts: timeout'), {
-    name: 'RetryExhaustedError',
+    name: 'DynamoDBLangGraphError',
+    code: ErrorCode.RETRY_EXHAUSTED,
   });
 
 const queuedReads = (reads: unknown[]) => () => {
@@ -269,7 +271,7 @@ describe('writeSpecialItem', () => {
     // The guarded put commits server-side but its response is lost;
     // withDynamoDBRetry re-issues, and every re-issue times out at the
     // transport without reaching DynamoDB, so the budget is spent on a
-    // RetryExhaustedError and never on a ConditionalCheckFailedException.
+    // `RETRY_EXHAUSTED` and never on a ConditionalCheckFailedException.
     // Reporting that as a confirmed non-commit made putWrites delete the S3
     // object the now-live row points at, so every later getTuple() on that
     // checkpoint failed with NoSuchKey, permanently.
@@ -312,7 +314,7 @@ describe('writeSpecialItem', () => {
 
     expect(outcome.committed).toBe(true);
     expect(outcome.superseded).toBeUndefined();
-    expect(outcome.error?.name).toBe('RetryExhaustedError');
+    expect(outcome.error).toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
   });
 
   it('reports a commit when a rejection is caught but the classifying re-read fails', async () => {

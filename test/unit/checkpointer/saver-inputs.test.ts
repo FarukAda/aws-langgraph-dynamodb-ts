@@ -96,7 +96,7 @@ describe('getDeltaChannelHistory input validation', () => {
    * `channels` is required: LangGraph's only caller always passes it
    * (`@langchain/langgraph` `dist/channels/base.js:178`), and a config
    * without it used to reach `channels.length` on `undefined`, a bare
-   * `TypeError` the boundary branded `UpstreamError`.
+   * `TypeError` the boundary branded `UNEXPECTED_ERROR`.
    */
   it('refuses a missing channels, naming it', async () => {
     const { saver } = newSaver();
@@ -142,7 +142,7 @@ describe('getDeltaChannelHistory input validation', () => {
 /**
  * `put` used to read `checkpoint.id` with no shape check of its own: a `null`
  * or `undefined` checkpoint reached that property access directly and raised
- * a bare `TypeError`, which the error boundary branded `UpstreamError`
+ * a bare `TypeError`, which the error boundary branded `UNEXPECTED_ERROR`
  * instead of naming the caller's mistake.
  */
 describe('put checkpoint validation', () => {
@@ -177,7 +177,7 @@ describe('put checkpoint validation', () => {
  * `putWrites` validated `taskId` but never `writes` itself: a `writes` that
  * was not an array, or an entry that was not itself an array, reached
  * `writes.length` or a destructuring `for...of` directly and raised a bare
- * `TypeError`, branded `UpstreamError` instead of naming the caller's
+ * `TypeError`, branded `UNEXPECTED_ERROR` instead of naming the caller's
  * mistake.
  */
 describe('putWrites writes validation', () => {

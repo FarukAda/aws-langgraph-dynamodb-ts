@@ -11,7 +11,7 @@ import type { WriteRequest } from './types';
  * BatchWriteItem limit). Every chunk is attempted regardless of an earlier
  * chunk's failure — order-independent writes (deletes/puts) should never
  * lose "later" chunks just because an earlier one failed. If any chunk fails,
- * throws {@link BatchWriteAllIncompleteError} reporting exactly how many
+ * throws `BATCH_WRITE_INCOMPLETE` reporting exactly how many
  * chunks succeeded vs. failed, and exactly how many individual writes
  * persisted, once every chunk has been attempted.
  *
@@ -21,10 +21,10 @@ import type { WriteRequest } from './types';
  *
  * Returns: nothing, and only when every request persisted.
  *
- * Throws: `AbortError` the moment a chunk reports one, unwrapped and with no
+ * Throws: `ABORTED` the moment a chunk reports one, unwrapped and with no
  * further chunk attempted — a caller who cancelled did not encounter a fault,
  * and spending the remaining requests on a cancelled call is the opposite of
- * what the cancel asked for. Otherwise {@link BatchWriteAllIncompleteError},
+ * what the cancel asked for. Otherwise `BATCH_WRITE_INCOMPLETE`,
  * once every chunk has been attempted, reporting how many chunks succeeded and
  * how many individual writes persisted. Its one caller — the rollback in
  * history/internal/compensation.ts — type-asserts a caught error straight to

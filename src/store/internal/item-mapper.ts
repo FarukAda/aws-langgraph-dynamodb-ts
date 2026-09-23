@@ -121,7 +121,7 @@ export interface BuildItemOptions {
  * Returns: the complete row, including the recency-index attributes: a store
  * item is listed across partitions by a rootless search, so it is indexed.
  *
- * Throws: ValidationError naming `value` for a value with no JSON
+ * Throws: `VALIDATION` naming `value` for a value with no JSON
  * representation; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be
  * uploaded. Encoding happens before any write, so a value that cannot be stored
  * never half-writes a row.
@@ -177,7 +177,7 @@ export async function buildStoreItem(
  * Returns: the item, with the timestamps this library stamped at write time.
  *
  * Throws: `PAYLOAD_CORRUPT` for a payload that cannot be decoded,
- * ValidationError naming `serde` for one the configured serde refuses to
+ * `VALIDATION` naming `serde` for one the configured serde refuses to
  * reconstruct, and whatever the download throws for an offloaded one —
  * including the missing-object error `getItem` resolves against a concurrent
  * overwrite.

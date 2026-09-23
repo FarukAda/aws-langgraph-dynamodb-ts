@@ -3,9 +3,12 @@ import {
   TOKEN_IDEMPOTENCY_WINDOW_MS,
 } from '../../../../src/shared/constants';
 import { withDynamoDBRetry, withRetry } from '../../../../src/shared/dynamodb/retry';
-import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
+import {
+  type DynamoDBLangGraphError,
+  isDynamoDBLangGraphError,
+} from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { AbortError, RetryExhaustedError } from '../../../../src/shared/errors/errors';
+import { abortError } from '../../../../src/shared/errors/errors';
 
 const retryable = (): Error =>
   Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
@@ -38,7 +41,7 @@ describe('withRetry', () => {
     ).rejects.toBe(permanent);
   });
 
-  it('throws RetryExhaustedError after the attempt budget', async () => {
+  it('throws RETRY_EXHAUSTED after the attempt budget', async () => {
     await expect(
       withRetry(
         () => {
@@ -46,20 +49,20 @@ describe('withRetry', () => {
         },
         { maxAttempts: 2, rng: () => 0, baseDelayMs: 0 },
       ),
-    ).rejects.toBeInstanceOf(RetryExhaustedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
   });
 
-  it('throws AbortError when the signal is already aborted', async () => {
+  it('throws ABORTED when the signal is already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
     await expect(
       withRetry(() => Promise.resolve(1), { signal: controller.signal }),
-    ).rejects.toBeInstanceOf(AbortError);
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED });
   });
 
-  it('preserves the last error as the cause of RetryExhaustedError', async () => {
+  it('preserves the last error as the cause of a RETRY_EXHAUSTED error', async () => {
     const last = retryable();
-    let thrown: RetryExhaustedError | undefined;
+    let thrown: DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED> | undefined;
     try {
       await withRetry(
         () => {
@@ -68,9 +71,9 @@ describe('withRetry', () => {
         { maxAttempts: 1, rng: () => 0, baseDelayMs: 0 },
       );
     } catch (error) {
-      thrown = error as RetryExhaustedError;
+      thrown = error as DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED>;
     }
-    expect(thrown).toBeInstanceOf(RetryExhaustedError);
+    expect(thrown).toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(thrown?.cause).toBe(last);
     expect(thrown?.context.attempts).toBe(1);
   });
@@ -97,7 +100,7 @@ describe('withDynamoDBRetry', () => {
         },
         { maxAttempts: 1, rng: () => 0, baseDelayMs: 0 },
       ),
-    ).rejects.toBeInstanceOf(RetryExhaustedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
   });
 });
 
@@ -156,7 +159,7 @@ describe('withRetry abort normalisation (DDB-05)', () => {
   const throttled = (): Error =>
     Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
 
-  it('rejects with the library AbortError when the signal aborts during a backoff sleep', async () => {
+  it('rejects with the library ABORTED error when the signal aborts during a backoff sleep', async () => {
     const controller = new AbortController();
     const run = withRetry(
       () => {
@@ -167,7 +170,7 @@ describe('withRetry abort normalisation (DDB-05)', () => {
     );
     const error = (await run.catch((e: Error) => e)) as Error & { code?: string; cause?: Error };
     expect(isDynamoDBLangGraphError(error)).toBe(true);
-    expect(error).toMatchObject({ code: ErrorCode.ABORTED, name: 'AbortError' });
+    expect(error).toMatchObject({ code: ErrorCode.ABORTED, name: 'DynamoDBLangGraphError' });
     expect(error.cause?.name).toBe('AbortError');
   });
 
@@ -178,13 +181,13 @@ describe('withRetry abort normalisation (DDB-05)', () => {
       withRetry(() => Promise.resolve(1), { signal: controller.signal }),
     ).rejects.toMatchObject({
       code: ErrorCode.ABORTED,
-      name: 'AbortError',
+      name: 'DynamoDBLangGraphError',
       cause: expect.objectContaining({ name: 'AbortError' }),
     });
   });
 
-  it('rethrows a library AbortError given as the abort reason unchanged', async () => {
-    const reason = new AbortError('caller cancelled');
+  it('rethrows a library ABORTED error given as the abort reason unchanged', async () => {
+    const reason = abortError('caller cancelled');
     const controller = new AbortController();
     controller.abort(reason);
     await expect(withRetry(() => Promise.resolve(1), { signal: controller.signal })).rejects.toBe(
@@ -217,9 +220,9 @@ describe('withRetry under a deadline', () => {
         return Promise.resolve(failing());
       },
       { maxAttempts: 3, baseDelayMs: 0, rng: () => 1, deadlineAt: Date.now() - 1 },
-    ).catch((e: Error) => e)) as RetryExhaustedError;
+    ).catch((e: Error) => e)) as DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED>;
     expect(calls).toBe(1);
-    expect(error).toBeInstanceOf(RetryExhaustedError);
+    expect(error).toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(error.context.attempts).toBe(1);
     expect(error.message).toContain('after 1 attempts');
   });
@@ -238,7 +241,7 @@ describe('withRetry under a deadline', () => {
         return Promise.resolve(failing());
       },
       { maxAttempts: 5, baseDelayMs: 500, rng: () => 1, onRetry, deadlineAt: Date.now() + 1000 },
-    ).catch((e: Error) => e)) as RetryExhaustedError;
+    ).catch((e: Error) => e)) as DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED>;
     expect(calls).toBe(2);
     expect(error.context.attempts).toBe(2);
     expect(error.message).toContain('after 2 attempts');
@@ -251,7 +254,7 @@ describe('withRetry under a deadline', () => {
       baseDelayMs: 0,
       rng: () => 1,
       deadlineAt: Date.now() - 1,
-    }).catch((e: Error) => e)) as RetryExhaustedError;
+    }).catch((e: Error) => e)) as DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED>;
     expect(error.context.attempts).not.toBe(100);
     expect(error.context.attempts).toBe(1);
   });
@@ -265,7 +268,7 @@ describe('withRetry under a deadline', () => {
       { maxAttempts: 3, baseDelayMs: 0, deadlineAt: Date.now() - 1 },
     ).catch((e: Error) => e);
     expect(error).toBe(permanent);
-    expect(error).not.toBeInstanceOf(RetryExhaustedError);
+    expect(error).not.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
   });
 
   it('leaves the schedule and the count exactly as they are without a deadline', async () => {
@@ -278,7 +281,7 @@ describe('withRetry under a deadline', () => {
         throw failure;
       },
       { maxAttempts: 3, baseDelayMs: 10, rng: () => 1, onRetry },
-    ).catch((e: Error) => e)) as RetryExhaustedError;
+    ).catch((e: Error) => e)) as DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED>;
     expect(calls).toBe(3);
     expect(onRetry.mock.calls.map(([info]) => info)).toEqual([
       { attempt: 1, delayMs: 10, error: failure },

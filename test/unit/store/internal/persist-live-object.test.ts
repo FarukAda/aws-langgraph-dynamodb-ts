@@ -99,7 +99,7 @@ describe("store.put never releases a racer's committed object when its own write
 
     await expect(putItem(context(client, offloader), OP)).rejects.toMatchObject({
       code: ErrorCode.RETRY_EXHAUSTED,
-      name: 'RetryExhaustedError',
+      name: 'DynamoDBLangGraphError',
     });
 
     const own: string = offloader.upload.mock.calls[0][0];

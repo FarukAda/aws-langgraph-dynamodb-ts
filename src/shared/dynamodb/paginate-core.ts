@@ -108,9 +108,9 @@ function assertPositiveCap(value: number, field: string): number {
  *
  * Returns: an async generator over the items, continuing past empty pages.
  *
- * Throws: ValidationError naming `maxItems` or `maxIterations` for a cap below
- * 1; `AbortError` when the signal is already aborted at a page boundary; and
- * {@link ResultTruncatedError} when a cap is reached while data actually
+ * Throws: `VALIDATION` naming `maxItems` or `maxIterations` for a cap below
+ * 1; `ABORTED` when the signal is already aborted at a page boundary; and
+ * `RESULT_TRUNCATED` when a cap is reached while data actually
  * remains — a partial result is never returned silently.
  *
  * Guarantees: reaching `maxItems` on the last item of a page is not by itself a

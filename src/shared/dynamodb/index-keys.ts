@@ -65,7 +65,7 @@ function assertShardCount(shards: number): void {
  *
  * Returns: the two index attributes.
  *
- * Throws: ValidationError naming `indexShards` for a count below 1 — the read
+ * Throws: `VALIDATION` naming `indexShards` for a count below 1 — the read
  * side built an empty partition list from such a value and reported an empty
  * table full of rows.
  *
@@ -90,7 +90,7 @@ export function indexKeys(tag: IndexTag, id: string, at: string, shards: number)
  * Returns: one partition key per shard, which a recency listing queries in
  * parallel and merges.
  *
- * Throws: ValidationError naming `indexShards`.
+ * Throws: `VALIDATION` naming `indexShards`.
  */
 export function indexPartitions(tag: IndexTag, shards: number): string[] {
   assertShardCount(shards);

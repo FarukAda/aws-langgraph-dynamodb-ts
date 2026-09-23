@@ -22,7 +22,7 @@ import { SORT_KEY_SEPARATOR } from './keys';
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `sessionId`.
+ * Throws: `VALIDATION` naming `sessionId`.
  *
  * Guarantees: applied on every entry point, not just the write path. A bad
  * value used to reach DynamoDB and surface as a raw AWS SDK exception on reads
@@ -42,7 +42,7 @@ export function validateSessionId(sessionId: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `messages`.
+ * Throws: `VALIDATION` naming `messages`.
  */
 export function validateMessageList(messages: BaseMessage[]): void {
   if (!Array.isArray(messages)) {
@@ -59,7 +59,7 @@ export function validateMessageList(messages: BaseMessage[]): void {
  *
  * Returns: the messages in their stored form, in order.
  *
- * Throws: ValidationError naming `messages` and the offending index. Serializing
+ * Throws: `VALIDATION` naming `messages` and the offending index. Serializing
  * one message at a time is what makes that index knowable: mapping the array in
  * one call failed with `TypeError: message.toDict is not a function` from inside
  * LangChain, naming neither the message nor this library. What LangChain says
@@ -93,7 +93,7 @@ export function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `messages`, carrying the offending index and
+ * Throws: `VALIDATION` naming `messages`, carrying the offending index and
  * type. The type comes off the caller's own object and nothing length-checked
  * it, so the message names it bounded by {@link truncateForLog}, and so is
  * what LangChain says about it — that text renders the same unchecked value
@@ -140,9 +140,9 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `limit` or `before`, before any DynamoDB
+ * Throws: `VALIDATION` naming `limit` or `before`, before any DynamoDB
  * call. `before: null` used to reach `null.getTime`, a property access the
- * boundary branded `UpstreamError` instead of naming the caller's mistake; an
+ * boundary branded `UNEXPECTED_ERROR` instead of naming the caller's mistake; an
  * invalid `Date` would otherwise derive a NaN sort key that matches nothing
  * and read as an empty conversation. A pre-epoch `Date` was worse than either:
  * the bound built from it sorted above every real id, so the window came back

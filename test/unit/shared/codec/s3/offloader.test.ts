@@ -13,7 +13,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 import * as s3ClientModule from '../../../../../src/shared/codec/s3/client';
 import { S3Offloader } from '../../../../../src/shared/codec/s3/offloader';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
-import { ValidationError } from '../../../../../src/shared/errors/errors';
+import { validationError } from '../../../../../src/shared/errors/errors';
 
 // Wrap (not stub out) the real `createDefaultS3Client` so tests can observe
 // call counts / inject failures on the genuine async construction path
@@ -342,7 +342,7 @@ describe('optional peer preload (CODEC-05)', () => {
     };
     process.on('unhandledRejection', onUnhandledRejection);
     try {
-      const missing = new ValidationError('S3 offload requires the optional peer', 's3');
+      const missing = validationError('S3 offload requires the optional peer', 's3');
       loadS3SdkMock.mockRejectedValueOnce(missing).mockRejectedValueOnce(missing);
       const { offloader } = makeOffloader();
       await new Promise((resolve) => setImmediate(resolve));
@@ -390,7 +390,9 @@ describe('row-sourced key binding (SEC-03)', () => {
     expect(offloader.ownsKey(own, ['t'])).toBe(true);
     expect(offloader.ownsKey(own, ['other'])).toBe(false);
     expect(() => offloader.assertOwnedKey(own, ['t'])).not.toThrow();
-    expect(() => offloader.assertOwnedKey(own, ['other'])).toThrow(ValidationError);
+    expect(() => offloader.assertOwnedKey(own, ['other'])).toThrow(
+      expect.objectContaining({ code: ErrorCode.VALIDATION }),
+    );
     offloader.destroy();
   });
 });

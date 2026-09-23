@@ -1,6 +1,7 @@
 import type { WriteRequest } from '../../../../src/shared/dynamodb/types';
 import {
   DynamoDBLangGraphError,
+  failureLabel,
   hasErrorCode,
   isDynamoDBLangGraphError,
 } from '../../../../src/shared/errors/base-error';
@@ -113,5 +114,22 @@ describe('hasErrorCode', () => {
 
   it.each([null, undefined, 'x', 1])('answers false for %p rather than throwing', (value) => {
     expect(hasErrorCode(value as never, ErrorCode.VALIDATION)).toBe(false);
+  });
+});
+
+describe('failureLabel', () => {
+  /** Every library error shares one name; logging it would tell none of them apart. */
+  it('names a library error by its code', () => {
+    expect(failureLabel(new DynamoDBLangGraphError('m', ErrorCode.VALIDATION))).toBe('VALIDATION');
+    expect(failureLabel(new DynamoDBLangGraphError('m', ErrorCode.RETRY_EXHAUSTED))).toBe(
+      'RETRY_EXHAUSTED',
+    );
+  });
+
+  it('names any other error by its name', () => {
+    expect(failureLabel(Object.assign(new Error('x'), { name: 'ThrottlingException' }))).toBe(
+      'ThrottlingException',
+    );
+    expect(failureLabel(Object.assign(new Error('x'), { code: 'VALIDATION' }))).toBe('Error');
   });
 });

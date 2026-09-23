@@ -53,7 +53,7 @@ describe('s3KeyScope / isKeyInScope (SEC-03)', () => {
 });
 
 describe('assertKeyInScope', () => {
-  it('throws a ValidationError naming the s3Key field and the allowed path', () => {
+  it('throws a VALIDATION error naming the s3Key field and the allowed path', () => {
     expect(() => assertKeyInScope(buildS3Key('p/', ['t'], ID), 'p/', ['t'])).not.toThrow();
     try {
       assertKeyInScope('p/elsewhere.bin', 'p/', ['t']);

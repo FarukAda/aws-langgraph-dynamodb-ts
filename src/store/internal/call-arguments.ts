@@ -56,7 +56,7 @@ function assertUpstreamPutNamespace(namespace: string[]): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `namespace`, `namespace element`, `key`,
+ * Throws: `VALIDATION` naming `namespace`, `namespace element`, `key`,
  * `sortKey` or `value`.
  */
 export function assertPutArguments(
@@ -86,7 +86,7 @@ export function assertPutArguments(
  * Returns: the operation, with `matchConditions` absent when neither path is
  * given.
  *
- * Throws: ValidationError naming `options` or `options.<key>`.
+ * Throws: `VALIDATION` naming `options` or `options.<key>`.
  */
 export function listNamespacesOperation(options: ListNamespacesOptions): ListNamespacesOperation {
   assertShape(options, STORE_LIST_NAMESPACES_KEYS, 'options');

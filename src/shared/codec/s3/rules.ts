@@ -160,7 +160,7 @@ export function markerRule(id: string, prefix: string, existing?: LifecycleRule)
  * scope anywhere is taken over, and so is one already scoping this prefix —
  * including in the older schema, which is then upgraded to a filter.
  *
- * Throws: ValidationError naming `s3.keyPrefix`. The id and the scope are
+ * Throws: `VALIDATION` naming `s3.keyPrefix`. The id and the scope are
  * both bounded by {@link truncateForLog}: the scope is whatever the bucket's
  * lifecycle configuration holds, and the id is composed from an
  * `s3.keyPrefix` checked for shape and never for length.

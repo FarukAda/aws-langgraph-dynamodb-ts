@@ -102,11 +102,11 @@ async function writeCount(
  * Returns: the count now stored, which is the number of messages a reader would
  * see.
  *
- * Throws: ValidationError naming `sessionId`; {@link ConflictError} when the
+ * Throws: `VALIDATION` naming `sessionId`; `CONDITION_CONFLICT` when the
  * session does not exist — rather than creating a permanent, TTL-less
  * metadata-only row — and when it stays too busy to settle within
  * {@link OVERWRITE_CAS_MAX_ATTEMPTS} attempts; `FORMAT_UNSUPPORTED` for a
- * message row a newer release wrote, and ValidationError naming `message` for
+ * message row a newer release wrote, and `VALIDATION` naming `message` for
  * a row in the session's message key space that this adapter did not write,
  * both of which `getMessages` refuses too — writing a count back for a session
  * no read can open would repair nothing; whatever the reads and the write

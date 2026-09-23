@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { collectRows } from './harness.mjs';
-import { canonicalLines, countBare, countUpstream, duplicateLabels } from './normalise.mjs';
+import { canonicalLines, countBare, countMisnamed, countUpstream, duplicateLabels } from './normalise.mjs';
 
 const BASELINE = 'test/surface/baseline.txt';
 
@@ -26,11 +26,13 @@ const BASELINE = 'test/surface/baseline.txt';
 const EXPECTED_BARE = 0;
 
 /**
- * The count of cases ending in `UpstreamError/UPSTREAM` or
- * `RetryExhaustedError/RETRY_EXHAUSTED`, under the same rule. It sees what the
- * bare count cannot: wrapping a method so a caller's mistake escapes as an
- * `UpstreamError` removes a bare row and adds one here, and that is a
- * rebranding, not a fix. The fake client's own rejection is reported as
+ * The count of cases ending in a code that reports a failure outside this
+ * library — `RETRY_EXHAUSTED`, `THROTTLED`, `SERVICE_UNAVAILABLE`,
+ * `CONTENTION`, `ACCESS_DENIED`, `NOT_FOUND`, `AWS_REJECTED`,
+ * `AWS_REQUEST_FAILED` or `UNEXPECTED_ERROR` — under the same rule. It sees
+ * what the bare count cannot: wrapping a method so a caller's mistake escapes
+ * wrapped as a failure from below removes a bare row and adds one here, and
+ * that is a rebranding, not a fix. The fake client's own rejection is reported as
  * REACHED-WRITE instead, so a row counted here failed somewhere other than the
  * AWS call the harness fakes.
  */
@@ -80,5 +82,15 @@ test('no case regresses into ending in an upstream failure', async () => {
   assert.ok(
     upstream <= EXPECTED_UPSTREAM,
     `${upstream} cases end in an upstream failure, up from ${EXPECTED_UPSTREAM}; lower EXPECTED_UPSTREAM as fixes land, never raise it`,
+  );
+});
+
+test('every branded error carries the one class name', async () => {
+  const lines = canonicalLines(await collectRows());
+  const misnamed = countMisnamed(lines);
+  assert.equal(
+    misnamed,
+    0,
+    `${misnamed} cases raised a branded error under a name other than DynamoDBLangGraphError; there is one error class`,
   );
 });

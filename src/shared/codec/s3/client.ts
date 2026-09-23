@@ -36,7 +36,7 @@ function wrapMissingPeer(error: Error): never {
  *
  * Returns: the module, cached for every later call.
  *
- * Throws: ValidationError naming `s3` when the package is not installed,
+ * Throws: `VALIDATION` naming `s3` when the package is not installed,
  * carrying the install command; any other import failure — a broken build, a
  * syntax error inside the package — passes through unchanged. A failure is not
  * cached, so an install or a fixed bundle succeeds on a later call.

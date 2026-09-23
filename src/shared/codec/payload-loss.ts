@@ -34,7 +34,7 @@ export function isMissingObjectError(error: Error): boolean {
  * and no other reader would fare better.
  *
  * Two refusals from the same guard are deliberately *not* matched here, both
- * because the sentence above would be false of them. A `ValidationError` naming
+ * because the sentence above would be false of them. A `VALIDATION` error naming
  * `s3Key` says the reader may not follow the key, not that the payload is
  * unreadable (see `assertKeyInScope`). A `FORMAT_UNSUPPORTED` naming
  * `schemaVersion` says the payload was written by a newer release — which reads

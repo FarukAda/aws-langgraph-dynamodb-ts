@@ -196,7 +196,7 @@ async function allByScan(
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field` for anything else that is not an
+ * Throws: `VALIDATION` naming `field` for anything else that is not an
  * integer of at least 1 — the same bound `paginatePages`'s own
  * `assertPositiveCap` already enforces, just checked before a `null` can be
  * mistaken for "no value" and silently replaced by the default.
@@ -266,12 +266,12 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
  * promise more rows: the page after it can come back empty (see
  * `queryRecencyIndex`).
  *
- * Throws: ValidationError naming `limit`, `cursor`, `maxItems`,
+ * Throws: `VALIDATION` naming `limit`, `cursor`, `maxItems`,
  * `maxIterations`, `signal`, or `options.<key>` for a key this package does
- * not read; {@link ResultTruncatedError} past the scan path's caps, or for an
+ * not read; `RESULT_TRUNCATED` past the scan path's caps, or for an
  * index shard whose pages do not end within `MAX_LOOP_ITERATIONS`;
  * `FORMAT_UNSUPPORTED` for a SESSION row a newer release wrote, on either
- * path; `AbortError`.
+ * path; `ABORTED`.
  *
  * Guarantees: with a configured `indexName` each index shard is read
  * newest-first one DynamoDB page at a time, and its next page whenever it has

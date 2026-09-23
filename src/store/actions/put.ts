@@ -50,7 +50,7 @@ async function resolveEmbedding(
  *
  * Returns: nothing. Deleting an item that is not there is not an error.
  *
- * Throws: ValidationError naming `namespace`, `key`, `index`, or `value` for a
+ * Throws: `VALIDATION` naming `namespace`, `key`, `index`, or `value` for a
  * value that is neither an object nor `null`, or that JSON cannot represent —
  * refused at the write rather than stored as a row that can never be read back;
  * `S3_OFFLOAD_FAILED`; whatever the write throws.

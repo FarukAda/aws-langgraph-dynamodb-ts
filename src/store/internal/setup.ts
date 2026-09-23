@@ -74,7 +74,7 @@ export interface StoreSetup {
  * store owns it — a client the caller passed in is never destroyed by
  * `destroy()`.
  *
- * Throws: ValidationError for any invalid option, naming the option.
+ * Throws: `VALIDATION` for any invalid option, naming the option.
  *
  * Guarantees: constructing a store performs no I/O. The stacked-retry check is
  * deliberately not awaited: it is a warning about a caller-supplied client, not

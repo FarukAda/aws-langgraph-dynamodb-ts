@@ -70,7 +70,7 @@ export interface HistorySetup {
  * adapter owns it — a client the caller passed in is never destroyed by
  * `destroy()`.
  *
- * Throws: ValidationError naming the offending option.
+ * Throws: `VALIDATION` naming the offending option.
  *
  * Guarantees: constructing an adapter performs no I/O.
  */

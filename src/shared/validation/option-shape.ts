@@ -43,7 +43,7 @@ export function isObjectShape(value: object | undefined): value is object {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field`.
+ * Throws: `VALIDATION` naming `field`.
  */
 export function assertObjectShape(value: object, field: string): void {
   if (!isObjectShape(value)) {
@@ -60,7 +60,7 @@ export function assertObjectShape(value: object, field: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `field` for a value that is not an object, and
+ * Throws: `VALIDATION` naming `field` for a value that is not an object, and
  * `field.key` for an unknown key. A misspelt key is otherwise accepted and
  * ignored, and the caller runs on a default they believe they overrode.
  *

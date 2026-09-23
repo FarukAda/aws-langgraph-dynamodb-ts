@@ -1,6 +1,5 @@
 import { paginatePages } from '../../../../src/shared/dynamodb/paginate-core';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { AbortError, ResultTruncatedError } from '../../../../src/shared/errors/errors';
 
 async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {
   const out: T[] = [];
@@ -76,7 +75,7 @@ describe('paginatePages', () => {
     expect(result).toEqual([{ id: 1 }, { id: 2 }]);
   });
 
-  it('throws ResultTruncatedError when maxItems is hit with more data in the page', async () => {
+  it('throws RESULT_TRUNCATED when maxItems is hit with more data in the page', async () => {
     await expect(
       collect(
         paginatePages(
@@ -84,20 +83,20 @@ describe('paginatePages', () => {
           { maxItems: 2 },
         ),
       ),
-    ).rejects.toBeInstanceOf(ResultTruncatedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RESULT_TRUNCATED });
   });
 
-  it('throws ResultTruncatedError when maxItems is hit and another page follows', async () => {
+  it('throws RESULT_TRUNCATED when maxItems is hit and another page follows', async () => {
     await expect(
       collect(
         paginatePages(() => Promise.resolve({ items: [{ id: 1 }, { id: 2 }], lastKey: { k: 1 } }), {
           maxItems: 2,
         }),
       ),
-    ).rejects.toBeInstanceOf(ResultTruncatedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RESULT_TRUNCATED });
   });
 
-  it('throws AbortError before fetching when already aborted', async () => {
+  it('throws ABORTED before fetching when already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
     await expect(
@@ -106,17 +105,17 @@ describe('paginatePages', () => {
           signal: controller.signal,
         }),
       ),
-    ).rejects.toBeInstanceOf(AbortError);
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED });
   });
 
-  it('throws ResultTruncatedError when the iteration cap is hit with data remaining', async () => {
+  it('throws RESULT_TRUNCATED when the iteration cap is hit with data remaining', async () => {
     await expect(
       collect(
         paginatePages(() => Promise.resolve({ items: [{ id: 1 }], lastKey: { k: 1 } }), {
           maxIterations: 3,
         }),
       ),
-    ).rejects.toBeInstanceOf(ResultTruncatedError);
+    ).rejects.toMatchObject({ code: ErrorCode.RESULT_TRUNCATED });
   });
 
   it('does not truncate when paginating to unbounded completion', async () => {
@@ -136,7 +135,7 @@ describe('paginatePages', () => {
 });
 
 describe('paginatePages abort normalisation (DDB-05)', () => {
-  it('throws the library AbortError with the raw reason as cause when already aborted', async () => {
+  it('throws the library ABORTED error with the raw reason as cause when already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
     const pages = paginatePages(() => Promise.resolve({ items: [], lastKey: undefined }), {

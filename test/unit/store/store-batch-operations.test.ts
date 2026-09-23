@@ -47,7 +47,7 @@ function oneRowTable(mock: Mock): void {
 }
 
 const refusal = (field: string) => ({
-  name: 'ValidationError',
+  name: 'DynamoDBLangGraphError',
   code: ErrorCode.VALIDATION,
   context: { field },
 });
@@ -87,7 +87,7 @@ const REFUSED: [string, Operation, string][] = [
 /**
  * A caller's mistake in the `operations` argument itself, before any operation
  * is read: it used to reach the `in` operator or `for...of` and surface as an
- * UpstreamError, which reports the caller's mistake as an AWS-side failure.
+ * `UNEXPECTED_ERROR`, which reports the caller's mistake as a failure from below.
  */
 const MALFORMED_OPERATIONS: [string, unknown][] = [
   ['a string', 'x'],

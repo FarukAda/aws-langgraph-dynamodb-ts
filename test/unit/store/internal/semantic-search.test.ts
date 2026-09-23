@@ -99,7 +99,7 @@ describe('embedValue', () => {
     expect(embeddings.embedDocuments).not.toHaveBeenCalled();
   });
 
-  it('throws a ValidationError when the embeddings return a vector of the wrong length', async () => {
+  it('throws a VALIDATION error when the embeddings return a vector of the wrong length', async () => {
     const embeddings = stubEmbeddings([1, 2, 3]);
     const ctx = context({ dims: 2, embeddings: embeddings as never, fields: ['t'] });
     await expect(embedValue(ctx, { t: 'x' })).rejects.toMatchObject({ code: 'VALIDATION' });

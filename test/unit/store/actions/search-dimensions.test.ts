@@ -2,6 +2,7 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { MAX_LOGGED_LABELS } from '../../../../src/shared/constants';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
@@ -133,6 +134,10 @@ describe('searchItems embedding dimensions (STORE-11)', () => {
 
     await expect(
       searchItems(ctx, { namespacePrefix: ['users'], query: 'q' }),
-    ).rejects.toMatchObject({ name: 'ValidationError', message: expect.stringContaining('dims') });
+    ).rejects.toMatchObject({
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.VALIDATION,
+      message: expect.stringContaining('dims'),
+    });
   });
 });

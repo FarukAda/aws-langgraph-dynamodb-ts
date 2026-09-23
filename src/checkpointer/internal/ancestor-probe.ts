@@ -39,7 +39,7 @@ export interface WalkStop {
  * addresses nothing that could have expired, so the walk has simply run out of
  * chain.
  *
- * Throws: whatever the read throws after retries; `AbortError` when the signal
+ * Throws: whatever the read throws after retries; `ABORTED` when the signal
  * has already fired, which is answered in preference to the expiry this read
  * exists to diagnose — a caller who cancelled is owed its own stop, and is no
  * longer waiting to be told why the walk ended.

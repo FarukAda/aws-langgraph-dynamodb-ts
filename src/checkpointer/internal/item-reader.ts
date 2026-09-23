@@ -106,7 +106,7 @@ export function narrowHead(
  *
  * Returns: the checkpoint.
  *
- * Throws: `PAYLOAD_CORRUPT` for bytes that cannot be decoded, ValidationError
+ * Throws: `PAYLOAD_CORRUPT` for bytes that cannot be decoded, `VALIDATION`
  * for a descriptor pointing outside the row's scope and for a payload the
  * configured serde refuses to reconstruct, and whatever the download throws.
  */

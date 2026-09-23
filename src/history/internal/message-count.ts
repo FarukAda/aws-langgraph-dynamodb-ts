@@ -55,10 +55,10 @@ function requireCountableRow(raw: DocItem, sessionId: string): ChatMessageItem {
  * Returns: how many messages a reader would actually see right now.
  *
  * Throws: `FORMAT_UNSUPPORTED` for a message row a newer release wrote, checked
- * before the row's ttl as `getMessages` checks it; ValidationError naming
+ * before the row's ttl as `getMessages` checks it; `VALIDATION` naming
  * `message` for a row in the message key space that is not one of this
  * adapter's, which `getMessages` refuses too; whatever the query throws
- * after retries; `AbortError`.
+ * after retries; `ABORTED`.
  *
  * Guarantees: each row comes back projected to its identity, its format
  * version and its ttl, so no message payload is transferred however large the

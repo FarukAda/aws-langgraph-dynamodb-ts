@@ -3,8 +3,8 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { AbortError, RetryExhaustedError } from '../../../../src/shared/errors/errors';
-import { UpstreamError } from '../../../../src/shared/errors/upstream-error';
+import { abortError, retryExhaustedError } from '../../../../src/shared/errors/errors';
+import { wrapForeignError } from '../../../../src/shared/errors/wrap-error';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchViaBackend } from '../../../../src/store/internal/backend-search';
 import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
@@ -50,9 +50,9 @@ describe('searchViaBackend when a match cannot be read', () => {
   ];
 
   const propagated: [string, Error][] = [
-    ['a read that spent its retry budget', new RetryExhaustedError('spent', 2)],
-    ['a failure from below the library', new UpstreamError(new Error('denied'), 'store.get')],
-    ['a cancelled read', new AbortError()],
+    ['a read that spent its retry budget', retryExhaustedError('spent', 2)],
+    ['a failure from below the library', wrapForeignError(new Error('denied'), 'store.get')],
+    ['a cancelled read', abortError()],
     [
       'a payload that can never be read',
       new DynamoDBLangGraphError('corrupt', ErrorCode.PAYLOAD_CORRUPT),
@@ -95,7 +95,7 @@ describe('searchViaBackend when a match cannot be read', () => {
   });
 
   /**
-   * A `ValidationError` is not by itself the address the drop exists for. The
+   * A `VALIDATION` error is not by itself the address the drop exists for. The
    * decode raises one too — for a row offloaded to S3 read by an adapter with
    * no `s3` configured, for a descriptor written by a newer library, for an
    * `s3Key` outside the row's own path — and every one of those is a read that
@@ -146,7 +146,7 @@ describe('searchViaBackend when a match cannot be read', () => {
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('unusable'),
-      expect.objectContaining({ key: 'k2', reason: 'ValidationError' }),
+      expect.objectContaining({ key: 'k2', reason: 'VALIDATION' }),
     );
   });
 });

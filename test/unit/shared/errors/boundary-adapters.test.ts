@@ -39,7 +39,7 @@ const wrapped = (operation: string, cause: Error) => ({
 });
 
 describe('public error boundary (CORE-01)', () => {
-  it('DynamoDBSaver wraps a raw SDK error from put and passes a ValidationError through', async () => {
+  it('DynamoDBSaver wraps a raw SDK error from put and passes a VALIDATION error through', async () => {
     const { client, mock } = createStrictDocumentMock();
     const cause = sdkError();
     mock.on(TransactWriteCommand).rejects(cause);
@@ -48,7 +48,8 @@ describe('public error boundary (CORE-01)', () => {
       saver.put({ configurable: { thread_id: 't' } }, checkpoint, metadata),
     ).rejects.toMatchObject(wrapped('saver.put', cause));
     await expect(saver.put({ configurable: {} }, checkpoint, metadata)).rejects.toMatchObject({
-      name: 'ValidationError',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.VALIDATION,
     });
   });
 

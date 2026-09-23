@@ -156,7 +156,7 @@ async function answerOf(
 describe('a payload naming a class outside the allow-list is a refusal, not payload loss', () => {
   it.each(ADAPTERS)('%s raises rather than reading past the row', async (_name, read) => {
     expect(await answerOf(read)).toEqual({
-      name: 'ValidationError',
+      name: 'DynamoDBLangGraphError',
       code: ErrorCode.VALIDATION,
       field: 'serde',
     });
@@ -193,15 +193,15 @@ async function refusalAtTheBoundary(): Promise<Error> {
 describe('the refusal at the public boundary', () => {
   it('reaches a caller branded, not rebranded as an AWS failure', async () => {
     expect(await refusalAtTheBoundary()).toMatchObject({
-      name: 'ValidationError',
+      name: 'DynamoDBLangGraphError',
       code: ErrorCode.VALIDATION,
       context: { field: 'serde' },
     });
   });
 
   /**
-   * `guardPublic` could only wrap the bare `Error` LangChain raises, and an
-   * `UpstreamError` quotes what it wraps — so the row's own stored record was
+   * `guardPublic` could only wrap the bare `Error` LangChain raises, and the
+   * wrapper quotes what it wraps — so the row's own stored record was
    * copied into `err.message`, which an application may print with no redacting
    * logger in the path. The branded message names the condition instead and
    * leaves the record on `cause`.

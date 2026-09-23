@@ -89,7 +89,7 @@ export function extractText(value: Record<string, JsonValue>, fields: string[]):
  *
  * Returns: nothing; agreement is the absence of a throw.
  *
- * Throws: ValidationError naming `index.dims`.
+ * Throws: `VALIDATION` naming `index.dims`.
  */
 export function assertVectorDims(index: IndexConfig, vector: number[], what: string): void {
   const dims = index.dims;
@@ -120,7 +120,7 @@ interface PendingText {
  * Returns: one entry per value, in input order: its vector, or `undefined` when
  * the value has no indexable text or the store has no index at all.
  *
- * Throws: ValidationError naming `index.dims` when the model's width disagrees
+ * Throws: `VALIDATION` naming `index.dims` when the model's width disagrees
  * with the configuration; whatever the model throws.
  *
  * Guarantees: values with no text are never sent to the model, and the rest go

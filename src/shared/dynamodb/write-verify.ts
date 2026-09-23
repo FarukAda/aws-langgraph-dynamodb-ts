@@ -179,7 +179,7 @@ export async function readRow(deps: VerifyDeps, read: RowRead): Promise<DocItem 
  *
  * No failure is proof of a non-commit: `withDynamoDBRetry` re-issues a write
  * whose response was lost, and those re-issues can time out at the transport
- * without reaching DynamoDB, so the budget is spent on a `RetryExhaustedError`
+ * without reaching DynamoDB, so the budget is spent on a `RETRY_EXHAUSTED` error
  * while the row is live. Every caller that is about to delete something on the
  * strength of a failure reads the row first, through here.
  *

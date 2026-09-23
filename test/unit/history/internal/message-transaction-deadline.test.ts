@@ -10,7 +10,7 @@ import {
 } from '../../../../src/shared/constants';
 import * as retryModule from '../../../../src/shared/dynamodb/retry';
 import type { RetryAttemptInfo, RetryOptions } from '../../../../src/shared/dynamodb/retry';
-import { RetryExhaustedError } from '../../../../src/shared/errors/errors';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createUlidFactory } from '../../../../src/shared/ulid';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -116,9 +116,9 @@ describe('the append transaction stays inside the window its token is honoured f
     stub.resolves({});
     const ctx = context(client, installScheduleClock(100, 60_000));
 
-    await expect(writeMessageChunk(ctx, [ITEM], FIELDS, { rng: () => 0 })).rejects.toBeInstanceOf(
-      RetryExhaustedError,
-    );
+    await expect(writeMessageChunk(ctx, [ITEM], FIELDS, { rng: () => 0 })).rejects.toMatchObject({
+      code: ErrorCode.RETRY_EXHAUSTED,
+    });
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(15);
   });
 

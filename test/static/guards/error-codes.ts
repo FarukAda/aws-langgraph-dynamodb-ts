@@ -52,3 +52,13 @@ export function findDeadErrorCodes(): string[] {
     .join('\n');
   return listErrorCodeMembers().filter((member) => !referencesErrorCode(member, otherSources));
 }
+
+/**
+ * The `ErrorCode` members the README's error table does not list, each looked
+ * for as a backticked cell at the start of a table row: `` | `THROTTLED` | ``.
+ */
+export function undocumentedErrorCodes(
+  readme: string = readFileSync(join(SRC_ROOT, '..', 'README.md'), 'utf8'),
+): string[] {
+  return listErrorCodeMembers().filter((member) => !readme.includes(`| \`${member}\` |`));
+}

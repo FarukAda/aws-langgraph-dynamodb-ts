@@ -18,7 +18,7 @@ function segmentMatches(actual: string[], path: string[]): boolean {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `matchConditions`. A string is echoed in the
+ * Throws: `VALIDATION` naming `matchConditions`. A string is echoed in the
  * message and anything else is described by its type, since `JSON.stringify`
  * itself throws on a bigint.
  */
@@ -40,7 +40,7 @@ export function assertMatchType(matchType: MatchCondition['matchType']): void {
  *
  * Returns: whether the condition holds.
  *
- * Throws: ValidationError naming `matchConditions` for an unknown `matchType`.
+ * Throws: `VALIDATION` naming `matchConditions` for an unknown `matchType`.
  */
 export function matchNamespace(namespace: string[], condition: MatchCondition): boolean {
   const { matchType, path } = condition;

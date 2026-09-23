@@ -58,7 +58,7 @@ async function cleanUpItems(
  * Returns: nothing. Every write is attempted; a regular write that loses its
  * first-write-wins race is a normal outcome, not a failure.
  *
- * Throws: ValidationError naming `config`, `configurable` or `signal` for a
+ * Throws: `VALIDATION` naming `config`, `configurable` or `signal` for a
  * config of the wrong shape; `thread_id`, `checkpoint_ns`, `checkpoint_id` or
  * `thread_ts` for a malformed identifier, and `checkpoint_id` when the config
  * names none; `taskId`, `writes`, `channel`, `sortKey`, `payload` or `s3Key`;

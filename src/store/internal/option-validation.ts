@@ -96,7 +96,7 @@ function validateLimits(options: DynamoDBStoreOptions): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming the offending option. Every failure is raised
+ * Throws: `VALIDATION` naming the offending option. Every failure is raised
  * at construction, where the fix is, rather than at the first put or search.
  */
 export function validateStoreOptions(options: DynamoDBStoreOptions): void {

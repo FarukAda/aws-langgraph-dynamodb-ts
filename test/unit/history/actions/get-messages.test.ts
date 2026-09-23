@@ -188,11 +188,11 @@ describe('getMessages', () => {
       expect(messages.map((m) => m.content)).toEqual(['inline']);
       expect(error).toHaveBeenCalledWith(
         expect.stringContaining('corrupt'),
-        expect.objectContaining({ sortKey: 'HISTORY#MSG#01A', reason: 'DynamoDBLangGraphError' }),
+        expect.objectContaining({ sortKey: 'HISTORY#MSG#01A', reason: 'S3_OFFLOAD_FAILED' }),
       );
     });
 
-    it('rethrows a ValidationError when a message is offloaded but the reader has no s3', async () => {
+    it('rethrows a VALIDATION error when a message is offloaded but the reader has no s3', async () => {
       const { client, mock } = createStrictDocumentMock();
       mock.on(QueryCommand).resolves({ Items: [await offloadedHuman(client)] });
       await expect(getMessages(context(client), 's1')).rejects.toMatchObject({

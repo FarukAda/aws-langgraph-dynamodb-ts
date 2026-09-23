@@ -28,7 +28,7 @@ const RETRY_KEYS = allKeysOf<RetryPolicy>({
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `tableName`.
+ * Throws: `VALIDATION` naming `tableName`.
  */
 export function validateTableName(tableName: string): void {
   if (typeof tableName !== 'string' || !TABLE_NAME_PATTERN.test(tableName)) {
@@ -52,7 +52,7 @@ export function validateTableName(tableName: string): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `client` for both ways at once, then
+ * Throws: `VALIDATION` naming `client` for both ways at once, then
  * `clientConfig` for one that is not an object.
  */
 export function validateClientChoice(
@@ -92,7 +92,7 @@ export function validateClientChoice(
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `retry.maxAttempts`, `retry.baseDelayMs` or
+ * Throws: `VALIDATION` naming `retry.maxAttempts`, `retry.baseDelayMs` or
  * `retry.maxDelayMs`.
  */
 export function validateRetryBounds(
@@ -120,7 +120,7 @@ export function validateRetryBounds(
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError naming `retry` or `retry.<key>`.
+ * Throws: `VALIDATION` naming `retry` or `retry.<key>`.
  */
 export function validateRetryPolicy(policy: RetryPolicy): void {
   assertShape(policy, RETRY_KEYS, 'retry');
@@ -149,7 +149,7 @@ function validateRecencyIndex(options: BaseAdapterOptions): void {
  *
  * Returns: nothing; validity is the absence of a throw.
  *
- * Throws: ValidationError whose `context.field` names the offending option,
+ * Throws: `VALIDATION` whose `context.field` names the offending option,
  * dotted for a nested one (`s3.bucketName`). The order is `tableName`, client
  * choice, `ttl`, `retry`, `compression`, `s3`, `readConcurrency`, then the
  * index options.
