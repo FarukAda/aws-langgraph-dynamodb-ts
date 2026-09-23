@@ -14,17 +14,16 @@ import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { releaseOwned } from '../shared/release';
 import { assertCancelOptions } from '../shared/validation/method-keys';
-import { assertShape, checkedShape } from '../shared/validation/option-shape';
-import { validateStringArray } from '../shared/validation/primitives';
+import { checkedShape } from '../shared/validation/option-shape';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
 import { ensureS3Lifecycle } from './actions/ensure-lifecycle';
 import { getCheckpointTuple } from './actions/get-tuple';
 import { listCheckpoints } from './actions/list';
 import { putCheckpoint } from './actions/put';
 import { putWrites as putWritesAction } from './actions/put-writes';
-import { assertConfigShape } from './internal/configurable';
 import { deltaChannelHistory } from './internal/delta-history';
-import { DELTA_CHANNEL_HISTORY_KEYS, SAVER_KEYS } from './internal/option-keys';
+import { SAVER_KEYS } from './internal/option-keys';
+import { parseDeltaHistoryRequest } from './internal/parse';
 import { type CheckpointerContext, setUpCheckpointer } from './internal/setup';
 import type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './types';
 
@@ -288,14 +287,12 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     options: DeltaChannelHistoryOptions,
   ): Promise<Record<string, DeltaChannelHistory>> {
     return guardPublic('saver.getDeltaChannelHistory', () => {
-      assertShape(options, DELTA_CHANNEL_HISTORY_KEYS, 'options');
-      assertConfigShape(options.config);
-      validateStringArray(options.channels, 'channels');
+      const request = parseDeltaHistoryRequest(options);
       return deltaChannelHistory(
         this.context,
         (c) => this.getTuple(c),
-        options.config,
-        options.channels,
+        request.config,
+        request.channels,
       );
     });
   }

@@ -8,13 +8,11 @@ import type {
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { transactIdempotently } from '../../shared/dynamodb/idempotent-write';
-import { validationError } from '../../shared/errors/errors';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { verifyCheckpointLanded } from '../internal/checkpoint-write-verify';
-import { readConfigurable } from '../internal/configurable';
 import { buildCheckpointItems } from '../internal/item-writer';
+import { parsePutRequest } from '../internal/parse';
 import type { CheckpointerContext } from '../internal/setup';
-import { validateCheckpointId } from '../internal/validation';
 
 /**
  * Persist a checkpoint and its metadata as a transactional pair of META and
@@ -73,29 +71,12 @@ export async function putCheckpoint(
   metadata: CheckpointMetadata,
   _newVersions?: ChannelVersions,
 ): Promise<RunnableConfig> {
-  const { threadId, checkpointNs, checkpointId: parentCheckpointId } = readConfigurable(config);
-  const signal = config.signal;
-  if (checkpoint === null || checkpoint === undefined) {
-    throw validationError('checkpoint must be an object', 'checkpoint');
-  }
-  validateCheckpointId(checkpoint.id);
+  const request = parsePutRequest(config, checkpoint, metadata);
+  const { threadId, checkpointNs, checkpointId } = request.address;
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const { meta, payload } = await buildCheckpointItems(
-    context,
-    threadId,
-    checkpointNs,
-    checkpoint,
-    metadata,
-    parentCheckpointId,
-    ttlTimestamp,
-    signal,
-  );
+  const { meta, payload } = await buildCheckpointItems(context, request, ttlTimestamp);
   const stored: RunnableConfig = {
-    configurable: {
-      thread_id: threadId,
-      checkpoint_ns: checkpointNs,
-      checkpoint_id: checkpoint.id,
-    },
+    configurable: { thread_id: threadId, checkpoint_ns: checkpointNs, checkpoint_id: checkpointId },
   };
   try {
     /**
@@ -142,7 +123,7 @@ export async function putCheckpoint(
         { Put: { TableName: context.tableName, Item: meta } },
         { Put: { TableName: context.tableName, Item: payload } },
       ],
-      signal,
+      request.signal,
     );
   } catch (error) {
     if (!context.offloader) throw error;
@@ -150,7 +131,7 @@ export async function putCheckpoint(
     if (verdict === 'landed') {
       context.logger.debug('put: transaction committed although its response was lost', {
         threadId,
-        checkpointId: checkpoint.id,
+        checkpointId,
       });
       return stored;
     }

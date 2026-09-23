@@ -238,7 +238,7 @@ describe('DynamoDBSaver', () => {
   /**
    * `0`, `false` and `NaN` are falsy in JS but none can be a checkpoint id;
    * "no id" is exactly `undefined`, `null` or `''`, so each of these must
-   * reach `validateCheckpointId` and be refused as a non-string rather than
+   * reach `parseCheckpointId` and be refused as a non-string rather than
    * silently read as "the latest".
    */
   it('getTuple refuses 0, false and NaN as a checkpoint_id, and still accepts "" and null', async () => {

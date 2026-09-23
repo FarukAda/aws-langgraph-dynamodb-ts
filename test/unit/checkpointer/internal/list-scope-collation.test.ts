@@ -1,9 +1,10 @@
 import { metaSortKey } from '../../../../src/checkpointer/internal/keys';
+import { listQuery, passesKeyFilters } from '../../../../src/checkpointer/internal/list-scope';
 import {
   type ListScope,
-  listQuery,
-  passesKeyFilters,
-} from '../../../../src/checkpointer/internal/list-scope';
+  parseListScope,
+  type ThreadId,
+} from '../../../../src/checkpointer/internal/parse';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import type { CheckpointMetaItem } from '../../../../src/checkpointer/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -23,15 +24,11 @@ function context(): CheckpointerContext {
   };
 }
 
-const scope = (before: string): ListScope & { threadId: string } => ({
-  threadId: 't',
-  checkpointNs: '',
-  checkpointId: undefined,
-  before,
-  filter: undefined,
-  limit: undefined,
-  signal: undefined,
-});
+const scope = (before: string): ListScope & { threadId: ThreadId } =>
+  parseListScope(
+    { configurable: { thread_id: 't', checkpoint_ns: '' } },
+    { before: { configurable: { checkpoint_id: before } } },
+  ) as ListScope & { threadId: ThreadId };
 
 const meta = (checkpointId: string): CheckpointMetaItem =>
   ({

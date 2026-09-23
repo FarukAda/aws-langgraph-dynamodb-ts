@@ -5,12 +5,12 @@ import {
   fetchPendingWrites,
   fetchTargetMeta,
 } from '../../../../src/checkpointer/internal/fetch';
-import { buildWriteItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { LIST_SCAN_WARN_THRESHOLD } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { threadAddress, writeItems } from '../../../shared/helpers/parsed-inputs';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 const serde = {
@@ -37,7 +37,7 @@ describe('fetchTargetMeta', () => {
         metadata: {},
       },
     });
-    const meta = await fetchTargetMeta(context(client), 't', '', 'c1');
+    const meta = await fetchTargetMeta(context(client), threadAddress('t', '', 'c1'));
     expect(meta?.checkpointId).toBe('c1');
     expect(mock.commandCalls(GetCommand)[0].args[0].input.Key).toEqual({
       PK: 'CHKPT#t',
@@ -60,7 +60,7 @@ describe('fetchTargetMeta', () => {
         },
       ],
     });
-    const meta = await fetchTargetMeta(context(client), 't', '');
+    const meta = await fetchTargetMeta(context(client), threadAddress('t', ''));
     expect(meta?.checkpointId).toBe('newest');
     const input = mock.commandCalls(QueryCommand)[0].args[0].input;
     expect(input.Limit).toBeGreaterThan(1);
@@ -71,7 +71,7 @@ describe('fetchTargetMeta', () => {
   it('returns undefined when the newest query is empty', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });
-    expect(await fetchTargetMeta(context(client), 't', '')).toBeUndefined();
+    expect(await fetchTargetMeta(context(client), threadAddress('t', ''))).toBeUndefined();
   });
 });
 
@@ -88,7 +88,7 @@ describe('fetchPayload', () => {
 describe('fetchPendingWrites', () => {
   it('paginates write items and decodes them in order', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const items = await buildWriteItems(
+    const items = await writeItems(
       context(client),
       't',
       '',
@@ -208,8 +208,7 @@ describe('fetchTargetMeta head row narrowing (CKPT-08)', () => {
     const warn = jest.fn();
     const meta = await fetchTargetMeta(
       { ...context(client), logger: { ...SILENT_LOGGER, warn } },
-      't',
-      '',
+      threadAddress('t', ''),
     );
     expect(meta?.checkpointId).toBe('c1');
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a checkpoint meta item'), {
@@ -223,9 +222,7 @@ describe('fetchTargetMeta head row narrowing (CKPT-08)', () => {
     const warn = jest.fn();
     const meta = await fetchTargetMeta(
       { ...context(client), logger: { ...SILENT_LOGGER, warn } },
-      't',
-      '',
-      'c1',
+      threadAddress('t', '', 'c1'),
     );
     expect(meta).toBeUndefined();
     expect(warn).not.toHaveBeenCalled();
@@ -237,9 +234,7 @@ describe('fetchTargetMeta head row narrowing (CKPT-08)', () => {
     const warn = jest.fn();
     const meta = await fetchTargetMeta(
       { ...context(client), logger: { ...SILENT_LOGGER, warn } },
-      't',
-      '',
-      'zzz',
+      threadAddress('t', '', 'zzz'),
     );
     expect(meta).toBeUndefined();
     expect(warn).toHaveBeenCalledTimes(1);
@@ -310,7 +305,7 @@ describe('fetchTargetMeta skips expired head rows (CKPT-10)', () => {
         ? { Items: [metaRow('c2', NOW - 1)], LastEvaluatedKey: { PK: 'CHKPT#t', SK: 'META##c2' } }
         : { Items: [metaRow('c1', NOW + 60)] };
     });
-    const meta = await fetchTargetMeta(context(client), 't', '');
+    const meta = await fetchTargetMeta(context(client), threadAddress('t', ''));
     expect(meta?.checkpointId).toBe('c1');
     expect(mock.commandCalls(QueryCommand)[0].args[0].input.FilterExpression).toContain('#ttl');
   });
@@ -318,6 +313,8 @@ describe('fetchTargetMeta skips expired head rows (CKPT-10)', () => {
   it('treats an addressed checkpoint past its ttl as absent', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: metaRow('c1', NOW - 1) });
-    await expect(fetchTargetMeta(context(client), 't', '', 'c1')).resolves.toBeUndefined();
+    await expect(
+      fetchTargetMeta(context(client), threadAddress('t', '', 'c1')),
+    ).resolves.toBeUndefined();
   });
 });

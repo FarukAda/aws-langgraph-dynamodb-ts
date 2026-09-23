@@ -6,12 +6,12 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
-import { buildCheckpointItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import type { CheckpointMetaItem, CheckpointPayloadItem } from '../../../../src/checkpointer/types';
 import { DEFAULT_INDEX_SHARDS } from '../../../../src/shared/dynamodb/index-keys';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { checkpointItems } from '../../../shared/helpers/parsed-inputs';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 const serde = {
@@ -48,10 +48,10 @@ async function fixtures(ctx: CheckpointerContext): Promise<Row[]> {
     parents: {},
   });
   return Promise.all([
-    buildCheckpointItems(ctx, 't1', '', checkpoint('c1'), meta('input', -1)),
-    buildCheckpointItems(ctx, 't1', '', checkpoint('c2'), meta('loop', 0), 'c1'),
-    buildCheckpointItems(ctx, 't1', 'child', checkpoint('c3'), meta('loop', 1)),
-    buildCheckpointItems(ctx, 't2', '', checkpoint('c4'), meta('loop', 0)),
+    checkpointItems(ctx, 't1', '', checkpoint('c1'), meta('input', -1)),
+    checkpointItems(ctx, 't1', '', checkpoint('c2'), meta('loop', 0), 'c1'),
+    checkpointItems(ctx, 't1', 'child', checkpoint('c3'), meta('loop', 1)),
+    checkpointItems(ctx, 't2', '', checkpoint('c4'), meta('loop', 0)),
   ]);
 }
 
@@ -137,7 +137,7 @@ describe('list() without a thread_id uses the recency index when the table has o
   it('queries the index instead of scanning', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = { ...context(client), indexName: 'gsi1', indexShards: 2 } as never;
-    const built = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    const built = await checkpointItems(ctx, 't', '', checkpoint('c1'), meta);
     mock
       .on(QueryCommand)
       .callsFake((input) => (input.IndexName === 'gsi1' ? { Items: [built.meta] } : { Items: [] }));
@@ -171,7 +171,7 @@ describe('list() without a thread_id uses the recency index when the table has o
   it('still scans when no index is configured', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const built = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), meta);
+    const built = await checkpointItems(ctx, 't', '', checkpoint('c2'), meta);
     mock.on(ScanCommand).resolves({ Items: [built.meta] });
     mock.on(QueryCommand).resolves({ Items: [] });
     mock.on(GetCommand).resolves({ Item: built.payload });

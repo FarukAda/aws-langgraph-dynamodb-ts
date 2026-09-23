@@ -6,12 +6,12 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
-import { buildCheckpointItems } from '../../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
+import { checkpointItems } from '../../../shared/helpers/parsed-inputs';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 const serde = {
@@ -50,7 +50,7 @@ describe('list() page size', () => {
 
 describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
   const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
-  type Built = Awaited<ReturnType<typeof buildCheckpointItems>>;
+  type Built = Awaited<ReturnType<typeof checkpointItems>>;
 
   /** Serve META queries per namespace prefix, WRITE queries as empty, and payloads by sort key. */
   function serve(mock: ReturnType<typeof createStrictDocumentMock>['mock'], built: Built[]) {
@@ -69,8 +69,8 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
   it('covers every namespace of the thread when checkpoint_ns is not given', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const root = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
-    const child = await buildCheckpointItems(ctx, 't', 'child:abc', checkpoint('c2'), meta);
+    const root = await checkpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    const child = await checkpointItems(ctx, 't', 'child:abc', checkpoint('c2'), meta);
     serve(mock, [root, child]);
     const tuples = await collect(listCheckpoints(ctx, { configurable: { thread_id: 't' } }));
     expect(tuples.map((t) => t.config.configurable?.checkpoint_ns).sort()).toEqual([
@@ -85,7 +85,7 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
   it('addresses one checkpoint with a GetItem when checkpoint_id and checkpoint_ns are both set', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    const one = await checkpointItems(ctx, 't', '', checkpoint('c1'), meta);
     serve(mock, [one]);
     const tuples = await collect(
       listCheckpoints(ctx, {
@@ -130,7 +130,7 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
     const { client, mock } = createStrictDocumentMock();
     const loads = jest.fn(serde.loadsTyped);
     const ctx = { ...context(client), serde: { ...serde, loadsTyped: loads } };
-    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    const one = await checkpointItems(ctx, 't', '', checkpoint('c1'), meta);
     serve(mock, [one]);
     const tuples = await collect(
       listCheckpoints(ctx, { configurable: { thread_id: 't' } }, { filter: { step: 1 } }),
@@ -143,8 +143,8 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
   it('stops after the yield that reaches limit without fetching the next page', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const first = await buildCheckpointItems(ctx, 't', '', checkpoint('c2'), meta);
-    const second = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    const first = await checkpointItems(ctx, 't', '', checkpoint('c2'), meta);
+    const second = await checkpointItems(ctx, 't', '', checkpoint('c1'), meta);
     let metaPages = 0;
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
@@ -165,7 +165,7 @@ describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
   it('reads payloads and writes eventually consistently on the list path', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    const one = await checkpointItems(ctx, 't', '', checkpoint('c1'), meta);
     serve(mock, [one]);
     await collect(listCheckpoints(ctx, { configurable: { thread_id: 't' } }));
     const payloadGet = mock
@@ -192,7 +192,7 @@ describe('list() addressed by checkpoint_id without a namespace', () => {
   it('finds a checkpoint that lives in a non-root namespace', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const sub = await buildCheckpointItems(ctx, 't', 'child:abc', checkpoint('c9'), meta);
+    const sub = await checkpointItems(ctx, 't', 'child:abc', checkpoint('c9'), meta);
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [sub.meta] } : { Items: [] };
@@ -209,8 +209,8 @@ describe('list() addressed by checkpoint_id without a namespace', () => {
   it('narrows a namespace-wide read to the requested checkpoint', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const wanted = await buildCheckpointItems(ctx, 't', 'a', checkpoint('c1'), meta);
-    const other = await buildCheckpointItems(ctx, 't', 'b', checkpoint('c2'), meta);
+    const wanted = await checkpointItems(ctx, 't', 'a', checkpoint('c1'), meta);
+    const other = await checkpointItems(ctx, 't', 'b', checkpoint('c2'), meta);
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [wanted.meta, other.meta] } : { Items: [] };
@@ -242,7 +242,7 @@ describe('list() addressed by checkpoint_id: edge cases', () => {
   it('yields nothing when `before` excludes the addressed checkpoint', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c5'), meta);
+    const one = await checkpointItems(ctx, 't', '', checkpoint('c5'), meta);
     mock.on(GetCommand).resolves({ Item: one.meta });
     const tuples = await collect(
       listCheckpoints(
@@ -264,24 +264,8 @@ describe('list() skips expired checkpoints (CKPT-10)', () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
     const now = Math.floor(FROZEN_NOW_MS / 1000);
-    const expired = await buildCheckpointItems(
-      ctx,
-      't',
-      '',
-      checkpoint('c2'),
-      meta,
-      undefined,
-      now - 1,
-    );
-    const live = await buildCheckpointItems(
-      ctx,
-      't',
-      '',
-      checkpoint('c1'),
-      meta,
-      undefined,
-      now + 60,
-    );
+    const expired = await checkpointItems(ctx, 't', '', checkpoint('c2'), meta, undefined, now - 1);
+    const live = await checkpointItems(ctx, 't', '', checkpoint('c1'), meta, undefined, now + 60);
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [expired.meta, live.meta] } : { Items: [] };
@@ -327,7 +311,7 @@ describe('list() with a limit of zero', () => {
   it('never sends a Limit below 1 when one row is asked for', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const one = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), meta);
+    const one = await checkpointItems(ctx, 't', '', checkpoint('c1'), meta);
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [one.meta] } : { Items: [] };

@@ -1,12 +1,12 @@
 import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
-import { buildCheckpointItems } from '../../../src/checkpointer/internal/item-writer';
 import type { CheckpointerContext } from '../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import type { DocItem } from '../../../src/shared/dynamodb/types';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import { checkpointItems } from '../../shared/helpers/parsed-inputs';
 import { FROZEN_NOW_MS } from '../../shared/helpers/test-setup';
 
 const serde = {
@@ -70,7 +70,7 @@ async function seedThread(
 ): Promise<{ saver: DynamoDBSaver; metaQueries: () => number }> {
   const { client, mock } = createStrictDocumentMock();
   const context: CheckpointerContext = { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
-  const { meta, payload } = await buildCheckpointItems(context, 't', '', checkpoint, metadata);
+  const { meta, payload } = await checkpointItems(context, 't', '', checkpoint, metadata);
   const rows: DocItem[] = Array.from({ length: expiredAhead }, (_unused, index) => ({
     ...meta,
     SK: `META##dead-${index}`,

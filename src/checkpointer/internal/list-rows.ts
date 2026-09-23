@@ -9,7 +9,8 @@ import type { DocItem } from '../../shared/dynamodb/types';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { CheckpointMetaItem } from '../types';
 import { narrowMetaItem } from './item-reader';
-import { type ListScope, listQuery, listScan } from './list-scope';
+import { listQuery, listScan } from './list-scope';
+import type { ListScope } from './parse';
 import type { CheckpointerContext } from './setup';
 
 /**

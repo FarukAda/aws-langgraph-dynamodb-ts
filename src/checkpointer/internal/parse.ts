@@ -328,16 +328,21 @@ export interface PutWritesRequest {
  * Refuse a `writes` argument that cannot be read as the tuples it is typed to
  * hold: a non-array, or an entry that is not itself an array. Every entry is
  * checked before any channel is, so a call with both faults names `writes`.
+ *
+ * Indexed by position rather than `Array.prototype.forEach`, which skips a
+ * hole in a sparse array (`[, ['a', 1]]`) instead of visiting it: a skipped
+ * hole read as `undefined` downstream, past every later `.map` this parser
+ * runs over the same array, and reached the `WriteChannel` brand unparsed.
  */
 function checkWriteEntries(writes: PendingWrite[]): void {
   if (!Array.isArray(writes)) {
     throw validationError('writes must be an array', 'writes');
   }
-  writes.forEach((entry, index) => {
-    if (!Array.isArray(entry)) {
+  for (let index = 0; index < writes.length; index += 1) {
+    if (!Array.isArray(writes[index])) {
       throw validationError(`writes[${index}] must be a [channel, value] tuple`, 'writes');
     }
-  });
+  }
 }
 
 /**

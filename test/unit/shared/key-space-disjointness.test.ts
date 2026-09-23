@@ -50,7 +50,7 @@ describe('cross-adapter partition-key disjointness (C1, C2)', () => {
 
   it('cannot be made to collide by embedding another adapter tag in the identifier', () => {
     // The tags differ in their first character, so no suffix can bridge them —
-    // and `#` is rejected inside every identifier anyway (see validateIdentifier).
+    // and `#` is rejected inside every identifier anyway (see parseIdentifier).
     expect(checkpointerPartition('HIST#x')).not.toBe(sessionPartition('x'));
     expect(storePartition(['CHKPT#x'])).not.toBe(checkpointerPartition('x'));
     expect(sessionPartition('STORE#x')).not.toBe(storePartition(['x']));

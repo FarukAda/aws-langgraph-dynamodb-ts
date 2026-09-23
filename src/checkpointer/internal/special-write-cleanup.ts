@@ -2,6 +2,7 @@ import type { PayloadDescriptor } from '../../shared/codec/codec';
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import type { CheckpointWriteItem } from '../types';
+import type { ThreadId } from './parse';
 import type { CheckpointerContext } from './setup';
 import { writeSpecialItem } from './special-write-cas';
 import type { SpecialWriteOutcome } from './special-write-verify';
@@ -64,7 +65,7 @@ async function deleteDescriptors(
  */
 export async function writeSpecialItemsWithCleanup(
   context: CheckpointerContext,
-  threadId: string,
+  threadId: ThreadId,
   items: CheckpointWriteItem[],
   signal?: AbortSignal,
 ): Promise<Error | undefined> {

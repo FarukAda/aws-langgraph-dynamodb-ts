@@ -17,6 +17,7 @@ import {
   payloadSortKey,
   writeSortKeyPrefix,
 } from './keys';
+import type { ThreadAddress } from './parse';
 import { beginsWithQuery } from './query';
 import type { CheckpointerContext } from './setup';
 
@@ -52,8 +53,8 @@ export interface ReadOptions {
  * The META row a read is about: the one `checkpointId` names, else the newest
  * in the namespace.
  *
- * Accepts: `checkpointId` — its absence asks for the newest. `signal` — aborts
- * the read.
+ * Accepts: `address` — parsed; its `checkpointId` names the row, and its
+ * absence asks for the newest in the namespace. `signal` — aborts the read.
  *
  * Returns: the row, or undefined when there is none — including when every row
  * in the namespace has expired, or when the only rows there belong to another
@@ -70,11 +71,10 @@ export interface ReadOptions {
  */
 export async function fetchTargetMeta(
   context: CheckpointerContext,
-  threadId: string,
-  checkpointNs: string,
-  checkpointId?: string,
+  address: ThreadAddress,
   signal?: AbortSignal,
 ): Promise<CheckpointMetaItem | undefined> {
+  const { threadId, checkpointNs, checkpointId } = address;
   /** Expired rows are absent to every reader, however long DynamoDB's sweep lags. */
   const now = nowSeconds();
   if (checkpointId !== undefined) {

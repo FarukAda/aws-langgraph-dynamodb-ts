@@ -64,16 +64,17 @@ describe('checkpointer keys', () => {
   });
 });
 
-describe('writeSortKey composed length (SEC-10)', () => {
-  it('rejects a composed sort key over the 1024 bytes DynamoDB allows, even from capped segments', () => {
+describe('the composed WRITE sort key (SEC-10)', () => {
+  it('is measured, not refused, by the key builder: the parser refuses it before anything is encoded', () => {
     const segment = 'x'.repeat(256);
-    expect(() => writeSortKey(segment, segment, segment, 0, segment)).toThrow(
-      /sort key.*1024 bytes/,
-    );
+    expect(() => writeSortKey(segment, segment, segment, 0, segment)).not.toThrow();
+    expect(writeSortKeyBytes(segment, segment, segment, segment)).toBeGreaterThan(1024);
   });
 
-  it('accepts a composed sort key at the limit', () => {
-    expect(() => writeSortKey('ns', 'c'.repeat(256), 't'.repeat(256), 0, 'ch')).not.toThrow();
+  it('fits at the limit', () => {
+    expect(writeSortKeyBytes('ns', 'c'.repeat(256), 't'.repeat(256), 'ch')).toBeLessThanOrEqual(
+      1024,
+    );
   });
 });
 

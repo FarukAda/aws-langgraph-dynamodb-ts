@@ -1,11 +1,15 @@
+import type { FilterValue } from '../../../../src/checkpointer/internal/filter-match';
 import {
-  type ListScope,
   listQuery,
   listScan,
   passesKeyFilters,
   passesMetadataFilter,
-  readListScope,
 } from '../../../../src/checkpointer/internal/list-scope';
+import {
+  type ListScope,
+  parseListScope,
+  type ThreadId,
+} from '../../../../src/checkpointer/internal/parse';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import type { CheckpointMetaItem } from '../../../../src/checkpointer/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -22,16 +26,47 @@ function context(): CheckpointerContext {
   };
 }
 
-const scope = (over: Partial<ListScope> = {}): ListScope => ({
-  threadId: 't',
-  checkpointNs: '',
-  checkpointId: undefined,
-  before: undefined,
-  filter: undefined,
-  limit: undefined,
-  signal: undefined,
-  ...over,
-});
+interface ScopeOverrides {
+  threadId?: string;
+  checkpointNs?: string;
+  checkpointId?: string;
+  before?: string;
+  filter?: Record<string, FilterValue>;
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * A `ListScope` built through the real parser: thread `t`, the root namespace
+ * and no bound unless overridden. `checkpointNs: undefined` (the key present,
+ * the value not) is told apart from the key being absent, since the two mean
+ * different things to the parser — a namespace named as the root versus none
+ * named at all.
+ */
+function scope(over: ScopeOverrides = {}): ListScope {
+  const checkpointNs = Object.hasOwn(over, 'checkpointNs') ? over.checkpointNs : '';
+  const configurable: { thread_id: string; checkpoint_ns?: string; checkpoint_id?: string } = {
+    thread_id: over.threadId ?? 't',
+    checkpoint_id: over.checkpointId,
+  };
+  if (checkpointNs !== undefined) configurable.checkpoint_ns = checkpointNs;
+  return parseListScope(
+    { configurable, signal: over.signal },
+    {
+      before:
+        over.before === undefined ? undefined : { configurable: { checkpoint_id: over.before } },
+      filter: over.filter,
+      limit: over.limit,
+    },
+  );
+}
+
+/** As {@link scope}, but for the query builders that require a named thread. */
+function threadScope(over: ScopeOverrides = {}): ListScope & { threadId: ThreadId } {
+  const built = scope(over);
+  if (built.threadId === undefined) throw new Error('threadScope requires a threadId');
+  return { ...built, threadId: built.threadId };
+}
 
 const inline = (value: unknown) => ({
   location: 'INLINE' as never,
@@ -51,11 +86,11 @@ const meta = (over: Partial<CheckpointMetaItem> = {}): CheckpointMetaItem => ({
   ...over,
 });
 
-describe('readListScope', () => {
+describe('parseListScope', () => {
   it('reads every identifier and option a list covers', () => {
     const signal = new AbortController().signal;
     expect(
-      readListScope(
+      parseListScope(
         { configurable: { thread_id: 't', checkpoint_ns: 'ns', checkpoint_id: 'c1' }, signal },
         { before: { configurable: { checkpoint_id: 'c9' } }, limit: 5, filter: { source: 'loop' } },
       ),
@@ -72,7 +107,7 @@ describe('readListScope', () => {
 
   /** Undefined and "every" are different answers: one scopes the read, the other spans it. */
   it('leaves an absent thread and namespace undefined rather than defaulting them', () => {
-    const resolved = readListScope({ configurable: {} }, undefined);
+    const resolved = parseListScope({ configurable: {} }, undefined);
     expect(resolved.threadId).toBeUndefined();
     expect(resolved.checkpointNs).toBeUndefined();
     expect(resolved.limit).toBeUndefined();
@@ -80,16 +115,16 @@ describe('readListScope', () => {
 
   /** A config naming no thread is still checked for the identifiers it does give. */
   it('validates the identifiers a thread-less config carries', () => {
-    expect(() => readListScope({ configurable: { checkpoint_ns: 'a#b' } }, undefined)).toThrow(
+    expect(() => parseListScope({ configurable: { checkpoint_ns: 'a#b' } }, undefined)).toThrow(
       /checkpoint_ns/,
     );
   });
 
   it('refuses a non-integer limit before any request is built', () => {
-    expect(() => readListScope({ configurable: { thread_id: 't' } }, { limit: 1.5 })).toThrow(
+    expect(() => parseListScope({ configurable: { thread_id: 't' } }, { limit: 1.5 })).toThrow(
       /limit/,
     );
-    expect(() => readListScope({ configurable: { thread_id: 't' } }, { limit: 0 })).not.toThrow();
+    expect(() => parseListScope({ configurable: { thread_id: 't' } }, { limit: 0 })).not.toThrow();
   });
 
   /**
@@ -100,17 +135,17 @@ describe('readListScope', () => {
    * empty listing would hide that.
    */
   it('refuses a negative limit rather than reading it as a request for nothing', () => {
-    expect(() => readListScope({ configurable: { thread_id: 't' } }, { limit: -5 })).toThrow(
+    expect(() => parseListScope({ configurable: { thread_id: 't' } }, { limit: -5 })).toThrow(
       /limit/,
     );
   });
 
   it('refuses a limit above the page ceiling, naming the ceiling', () => {
     expect(() =>
-      readListScope({ configurable: { thread_id: 't' } }, { limit: MAX_PAGE_LIMIT + 1 }),
+      parseListScope({ configurable: { thread_id: 't' } }, { limit: MAX_PAGE_LIMIT + 1 }),
     ).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
     expect(() =>
-      readListScope({ configurable: { thread_id: 't' } }, { limit: MAX_PAGE_LIMIT }),
+      parseListScope({ configurable: { thread_id: 't' } }, { limit: MAX_PAGE_LIMIT }),
     ).not.toThrow();
   });
 
@@ -123,7 +158,7 @@ describe('readListScope', () => {
    */
   it('refuses a non-string checkpoint_id in `before` (H-10)', () => {
     expect(() =>
-      readListScope(
+      parseListScope(
         { configurable: { thread_id: 't' } },
         { before: { configurable: { checkpoint_id: 123 } } as never },
       ),
@@ -134,7 +169,7 @@ describe('readListScope', () => {
 
   it('refuses a key this package does not read, naming it under options', () => {
     expect(() =>
-      readListScope({ configurable: { thread_id: 't' } }, { limit: 1, bogus: true } as never),
+      parseListScope({ configurable: { thread_id: 't' } }, { limit: 1, bogus: true } as never),
     ).toThrow(
       expect.objectContaining({
         code: ErrorCode.VALIDATION,
@@ -144,14 +179,14 @@ describe('readListScope', () => {
   });
 
   it('rejects a non-object config, naming it', () => {
-    expect(() => readListScope('x' as never, undefined)).toThrow(
+    expect(() => parseListScope('x' as never, undefined)).toThrow(
       expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'config' } }),
     );
   });
 
   it('rejects a non-object before, naming it', () => {
     expect(() =>
-      readListScope({ configurable: { thread_id: 't' } }, { before: 'x' as never }),
+      parseListScope({ configurable: { thread_id: 't' } }, { before: 'x' as never }),
     ).toThrow(
       expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'before' } }),
     );
@@ -160,27 +195,27 @@ describe('readListScope', () => {
   /** `{}` names no id, so it constrains nothing rather than being refused. */
   it('accepts `before: {}`', () => {
     expect(
-      readListScope({ configurable: { thread_id: 't' } }, { before: {} }).before,
+      parseListScope({ configurable: { thread_id: 't' } }, { before: {} }).before,
     ).toBeUndefined();
   });
 
   /**
-   * Matches `configurable.ts`'s own id resolution for a config's id:
-   * `undefined`, `null` and `''` are no bound, not a malformed one — an equal
-   * comparison against those three exact values, not JS truthiness. Left as
-   * an unchecked cast, an empty string reached `ListScope.before` and
-   * compared `false` against every stored id (H-10's symptom again, reached
-   * with a string instead of a number).
+   * Matches the config's own id resolution: `undefined`, `null` and `''` are
+   * no bound, not a malformed one — an equal comparison against those three
+   * exact values, not JS truthiness. Left as an unchecked cast, an empty
+   * string reached `ListScope.before` and compared `false` against every
+   * stored id (H-10's symptom again, reached with a string instead of a
+   * number).
    */
   it('treats undefined, null and "" as absent, not malformed', () => {
     expect(
-      readListScope(
+      parseListScope(
         { configurable: { thread_id: 't' } },
         { before: { configurable: { checkpoint_id: '' } } },
       ).before,
     ).toBeUndefined();
     expect(
-      readListScope(
+      parseListScope(
         { configurable: { thread_id: 't' } },
         { before: { configurable: { checkpoint_id: null } as never } },
       ).before,
@@ -190,13 +225,13 @@ describe('readListScope', () => {
   /**
    * `0`, `false` and `NaN` are all falsy in JS but none can be a checkpoint
    * id; the boundary is exactly `undefined`/`null`/`''`, not JS truthiness,
-   * so each of these must still reach `validateIdentifier` and be refused as
+   * so each of these must still reach the identifier parser and be refused as
    * a non-string rather than silently treated as "no bound".
    */
   it('refuses 0, false and NaN rather than treating them as absent', () => {
     for (const checkpointId of [0, false, Number.NaN]) {
       expect(() =>
-        readListScope(
+        parseListScope(
           { configurable: { thread_id: 't' } },
           { before: { configurable: { checkpoint_id: checkpointId } } as never },
         ),
@@ -208,7 +243,7 @@ describe('readListScope', () => {
 
   it('refuses a malformed truthy checkpoint_id, naming `before`', () => {
     expect(() =>
-      readListScope(
+      parseListScope(
         { configurable: { thread_id: 't' } },
         { before: { configurable: { checkpoint_id: 'a#b' } } },
       ),
@@ -220,7 +255,7 @@ describe('readListScope', () => {
   it('rejects a non-object filter, naming it', () => {
     for (const value of ['x', [], null]) {
       expect(() =>
-        readListScope({ configurable: { thread_id: 't' } }, { filter: value as never }),
+        parseListScope({ configurable: { thread_id: 't' } }, { filter: value as never }),
       ).toThrow(
         expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'filter' } }),
       );
@@ -230,17 +265,14 @@ describe('readListScope', () => {
   /** `$foo` is not a known operator, so `filter-match.ts` matches it as a literal clause. */
   it('accepts a filter carrying a non-operator key inside a clause', () => {
     expect(() =>
-      readListScope({ configurable: { thread_id: 't' } }, { filter: { a: { $foo: 1 } } }),
+      parseListScope({ configurable: { thread_id: 't' } }, { filter: { a: { $foo: 1 } } }),
     ).not.toThrow();
   });
 });
 
 describe('listQuery', () => {
   it('scopes to one namespace and passes an unfiltered limit through as the page size', () => {
-    const input = listQuery(context(), {
-      ...scope({ checkpointNs: 'ns', limit: 7 }),
-      threadId: 't',
-    });
+    const input = listQuery(context(), threadScope({ checkpointNs: 'ns', limit: 7 }));
     expect(input.ExpressionAttributeValues).toMatchObject({
       ':pk': 'CHKPT#t',
       ':skPrefix': 'META#ns#',
@@ -253,29 +285,23 @@ describe('listQuery', () => {
    * DynamoDB would cut the page short of matches that exist.
    */
   it('withholds the limit when a metadata filter may drop rows', () => {
-    const input = listQuery(context(), {
-      ...scope({ checkpointNs: 'ns', limit: 7, filter: { source: 'loop' } }),
-      threadId: 't',
-    });
+    const input = listQuery(
+      context(),
+      threadScope({ checkpointNs: 'ns', limit: 7, filter: { source: 'loop' } }),
+    );
     expect(input.Limit).toBeUndefined();
   });
 
   it('spans every namespace of the thread when none is given', () => {
-    const input = listQuery(context(), { ...scope({ checkpointNs: undefined }), threadId: 't' });
+    const input = listQuery(context(), threadScope({ checkpointNs: undefined }));
     expect(input.ExpressionAttributeValues).toMatchObject({ ':skPrefix': 'META#' });
   });
 
   /** Across namespaces the ids do not share one order, so the bound cannot be a key condition. */
   it('bounds the key range with `before` only when the namespace is explicit', () => {
-    const scoped = listQuery(context(), {
-      ...scope({ checkpointNs: 'ns', before: 'c9' }),
-      threadId: 't',
-    });
+    const scoped = listQuery(context(), threadScope({ checkpointNs: 'ns', before: 'c9' }));
     expect(scoped.ExpressionAttributeValues?.[':before']).toBe('META#ns#c9');
-    const spanning = listQuery(context(), {
-      ...scope({ checkpointNs: undefined, before: 'c9' }),
-      threadId: 't',
-    });
+    const spanning = listQuery(context(), threadScope({ checkpointNs: undefined, before: 'c9' }));
     expect(spanning.ExpressionAttributeValues?.[':before']).toBeUndefined();
   });
 });
@@ -345,10 +371,10 @@ describe('passesMetadataFilter', () => {
   });
 });
 
-describe('readListScope error shape', () => {
+describe('parseListScope error shape', () => {
   it('names the offending option on the error it raises', () => {
     try {
-      readListScope({ configurable: { thread_id: 't' } }, { limit: 1.5 });
+      parseListScope({ configurable: { thread_id: 't' } }, { limit: 1.5 });
       throw new Error('should have thrown');
     } catch (error) {
       expect((error as { code: ErrorCode; context: { field?: string } }).code).toBe(

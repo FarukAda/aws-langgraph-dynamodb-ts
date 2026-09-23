@@ -139,6 +139,19 @@ describe('parseConfig', () => {
     const signal = new AbortController().signal;
     expect(parseConfig({ signal }).signal).toBe(signal);
   });
+
+  /**
+   * `thread_ts` is the fallback read only once `checkpoint_id` resolves to
+   * absent; a valid `checkpoint_id` never falls through to it, so a malformed
+   * `thread_ts` sitting beside one is never read and never refused.
+   */
+  it('never reads thread_ts once checkpoint_id resolves', () => {
+    expect(
+      parseConfig({
+        configurable: { thread_id: 't', checkpoint_id: 'c1', thread_ts: 'a#b' },
+      }).checkpointId,
+    ).toBe('c1');
+  });
 });
 
 describe('parseThreadConfig', () => {
@@ -244,6 +257,23 @@ describe('parsePutWritesRequest', () => {
         't'.repeat(256),
       ),
     ).toThrow(refusal('channel'));
+  });
+
+  /**
+   * `Array.prototype.forEach` and `.map` both skip a hole in a sparse array
+   * instead of visiting it, so a naive per-entry check let a hole slide
+   * through unparsed to the `WriteChannel` brand. Indexed access reads a hole
+   * as `undefined`, which is not an array either, and refuses it the same way
+   * as any other non-tuple entry. Built with `Array(2)` rather than a sparse
+   * literal (`[, x]`), which lint forbids outright.
+   */
+  it('refuses a hole in a sparse writes array rather than skipping it', () => {
+    const sparse: [string, unknown][] = new Array(2) as [string, unknown][];
+    sparse[1] = ['a', 1];
+    expect(() => parsePutWritesRequest(ADDRESSED, sparse, 'task')).toThrow(
+      'writes[0] must be a [channel, value] tuple',
+    );
+    expect(() => parsePutWritesRequest(ADDRESSED, sparse, 'task')).toThrow(refusal('writes'));
   });
 
   it('refuses a write whose composed sort key passes the cap, before anything is encoded', () => {
