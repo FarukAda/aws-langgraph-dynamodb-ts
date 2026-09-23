@@ -19,7 +19,8 @@ The static guards fail the build rather than rely on review:
 
 - file length and function complexity are not capped: a module is as large as the one decision it hides (`docs/decisions/0017-…`);
 - comments are JSDoc only (`/** ... */`) — no `//` comments in `src`;
-- no `any` and no `instanceof` in `src` (errors are detected by brand and `code`); no `unknown` either, except as the declared type of a parameter of a `parse*` function in one of the parser modules listed in `eslint.config.ts` — the one place a value is honestly not yet known to be anything;
+- no `any` and no `instanceof` in `src` (errors are detected by brand and `code`); no `unknown` either, except as the declared type of a parameter of a `parse*` function in one of the parser modules listed in `eslint.config.ts` — the one place a value is honestly not yet known to be anything (decision record 21);
+- caller input is parsed once, at the boundary, into a branded type declared in a parser module and built by exactly one `parse*` function there; code downstream asks for the brand and does not check the value again. A test builds such a value through the parser, never with a cast. A function that returns the checked value is a `parse*`; one that returns nothing is an `assert*`; nothing is named `validate*` (decision record 21);
 - no re-exports outside `src/index.ts`, no import cycles, no dead `ErrorCode` member;
 - no module imports from a layer above its own or from another feature; the layer table is `test/static/guards/layers.ts` (`test/static/layer-direction.test.ts`);
 - errors are recognised by code (`test/static/error-recognition.test.ts`);
