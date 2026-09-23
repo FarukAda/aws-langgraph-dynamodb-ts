@@ -1,4 +1,4 @@
-import { writeRegularItems } from '../../../../src/checkpointer/internal/regular-write';
+import { writeRegularItems } from '../../../../src/checkpointer/internal/pending-writes';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import type { DocItem } from '../../../../src/shared/dynamodb/client';

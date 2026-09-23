@@ -1,6 +1,8 @@
+import {
+  writeSpecialItem,
+  readSpecialRow,
+} from '../../../../src/checkpointer/internal/pending-writes';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
-import { writeSpecialItem } from '../../../../src/checkpointer/internal/special-write-cas';
-import { readSpecialRow } from '../../../../src/checkpointer/internal/special-write-verify';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../../../src/shared/dynamodb/idempotent-write';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -30,7 +32,7 @@ const item = (): CheckpointWriteItem => ({
  * is offloaded, so each attempt goes out as a one-item transaction and its
  * refusal arrives as a cancellation carrying one `ConditionalCheckFailed`
  * reason. The bare-exception shape the inline payload still produces is pinned
- * in `special-write-token.test.ts`.
+ * in `pending-writes-special-token.test.ts`.
  */
 const conditionalFailure = () =>
   Object.assign(new Error('cancelled'), {

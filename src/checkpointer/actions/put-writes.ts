@@ -1,15 +1,12 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { parsePutWritesRequest } from '../internal/parse';
-import { writeRegularItems } from '../internal/regular-write';
-import { buildWriteItems, type CheckpointWriteItem } from '../internal/rows';
+import { commitPendingWrites } from '../internal/pending-writes';
+import { buildWriteItems } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
-import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup';
 
 /**
  * Stamps each `putWrites` call, identifying its rows as one group.
@@ -24,24 +21,6 @@ import { writeSpecialItemsWithCleanup } from '../internal/special-write-cleanup'
  * arbitrary.
  */
 const nextWriteGroup = createUlidFactory();
-
-/**
- * Best-effort delete the offloaded objects of uploads this call's rows do not
- * reference, if an offloader is configured. Each key ends in this call's own
- * `writeGroup`, so a row another call wrote in its place never names it.
- */
-async function cleanUpItems(
-  context: CheckpointerContext,
-  dead: CheckpointWriteItem[],
-): Promise<void> {
-  if (!context.offloader) return;
-  await cleanUpS3Orphans(
-    context.offloader,
-    collectS3Keys(dead.map((item) => item.value)),
-    'putWrites',
-    context.logger,
-  );
-}
 
 /**
  * Persist a task's intermediate writes for a checkpoint, one item per write.
@@ -65,9 +44,9 @@ async function cleanUpItems(
  *
  * Guarantees: regular writes are first-write-wins, matching the reference
  * checkpointer; special negative-index writes always overwrite (see
- * {@link writeSpecialItemsWithCleanup}). Cleanup of this call's own uploads
+ * {@link commitPendingWrites}). Cleanup of this call's own uploads
  * only ever targets uploads confirmed unreferenced (see
- * {@link writeRegularItems}): a verified non-commit, or a guard rejection whose
+ * {@link commitPendingWrites}): a verified non-commit, or a guard rejection whose
  * returned row provably belongs to another call. A special write's superseded
  * payload is released only once the write that superseded it committed. An
  * upload can leak. A payload refused partway through the encode releases the
@@ -87,13 +66,9 @@ export async function putWrites(
   if (request.writes.length === 0) return;
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
   const items = await buildWriteItems(context, request, nextWriteGroup(), ttlTimestamp);
-  const special = items.filter((item) => item.index < 0);
-  const regular = items.filter((item) => item.index >= 0);
-  const [specialError, regularOutcome] = await Promise.all([
-    writeSpecialItemsWithCleanup(context, request.address.threadId, special, request.signal),
-    writeRegularItems(context, regular, request.signal),
-  ]);
-  await cleanUpItems(context, regularOutcome.deadUploads);
-  const firstError = specialError ?? regularOutcome.error;
-  if (firstError) throw firstError;
+  await commitPendingWrites(context, {
+    threadId: request.address.threadId,
+    items,
+    signal: request.signal,
+  });
 }

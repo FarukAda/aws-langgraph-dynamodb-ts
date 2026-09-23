@@ -1,6 +1,6 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
-import { verifyCheckpointLanded } from '../../../../src/checkpointer/internal/checkpoint-write-verify';
+import { verifyCheckpointLanded } from '../../../../src/checkpointer/actions/put';
 import type {
   CheckpointMetaItem,
   CheckpointPayloadItem,
@@ -79,7 +79,7 @@ function readInputs(mock: ReturnType<typeof createStrictDocumentMock>['mock']) {
   return mock.commandCalls(GetCommand).map((call) => call.args[0].input);
 }
 
-describe('verifyCheckpointLanded', () => {
+describe('verifyCheckpointLanded, the read-back `put` makes after a lost transaction', () => {
   /**
    * The rows commit together, so the row carrying an offloaded descriptor
    * decides the landing alone, and only its descriptor's location and key are

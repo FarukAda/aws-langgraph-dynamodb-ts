@@ -38,7 +38,7 @@ describe('DynamoDB semantics the unit mocks assume (TEST-05)', () => {
       }),
     );
     expect(failure?.name).toBe('ConditionalCheckFailedException');
-    /** The document client leaves an error payload marshalled — exactly what write-guard.ts and rejectedItem rely on. */
+    /** The document client leaves an error payload marshalled — exactly what pending-writes.ts and rejectedItem rely on. */
     const raw = (failure as { Item?: Record<string, AttributeValue> }).Item;
     expect(raw?.channel).toEqual({ S: 'messages' });
     expect(unmarshall(raw as Record<string, AttributeValue>)).toMatchObject({

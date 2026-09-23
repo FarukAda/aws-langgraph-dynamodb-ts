@@ -39,8 +39,8 @@ function trackingOffloader(
 /**
  * Special (negative-index) write behavior, kept apart from put-writes.test.ts
  * because it takes a different path. Covers the compare-and-swap path
- * (`special-write-cas.ts`) as exercised through the public `putWrites` entry
- * point, alongside `special-write-cas.test.ts`'s unit-level coverage.
+ * (`pending-writes.ts`) as exercised through the public `putWrites` entry
+ * point, alongside `pending-writes-special.test.ts`'s unit-level coverage.
  */
 describe('putWrites special (negative-index) writes', () => {
   it("cleans up a special item's never-committed upload when its write hard-fails outright", async () => {
@@ -107,7 +107,7 @@ describe('putWrites special (negative-index) writes', () => {
     // compare-and-swap on special writes must issue its own write. An
     // offloader is configured so the compare-and-swap path (rather than its
     // no-offloader unconditional-put shortcut) is the one under test; which
-    // shape that write then takes is pinned in special-write-token.test.ts.
+    // shape that write then takes is pinned in pending-writes-special-token.test.ts.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     resolveRowWrites(mock);

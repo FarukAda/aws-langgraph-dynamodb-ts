@@ -1,7 +1,7 @@
 import { parseThreadId } from '../../../../src/checkpointer/internal/parse';
+import { writeSpecialItemsWithCleanup } from '../../../../src/checkpointer/internal/pending-writes';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import { writeSpecialItemsWithCleanup } from '../../../../src/checkpointer/internal/special-write-cleanup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
