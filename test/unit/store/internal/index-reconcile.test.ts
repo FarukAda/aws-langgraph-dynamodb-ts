@@ -176,7 +176,7 @@ describe('collectReconcileTargets', () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = {
       embedQuery: jest.fn(),
-      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+      embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
     const record = await buildStoreItem(
@@ -197,7 +197,7 @@ describe('collectReconcileTargets', () => {
 
   it('embeds every live item in one embedDocuments call rather than one call per item', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const embedDocuments = jest.fn(async (texts: string[]) => texts.map((t) => [t.length]));
+    const embedDocuments = jest.fn((texts: string[]) => texts.map((t) => [t.length]));
     const embeddings = { embedQuery: jest.fn(), embedDocuments };
     const ctx = context(client, {
       index: { dims: 1, embeddings: embeddings as never, fields: ['text'] },
@@ -221,7 +221,7 @@ describe('collectReconcileTargets', () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = {
       embedQuery: jest.fn(),
-      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+      embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
     const match = await buildStoreItem(

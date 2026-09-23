@@ -3,8 +3,8 @@
  * a fact; session 2 uses a BRAND-NEW agent + NEW saver (no shared memory) and
  * asks it to recall — so a correct answer can only come from DynamoDB.
  *
- * Run: node examples/live-agent.mjs
- * Delete table: aws dynamodb delete-table --table-name langgraph-saver-demo --region eu-west-1
+ * Run: AWS_REGION=<region> node examples/live-agent.mjs
+ * Delete table: aws dynamodb delete-table --table-name langgraph-saver-demo --region "$AWS_REGION"
  */
 import {
   CreateTableCommand,
@@ -15,8 +15,8 @@ import { ChatBedrockConverse } from '@langchain/aws';
 import { createAgent } from 'langchain';
 
 import { DynamoDBSaver } from '../dist/index.js';
+import { REGION } from './_harness.mjs';
 
-const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 const TABLE = process.env.LANGGRAPH_DEMO_TABLE ?? 'langgraph-saver-demo';
 const MODEL = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
 const THREAD = { configurable: { thread_id: 'agent-memory-demo' } };

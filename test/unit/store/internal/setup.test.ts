@@ -50,12 +50,12 @@ describe('setUpStore', () => {
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     const setup = setUpStore({
       tableName: 'store',
-      client: fakeClientMethods() as never,
+      client: fakeClientMethods(),
       index: {
         dims: 3,
-        embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
+        embeddings: { embedQuery: () => [0], embedDocuments: () => [[0]] } as never,
       },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
       maxSearchCandidates: 50,
     });
     expect(setup.context.vectorBackend).toBe(vectorBackend);
@@ -73,7 +73,7 @@ describe('setUpStore', () => {
       setUpStore({
         tableName: 'store',
         client: { send: jest.fn() } as never,
-        vectorBackend: vectorBackend as never,
+        vectorBackend: vectorBackend,
       }),
     ).toThrow(/vectorBackend requires a configured `index`/);
   });
@@ -81,11 +81,11 @@ describe('setUpStore', () => {
   it('does not own an injected client and carries index/compression/ttl', () => {
     const index = {
       dims: 3,
-      embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
+      embeddings: { embedQuery: () => [0], embedDocuments: () => [[0]] } as never,
     };
     const setup = setUpStore({
       tableName: 'store',
-      client: fakeClientMethods() as never,
+      client: fakeClientMethods(),
       compression: { enabled: true },
       ttl: { days: 1 },
       index,
@@ -101,26 +101,26 @@ describe('setUpStore', () => {
   it('defaults the S3 key prefix to an adapter-scoped segment, but honors an explicit override', () => {
     const defaulted = setUpStore({
       tableName: 'store',
-      client: fakeClientMethods() as never,
+      client: fakeClientMethods(),
       s3: { bucketName: 'b' },
     });
     expect(defaulted.context.offloader?.getKeyPrefix()).toBe('langgraph-checkpoints/store/');
 
     const overridden = setUpStore({
       tableName: 'store',
-      client: fakeClientMethods() as never,
+      client: fakeClientMethods(),
       s3: { bucketName: 'b', keyPrefix: 'custom/' },
     });
     expect(overridden.context.offloader?.getKeyPrefix()).toBe('custom/');
   });
 
   it('defaults maxScanItems to the shared in-memory cap, but accepts an override', () => {
-    const defaulted = setUpStore({ tableName: 'store', client: fakeClientMethods() as never });
+    const defaulted = setUpStore({ tableName: 'store', client: fakeClientMethods() });
     expect(defaulted.context.maxScanItems).toBe(MAX_TOTAL_ITEMS_IN_MEMORY);
 
     const overridden = setUpStore({
       tableName: 'store',
-      client: fakeClientMethods() as never,
+      client: fakeClientMethods(),
       maxScanItems: 50_000,
     });
     expect(overridden.context.maxScanItems).toBe(50_000);
@@ -139,7 +139,7 @@ describe('collaborator shape (DDB-09)', () => {
     expect(() =>
       setUpStore({
         tableName: 'store',
-        client: fakeClientMethods() as never,
+        client: fakeClientMethods(),
         logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
       }),
     ).toThrow(expect.objectContaining({ code: 'VALIDATION', context: { field: 'logger.debug' } }));
@@ -149,8 +149,10 @@ describe('collaborator shape (DDB-09)', () => {
     expect(() =>
       setUpStore({
         tableName: 'store',
-        client: fakeClientMethods() as never,
-        serde: { dumpsTyped: async () => ['json', new Uint8Array()] } as never,
+        client: fakeClientMethods(),
+        serde: {
+          dumpsTyped: () => Promise.resolve(['json', new Uint8Array()]),
+        } as never,
       }),
     ).toThrow(
       expect.objectContaining({ code: 'VALIDATION', context: { field: 'serde.loadsTyped' } }),
@@ -161,10 +163,10 @@ describe('collaborator shape (DDB-09)', () => {
     expect(() =>
       setUpStore({
         tableName: 'store',
-        client: fakeClientMethods() as never,
+        client: fakeClientMethods(),
         index: {
           dims: 1,
-          embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
+          embeddings: { embedQuery: () => [0], embedDocuments: () => [[0]] } as never,
         },
         vectorBackend: { upsert: jest.fn(), query: jest.fn() } as never,
       }),
@@ -177,12 +179,12 @@ describe('collaborator shape (DDB-09)', () => {
     expect(() =>
       setUpStore({
         tableName: 'store',
-        client: fakeClientMethods() as never,
+        client: fakeClientMethods(),
         index: {
           dims: 1,
-          embeddings: { embedQuery: async () => [0], embedDocuments: async () => [[0]] } as never,
+          embeddings: { embedQuery: () => [0], embedDocuments: () => [[0]] } as never,
         },
-        vectorBackend: { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() } as never,
+        vectorBackend: { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() },
       }),
     ).not.toThrow();
   });
@@ -217,19 +219,19 @@ describe('index configuration validation (F6)', () => {
   });
 
   it('rejects an index whose embeddings cannot embedDocuments', () => {
-    const embeddings = { embedQuery: async () => [0] };
+    const embeddings = { embedQuery: () => [0] };
     expect(() => setUpStore({ ...base, index: { dims: 1, embeddings } } as never)).toThrow(
       /embedDocuments/,
     );
   });
 
   it('accepts an index that can embed, and does not require dims to be read', () => {
-    const embeddings = { embedQuery: async () => [1, 2, 3], embedDocuments: async () => [[1]] };
+    const embeddings = { embedQuery: () => [1, 2, 3], embedDocuments: () => [[1]] };
     expect(() => setUpStore({ ...base, index: { dims: 3, embeddings } } as never)).not.toThrow();
   });
 
   it('still rejects a vectorBackend with no index at all', () => {
-    const backend = { upsert: async () => {}, query: async () => [], delete: async () => {} };
+    const backend = { upsert: async () => {}, query: () => [], delete: async () => {} };
     expect(() => setUpStore({ ...base, vectorBackend: backend } as never)).toThrow(
       /vectorBackend requires a configured `index`/,
     );
@@ -249,7 +251,7 @@ describe('index configuration validation (F6)', () => {
   });
 
   it('accepts both declared score directions, and defaults to relevance', () => {
-    expect(setUpStore({ ...base } as never).context.vectorScoreDirection).toBe('relevance');
+    expect(setUpStore({ ...base }).context.vectorScoreDirection).toBe('relevance');
     expect(
       setUpStore({ ...base, vectorScoreDirection: 'distance' } as never).context
         .vectorScoreDirection,
@@ -268,7 +270,7 @@ describe('S3 region inheritance (CODEC-15)', () => {
     };
     const s3Client = {
       destroy: jest.fn(),
-      send: jest.fn(async () => ({})),
+      send: jest.fn(() => ({})),
       config: {},
       middlewareStack: fakeMiddlewareStack(),
     };

@@ -16,13 +16,14 @@ import {
 } from '@aws-sdk/client-s3';
 
 import { DynamoDBStore } from '../../src/index';
+import { liveRegion } from './helpers/env';
 import { report } from './helpers/probe';
 import { createTestTable } from './helpers/table';
 import { deleteBucketCompletely, deleteTableCompletely, settleAll } from './helpers/teardown';
 
 const run = promisify(execFile);
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const region = liveRegion();
+const clientConfig = { region };
 const suffix = randomUUID();
 const tableName = `aws-langgraph-sweeptest-${suffix}`;
 const bucketName = `aws-langgraph-sweeptest-${suffix}`;
@@ -82,9 +83,8 @@ async function enableVersioning(s3: S3Client): Promise<void> {
 }
 
 /**
- * L7 (design §8.3) — the stranded-payload sweep, end to end against a real
- * versioned bucket and a real table. The one item in §8.3 that had never been
- * run at all.
+ * The stranded-payload sweep, end to end against a real versioned bucket and a
+ * real table.
  *
  * A release on a versioned bucket does not erase the object: it leaves a delete
  * marker with the payload surviving behind it as a noncurrent version until the
@@ -117,7 +117,7 @@ describe('the stranded-payload sweep against real AWS', () => {
     await s3.send(
       new CreateBucketCommand({
         Bucket: bucketName,
-        ...(region && region !== 'us-east-1'
+        ...(region !== 'us-east-1'
           ? { CreateBucketConfiguration: { LocationConstraint: region as never } }
           : {}),
       }),
@@ -211,7 +211,8 @@ describe('the stranded-payload sweep against real AWS', () => {
       tableName,
       '--prefix',
       KEY_PREFIX,
-      ...(region === undefined ? [] : ['--region', region]),
+      '--region',
+      region,
     ]);
     report(stdout.trimEnd());
 

@@ -43,21 +43,31 @@ class RecordingBackend implements VectorBackend {
     return `${namespace.join('/')}/${key}`;
   }
 
-  async upsert(namespace: string[], key: string): Promise<void> {
+  /**
+   * `VectorBackend` methods are typed `Promise<...>`; every body below is
+   * synchronous and none of them throw, so a non-async function returning
+   * `Promise.resolve(...)` already has type `Promise<...>` and needs
+   * neither `async` nor `await`.
+   */
+  upsert(namespace: string[], key: string): Promise<void> {
     this.vectors.set(this.id(namespace, key), { namespace, key });
+    return Promise.resolve();
   }
 
-  async query(prefix: string[], _vector: number[], topK: number): Promise<VectorMatch[]> {
+  query(prefix: string[], _vector: number[], topK: number): Promise<VectorMatch[]> {
     const head = prefix.join('/');
-    return [...this.vectors.values()]
-      .filter((ref) => ref.namespace.join('/').startsWith(head))
-      .slice(0, topK)
-      .map((ref) => ({ namespace: ref.namespace, key: ref.key, score: 1 }));
+    return Promise.resolve(
+      [...this.vectors.values()]
+        .filter((ref) => ref.namespace.join('/').startsWith(head))
+        .slice(0, topK)
+        .map((ref) => ({ namespace: ref.namespace, key: ref.key, score: 1 })),
+    );
   }
 
-  async delete(namespace: string[], key: string): Promise<void> {
+  delete(namespace: string[], key: string): Promise<void> {
     this.deleted.push(this.id(namespace, key));
     this.vectors.delete(this.id(namespace, key));
+    return Promise.resolve();
   }
 }
 

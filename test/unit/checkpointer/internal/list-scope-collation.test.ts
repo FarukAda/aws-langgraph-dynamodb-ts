@@ -20,7 +20,7 @@ function context(): CheckpointerContext {
     tableName: 'ckpt',
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
-  } as CheckpointerContext;
+  };
 }
 
 const scope = (before: string): ListScope & { threadId: string } => ({

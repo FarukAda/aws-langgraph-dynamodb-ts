@@ -72,8 +72,8 @@ function recorder(fail?: () => Error) {
     offloader: {},
     logger: SILENT_LOGGER,
     client: {
-      put: async (input: WriteInput) => send({ kind: 'put', items: 1, request: input, put: input }),
-      transactWrite: async (input: TransactInput) =>
+      put: (input: WriteInput) => send({ kind: 'put', items: 1, request: input, put: input }),
+      transactWrite: (input: TransactInput) =>
         send({
           kind: 'transact',
           token: input.ClientRequestToken,
@@ -81,7 +81,7 @@ function recorder(fail?: () => Error) {
           request: input,
           put: input.TransactItems[0].Put,
         }),
-      get: async () => ({}),
+      get: () => ({}),
     },
   };
   return { context, emitted };
@@ -210,10 +210,10 @@ function racedByADelete() {
     logger: SILENT_LOGGER,
     retry: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1, rng: () => 0 },
     client: {
-      put: async (input: WriteInput) => send(input.Item),
-      transactWrite: async (input: TransactInput) =>
+      put: (input: WriteInput) => send(input.Item),
+      transactWrite: (input: TransactInput) =>
         send(input.TransactItems[0].Put.Item, input.ClientRequestToken),
-      get: async () => ({ Item: undefined }),
+      get: () => ({ Item: undefined }),
     },
   };
   return { context, survives: () => row !== undefined, requests: () => requests };

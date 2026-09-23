@@ -12,18 +12,22 @@ import {
 } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (): Promise<unknown> => ({}),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (): Promise<unknown> => Promise.resolve({}),
 };
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {
   return { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
 }
 
-function trackingOffloader(upload: (key: string) => Promise<string> = async (key) => key) {
+/**
+ * The default `upload` is typed `Promise<string>` and never throws, so
+ * returning `Promise.resolve(key)` already has that type without `async`.
+ */
+function trackingOffloader(
+  upload: (key: string) => Promise<string> = (key) => Promise.resolve(key),
+) {
   return {
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
@@ -33,8 +37,8 @@ function trackingOffloader(upload: (key: string) => Promise<string> = async (key
 }
 
 /**
- * Special (negative-index) write behavior split out of put-writes.test.ts to
- * stay under the test file line cap. Covers the compare-and-swap path
+ * Special (negative-index) write behavior, kept apart from put-writes.test.ts
+ * because it takes a different path. Covers the compare-and-swap path
  * (`special-write-cas.ts`) as exercised through the public `putWrites` entry
  * point, alongside `special-write-cas.test.ts`'s unit-level coverage.
  */
@@ -72,7 +76,7 @@ describe('putWrites special (negative-index) writes', () => {
     // absent) for its upload to count as confirmed dead, so only the special
     // row's read is failed.
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).callsFake(async (input: { Key: { SK: string } }) => {
+    mock.on(GetCommand).callsFake((input: { Key: { SK: string } }) => {
       if (input.Key.SK.includes('#0000000007#')) {
         throw Object.assign(new Error('get'), { name: 'ValidationException' });
       }
@@ -187,7 +191,7 @@ describe('putWrites special (negative-index) writes', () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
     resolveRowWrites(mock);
-    const upload = jest.fn(async (key: string) => key);
+    const upload = jest.fn((key: string) => Promise.resolve(key));
     const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     await putWrites(
       ctx,
@@ -210,7 +214,7 @@ describe('putWrites special (negative-index) writes', () => {
     // non-commit deleted the object the now-live row points at, making every
     // later getTuple() on the checkpoint fail with S3 NoSuchKey, permanently.
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).callsFake(async () => {
+    mock.on(GetCommand).callsFake(() => {
       const rows = committedRows(mock);
       if (rows.length === 0) return {};
       const written = rows[rows.length - 1] as { writeGroup: string; value: unknown };

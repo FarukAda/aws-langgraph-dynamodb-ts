@@ -44,12 +44,16 @@ type PageOutcome = 'exhausted' | 'capped';
  * Yield one page's items, counting toward the shared `state.yielded` budget.
  * Reaching the cap with unyielded items still on the page is a truncation;
  * reaching it on the last item is reported as `capped` for the caller to settle.
+ *
+ * Synchronous and private: nothing here awaits, and `paginatePages` delegates
+ * to it with `yield*` from inside its own `async function*`, so the items it
+ * yields still reach callers through the same async-generator protocol.
  */
-async function* yieldPageItems(
+function* yieldPageItems(
   page: PageResult,
   state: { yielded: number },
   maxItems: number,
-): AsyncGenerator<DocItem, PageOutcome> {
+): Generator<DocItem, PageOutcome> {
   for (let index = 0; index < page.items.length; index++) {
     yield page.items[index];
     state.yielded += 1;

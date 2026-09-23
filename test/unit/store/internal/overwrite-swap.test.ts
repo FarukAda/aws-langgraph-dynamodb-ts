@@ -57,8 +57,8 @@ function harness(options: {
     offloader: {},
     logger: options.logger ?? SILENT_LOGGER,
     client: {
-      transactWrite: async (input: TransactInput) => send(input.TransactItems[0].Put),
-      get: async () => {
+      transactWrite: (input: TransactInput) => send(input.TransactItems[0].Put),
+      get: () => {
         const next = options.reReads.shift();
         return {
           Item: next?.exists
@@ -173,10 +173,10 @@ describe('putWithRevisionSwap', () => {
       offloader: {},
       logger: SILENT_LOGGER,
       client: {
-        transactWrite: async () => {
+        transactWrite: () => {
           throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
         },
-        get: async () => ({ Item: undefined }),
+        get: () => ({ Item: undefined }),
       },
     };
 
@@ -243,13 +243,13 @@ describe('putWithRevisionSwap with the rejected row on the exception (DDB-07)', 
       offloader: {},
       logger: SILENT_LOGGER,
       client: {
-        put: async (input: Record<string, unknown>) => {
+        put: (input: Record<string, unknown>) => {
           inputs.push(input);
           puts += 1;
           if (puts === 1) throw rejected;
           return {};
         },
-        get: async () => {
+        get: () => {
           reads += 1;
           return {};
         },

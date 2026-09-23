@@ -291,6 +291,9 @@ describe('shared adapter defaults (CORE-17)', () => {
       store: { tableName: 'store', ttl: { days: 1 } },
       history: { tableName: 'hist' },
     });
+    /** The injected client has maxAttempts > 1, triggering a warning asynchronously during setup. */
+    await new Promise((resolve) => setImmediate(resolve));
+    logger.warn.mockClear();
     await all.saver.ensureS3LifecycleRule();
     await all.store.ensureS3LifecycleRule();
     await all.history.ensureS3LifecycleRule();
@@ -317,6 +320,9 @@ describe('shared adapter defaults (CORE-17)', () => {
       tableName: 'ckpt',
       client: createStrictDocumentMock().client,
     });
+    /** The injected client has maxAttempts > 1, triggering a warning asynchronously during setup. */
+    await new Promise((resolve) => setImmediate(resolve));
+    logger.warn.mockClear();
     await saver.ensureS3LifecycleRule();
     expect(lifecycleDays()).toEqual([32]);
     expect(logger.warn).not.toHaveBeenCalled();

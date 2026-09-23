@@ -22,3 +22,7 @@ dist
 docs/superpowers
 # jest --json reports written by CI
 jest-*.json
+# Written by the release workflow's verify job; attached to the release, never committed.
+sbom.*.cyclonedx.json
+release-body.md
+*.tgz

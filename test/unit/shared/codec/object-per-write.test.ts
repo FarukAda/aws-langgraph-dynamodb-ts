@@ -20,11 +20,11 @@ function recordingOffloader() {
   const offloader = {
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => buildS3Key('p/', parts, objectId),
-    upload: async (key: string) => {
+    upload: (key: string) => {
       uploaded.push(key);
       return key;
     },
-    deleteBatch: async () => [],
+    deleteBatch: () => [],
     ownsKey: () => true,
   };
   return { uploaded, offloader };

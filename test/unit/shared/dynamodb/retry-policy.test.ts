@@ -32,7 +32,7 @@ describe('resolveRetryPolicy (DDB-03, DDB-10)', () => {
       async () => {
         calls += 1;
         if (calls < 2) throw Object.assign(new Error('slow'), { name: 'ThrottlingException' });
-        return calls;
+        return Promise.resolve(calls);
       },
       { ...resolved, rng: () => 1 },
     );
@@ -154,7 +154,7 @@ describe('the debug line a retry emits', () => {
         /** Retryable by its , so the line under test is the one that fires. */
         throw Object.assign(new Error('slow'), { name, code: 'ThrottlingException' });
       }
-      return 'ok';
+      return Promise.resolve('ok');
     }, options);
 
     expect(logger.debug).toHaveBeenCalledWith(

@@ -18,9 +18,9 @@ interface Adapter {
 type AdapterClass = new (options: never) => Adapter;
 
 const ADAPTERS: [string, AdapterClass][] = [
-  ['DynamoDBSaver', DynamoDBSaver as AdapterClass],
-  ['DynamoDBStore', DynamoDBStore as AdapterClass],
-  ['DynamoDBChatMessageHistory', DynamoDBChatMessageHistory as AdapterClass],
+  ['DynamoDBSaver', DynamoDBSaver],
+  ['DynamoDBStore', DynamoDBStore],
+  ['DynamoDBChatMessageHistory', DynamoDBChatMessageHistory],
 ];
 
 /** A client double an adapter can be built on; it never sends. */
@@ -146,11 +146,11 @@ describe.each(ADAPTERS)('%s nested options', (_name, Adapter) => {
 
 describe('DynamoDBStore index option', () => {
   const embeddings = {
-    embedQuery: async () => [0, 0, 0],
-    embedDocuments: async (texts: string[]) => texts.map(() => [0, 0, 0]),
+    embedQuery: () => [0, 0, 0],
+    embedDocuments: (texts: string[]) => texts.map(() => [0, 0, 0]),
   };
   const store = (options: object) => () =>
-    construct(DynamoDBStore as AdapterClass, {
+    construct(DynamoDBStore, {
       client: createStrictDocumentMock().client,
       ...options,
     });
@@ -192,7 +192,7 @@ describe('DynamoDBStore index option', () => {
       readonly name = 'memory';
       private readonly rows = new Map<string, number[]>();
       async upsert(): Promise<void> {}
-      async query(): Promise<[]> {
+      query(): [] {
         return [];
       }
       async delete(): Promise<void> {}

@@ -1,17 +1,14 @@
 import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
-import {
-  getCancellationReasons,
-  type RejectionFields,
-} from '../../../src/shared/dynamodb/cancellation';
+import { getCancellationReasons } from '../../../src/shared/dynamodb/cancellation';
 
 /**
  * Print a measurement the suite deliberately does not assert on.
  *
  * Real AWS varies by day, region and account, so a contention *rate* is an
  * observation rather than a contract: pinning one turns a true measurement into
- * a flaky test. These lines are how a run still reports the number that the
- * design's §11.6 tables quote, for whoever is reading the run.
+ * a flaky test. These lines are how a run still reports the number, for
+ * whoever is reading it.
  *
  * `process.stdout.write` rather than `console`, which this repository's lint
  * rules ban everywhere.
@@ -52,7 +49,7 @@ export interface AttemptCounter {
  */
 function isTransactionConflict(error: Error): boolean {
   if (error.name === 'TransactionConflictException') return true;
-  const reasons = getCancellationReasons(error as RejectionFields) ?? [];
+  const reasons = getCancellationReasons(error) ?? [];
   return reasons.some((reason) => reason.Code === 'TransactionConflict');
 }
 

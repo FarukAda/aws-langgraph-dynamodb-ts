@@ -45,7 +45,7 @@ function trackingOffloader() {
   return {
     shouldOffload: () => true,
     buildKey: (parts: string[], objectId: string) => [...parts, objectId].join('/'),
-    upload: async (key: string) => key,
+    upload: (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: () => true,
   };
@@ -73,7 +73,7 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
     const offloader = trackingOffloader();
     await expect(
       putItem(
-        context(client, { vectorBackend: vectorBackend as never, offloader: offloader as never }),
+        context(client, { vectorBackend: vectorBackend, offloader: offloader as never }),
         op({ value: null }),
       ),
     ).resolves.toBeUndefined();
@@ -88,7 +88,7 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
     answerDeleteReads(mock, observableRow(inlineDescriptor), observableRow(inlineDescriptor));
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await expect(
-      putItem(context(client, { vectorBackend: vectorBackend as never }), op({ value: null })),
+      putItem(context(client, { vectorBackend: vectorBackend }), op({ value: null })),
     ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(vectorBackend.delete).not.toHaveBeenCalled();
   });
@@ -101,7 +101,7 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
     answerDeleteReads(mock, observableRow(inlineDescriptor));
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
     await expect(
-      putItem(context(client, { vectorBackend: vectorBackend as never }), op({ value: null })),
+      putItem(context(client, { vectorBackend: vectorBackend }), op({ value: null })),
     ).rejects.toThrow('bad');
     expect(vectorBackend.delete).not.toHaveBeenCalled();
   });
@@ -172,12 +172,10 @@ async function valueCommittedBy(value: PutOperation['value']): Promise<{ s3Key: 
   mock.on(GetCommand).resolves({});
   mock
     .on(TransactWriteCommand)
-    .callsFake(
-      async (input: { TransactItems: { Put: { Item: { value: { s3Key: string } } } }[] }) => {
-        committed = input.TransactItems[0].Put.Item.value;
-        return {};
-      },
-    );
+    .callsFake((input: { TransactItems: { Put: { Item: { value: { s3Key: string } } } }[] }) => {
+      committed = input.TransactItems[0].Put.Item.value;
+      return {};
+    });
   await putItem(context(client, { offloader: trackingOffloader() as never }), op({ value }));
   return committed!;
 }
@@ -185,7 +183,7 @@ async function valueCommittedBy(value: PutOperation['value']): Promise<{ s3Key: 
 /** Delete the item, whose row the pre-read observes holding `removed`, and report what was released. */
 async function deleteReturning(removed: object) {
   const { client, mock } = createStrictDocumentMock();
-  answerDeleteReads(mock, observableRow(removed as never));
+  answerDeleteReads(mock, observableRow(removed));
   mock.on(TransactWriteCommand).resolves({});
   const offloader = trackingOffloader();
   await expect(

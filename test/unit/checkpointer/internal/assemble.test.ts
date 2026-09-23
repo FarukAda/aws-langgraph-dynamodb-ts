@@ -13,7 +13,7 @@ function context(client: CheckpointerContext['client']): CheckpointerContext {
     tableName: 'ckpt',
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
-  } as CheckpointerContext;
+  };
 }
 
 const inline = (value: unknown) => ({
@@ -137,7 +137,7 @@ describe('assembleTuple', () => {
     });
     const offloader = {
       assertOwnedKey,
-      download: async () => new TextEncoder().encode(JSON.stringify(checkpoint)),
+      download: () => new TextEncoder().encode(JSON.stringify(checkpoint)),
     };
     await assembleTuple(
       { ...context(client), offloader: offloader as never },

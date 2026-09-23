@@ -114,16 +114,15 @@ describe('every read path answers one malformed descriptor the same way (L-01)',
     };
   }
 
-  const storeRow = (): StoreItemRecord =>
-    ({
-      PK: 'STORE#users',
-      SK: 'u1#profile',
-      namespace: ['users', 'u1'],
-      key: 'profile',
-      value: nullDescriptor,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    }) as StoreItemRecord;
+  const storeRow = (): StoreItemRecord => ({
+    PK: 'STORE#users',
+    SK: 'u1#profile',
+    namespace: ['users', 'u1'],
+    key: 'profile',
+    value: nullDescriptor,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
 
   it('brands the pending-write, store and history reads identically', async () => {
     const history = await brandOf(readPayloadBytes(nullDescriptor, { serde: JSON_SERDE }, ['s']));

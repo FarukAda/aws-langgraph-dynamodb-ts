@@ -22,9 +22,14 @@ export function overlapOffloader(): { offloader: OverlapOffloader; maxInFlight: 
   const offloader: OverlapOffloader = {
     shouldOffload: () => true,
     buildKey: (parts, objectId) => [...parts, objectId].join('/'),
-    upload: async (key, data) => {
+    /**
+     * `OverlapOffloader.upload` is typed `Promise<string>`; the body is
+     * synchronous and never throws, so returning `Promise.resolve(key)`
+     * already has that type without `async`.
+     */
+    upload: (key, data) => {
       objects.set(key, data);
-      return key;
+      return Promise.resolve(key);
     },
     download: async (key) => {
       inFlight += 1;
@@ -35,7 +40,8 @@ export function overlapOffloader(): { offloader: OverlapOffloader; maxInFlight: 
       if (!data) throw new Error(`no object stored under ${key}`);
       return data;
     },
-    deleteBatch: async () => [],
+    /** Same reasoning as `upload` above: the interface is `Promise<string[]>`. */
+    deleteBatch: () => Promise.resolve([]),
     ownsKey: () => true,
     assertOwnedKey: () => undefined,
   };

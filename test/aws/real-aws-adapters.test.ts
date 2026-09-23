@@ -14,9 +14,9 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { sessionPartition } from '../../src/history/internal/keys';
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { partitionKey, sortKey } from '../../src/store/internal/keys';
+import { liveRegion } from './helpers/env';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-adapterstest-${randomUUID()}`;
 
 function checkpoint(id: string): Checkpoint {

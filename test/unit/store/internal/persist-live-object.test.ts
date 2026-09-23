@@ -17,7 +17,7 @@ function trackingOffloader() {
   return {
     shouldOffload: () => true,
     buildKey: (parts: string[], objectId: string) => `${[...parts, objectId].join('/')}.bin`,
-    upload: jest.fn(async (key: string) => key),
+    upload: jest.fn((key: string) => key),
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: () => true,
   };
@@ -55,7 +55,7 @@ async function rowCommittedBy(value: PutOperation['value']): Promise<CommittedRo
   mock.on(GetCommand).resolves({});
   mock
     .on(TransactWriteCommand)
-    .callsFake(async (input: { TransactItems: { Put: { Item: CommittedRow } }[] }) => {
+    .callsFake((input: { TransactItems: { Put: { Item: CommittedRow } }[] }) => {
       const committed = input.TransactItems[0].Put.Item;
       row = { rev: committed.rev, value: committed.value };
       return {};
@@ -90,7 +90,7 @@ describe("store.put never releases a racer's committed object when its own write
     const offloader = trackingOffloader();
     mock
       .on(GetCommand)
-      .callsFake(async (input: { ProjectionExpression: string }) =>
+      .callsFake((input: { ProjectionExpression: string }) =>
         input.ProjectionExpression.startsWith('#c')
           ? { Item: { createdAt: 'c', ...earlier } }
           : { Item: racer },
@@ -147,7 +147,7 @@ describe('store.put releases the payload a successful overwrite superseded witho
     async (_label, existing) => {
       const { client, mock } = createStrictDocumentMock();
       const offloader = trackingOffloader();
-      mock.on(GetCommand).resolves(existing as never);
+      mock.on(GetCommand).resolves(existing);
       resolveRowWrites(mock);
 
       await putItem(context(client, offloader), { ...OP, value: { note: 'C2' } });

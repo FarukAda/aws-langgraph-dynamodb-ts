@@ -13,8 +13,8 @@ function expectValidationError(fn: () => void, field: string): void {
 }
 
 /**
- * Direct unit coverage of the module extracted from `options.ts` to stay under
- * its 150-line cap; `validateBaseAdapterOptions`'s own tests exercise every
+ * Direct unit coverage of the module extracted from `options.ts`;
+ * `validateBaseAdapterOptions`'s own tests exercise every
  * branch through the composed entry point, this exercises the unit itself.
  */
 describe('validateCompression', () => {

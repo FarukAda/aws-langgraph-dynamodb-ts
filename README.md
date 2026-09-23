@@ -46,6 +46,7 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 - [Production notes](#production-notes)
 - [Operations](#operations)
 - [Testing](#testing)
+- [Design decisions and evidence](#design-decisions-and-evidence)
 - [Support and policies](#support-and-policies)
 - [License](#license)
 
@@ -824,7 +825,7 @@ Every row this release writes carries `v`, its format version. A reader treats a
 
 | Dependency | Supported | Verified by |
 | --- | --- | --- |
-| Node.js | 22 and 24 | the unit tier on Linux, macOS and Windows |
+| Node.js | 22, 24 and 26 | the unit tier on Linux, macOS and Windows |
 | TypeScript (consumers) | 5.x and later | the package smoke type-checks the shipped declarations with both the 5.x floor and the newest release |
 | `@langchain/langgraph-checkpoint` | `^1.1.5` | the conformance tier against the floor and the latest release, including LangChain's checkpointer validation suite |
 | `@langchain/langgraph` | any 1.x release depending on a supported `@langchain/langgraph-checkpoint` (not a peer of this package) | the compiled-graph conformance tests |
@@ -878,6 +879,8 @@ Also not covered: the wording of error messages and log lines, the order of rows
 | V-28 | A signal that is not an `AbortSignal` — an object with a boolean `aborted` and callable `addEventListener` and `removeEventListener` — is refused with `ValidationError` naming `signal`, before any request: as `config.signal` to `getTuple`, `list`, `put`, `putWrites` and `getDeltaChannelHistory`, and as the `signal` option of `search` and `deleteThread` | the reference never reads a signal: `MemorySaver` ignores `config.signal`, so `getTuple` with `signal: {}` answers as if none were given, `InMemoryStore.search` ignores a `signal` option, and `MemorySaver.deleteThread` takes no options. Here the wait before a retry calls the signal's `addEventListener` and `removeEventListener`, so a malformed one would otherwise fail partway through a call, after a throttled request and from inside a timer, while a call that is never retried would read only its `aborted` and ignore it silently; either way the option would go unnamed |
 | V-29 | `store.delete()` can resolve with the item still there | the row is removed under a condition pinning the revision the call's own read observed, and three attempts in a row, each turned away by a write that landed since the observation that attempt pinned, exhaust the bounded compare-and-swap, so the call resolves, releases nothing and logs one `warn`. The reference holds a map and has no such race, so it always removes the item. Throwing would add a failure mode to an interleaving that succeeds today, which every caller deleting in a `finally` would have to handle, and falling back to an unconditional delete would erase the write that won. Re-run once the key is idle |
 | V-30 | Namespaces are ordered by a collation pinned to the `en` locale, not by the host's | the reference sorts with bare `localeCompare`, which means "in the host's default locale", and locales disagree — `'ä'` sorts before `'z'` in German and after it in Swedish. `listNamespaces` pages by `offset`, an index into that sorted listing which the caller holds between two calls, so two hosts answering the same paged listing cut it in two different places and the caller misses one namespace and sees another twice. Parity with the reference was only ever parity on the same host, because the reference's own order varies too; pinning keeps it on every host whose locale agrees and makes the order deterministic on the rest. `en` is pinned because ICU applies no tailoring to it, and it is the one locale a Node built with small ICU still carries |
+
+V-7 was withdrawn in 1.0.0-rc.2: it recorded `store.batch()` answering a put or a delete operation with `undefined` where the reference `InMemoryStore` answers `null`, kept for being "cosmetic" — a reason neither of the two this table allows a row for, the reference being the defect or this backend's storage and key rules requiring the difference. That made the row describe a defect rather than a choice, so `batch()` was changed to answer `null` for both, matching the reference, and the row was deleted. The number stays unused.
 
 ## Production notes
 
@@ -1046,25 +1049,35 @@ npm run test:integration        # integration flows + LangGraph/LangChain contra
 npm run test:integration:down
 ```
 
-The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. Every suite creates and tears down its own uniquely named table and bucket (`aws-langgraph-<suite>test-<uuid>`) in the account of the default credential chain. It is not run by CI: a maintainer runs it on demand before a release, so no scheduled job bills this account.
+The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. Every suite creates and tears down its own uniquely named table and bucket (`aws-langgraph-<suite>test-<uuid>`) in the account of the default credential chain. It runs on every release tag, assuming the OIDC role named by the repository variable or secret `AWS_TEST_ROLE_ARN` in the region `AWS_TEST_REGION` names, and the release does not publish unless it passed; it runs on no schedule, so no job bills the account between releases. A maintainer can also run it locally.
 
 ```bash
-npm run test:aws                # needs AWS credentials; AWS_REGION selects the region
+npm run test:aws                # needs AWS credentials and AWS_REGION; refuses to run without a region
 ```
 
-The `examples/live-*.mjs` scripts are demos against real AWS, not a test tier: `live-checkpointer.mjs` runs a LangGraph agent across two saver instances and deletes its table afterwards; `live-agent.mjs`, `live-persist.mjs` and `live-store.mjs` leave their table in place so you can inspect the rows in the console. They read `AWS_REGION` (default `eu-west-1`) and `LANGGRAPH_DEMO_TABLE` (default `langgraph-saver-demo` / `langgraph-store-demo`), and `live-agent.mjs` needs a Bedrock model enabled in that region.
+The `examples/live-*.mjs` scripts are demos against real AWS, not a test tier: `live-checkpointer.mjs` runs a LangGraph agent across two saver instances and deletes its table afterwards; `live-agent.mjs`, `live-persist.mjs` and `live-store.mjs` leave their table in place so you can inspect the rows in the console. They need `AWS_REGION` (each stops and says so when it is unset) and read `LANGGRAPH_DEMO_TABLE` (default `langgraph-saver-demo` / `langgraph-store-demo`), and `live-agent.mjs` needs a Bedrock model enabled in that region.
 
 ### What the suite does and does not prove
 
 | Tier | Runs | Proves |
 | --- | --- | --- |
-| Unit, static guards, type locks, property tests (`npm test`) | every push and PR, three OSes × Node 22 and 24 | every code path (100 % coverage), the repository rules (file size, JSDoc-only comments, no `any`/`unknown`/`instanceof`, no re-exports, no import cycles, no dead error codes, every public async method behind the error boundary, no planning references or raw control characters in committed code), the exact public export set and adapter signatures, the stated invariants (sort-key order, item-size estimate, write resolution, redaction, backoff) |
+| Unit, static guards, type locks, property tests (`npm test`) | every push and PR, three OSes × Node 22, 24 and 26 | every code path (100 % coverage), the repository rules (JSDoc-only comments, no `any`/`unknown`/`instanceof`, no re-exports, no import cycles, no dead error codes, every public async method behind the error boundary, no planning references or raw control characters in committed code), the exact public export set and adapter signatures, the stated invariants (sort-key order, item-size estimate, write resolution, redaction, backoff) |
 | Integration (`npm run test:integration`, DynamoDB Local) | every push and PR | end-to-end adapter flows and fault injection; the write races the compare-and-swap exists for, with an in-memory S3 in the loop; the DynamoDB semantics the unit mocks assume; parity with `InMemoryStore` and `InMemoryChatMessageHistory` under `RunnableWithMessageHistory`; a 30-way single-session append storm |
 | Conformance (`npm run test:conformance`, DynamoDB Local) | every push and PR, against the declared floor and the latest `@langchain/langgraph-checkpoint` | a compiled LangGraph graph over the saver (interrupt/resume, subgraph namespaces, forks, history windows, crash-and-resume, `Send` fan-out) and LangChain's official checkpointer validation suite |
 | Package smoke (`npm run test:package-smoke`) | every push and PR | the packed tarball installs and imports without the optional S3 peer, and its declarations type-check without it |
-| Real AWS (`npm run test:aws`) | on demand, before a release | S3 offload, lifecycle rules and the S3 error taxonomy against the real services; real 30-way append contention; Bedrock embeddings (skipped with a reason when the model is not enabled) |
+| Real AWS (`npm run test:aws`) | every release tag, gating publish; on demand locally | S3 offload, lifecycle rules and the S3 error taxonomy against the real services; real 30-way append contention; Bedrock embeddings (skipped with a reason when the model is not enabled) |
 
 Nothing in the suite provokes real throttling or `ProvisionedThroughputExceededException` (only its classification is tested), receives `UnprocessedItems` from a batch write (DynamoDB Local and on-demand tables never return them), observes DynamoDB's TTL sweep (only the stamped attribute is asserted), uses a versioned bucket, exercises a hot partition, or measures the write capacity the compare-and-swap fallback consumes. An injected `client` that keeps the SDK's own retries multiplies the library's attempt budget; the integration tier pins that count once and every adapter warns about it at construction.
+
+## Design decisions and evidence
+
+Two directories worth reading before depending on this, and one guide worth reading before touching the source.
+
+**[`docs/decisions/`](docs/decisions/README.md) — the choices that are expensive to reverse.** Eighteen architecture decision records, each stating the context, the decision and the consequences including the negative ones: why the DynamoDB SDK ships as a dependency while LangChain and S3 are peers, why every adapter shares one table under a structured key, why a large payload offloads to S3 behind a descriptor instead of being written inline, why `MemorySaver` and `InMemoryStore` are treated as the behavioural oracle, why file length and function complexity are not capped, and why the live-AWS tier gates a release rather than running on a schedule. If a constraint you have hit looks arbitrary, this is where the answer is.
+
+**[`docs/evidence/`](docs/evidence/README.md) — what DynamoDB and S3 actually do, where AWS does not say.** Seventeen claims established by probing the live services: how the idempotency cache treats a cancelled transaction's replay, that `BatchWriteItem` accepts a condition on a `DeleteRequest` and silently ignores it, what a conditional delete against an already-gone row reports, how a versioned bucket's delete markers and lifecycle rules behave. Each claim is paired with a named live test that fails if the service's answer ever changes, and the file records the date, Region and SDK version each probe ran under — a claim is only as fresh as the last run that checked it.
+
+**[`docs/coding-guidelines.md`](docs/coding-guidelines.md)** is the standard the source is held to, if you are contributing or auditing.
 
 ## Support and policies
 

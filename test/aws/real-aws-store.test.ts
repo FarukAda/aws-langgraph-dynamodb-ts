@@ -11,9 +11,9 @@ import type { EmbeddingsInterface } from '@langchain/core/embeddings';
 import { AsyncCaller } from '@langchain/core/utils/async_caller';
 
 import { DynamoDBStore, type VectorBackend, type VectorRef } from '../../src/index';
+import { liveRegion } from './helpers/env';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-storetest-${randomUUID()}`;
 const REF_SEPARATOR = ' ';
 const EMBED_DIMS = 8;
@@ -22,12 +22,18 @@ const EMBED_DIMS = 8;
 class DeterministicEmbeddings implements EmbeddingsInterface {
   caller = new AsyncCaller({});
 
-  async embedQuery(text: string): Promise<number[]> {
+  /**
+   * `EmbeddingsInterface.embedQuery` is typed `Promise<number[]>`; the
+   * computation itself is synchronous. Returning `Promise.resolve(vector)`
+   * satisfies that type without `async`: a non-async function that returns
+   * a `Promise` already has type `Promise<T>`.
+   */
+  embedQuery(text: string): Promise<number[]> {
     const vector = new Array(EMBED_DIMS).fill(0);
     for (const char of text.toLowerCase()) {
       vector[char.charCodeAt(0) % EMBED_DIMS] += 1;
     }
-    return vector;
+    return Promise.resolve(vector);
   }
 
   async embedDocuments(texts: string[]): Promise<number[][]> {
@@ -44,26 +50,40 @@ class FlakyMemoryBackend implements VectorBackend {
     return `${namespace.join(REF_SEPARATOR)}${REF_SEPARATOR}${key}`;
   }
 
+  /**
+   * `VectorBackend` methods are typed `Promise<...>`; every body here is
+   * synchronous. `upsert` stays `async` because its throw must still reach a
+   * caller as a rejection when called without `await` — a plain synchronous
+   * throw would not — and its `return Promise.resolve()` on the success path
+   * is what satisfies `require-await`, which accepts a thenable `return` in
+   * place of an explicit `await`. `query` and `delete` never throw, so a
+   * non-async function returning `Promise.resolve(...)` already has type
+   * `Promise<...>` and needs neither `async` nor `await`.
+   */
   async upsert(namespace: string[], key: string): Promise<void> {
     if (this.failNextUpsert) {
       this.failNextUpsert = false;
       throw new Error('backend upsert unavailable');
     }
     this.vectors.set(this.id(namespace, key), { namespace, key });
+    return Promise.resolve();
   }
 
-  async query(): Promise<never[]> {
-    return [];
+  query(): Promise<never[]> {
+    return Promise.resolve([]);
   }
 
-  async delete(namespace: string[], key: string): Promise<void> {
+  delete(namespace: string[], key: string): Promise<void> {
     this.vectors.delete(this.id(namespace, key));
+    return Promise.resolve();
   }
 
-  async listKeys(prefix: string[]): Promise<VectorRef[]> {
+  listKeys(prefix: string[]): Promise<VectorRef[]> {
     const head = prefix.join(REF_SEPARATOR);
-    return [...this.vectors.values()].filter((ref) =>
-      ref.namespace.join(REF_SEPARATOR).startsWith(head),
+    return Promise.resolve(
+      [...this.vectors.values()].filter((ref) =>
+        ref.namespace.join(REF_SEPARATOR).startsWith(head),
+      ),
     );
   }
 }

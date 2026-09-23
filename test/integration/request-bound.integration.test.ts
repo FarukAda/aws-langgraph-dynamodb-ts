@@ -1,6 +1,5 @@
 /**
- * The per-attempt bound (design §4.4, §4.5), against a server that misbehaves
- * on purpose.
+ * The per-attempt bound, against a server that misbehaves on purpose.
  *
  * **This file does not use DynamoDB Local and does not need Docker.** Every
  * other suite in this tier talks to the container; this one stands up its own
@@ -10,9 +9,10 @@
  *
  * It lives in this tier rather than the maintainer-run real-AWS one because
  * neither claim needs AWS: real S3 will not stall a body on demand, and a
- * socket that accepts and never answers is fifteen lines. §4.5 marks the
- * per-attempt half of the durability bound untested; filed under AWS it would
- * be a manual step before a tag, and here it runs on every push.
+ * socket that accepts and never answers is fifteen lines. This covers the
+ * per-attempt half of the durability bound, which nothing else exercises;
+ * filed under AWS it would be a manual step before a tag, and here it runs on
+ * every push.
  *
  * Timing discipline. The shipped constants are used where the shipped
  * configuration is what is under test; short explicit values are used where
@@ -249,13 +249,14 @@ describe('(a) a request that is never answered', () => {
 
   /**
    * The shipped configuration, so the shipped constants — and the surprise
-   * they hold. §4.5 attributes a never-answered request to `requestTimeout`,
-   * but the DynamoDB client carries a 10 000 ms request timeout against a
-   * 5 000 ms idle timer, and a socket that has been written to and then goes
-   * quiet is idle: the *socket* timer fires first, at five seconds, and the
-   * request timer never runs. The attempt is still bounded and still
-   * classified retryable, which is what §4.5 needs; the timer that does it is
-   * not the one named. Pinned by message, so a smithy change that reorders
+   * they hold. It would be easy to assume a never-answered request times out
+   * via `requestTimeout`, but the DynamoDB client carries a 10 000 ms request
+   * timeout against a 5 000 ms idle timer, and a socket that has been written
+   * to and then goes quiet is idle: the *socket* timer fires first, at five
+   * seconds, and the request timer never runs. The attempt is still bounded
+   * and still classified retryable — that is the half that matters; the timer
+   * that does it is not the one a reader would guess. Pinned by message, so a
+   * smithy change that reorders
    * them fails here rather than silently — and by the absent `code`, because
    * `setSocketTimeout`'s rejection carries `name` alone, so `ETIMEDOUT` never
    * reaches a caller of the shipped configuration and only the `TimeoutError`

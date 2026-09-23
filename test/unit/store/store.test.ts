@@ -87,7 +87,7 @@ describe('DynamoDBStore', () => {
         dims: 1,
         embeddings: {
           embedQuery: jest.fn(),
-          embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [1])),
+          embedDocuments: jest.fn((texts: string[]) => texts.map(() => [1])),
         } as never,
       },
       vectorBackend: backend,
@@ -127,6 +127,9 @@ describe('DynamoDBStore', () => {
       s3: { bucketName: 'b', createS3Client: () => new S3Client({ region: 'us-east-1' }) },
       ttl: { days: 30 },
     });
+    /** The injected client has maxAttempts > 1, triggering a warning asynchronously during setup. */
+    await new Promise((resolve) => setImmediate(resolve));
+    logger.warn.mockClear();
     await store.ensureS3LifecycleRule();
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
     /** A warn here would mean the versioning stub above was not the one consumed. */
@@ -176,7 +179,7 @@ describe('cancellation via { signal } (CORE-04)', () => {
 });
 
 describe('BaseStore lifecycle (CORE-22)', () => {
-  it('stop() releases an owned client exactly once and leaves an injected one alone', async () => {
+  it('stop() releases an owned client exactly once and leaves an injected one alone', () => {
     const destroy = jest.fn();
     const fake = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
     const owned = new DynamoDBStore({
@@ -184,11 +187,11 @@ describe('BaseStore lifecycle (CORE-22)', () => {
       clientConfig: { region: 'us-east-1' },
       createClient: () => fake as never,
     });
-    await owned.stop();
+    owned.stop();
     expect(destroy).toHaveBeenCalledTimes(1);
     const injected = createStrictDocumentMock();
     const spy = jest.spyOn(injected.client, 'destroy');
-    await new DynamoDBStore({ tableName: 'store', client: injected.client }).stop();
+    new DynamoDBStore({ tableName: 'store', client: injected.client }).stop();
     expect(spy).not.toHaveBeenCalled();
   });
 });

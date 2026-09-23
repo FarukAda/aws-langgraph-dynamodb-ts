@@ -114,7 +114,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     return {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-      upload: async (key: string) => key,
+      upload: (key: string) => key,
       download: jest.fn(async (key: string) => downloads[key]()),
       assertOwnedKey: () => undefined,
       deleteBatch: jest.fn(),
@@ -126,11 +126,17 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     return (record.value as { s3Key: string }).s3Key;
   }
 
-  const gone = async (): Promise<Uint8Array> => {
+  /**
+   * `downloads[key]` is typed `() => Promise<Uint8Array>`; both fakes below
+   * are synchronous and neither needs `async`: `gone` throws synchronously,
+   * which still rejects the `Promise<Uint8Array>` a caller awaits, and
+   * `fresh` returns `Promise.resolve(...)`, which already has that type.
+   */
+  const gone = (): Promise<Uint8Array> => {
     throw s3Failure('NoSuchKey');
   };
-  const fresh = async (): Promise<Uint8Array> =>
-    new TextEncoder().encode(JSON.stringify({ name: 'fresh' }));
+  const fresh = (): Promise<Uint8Array> =>
+    Promise.resolve(new TextEncoder().encode(JSON.stringify({ name: 'fresh' })));
 
   async function records(ctx: StoreContext) {
     const old = await buildStoreItem(
@@ -215,7 +221,8 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
 
   it('does not re-read for a failure that is not a missing object', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const throttled = async (): Promise<Uint8Array> => {
+    /** Same reasoning as `gone` above: `downloads[key]` is `Promise<Uint8Array>`. */
+    const throttled = (): Promise<Uint8Array> => {
       throw s3Failure('SlowDown');
     };
     const downloads: Record<string, () => Promise<Uint8Array>> = {};

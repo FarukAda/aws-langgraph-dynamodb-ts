@@ -50,7 +50,7 @@ function trackingOffloader(
     shouldOffload: () => overrides.shouldOffload ?? true,
     buildKey:
       overrides.buildKey ?? ((parts: string[], objectId: string) => [...parts, objectId].join('/')),
-    upload: overrides.upload ?? (async (key: string) => key),
+    upload: overrides.upload ?? ((key: string) => key),
     deleteBatch: jest.fn().mockResolvedValue([]),
     ownsKey: () => true,
   };
@@ -184,7 +184,7 @@ describe('putItem', () => {
   it('does not delete the new S3 object, and succeeds, when an ambiguous retry-exhaustion write actually landed', async () => {
     const { client, mock } = createStrictDocumentMock();
     let rev: string | undefined;
-    mock.on(GetCommand).callsFake(async () => (rev ? { Item: { rev } } : {}));
+    mock.on(GetCommand).callsFake(() => (rev ? { Item: { rev } } : {}));
     mock.on(TransactWriteCommand).callsFake((input: { TransactItems: TransactPut[] }) => {
       rev = input.TransactItems[0].Put.Item.rev as string;
       throw Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
@@ -235,9 +235,9 @@ describe('putItem', () => {
     resolveRowWrites(mock);
     const uploaded: string[] = [];
     const offloader = trackingOffloader({
-      upload: async (key: string) => {
+      upload: (key: string) => {
         uploaded.push(key);
-        return key;
+        return Promise.resolve(key);
       },
     });
     const ctx = context(client, { offloader: offloader as never });

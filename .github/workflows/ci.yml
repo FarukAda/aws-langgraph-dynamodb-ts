@@ -25,13 +25,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: ['22', '24']
+        node: ['22', '24', '26']
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js ${{ matrix.node }}
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -56,10 +56,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -67,20 +67,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Fail the build only on high/critical advisories. Moderate/low are surfaced
-      # by dependabot PRs and shouldn't block merges.
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+      # No --omit=dev. @langchain/core and @langchain/langgraph-checkpoint are
+      # peers npm installs itself, which --omit=dev still audits, but the
+      # optional peer @aws-sdk/client-s3 is installed here only because it is
+      # also a devDependency, so --omit=dev dropped it and everything under it,
+      # though a consumer who turns on S3 offload runs that code in production.
+      - name: Audit dependencies (high+)
+        run: npm audit --audit-level=high
 
   typecheck-all:
     name: 'typecheck (full program: src + test + configs)'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -103,10 +106,10 @@ jobs:
         # poll before kicking off tests.
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -168,10 +171,10 @@ jobs:
           - 8000:8000
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -212,12 +215,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -241,9 +244,7 @@ jobs:
         run: npm run test:scripts
 
       - name: Workflow syntax (actionlint)
-        run: |
-          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
-          ./actionlint -color
+        run: docker run --rm -v "${PWD}:/repo" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color # v1.7.12
 
       - name: CHANGELOG entry for source changes (pull requests)
         if: github.event_name == 'pull_request'
@@ -260,10 +261,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -271,17 +272,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The floor of each range is computed by scripts/peer-floors.mjs, which
+      # refuses a range it cannot reduce to one version rather than degrading
+      # to "install whatever npm resolves" for a >=, an x-range or a ||
+      # union. One spec per line, read with mapfile, so no spec can be split
+      # on a space. Each floor is then checked on its own, name and version:
+      # `npm ls` given several specs lists whichever match and exits 0 if any
+      # does, and given bare names it never looks at the version at all.
       - name: Install every declared peer at its floor
         run: |
-          read -ra floors <<< "$(node -e '
-            const p = require("./package.json");
-            console.log(Object.entries(p.peerDependencies).map(([n, r]) => n + "@" + r.replace(/^[\^~]/, "")).join(" "));
-          ')"
+          set -euo pipefail
+          mapfile -t floors < <(npm run --silent peer-floors)
           echo "installing ${floors[*]}"
           npm install --no-save "${floors[@]}"
+          for floor in "${floors[@]}"; do
+            npm ls --depth=0 "$floor"
+          done
 
       - name: Type-check and unit-test against the floors
         run: |
+          set -euo pipefail
           npm run typecheck:all
           npm test -- --ci
 
@@ -290,10 +300,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -317,10 +327,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm

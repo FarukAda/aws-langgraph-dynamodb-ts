@@ -82,7 +82,7 @@ describe('store item-mapper', () => {
       offloader: {
         shouldOffload: () => true,
         buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-        upload: async (key: string) => key,
+        upload: (key: string) => key,
       } as never,
     };
     const build = (rev?: string) =>
@@ -151,12 +151,12 @@ describe('narrowStoreRecord refuses a row from a newer format version (STORE-11)
 
   it('reads a row without a version, and one at the supported version', () => {
     expect(narrowStoreRecord(row as never)).toBeDefined();
-    expect(narrowStoreRecord({ ...row, v: 1 } as never)).toBeDefined();
+    expect(narrowStoreRecord({ ...row, v: 1 })).toBeDefined();
   });
 
   /** Skipping it would hide an item that exists, so it fails loudly. */
   it('throws FORMAT_UNSUPPORTED rather than hiding a newer row', () => {
-    expect(() => narrowStoreRecord({ ...row, v: 99 } as never)).toThrow(/format version 99/);
+    expect(() => narrowStoreRecord({ ...row, v: 99 })).toThrow(/format version 99/);
   });
 
   /**
@@ -167,7 +167,7 @@ describe('narrowStoreRecord refuses a row from a newer format version (STORE-11)
    * for an item that exists.
    */
   it('reports a newer row whose attributes disagree with its key', () => {
-    expect(() => narrowStoreRecord({ ...row, key: 'other', v: 99 } as never)).toThrow(
+    expect(() => narrowStoreRecord({ ...row, key: 'other', v: 99 })).toThrow(
       expect.objectContaining({
         code: ErrorCode.FORMAT_UNSUPPORTED,
         context: { field: 'v' },
@@ -183,10 +183,10 @@ describe('narrowStoreRecord refuses a row from a newer format version (STORE-11)
    * table from costing a read every item beside it.
    */
   it('reports a newer row that carries no store attributes at all', () => {
-    expect(() => narrowStoreRecord({ PK: 'STORE#n', SK: 'k', v: 99 } as never)).toThrow(
+    expect(() => narrowStoreRecord({ PK: 'STORE#n', SK: 'k', v: 99 })).toThrow(
       expect.objectContaining({ code: ErrorCode.FORMAT_UNSUPPORTED }),
     );
-    expect(narrowStoreRecord({ PK: 'STORE#n', SK: 'k', v: 1 } as never)).toBeUndefined();
+    expect(narrowStoreRecord({ PK: 'STORE#n', SK: 'k', v: 1 })).toBeUndefined();
   });
 });
 

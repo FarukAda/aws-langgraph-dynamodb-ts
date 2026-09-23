@@ -109,11 +109,12 @@ describe('the corrupt-row line bounds the failure it names', () => {
     const error = jest.fn();
     const serde = {
       dumpsTyped: JSON_SERDE.dumpsTyped,
-      loadsTyped: async (): Promise<unknown> => ({
-        get type(): string {
-          throw Object.assign(new Error('cannot rebuild'), { name });
-        },
-      }),
+      loadsTyped: async (): Promise<unknown> =>
+        Promise.resolve({
+          get type(): string {
+            throw Object.assign(new Error('cannot rebuild'), { name });
+          },
+        }),
     };
     mock.on(QueryCommand).resolves({ Items: [await realRow(client, '01A')] });
 

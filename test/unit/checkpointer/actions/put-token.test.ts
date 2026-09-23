@@ -13,12 +13,10 @@ import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 const checkpoint: Checkpoint = {
@@ -148,7 +146,7 @@ function racedByAThreadDelete() {
   const rows = new Map<string, DocItem>();
   let requests = 0;
   const client = {
-    transactWrite: async (input: TransactInput): Promise<Record<string, never>> => {
+    transactWrite: (input: TransactInput): Record<string, never> => {
       requests += 1;
       const token = input.ClientRequestToken;
       if (token !== undefined && applied.has(token)) return {};

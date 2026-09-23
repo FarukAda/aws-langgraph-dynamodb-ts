@@ -83,8 +83,8 @@ function recorder(options: { failures: number; reReads?: ExistingRecordMeta[] })
     offloader: {},
     logger: SILENT_LOGGER,
     client: {
-      put: async (input: WriteInput) => send({ kind: 'put', items: 1, request: input, put: input }),
-      transactWrite: async (input: TransactInput) =>
+      put: (input: WriteInput) => send({ kind: 'put', items: 1, request: input, put: input }),
+      transactWrite: (input: TransactInput) =>
         send({
           kind: 'transact',
           token: input.ClientRequestToken,
@@ -92,7 +92,7 @@ function recorder(options: { failures: number; reReads?: ExistingRecordMeta[] })
           request: input,
           put: input.TransactItems[0].Put,
         }),
-      get: async () => {
+      get: () => {
         const next = reReads.shift();
         return {
           Item: next?.exists
@@ -219,10 +219,10 @@ function racedByADelete() {
     logger: SILENT_LOGGER,
     retry: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1, rng: () => 0 },
     client: {
-      put: async (input: WriteInput) => send(input.Item),
-      transactWrite: async (input: TransactInput) =>
+      put: (input: WriteInput) => send(input.Item),
+      transactWrite: (input: TransactInput) =>
         send(input.TransactItems[0].Put.Item, input.ClientRequestToken),
-      get: async () => ({ Item: undefined }),
+      get: () => ({ Item: undefined }),
     },
   };
   return { context, survives: () => row !== undefined, requests: () => requests };
@@ -269,7 +269,7 @@ describe('a guard rejection arriving as a cancelled transaction', () => {
       offloader: {},
       logger: SILENT_LOGGER,
       client: {
-        transactWrite: async (input: TransactInput) => {
+        transactWrite: (input: TransactInput) => {
           emitted.push({
             kind: 'transact',
             token: input.ClientRequestToken,
@@ -280,7 +280,7 @@ describe('a guard rejection arriving as a cancelled transaction', () => {
           if (emitted.length === 1) throw rejection;
           return {};
         },
-        get: async () => {
+        get: () => {
           reads += 1;
           return {};
         },

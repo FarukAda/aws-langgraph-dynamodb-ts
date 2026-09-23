@@ -20,12 +20,10 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 function context(): CheckpointerContext {
@@ -227,7 +225,7 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
 
   it('reads a row without a version, and one at the supported version', () => {
     expect(narrowMetaItem(meta as never)).toBeDefined();
-    expect(narrowMetaItem({ ...meta, v: 1 } as never)).toBeDefined();
+    expect(narrowMetaItem({ ...meta, v: 1 })).toBeDefined();
   });
 
   /**
@@ -236,7 +234,7 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
    * truncated history. It fails loudly instead.
    */
   it('throws FORMAT_UNSUPPORTED rather than skipping a newer row', () => {
-    expect(() => narrowMetaItem({ ...meta, v: 99 } as never)).toThrow(/format version 99/);
+    expect(() => narrowMetaItem({ ...meta, v: 99 })).toThrow(/format version 99/);
   });
 
   /**
@@ -247,7 +245,7 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
    * of the one error that names the remedy.
    */
   it('reports a newer row whose shape this release would otherwise refuse', () => {
-    expect(() => narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 99 } as never)).toThrow(
+    expect(() => narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 99 })).toThrow(
       expect.objectContaining({
         code: ErrorCode.FORMAT_UNSUPPORTED,
         context: { field: 'v' },
@@ -257,8 +255,8 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
 
   /** A row at a version this release reads keeps the skip these narrows exist for. */
   it('still skips a foreign row at a version it reads', () => {
-    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 1 } as never)).toBeUndefined();
-    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1' } as never)).toBeUndefined();
+    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 1 })).toBeUndefined();
+    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1' })).toBeUndefined();
   });
 });
 
@@ -332,11 +330,11 @@ describe('narrowMetaItem rejects a row whose descriptor is not one', () => {
     ['a string', 'INLINE'],
     ['a number', 7],
   ])('skips a row whose metadata is %s', (_name, metadata) => {
-    expect(narrowMetaItem({ ...base, metadata } as never)).toBeUndefined();
+    expect(narrowMetaItem({ ...base, metadata })).toBeUndefined();
   });
 
   it('accepts a row carrying a descriptor object', () => {
-    expect(narrowMetaItem({ ...base, metadata: { location: 'INLINE' } } as never)).toBeDefined();
+    expect(narrowMetaItem({ ...base, metadata: { location: 'INLINE' } })).toBeDefined();
   });
 });
 

@@ -3,17 +3,16 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 
 import { putCheckpoint } from '../../../../src/checkpointer/actions/put';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
+import type { PayloadDescriptor } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 const checkpoint: Checkpoint = {
@@ -38,7 +37,7 @@ function trackingOffloader(offloadMetadata = true) {
   return {
     shouldOffload: (bytes: Uint8Array) => offloadMetadata || bytes.length > 64,
     buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-    upload: async (key: string) => key,
+    upload: (key: string) => key,
     deleteBatch: jest.fn().mockResolvedValue([]),
   };
 }
@@ -58,8 +57,16 @@ async function committedRows(withMetadata: CheckpointMetadata) {
   return attempted(mock);
 }
 
-/** The descriptors the failed transaction carried, one per row. */
-function attempted(mock: DocumentMock) {
+/**
+ * The descriptors the failed transaction carried, one per row. Every test
+ * below offloads both, so the return type states `s3Key` directly rather
+ * than making each call site re-narrow the `PayloadDescriptor` union.
+ */
+type OffloadedDescriptor = PayloadDescriptor & { s3Key: string };
+function attempted(mock: DocumentMock): {
+  metadata: OffloadedDescriptor;
+  checkpoint: OffloadedDescriptor;
+} {
   const items = mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems ?? [];
   return { metadata: items[0].Put?.Item?.metadata, checkpoint: items[1].Put?.Item?.checkpoint };
 }
@@ -72,7 +79,7 @@ type Answer = (() => { Item?: Record<string, object> }) | 'fails';
  * are read separately, and each must be answered with its own row.
  */
 function answerBySortKey(mock: DocumentMock, meta: Answer, payload: Answer): void {
-  mock.on(GetCommand).callsFake(async (input: { Key: { SK: string } }) => {
+  mock.on(GetCommand).callsFake((input: { Key: { SK: string } }) => {
     const answer = input.Key.SK.startsWith('META#') ? meta : payload;
     if (answer === 'fails') {
       throw Object.assign(new Error('denied'), { name: 'AccessDeniedException' });
@@ -278,12 +285,12 @@ describe('putCheckpoint re-putting a committed checkpoint id', () => {
     const table = new Map<string, Record<string, unknown>>();
     mock
       .on(TransactWriteCommand)
-      .callsFakeOnce(async (input: { TransactItems: { Put: { Item: { SK: string } } }[] }) => {
+      .callsFakeOnce((input: { TransactItems: { Put: { Item: { SK: string } } }[] }) => {
         for (const { Put } of input.TransactItems) table.set(Put.Item.SK, Put.Item);
         return {};
       })
       .rejects(Object.assign(new Error('refused'), { name: 'ValidationException' }));
-    mock.on(GetCommand).callsFake(async (input: { Key: { SK: string } }) => ({
+    mock.on(GetCommand).callsFake((input: { Key: { SK: string } }) => ({
       Item: table.get(input.Key.SK),
     }));
     const offloader = trackingOffloader(false);

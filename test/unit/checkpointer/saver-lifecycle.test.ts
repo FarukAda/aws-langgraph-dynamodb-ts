@@ -13,12 +13,10 @@ const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 function s3Offload() {
@@ -26,7 +24,7 @@ function s3Offload() {
 }
 
 /**
- * Split out of `saver.test.ts`, which sits at its line cap. Every case here
+ * The saver's S3 lifecycle provisioning, kept apart from `saver.test.ts`. Every case here
  * passes a logger and asserts on it: an unstubbed `GetBucketVersioning`
  * resolves as nothing through `aws-sdk-client-mock`, which this package reads
  * as a failed versioning check and warns about — so without that assertion a

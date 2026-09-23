@@ -59,6 +59,18 @@ const NUMBERED_TASK = /\bTask[ _-]\d+\b|\btask \d+\b/;
 const DESIGN_DECISION = /\bD[1-9]\b/;
 
 /**
+ * A numbered section of a document, `§11.6` or `§ 1`. Every document this
+ * repository cites by section was a planning file outside it; a reader
+ * cannot follow the citation. Cite `docs/evidence` by claim id, or a
+ * published document by name, instead.
+ */
+const SECTION_SIGN = /§\s*\d+/;
+
+/** The planning files the live tier used to cite, which were never committed. */
+const UNTRACKED_PLANNING_FILE =
+  /live-validation(?:-delete)?\.md|design-offload-durability|\.superpowers\b/;
+
+/**
  * Known limits, left unwidened on purpose:
  *
  * - A reordered "round N fix" is not caught. No plan has ever produced that
@@ -72,7 +84,15 @@ const DESIGN_DECISION = /\bD[1-9]\b/;
  *   need real comment-range parsing, the way `guards/comments.ts` does it,
  *   not the cheap line-prefix check this guard uses.
  */
-const ALWAYS_CHECKED = [RULING, FIX_ROUND, BRIEF_NOUN, PLAN_TASK_ID, NUMBERED_TASK];
+const ALWAYS_CHECKED = [
+  RULING,
+  FIX_ROUND,
+  BRIEF_NOUN,
+  PLAN_TASK_ID,
+  NUMBERED_TASK,
+  SECTION_SIGN,
+  UNTRACKED_PLANNING_FILE,
+];
 
 /**
  * True when `line`'s trimmed text opens a comment: `*` (a JSDoc or block

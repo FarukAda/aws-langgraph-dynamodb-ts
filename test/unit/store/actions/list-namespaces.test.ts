@@ -43,13 +43,13 @@ describe('listNamespaces maxDepth validation (M10)', () => {
     // of erroring.
     const { client } = createStrictDocumentMock();
     await expect(
-      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: -1 } as never),
+      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: -1 }),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
     await expect(
-      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: 0 } as never),
+      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: 0 }),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
     await expect(
-      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: 1.5 } as never),
+      listNamespaces(context(client), { offset: 0, limit: 10, maxDepth: 1.5 }),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION });
   });
 });

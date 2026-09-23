@@ -152,7 +152,7 @@ describe('clearSession', () => {
     let queryCallCount = 0;
     let deletesBeforeSecondQuery = -1;
 
-    mock.on(QueryCommand).callsFake(async () => {
+    mock.on(QueryCommand).callsFake(() => {
       queryCallCount += 1;
       if (queryCallCount === 1) {
         // Page 1: 25 items (BATCH_WRITE_MAX) with LastEvaluatedKey to trigger pagination

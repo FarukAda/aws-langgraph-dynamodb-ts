@@ -29,9 +29,7 @@ describe('projectKeys', () => {
 
 describe('existingFrom', () => {
   it('reports what the row a put supersedes holds', () => {
-    expect(
-      existingFrom({ createdAt: 'c', rev: 'r1', value: { location: 'INLINE' } } as never),
-    ).toEqual({
+    expect(existingFrom({ createdAt: 'c', rev: 'r1', value: { location: 'INLINE' } })).toEqual({
       exists: true,
       createdAt: 'c',
       revision: 'r1',
@@ -50,7 +48,7 @@ describe('existingFrom', () => {
 
   /** A row written before revisions existed reports none, which the swap tests for. */
   it('reports a row that carries no revision as existing without one', () => {
-    expect(existingFrom({ createdAt: 'c' } as never)).toMatchObject({
+    expect(existingFrom({ createdAt: 'c' })).toMatchObject({
       exists: true,
       revision: undefined,
     });

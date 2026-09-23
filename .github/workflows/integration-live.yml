@@ -1,0 +1,92 @@
+name: Integration (live AWS)
+
+# The live-AWS tier: the one tier that runs this package against real
+# DynamoDB, S3 and Bedrock rather than mocks or DynamoDB Local. It runs only
+# when a release is tagged. Never on a schedule: a nightly run bills the account
+# to answer a question nobody asked that night, and one suite calls Bedrock.
+# There is no manual dispatch either, so the tier answers at the one moment it
+# matters, before a version is published (docs/decisions, record 18). Between
+# releases a maintainer runs it locally with `npm run test:aws`.
+on:
+  push:
+    tags: ['v*']
+
+# This lives in its own file rather than as a job in `release.yml`, and that is
+# a security decision rather than tidiness.
+#
+# Assuming an AWS role by OIDC needs `id-token: write`. That permission is not
+# specific to AWS: it lets a job mint an OIDC token for *any* audience,
+# including npm's, and npm Trusted Publishing authorises by repository and
+# **workflow filename**. A job in `release.yml` holding `id-token: write` could
+# therefore mint an npm publish credential while running `npm ci` and the whole
+# test toolchain, which is exactly the hole that file's verify/publish split
+# closes. A job in *this* file cannot: its `workflow_ref` does not match the
+# trusted publisher's, so npm rejects the token.
+#
+# The release still waits for this tier. `release.yml` gates on named check
+# runs for the tagged commit, and `live-aws integration` is one of the names it
+# requires (see scripts/required-checks.json), so a tag whose live run failed,
+# or never ran, does not publish.
+permissions: {}
+
+# One run at a time, across every tag. Each suite creates and deletes its own
+# uniquely named tables and buckets, so two runs would not collide on a
+# resource, but two tags pushed together would double the spend for the same
+# answer. Not cancelled, because the run in progress is a release's: GitHub
+# holds at most one run pending per group, and a third arriving replaces the
+# one waiting, which then reports `cancelled`. That is a failed check, so the
+# release gate still fails closed, and re-running it is the remedy.
+concurrency:
+  group: integration-live
+  cancel-in-progress: false
+
+jobs:
+  integration:
+    name: live-aws integration
+    runs-on: ubuntu-latest
+    # release.yml waits 45 minutes for this check, so a run past that is lost
+    # anyway; stopping it here keeps each tag's cost bounded (record 18).
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # Only to assume the AWS role below. See the note above for why this
+      # permission cannot live in `release.yml`.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      # The role is scoped to `aws-langgraph-*test-*` tables and buckets, the
+      # only names the suites create (CONTRIBUTING.md, "Real-AWS tests"). Its
+      # ARN and the region are each read from a repository variable or, when
+      # none is set, a secret of the same name. Neither is a credential; an
+      # empty value fails this step, and so the release gate, closed.
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_TEST_ROLE_ARN || secrets.AWS_TEST_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEST_REGION || secrets.AWS_TEST_REGION }}
+
+      # No resource setup step: every suite creates and deletes its own tables
+      # and buckets (test/aws/helpers/table.ts, teardown.ts).
+      #
+      # A skipped Jest suite exits 0, so "the tier never ran anything" and
+      # "every live test passed" are indistinguishable from the exit code
+      # alone. test/aws/helpers/env.ts makes a run with no region fatal; the
+      # count below makes a run that executed nothing fatal too, so a dropped
+      # line here can never turn this job green without a single AWS call.
+      - name: Run the live-AWS tier
+        env:
+          AWS_REGION: ${{ vars.AWS_TEST_REGION || secrets.AWS_TEST_REGION }}
+        run: |
+          set -euo pipefail
+          npm run test:aws -- --json --outputFile=jest-aws.json
+          PASSED=$(node -p "require('./jest-aws.json').numPassedTests")
+          TOTAL=$(node -p "require('./jest-aws.json').numTotalTests")
+          echo "live-aws: ${PASSED}/${TOTAL} passed"
+          if [ "${PASSED}" -lt 1 ]; then
+            echo "::error::The live tier reported success having run no test."
+            exit 1
+          fi

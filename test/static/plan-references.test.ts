@@ -114,6 +114,22 @@ describe('planReferencesIn', () => {
   });
 });
 
+describe('citations of planning files that are not in the repository', () => {
+  it('flags a section sign followed by a number', () => {
+    expect(planReferencesIn(' * (design §11.6)', 'a.ts').map((hit) => hit.text)).toEqual(['§11']);
+  });
+
+  it('flags the untracked evidence and design file names', () => {
+    const source = [
+      '// see live-validation.md',
+      '// live-validation-delete.md',
+      '// design-offload-durability',
+      '// .superpowers/sdd',
+    ].join('\n');
+    expect(planReferencesIn(source, 'a.ts').map((hit) => hit.line)).toEqual([1, 2, 3, 4]);
+  });
+});
+
 describe('planReferences', () => {
   it('finds no plan-process reference across the real tree', () => {
     expect(planReferences()).toEqual([]);

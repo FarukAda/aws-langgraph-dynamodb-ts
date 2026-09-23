@@ -4,7 +4,7 @@ import { ValidationError } from '../../shared/errors/errors';
 
 const WILDCARD = '*';
 
-function segmentMatches(actual: string[], path: (string | '*')[]): boolean {
+function segmentMatches(actual: string[], path: string[]): boolean {
   return path.every((element, index) => element === WILDCARD || element === actual[index]);
 }
 

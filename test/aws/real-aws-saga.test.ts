@@ -21,9 +21,9 @@ import type { ChatMessageItem } from '../../src/history/types';
 import { PayloadLocation } from '../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../src/shared/errors/error-code';
+import { liveRegion } from './helpers/env';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-sagatest-${randomUUID()}`;
 const sessionId = 'saga-session';
 

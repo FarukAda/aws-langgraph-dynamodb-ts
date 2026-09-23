@@ -168,7 +168,7 @@ describe('embedPassages', () => {
 
 describe('embedValues', () => {
   it('embeds every non-empty text in one embedDocuments call and keeps order', async () => {
-    const embedDocuments = jest.fn(async (texts: string[]) => texts.map((t) => [t.length]));
+    const embedDocuments = jest.fn((texts: string[]) => texts.map((t) => [t.length]));
     const embeddings = { embedQuery: jest.fn(), embedDocuments };
     const ctx = context({ dims: 1, embeddings: embeddings as never, fields: ['t'] });
     const vectors = await embedValues(ctx, [{ t: 'ab' }, { t: '' }, { t: 'abcd' }]);
@@ -178,7 +178,7 @@ describe('embedValues', () => {
   });
 
   it('splits large inputs into batches of 100', async () => {
-    const embedDocuments = jest.fn(async (texts: string[]) => texts.map(() => [1]));
+    const embedDocuments = jest.fn((texts: string[]) => texts.map(() => [1]));
     const embeddings = { embedQuery: jest.fn(), embedDocuments };
     const ctx = context({ dims: 1, embeddings: embeddings as never, fields: ['t'] });
     await embedValues(

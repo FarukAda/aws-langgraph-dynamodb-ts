@@ -18,12 +18,10 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {
@@ -61,12 +59,12 @@ describe('listCheckpoints', () => {
       source: 'loop',
       step: 2,
       parents: {},
-    } as CheckpointMetadata);
+    });
     const b = await buildCheckpointItems(ctx, 't', '', checkpoint('c1'), {
       source: 'input',
       step: 1,
       parents: {},
-    } as CheckpointMetadata);
+    });
     const metas: Record<string, CheckpointMetaItem> = { c2: a.meta, c1: b.meta };
     const payloads: Record<string, CheckpointPayloadItem> = { c2: a.payload, c1: b.payload };
     return { metas, payloads };
@@ -277,7 +275,7 @@ describe('listCheckpoints refuses a PAYLOAD row a newer release wrote (C-03)', (
       source: 'loop',
       step: 1,
       parents: {},
-    } as CheckpointMetadata);
+    });
     mock.on(QueryCommand).callsFake((input) => {
       const prefix = input.ExpressionAttributeValues[':skPrefix'] as string;
       return prefix.startsWith('META') ? { Items: [meta] } : { Items: [] };

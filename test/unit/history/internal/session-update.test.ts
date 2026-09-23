@@ -22,7 +22,7 @@ describe('buildSessionUpdateItem', () => {
       /** Rewritten on every update, so a row states the version that last touched it. */
       ':v': 1,
       /** The recency index, rewritten on every append so a listing needs no in-memory sort. */
-      ':gpk': expect.stringMatching(/^SESS#\d+$/) as unknown as string,
+      ':gpk': expect.stringMatching(/^SESS#\d+$/),
       ':gsk': 'u#s1',
     });
     expect(Update?.ExpressionAttributeNames).toEqual({

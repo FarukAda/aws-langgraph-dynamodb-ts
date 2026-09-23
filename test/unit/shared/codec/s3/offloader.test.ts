@@ -151,7 +151,7 @@ describe('S3Offloader', () => {
 
   it('download fetches the object bytes', async () => {
     s3Mock.on(GetObjectCommand).resolves({
-      Body: { transformToByteArray: async () => new Uint8Array([5]) } as never,
+      Body: { transformToByteArray: () => new Uint8Array([5]) } as never,
     });
     const { offloader } = makeOffloader();
     expect(await offloader.download('k.bin')).toEqual(new Uint8Array([5]));
@@ -374,7 +374,7 @@ describe('download cap (CODEC-17)', () => {
     });
     s3Mock.on(GetObjectCommand).resolves({
       ContentLength: 10,
-      Body: { transformToByteArray: async () => new Uint8Array(10) } as never,
+      Body: { transformToByteArray: () => new Uint8Array(10) } as never,
     });
     await expect(offloader.download('k.bin')).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,

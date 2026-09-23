@@ -13,18 +13,27 @@ import { FakeEmbeddings } from './helpers/fake-embeddings';
 class OrderedMemoryBackend implements VectorBackend {
   private entries: { namespace: string[]; key: string }[] = [];
 
-  async upsert(namespace: string[], key: string): Promise<void> {
+  /**
+   * `VectorBackend` methods are typed `Promise<...>`; every body below is
+   * synchronous and none of them throw, so a non-async function returning
+   * `Promise.resolve(...)` already has type `Promise<...>` and needs
+   * neither `async` nor `await`.
+   */
+  upsert(namespace: string[], key: string): Promise<void> {
     this.entries.push({ namespace, key });
+    return Promise.resolve();
   }
 
-  async query(_namespace: string[], _vector: number[], topK: number): Promise<VectorMatch[]> {
-    return this.entries.slice(0, topK).map((entry) => ({ ...entry, score: 1 }));
+  query(_namespace: string[], _vector: number[], topK: number): Promise<VectorMatch[]> {
+    const matches = this.entries.slice(0, topK).map((entry) => ({ ...entry, score: 1 }));
+    return Promise.resolve(matches);
   }
 
-  async delete(namespace: string[], key: string): Promise<void> {
+  delete(namespace: string[], key: string): Promise<void> {
     this.entries = this.entries.filter(
       (entry) => !(entry.namespace.join('/') === namespace.join('/') && entry.key === key),
     );
+    return Promise.resolve();
   }
 }
 

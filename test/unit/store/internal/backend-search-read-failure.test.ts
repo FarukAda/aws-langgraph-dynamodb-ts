@@ -24,7 +24,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
   };
 }
 
-const index = { dims: 2, embeddings: { embedQuery: async () => [0, 1] } as never };
+const index = { dims: 2, embeddings: { embedQuery: () => [0, 1] } as never };
 
 const ITEM_TIMES = { createdAt: 'c', updatedAt: 'u' };
 const PREFIX_QUERY = { namespacePrefix: ['users'], query: 'q' };
@@ -141,7 +141,7 @@ describe('searchViaBackend when a match cannot be read', () => {
       twoMatches[0],
       { namespace: ['users', 'u#1'], key: 'k2', score: 0.8 },
     ]);
-    const found = await searchViaBackend(ctx, backend as never, index, PREFIX_QUERY, 0, 2);
+    const found = await searchViaBackend(ctx, backend, index, PREFIX_QUERY, 0, 2);
     expect(found.map((item) => item.key)).toEqual(['k1']);
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
     expect(warn).toHaveBeenCalledWith(

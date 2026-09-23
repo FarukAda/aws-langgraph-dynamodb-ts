@@ -27,9 +27,9 @@ function keyName(name: ts.PropertyName): string | undefined {
  * Files that would let a message row be written outside the transaction that
  * stamps the session's write id.
  *
- * Parses rather than greps, for the reason `line-count.ts` already gives: this
- * repository quotes expressions in its JSDoc constantly, and a textual scan
- * reports every such quotation as a write. It flags a `Put` or `PutRequest`
+ * Parses rather than greps: this repository quotes expressions in its JSDoc
+ * constantly, and a textual scan reports every such quotation as a write. It
+ * flags a `Put` or `PutRequest`
  * key in an object literal — whatever its value, so a hoisted action is caught
  * too — and any `.put(` call.
  *

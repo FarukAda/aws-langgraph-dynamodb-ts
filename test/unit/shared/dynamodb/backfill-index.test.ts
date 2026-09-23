@@ -251,7 +251,7 @@ describe('backfillRecencyIndex input validation', () => {
     ['maxPages', null],
   ])('refuses %s=%p, naming it', async (field, value) => {
     await expect(
-      backfillRecencyIndex({ client: ok(), tableName: TABLE, [field]: value } as never),
+      backfillRecencyIndex({ client: ok(), tableName: TABLE, [field]: value }),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION, context: { field } });
   });
 
@@ -324,7 +324,7 @@ describe('backfillRecencyIndex input validation', () => {
     ['signal', 'x', 'retry.signal'],
   ])('refuses retry.%s=%p, naming %s', async (key, value, field) => {
     await expect(
-      backfillRecencyIndex({ client: ok(), tableName: TABLE, retry: { [key]: value } as never }),
+      backfillRecencyIndex({ client: ok(), tableName: TABLE, retry: { [key]: value } }),
     ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field },

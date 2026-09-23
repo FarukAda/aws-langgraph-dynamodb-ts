@@ -79,7 +79,15 @@ export const JSON_SERDE: SerializerProtocol = {
         'value',
       );
     }
-    return [JSON_SERDE_TYPE, new TextEncoder().encode(text)];
+    /**
+     * `dumpsTyped` stays `async` because the two throws above must reach a
+     * caller as a rejection even when it is called without `await` (a bare
+     * `.catch()`), which a plain synchronous throw would not do. Returning
+     * `Promise.resolve(...)` here — rather than the bare tuple — is what
+     * satisfies `require-await`: the rule accepts a `return` of a thenable
+     * value in place of an explicit `await`, and needs no `await` to do it.
+     */
+    return Promise.resolve([JSON_SERDE_TYPE, new TextEncoder().encode(text)]);
   },
   async loadsTyped(type, data) {
     /**
@@ -131,7 +139,8 @@ export const JSON_SERDE: SerializerProtocol = {
       );
     }
     try {
-      return JSON.parse(text);
+      /** Same reasoning as `dumpsTyped`'s final return: see its comment. */
+      return Promise.resolve(JSON.parse(text));
     } catch (error) {
       throw new DynamoDBLangGraphError(
         'the stored payload is not the JSON this serializer wrote, so it cannot be decoded',

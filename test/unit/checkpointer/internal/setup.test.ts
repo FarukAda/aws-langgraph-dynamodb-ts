@@ -2,8 +2,8 @@ import { setUpCheckpointer } from '../../../../src/checkpointer/internal/setup';
 import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (): Promise<[string, Uint8Array]> => ['json', new Uint8Array()],
-  loadsTyped: async (): Promise<unknown> => ({}),
+  dumpsTyped: (): Promise<[string, Uint8Array]> => Promise.resolve(['json', new Uint8Array()]),
+  loadsTyped: (): Promise<unknown> => Promise.resolve({}),
 };
 
 describe('setUpCheckpointer', () => {
@@ -53,14 +53,14 @@ describe('setUpCheckpointer', () => {
 
   it('does not own an injected client', () => {
     const injected = { ...fakeClientMethods(), send: jest.fn() };
-    const setup = setUpCheckpointer({ tableName: 'ckpt', client: injected as never }, serde);
+    const setup = setUpCheckpointer({ tableName: 'ckpt', client: injected }, serde);
     expect(setup.ownsClient).toBe(false);
     expect(setup.context.client).toBe(injected);
   });
 
   it('creates an S3 offloader when s3 options are given', () => {
     const setup = setUpCheckpointer(
-      { tableName: 'ckpt', client: fakeClientMethods() as never, s3: { bucketName: 'b' } },
+      { tableName: 'ckpt', client: fakeClientMethods(), s3: { bucketName: 'b' } },
       serde,
     );
     expect(setup.context.offloader).toBeDefined();
@@ -70,7 +70,7 @@ describe('setUpCheckpointer', () => {
     const setup = setUpCheckpointer(
       {
         tableName: 'ckpt',
-        client: fakeClientMethods() as never,
+        client: fakeClientMethods(),
         compression: { enabled: true },
         ttl: { days: 5 },
       },
@@ -82,7 +82,7 @@ describe('setUpCheckpointer', () => {
 
   it('defaults the S3 key prefix to an adapter-scoped segment, but honors an explicit override', () => {
     const defaulted = setUpCheckpointer(
-      { tableName: 'ckpt', client: fakeClientMethods() as never, s3: { bucketName: 'b' } },
+      { tableName: 'ckpt', client: fakeClientMethods(), s3: { bucketName: 'b' } },
       serde,
     );
     expect(defaulted.context.offloader?.getKeyPrefix()).toBe('langgraph-checkpoints/checkpointer/');
@@ -90,7 +90,7 @@ describe('setUpCheckpointer', () => {
     const overridden = setUpCheckpointer(
       {
         tableName: 'ckpt',
-        client: fakeClientMethods() as never,
+        client: fakeClientMethods(),
         s3: { bucketName: 'b', keyPrefix: 'custom/' },
       },
       serde,
@@ -111,7 +111,7 @@ describe('collaborator shape (DDB-09)', () => {
       setUpCheckpointer(
         {
           tableName: 'ckpt',
-          client: fakeClientMethods() as never,
+          client: fakeClientMethods(),
           logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as never,
         },
         serde,
@@ -124,8 +124,10 @@ describe('collaborator shape (DDB-09)', () => {
       setUpCheckpointer(
         {
           tableName: 'ckpt',
-          client: fakeClientMethods() as never,
-          serde: { dumpsTyped: async () => ['json', new Uint8Array()] } as never,
+          client: fakeClientMethods(),
+          serde: {
+            dumpsTyped: () => Promise.resolve(['json', new Uint8Array()]),
+          } as never,
         },
         serde,
       ),
@@ -146,7 +148,7 @@ describe('S3 region inheritance (CODEC-15)', () => {
     };
     const s3Client = {
       destroy: jest.fn(),
-      send: jest.fn(async () => ({})),
+      send: jest.fn(() => ({})),
       config: {},
       middlewareStack: fakeMiddlewareStack(),
     };
@@ -177,7 +179,7 @@ describe('SDK retry stacking warning (DDB-01)', () => {
     const client = {
       ...fakeClientMethods(),
       send: jest.fn(),
-      config: { maxAttempts: async () => 3 },
+      config: { maxAttempts: () => 3 },
     } as never;
     setUpCheckpointer(
       {
@@ -195,7 +197,7 @@ describe('SDK retry stacking warning (DDB-01)', () => {
     const warn = jest.fn();
     const ddb = {
       destroy: jest.fn(),
-      config: { maxAttempts: async () => 1 },
+      config: { maxAttempts: () => 1 },
       middlewareStack: fakeMiddlewareStack(),
       send: jest.fn(),
     };

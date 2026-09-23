@@ -45,7 +45,7 @@ describe('resolveTtlSeconds shape', () => {
   });
 
   it('rejects an object carrying both days and seconds instead of preferring one (CORE-14)', () => {
-    expect(() => resolveTtlSeconds({ days: 1, seconds: 60 } as never)).toThrow(
+    expect(() => resolveTtlSeconds({ days: 1, seconds: 60 })).toThrow(
       /either ttl.days or ttl.seconds, not both/,
     );
   });

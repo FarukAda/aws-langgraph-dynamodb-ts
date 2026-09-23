@@ -53,7 +53,7 @@ function harness(withBackend = true) {
   const backend = {
     upsert: jest.fn(),
     query: jest.fn(),
-    delete: jest.fn(async () => {
+    delete: jest.fn(() => {
       order.push('vector');
       reads.push(mock.commandCalls(GetCommand).length);
     }),
@@ -61,8 +61,8 @@ function harness(withBackend = true) {
   const offloader = {
     shouldOffload: () => true,
     buildKey: (parts: string[], objectId: string) => [...parts, objectId].join('/'),
-    upload: async (key: string) => key,
-    deleteBatch: jest.fn(async () => {
+    upload: (key: string) => key,
+    deleteBatch: jest.fn(() => {
       order.push('s3');
       return [];
     }),

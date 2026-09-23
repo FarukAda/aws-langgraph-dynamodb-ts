@@ -13,12 +13,19 @@ describe('runBatch preserves the order the caller wrote (STORE-09)', () => {
   function recorder() {
     const store = new Map<string, unknown>();
     const order: string[] = [];
+    /**
+     * `runBatch`'s dispatch parameter is typed `Promise<unknown>`; this fake's
+     * own computation is synchronous and never throws, but it has three
+     * return paths (put/get/search) and only one needs to be thenable to
+     * satisfy `require-await` — the other two are plain values that `async`
+     * itself still wraps in a `Promise`, so they are left as they are.
+     */
     const dispatch = async (op: Operation): Promise<unknown> => {
       if ('value' in op) {
         order.push(`put:${op.key}`);
         if (op.value === null) store.delete(op.key);
         else store.set(op.key, op.value);
-        return undefined;
+        return Promise.resolve(undefined);
       }
       if ('key' in op) {
         order.push(`get:${op.key}`);

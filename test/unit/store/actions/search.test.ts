@@ -168,7 +168,7 @@ describe('searchItems', () => {
     };
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
     });
     const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
     expect(items.map((i) => i.key)).toEqual(['b', 'a']);
@@ -187,7 +187,7 @@ describe('searchItems', () => {
     };
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
     });
     const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
     expect(items).toEqual([]);
@@ -214,7 +214,7 @@ describe('searchItems', () => {
     };
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
     });
     const items = await searchItems(ctx, { namespacePrefix: ['users'], query: 'q' });
     expect(items.map((i) => i.key)).toEqual(['a']);
@@ -260,7 +260,7 @@ describe('searchItems', () => {
     };
     const fullCtx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
     });
     const items = await searchItems(fullCtx, {
       namespacePrefix: ['users'],
@@ -286,7 +286,7 @@ describe('searchItems', () => {
     };
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
       maxSearchCandidates: 5,
     });
     await expect(
@@ -327,7 +327,7 @@ describe('searchItems', () => {
     // and limit here are both well under it.
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
     });
     const items = await searchItems(ctx, {
       namespacePrefix: ['users'],

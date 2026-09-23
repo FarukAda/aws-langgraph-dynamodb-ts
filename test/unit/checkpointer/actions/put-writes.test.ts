@@ -17,11 +17,9 @@ import {
 } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (): Promise<unknown> => ({}),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (): Promise<unknown> => Promise.resolve({}),
 };
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {
@@ -46,7 +44,13 @@ function transactionCancelled(rawItem?: Record<string, { S: string }>): Error {
   });
 }
 
-function trackingOffloader(upload: (key: string) => Promise<string> = async (key) => key) {
+/**
+ * The default `upload` is typed `Promise<string>` and never throws, so
+ * returning `Promise.resolve(key)` already has that type without `async`.
+ */
+function trackingOffloader(
+  upload: (key: string) => Promise<string> = (key) => Promise.resolve(key),
+) {
   return {
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
@@ -226,7 +230,7 @@ describe('putWrites', () => {
   it("gives two putWrites calls two S3 keys for the same logical write and value, each ending in the call's writeGroup", async () => {
     const { client, mock } = createStrictDocumentMock();
     resolveRowWrites(mock);
-    const upload = jest.fn(async (key: string) => key);
+    const upload = jest.fn((key: string) => Promise.resolve(key));
     const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
@@ -241,13 +245,13 @@ describe('putWrites', () => {
   it('gives a changed value its own S3 key', async () => {
     const { client, mock } = createStrictDocumentMock();
     resolveRowWrites(mock);
-    const upload = jest.fn(async (key: string) => key);
+    const upload = jest.fn((key: string) => Promise.resolve(key));
     const ctx = { ...context(client), offloader: trackingOffloader(upload) as never };
     const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
     await putWrites(ctx, config, [['ch', 'a']], 'task-1');
     await putWrites(ctx, config, [['ch', 'b']], 'task-1');
-    const [firstKey] = upload.mock.calls[0] as [string];
-    const [secondKey] = upload.mock.calls[1] as [string];
+    const [firstKey] = upload.mock.calls[0];
+    const [secondKey] = upload.mock.calls[1];
     expect(secondKey).not.toBe(firstKey);
   });
 
@@ -305,7 +309,7 @@ describe('putWrites', () => {
     // re-read finds this call's own writeGroup, so the write counts as
     // committed: no error, no cleanup (CKPT-02).
     const { client, mock } = createStrictDocumentMock();
-    mock.on(GetCommand).callsFake(async () => {
+    mock.on(GetCommand).callsFake(() => {
       const rows = committedRows(mock);
       const written = rows[rows.length - 1] as { writeGroup: string; value: unknown };
       return { Item: { value: written.value, writeGroup: written.writeGroup } };

@@ -16,7 +16,7 @@ describe('redactSecrets', () => {
   it('does not mutate the input and breaks cycles', () => {
     const input: Record<string, unknown> = { a: 1 };
     input.self = input;
-    const out = redactSecrets(input as never) as Record<string, unknown>;
+    const out = redactSecrets(input) as Record<string, unknown>;
     expect(input.self).toBe(input);
     expect(out.self).toBe('[Circular]');
   });
@@ -48,7 +48,7 @@ describe('redactSecrets', () => {
       }
     }
     const error = new BatchFailure('write failed', { token: 'SENSITIVE', itemCount: 5 });
-    const out = redactSecrets({ err: error } as never) as unknown as {
+    const out = redactSecrets({ err: error }) as unknown as {
       err: { name: string; message: string; stack: unknown; unprocessed: unknown };
     };
     expect(out.err.name).toBe('BatchFailure');
@@ -65,7 +65,7 @@ describe('redactSecrets', () => {
     // exists to report.
     const root = Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
     const wrapper = new RetryExhaustedError('Operation failed after 5 attempts', 5, root);
-    const out = redactSecrets({ err: wrapper } as never) as unknown as {
+    const out = redactSecrets({ err: wrapper }) as unknown as {
       err: { cause?: { name: string; message: string } };
     };
     expect(out.err.cause).toBeDefined();
@@ -76,7 +76,7 @@ describe('redactSecrets', () => {
   it('redacts secrets inside a preserved cause chain', () => {
     const root = Object.assign(new Error('rejected AKIAIOSFODNN7EXAMPLE'), { token: 'sk-live-1' });
     const wrapper = new RetryExhaustedError('wrapped', 2, root);
-    const out = redactSecrets({ err: wrapper } as never) as unknown as {
+    const out = redactSecrets({ err: wrapper }) as unknown as {
       err: { cause?: { message: string; token: string } };
     };
     expect(out.err.cause?.message).not.toContain('AKIAIOSFODNN7EXAMPLE');
@@ -91,7 +91,7 @@ describe('redactSecrets', () => {
 
   it('passes through a repeated (non-cyclic) Error reference at both occurrences', () => {
     const err = new Error('boom');
-    const result = redactSecrets({ a: err, b: err } as never) as { a: unknown; b: unknown };
+    const result = redactSecrets({ a: err, b: err }) as { a: unknown; b: unknown };
     expect(result.a).toBe(err);
     expect(result.b).toBe(err);
   });
@@ -103,7 +103,7 @@ describe('redactSecrets value patterns (I1)', () => {
     const error = Object.assign(new Error(`Operation failed: ${wrapped.message}`), {
       code: 'RETRY_EXHAUSTED',
     });
-    const out = redactSecrets({ err: error } as never) as unknown as {
+    const out = redactSecrets({ err: error }) as unknown as {
       err: { message: string };
     };
     expect(out.err.message).not.toContain('AKIAIOSFODNN7EXAMPLE');
@@ -113,14 +113,14 @@ describe('redactSecrets value patterns (I1)', () => {
 
   it('rebuilds a bare Error whose message carries a secret rather than passing it through', () => {
     const error = new Error('token=abcdef123456 expired');
-    const out = redactSecrets({ err: error } as never) as unknown as { err: { message: string } };
+    const out = redactSecrets({ err: error }) as unknown as { err: { message: string } };
     expect(out.err).not.toBe(error);
     expect(out.err.message).not.toContain('abcdef123456');
   });
 
   it('handles an error carrying no stack at all', () => {
     const error = Object.assign(new Error('boom'), { stack: undefined, code: 'X' });
-    const out = redactSecrets({ err: error } as never) as unknown as {
+    const out = redactSecrets({ err: error }) as unknown as {
       err: { message: string; stack: unknown };
     };
     expect(out.err.message).toBe('boom');
@@ -145,7 +145,7 @@ describe('redactSecrets value patterns (I1)', () => {
 describe('redactSecrets non-plain values (M1)', () => {
   it('preserves Date and RegExp instead of collapsing them to an empty object', () => {
     const date = new Date('2026-08-29T00:00:00.000Z');
-    const out = redactSecrets({ date, re: /ab+c/gi } as never) as unknown as {
+    const out = redactSecrets({ date, re: /ab+c/gi }) as unknown as {
       date: Date;
       re: RegExp;
     };
@@ -154,14 +154,14 @@ describe('redactSecrets non-plain values (M1)', () => {
   });
 
   it('summarises typed arrays instead of exploding them into numeric keys', () => {
-    const out = redactSecrets({ buf: new Uint8Array([1, 2, 3]) } as never) as unknown as {
+    const out = redactSecrets({ buf: new Uint8Array([1, 2, 3]) }) as unknown as {
       buf: string;
     };
     expect(out.buf).toBe('[Uint8Array(3)]');
   });
 
   it('recurses a Set into an array of its members', () => {
-    const out = redactSecrets({ set: new Set([1, 2]) } as never) as unknown as { set: number[] };
+    const out = redactSecrets({ set: new Set([1, 2]) }) as unknown as { set: number[] };
     expect(out.set).toEqual([1, 2]);
   });
 
@@ -170,7 +170,7 @@ describe('redactSecrets non-plain values (M1)', () => {
       ['password', 'hunter2'],
       ['id', 'thread-1'],
     ]);
-    const out = redactSecrets({ map } as never) as unknown as {
+    const out = redactSecrets({ map }) as unknown as {
       map: Record<string, unknown>;
     };
     expect(out.map).toEqual({ password: '[REDACTED]', id: 'thread-1' });
@@ -178,7 +178,7 @@ describe('redactSecrets non-plain values (M1)', () => {
 
   it('stringifies a non-string Map key so the entry is still reported', () => {
     const map = new Map<number, string>([[7, 'seven']]);
-    const out = redactSecrets({ map } as never) as unknown as { map: Record<string, unknown> };
+    const out = redactSecrets({ map }) as unknown as { map: Record<string, unknown> };
     expect(out.map).toEqual({ '7': 'seven' });
   });
 });
@@ -300,7 +300,7 @@ describe('credential-value redaction (F2)', () => {
 
   it('reaches a secret inside an Error message via the rebuild path', () => {
     const error = Object.assign(new Error('failed {"password":"hunter2"}'), { code: 'X' });
-    const redacted = redactSecrets(error as never) as { message: string };
+    const redacted = redactSecrets(error) as { message: string };
     expect(redacted.message).toBe('failed {"password":[REDACTED]}');
   });
 });

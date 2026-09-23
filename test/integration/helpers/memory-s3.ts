@@ -25,12 +25,21 @@ export class MemoryS3 implements S3ClientLike {
   readonly objects = new Map<string, Uint8Array>();
   lifecycle: { Rules?: object[] } | undefined;
 
+  /**
+   * `S3ClientLike.send` is typed `Promise<object>`; every branch below is
+   * synchronous. It stays `async` because two branches throw, and that must
+   * still reach a caller as a rejection when called without `await`; the one
+   * `Promise.resolve({})` return is what satisfies `require-await`, which
+   * accepts a thenable `return` in place of an explicit `await` — the other
+   * branches' plain returns are still wrapped by `async` itself, so only one
+   * of them needs to say so explicitly.
+   */
   async send(command: SdkCommand): Promise<object> {
     const input = command.input as CommandInput;
     switch (command.constructor.name) {
       case 'PutObjectCommand':
         this.objects.set(input.Key as string, new Uint8Array(input.Body as Uint8Array));
-        return {};
+        return Promise.resolve({});
       case 'GetObjectCommand': {
         const data = this.objects.get(input.Key as string);
         if (!data) {
@@ -39,7 +48,10 @@ export class MemoryS3 implements S3ClientLike {
             $metadata: { httpStatusCode: 404 },
           });
         }
-        return { ContentLength: data.length, Body: { transformToByteArray: async () => data } };
+        return {
+          ContentLength: data.length,
+          Body: { transformToByteArray: () => Promise.resolve(data) },
+        };
       }
       case 'DeleteObjectsCommand':
         for (const object of input.Delete?.Objects ?? []) this.objects.delete(object.Key);

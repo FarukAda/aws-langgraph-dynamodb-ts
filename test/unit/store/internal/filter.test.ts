@@ -178,7 +178,7 @@ describe('matchesStoreFilter on a value that is not an object', () => {
     ['a string', 'text'],
     ['a number', 7],
   ])('satisfies no condition when the value is %s', (_name, value) => {
-    expect(matchesStoreFilter(value as never, { a: 1 } as never)).toBe(false);
+    expect(matchesStoreFilter(value as never, { a: 1 })).toBe(false);
   });
 
   it('still satisfies an empty filter, which constrains nothing', () => {

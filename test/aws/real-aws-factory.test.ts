@@ -11,9 +11,9 @@ import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBFactory } from '../../src/index';
+import { liveRegion } from './helpers/env';
 
-const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-const clientConfig = region ? { region } : {};
+const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-factorytest-${randomUUID()}`;
 
 function checkpoint(id: string): Checkpoint {

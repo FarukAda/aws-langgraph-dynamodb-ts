@@ -37,8 +37,8 @@ function requestOf(call: { args: unknown[] }): unknown {
 
 function bytesBody(chunks: Uint8Array[]): { transformToByteArray: () => Promise<Uint8Array> } {
   return {
-    transformToByteArray: async () => chunks[0],
-    [Symbol.asyncIterator]: async function* () {
+    transformToByteArray: () => chunks[0],
+    [Symbol.asyncIterator]: function* () {
       yield* chunks;
     },
   } as never;
@@ -117,7 +117,7 @@ describe('a cancelled transfer is reported as a cancel', () => {
     const controller = new AbortController();
     s3Mock.on(GetObjectCommand).resolves({
       Body: {
-        transformToByteArray: async () => {
+        transformToByteArray: () => {
           controller.abort();
           throw socketCut();
         },

@@ -15,12 +15,10 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { RetryExhaustedError, ValidationError } from '../../../../src/shared/errors/errors';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (_type: string, data: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data)),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_type: string, data: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data))),
 };
 
 function s3Failure(causeName: string): DynamoDBLangGraphError {
@@ -65,8 +63,8 @@ describe('readPayloadBytes', () => {
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-      upload: jest.fn(async (key: string) => key),
-      download: jest.fn(async () => new TextEncoder().encode('{"b":2}')),
+      upload: jest.fn((key: string) => key),
+      download: jest.fn(() => new TextEncoder().encode('{"b":2}')),
       assertOwnedKey: () => undefined,
     };
     const deps = { serde, offloader: offloader as never };
@@ -93,8 +91,8 @@ describe('readPayloadBytes', () => {
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-      upload: jest.fn(async (key: string) => key),
-      download: jest.fn(async () => new TextEncoder().encode('{"c":3}')),
+      upload: jest.fn((key: string) => key),
+      download: jest.fn(() => new TextEncoder().encode('{"c":3}')),
       assertOwnedKey: () => undefined,
     };
     const deps = { serde, offloader: offloader as never, signal: controller.signal };
@@ -151,7 +149,7 @@ describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', ()
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-      upload: jest.fn(async (key: string) => key),
+      upload: jest.fn((key: string) => key),
     };
     const descriptor = await encodePayload(
       big,

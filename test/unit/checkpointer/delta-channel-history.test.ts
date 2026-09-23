@@ -11,12 +11,10 @@ import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../shared/helpers/test-setup';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
@@ -31,7 +29,7 @@ function checkpoint(id: string, values: Record<string, unknown>): Checkpoint {
     channel_values: values,
     channel_versions: {},
     versions_seen: {},
-  } as Checkpoint;
+  };
 }
 
 /** One checkpoint of the thread: what it stores, who its parent is, when it expires. */
@@ -81,7 +79,7 @@ async function saverOver(
     onRead('WRITES');
     return { Items: [] };
   });
-  return new DynamoDBSaver({ tableName: 'ckpt', client, serde } as never);
+  return new DynamoDBSaver({ tableName: 'ckpt', client, serde });
 }
 
 function historyOf(

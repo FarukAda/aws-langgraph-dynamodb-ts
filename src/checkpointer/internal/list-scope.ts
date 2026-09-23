@@ -94,8 +94,8 @@ function beforeCheckpointId(before: RunnableConfig | undefined): string | undefi
 
 /**
  * Reject an `options` bag carrying a key this package does not read, or a
- * `filter` that is not an object. Split out of {@link readListScope} to keep
- * its own complexity under the repo's cap.
+ * `filter` that is not an object. Kept apart from {@link readListScope}: that
+ * function reads the scope, this one only checks the options bag's shape.
  *
  * Accepts: `options` — absent is left alone.
  *
@@ -273,7 +273,5 @@ export async function passesMetadataFilter(
 ): Promise<MetadataVerdict> {
   if (!scope.filter) return { pass: true };
   const metadata = await readMetadata(context, meta, meta.threadId, scope.signal);
-  return matchesFilter(metadata as Record<string, FilterValue>, scope.filter)
-    ? { pass: true, metadata }
-    : { pass: false };
+  return matchesFilter(metadata, scope.filter) ? { pass: true, metadata } : { pass: false };
 }

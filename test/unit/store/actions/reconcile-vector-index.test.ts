@@ -48,7 +48,7 @@ describe('reconcileVectorIndex', () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = {
       embedQuery: jest.fn(),
-      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+      embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const backend = {
       upsert: jest.fn().mockResolvedValue(undefined),
@@ -100,7 +100,7 @@ describe('reconcileVectorIndex', () => {
     const { offloader, maxInFlight } = overlapOffloader();
     const embeddings = {
       embedQuery: jest.fn(),
-      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+      embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const backend = {
       upsert: jest.fn().mockResolvedValue(undefined),
@@ -139,7 +139,7 @@ describe('reconcileVectorIndex', () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = {
       embedQuery: jest.fn(),
-      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+      embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const backend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
     const ctx = context(client, {
@@ -172,7 +172,7 @@ describe('reconcileVectorIndex prefix scoping', () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = {
       embedQuery: jest.fn(),
-      embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => [0.5])),
+      embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const backend = {
       upsert: jest.fn().mockResolvedValue(undefined),

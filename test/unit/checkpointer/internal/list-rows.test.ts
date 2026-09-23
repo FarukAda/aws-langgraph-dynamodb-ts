@@ -19,7 +19,7 @@ function context(
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
     ...extra,
-  } as CheckpointerContext;
+  };
 }
 
 const scope = (over: Partial<ListScope> = {}): ListScope => ({

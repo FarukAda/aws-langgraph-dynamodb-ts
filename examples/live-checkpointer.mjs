@@ -4,7 +4,7 @@
  * (proving state is resumed from DynamoDB, not memory), shows history,
  * time-travel, and thread deletion, then cleans up.
  *
- * Run: node examples/live-checkpointer.mjs
+ * Run: AWS_REGION=<region> node examples/live-checkpointer.mjs
  */
 import {
   CreateTableCommand,
@@ -15,8 +15,8 @@ import {
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 
 import { DynamoDBSaver } from '../dist/index.js';
+import { REGION } from './_harness.mjs';
 
-const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 const TABLE = process.env.LANGGRAPH_DEMO_TABLE ?? 'langgraph-saver-demo';
 const clientConfig = { region: REGION };
 const admin = new DynamoDBClient(clientConfig);

@@ -1,13 +1,13 @@
 # Contributing to aws-langgraph-dynamodb-ts
 
-Thank you for helping. This guide is the operational one; the [README](README.md) explains the library, and its [*Versioning and compatibility*](README.md#versioning-and-compatibility) section says what a release may change.
+Thank you for helping. This guide is the operational one; the [README](README.md) explains the library, and its [*Versioning and compatibility*](README.md#versioning-and-compatibility) section says what a release may change. [`docs/coding-guidelines.md`](docs/coding-guidelines.md) is the standard the source itself is held to.
 
 ## Setup
 
 ```bash
 git clone https://github.com/FarukAda/aws-langgraph-dynamodb-ts.git
 cd aws-langgraph-dynamodb-ts
-npm ci                 # Node 22 or 24
+npm ci                 # Node 22, 24 or 26
 npm run lint && npm run typecheck && npm run typecheck:all && npm test
 ```
 
@@ -17,10 +17,7 @@ npm run lint && npm run typecheck && npm run typecheck:all && npm test
 
 The static guards fail the build rather than rely on review:
 
-- a `src` file is at most 150 lines, counting code and blank lines but not
-  comments — the cap governs how much a file *does*, and documenting it well
-  must never be what pushes it over; a test file is at most 400 lines, counting
-  everything;
+- file length and function complexity are not capped: a module is as large as the one decision it hides (`docs/decisions/0017-…`);
 - comments are JSDoc only (`/** ... */`) — no `//` comments in `src`;
 - no `any`, no `unknown`, no `instanceof` in `src` (errors are detected by brand and `code`);
 - no re-exports outside `src/index.ts`, no import cycles, no dead `ErrorCode` member;
@@ -44,9 +41,11 @@ Write the failing test first, then the code. A change that touches behaviour nee
 | Package smoke | `npm run test:package-smoke` | network (`npm pack` + install into a temp project) |
 | Real AWS | `AWS_REGION=eu-central-1 npm run test:aws` | AWS credentials |
 
-CI runs the unit, integration, conformance, surface and package-smoke tiers on each push and pull request. The surface baseline runs beside the package smoke test, on one platform: it is a snapshot, and comparing a snapshot across six matrix legs is six chances to disagree about nothing. Run it locally as well after any change to what the public API accepts or rejects, and regenerate with `npm run test:surface:update` only after reading the diff it printed. Two ratchets in `test/surface/surface.test.mjs` sit beside the baseline: `EXPECTED_BARE` caps the cases where an error that is not this library's escapes, and `EXPECTED_UPSTREAM` the cases that end in `UpstreamError` or `RetryExhaustedError`. Both may only go down — lower the constant in the commit that fixes a case, never raise it — and `EXPECTED_UPSTREAM` is 0: no case the tier runs ends in either, so none reports a caller's mistake as an AWS failure. One tier runs outside CI. The real-AWS tier is deliberately not scheduled: one of its suites calls Bedrock, so a maintainer runs it against their own credentials, `AWS_REGION=eu-central-1 npm run test:aws`, before a release.
+CI runs the unit, integration, conformance, surface and package-smoke tiers on each push and pull request. The surface baseline runs beside the package smoke test, on one platform: it is a snapshot, and comparing a snapshot across nine matrix legs is nine chances to disagree about nothing. Run it locally as well after any change to what the public API accepts or rejects, and regenerate with `npm run test:surface:update` only after reading the diff it printed. Two ratchets in `test/surface/surface.test.mjs` sit beside the baseline: `EXPECTED_BARE` caps the cases where an error that is not this library's escapes, and `EXPECTED_UPSTREAM` the cases that end in `UpstreamError` or `RetryExhaustedError`. Both may only go down — lower the constant in the commit that fixes a case, never raise it — and `EXPECTED_UPSTREAM` is 0: no case the tier runs ends in either, so none reports a caller's mistake as an AWS failure. One tier runs only on release tags: the real-AWS tier, described below.
 
 ### Real-AWS tests
+
+The real-AWS tier runs on every release tag, in `.github/workflows/integration-live.yml`, with the OIDC role named by the repository variable or secret `AWS_TEST_ROLE_ARN`, scoped to `aws-langgraph-*test-*` tables and buckets, in the region the repository variable or secret `AWS_TEST_REGION` names, and gates publishing: the release workflow waits for its `live-aws integration` check and refuses to publish unless it succeeded; after re-running a failed live run green, re-run the release workflow too ([decision record 18](docs/decisions/0018-run-the-live-aws-tier-on-release-tags-as-a-publish-gate.md)). It is deliberately not scheduled, because one of its suites calls Bedrock. Run it locally against your own credentials with `AWS_REGION=eu-central-1 npm run test:aws`; every suite refuses to start without `AWS_REGION` (or `AWS_DEFAULT_REGION`) rather than guess a region.
 
 A real-AWS test creates its own resources and tears them down in `afterAll` (use `test/aws/helpers/teardown.ts`, which finishes every step before rethrowing). Resource names must match `aws-langgraph-<suite>test-<uuid>` — the test role is scoped to `aws-langgraph-*test-*` and nothing else — and a test must never assume a region, a table or a bucket exists. A Bedrock-backed test probes the model first and skips with a reason when the account has not enabled it.
 
@@ -56,15 +55,33 @@ Two TypeScript versions are installed on purpose: the `typescript` alias resolve
 
 Three stricter compiler flags were evaluated for the build and deliberately not enabled: `verbatimModuleSyntax` (incompatible with the CommonJS build, which would need `import = require` syntax everywhere), `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (39 and 56 sites whose guards would be unreachable branches under the 100 % branch gate). `package.json` carries no `overrides` block: the one it used to hold pinned `uuid`, which no longer appears in the lock file at all. `npm run pack:check` verifies the tarball listing, `publint` and `@arethetypeswrong/cli` before a release.
 
+## Where behaviour comes from
+
+Every behaviour this package claims is specified against a primary source and cited where it is implemented: the AWS documentation for DynamoDB and S3, the peer packages' own published source at the version this package targets (`@langchain/core`, `@langchain/langgraph-checkpoint`), or a recorded live probe under [`docs/evidence/README.md`](docs/evidence/README.md), paired with a named live test that fails the moment the service changes its answer ([decision record 16](docs/decisions/0016-specify-behaviour-against-primary-sources-only.md)).
+
+What another implementation of the same problem does is never a source. A change argued as "the other client does it this way" is asked for the underlying reason instead; if there is one, that reason is the citation, and if there is not, the behaviour does not change. `MemorySaver` and `InMemoryStore` look like an exception and are not one: they are `@langchain/langgraph-checkpoint`'s and `@langchain/core`'s own published source for what the interfaces this package implements must do, which is why they are treated as the behavioural oracle ([decision record 9](docs/decisions/0009-treat-the-in-memory-reference-implementations-as-the-oracle.md)), and every deliberate departure from them is listed in the README's [*Differences from the reference implementations*](README.md#differences-from-the-reference-implementations) table.
+
+A claim about behaviour AWS leaves undocumented needs both parts before a pull request can cite it: a probe recorded under `docs/evidence`, and a live test in `test/aws` guarding the same claim. A citation to documentation that turns out to be silent on the point is not evidence, and neither is coverage against DynamoDB Local alone — see [`docs/evidence/README.md`](docs/evidence/README.md) for why both are required.
+
+## Decision records
+
+Write a record when a decision is expensive to reverse — one that shapes the on-disk layout, the public API, the error taxonomy or what the build enforces, where undoing it later means a breaking change or redoing real work. A bug fix, a naming choice, or anything a later change can undo for free does not need one.
+
+Each record has five sections — title, context, decision, status, consequences — in full sentences, addressed to a future developer wondering why something is the way it is: state the context in value-neutral language, including the technical and project forces at play; state the decision in the active voice; and list the consequences that are positive, negative and neutral, the negative ones included.
+
+Records are numbered sequentially under `docs/decisions/`, and a number is never reused. A decision that is later reversed keeps its record, marked superseded and pointing at the one that replaced it, because the reasoning that led to it is what explains why the replacement was needed. See [`docs/decisions/README.md`](docs/decisions/README.md) for the full index.
+
 ## Commits and pull requests
 
 Use [Conventional Commits](https://www.conventionalcommits.org/) (`fix(store): ...`, `feat(history): ...`, `docs(readme): ...`, `test(integration): ...`). The body says why, not what: which behaviour was wrong, how a user hit it, why this fix and not another. One concern per commit.
 
 A pull request follows the template: what, why, how, how it was tested, breaking changes. It needs a CHANGELOG entry under `[Unreleased]` for anything a user can observe, a README update when documented behaviour changes, and regenerated `docs/api` (`npm run docs`) when public JSDoc changes.
 
+Review a change in this order: design first, then functionality, complexity, tests, naming, comments, style and consistency, and documentation last — a design objection raised after the naming and style have been debated wastes that debate. Send a large reformatting as its own pull request, never folded into a functional one, so a reviewer can tell what changed from what merely moved. And say what was done well, not only what needs to change.
+
 ## Releases
 
-Maintainers release from `main`: bump the version, move the `[Unreleased]` entry under the new version, tag `v<version>` and push the tag; the release workflow publishes with provenance. A prerelease tag publishes under the `next` dist-tag. What each release type may change is defined in the README's [*Versioning and compatibility*](README.md#versioning-and-compatibility) section.
+Maintainers release from `main`: bump the version, move the `[Unreleased]` entry under the new version, tag `v<version>` and push the tag. The release workflow waits for every check in `scripts/required-checks.json` to succeed on the tagged commit, the live-AWS tier among them, re-runs the gates and packs the tarball in a job that cannot publish, then publishes exactly that tarball with provenance from a job that installs nothing. The GitHub release body is the version's CHANGELOG section, so the heading must read `## [<version>]` before tagging. A prerelease tag publishes under the `next` dist-tag. What each release type may change is defined in the README's [*Versioning and compatibility*](README.md#versioning-and-compatibility) section.
 
 ## Code of conduct
 

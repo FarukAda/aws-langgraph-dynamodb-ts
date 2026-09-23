@@ -19,6 +19,7 @@ export default {
     '/test/contract/',
     '/test/package-smoke/',
   ],
+  testEnvironment: '<rootDir>/test/shared/helpers/strict-async-environment.ts',
   setupFilesAfterEnv: ['<rootDir>/test/shared/helpers/test-setup.ts'],
   testTimeout: 15000,
   collectCoverageFrom: ['<rootDir>/src/**/*.ts', '!<rootDir>/src/**/*.d.ts'],

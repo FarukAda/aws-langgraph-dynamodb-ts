@@ -46,7 +46,7 @@ describe('putItem with a vector backend', () => {
     await putItem(
       context(client, {
         index: { dims: 2, embeddings: embeddings as never },
-        vectorBackend: vectorBackend as never,
+        vectorBackend: vectorBackend,
       }),
       op({}),
     );
@@ -67,7 +67,7 @@ describe('putItem with a vector backend', () => {
     await putItem(
       context(client, {
         index: { dims: 2, embeddings: embeddings as never },
-        vectorBackend: vectorBackend as never,
+        vectorBackend: vectorBackend,
       }),
       op({ value: { name: 'Faruk', bio: 'builds things' }, index: ['bio'] }),
     );
@@ -84,7 +84,7 @@ describe('putItem with a vector backend', () => {
     await putItem(
       context(client, {
         index: { dims: 2, embeddings: embeddings as never },
-        vectorBackend: vectorBackend as never,
+        vectorBackend: vectorBackend,
       }),
       op({ index: false }),
     );
@@ -97,7 +97,7 @@ describe('putItem with a vector backend', () => {
     answerDeleteReads(mock, observableRow());
     mock.on(TransactWriteCommand).resolves({});
     const vectorBackend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };
-    await putItem(context(client, { vectorBackend: vectorBackend as never }), op({ value: null }));
+    await putItem(context(client, { vectorBackend: vectorBackend }), op({ value: null }));
     expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
   });
 
@@ -114,7 +114,7 @@ describe('putItem with a vector backend', () => {
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const ctx = context(client, {
       index: { dims: 2, embeddings: embeddings as never },
-      vectorBackend: vectorBackend as never,
+      vectorBackend: vectorBackend,
       logger,
     });
     await expect(putItem(ctx, op({}))).resolves.toBeUndefined();
@@ -135,7 +135,7 @@ describe('putItem with a vector backend', () => {
       delete: jest.fn().mockRejectedValue(new Error('backend down')),
     };
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
-    const ctx = context(client, { vectorBackend: vectorBackend as never, logger });
+    const ctx = context(client, { vectorBackend: vectorBackend, logger });
     await expect(putItem(ctx, op({ value: null }))).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalled();
   });

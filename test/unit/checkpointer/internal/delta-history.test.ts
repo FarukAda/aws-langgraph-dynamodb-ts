@@ -35,7 +35,7 @@ function tupleFor(ancestor: Ancestor): CheckpointTuple {
     metadata: { source: 'loop', step: 1, parents: {} },
     ...(ancestor.writes ? { pendingWrites: ancestor.writes } : {}),
     ...('parent' in ancestor ? { parentConfig: ancestor.parent ?? undefined } : {}),
-  } as CheckpointTuple;
+  };
 }
 
 /**
@@ -61,8 +61,14 @@ function walkOver(chain: Ancestor[], stored: Record<string, number | null> = {})
     serde: {} as CheckpointerContext['serde'],
     logger: SILENT_LOGGER,
   };
-  const getTuple = async (config: RunnableConfig): Promise<CheckpointTuple | undefined> =>
-    byId.get(config.configurable?.checkpoint_id as string);
+  /**
+   * `deltaChannelHistory`'s `getTuple` parameter is typed `Promise<...>`; this
+   * fake's own lookup is synchronous. Returning `Promise.resolve(...)`
+   * satisfies that type without `async`: a non-async function that returns
+   * a `Promise` already has type `Promise<T>`.
+   */
+  const getTuple = (config: RunnableConfig): Promise<CheckpointTuple | undefined> =>
+    Promise.resolve(byId.get(config.configurable?.checkpoint_id as string));
   return { context, getTuple, reads };
 }
 

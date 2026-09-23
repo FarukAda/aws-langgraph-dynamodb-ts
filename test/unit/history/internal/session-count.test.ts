@@ -249,7 +249,7 @@ describe('a tokened revert stays inside the window its token is honoured for', (
     };
 
     await expect(
-      revertSessionCount({ ...context(client), retry } as HistoryContext, 's1', 2, 'u'),
+      revertSessionCount({ ...context(client), retry }, 's1', 2, 'u'),
     ).rejects.toBeInstanceOf(RetryExhaustedError);
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(6);
   });

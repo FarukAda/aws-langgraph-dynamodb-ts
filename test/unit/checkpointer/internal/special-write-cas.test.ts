@@ -42,7 +42,7 @@ const retryExhausted = () =>
     name: 'RetryExhaustedError',
   });
 
-const queuedReads = (reads: unknown[]) => async () => {
+const queuedReads = (reads: unknown[]) => () => {
   const next = reads.shift();
   if (next === undefined) throw new Error('read failed');
   return next;
@@ -50,7 +50,7 @@ const queuedReads = (reads: unknown[]) => async () => {
 
 describe('readSpecialRow', () => {
   it('reports an absent row', async () => {
-    const context = { tableName: 'c', logger: SILENT_LOGGER, client: { get: async () => ({}) } };
+    const context = { tableName: 'c', logger: SILENT_LOGGER, client: { get: () => ({}) } };
     await expect(readSpecialRow(context as never, item())).resolves.toEqual({ exists: false });
   });
 
@@ -58,7 +58,7 @@ describe('readSpecialRow', () => {
     const context = {
       tableName: 'c',
       logger: SILENT_LOGGER,
-      client: { get: async () => ({ Item: { value: descriptor('old'), writeGroup: 'g1' } }) },
+      client: { get: () => ({ Item: { value: descriptor('old'), writeGroup: 'g1' } }) },
     };
     await expect(readSpecialRow(context as never, item())).resolves.toEqual({
       exists: true,
@@ -76,10 +76,10 @@ describe('writeSpecialItem', () => {
       logger: SILENT_LOGGER,
       offloader: {},
       client: {
-        get: async () => ({ Item: { value: descriptor('old'), writeGroup: 'g1' } }),
-        transactWrite: rowWrite(async (input: Record<string, unknown>) => {
+        get: () => ({ Item: { value: descriptor('old'), writeGroup: 'g1' } }),
+        transactWrite: rowWrite((input: Record<string, unknown>) => {
           inputs.push(input);
-          return {};
+          return Promise.resolve({});
         }),
       },
     };
@@ -103,11 +103,11 @@ describe('writeSpecialItem', () => {
       logger: SILENT_LOGGER,
       offloader: {},
       client: {
-        get: async () => seen.shift() ?? {},
+        get: () => seen.shift() ?? {},
         transactWrite: rowWrite(async () => {
           puts += 1;
           if (puts === 1) throw conditionalFailure();
-          return {};
+          return Promise.resolve({});
         }),
       },
     };
@@ -136,11 +136,11 @@ describe('writeSpecialItem', () => {
       logger: SILENT_LOGGER,
       offloader: {},
       client: {
-        get: async () => seen.shift() ?? {},
+        get: () => seen.shift() ?? {},
         transactWrite: rowWrite(async () => {
           puts += 1;
           if (puts === 1) throw conditionalFailure();
-          return {};
+          return Promise.resolve({});
         }),
       },
     };
@@ -157,8 +157,8 @@ describe('writeSpecialItem', () => {
       logger: SILENT_LOGGER,
       offloader: {},
       client: {
-        get: async () => ({}),
-        transactWrite: rowWrite(async () => {
+        get: () => ({}),
+        transactWrite: rowWrite(() => {
           throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
         }),
       },
@@ -182,12 +182,12 @@ describe('writeSpecialItem', () => {
       logger: SILENT_LOGGER,
       offloader: {},
       client: {
-        get: async () => {
+        get: () => {
           throw new Error('read failed');
         },
-        transactWrite: rowWrite(async () => {
+        transactWrite: rowWrite(() => {
           puts += 1;
-          return {};
+          return Promise.resolve({});
         }),
       },
     };
@@ -216,7 +216,7 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         // 'competitor-N' never collides with item().writeGroup ('g2').
-        get: async () => ({
+        get: () => ({
           Item: { value: descriptor('theirs'), writeGroup: `competitor-${puts}` },
         }),
         transactWrite: rowWrite(async (input: Record<string, unknown>) => {
@@ -224,7 +224,7 @@ describe('writeSpecialItem', () => {
           if (puts <= OVERWRITE_CAS_MAX_ATTEMPTS) throw conditionalFailure();
           // The fallback put is unconditional: no ConditionExpression.
           expect(input.ConditionExpression).toBeUndefined();
-          return {};
+          return Promise.resolve({});
         }),
       },
     };
@@ -246,11 +246,11 @@ describe('writeSpecialItem', () => {
       tableName: 'c',
       logger: SILENT_LOGGER,
       client: {
-        get: async () => {
+        get: () => {
           gets += 1;
           return {};
         },
-        put: async (input: Record<string, unknown>) => {
+        put: (input: Record<string, unknown>) => {
           inputs.push(input);
           return {};
         },
@@ -282,7 +282,7 @@ describe('writeSpecialItem', () => {
           { Item: { value: descriptor('old'), writeGroup: 'g1' } },
           { Item: { value: descriptor('new'), writeGroup: 'g2' } },
         ]),
-        transactWrite: rowWrite(async () => {
+        transactWrite: rowWrite(() => {
           throw retryExhausted();
         }),
       },
@@ -302,7 +302,7 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: queuedReads([{ Item: { value: descriptor('old'), writeGroup: 'g1' } }]),
-        transactWrite: rowWrite(async () => {
+        transactWrite: rowWrite(() => {
           throw retryExhausted();
         }),
       },
@@ -324,7 +324,7 @@ describe('writeSpecialItem', () => {
       offloader: {},
       client: {
         get: queuedReads([{ Item: { value: descriptor('old'), writeGroup: 'g1' } }]),
-        transactWrite: rowWrite(async () => {
+        transactWrite: rowWrite(() => {
           throw conditionalFailure();
         }),
       },
@@ -351,7 +351,7 @@ describe('writeSpecialItem', () => {
           { Item: { value: descriptor('theirs'), writeGroup: 'competitor-3' } },
           { Item: { value: descriptor('new'), writeGroup: 'g2' } },
         ]),
-        transactWrite: rowWrite(async () => {
+        transactWrite: rowWrite(() => {
           puts += 1;
           throw puts <= OVERWRITE_CAS_MAX_ATTEMPTS ? conditionalFailure() : retryExhausted();
         }),

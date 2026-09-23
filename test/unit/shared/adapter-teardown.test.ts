@@ -12,12 +12,10 @@ const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 /**
@@ -26,7 +24,7 @@ const serde = {
  */
 function hostileS3Client(): unknown {
   return {
-    send: async (): Promise<unknown> => ({}),
+    send: (): unknown => ({}),
     destroy: (): never => {
       throw new Error('socket already closed');
     },
@@ -61,12 +59,9 @@ interface Adapter {
 }
 
 const ADAPTERS: readonly [string, (options: never) => Adapter][] = [
-  ['DynamoDBSaver', (options) => new DynamoDBSaver(options) as unknown as Adapter],
-  ['DynamoDBStore', (options) => new DynamoDBStore(options) as unknown as Adapter],
-  [
-    'DynamoDBChatMessageHistory',
-    (options) => new DynamoDBChatMessageHistory(options) as unknown as Adapter,
-  ],
+  ['DynamoDBSaver', (options) => new DynamoDBSaver(options)],
+  ['DynamoDBStore', (options) => new DynamoDBStore(options)],
+  ['DynamoDBChatMessageHistory', (options) => new DynamoDBChatMessageHistory(options)],
 ];
 
 /**

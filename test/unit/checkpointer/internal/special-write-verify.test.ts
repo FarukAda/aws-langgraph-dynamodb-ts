@@ -17,7 +17,7 @@ function context(client: CheckpointerContext['client']): CheckpointerContext {
     tableName: 'ckpt',
     serde: JSON_SERDE,
     logger: SILENT_LOGGER,
-  } as CheckpointerContext;
+  };
 }
 
 const descriptor = {

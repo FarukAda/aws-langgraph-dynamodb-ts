@@ -12,12 +12,10 @@ import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 
 const serde = {
-  dumpsTyped: async (value: unknown): Promise<[string, Uint8Array]> => [
-    'json',
-    new TextEncoder().encode(JSON.stringify(value)),
-  ],
-  loadsTyped: async (_t: string, d: Uint8Array | string): Promise<unknown> =>
-    JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d)),
+  dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
+    Promise.resolve(['json', new TextEncoder().encode(JSON.stringify(value))]),
+  loadsTyped: (_t: string, d: Uint8Array | string): Promise<unknown> =>
+    Promise.resolve(JSON.parse(typeof d === 'string' ? d : new TextDecoder().decode(d))),
 };
 
 function context(): CheckpointerContext {
@@ -29,8 +27,8 @@ function offloadingContext(): CheckpointerContext {
   const offloader = {
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
-    upload: async (key: string) => key,
-    deleteBatch: async () => [],
+    upload: (key: string) => key,
+    deleteBatch: () => [],
   };
   return { ...context(), offloader: offloader as never };
 }
@@ -284,12 +282,12 @@ describe('resolveWriteIndices', () => {
 
 describe('channel validation (SEC-09)', () => {
   it('rejects a channel with the reserved separator or a control character before encoding anything', async () => {
-    const upload = jest.fn(async (key: string) => key);
+    const upload = jest.fn((key: string) => key);
     const offloader = {
       shouldOffload: () => true,
       buildKey: (parts: readonly string[], objectId: string) => [...parts, objectId].join('/'),
       upload,
-      deleteBatch: async () => [],
+      deleteBatch: () => [],
     };
     const ctx = { ...context(), offloader: offloader as never };
     await expect(

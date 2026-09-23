@@ -8,6 +8,6 @@
 export function stubEmbeddings(vector: number[], queryVector: number[] = vector) {
   return {
     embedQuery: jest.fn().mockResolvedValue(queryVector),
-    embedDocuments: jest.fn(async (texts: string[]) => texts.map(() => vector)),
+    embedDocuments: jest.fn((texts: string[]) => texts.map(() => vector)),
   };
 }
