@@ -248,3 +248,173 @@ export class CompensationFailedError extends DynamoDBLangGraphError<ErrorCode.CO
     this.rollbackError = rollback;
   }
 }
+
+/**
+ * The error for input that failed a check before any AWS call.
+ *
+ * Accepts: `message` — already redacted by whoever composed it. `field` — the
+ * option, argument or cap at fault, dotted for a nested one; omitted only
+ * where no single input is. `cause` — the refusal beneath it.
+ *
+ * Returns: a `VALIDATION` error, with `context.field` when a field was named.
+ *
+ * Throws: nothing; building an error may not fail.
+ */
+export function validationError(
+  message: string,
+  field?: string,
+  cause?: Error,
+): DynamoDBLangGraphError<ErrorCode.VALIDATION> {
+  return new ValidationError(message, field, cause);
+}
+
+/**
+ * The error for a conditional write whose precondition no longer holds.
+ *
+ * Accepts: `message` — what precondition no longer held. `cause` — the
+ * rejection beneath it, when there is one.
+ *
+ * Returns: a `CONDITION_CONFLICT` error. A caller may retry the operation
+ * from a fresh read; nothing was written.
+ *
+ * Throws: nothing; building an error may not fail.
+ */
+export function conflictError(
+  message: string,
+  cause?: Error,
+): DynamoDBLangGraphError<ErrorCode.CONDITION_CONFLICT> {
+  return new ConflictError(message, cause);
+}
+
+/**
+ * The error for a retried operation that exhausted its attempt budget.
+ *
+ * Accepts: `attempts` — how many were made before the budget ran out.
+ * `cause` — the last failure, kept so a caller can classify what actually
+ * went wrong.
+ *
+ * Returns: a `RETRY_EXHAUSTED` error, with `context.attempts` when `attempts`
+ * was given. It says the attempts are spent, **not** that the operation did
+ * not happen.
+ *
+ * Throws: nothing; building an error may not fail.
+ */
+export function retryExhaustedError(
+  message: string,
+  attempts?: number,
+  cause?: Error,
+): DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED> {
+  return new RetryExhaustedError(message, attempts, cause);
+}
+
+/**
+ * The error for a paginated read that hit its runaway guard (item or
+ * iteration cap) while more data remained.
+ *
+ * Accepts: `cap` — which cap was hit (`maxItems`, `maxIterations`). `limit` —
+ * its value, quoted in the message so the fix is obvious.
+ *
+ * Returns: a `RESULT_TRUNCATED` error, with `context.field` naming the cap.
+ *
+ * Throws: nothing; building an error may not fail.
+ */
+export function resultTruncatedError(
+  cap: string,
+  limit: number,
+): DynamoDBLangGraphError<ErrorCode.RESULT_TRUNCATED> {
+  return new ResultTruncatedError(cap, limit);
+}
+
+/**
+ * The error for an operation cancelled via its `AbortSignal`.
+ *
+ * Accepts: `message` — defaults to `Operation aborted`. `cause` — the
+ * `AbortSignal`'s own reason, when it carried one.
+ *
+ * Returns: an `ABORTED` error. Distinct from every failure code on purpose: a
+ * caller who cancelled did not encounter a fault.
+ *
+ * Throws: nothing; building an error may not fail.
+ */
+export function abortError(
+  message?: string,
+  cause?: Error,
+): DynamoDBLangGraphError<ErrorCode.ABORTED> {
+  return new AbortError(message, cause);
+}
+
+/**
+ * The error for a `BatchWriteItem` sequence that could not drain its
+ * `UnprocessedItems`.
+ *
+ * Accepts: `succeededCount` — writes DynamoDB acked. `unprocessed` — the
+ * requests it did not, verbatim, so they can be re-submitted. `retries` —
+ * rounds spent. `cause` — an error that interrupted the drain, rather than a
+ * clean exhaustion of the `UnprocessedItems` retry budget.
+ *
+ * Returns: a `BATCH_WRITE_INCOMPLETE` error carrying both counts. Items *not*
+ * listed in `unprocessed` persist: there is no rollback.
+ *
+ * Throws: nothing; building an error may not fail.
+ */
+export function batchWriteIncompleteError(
+  succeededCount: number,
+  unprocessed: WriteRequest[],
+  retries: number,
+  cause?: Error,
+): DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE> {
+  return new BatchWriteIncompleteError(succeededCount, unprocessed, retries, cause);
+}
+
+/**
+ * The error for a `batchWriteAll` (or partition-wide delete) pass that did
+ * not fully drain.
+ *
+ * Accepts: `succeededChunks`/`totalChunks` — the chunk tally. `failedChunks`
+ * — each failing chunk's own error. `succeededCount` — individual writes
+ * confirmed persisted across every chunk. `unit` — what the first two counts
+ * count, so a caller sending one conditional request per row rather than a
+ * batch of twenty-five is not described as a batch that did not drain;
+ * omitting it reproduces the batch wording exactly.
+ *
+ * Returns: a `BATCH_WRITE_INCOMPLETE` error with the first failing chunk's
+ * error as `cause`. Every chunk not represented in `failedChunks` drained
+ * successfully and persists.
+ *
+ * Throws: nothing; building an error may not fail.
+ */
+export function batchWriteAllIncompleteError(
+  succeededChunks: number,
+  totalChunks: number,
+  failedChunks: Error[],
+  succeededCount?: number,
+  unit?: 'chunk' | 'row',
+): DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE> {
+  return new BatchWriteAllIncompleteError(
+    succeededChunks,
+    totalChunks,
+    failedChunks,
+    succeededCount,
+    unit,
+  );
+}
+
+/**
+ * The error for a compensating rollback that failed after an append-saga
+ * chunk error.
+ *
+ * Accepts: `cause` — the failure that triggered the rollback. `rollbackError`
+ * — why the rollback itself could not finish. Both are built from a `catch`,
+ * so either may be whatever a `throw` produced rather than an `Error`.
+ *
+ * Returns: a `COMPENSATION_FAILED` error carrying both, each normalised
+ * through `toError`.
+ *
+ * Throws: nothing; building an error may not fail.
+ */
+export function compensationFailedError(
+  cause: Error,
+  rollbackError: Error,
+): DynamoDBLangGraphError<ErrorCode.COMPENSATION_FAILED> {
+  return new CompensationFailedError(cause, rollbackError);
+}

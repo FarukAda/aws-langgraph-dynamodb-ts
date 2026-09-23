@@ -3,7 +3,7 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { PayloadDescriptor } from '../codec/codec';
 import type { S3Offloader } from '../codec/s3/offloader';
 import { BATCH_WRITE_MAX } from '../constants';
-import { BatchWriteAllIncompleteError } from '../errors/errors';
+import { batchWriteAllIncompleteError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
 import { truncateForLog } from '../logging/truncate';
 import { isAbortError } from './abort';
@@ -179,7 +179,7 @@ async function flushBuffer(options: PartitionDeleteOptions, state: PassState): P
   const cancelled = cancelAmong(tally.failures);
   if (cancelled !== undefined) throw cancelled;
   const { deleted, attempted } = state;
-  throw new BatchWriteAllIncompleteError(deleted, attempted, tally.failures, deleted, 'row');
+  throw batchWriteAllIncompleteError(deleted, attempted, tally.failures, deleted, 'row');
 }
 
 /**

@@ -1,6 +1,6 @@
 import type { MatchCondition } from '@langchain/langgraph-checkpoint';
 
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 
 const WILDCARD = '*';
 
@@ -25,7 +25,7 @@ function segmentMatches(actual: string[], path: string[]): boolean {
 export function assertMatchType(matchType: MatchCondition['matchType']): void {
   if (matchType === 'prefix' || matchType === 'suffix') return;
   const received = typeof matchType === 'string' ? JSON.stringify(matchType) : typeof matchType;
-  throw new ValidationError(
+  throw validationError(
     `matchType must be "prefix" or "suffix" (received ${received})`,
     'matchConditions',
   );

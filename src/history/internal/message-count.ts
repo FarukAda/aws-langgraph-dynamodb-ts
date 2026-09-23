@@ -6,7 +6,7 @@ import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { assertReadableRow } from '../../shared/dynamodb/row-version';
 import type { DocItem } from '../../shared/dynamodb/types';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import type { ChatMessageItem } from '../types';
 import { narrowMessageItem } from './item-mapper';
 import { messageQuery } from './query';
@@ -29,7 +29,7 @@ function requireCountableRow(raw: DocItem, sessionId: string): ChatMessageItem {
   assertReadableRow(raw, 'message');
   const item = narrowMessageItem(raw);
   if (item) return item;
-  throw new ValidationError(
+  throw validationError(
     `session "${sessionId}" holds a row in its message key space that is not a chat message ` +
       'item this package wrote, so its messages cannot be counted: a read of the session ' +
       'reports the same row and names it. Remove or repair the row, then reconcile again',

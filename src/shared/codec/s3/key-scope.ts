@@ -1,4 +1,4 @@
-import { ValidationError } from '../../errors/errors';
+import { validationError } from '../../errors/errors';
 import { truncateForLog } from '../../logging/truncate';
 
 /**
@@ -90,7 +90,7 @@ export function isKeyInScope(key: string, prefix: string, parts: readonly string
  */
 export function assertKeyInScope(key: string, prefix: string, parts: readonly string[]): void {
   if (isKeyInScope(key, prefix, parts)) return;
-  throw new ValidationError(
+  throw validationError(
     `s3Key "${truncateForLog(key)}" lies outside the S3 path this row may reference ` +
       `("${truncateForLog(s3KeyScope(prefix, parts))}"); refusing to touch an object the row ` +
       'does not own',

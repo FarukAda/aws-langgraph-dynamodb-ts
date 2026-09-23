@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import { ValidationError } from './errors/errors';
+import { validationError } from './errors/errors';
 
 const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const ENCODING_LEN = 32;
@@ -83,7 +83,7 @@ function encodeTime(timeMs: number): string {
  */
 export function ulidTimePrefix(timeMs: number): string {
   if (!(timeMs >= 0 && timeMs < ULID_TIME_RANGE_MS)) {
-    throw new ValidationError(
+    throw validationError(
       `a ULID time prefix covers epoch milliseconds 0 to ${ULID_TIME_RANGE_MS - 1} (the year ` +
         `37648); ${timeMs} is outside it and has no ten-character encoding`,
     );

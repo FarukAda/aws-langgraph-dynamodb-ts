@@ -5,7 +5,7 @@ import {
   MAX_RETRY_DELAY_MS,
 } from '../constants';
 import type { RetryPolicy } from '../dynamodb/retry-policy';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import type { BaseAdapterOptions, CodecOptions } from '../options';
 import { validateCompression, validateS3 } from './codec-options';
 import { allKeysOf, assertObjectShape, assertShape } from './option-shape';
@@ -32,7 +32,7 @@ const RETRY_KEYS = allKeysOf<RetryPolicy>({
  */
 export function validateTableName(tableName: string): void {
   if (typeof tableName !== 'string' || !TABLE_NAME_PATTERN.test(tableName)) {
-    throw new ValidationError(
+    throw validationError(
       'tableName must be 3-255 characters from [A-Za-z0-9_.-], as DynamoDB requires',
       'tableName',
     );
@@ -62,7 +62,7 @@ export function validateClientChoice(
     options.client &&
     (options.clientConfig !== undefined || options.createClient !== undefined)
   ) {
-    throw new ValidationError(
+    throw validationError(
       'provide either `client` or `clientConfig`/`createClient`, not both: an injected client ' +
         'is used as-is and the configuration would be silently ignored',
       'client',
@@ -159,7 +159,7 @@ function validateRecencyIndex(options: BaseAdapterOptions): void {
  */
 export function validateBaseAdapterOptions(options: BaseAdapterOptions & CodecOptions): void {
   if (typeof options !== 'object' || options === null) {
-    throw new ValidationError('options must be an object naming at least a tableName', 'options');
+    throw validationError('options must be an object naming at least a tableName', 'options');
   }
   validateTableName(options.tableName);
   validateClientChoice(options);

@@ -1,4 +1,4 @@
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { assertMembers, LOGGER_MEMBERS } from '../validation/collaborators';
 import { assertObjectShape } from '../validation/option-shape';
 import { validateStringArray } from '../validation/primitives';
@@ -31,7 +31,7 @@ const UNREDACTABLE = '[UNREDACTABLE]';
  */
 function assertRegExpArray(value: readonly RegExp[], field: string): void {
   if (!Array.isArray(value) || value.some((entry: RegExp) => !isRegExp(entry))) {
-    throw new ValidationError(`${field} must be an array of RegExp`, field);
+    throw validationError(`${field} must be an array of RegExp`, field);
   }
 }
 

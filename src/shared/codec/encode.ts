@@ -1,5 +1,5 @@
 import { MAX_INLINE_PAYLOAD_BYTES } from '../constants';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import {
   type CodecDeps,
   DESCRIPTOR_SCHEMA_VERSION,
@@ -52,7 +52,7 @@ function assertInlinePayloadFits(bytes: Uint8Array, deps: CodecDeps): void {
   const hint = deps.compression?.enabled
     ? ''
     : ', or enable compression if the data compresses well';
-  throw new ValidationError(
+  throw validationError(
     `payload of ${bytes.length} bytes exceeds the ${MAX_INLINE_PAYLOAD_BYTES}-byte inline limit ` +
       `(DynamoDB items are capped at 400 KB); configure s3 offloading${hint}`,
     'payload',
@@ -79,7 +79,7 @@ function assertInlinePayloadFits(bytes: Uint8Array, deps: CodecDeps): void {
  */
 function assertSerialisedToBytes(raw: Uint8Array): void {
   if (raw.length > 0) return;
-  throw new ValidationError(
+  throw validationError(
     'value serialises to zero bytes, which no reader can parse back: a function, a symbol ' +
       'or any value the configured serde drops encodes to nothing. Store a value the serde ' +
       'can represent, or configure one that refuses it.',

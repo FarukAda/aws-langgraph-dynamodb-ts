@@ -1,6 +1,6 @@
 import type { IndexConfig } from '@langchain/langgraph-checkpoint';
 
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import type { JsonValue } from './filter';
 import type { StoreContext } from './setup';
 import { getTextAtPath } from './text-path';
@@ -94,7 +94,7 @@ export function extractText(value: Record<string, JsonValue>, fields: string[]):
 export function assertVectorDims(index: IndexConfig, vector: number[], what: string): void {
   const dims = index.dims;
   if (!Number.isInteger(dims) || dims <= 0 || vector.length === dims) return;
-  throw new ValidationError(
+  throw validationError(
     `index.embeddings returned a ${vector.length}-dimensional ${what} vector but index.dims ` +
       `is ${dims}; the embeddings model does not match the configured index`,
     'index.dims',

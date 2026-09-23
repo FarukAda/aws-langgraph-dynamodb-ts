@@ -5,7 +5,7 @@ import {
   MAX_BACKOFF_DELAY_MS,
 } from '../constants';
 import { DEFAULT_RETRYABLE_ERRORS } from '../errors/classify';
-import { RetryExhaustedError } from '../errors/errors';
+import { retryExhaustedError } from '../errors/errors';
 import { toError } from '../errors/to-error';
 import { redactedMessage } from '../logging/secret-patterns';
 import { abortErrorFrom } from './abort';
@@ -200,7 +200,7 @@ export async function withRetry<T>(
       await sleep(delayMs, options.signal);
     }
   }
-  throw new RetryExhaustedError(
+  throw retryExhaustedError(
     `Operation failed after ${attempts} attempts: ${redactedMessage(lastError)}`,
     attempts,
     lastError,

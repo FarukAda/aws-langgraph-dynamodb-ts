@@ -1,7 +1,7 @@
 import type { S3Client } from '@aws-sdk/client-s3';
 
 import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../constants';
-import { ValidationError } from '../../errors/errors';
+import { validationError } from '../../errors/errors';
 import type { S3ClientConfigLike } from './client-types';
 
 type S3Sdk = typeof import('@aws-sdk/client-s3');
@@ -19,7 +19,7 @@ let sdkPromise: Promise<S3Sdk> | undefined;
 function wrapMissingPeer(error: Error): never {
   const code = (error as { code?: string }).code;
   if (code !== undefined && MISSING_MODULE_CODES.includes(code)) {
-    throw new ValidationError(
+    throw validationError(
       'S3 offload requires the optional peer @aws-sdk/client-s3 (npm install @aws-sdk/client-s3); ' +
         'bundlers must keep it installed or external',
       's3',

@@ -2,7 +2,7 @@ import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { toError } from '../errors/to-error';
 import { truncateForLog } from '../logging/truncate';
 import { JSON_SERDE_TYPE } from './declared-form';
@@ -65,7 +65,7 @@ export const JSON_SERDE: SerializerProtocol = {
        * response. `redactedMessage` removes credential shapes, not names, so
        * it never covered this. A caller who wants the path reads `cause`.
        */
-      throw new ValidationError(
+      throw validationError(
         'value cannot be serialized as JSON — a circular structure, or a value JSON has no ' +
           'encoding for such as a BigInt; the refusal itself is attached as `cause`',
         'value',
@@ -73,7 +73,7 @@ export const JSON_SERDE: SerializerProtocol = {
       );
     }
     if (text === undefined) {
-      throw new ValidationError(
+      throw validationError(
         'value has no JSON representation (undefined, a function or a symbol), so it cannot be ' +
           'stored; store null instead to record an absent value',
         'value',
@@ -111,7 +111,7 @@ export const JSON_SERDE: SerializerProtocol = {
      * is bounded, for the reason `truncateForLog` states.
      */
     if (type !== JSON_SERDE_TYPE) {
-      throw new ValidationError(
+      throw validationError(
         `this serializer reads only the \`${JSON_SERDE_TYPE}\` form it writes, and this payload ` +
           `declares ${truncateForLog(String(JSON.stringify(type)))}; read the row with the ` +
           'serializer that wrote it, or rewrite the row',
@@ -132,7 +132,7 @@ export const JSON_SERDE: SerializerProtocol = {
     try {
       text = typeof data === 'string' ? data : new TextDecoder().decode(data);
     } catch (error) {
-      throw new ValidationError(
+      throw validationError(
         'data must be the bytes or text this serializer wrote, as a Uint8Array or a string',
         'data',
         error as Error,

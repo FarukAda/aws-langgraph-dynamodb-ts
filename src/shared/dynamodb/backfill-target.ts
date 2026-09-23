@@ -1,4 +1,4 @@
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import type { IndexTag } from './index-keys';
 import type { DocItem } from './types';
 
@@ -105,6 +105,6 @@ export function decodeScanCursor(cursor: string): DocItem {
     if (!isTableKeyShape(decoded)) throw new Error('not a scan position');
     return decoded;
   } catch {
-    throw new ValidationError('cursor is not one this tool issued', 'cursor');
+    throw validationError('cursor is not one this tool issued', 'cursor');
   }
 }

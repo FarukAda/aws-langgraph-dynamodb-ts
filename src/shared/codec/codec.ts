@@ -2,7 +2,7 @@ import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBLangGraphError, isDynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { toError } from '../errors/to-error';
 import { truncateForLog } from '../logging/truncate';
 import { CompressionConfig, decompress } from './compression';
@@ -70,7 +70,7 @@ export interface CodecDeps {
 
 function requireOffloader(deps: CodecDeps): S3Offloader {
   if (!deps.offloader) {
-    throw new ValidationError(
+    throw validationError(
       "this row's payload is offloaded to S3 but the adapter has no `s3` configuration; " +
         'configure the bucket the writer used',
       's3',
@@ -105,7 +105,7 @@ function requireOffloader(deps: CodecDeps): S3Offloader {
  */
 function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   if (descriptor === null || typeof descriptor !== 'object') {
-    throw new ValidationError(
+    throw validationError(
       `payload descriptor is ${descriptor === null ? 'null' : typeof descriptor}, not a descriptor ` +
         'this library wrote',
       'descriptor',
@@ -126,10 +126,7 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   if (!locations.includes(descriptor.location)) {
     /** The location is whatever the row holds, and the row is what this refuses. */
     const location = truncateForLog(String(JSON.stringify(descriptor.location)));
-    throw new ValidationError(
-      `payload descriptor has an unknown location ${location}`,
-      'descriptor',
-    );
+    throw validationError(`payload descriptor has an unknown location ${location}`, 'descriptor');
   }
 }
 
@@ -243,7 +240,7 @@ export async function loadPayloadValue<T>(
         refusal,
       );
     }
-    throw new ValidationError(
+    throw validationError(
       'the configured serde refused the payload stored in this row: the bytes parse, but the ' +
         'serializer would not reconstruct the value they name — a stored `lc` constructor record ' +
         'naming a class outside its allow-list reads this way, as does a serde that did not ' +

@@ -8,7 +8,7 @@ import type {
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { transactIdempotently } from '../../shared/dynamodb/idempotent-write';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { verifyCheckpointLanded } from '../internal/checkpoint-write-verify';
 import { readConfigurable } from '../internal/configurable';
@@ -76,7 +76,7 @@ export async function putCheckpoint(
   const { threadId, checkpointNs, checkpointId: parentCheckpointId } = readConfigurable(config);
   const signal = config.signal;
   if (checkpoint === null || checkpoint === undefined) {
-    throw new ValidationError('checkpoint must be an object', 'checkpoint');
+    throw validationError('checkpoint must be an object', 'checkpoint');
   }
   validateCheckpointId(checkpoint.id);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;

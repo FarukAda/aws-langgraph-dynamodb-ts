@@ -1,6 +1,6 @@
 import type { Item, SearchItem } from '@langchain/langgraph-checkpoint';
 
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { cosineSimilarity } from './semantic-search';
 
 /** Sort weight for an item without an embedding; below the −1 cosine minimum. */
@@ -81,7 +81,7 @@ export function rankInMemory(
   onDimensionMismatch?: (count: number) => void,
 ): SearchItem[] {
   if (candidates.length > maxCandidates) {
-    throw new ValidationError(
+    throw validationError(
       `Semantic search candidate set (${candidates.length}) exceeds maxSearchCandidates ` +
         `(${maxCandidates}); use a dedicated VectorBackend for large corpora`,
       'maxSearchCandidates',

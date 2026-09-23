@@ -1,4 +1,4 @@
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { isObjectShape } from './option-shape';
 
 /** The `DynamoDBDocument` methods this package calls on an injected `client`. */
@@ -65,11 +65,11 @@ export const ABORT_SIGNAL_MEMBERS: Readonly<Record<string, 'boolean' | 'function
  */
 export function assertMembers(value: object, members: readonly string[], field: string): void {
   if (!isObjectShape(value)) {
-    throw new ValidationError(`${field} must be an object`, field);
+    throw validationError(`${field} must be an object`, field);
   }
   for (const member of members) {
     if (typeof Reflect.get(value, member) !== 'function') {
-      throw new ValidationError(`${field}.${member} must be a function`, `${field}.${member}`);
+      throw validationError(`${field}.${member} must be a function`, `${field}.${member}`);
     }
   }
 }
@@ -141,6 +141,6 @@ export function isAbortSignalLike(value: AbortSignal | undefined): boolean {
  */
 export function assertSignalLike(value: AbortSignal | undefined, field = 'signal'): void {
   if (value !== undefined && !isAbortSignalLike(value)) {
-    throw new ValidationError(`${field} must be an AbortSignal`, field);
+    throw validationError(`${field} must be an AbortSignal`, field);
   }
 }

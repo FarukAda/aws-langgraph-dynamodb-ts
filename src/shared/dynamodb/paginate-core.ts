@@ -1,5 +1,5 @@
 import { MAX_LOOP_ITERATIONS, MAX_TOTAL_ITEMS_IN_MEMORY } from '../constants';
-import { ResultTruncatedError, ValidationError } from '../errors/errors';
+import { resultTruncatedError, validationError } from '../errors/errors';
 import { abortErrorFrom } from './abort';
 import type { RetryOptions } from './retry';
 import type { DocItem } from './types';
@@ -30,7 +30,7 @@ interface Reader {
 /** Read the next page, honouring the abort signal and the iteration cap first. */
 async function readPage(reader: Reader, startKey: DocItem | undefined): Promise<PageResult> {
   if (reader.iterations >= reader.maxIterations) {
-    throw new ResultTruncatedError('maxIterations', reader.maxIterations);
+    throw resultTruncatedError('maxIterations', reader.maxIterations);
   }
   if (reader.signal?.aborted) throw abortErrorFrom(reader.signal);
   reader.iterations += 1;
@@ -58,7 +58,7 @@ function* yieldPageItems(
     yield page.items[index];
     state.yielded += 1;
     if (state.yielded >= maxItems) {
-      if (index < page.items.length - 1) throw new ResultTruncatedError('maxItems', maxItems);
+      if (index < page.items.length - 1) throw resultTruncatedError('maxItems', maxItems);
       return 'capped';
     }
   }
@@ -86,7 +86,7 @@ async function dataRemains(reader: Reader, startKey: DocItem | undefined): Promi
 /** Reject a cap that admits nothing; `Infinity` is the way to ask for no cap. */
 function assertPositiveCap(value: number, field: string): number {
   if (!(value >= 1)) {
-    throw new ValidationError(
+    throw validationError(
       `${field} must be at least 1 (pass Infinity to read to completion)`,
       field,
     );
@@ -136,8 +136,7 @@ export async function* paginatePages(
     const page = await readPage(reader, startKey);
     const outcome = yield* yieldPageItems(page, state, maxItems);
     if (outcome === 'capped') {
-      if (await dataRemains(reader, page.lastKey))
-        throw new ResultTruncatedError('maxItems', maxItems);
+      if (await dataRemains(reader, page.lastKey)) throw resultTruncatedError('maxItems', maxItems);
       return;
     }
     startKey = page.lastKey;

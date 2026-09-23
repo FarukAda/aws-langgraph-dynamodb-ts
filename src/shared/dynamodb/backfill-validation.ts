@@ -1,5 +1,5 @@
 import { MAX_INDEX_SHARDS } from '../constants';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { assertMembers, assertSignalLike } from '../validation/collaborators';
 import { allKeysOf, assertShape } from '../validation/option-shape';
 import { validateRetryBounds, validateTableName } from '../validation/options';
@@ -76,13 +76,13 @@ function validateBackfillRetryOptions(retry: RetryOptions): void {
     validateStringArray(retry.retryableErrors, 'retry.retryableErrors');
   }
   if (retry.isRetryable !== undefined && typeof retry.isRetryable !== 'function') {
-    throw new ValidationError('retry.isRetryable must be a function', 'retry.isRetryable');
+    throw validationError('retry.isRetryable must be a function', 'retry.isRetryable');
   }
   if (retry.onRetry !== undefined && typeof retry.onRetry !== 'function') {
-    throw new ValidationError('retry.onRetry must be a function', 'retry.onRetry');
+    throw validationError('retry.onRetry must be a function', 'retry.onRetry');
   }
   if (retry.rng !== undefined && typeof retry.rng !== 'function') {
-    throw new ValidationError('retry.rng must be a function', 'retry.rng');
+    throw validationError('retry.rng must be a function', 'retry.rng');
   }
   assertSignalLike(retry.signal, 'retry.signal');
 }
@@ -134,7 +134,7 @@ export function validateBackfillOptions(options: BackfillOptions): void {
   validatePositiveBound(options.pageSize, 'pageSize');
   validatePositiveBound(options.maxPages, 'maxPages');
   if (options.dryRun !== undefined && typeof options.dryRun !== 'boolean') {
-    throw new ValidationError('dryRun must be a boolean', 'dryRun');
+    throw validationError('dryRun must be a boolean', 'dryRun');
   }
   if (options.retry !== undefined) validateBackfillRetryOptions(options.retry);
   assertSignalLike(options.signal);

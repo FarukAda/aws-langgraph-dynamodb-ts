@@ -7,7 +7,7 @@ import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { assertReadableRow } from '../../shared/dynamodb/row-version';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import type { DocItem } from '../../shared/dynamodb/types';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { assertSignalLike } from '../../shared/validation/collaborators';
 import { LIST_SESSIONS_KEYS } from '../../shared/validation/method-keys';
 import { assertShape } from '../../shared/validation/option-shape';
@@ -229,14 +229,14 @@ function assertPageOptions(context: HistoryContext, options: ListSessionsOptions
   assertScanCap(options.maxIterations, 'maxIterations');
   if (options.cursor === undefined) return;
   if (context.indexName === undefined) {
-    throw new ValidationError(
+    throw validationError(
       'paging by cursor needs a configured `indexName`: without the recency index a listing is ' +
         'one table scan, which has no position to resume from',
       'cursor',
     );
   }
   if (typeof options.cursor !== 'string') {
-    throw new ValidationError('cursor must be a string', 'cursor');
+    throw validationError('cursor must be a string', 'cursor');
   }
 }
 

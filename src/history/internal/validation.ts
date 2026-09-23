@@ -6,7 +6,7 @@ import {
 } from '@langchain/core/messages';
 
 import { MAX_PARTITION_ID_BYTES } from '../../shared/constants';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { redactedMessage } from '../../shared/logging/secret-patterns';
 import { truncateForLog } from '../../shared/logging/truncate';
 import { ULID_TIME_RANGE_MS } from '../../shared/ulid';
@@ -46,7 +46,7 @@ export function validateSessionId(sessionId: string): void {
  */
 export function validateMessageList(messages: BaseMessage[]): void {
   if (!Array.isArray(messages)) {
-    throw new ValidationError('messages must be an array', 'messages');
+    throw validationError('messages must be an array', 'messages');
   }
 }
 
@@ -75,7 +75,7 @@ export function toStoredMessages(messages: BaseMessage[]): StoredMessage[] {
     try {
       return mapChatMessagesToStoredMessages([message])[0];
     } catch (error) {
-      throw new ValidationError(
+      throw validationError(
         `messages[${index}] is not a LangChain message: ` + redactedMessage(error as Error),
         'messages',
       );
@@ -111,7 +111,7 @@ export function validateStorableMessages(stored: StoredMessage[]): void {
     try {
       mapStoredMessagesToChatMessages([message]);
     } catch (error) {
-      throw new ValidationError(
+      throw validationError(
         `messages[${index}] of type "${truncateForLog(message.type)}" cannot be stored: ` +
           redactedMessage(error as Error),
         'messages',
@@ -165,9 +165,9 @@ export function validateMessageWindow(window: MessageWindow): void {
   if (window.before !== undefined) {
     const hasGetTime = window.before !== null && typeof window.before.getTime === 'function';
     const time = hasGetTime ? window.before.getTime() : Number.NaN;
-    if (!Number.isFinite(time)) throw new ValidationError('before must be a valid Date', 'before');
+    if (!Number.isFinite(time)) throw validationError('before must be a valid Date', 'before');
     if (time < 0 || time >= ULID_TIME_RANGE_MS) {
-      throw new ValidationError(
+      throw validationError(
         'before must be a Date from the epoch onwards and before the year 37648: the bound is ' +
           'the message id of that instant, and a message id encodes its millisecond in ten ' +
           'base-32 characters, which hold no instant outside that range',

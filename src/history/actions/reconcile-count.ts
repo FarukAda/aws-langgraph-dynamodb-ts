@@ -3,7 +3,7 @@ import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { classifyAwsError } from '../../shared/errors/classify';
 import { ErrorCode } from '../../shared/errors/error-code';
-import { ConflictError } from '../../shared/errors/errors';
+import { conflictError } from '../../shared/errors/errors';
 import { SESSION_SORT_KEY, sessionPartition } from '../internal/keys';
 import { countLiveMessages } from '../internal/message-count';
 import type { HistoryContext } from '../internal/setup';
@@ -127,9 +127,7 @@ export async function reconcileMessageCount(
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
     const observed = await observeCount(context, sessionId, signal);
     if (!observed.exists) {
-      throw new ConflictError(
-        `Cannot reconcile messageCount: session "${sessionId}" does not exist`,
-      );
+      throw conflictError(`Cannot reconcile messageCount: session "${sessionId}" does not exist`);
     }
     const count = await countLiveMessages(context, sessionId, signal);
     try {
@@ -139,7 +137,7 @@ export async function reconcileMessageCount(
       if (classifyAwsError(error as Error) !== ErrorCode.CONDITION_CONFLICT) throw error;
     }
   }
-  throw new ConflictError(
+  throw conflictError(
     `Cannot reconcile messageCount: session "${sessionId}" changed during every one of ` +
       `${OVERWRITE_CAS_MAX_ATTEMPTS} attempts; retry when it is quieter`,
   );

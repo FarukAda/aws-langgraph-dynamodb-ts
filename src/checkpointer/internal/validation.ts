@@ -1,7 +1,7 @@
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
 import { MAX_KEY_SEGMENT_BYTES, MAX_PARTITION_ID_BYTES } from '../../shared/constants';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import {
   assertMaxBytes,
   assertNoControlChars,
@@ -121,11 +121,11 @@ export function validateChannel(channel: string): void {
  */
 export function validateWrites(writes: PendingWrite[]): void {
   if (!Array.isArray(writes)) {
-    throw new ValidationError('writes must be an array', 'writes');
+    throw validationError('writes must be an array', 'writes');
   }
   writes.forEach((entry, index) => {
     if (!Array.isArray(entry)) {
-      throw new ValidationError(`writes[${index}] must be a [channel, value] tuple`, 'writes');
+      throw validationError(`writes[${index}] must be a [channel, value] tuple`, 'writes');
     }
   });
 }

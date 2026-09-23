@@ -6,7 +6,7 @@ import type {
   SearchOperation,
 } from '@langchain/langgraph-checkpoint';
 
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { assertObjectShape } from '../../shared/validation/option-shape';
 import { validateStringArray } from '../../shared/validation/primitives';
 import { assertMatchType } from './namespace-match';
@@ -54,7 +54,7 @@ export function assertSearchOperation(op: SearchOperation): void {
   assertSearchPrefix(op.namespacePrefix);
   if (op.filter !== undefined) assertObjectShape(op.filter, 'filter');
   if (op.query !== undefined && typeof op.query !== 'string') {
-    throw new ValidationError('query must be a string', 'query');
+    throw validationError('query must be a string', 'query');
   }
   validatePaging(op.offset === undefined ? 0 : op.offset, op.limit === undefined ? 0 : op.limit);
 }
@@ -91,7 +91,7 @@ export function assertListOperation(op: ListNamespacesOperation): void {
   validateMaxDepth(op.maxDepth);
   if (op.matchConditions === undefined) return;
   if (!Array.isArray(op.matchConditions)) {
-    throw new ValidationError('matchConditions must be an array', 'matchConditions');
+    throw validationError('matchConditions must be an array', 'matchConditions');
   }
   for (const condition of op.matchConditions) assertMatchCondition(condition);
 }
@@ -135,7 +135,7 @@ export function assertPutOperation(op: PutOperation): void {
  */
 export function assertOperation(operation: Operation): void {
   if (typeof operation !== 'object' || operation === null || Array.isArray(operation)) {
-    throw new ValidationError('every operation in operations must be an object', 'operations');
+    throw validationError('every operation in operations must be an object', 'operations');
   }
   if ('namespacePrefix' in operation) {
     assertSearchOperation(operation);
@@ -172,7 +172,7 @@ export function assertOperation(operation: Operation): void {
  */
 export function assertOperations(operations: Operation[]): void {
   if (!Array.isArray(operations)) {
-    throw new ValidationError('operations must be an array', 'operations');
+    throw validationError('operations must be an array', 'operations');
   }
   for (const operation of operations) assertOperation(operation);
 }

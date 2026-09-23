@@ -5,7 +5,7 @@ import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { assertReadableRow } from '../../shared/dynamodb/row-version';
 import type { DocItem } from '../../shared/dynamodb/types';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';
 import { ulidTimePrefix } from '../../shared/ulid';
@@ -43,7 +43,7 @@ function requireMessageItem(
     sessionId,
     sortKey: truncateForLog(raw.SK as string),
   });
-  throw new ValidationError(
+  throw validationError(
     'a row in the message key space of this session is not a chat message item this package ' +
       'wrote: its `sessionId` or `message` attribute is absent, is of the wrong type, or names ' +
       'another session. The `warn` logged alongside this names the row',

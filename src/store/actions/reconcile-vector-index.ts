@@ -1,4 +1,4 @@
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { collectReconcileTargets, pruneOrphans, pushEmbeddings } from '../internal/index-reconcile';
 import type { StoreContext } from '../internal/setup';
 import { validateNamespace } from '../internal/validation';
@@ -40,7 +40,7 @@ export async function reconcileVectorIndex(
 ): Promise<VectorReconcileResult> {
   validateNamespace(namespacePrefix, 'namespacePrefix');
   if (!context.index || !context.vectorBackend) {
-    throw new ValidationError(
+    throw validationError(
       'reconcileVectorIndex requires a configured index and vectorBackend',
       'vectorBackend',
     );

@@ -8,7 +8,9 @@ import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { paginateScan } from '../../shared/dynamodb/scan';
 import type { DocItem } from '../../shared/dynamodb/types';
-import { ValidationError } from '../../shared/errors/errors';
+import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
+import { ErrorCode } from '../../shared/errors/error-code';
+import { validationError } from '../../shared/errors/errors';
 import type { StoreItemRecord } from '../types';
 import { narrowWholeRecord, readStoreItem } from './item-mapper';
 import { namespaceMatchesPrefix } from './keys';
@@ -102,8 +104,11 @@ function batchSize(op: SearchOperation, need: number, collected: number, limit: 
   return op.filter === undefined ? Math.min(limit, need - collected) : limit;
 }
 
-function tooManyCandidates(count: number, cap: number): ValidationError {
-  return new ValidationError(
+function tooManyCandidates(
+  count: number,
+  cap: number,
+): DynamoDBLangGraphError<ErrorCode.VALIDATION> {
+  return validationError(
     `Semantic search candidate set (${count}) exceeds maxSearchCandidates (${cap}); ` +
       'use a dedicated VectorBackend for large corpora',
     'maxSearchCandidates',

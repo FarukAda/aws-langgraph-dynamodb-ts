@@ -1,7 +1,7 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { MAX_LOOP_ITERATIONS } from '../constants';
-import { ResultTruncatedError } from '../errors/errors';
+import { resultTruncatedError } from '../errors/errors';
 import type { DynamoDBDocumentLike } from './client-types';
 import type { IndexTag } from './index-keys';
 import { withDynamoDBRetry } from './retry';
@@ -112,7 +112,7 @@ export async function readShardPage(
   limit: number,
 ): Promise<void> {
   if (reader.pages >= MAX_LOOP_ITERATIONS) {
-    throw new ResultTruncatedError('maxIterations', MAX_LOOP_ITERATIONS);
+    throw resultTruncatedError('maxIterations', MAX_LOOP_ITERATIONS);
   }
   const result = await withDynamoDBRetry(
     (request) => options.client.query(shardQuery(options, reader, before, limit), request),

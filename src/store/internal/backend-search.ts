@@ -7,7 +7,7 @@ import type {
 
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
 import { getItem } from '../actions/get';
 import type { VectorBackend, VectorMatch } from '../vector-backend';
@@ -181,7 +181,7 @@ export async function searchViaBackend(
   assertVectorDims(index, queryVector, 'query');
   const need = offset + limit;
   if (need > context.maxSearchCandidates) {
-    throw new ValidationError(
+    throw validationError(
       `Requested page (offset ${offset} + limit ${limit} = ${need}) exceeds maxSearchCandidates ` +
         `(${context.maxSearchCandidates}); narrow the page or raise maxSearchCandidates`,
       'maxSearchCandidates',
@@ -208,7 +208,7 @@ export async function searchViaBackend(
     if (results.length >= need || matches.length < topK) break;
     if (topK >= context.maxSearchCandidates) {
       /** The backend still holds matches, but the filter left the page short at the cap: the same answer the in-DB ranker gives, not a silently short page. */
-      throw new ValidationError(
+      throw validationError(
         `Semantic search collected ${results.length} of ${need} matches within maxSearchCandidates ` +
           `(${context.maxSearchCandidates}); narrow the filter or raise maxSearchCandidates`,
         'maxSearchCandidates',

@@ -1,7 +1,7 @@
 import { BATCH_WRITE_MAX } from '../constants';
 import { hasErrorCode } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
-import { BatchWriteAllIncompleteError } from '../errors/errors';
+import { batchWriteAllIncompleteError } from '../errors/errors';
 import type { DynamoDBDocumentLike } from './client-types';
 import { DrainOptions, drainUnprocessedWrites } from './drain-unprocessed';
 import type { WriteRequest } from './types';
@@ -73,11 +73,6 @@ export async function batchWriteAll(
     }
   }
   if (failedChunks.length > 0) {
-    throw new BatchWriteAllIncompleteError(
-      succeededChunks,
-      totalChunks,
-      failedChunks,
-      succeededCount,
-    );
+    throw batchWriteAllIncompleteError(succeededChunks, totalChunks, failedChunks, succeededCount);
   }
 }

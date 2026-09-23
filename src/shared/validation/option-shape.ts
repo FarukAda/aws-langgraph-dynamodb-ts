@@ -1,4 +1,4 @@
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 
 /**
  * Every key of `T`, listed once.
@@ -47,7 +47,7 @@ export function isObjectShape(value: object | undefined): value is object {
  */
 export function assertObjectShape(value: object, field: string): void {
   if (!isObjectShape(value)) {
-    throw new ValidationError(`${field} must be an object`, field);
+    throw validationError(`${field} must be an object`, field);
   }
 }
 
@@ -78,7 +78,7 @@ export function assertShape(value: object, allowed: readonly string[], field: st
   assertObjectShape(value, field);
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) {
-      throw new ValidationError(
+      throw validationError(
         `${field}.${key} is not an option this package reads; expected one of ${allowed.join(', ')}`,
         `${field}.${key}`,
       );

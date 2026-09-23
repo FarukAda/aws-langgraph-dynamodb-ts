@@ -1,10 +1,12 @@
-import { hasErrorCode } from '../errors/base-error';
+import { DynamoDBLangGraphError, hasErrorCode } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
-import { AbortError } from '../errors/errors';
+import { abortError } from '../errors/errors';
 import { toError } from '../errors/to-error';
 
 /** True when the abort reason already is this library's `AbortError` (a string or DOMException is not). */
-function isLibraryAbort(reason: Error | undefined): reason is AbortError {
+function isLibraryAbort(
+  reason: Error | undefined,
+): reason is DynamoDBLangGraphError<ErrorCode.ABORTED> {
   return hasErrorCode(reason as Error, ErrorCode.ABORTED);
 }
 
@@ -45,8 +47,8 @@ export function isAbortError(error: Error): boolean {
  * Guarantees: `code === 'ABORTED'` holds however the signal was aborted, so a
  * caller branches on the code rather than on the reason's shape.
  */
-export function abortErrorFrom(signal: AbortSignal): AbortError {
+export function abortErrorFrom(signal: AbortSignal): DynamoDBLangGraphError<ErrorCode.ABORTED> {
   const reason = signal.reason as Error | undefined;
   if (isLibraryAbort(reason)) return reason;
-  return new AbortError('Operation aborted', reason === undefined ? undefined : toError(reason));
+  return abortError('Operation aborted', reason === undefined ? undefined : toError(reason));
 }

@@ -1,13 +1,21 @@
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
   AbortError,
+  abortError,
   BatchWriteAllIncompleteError,
+  batchWriteAllIncompleteError,
   BatchWriteIncompleteError,
+  batchWriteIncompleteError,
   CompensationFailedError,
+  compensationFailedError,
   ConflictError,
+  conflictError,
   ResultTruncatedError,
+  resultTruncatedError,
   RetryExhaustedError,
+  retryExhaustedError,
   ValidationError,
+  validationError,
 } from '../../../../src/shared/errors/errors';
 
 describe('error subclasses', () => {
@@ -147,5 +155,120 @@ describe('the subclasses fill details', () => {
     expect(new CompensationFailedError(new Error('t'), rollback).details).toEqual({
       rollbackError: rollback,
     });
+  });
+});
+
+/**
+ * Each factory returns the same subclass instance the class constructor
+ * would; the factories exist so an internal caller never names a subclass,
+ * which is what lets a later change collapse the subclasses by editing only
+ * these eight bodies.
+ */
+describe('validationError', () => {
+  it('names the field and keeps the cause', () => {
+    const cause = new Error('under');
+    expect(validationError('bad', 'tableName', cause)).toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'tableName' },
+      message: 'bad',
+      cause,
+    });
+    expect(validationError('bad').context).toEqual({});
+  });
+});
+
+describe('conflictError', () => {
+  it('keeps the message and the cause', () => {
+    const cause = new Error('stale');
+    expect(conflictError('precondition failed', cause)).toMatchObject({
+      code: ErrorCode.CONDITION_CONFLICT,
+      context: {},
+      message: 'precondition failed',
+      cause,
+    });
+  });
+});
+
+describe('retryExhaustedError', () => {
+  it('names the attempts spent and keeps the cause', () => {
+    const cause = new Error('last failure');
+    expect(retryExhaustedError('exhausted', 3, cause)).toMatchObject({
+      code: ErrorCode.RETRY_EXHAUSTED,
+      context: { attempts: 3 },
+      message: 'exhausted',
+      cause,
+    });
+  });
+
+  it('omits attempts from context when none is given', () => {
+    expect(retryExhaustedError('exhausted').context).toEqual({});
+  });
+});
+
+describe('resultTruncatedError', () => {
+  it('names the cap as the field and quotes the limit in the message', () => {
+    const error = resultTruncatedError('maxItems', 10000);
+    expect(error.code).toBe(ErrorCode.RESULT_TRUNCATED);
+    expect(error.context).toEqual({ field: 'maxItems' });
+    expect(error.message).toContain('maxItems cap (10000)');
+  });
+});
+
+describe('abortError', () => {
+  it('defaults the message to Operation aborted and keeps the cause', () => {
+    const cause = new Error('signal reason');
+    const error = abortError(undefined, cause);
+    expect(error.code).toBe(ErrorCode.ABORTED);
+    expect(error.message).toBe('Operation aborted');
+    expect(error.cause).toBe(cause);
+  });
+
+  it('uses the given message', () => {
+    expect(abortError('stopped').message).toBe('stopped');
+  });
+});
+
+describe('batchWriteIncompleteError', () => {
+  it('copies the unprocessed list it is handed', () => {
+    const unprocessed = [{ PutRequest: { Item: { pk: 'a' } } }];
+    const error = batchWriteIncompleteError(1, unprocessed, 2);
+    unprocessed.push({ PutRequest: { Item: { pk: 'b' } } });
+    expect(error.code).toBe(ErrorCode.BATCH_WRITE_INCOMPLETE);
+    expect(error.details).toMatchObject({
+      kind: 'drain',
+      unprocessed: [{ PutRequest: { Item: { pk: 'a' } } }],
+    });
+  });
+
+  it('reads a non-array unprocessed list as empty rather than crashing the report', () => {
+    expect(batchWriteIncompleteError(0, 'x' as never, 1).details).toMatchObject({
+      unprocessed: [],
+    });
+  });
+});
+
+describe('batchWriteAllIncompleteError', () => {
+  it('counts rows when asked, and uses the first failure as cause', () => {
+    const first = new Error('first');
+    const error = batchWriteAllIncompleteError(1, 3, [first, new Error('second')], 1, 'row');
+    expect(error.message).toContain('the partition delete did not fully drain');
+    expect(error.cause).toBe(first);
+    expect(error.details).toMatchObject({ kind: 'pass', unit: 'row', totalChunks: 3 });
+  });
+
+  it('reads a non-array failure list as empty rather than crashing the report', () => {
+    expect(batchWriteAllIncompleteError(0, 1, 'x' as never).details).toMatchObject({
+      failedChunks: [],
+    });
+  });
+});
+
+describe('compensationFailedError', () => {
+  it('normalises both the trigger and the rollback failure through toError, redacted in the message', () => {
+    const error = compensationFailedError('trigger blew up' as never, null as never);
+    expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
+    expect(error.message).toContain('trigger blew up');
+    expect((error.cause as Error).message).toBe('trigger blew up');
+    expect(error.details).toMatchObject({ rollbackError: { message: 'null was thrown' } });
   });
 });

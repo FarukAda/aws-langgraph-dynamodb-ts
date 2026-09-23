@@ -1,5 +1,5 @@
 import { mapWithConcurrency } from '../concurrency';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 import { validateLimit } from '../validation/primitives';
 import { indexPartitions } from './index-keys';
 import {
@@ -54,7 +54,7 @@ function encodeCursor(sortKey: string): string {
 function decodeCursor(cursor: string): string {
   const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
   if (!decoded.includes('#')) {
-    throw new ValidationError('cursor is not one this adapter issued', 'cursor');
+    throw validationError('cursor is not one this adapter issued', 'cursor');
   }
   return decoded;
 }

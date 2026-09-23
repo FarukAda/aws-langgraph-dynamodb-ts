@@ -4,7 +4,7 @@ import type {
   MatchCondition,
 } from '@langchain/langgraph-checkpoint';
 
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { STORE_LIST_NAMESPACES_KEYS } from '../../shared/validation/method-keys';
 import { assertShape } from '../../shared/validation/option-shape';
 import type { ListNamespacesOptions } from '../types';
@@ -26,13 +26,13 @@ const RESERVED_ROOT = 'langgraph';
  */
 function assertUpstreamPutNamespace(namespace: string[]): void {
   if (namespace.some((label) => label.includes('.'))) {
-    throw new ValidationError(
+    throw validationError(
       'namespace element must not contain "."; put() refuses it, as upstream BaseStore.put does',
       'namespace element',
     );
   }
   if (namespace[0] === RESERVED_ROOT) {
-    throw new ValidationError(
+    throw validationError(
       `namespace must not start with "${RESERVED_ROOT}", the root label LangGraph reserves`,
       'namespace',
     );
@@ -67,7 +67,7 @@ export function assertPutArguments(
   validateStoreKey(namespace, key);
   assertUpstreamPutNamespace(namespace);
   if (value === null) {
-    throw new ValidationError('value must be an object; delete() removes an item', 'value');
+    throw validationError('value must be an object; delete() removes an item', 'value');
   }
 }
 

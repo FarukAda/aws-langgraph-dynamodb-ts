@@ -3,7 +3,7 @@ import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { readConfigurable } from '../internal/configurable';
@@ -89,7 +89,7 @@ export async function putWrites(
   const { threadId, checkpointNs, checkpointId } = readConfigurable(config);
   const signal = config.signal;
   if (checkpointId === undefined) {
-    throw new ValidationError('checkpoint_id is required to store writes', 'checkpoint_id');
+    throw validationError('checkpoint_id is required to store writes', 'checkpoint_id');
   }
   validateWrites(writes);
   if (writes.length === 0) return;

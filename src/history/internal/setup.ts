@@ -14,7 +14,7 @@ import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client-types';
 import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/index-keys';
 import type { RetryOptions } from '../../shared/dynamodb/retry';
 import { resolveRetryPolicy } from '../../shared/dynamodb/retry-policy';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import { createUlidFactory } from '../../shared/ulid';
 import { HISTORY_KEYS } from '../../shared/validation/adapter-keys';
@@ -81,7 +81,7 @@ export function setUpHistory(options: DynamoDBChatMessageHistoryOptions): Histor
     options.onCorruptMessage !== undefined &&
     !CORRUPT_MESSAGE_POLICIES.includes(options.onCorruptMessage)
   ) {
-    throw new ValidationError(
+    throw validationError(
       `onCorruptMessage must be one of ${CORRUPT_MESSAGE_POLICIES.join(' | ')}`,
       'onCorruptMessage',
     );

@@ -3,7 +3,7 @@ import {
   MAX_BACKOFF_DELAY_MS,
   MAX_UNPROCESSED_RETRIES,
 } from '../constants';
-import { BatchWriteIncompleteError } from '../errors/errors';
+import { batchWriteIncompleteError } from '../errors/errors';
 import { isAbortError } from './abort';
 import { fullJitter, nextBackoffDelay, sleep } from './backoff';
 import type { DynamoDBDocumentLike } from './client-types';
@@ -48,7 +48,7 @@ function drainFailure(
   retries: number,
 ): Error {
   if (isAbortError(error)) return error;
-  return new BatchWriteIncompleteError(succeededCount, pending, retries, error);
+  return batchWriteIncompleteError(succeededCount, pending, retries, error);
 }
 
 /**
@@ -105,5 +105,5 @@ export async function drainUnprocessedWrites(
       throw drainFailure(error as Error, initialCount - pending.length, pending, retries);
     }
   }
-  throw new BatchWriteIncompleteError(initialCount - pending.length, pending, maxRetries);
+  throw batchWriteIncompleteError(initialCount - pending.length, pending, maxRetries);
 }

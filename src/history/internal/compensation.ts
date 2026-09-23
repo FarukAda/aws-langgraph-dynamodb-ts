@@ -3,7 +3,7 @@ import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
-import { CompensationFailedError } from '../../shared/errors/errors';
+import { compensationFailedError } from '../../shared/errors/errors';
 import { toError } from '../../shared/errors/to-error';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { ChatMessageItem } from '../types';
@@ -176,7 +176,7 @@ export async function compensate(
       committed.length,
     );
     /** Skip S3 cleanup here: rollback may have failed, so committed rows might still reference these objects. */
-    throw new CompensationFailedError(trigger, toError(rollbackError as Error));
+    throw compensationFailedError(trigger, toError(rollbackError as Error));
   }
   /** Only now that committed rows are confirmed deleted is it safe to delete their S3 objects. */
   await cleanBatchS3(context, chunks.slice(0, committed.length));

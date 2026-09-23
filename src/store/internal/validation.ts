@@ -1,5 +1,5 @@
 import { MAX_KEY_SEGMENT_BYTES, MAX_SORT_KEY_BYTES } from '../../shared/constants';
-import { ValidationError } from '../../shared/errors/errors';
+import { validationError } from '../../shared/errors/errors';
 import {
   validateIdentifier,
   validateInteger,
@@ -54,7 +54,7 @@ export function validatePaging(offset: number, limit: number): void {
  */
 export function validateNamespaceLabels(labels: string[], field: string): void {
   if (!Array.isArray(labels)) {
-    throw new ValidationError(`${field} must be an array of labels`, field);
+    throw validationError(`${field} must be an array of labels`, field);
   }
   for (const label of labels) {
     validateIdentifier(label, NAMESPACE_SEPARATOR, `${field} element`, MAX_KEY_SEGMENT_BYTES);
@@ -113,7 +113,7 @@ export function validateStoreKey(namespace: string[], key: string): void {
   validateKey(key);
   const bytes = Buffer.byteLength(sortKey(namespace, key), 'utf8');
   if (bytes > MAX_SORT_KEY_BYTES) {
-    throw new ValidationError(
+    throw validationError(
       `namespace and key compose a ${bytes}-byte sort key; DynamoDB caps sort keys at ` +
         `${MAX_SORT_KEY_BYTES} bytes`,
       'sortKey',

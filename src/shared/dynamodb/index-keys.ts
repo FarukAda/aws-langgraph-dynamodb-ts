@@ -1,4 +1,4 @@
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 
 /** The adapter tags that scope GSI1, matching the partition-key tags. */
 export type IndexTag = 'CHKPT' | 'STORE' | 'SESS';
@@ -33,7 +33,7 @@ function fnv1a(value: string): number {
 /** Refuse a shard count that would make the index unusable in either direction. */
 function assertShardCount(shards: number): void {
   if (!Number.isInteger(shards) || shards < 1) {
-    throw new ValidationError(
+    throw validationError(
       `indexShards must be a positive integer (received ${shards}); a non-positive value would ` +
         'make every row share one index partition or produce an unusable key',
       'indexShards',

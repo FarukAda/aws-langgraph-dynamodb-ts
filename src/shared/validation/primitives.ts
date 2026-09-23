@@ -1,5 +1,5 @@
 import { MAX_PAGE_LIMIT } from '../constants';
-import { ValidationError } from '../errors/errors';
+import { validationError } from '../errors/errors';
 
 /**
  * Throw {@link ValidationError} unless `value` is a string.
@@ -15,7 +15,7 @@ import { ValidationError } from '../errors/errors';
  */
 function assertString(value: string, field: string): void {
   if (typeof value !== 'string') {
-    throw new ValidationError(`${field} must be a string`, field);
+    throw validationError(`${field} must be a string`, field);
   }
 }
 
@@ -33,7 +33,7 @@ function assertString(value: string, field: string): void {
 export function validateNonEmptyString(value: string, field: string): void {
   assertString(value, field);
   if (value.trim().length === 0) {
-    throw new ValidationError(
+    throw validationError(
       `${field} must be a non-empty string (whitespace-only counts as empty)`,
       field,
     );
@@ -56,7 +56,7 @@ export function assertMaxBytes(value: string, field: string, maxBytes: number): 
   assertString(value, field);
   const bytes = Buffer.byteLength(value, 'utf8');
   if (bytes > maxBytes) {
-    throw new ValidationError(
+    throw validationError(
       `${field} must be at most ${maxBytes} bytes of UTF-8 (received ${bytes})`,
       field,
     );
@@ -81,13 +81,13 @@ export function validateInteger(
   bounds: { min?: number; max?: number } = {},
 ): void {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
-    throw new ValidationError(`${field} must be an integer`, field);
+    throw validationError(`${field} must be an integer`, field);
   }
   if (bounds.min !== undefined && value < bounds.min) {
-    throw new ValidationError(`${field} must be >= ${bounds.min}`, field);
+    throw validationError(`${field} must be >= ${bounds.min}`, field);
   }
   if (bounds.max !== undefined && value > bounds.max) {
-    throw new ValidationError(`${field} must be <= ${bounds.max}`, field);
+    throw validationError(`${field} must be <= ${bounds.max}`, field);
   }
 }
 
@@ -142,7 +142,7 @@ export function validateLimit(value: number, min: 0 | 1): void {
  */
 export function validateNonEmptyArray<T>(value: T[], field: string): void {
   if (!Array.isArray(value) || value.length === 0) {
-    throw new ValidationError(`${field} must be a non-empty array`, field);
+    throw validationError(`${field} must be a non-empty array`, field);
   }
 }
 
@@ -159,7 +159,7 @@ export function validateNonEmptyArray<T>(value: T[], field: string): void {
  */
 export function validateStringArray(value: readonly string[], field: string): void {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-    throw new ValidationError(`${field} must be an array of strings`, field);
+    throw validationError(`${field} must be an array of strings`, field);
   }
 }
 
@@ -191,7 +191,7 @@ function hasControlChar(value: string): boolean {
 export function assertNoControlChars(value: string, field: string): void {
   assertString(value, field);
   if (hasControlChar(value)) {
-    throw new ValidationError(`${field} must not contain control characters`, field);
+    throw validationError(`${field} must not contain control characters`, field);
   }
 }
 
@@ -213,7 +213,7 @@ export function assertNoControlChars(value: string, field: string): void {
 export function assertWellFormed(value: string, field: string): void {
   assertString(value, field);
   if (!value.isWellFormed()) {
-    throw new ValidationError(
+    throw validationError(
       `${field} must be well-formed UTF-16 (it contains an unpaired surrogate, which does not ` +
         'survive encoding to UTF-8)',
       field,
@@ -235,10 +235,7 @@ export function assertWellFormed(value: string, field: string): void {
 export function assertNoSeparator(value: string, separator: string, field: string): void {
   assertString(value, field);
   if (value.includes(separator)) {
-    throw new ValidationError(
-      `${field} must not contain the reserved "${separator}" separator`,
-      field,
-    );
+    throw validationError(`${field} must not contain the reserved "${separator}" separator`, field);
   }
 }
 
