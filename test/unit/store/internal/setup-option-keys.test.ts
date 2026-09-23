@@ -2,7 +2,7 @@ import {
   STORE_KEYS,
   STORE_LIST_NAMESPACES_KEYS,
   STORE_SEARCH_KEYS,
-} from '../../../../src/store/internal/option-keys';
+} from '../../../../src/store/internal/setup';
 
 describe('the store option-key lists (compiler-verified against the types)', () => {
   it('lists exactly what the store reads from each options bag', () => {

@@ -38,7 +38,7 @@ const backendWith = (matches: unknown[]) => ({
 
 /**
  * A read that failed is not a match that is missing. The in-DynamoDB path
- * fails the search rather than shortening it (`candidates.ts`), and under
+ * fails the search rather than shortening it (`table-search.ts`), and under
  * throttling the two paths answered the same question differently: one raised,
  * the other handed back a page one item short with a `warn` the default logger
  * does not print. `fetchMatch` exists for the one case its own documentation
@@ -110,7 +110,7 @@ describe('searchViaBackend when a match cannot be read', () => {
    * decode raises one too — for a row offloaded to S3 read by an adapter with
    * no `s3` configured, for a descriptor written by a newer library, for an
    * `s3Key` outside the row's own path — and every one of those is a read that
-   * did not happen. The in-DynamoDB path raises them (`candidates.ts` decodes
+   * did not happen. The in-DynamoDB path raises them (`table-search.ts` decodes
    * with no catch at all), so dropping them here is the same disagreement this
    * function was changed to end.
    */

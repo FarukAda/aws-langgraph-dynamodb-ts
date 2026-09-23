@@ -30,6 +30,7 @@ import type {
   VectorScoreDirection,
 } from '../vector-backend';
 import type { JsonValue } from './filter';
+import { passesFilter } from './filter';
 import { getItem } from './get-item';
 import {
   type Namespace,
@@ -46,7 +47,6 @@ import {
   scopedQuery,
   type StoreItemRecord,
 } from './rows';
-import { passesFilter } from './search-filter';
 import { assertVectorDims, embedValue, embedValues } from './semantic-search';
 import type { StoreContext } from './setup';
 

@@ -1,7 +1,7 @@
 import type { Item } from '@langchain/langgraph-checkpoint';
 
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { type RankCandidate, rankInMemory } from '../../../../src/store/internal/ranker';
+import { type RankCandidate, rankInMemory } from '../../../../src/store/internal/table-search';
 
 function candidate(key: string, embedding?: number[]): RankCandidate {
   const item: Item = {

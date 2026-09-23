@@ -19,7 +19,6 @@ import { reconcileVectorIndex as reconcileVectorIndexAction } from './actions/re
 import { searchItems } from './actions/search';
 import { runBatch } from './internal/batch-plan';
 import { getItem } from './internal/get-item';
-import { STORE_SEARCH_KEYS } from './internal/option-keys';
 import {
   parseListNamespacesOptions,
   parseNamespacePrefix,
@@ -29,7 +28,7 @@ import {
   parseSearch,
   parseStoreAddress,
 } from './internal/parse';
-import { type StoreContext, setUpStore } from './internal/setup';
+import { STORE_SEARCH_KEYS, type StoreContext, setUpStore } from './internal/setup';
 import type {
   DynamoDBStoreOptions,
   ListNamespacesOptions,

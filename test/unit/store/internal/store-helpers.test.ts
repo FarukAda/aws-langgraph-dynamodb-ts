@@ -1,9 +1,9 @@
 import { MAX_SCAN_ITEMS, MAX_SEARCH_CANDIDATES } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { assertStoreOptions } from '../../../../src/store/internal/option-validation';
+import { passesFilter } from '../../../../src/store/internal/filter';
 import { parseListOperation } from '../../../../src/store/internal/parse';
 import { projectKeys, scopedQuery, existingFrom } from '../../../../src/store/internal/rows';
-import { passesFilter } from '../../../../src/store/internal/search-filter';
+import { assertStoreOptions } from '../../../../src/store/internal/setup';
 
 describe('projectKeys', () => {
   it('projects a row s identity and version and keeps the input s own attribute names', () => {

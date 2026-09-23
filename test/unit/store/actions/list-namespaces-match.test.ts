@@ -2,7 +2,7 @@ import {
   matchNamespace,
   prefixRoot,
   truncateDepth,
-} from '../../../../src/store/internal/namespace-match';
+} from '../../../../src/store/actions/list-namespaces';
 import { parseListOperation } from '../../../../src/store/internal/parse';
 
 describe('matchNamespace', () => {

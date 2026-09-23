@@ -21,8 +21,8 @@ import {
 } from '../../shared/validation/primitives';
 import type { ListNamespacesOptions } from '../types';
 import type { JsonValue } from './filter';
-import { STORE_LIST_NAMESPACES_KEYS } from './option-keys';
 import { sortKey } from './rows';
+import { STORE_LIST_NAMESPACES_KEYS } from './setup';
 
 declare const namespaceBrand: unique symbol;
 declare const namespacePrefixBrand: unique symbol;
@@ -248,8 +248,8 @@ export function parseSearch(
  * One match condition: an object, a known match type, a well-formed path.
  * `matchType` is refused rather than resolved when it is neither `'prefix'`
  * nor `'suffix'`: `matchNamespace`'s own branch on `matchType` (see
- * `namespace-match.ts`) otherwise takes an unrecognised type as a suffix match
- * and answers as if the caller had asked for one. The refusal echoes a string
+ * `actions/list-namespaces.ts`) otherwise takes an unrecognised type as a
+ * suffix match and answers as if the caller had asked for one. The refusal echoes a string
  * `matchType` in the message and describes anything else by its type, since
  * `JSON.stringify` itself throws on a bigint.
  */

@@ -1,4 +1,4 @@
-import { getTextAtPath, tokenizePath } from '../../../../src/store/internal/text-path';
+import { getTextAtPath, tokenizePath } from '../../../../src/store/internal/semantic-search';
 
 const doc = {
   text: 'hello',

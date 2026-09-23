@@ -1,11 +1,10 @@
 import type { SearchItem } from '@langchain/langgraph-checkpoint';
 
 import { truncateLabelsForLog } from '../../shared/logging/truncate';
-import { collectCandidates } from '../internal/candidates';
 import type { ParsedSearch } from '../internal/parse';
-import { rankInMemory } from '../internal/ranker';
 import { assertVectorDims } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
+import { collectCandidates, rankInMemory } from '../internal/table-search';
 import { hasVectorBackend, searchViaBackend } from '../internal/vector-index';
 
 /**

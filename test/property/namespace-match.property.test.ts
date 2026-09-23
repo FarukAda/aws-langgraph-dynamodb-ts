@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 
-import { matchNamespace } from '../../src/store/internal/namespace-match';
+import { matchNamespace } from '../../src/store/actions/list-namespaces';
 
 const elementArb = fc.string({ minLength: 1, maxLength: 4 }).filter((s) => s !== '*');
 const namespaceArb = fc.array(elementArb, { minLength: 1, maxLength: 6 });
