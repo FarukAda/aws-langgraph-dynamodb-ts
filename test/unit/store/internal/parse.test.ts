@@ -61,6 +61,13 @@ describe('namespaces', () => {
       refusal('namespacePrefix element'),
     );
   });
+
+  it('parses a prefix into a copy', () => {
+    const given = ['a'];
+    const prefix = parseNamespacePrefix(given, 'namespacePrefix');
+    given.push('x');
+    expect(prefix).toEqual(['a']);
+  });
 });
 
 describe('parseStoreAddress', () => {
@@ -87,6 +94,13 @@ describe('parsePutArguments', () => {
     });
     expect(parsePutArguments(['ns'], 'k', { a: 1 }, false).index).toBe(false);
     expect(parsePutArguments(['ns'], 'k', { a: 1 }, undefined).index).toBeUndefined();
+  });
+
+  it("parses an index into a copy of the caller's array", () => {
+    const given = ['a'];
+    const { index } = parsePutArguments(['ns'], 'k', {}, given);
+    given.push('x');
+    expect(index).toEqual(['a']);
   });
 
   it('adds the rules upstream put() applies, and refuses a null value', () => {
@@ -155,6 +169,17 @@ describe('parseListOperation', () => {
       maxDepth: undefined,
       matchConditions: undefined,
     });
+  });
+
+  it("parses a match condition's path into a copy of the caller's array", () => {
+    const path = ['a'];
+    const { matchConditions } = parseListOperation({
+      offset: 0,
+      limit: 0,
+      matchConditions: [{ matchType: 'prefix', path }],
+    });
+    path.push('x');
+    expect(matchConditions).toEqual([{ matchType: 'prefix', path: ['a'] }]);
   });
 
   it('refuses offset, limit, depth and conditions in that order', () => {

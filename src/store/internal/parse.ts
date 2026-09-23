@@ -47,7 +47,10 @@ export type StoreAddress = { readonly namespace: Namespace; readonly key: string
   readonly [storeAddressBrand]: true;
 };
 
-/** The root label LangGraph reserves for its own namespaces. */
+/**
+ * The root label upstream `BaseStore.put` refuses
+ * (`@langchain/langgraph-checkpoint@1.1.5` `dist/store/base.js:23`).
+ */
 const RESERVED_ROOT = 'langgraph';
 
 /** The page `search` reads when the caller names none. */
@@ -60,6 +63,12 @@ const DEFAULT_LIST_LIMIT = 100;
  * Every label of `value`, each a well-formed identifier, as a copy. Iterated
  * with `for…of`, so a hole in a sparse array is checked as the `undefined` it
  * reads as rather than skipped.
+ *
+ * These are this backend's own rules, and only those: `#` is this backend's
+ * separator, so a `.` costs nothing here, and a listing's `'*'` wildcard
+ * satisfies every one of these rules, so it needs no exemption. Upstream
+ * `BaseStore.put` refuses a `.` in a label and a `"langgraph"` root too, but
+ * only in that one method — see {@link checkUpstreamPutNamespace}.
  */
 function parseLabels(value: unknown, field: string): string[] {
   if (!Array.isArray(value)) {
@@ -110,7 +119,10 @@ export function parseNamespace(value: unknown, field = 'namespace'): Namespace {
 }
 
 /**
- * Parse an item's address.
+ * Parse an item's address: the namespace and key together, because the
+ * DynamoDB sort-key cap is a property of the pair. A deep namespace of legal
+ * segments can still compose an illegal sort key, which is why the
+ * composition is checked and not just the parts.
  *
  * Accepts: `namespace` — as {@link parseNamespace}. `key` — a well-formed
  * identifier.
@@ -199,8 +211,13 @@ function parseIndex(index: PutOperation['index']): false | string[] | undefined 
  * Accepts: `namespacePrefix` — parsed by {@link parseNamespacePrefix}, which
  * `store.search` does first so a malformed prefix is named before a malformed
  * option. `op.filter` — an object when given. `op.query` — a string when given.
- * `op.offset` — an integer of at least 0, `0` when absent. `op.limit` — 0 to the
- * page ceiling, 10 when absent.
+ * `op.offset` — an integer of at least 0, `0` when absent; it carries no
+ * ceiling of its own, since it selects where a page starts rather than how
+ * much one holds, and what it can make a read walk is already bounded by
+ * `maxScanItems`. `op.limit` — 0 to the page ceiling, 10 when absent; `null` is
+ * not absent, so `limit: null` is refused rather than read as the default.
+ * `0` asks for no items and is answered as such, not refused — a page, not a
+ * conversation window, which is the one place this package refuses zero.
  *
  * Returns: the search, its defaults applied.
  *
@@ -225,7 +242,15 @@ export function parseSearch(
   };
 }
 
-/** One match condition: an object, a known match type, a well-formed path. */
+/**
+ * One match condition: an object, a known match type, a well-formed path.
+ * `matchType` is refused rather than resolved when it is neither `'prefix'`
+ * nor `'suffix'`: `matchNamespace`'s own branch on `matchType` (see
+ * `namespace-match.ts`) otherwise takes an unrecognised type as a suffix match
+ * and answers as if the caller had asked for one. The refusal echoes a string
+ * `matchType` in the message and describes anything else by its type, since
+ * `JSON.stringify` itself throws on a bigint.
+ */
 function parseMatchCondition(condition: MatchCondition): ParsedMatchCondition {
   assertObjectShape(condition, 'matchConditions');
   const { matchType, path } = condition;
@@ -256,9 +281,12 @@ function parseMatchConditions(
  * Parse a namespace-listing operation.
  *
  * Accepts: `op.offset` — an integer of at least 0. `op.limit` — 0 to the page
- * ceiling. `op.maxDepth` — an integer of at least 1 when given.
- * `op.matchConditions` — an array of `{ matchType: 'prefix' | 'suffix', path }`
- * when given; `*` is a legal label in a path.
+ * ceiling. `op.maxDepth` — an integer of at least 1 when given: left
+ * unchecked, a negative value inverts truncation via `Array.prototype.slice(0,
+ * -n)`, which drops the *last* n elements rather than erroring, and 0
+ * truncates every namespace to the same empty one. `op.matchConditions` — an
+ * array of `{ matchType: 'prefix' | 'suffix', path }` when given; `*` is a
+ * legal label in a path.
  *
  * Returns: the listing.
  *
@@ -306,7 +334,12 @@ export function parseListNamespacesOptions(options: ListNamespacesOptions): Pars
 
 /**
  * Refuse what upstream `BaseStore.put` refuses and this store's own key rules
- * allow: a label holding `.`, and the root label LangGraph reserves. Only
+ * allow: no `.` in a label, and no `"langgraph"` root
+ * (`@langchain/langgraph-checkpoint@1.1.5` `dist/store/base.js:16-24`). These
+ * two rules belong to that one method only: the reference `InMemoryStore.batch`
+ * checks neither, and LangGraph's runtime reaches a store only through
+ * `batch()`, so a namespace such as `['memories', 'jane.doe@example.com']`
+ * written there must stay readable, searchable and deletable here. Only
  * `put()` applies it, as upstream does; `batch()` does not.
  */
 function checkUpstreamPutNamespace(namespace: Namespace): void {
@@ -400,7 +433,12 @@ export function parseOperation(operation: Operation): ParsedOperation {
 
 /**
  * Parse every operation of a batch before any of them runs, so a malformed
- * last operation cannot leave the first ones applied.
+ * last operation cannot leave the first ones applied. That matters most
+ * inside a graph: LangGraph reaches a store only through `batch()`, via
+ * `AsyncBatchedStore`, which coalesces every call made in one tick into a
+ * single batch and rejects them all together (`@langchain/langgraph`
+ * `dist/pregel/loop.js:311`, `@langchain/langgraph-checkpoint@1.1.5`
+ * `dist/store/batch.js:85-105`).
  *
  * Accepts: `operations` — an array of operations.
  *
