@@ -1,8 +1,11 @@
 import fc from 'fast-check';
 
-import { messageSortKey, sessionPartition } from '../../src/history/internal/keys';
 import { estimateItemBytes } from '../../src/history/internal/message-chunker';
-import type { ChatMessageItem } from '../../src/history/types';
+import {
+  type ChatMessageItem,
+  messageSortKey,
+  sessionPartition,
+} from '../../src/history/internal/rows';
 import { PayloadLocation, type PayloadDescriptor } from '../../src/shared/codec/codec';
 
 type Attribute =

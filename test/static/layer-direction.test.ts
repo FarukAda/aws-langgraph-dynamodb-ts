@@ -13,7 +13,7 @@ describe('the layer table', () => {
   it('places modules by directory and by name', () => {
     expect(layerOf('shared/errors/classify.ts')).toBe('shared');
     expect(layerOf('store/types.ts')).toBe('declarations');
-    expect(layerOf('history/internal/keys.ts')).toBe('internal');
+    expect(layerOf('history/internal/rows.ts')).toBe('internal');
     expect(layerOf('checkpointer/actions/put.ts')).toBe('actions');
     expect(layerOf('store/store.ts')).toBe('adapter');
     expect(layerOf('factory/types.ts')).toBe('factory');

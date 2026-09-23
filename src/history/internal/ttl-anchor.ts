@@ -1,8 +1,8 @@
 import { nowSeconds } from '../../shared/clock';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { SESSION_SORT_KEY, sessionPartition } from './keys';
 import type { SessionId } from './parse';
+import { sessionRowKey } from './rows';
 import type { HistoryContext } from './setup';
 
 /** The resolved ttl anchor plus whether the persisted SESSION-row value must be force-refreshed. */
@@ -55,7 +55,7 @@ export async function resolveTtlAnchor(
       context.client.get(
         {
           TableName: context.tableName,
-          Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+          Key: sessionRowKey(sessionId),
           ConsistentRead: true,
           ProjectionExpression: '#ttl',
           ExpressionAttributeNames: { '#ttl': 'ttl' },

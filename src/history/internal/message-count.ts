@@ -6,10 +6,8 @@ import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { isExpiredRow, assertReadableRow } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
-import type { ChatMessageItem } from '../types';
-import { narrowMessageItem } from './item-mapper';
 import type { SessionId } from './parse';
-import { messageQuery } from './query';
+import { type ChatMessageItem, messageQuery, narrowMessageItem } from './rows';
 import type { HistoryContext } from './setup';
 
 /**

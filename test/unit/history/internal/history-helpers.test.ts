@@ -1,12 +1,12 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
+import { readWindow } from '../../../../src/history/internal/message-window';
+import { parseMessageWindow, parseSessionId } from '../../../../src/history/internal/parse';
 import {
   isHistorySortKey,
   messageSortKey,
   SESSION_SORT_KEY,
-} from '../../../../src/history/internal/keys';
-import { readWindow } from '../../../../src/history/internal/message-window';
-import { parseMessageWindow, parseSessionId } from '../../../../src/history/internal/parse';
+} from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';

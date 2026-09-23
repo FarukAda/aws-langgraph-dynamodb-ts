@@ -1,6 +1,5 @@
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import type { PayloadDescriptor } from '../shared/codec/codec';
 import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';
 
 /** Options for {@link DynamoDBChatMessageHistory}. */
@@ -96,17 +95,6 @@ export interface SessionMetadata {
   updatedAt: string;
   /** When the session's TTL expires, as an ISO-8601 instant; absent when no TTL is stored. */
   expiresAt?: string;
-}
-
-/** A single stored chat message item (one per message, ordered by its ULID). */
-export interface ChatMessageItem {
-  PK: string;
-  SK: string;
-  /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
-  v?: number;
-  sessionId: string;
-  message: PayloadDescriptor;
-  ttl?: number;
 }
 
 /** The per-session metadata item, updated atomically as messages are appended. */

@@ -4,7 +4,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 
-import { sessionPartition } from '../../src/history/internal/keys';
+import { sessionPartition } from '../../src/history/internal/rows';
 import { DynamoDBChatMessageHistory } from '../../src/index';
 import { ErrorCode } from '../../src/shared/errors/error-code';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';

@@ -6,7 +6,7 @@ import {
   SESSION_SORT_KEY,
   historyPartitionPrefix,
   sessionPartition,
-} from '../../../src/history/internal/keys';
+} from '../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../src/shared/codec/json-serde';
 import { ADAPTER_TAGS } from '../../../src/shared/dynamodb/table-schema';

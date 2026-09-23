@@ -2,10 +2,9 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage, mapChatMessagesToStoredMessages } from '@langchain/core/messages';
 
 import { getMessages } from '../../../../src/history/actions/get-messages';
-import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import { parseSessionId } from '../../../../src/history/internal/parse';
+import { buildMessageItem, type ChatMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
-import type { ChatMessageItem } from '../../../../src/history/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -41,13 +40,12 @@ async function items(
   );
   return Promise.all(
     stored.map((message, i) =>
-      buildMessageItem(
-        context(client),
-        SESSION_ID,
-        `01${i}`,
+      buildMessageItem(context(client), {
+        sessionId: SESSION_ID,
+        messageId: `01${i}`,
         message,
-        expired.includes(i) ? NOW_SECONDS - 10 : undefined,
-      ),
+        ttlTimestamp: expired.includes(i) ? NOW_SECONDS - 10 : undefined,
+      }),
     ),
   );
 }

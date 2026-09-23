@@ -7,11 +7,8 @@ import { isExpiredRow, assertReadableRow } from '../../shared/dynamodb/table-sch
 import { validationError } from '../../shared/errors/errors';
 import { truncateForLog } from '../../shared/logging/truncate';
 import { ulidTimePrefix } from '../../shared/ulid';
-import type { ChatMessageItem } from '../types';
-import { narrowMessageItem } from './item-mapper';
-import { messageSortKey } from './keys';
 import type { ParsedWindow, SessionId } from './parse';
-import { messageQuery } from './query';
+import { type ChatMessageItem, messageQuery, messageSortKey, narrowMessageItem } from './rows';
 import type { HistoryContext } from './setup';
 
 /**

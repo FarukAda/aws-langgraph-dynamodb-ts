@@ -1,8 +1,8 @@
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { writeMessageChunk } from '../../../../src/history/internal/message-transaction';
+import type { ChatMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
-import type { ChatMessageItem } from '../../../../src/history/types';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import {
   MAX_WRITE_LIFETIME_MS,

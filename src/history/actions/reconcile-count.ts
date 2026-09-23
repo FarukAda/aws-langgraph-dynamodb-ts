@@ -5,9 +5,9 @@ import { PARTITION_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
 import { classifyAwsError } from '../../shared/errors/classify';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { conflictError } from '../../shared/errors/errors';
-import { SESSION_SORT_KEY, sessionPartition } from '../internal/keys';
 import { countLiveMessages } from '../internal/message-count';
 import { parseSessionId, type SessionId } from '../internal/parse';
+import { sessionRowKey } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';
 
 /** The session row's stored count, and whether the row exists at all. */
@@ -27,7 +27,7 @@ async function observeCount(
       context.client.get(
         {
           TableName: context.tableName,
-          Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+          Key: sessionRowKey(sessionId),
           ConsistentRead: true,
           ProjectionExpression: '#count',
           ExpressionAttributeNames: { '#count': 'messageCount' },
@@ -75,7 +75,7 @@ async function writeCount(
       context.client.update(
         {
           TableName: context.tableName,
-          Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+          Key: sessionRowKey(sessionId),
           UpdateExpression: 'SET #count = :count',
           ExpressionAttributeNames: { '#count': 'messageCount' },
           ExpressionAttributeValues: { ':count': count, ...guard.ExpressionAttributeValues },

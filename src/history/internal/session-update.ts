@@ -2,7 +2,7 @@ import type { NativeAttributeValue, TransactWriteCommandInput } from '@aws-sdk/l
 
 import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
 import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/table-schema';
-import { SESSION_SORT_KEY, sessionPartition } from './keys';
+import { sessionRowKey } from './rows';
 
 /** One member of a {@link TransactWriteCommandInput} `TransactItems` list. */
 export type HistoryTransactItem = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
@@ -142,7 +142,7 @@ export function buildSessionUpdateItem(
   return {
     Update: {
       TableName: tableName,
-      Key: { PK: sessionPartition(fields.sessionId), SK: SESSION_SORT_KEY },
+      Key: sessionRowKey(fields.sessionId),
       UpdateExpression: `ADD #count :n SET ${sets.join(', ')}`,
       ...(conditionExpression ? { ConditionExpression: conditionExpression } : {}),
       ExpressionAttributeNames: names,

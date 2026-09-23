@@ -14,8 +14,9 @@ import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';
 import { readWindow } from '../internal/message-window';
 import { parseGetMessagesRequest, type SessionId } from '../internal/parse';
+import type { ChatMessageItem } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';
-import type { ChatMessageItem, MessageWindow } from '../types';
+import type { MessageWindow } from '../types';
 
 /** One item's decode outcome: a rebuilt message, or a proof that it never can be. */
 type Decoded = { kind: 'ok'; message: BaseMessage } | { kind: 'corrupt'; error: Error };

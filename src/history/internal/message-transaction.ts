@@ -4,7 +4,7 @@ import { nowMs } from '../../shared/clock';
 import { MAX_WRITE_LIFETIME_MS, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
 import { conditionFailedAt, conditionalCheckFailure } from '../../shared/dynamodb/cancellation';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import type { ChatMessageItem } from '../types';
+import type { ChatMessageItem } from './rows';
 import {
   buildSessionUpdateItem,
   type HistoryTransactItem,

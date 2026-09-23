@@ -12,8 +12,8 @@ import {
   SORT_KEY_ATTRIBUTE,
 } from '../../shared/dynamodb/table-schema';
 import { type PageLimit, parseLimit } from '../../shared/validation/primitives';
-import { SESSION_SORT_KEY, historyPartitionPrefix, sessionPartition } from '../internal/keys';
 import { type ListSessionsRequest, parseListSessionsRequest } from '../internal/parse';
+import { SESSION_SORT_KEY, historyPartitionPrefix, sessionPartition } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';
 import type { ChatSessionItem, ListSessionsOptions, SessionMetadata, SessionPage } from '../types';
 

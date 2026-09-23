@@ -1,7 +1,7 @@
 import type { StoredMessage } from '@langchain/core/messages';
 
-import { buildMessageItem, narrowMessageItem } from '../../../../src/history/internal/item-mapper';
 import { parseSessionId } from '../../../../src/history/internal/parse';
+import { buildMessageItem, narrowMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { decodePayload, PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -22,9 +22,13 @@ function context(): HistoryContext {
 const stored: StoredMessage = { type: 'human', data: { content: 'hi' } } as StoredMessage;
 const SESSION_ID = parseSessionId('s1');
 
-describe('history item-mapper', () => {
+describe('history rows: message', () => {
   it('builds a message item with PK/SK and round-trips the message', async () => {
-    const item = await buildMessageItem(context(), SESSION_ID, '01HZX', stored);
+    const item = await buildMessageItem(context(), {
+      sessionId: SESSION_ID,
+      messageId: '01HZX',
+      message: stored,
+    });
     expect(item.PK).toBe('HIST#s1');
     expect(item.SK).toBe('HISTORY#MSG#01HZX');
     expect(item.sessionId).toBe('s1');
@@ -33,7 +37,12 @@ describe('history item-mapper', () => {
   });
 
   it('stamps a ttl when provided', async () => {
-    const item = await buildMessageItem(context(), SESSION_ID, '01HZX', stored, 1750);
+    const item = await buildMessageItem(context(), {
+      sessionId: SESSION_ID,
+      messageId: '01HZX',
+      message: stored,
+      ttlTimestamp: 1750,
+    });
     expect(item.ttl).toBe(1750);
   });
 
@@ -51,9 +60,7 @@ describe('history item-mapper', () => {
     const ulid = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';
     const item = await buildMessageItem(
       { ...context(), offloader: offloader as never },
-      SESSION_ID,
-      ulid,
-      stored,
+      { sessionId: SESSION_ID, messageId: ulid, message: stored },
     );
     const key = `p/${Buffer.from('s1', 'utf8').toString('base64url')}/${ulid}.bin`;
     expect(item.message).toMatchObject({ location: PayloadLocation.S3, s3Key: key });
@@ -80,7 +87,11 @@ describe('narrowMessageItem', () => {
   });
 
   it('accepts a row this package wrote', async () => {
-    const item = await buildMessageItem(context(), SESSION_ID, '01HZX', stored);
+    const item = await buildMessageItem(context(), {
+      sessionId: SESSION_ID,
+      messageId: '01HZX',
+      message: stored,
+    });
     expect(narrowMessageItem(item)).toBe(item);
   });
 

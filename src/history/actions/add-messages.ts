@@ -5,7 +5,6 @@ import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { appendChunks } from '../internal/append-saga';
-import { buildMessageItem } from '../internal/item-mapper';
 import { chunkBySize } from '../internal/message-chunker';
 import {
   parseMessages,
@@ -13,10 +12,10 @@ import {
   type SessionId,
   type StorableMessages,
 } from '../internal/parse';
+import { buildMessageItem, type ChatMessageItem } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';
 import { deriveTitle } from '../internal/title-generator';
 import { resolveTtlAnchor } from '../internal/ttl-anchor';
-import type { ChatMessageItem } from '../types';
 
 /** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
 const MAX_MESSAGES_PER_TRANSACTION = 99;
@@ -49,7 +48,11 @@ async function buildItems(
   try {
     for (const message of stored) {
       items.push(
-        await buildMessageItem(context, sessionId, context.ulid(), message, ttlTimestamp, signal),
+        await buildMessageItem(
+          context,
+          { sessionId, messageId: context.ulid(), message, ttlTimestamp },
+          signal,
+        ),
       );
     }
   } catch (error) {

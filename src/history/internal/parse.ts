@@ -6,6 +6,7 @@ import {
 } from '@langchain/core/messages';
 
 import { MAX_PARTITION_ID_BYTES } from '../../shared/constants';
+import { KEY_SEPARATOR } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
 import { redactedMessage } from '../../shared/logging/secret-patterns';
 import { truncateForLog } from '../../shared/logging/truncate';
@@ -20,7 +21,6 @@ import {
   parseString,
 } from '../../shared/validation/primitives';
 import type { GetMessagesOptions, ListSessionsOptions, MessageWindow } from '../types';
-import { SORT_KEY_SEPARATOR } from './keys';
 import { GET_MESSAGES_KEYS, LIST_SESSIONS_KEYS } from './option-keys';
 
 declare const sessionIdBrand: unique symbol;
@@ -66,12 +66,7 @@ export type ParsedWindow = { readonly limit?: PageLimit; readonly before?: Date 
  * Throws: `VALIDATION` naming `sessionId`.
  */
 export function parseSessionId(value: unknown): SessionId {
-  return parseIdentifier(
-    value,
-    SORT_KEY_SEPARATOR,
-    'sessionId',
-    MAX_PARTITION_ID_BYTES,
-  ) as SessionId;
+  return parseIdentifier(value, KEY_SEPARATOR, 'sessionId', MAX_PARTITION_ID_BYTES) as SessionId;
 }
 
 /**

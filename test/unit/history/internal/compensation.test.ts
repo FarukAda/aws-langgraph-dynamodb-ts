@@ -2,8 +2,8 @@ import { BatchWriteCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { compensate } from '../../../../src/history/internal/compensation';
 import { parseSessionId } from '../../../../src/history/internal/parse';
+import type { ChatMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
-import type { ChatMessageItem } from '../../../../src/history/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { type Logger, SILENT_LOGGER } from '../../../../src/shared/logging/logger';

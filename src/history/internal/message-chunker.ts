@@ -1,5 +1,5 @@
 import { PayloadLocation, type PayloadDescriptor } from '../../shared/codec/codec';
-import type { ChatMessageItem } from '../types';
+import type { ChatMessageItem } from './rows';
 
 /**
  * Per-item allowance added to the measured field bytes to cover what the size

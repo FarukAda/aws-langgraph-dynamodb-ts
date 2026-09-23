@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 
 import { chunkBySize, estimateItemBytes } from '../../src/history/internal/message-chunker';
-import type { ChatMessageItem } from '../../src/history/types';
+import type { ChatMessageItem } from '../../src/history/internal/rows';
 import { PayloadLocation } from '../../src/shared/codec/codec';
 
 function makeItem(skLen: number, bytesLen: number): ChatMessageItem {

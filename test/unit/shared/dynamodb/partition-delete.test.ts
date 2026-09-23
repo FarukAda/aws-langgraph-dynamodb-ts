@@ -7,7 +7,7 @@ import {
 
 import { beginsWithQuery, partitionQuery } from '../../../../src/checkpointer/internal/rows';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { sessionItemsQuery } from '../../../../src/history/internal/query';
+import { sessionItemsQuery } from '../../../../src/history/internal/rows';
 import { type PayloadDescriptor, PayloadLocation } from '../../../../src/shared/codec/codec';
 import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import {

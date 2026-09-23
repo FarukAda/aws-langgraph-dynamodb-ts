@@ -1,5 +1,5 @@
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { messageQuery, sessionItemsQuery } from '../../../../src/history/internal/query';
+import { messageQuery, sessionItemsQuery } from '../../../../src/history/internal/rows';
 
 const SESSION_ID = parseSessionId('s1');
 

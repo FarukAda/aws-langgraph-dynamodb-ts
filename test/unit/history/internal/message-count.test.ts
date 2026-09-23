@@ -1,9 +1,9 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
-import { messageSortKey } from '../../../../src/history/internal/keys';
 import { countLiveMessages } from '../../../../src/history/internal/message-count';
 import { readWindow } from '../../../../src/history/internal/message-window';
 import { parseMessageWindow, parseSessionId } from '../../../../src/history/internal/parse';
+import { messageSortKey } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';

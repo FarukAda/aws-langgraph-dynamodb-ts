@@ -4,7 +4,8 @@ import {
   messageSortKey,
   messageSortKeyPrefix,
   sessionPartition,
-} from '../../../../src/history/internal/keys';
+  sessionRowKey,
+} from '../../../../src/history/internal/rows';
 import { partitionKey as storePartition } from '../../../../src/store/internal/keys';
 
 describe('history keys', () => {
@@ -42,5 +43,11 @@ describe('history keys', () => {
   it('exposes the partition tag the table scan restricts on', () => {
     expect(historyPartitionPrefix()).toBe('HIST#');
     expect(sessionPartition('s1').startsWith(historyPartitionPrefix())).toBe(true);
+  });
+});
+
+describe('sessionRowKey', () => {
+  it("keys a session's SESSION row in the session's own partition", () => {
+    expect(sessionRowKey('s1')).toEqual({ PK: sessionPartition('s1'), SK: SESSION_SORT_KEY });
   });
 });

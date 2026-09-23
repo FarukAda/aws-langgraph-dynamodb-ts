@@ -1,5 +1,5 @@
 import { chunkBySize, estimateItemBytes } from '../../../../src/history/internal/message-chunker';
-import type { ChatMessageItem } from '../../../../src/history/types';
+import type { ChatMessageItem } from '../../../../src/history/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 
 function inlineItem(sk: string, byteLength: number): ChatMessageItem {

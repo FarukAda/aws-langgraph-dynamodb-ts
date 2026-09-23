@@ -1,8 +1,8 @@
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { classifyAwsError } from '../../shared/errors/classify';
 import { ErrorCode } from '../../shared/errors/error-code';
-import { SESSION_SORT_KEY, sessionPartition } from './keys';
 import type { SessionId } from './parse';
+import { sessionRowKey } from './rows';
 import type { HistoryContext } from './setup';
 
 /** True when a plain UpdateItem was turned away by its ConditionExpression. */
@@ -47,7 +47,7 @@ export async function removeRolledBackTitle(
         context.client.update(
           {
             TableName: context.tableName,
-            Key: { PK: sessionPartition(sessionId), SK: SESSION_SORT_KEY },
+            Key: sessionRowKey(sessionId),
             UpdateExpression: 'REMOVE #title',
             ConditionExpression: '#c = :now AND #title = :title',
             ExpressionAttributeNames: { '#title': 'title', '#c': 'createdAt' },

@@ -6,8 +6,8 @@ import { ErrorCode } from '../../shared/errors/error-code';
 import { compensationFailedError } from '../../shared/errors/errors';
 import { toError } from '../../shared/errors/to-error';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
-import type { ChatMessageItem } from '../types';
 import type { SessionId } from './parse';
+import type { ChatMessageItem } from './rows';
 import { revertSessionCount, revertSessionCreation } from './session-count';
 import type { HistoryContext } from './setup';
 

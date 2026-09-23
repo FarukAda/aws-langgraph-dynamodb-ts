@@ -2,8 +2,8 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { HumanMessage, mapChatMessagesToStoredMessages } from '@langchain/core/messages';
 
 import { getMessages } from '../../../../src/history/actions/get-messages';
-import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import { parseSessionId } from '../../../../src/history/internal/parse';
+import { buildMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
@@ -32,7 +32,11 @@ const SESSION_ID = parseSessionId('s1');
 /** One real message row, so a refusal is never just an empty session. */
 async function realRow(client: HistoryContext['client'], ulid: string) {
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
-  return buildMessageItem(context(client), SESSION_ID, ulid, human);
+  return buildMessageItem(context(client), {
+    sessionId: SESSION_ID,
+    messageId: ulid,
+    message: human,
+  });
 }
 
 /**

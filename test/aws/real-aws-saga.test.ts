@@ -10,15 +10,15 @@ import {
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
 import { appendChunks } from '../../src/history/internal/append-saga';
+import { parseSessionId } from '../../src/history/internal/parse';
 import {
+  type ChatMessageItem,
   messageSortKey,
   messageSortKeyPrefix,
   SESSION_SORT_KEY,
   sessionPartition,
-} from '../../src/history/internal/keys';
-import { parseSessionId } from '../../src/history/internal/parse';
+} from '../../src/history/internal/rows';
 import type { HistoryContext } from '../../src/history/internal/setup';
-import type { ChatMessageItem } from '../../src/history/types';
 import { PayloadLocation } from '../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../src/shared/errors/error-code';

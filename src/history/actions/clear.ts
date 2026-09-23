@@ -6,9 +6,8 @@ import {
   type NamedDescriptor,
 } from '../../shared/dynamodb/partition-delete';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
-import { isHistorySortKey } from '../internal/keys';
 import { parseSessionId } from '../internal/parse';
-import { sessionItemsQuery } from '../internal/query';
+import { isHistorySortKey, sessionItemsQuery } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';
 
 /**

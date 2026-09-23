@@ -7,7 +7,7 @@ import {
 
 import { appendChunks } from '../../../../src/history/internal/append-saga';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import type { ChatMessageItem } from '../../../../src/history/types';
+import type { ChatMessageItem } from '../../../../src/history/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { retryExhaustedError } from '../../../../src/shared/errors/errors';

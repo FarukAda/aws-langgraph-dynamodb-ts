@@ -11,7 +11,7 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
-import { sessionPartition } from '../../src/history/internal/keys';
+import { sessionPartition } from '../../src/history/internal/rows';
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { partitionKey, sortKey } from '../../src/store/internal/keys';
 import { liveRegion } from './helpers/env';
