@@ -11,18 +11,19 @@
  * message row to the SESSION row's `writeId`.
  */
 
-import { randomUUID } from 'node:crypto';
-
-import { nowIso, nowMs } from '../../shared/clock';
+import { nowIso } from '../../shared/clock';
 import { PayloadLocation, type PayloadDescriptor } from '../../shared/codec/codec';
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
-import { MAX_WRITE_LIFETIME_MS, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
+import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { conditionFailedAt, conditionalCheckFailure } from '../../shared/dynamodb/cancellation';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import {
+  transactIdempotently,
+  verifyRow,
+  type WriteVerdict,
+} from '../../shared/dynamodb/idempotent-write';
 import { type RowKey, SORT_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
-import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
 import { DynamoDBLangGraphError, hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { compensationFailedError } from '../../shared/errors/errors';
@@ -33,7 +34,6 @@ import { buildMessageItem, type ChatMessageItem } from './rows';
 import {
   buildSessionUpdateItem,
   deriveTitle,
-  type HistoryTransactItem,
   revertSessionCount,
   revertSessionCreation,
   type SessionUpdateFields,
@@ -437,13 +437,13 @@ export interface ChunkRetryOptions {
   signal?: AbortSignal;
 }
 
-/** True when a TransactWriteItems cancellation was caused solely by the SESSION update's ttl condition (always TransactItems index 0 — see buildInput below), not by any message item. */
+/** True when a TransactWriteItems cancellation was caused solely by the SESSION update's ttl condition (always TransactItems index 0 — see attempt below), not by any message item. */
 function isTtlConditionLoss(error: Error): boolean {
   return conditionFailedAt(error, 0) && conditionalCheckFailure(error) !== undefined;
 }
 
 /**
- * Build one send of the chunk, drawing the token that makes its re-sends safe.
+ * One send of the chunk, drawing the token that makes its re-sends safe.
  *
  * The message rows are keyed by their own ULIDs, so putting one twice changes
  * nothing; the session update is `ADD #count :n`, and that is the whole of the
@@ -460,49 +460,35 @@ function isTtlConditionLoss(error: Error): boolean {
  * place the precondition on what a token guarantees shows here — the first
  * send was cancelled by its condition, so it committed nothing, nothing was
  * cached for its token, and the second send is a fresh evaluation rather than
- * a replay. The deadline the caller draws beside this input is what keeps each
- * send's retrying inside the window that send's token is honoured for; the
- * token enforces no window of its own.
+ * a replay. The deadline drawn beside the token is what keeps each send's
+ * retrying inside the window that send's token is honoured for; the token
+ * enforces no window of its own.
+ *
+ * What each call passes. The deadline is minted here, beside the token,
+ * rather than once per `writeMessageChunk`. The ttl race sends the chunk twice
+ * and each send draws its own token, so each send is honoured for its own ten
+ * minutes and is entitled to a full budget. One deadline per call would hand
+ * the second send whatever the first did not spend, silently halving the
+ * retrying that matters most — the send made after a race has already been
+ * lost. That deadline is a bound on the whole budget, never on the attempt
+ * count. `minAttempts` is the contention floor: a caller policy may raise the
+ * budget, never lower it. `retry.signal` aborts between attempts and
+ * `retry.rng` replaces the backoff's jitter source.
  */
-function buildInput(
-  context: HistoryContext,
-  items: ChatMessageItem[],
-  fields: SessionUpdateFields,
-): { TransactItems: HistoryTransactItem[]; ClientRequestToken: string } {
-  return {
-    TransactItems: [
-      buildSessionUpdateItem(context.tableName, fields),
-      ...items.map((item) => ({ Put: { TableName: context.tableName, Item: item } })),
-    ],
-    ClientRequestToken: randomUUID(),
-  };
-}
-
 async function attempt(
   context: HistoryContext,
   items: ChatMessageItem[],
   fields: SessionUpdateFields,
   retry: ChunkRetryOptions,
 ): Promise<void> {
-  const input = buildInput(context, items, fields);
-  /**
-   * Minted here, beside the token, rather than once per `writeMessageChunk`.
-   * The ttl race sends the chunk twice and each send draws its own token, so
-   * each send is honoured for its own ten minutes and is entitled to a full
-   * budget. One deadline per call would hand the second send whatever the
-   * first did not spend, silently halving the retrying that matters most —
-   * the send made after a race has already been lost.
-   */
-  const deadlineAt = nowMs() + MAX_WRITE_LIFETIME_MS;
-  await withDynamoDBRetry((request) => context.client.transactWrite(input, request), {
-    ...context.retry,
-    /** The contention floor: a caller policy may raise the budget, never lower it. */
-    maxAttempts: Math.max(MESSAGE_APPEND_RETRY_MAX_ATTEMPTS, context.retry?.maxAttempts ?? 0),
-    rng: retry.rng,
-    signal: retry.signal,
-    /** A bound on the whole budget, never on the attempt count above it. */
-    deadlineAt,
-  });
+  await transactIdempotently(
+    context,
+    [
+      buildSessionUpdateItem(context.tableName, fields),
+      ...items.map((item) => ({ Put: { TableName: context.tableName, Item: item } })),
+    ],
+    { signal: retry.signal, rng: retry.rng, minAttempts: MESSAGE_APPEND_RETRY_MAX_ATTEMPTS },
+  );
 }
 
 /**
@@ -537,7 +523,7 @@ async function attempt(
  * because they land in one transaction. At most one extra attempt is spent on
  * the benign ttl race, and it carries its own request token, so a retry can
  * never double-apply the count — and its own deadline of
- * {@link MAX_WRITE_LIFETIME_MS}, so the retrying stops while that token is
+ * `MAX_WRITE_LIFETIME_MS`, so the retrying stops while that token is
  * still deduplicating rather than after it has expired. The SESSION row's
  * `writeId` moves if and only if a message row was added: the update travels in
  * the same transaction as the rows, and nothing else writes it.

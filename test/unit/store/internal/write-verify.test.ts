@@ -1,14 +1,11 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { isRowAbsent } from '../../../../src/shared/dynamodb/idempotent-write';
 import { retryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import {
-  isRetryExhausted,
-  rowIsAbsent,
-  verifyWriteLanded,
-} from '../../../../src/store/internal/write-verify';
+import { isRetryExhausted, verifyWriteLanded } from '../../../../src/store/internal/write-verify';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(client: StoreContext['client']): StoreContext {
@@ -69,11 +66,11 @@ describe('verifyWriteLanded (STORE-13)', () => {
   });
 });
 
-describe('rowIsAbsent (I4, STORE-07)', () => {
+describe('isRowAbsent (I4, STORE-07)', () => {
   it('returns true when the row is genuinely gone, projecting only the partition key', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    await expect(rowIsAbsent(context(client), { PK: 'p', SK: 's' })).resolves.toBe(true);
+    await expect(isRowAbsent(context(client), { PK: 'p', SK: 's' })).resolves.toBe(true);
     const input = mock.commandCalls(GetCommand)[0].args[0].input;
     expect(Object.values(input.ExpressionAttributeNames!)).toEqual(['PK']);
   });
@@ -81,7 +78,7 @@ describe('rowIsAbsent (I4, STORE-07)', () => {
   it('returns false when the row is still present', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({ Item: { PK: 'p' } });
-    await expect(rowIsAbsent(context(client), { PK: 'p', SK: 's' })).resolves.toBe(false);
+    await expect(isRowAbsent(context(client), { PK: 'p', SK: 's' })).resolves.toBe(false);
   });
 
   it('fails safe when the verification read itself fails', async () => {
@@ -89,7 +86,7 @@ describe('rowIsAbsent (I4, STORE-07)', () => {
     // would let cleanup run for a delete that may never have landed.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).rejects(Object.assign(new Error('down'), { name: 'ValidationException' }));
-    await expect(rowIsAbsent(context(client), { PK: 'p', SK: 's' })).resolves.toBe(false);
+    await expect(isRowAbsent(context(client), { PK: 'p', SK: 's' })).resolves.toBe(false);
   });
 
   it('recognises a spent retry budget by brand and code, not instanceof', () => {

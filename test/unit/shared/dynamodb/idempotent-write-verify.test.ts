@@ -9,7 +9,7 @@ import {
   type RowRead,
   verdictFor,
   verifyRow,
-} from '../../../../src/shared/dynamodb/write-verify';
+} from '../../../../src/shared/dynamodb/idempotent-write';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 const KEY = { PK: 'p', SK: 's' };

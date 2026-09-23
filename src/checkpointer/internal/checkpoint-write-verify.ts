@@ -1,10 +1,10 @@
-import { rowKeyOf } from '../../shared/dynamodb/table-schema';
 import {
   offloadedKey,
   type RowProbe,
   verifyRow,
   type WriteVerdict,
-} from '../../shared/dynamodb/write-verify';
+} from '../../shared/dynamodb/idempotent-write';
+import { rowKeyOf } from '../../shared/dynamodb/table-schema';
 import type { CheckpointMetaItem, CheckpointPayloadItem } from './rows';
 import type { CheckpointerContext } from './setup';
 

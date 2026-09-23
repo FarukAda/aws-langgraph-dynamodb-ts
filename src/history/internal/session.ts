@@ -11,16 +11,16 @@
  * reads it back only from a row this release can summarise.
  */
 
-import { randomUUID } from 'node:crypto';
-
 import type { NativeAttributeValue, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { StoredMessage } from '@langchain/core/messages';
 
-import { nowMs, nowSeconds } from '../../shared/clock';
-import { MAX_WRITE_LIFETIME_MS } from '../../shared/constants';
+import { nowSeconds } from '../../shared/clock';
 import { conditionFailedAt } from '../../shared/dynamodb/cancellation';
 import type { DocItem } from '../../shared/dynamodb/client';
-import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../shared/dynamodb/conditional-put';
+import {
+  OVERWRITE_CAS_MAX_ATTEMPTS,
+  transactIdempotently,
+} from '../../shared/dynamodb/idempotent-write';
 import { DEFAULT_INDEX_SHARDS, indexKeys } from '../../shared/dynamodb/index-keys';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
@@ -42,7 +42,7 @@ import type { HistoryContext } from './setup';
 /**
  * True when a TransactWriteItems cancellation was caused by a
  * ConditionalCheckFailed reason. Named distinctly from
- * shared/dynamodb/conditional-put.ts's isConditionalCheckFailed, which
+ * shared/dynamodb/idempotent-write.ts's isConditionalCheckFailed, which
  * checks a different thing entirely (a raw PutItem exception name, not a
  * transaction cancellation reason) — this function had that same name
  * until now, a real trap for whoever read one assuming it was the other.
@@ -94,7 +94,7 @@ function isCancelledByCondition(error: Error): boolean {
  * back afterwards to notice, so a re-sent attempt must be answered from
  * DynamoDB's idempotency cache rather than re-evaluated. Two things hold
  * that together and only together: the `ClientRequestToken`, which makes a
- * re-send a no-op, and the deadline of {@link MAX_WRITE_LIFETIME_MS}, which
+ * re-send a no-op, and the deadline of `MAX_WRITE_LIFETIME_MS`, which
  * stops the retrying while that token is still honoured. Nothing in the token
  * enforces that window — the service honours it for its own ten minutes
  * whatever a caller's retry policy says — so without the deadline a long
@@ -124,13 +124,8 @@ export async function revertSessionCount(
     ExpressionAttributeNames: { '#count': 'messageCount', '#c': 'createdAt' },
     ExpressionAttributeValues: { ':neg': -delta, ':now': createdBefore },
   };
-  const input = { TransactItems: [{ Update: update }], ClientRequestToken: randomUUID() };
   try {
-    await withDynamoDBRetry((request) => context.client.transactWrite(input, request), {
-      /** Spread, never assigned onto: `context.retry` is the adapter's own object. */
-      ...context.retry,
-      deadlineAt: nowMs() + MAX_WRITE_LIFETIME_MS,
-    });
+    await transactIdempotently(context, [{ Update: update }]);
   } catch (error) {
     if (isCancelledByCondition(error as Error)) return;
     throw error;
@@ -202,8 +197,8 @@ export async function revertSessionCreation(
   created: CreatedSession,
 ): Promise<void> {
   if (created.total === 0) return;
-  const input = {
-    TransactItems: [
+  try {
+    await transactIdempotently(context, [
       {
         Delete: {
           TableName: context.tableName,
@@ -213,15 +208,7 @@ export async function revertSessionCreation(
           ExpressionAttributeValues: { ':total': created.total, ':now': created.createdAt },
         },
       },
-    ],
-    ClientRequestToken: randomUUID(),
-  };
-  try {
-    await withDynamoDBRetry((request) => context.client.transactWrite(input, request), {
-      ...context.retry,
-      /** The delete carries a token too; this is what keeps its retrying inside the window. */
-      deadlineAt: nowMs() + MAX_WRITE_LIFETIME_MS,
-    });
+    ]);
     return;
   } catch (error) {
     if (!isCancelledByCondition(error as Error)) throw error;

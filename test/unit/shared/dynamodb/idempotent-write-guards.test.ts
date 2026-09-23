@@ -5,7 +5,7 @@ import {
   revisionGuard,
   WRITE_ID_ATTRIBUTE,
   writeIdGuard,
-} from '../../../../src/shared/dynamodb/conditional-put';
+} from '../../../../src/shared/dynamodb/idempotent-write';
 import { isRetryableError } from '../../../../src/shared/dynamodb/retry-classifier';
 import { DEFAULT_RETRYABLE_ERRORS } from '../../../../src/shared/errors/classify';
 

@@ -123,7 +123,7 @@ export async function putCheckpoint(
         { Put: { TableName: context.tableName, Item: meta } },
         { Put: { TableName: context.tableName, Item: payload } },
       ],
-      request.signal,
+      { signal: request.signal },
     );
   } catch (error) {
     if (!context.offloader) throw error;

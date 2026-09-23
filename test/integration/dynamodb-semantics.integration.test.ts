@@ -2,7 +2,7 @@ import { type AttributeValue, DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 
-import { rejectedItem } from '../../src/shared/dynamodb/conditional-put';
+import { rejectedItem } from '../../src/shared/dynamodb/idempotent-write';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 
 const tableName = 'semantics-itest';

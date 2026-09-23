@@ -6,7 +6,7 @@ import { DELETE_CONCURRENCY } from '../constants';
 import type { Logger } from '../logging/logger';
 import { truncateForLog } from '../logging/truncate';
 import type { DynamoDBDocumentLike, DocItem } from './client';
-import { isConditionalCheckFailed, rejectedItem, type RevisionGuard } from './conditional-put';
+import { isConditionalCheckFailed, rejectedItem, type RevisionGuard } from './idempotent-write';
 import { withDynamoDBRetry, type RetryOptions } from './retry';
 
 /** One row a pass has read and means to delete. */

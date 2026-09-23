@@ -1,12 +1,11 @@
 import {
   isConditionalCheckFailed,
   type RevisionGuard,
-} from '../../shared/dynamodb/conditional-put';
-import { putIdempotently, referencesS3Object } from '../../shared/dynamodb/idempotent-write';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
+  commitRow,
+  verifyRow,
+  type WriteVerdict,
+} from '../../shared/dynamodb/idempotent-write';
 import { PARTITION_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
-import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
 import type { CheckpointWriteItem } from './rows';
 import type { CheckpointerContext } from './setup';
 import { specialRowProbe } from './special-write-verify';
@@ -69,8 +68,9 @@ const FIRST_WRITE_WINS: RevisionGuard = {
  * an attempt it turns away commits nothing, DynamoDB caches nothing for that
  * attempt's token, and the retry is a fresh evaluation of first-write-wins
  * against the table as it stands then — the token carries none of it forward,
- * and {@link putIdempotently}, with the transaction helper it delegates to, is
- * where that precondition is stated in full. What the token does carry is the
+ * and `putIdempotently` (shared/dynamodb/idempotent-write.ts), with the
+ * transaction helper it delegates to, is where that precondition is stated in
+ * full. What the token does carry is the
  * other half: inside one budget, a re-send of an attempt that *committed* and
  * lost its acknowledgement is answered from the idempotency cache instead of
  * colliding with the row it wrote itself. That collision is the rejection
@@ -89,18 +89,7 @@ async function commitItem(
   item: CheckpointWriteItem,
   signal?: AbortSignal,
 ): Promise<void> {
-  if (referencesS3Object(item.value)) {
-    await putIdempotently(context, item, FIRST_WRITE_WINS, signal);
-    return;
-  }
-  await withDynamoDBRetry(
-    (request) =>
-      context.client.put(
-        { TableName: context.tableName, Item: item, ...FIRST_WRITE_WINS },
-        request,
-      ),
-    retryFor(context, signal),
-  );
+  await commitRow(context, item, item.value, { guard: FIRST_WRITE_WINS, signal });
 }
 
 /**

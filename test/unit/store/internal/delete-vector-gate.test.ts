@@ -150,7 +150,7 @@ describe('the vector delete is gated on a confirmation that the row is gone', ()
   });
 
   /**
-   * A read that did not happen is not evidence. `rowIsAbsent` reports its own
+   * A read that did not happen is not evidence. `isRowAbsent` reports its own
    * failure as `false` - "not confirmed", never "still there" - so the vector
    * survives and `reconcileVectorIndex` clears it later. A stale vector for a
    * deleted item is recoverable; a missing one for a live item is the defect

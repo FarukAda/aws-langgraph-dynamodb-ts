@@ -15,6 +15,7 @@ import type { IndexConfig, Item, SearchItem } from '@langchain/langgraph-checkpo
 import { nowSeconds } from '../../shared/clock';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { isRowAbsent } from '../../shared/dynamodb/idempotent-write';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema';
@@ -48,7 +49,6 @@ import {
 import { passesFilter } from './search-filter';
 import { assertVectorDims, embedValue, embedValues } from './semantic-search';
 import type { StoreContext } from './setup';
-import { rowIsAbsent } from './write-verify';
 
 /** A store context whose vector copy is configured: an embeddings index and a backend. */
 export type BackendContext = StoreContext & {
@@ -160,7 +160,7 @@ export async function syncItemVector(
  * at the key keeps its vector and logs one `info`.
  *
  * Throws: nothing the backend throws (see {@link syncItemVector}); whatever the
- * confirmation read throws that `rowIsAbsent` does not answer as "not
+ * confirmation read throws that `isRowAbsent` does not answer as "not
  * confirmed".
  */
 export async function dropVectorWhenGone(
@@ -169,7 +169,7 @@ export async function dropVectorWhenGone(
 ): Promise<void> {
   if (context.vectorBackend === undefined) return;
   const key = itemRowKey(address);
-  if (!(await rowIsAbsent(context, key))) {
+  if (!(await isRowAbsent(context, key))) {
     context.logger.info('store.delete: kept a vector whose item was not confirmed gone', {
       namespace: address.namespace,
       key: address.key,
@@ -332,7 +332,7 @@ export function selectOrphans(backendRefs: VectorRef[], live: ReconcileTarget[])
  * its vector would silently drop a just-written item out of semantic search.
  */
 async function confirmedGone(context: StoreContext, ref: VectorRef): Promise<boolean> {
-  return rowIsAbsent(context, itemRowKey(ref));
+  return isRowAbsent(context, itemRowKey(ref));
 }
 
 /**

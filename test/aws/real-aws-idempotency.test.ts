@@ -12,8 +12,8 @@ import {
   isConditionalCheckFailed,
   rejectedItem,
   revisionGuard,
-} from '../../src/shared/dynamodb/conditional-put';
-import { putIdempotently } from '../../src/shared/dynamodb/idempotent-write';
+  putIdempotently,
+} from '../../src/shared/dynamodb/idempotent-write';
 import { ErrorCode } from '../../src/shared/errors/error-code';
 import { liveRegion } from './helpers/env';
 import { countTransactAttempts, report, rejection } from './helpers/probe';

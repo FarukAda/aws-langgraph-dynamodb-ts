@@ -4,7 +4,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 
 import { partitionKey, writeSortKeyPrefix } from '../../src/checkpointer/internal/rows';
 import { DynamoDBSaver, DynamoDBStore, ErrorCode, type Logger } from '../../src/index';
-import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../src/shared/dynamodb/conditional-put';
+import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../src/shared/dynamodb/idempotent-write';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 import {
   afterResponse,

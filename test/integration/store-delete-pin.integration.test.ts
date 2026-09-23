@@ -13,7 +13,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 
 import { DynamoDBStore } from '../../src/index';
-import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../src/shared/dynamodb/conditional-put';
+import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../src/shared/dynamodb/idempotent-write';
 import type { Logger } from '../../src/shared/logging/logger';
 import { partitionKey, sortKey } from '../../src/store/internal/rows';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';

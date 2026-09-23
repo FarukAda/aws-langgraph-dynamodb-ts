@@ -1,8 +1,14 @@
 import type { PayloadDescriptor } from '../../shared/codec/codec';
 import type { DocItem } from '../../shared/dynamodb/client';
-import { isConditionalCheckFailed, rejectedItem } from '../../shared/dynamodb/conditional-put';
+import {
+  isConditionalCheckFailed,
+  rejectedItem,
+  readRow,
+  type RowProbe,
+  verdictFor,
+  verifyRow,
+} from '../../shared/dynamodb/idempotent-write';
 import { rowKeyOf } from '../../shared/dynamodb/table-schema';
-import { readRow, type RowProbe, verdictFor, verifyRow } from '../../shared/dynamodb/write-verify';
 import { type CheckpointWriteItem, WRITE_GROUP_ATTRIBUTE } from './rows';
 import type { CheckpointerContext } from './setup';
 

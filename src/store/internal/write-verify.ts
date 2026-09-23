@@ -1,5 +1,5 @@
-import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
-import { readRow, verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
+import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/idempotent-write';
+import { rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { REVISION_ATTRIBUTE } from './rows';
@@ -20,32 +20,6 @@ import type { StoreContext } from './setup';
  */
 export function isRetryExhausted(error: Error): boolean {
   return hasErrorCode(error, ErrorCode.RETRY_EXHAUSTED);
-}
-
-/**
- * True when the row is confirmed absent — used to resolve an ambiguous
- * retry-exhausted *delete*, where the delete may well have landed server-side
- * and only its acknowledgement was lost. Only the partition key is projected:
- * existence is the whole question.
- *
- * Accepts: the row's key.
- *
- * Returns: whether the row is confirmed gone. A failed read answers `false` —
- * "not confirmed", never "still there": the caller only rethrows on `false`, so
- * nothing is deleted on the strength of a read that did not happen.
- *
- * Throws: nothing.
- */
-export async function rowIsAbsent(
-  context: StoreContext,
-  key: { PK: string; SK: string },
-): Promise<boolean> {
-  try {
-    const row = await readRow(context, { key, attribute: PARTITION_KEY_ATTRIBUTE });
-    return row === undefined;
-  } catch {
-    return false;
-  }
 }
 
 /**

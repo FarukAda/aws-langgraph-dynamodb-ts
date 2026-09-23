@@ -5,7 +5,7 @@ import { decodeScanCursor, encodeScanCursor, indexTargetOf } from './backfill-ta
 import type { BackfillOptions, BackfillResult } from './backfill-types';
 import { assertBackfillOptions } from './backfill-validation';
 import type { DocItem } from './client';
-import { isConditionalCheckFailed } from './conditional-put';
+import { isConditionalCheckFailed } from './idempotent-write';
 import { DEFAULT_INDEX_SHARDS, type IndexKeys, indexKeys } from './index-keys';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
 import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from './table-schema';

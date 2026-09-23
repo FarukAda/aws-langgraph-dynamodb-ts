@@ -5,8 +5,9 @@ import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   rejectedItem,
   revisionGuard,
-} from '../../shared/dynamodb/conditional-put';
-import { deleteIdempotently } from '../../shared/dynamodb/idempotent-write';
+  deleteIdempotently,
+  isRowAbsent,
+} from '../../shared/dynamodb/idempotent-write';
 import type { RowKey } from '../../shared/dynamodb/table-schema';
 import type { StoreAddress } from './parse';
 import {
@@ -18,7 +19,7 @@ import {
 } from './rows';
 import type { StoreContext } from './setup';
 import { dropVectorWhenGone } from './vector-index';
-import { isRetryExhausted, rowIsAbsent } from './write-verify';
+import { isRetryExhausted } from './write-verify';
 
 /**
  * What a refused attempt licenses next: the observation to re-pin on, or
@@ -35,7 +36,7 @@ import { isRetryExhausted, rowIsAbsent } from './write-verify';
  * request and a replay is answered from the idempotency cache rather than
  * re-applied; only the last attempt's outcome is in question.
  *
- * `rowIsAbsent` reports a read that itself failed as `false` — "not confirmed",
+ * `isRowAbsent` reports a read that itself failed as `false` — "not confirmed",
  * never "still there" — so an unknown outcome rethrows and releases nothing.
  */
 async function repinOrResolve(
@@ -48,7 +49,7 @@ async function repinOrResolve(
     const rejected = rejectedItem(error);
     return rejected === undefined ? undefined : existingFrom(rejected);
   }
-  if (isRetryExhausted(error) && (await rowIsAbsent(context, key))) return undefined;
+  if (isRetryExhausted(error) && (await isRowAbsent(context, key))) return undefined;
   throw error;
 }
 

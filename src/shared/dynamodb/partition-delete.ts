@@ -8,7 +8,7 @@ import type { Logger } from '../logging/logger';
 import { truncateForLog } from '../logging/truncate';
 import { isAbortError } from './abort';
 import type { DynamoDBDocumentLike, DocItem } from './client';
-import { type RevisionGuard, WRITE_ID_ATTRIBUTE, writeIdGuard } from './conditional-put';
+import { type RevisionGuard, WRITE_ID_ATTRIBUTE, writeIdGuard } from './idempotent-write';
 import { paginateQuery } from './paginate';
 import { flushPendingDeletes, type PendingDelete } from './partition-flush';
 import type { RetryOptions } from './retry';

@@ -3,9 +3,8 @@ import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   rejectedItem,
   revisionGuard,
-} from '../../shared/dynamodb/conditional-put';
-import { putIdempotently, referencesS3Object } from '../../shared/dynamodb/idempotent-write';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+  commitRow,
+} from '../../shared/dynamodb/idempotent-write';
 import { rowKeyOf } from '../../shared/dynamodb/table-schema';
 import {
   type ExistingRecordMeta,
@@ -57,8 +56,9 @@ import type { StoreContext } from './setup';
  * The pin decides which half of the token's guarantee applies, and the swap
  * below is written around the answer. An attempt the guard turns away commits
  * nothing, so nothing is cached for its token and a retry would be a fresh
- * evaluation — {@link putIdempotently}, and the transaction helper it
- * delegates to, state that precondition in full — which is why a loss is
+ * evaluation — `putIdempotently` (shared/dynamodb/idempotent-write.ts), and
+ * the transaction helper it delegates to, state that precondition in full —
+ * which is why a loss is
  * answered by re-reading and re-pinning under a new token rather than by
  * re-sending this one. What the token does cover is a
  * *committed* attempt whose acknowledgement was lost: within one budget its
@@ -72,15 +72,7 @@ async function put(
   observed?: ExistingRecordMeta,
 ): Promise<void> {
   const guard = observed ? revisionGuard(REVISION_ATTRIBUTE, observed) : undefined;
-  if (referencesS3Object(record.value)) {
-    await putIdempotently(context, record, guard);
-    return;
-  }
-  await withDynamoDBRetry(
-    (request) =>
-      context.client.put({ TableName: context.tableName, Item: record, ...guard }, request),
-    context.retry,
-  );
+  await commitRow(context, record, record.value, { guard });
 }
 
 /**

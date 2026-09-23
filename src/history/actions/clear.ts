@@ -1,5 +1,5 @@
 import type { DocItem } from '../../shared/dynamodb/client';
-import { WRITE_ID_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
+import { WRITE_ID_ATTRIBUTE } from '../../shared/dynamodb/idempotent-write';
 import {
   deletePartitionRows,
   namedDescriptor,

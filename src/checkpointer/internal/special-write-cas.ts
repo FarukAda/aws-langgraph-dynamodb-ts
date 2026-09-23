@@ -3,8 +3,8 @@ import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   type RevisionGuard,
   revisionGuard,
-} from '../../shared/dynamodb/conditional-put';
-import { putIdempotently, referencesS3Object } from '../../shared/dynamodb/idempotent-write';
+  commitRow,
+} from '../../shared/dynamodb/idempotent-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { type CheckpointWriteItem, WRITE_GROUP_ATTRIBUTE } from './rows';
@@ -55,8 +55,9 @@ type CasAttemptResult =
  *
  * A rejection buys nothing either way, and the loop above is built on that: a
  * cancelled attempt commits nothing, so nothing is cached for its token and a
- * retry would be a fresh evaluation — see {@link putIdempotently}, and the
- * transaction helper it delegates to, for that precondition stated in full.
+ * retry would be a fresh evaluation — see `putIdempotently`
+ * (shared/dynamodb/idempotent-write.ts), and the transaction helper it
+ * delegates to, for that precondition stated in full.
  * It is why a lost compare-and-swap re-reads and re-pins rather than
  * re-sending, and why each re-pin calls this function afresh for a new token.
  * The deadline inside the helper is what holds each budget within the window
@@ -68,15 +69,7 @@ async function commitSpecialRow(
   guard?: RevisionGuard,
   signal?: AbortSignal,
 ): Promise<void> {
-  if (referencesS3Object(item.value)) {
-    await putIdempotently(context, item, guard, signal);
-    return;
-  }
-  await withDynamoDBRetry(
-    (request) =>
-      context.client.put({ TableName: context.tableName, Item: item, ...guard }, request),
-    retryFor(context, signal),
-  );
+  await commitRow(context, item, item.value, { guard, signal });
 }
 
 /**

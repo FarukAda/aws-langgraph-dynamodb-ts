@@ -2,7 +2,7 @@ import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/
 import { writeSpecialItem } from '../../../../src/checkpointer/internal/special-write-cas';
 import { readSpecialRow } from '../../../../src/checkpointer/internal/special-write-verify';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../../../src/shared/dynamodb/conditional-put';
+import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../../../src/shared/dynamodb/idempotent-write';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { rowWrite } from '../../../shared/helpers/ddb-mock';
