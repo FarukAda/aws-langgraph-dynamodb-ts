@@ -34,3 +34,4 @@ the numbering, and that no number is used twice.
 | [17](0017-do-not-cap-file-length-or-function-complexity.md) | Do not cap file length or function complexity | Accepted |
 | [18](0018-run-the-live-aws-tier-on-release-tags-as-a-publish-gate.md) | Run the live-AWS tier on release tags as a publish gate | Accepted |
 | [19](0019-raise-one-error-class-and-classify-aws-failures-in-one-place.md) | Raise one error class and classify AWS failures in one place | Accepted |
+| [20](0020-make-the-layer-direction-a-build-gate.md) | Make the layer direction a build gate | Accepted |

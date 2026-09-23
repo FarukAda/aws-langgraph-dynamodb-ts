@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - Type-aware lint and unused-code checks now gate the build; no behaviour change.
+- A static gate refuses an import that runs against the layer direction or between features; three modules moved to the layer that owns them, with no public change.
 
 ## [1.0.0-rc.2] - 2026-09-21
 

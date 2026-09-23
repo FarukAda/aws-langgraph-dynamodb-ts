@@ -21,6 +21,7 @@ The static guards fail the build rather than rely on review:
 - comments are JSDoc only (`/** ... */`) — no `//` comments in `src`;
 - no `any`, no `unknown`, no `instanceof` in `src` (errors are detected by brand and `code`);
 - no re-exports outside `src/index.ts`, no import cycles, no dead `ErrorCode` member;
+- no module imports from a layer above its own or from another feature; the layer table is `test/static/guards/layers.ts` (`test/static/layer-direction.test.ts`);
 - errors are recognised by code (`test/static/error-recognition.test.ts`);
 - every AWS error name is declared by the SDK or documented (`test/static/aws-error-names.test.ts`);
 - the removed class names appear nowhere a reader would act on them (`test/static/retired-error-names.test.ts`);
