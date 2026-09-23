@@ -50,7 +50,7 @@ export interface CheckpointConfigurable {
 export interface CheckpointMetaItem {
   PK: string;
   SK: string;
-  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
+  /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
   v?: number;
   /** Recency-index keys; absent on rows written before the index existed. */
   gsi1pk?: string;
@@ -67,7 +67,7 @@ export interface CheckpointMetaItem {
 export interface CheckpointPayloadItem {
   PK: string;
   SK: string;
-  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
+  /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
   v?: number;
   checkpoint: PayloadDescriptor;
   ttl?: number;
@@ -77,7 +77,7 @@ export interface CheckpointPayloadItem {
 export interface CheckpointWriteItem {
   PK: string;
   SK: string;
-  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
+  /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
   v?: number;
   taskId: string;
   index: number;

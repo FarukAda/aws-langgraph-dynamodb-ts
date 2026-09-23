@@ -102,7 +102,7 @@ export interface SessionMetadata {
 export interface ChatMessageItem {
   PK: string;
   SK: string;
-  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
+  /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
   v?: number;
   sessionId: string;
   message: PayloadDescriptor;
@@ -113,7 +113,7 @@ export interface ChatMessageItem {
 export interface ChatSessionItem {
   PK: string;
   SK: string;
-  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
+  /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
   v?: number;
   sessionId: string;
   messageCount: number;

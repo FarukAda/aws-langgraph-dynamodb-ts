@@ -92,7 +92,7 @@ export interface ListNamespacesOptions {
 export interface StoreItemRecord {
   PK: string;
   SK: string;
-  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
+  /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
   v?: number;
   /** Recency-index keys; absent on rows written before the index existed. */
   gsi1pk?: string;
