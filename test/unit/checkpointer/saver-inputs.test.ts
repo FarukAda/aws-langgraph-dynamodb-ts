@@ -27,7 +27,7 @@ afterEach(() => {
 /**
  * A saver whose every payload offloads (`thresholdBytes: 1`), so a write that
  * reached the encode loop would necessarily name an S3 object — proving that a
- * request the parse step refuses first never reaches it.
+ * request refused before encoding never reaches it.
  */
 function newOffloadingSaver() {
   const { client, mock } = createStrictDocumentMock();
@@ -256,7 +256,9 @@ describe('putWrites writes validation', () => {
 /**
  * The composed WRITE sort key and the channel are both checked before
  * anything of the call is encoded or uploaded — a refusal here must reject
- * the whole call rather than one write of it.
+ * the whole call rather than one write of it. Every channel was already
+ * checked ahead of the encode loop; the sort-key length is the check that
+ * moved out of it, into the parse step.
  */
 describe('putWrites refuses a request the parse step catches, before any write', () => {
   const LONG_CONFIG = {

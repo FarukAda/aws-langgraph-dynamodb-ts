@@ -92,13 +92,44 @@ describe('runBatch preserves the order the caller wrote (STORE-09)', () => {
  * Before this planner asked `touchOf` the same question `parseOperation` had
  * already answered, it tested `'value' in op` first and planned such an
  * operation as a write instead, so it could run beside an unrelated write in
- * the same segment where a search never may. Nothing observable changes for
- * any operation `parseOperation` builds from an upstream `Operation`, since
- * none of its five shapes carries both keys; this is a scheduling change only,
- * reachable by an operation object no public caller builds today.
+ * the same segment where a search never may. A search object that also
+ * carries `namespace` and `key` was planned as a get on that address, with the
+ * same effect. No member of the `Operation` union mixes those keys, but the
+ * literals below type-check as an `Operation` all the same — an excess-property
+ * check on a union accepts a key any member declares — and a JavaScript caller
+ * can pass anything. This is a scheduling change only: what the operation
+ * itself does is unchanged.
  */
 describe('the planner schedules a hybrid namespacePrefix+value object as the search it parses to', () => {
   const ns = ['a'];
+
+  /** Runs `operations` two at a time and reports the most that ran at once. */
+  async function maxConcurrency(operations: ParsedOperation[]): Promise<number> {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const dispatch = async (): Promise<unknown> => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setImmediate(resolve));
+      inFlight -= 1;
+      return null;
+    };
+    await runBatch(operations, dispatch, 2);
+    return maxInFlight;
+  }
+
+  it('plans a search that also carries namespace and key as a broad read, not a get', async () => {
+    const hybrid = parseOperation({
+      namespacePrefix: ns,
+      namespace: ns,
+      key: 'k',
+      limit: 10,
+      offset: 0,
+    });
+    expect(hybrid.kind).toBe('search');
+    const unrelatedPut = parseOperation({ namespace: ns, key: 'other', value: { v: 1 } });
+    expect(await maxConcurrency([unrelatedPut, hybrid])).toBe(1);
+  });
 
   it('is planned as a broad read, not a write on its (absent) address', () => {
     const hybrid = parseOperation({

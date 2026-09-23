@@ -111,9 +111,10 @@ describe('the writes shape parsePutWritesRequest checks', () => {
   });
 
   /**
-   * Every channel is parsed in the same pass that checks the tuple shape, so a
-   * non-string first element is refused here, naming `channel`, rather than
-   * reaching a later call that would have to defer to it.
+   * Once every entry has been checked to be a tuple, every channel is parsed
+   * in a pass of its own, before any sort key is measured, so a non-string
+   * first element is refused here, naming `channel`, rather than reaching a
+   * later call that would have to defer to it.
    */
   it('refuses an entry whose first element is not a string, naming channel', () => {
     expect(() => parsePutWritesRequest(WRITES_CONFIG, [[123, 'v']] as never, 'task')).toThrow(

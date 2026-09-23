@@ -24,11 +24,15 @@ function context(): CheckpointerContext {
   };
 }
 
-const scope = (before: string): ListScope & { threadId: ThreadId } =>
-  parseListScope(
+/** A thread-scoped list whose `before` is `before`, built by the parser. */
+function scope(before: string): ListScope & { threadId: ThreadId } {
+  const built = parseListScope(
     { configurable: { thread_id: 't', checkpoint_ns: '' } },
     { before: { configurable: { checkpoint_id: before } } },
-  ) as ListScope & { threadId: ThreadId };
+  );
+  if (built.threadId === undefined) throw new Error('scope requires a threadId');
+  return { ...built, threadId: built.threadId };
+}
 
 const meta = (checkpointId: string): CheckpointMetaItem =>
   ({
