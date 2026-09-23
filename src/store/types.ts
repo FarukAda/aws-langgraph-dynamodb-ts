@@ -87,7 +87,7 @@ export interface ListNamespacesOptions {
   offset?: number;
 }
 
-/** Counts returned by {@link reconcileVectorIndex}. */
+/** Counts returned by {@link DynamoDBStore.reconcileVectorIndex}. */
 export interface VectorReconcileResult {
   upserted: number;
   pruned: number;

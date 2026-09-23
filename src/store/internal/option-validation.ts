@@ -47,8 +47,9 @@ function assertUsableIndex(index: IndexConfig | undefined): void {
 /**
  * Reject a `vectorScoreDirection` outside the declared union.
  *
- * {@link toRelevanceScores} treats anything it does not recognise as a no-op —
- * the only safe default, since guessing would invert a ranking — so a mistyped
+ * `toRelevanceScores` (store/internal/vector-index.ts) treats anything it does
+ * not recognise as a no-op — the only safe default, since guessing would invert
+ * a ranking — so a mistyped
  * or config-file-sourced value would otherwise leave a distance backend ranked
  * backwards with no error and no warning anywhere. Same premise as
  * {@link assertUsableIndex}: a JavaScript caller can pass a string the type
