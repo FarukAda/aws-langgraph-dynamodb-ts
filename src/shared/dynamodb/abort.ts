@@ -1,16 +1,11 @@
-import { isDynamoDBLangGraphError } from '../errors/base-error';
+import { hasErrorCode } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { AbortError } from '../errors/errors';
 import { toError } from '../errors/wrap-error';
 
 /** True when the abort reason already is this library's `AbortError` (a string or DOMException is not). */
 function isLibraryAbort(reason: Error | undefined): reason is AbortError {
-  return (
-    typeof reason === 'object' &&
-    reason !== null &&
-    isDynamoDBLangGraphError(reason) &&
-    reason.code === ErrorCode.ABORTED
-  );
+  return hasErrorCode(reason as Error, ErrorCode.ABORTED);
 }
 
 /**
@@ -19,18 +14,18 @@ function isLibraryAbort(reason: Error | undefined): reason is AbortError {
  * Accepts: `error` — any error, from any layer, and equally any other value a
  * `throw` can produce, since a `catch` is where this is called.
  *
- * Returns: whether it carries `code: 'ABORTED'`, which is the contract every
- * cancellable method documents and the only thing a caller branches on. It is
- * deliberately weaker than {@link isLibraryAbort}: that one decides whether a
- * value may be *returned* as an `AbortError`, so it must also be branded,
- * while this one only decides whether an error a wrapper caught is the
- * caller's own stop and must be re-thrown as it is.
+ * Returns: whether it carries this library's brand and `code: 'ABORTED'`,
+ * which is the contract every cancellable method documents and the only
+ * thing a caller branches on. An unbranded object that merely carries
+ * `code: 'ABORTED'` is not an abort — the same brand-and-code test
+ * {@link isLibraryAbort} makes, because an error a wrapper caught that only
+ * looks like an abort must still be rebranded rather than re-thrown as it is.
  *
  * Throws: **nothing**, for any value. A value that cannot carry a property is
  * not a cancellation, which is the answer an uncoded `Error` gets too.
  */
 export function isAbortError(error: Error): boolean {
-  return (error as { code?: string } | undefined)?.code === ErrorCode.ABORTED;
+  return hasErrorCode(error, ErrorCode.ABORTED);
 }
 
 /**

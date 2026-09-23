@@ -125,6 +125,12 @@ describe('awsDiagnostics', () => {
       awsErrorName: 'ThrottlingException',
     });
   });
+
+  it('omits the name when the error carries none, even though $metadata makes it AWS-shaped', () => {
+    expect(awsDiagnostics({ $metadata: { httpStatusCode: 500 } } as never)).toEqual({
+      httpStatusCode: 500,
+    });
+  });
 });
 
 describe('isMissingObject', () => {

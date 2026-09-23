@@ -111,5 +111,9 @@ describe('throttledCancellation', () => {
   it('is true when a throttling reason is among the causes', () => {
     expect(throttledCancellation(cancelledWith('ProvisionedThroughputExceeded'))).toBe(true);
     expect(throttledCancellation(cancelledWith('TransactionConflict'))).toBe(false);
+    // A reason carrying no Code at all is skipped rather than matched.
+    expect(throttledCancellation(cancelledWith('TransactionConflict', undefined))).toBe(false);
+    // An error carrying no CancellationReasons at all falls back to an empty list.
+    expect(throttledCancellation({})).toBe(false);
   });
 });

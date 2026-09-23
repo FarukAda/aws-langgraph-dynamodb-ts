@@ -57,11 +57,17 @@ describe('revisionGuard', () => {
 
 describe('isConditionalCheckFailed', () => {
   it('matches DynamoDB conditional rejection by name, not instanceof', () => {
-    expect(isConditionalCheckFailed({ name: 'ConditionalCheckFailedException' })).toBe(true);
-    expect(isConditionalCheckFailed({ name: 'ProvisionedThroughputExceededException' })).toBe(
-      false,
-    );
-    expect(isConditionalCheckFailed({})).toBe(false);
+    expect(
+      isConditionalCheckFailed(
+        Object.assign(new Error('x'), { name: 'ConditionalCheckFailedException' }),
+      ),
+    ).toBe(true);
+    expect(
+      isConditionalCheckFailed(
+        Object.assign(new Error('x'), { name: 'ProvisionedThroughputExceededException' }),
+      ),
+    ).toBe(false);
+    expect(isConditionalCheckFailed(new Error('x'))).toBe(false);
   });
 });
 
@@ -122,7 +128,9 @@ describe('isConditionalCheckFailed reads a cancelled transaction (T3)', () => {
     // 'ConditionalCheckFailed' is a cancellation reason code and
     // 'ConditionalCheckFailedException' an error name; neither is valid in the
     // other's place, and the two readings must not be crossed.
-    expect(isConditionalCheckFailed({ name: 'ConditionalCheckFailed' })).toBe(false);
+    expect(
+      isConditionalCheckFailed(Object.assign(new Error('x'), { name: 'ConditionalCheckFailed' })),
+    ).toBe(false);
     expect(isConditionalCheckFailed(cancelled([{ Code: 'ConditionalCheckFailedException' }]))).toBe(
       false,
     );

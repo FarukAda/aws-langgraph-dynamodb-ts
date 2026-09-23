@@ -1,18 +1,10 @@
 import { BATCH_WRITE_MAX } from '../constants';
+import { hasErrorCode } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
-import { BatchWriteAllIncompleteError, BatchWriteIncompleteError } from '../errors/errors';
+import { BatchWriteAllIncompleteError } from '../errors/errors';
 import type { DynamoDBDocumentLike } from './client-types';
 import { DrainOptions, drainUnprocessedWrites } from './drain-unprocessed';
 import type { WriteRequest } from './types';
-
-/**
- * Whether a chunk's failure is the drain's incomplete-batch error, the only one
- * carrying a count this function may add to its own total. The drain's other
- * documented throw is an `AbortError`, which carries none.
- */
-function isBatchWriteIncomplete(error: Error): error is BatchWriteIncompleteError {
-  return (error as { code?: string }).code === ErrorCode.BATCH_WRITE_INCOMPLETE;
-}
 
 /**
  * Write an arbitrary number of requests, chunked into batches of 25 (the
@@ -36,9 +28,10 @@ function isBatchWriteIncomplete(error: Error): error is BatchWriteIncompleteErro
  * once every chunk has been attempted, reporting how many chunks succeeded and
  * how many individual writes persisted. Its one caller — the rollback in
  * history/internal/compensation.ts — type-asserts a caught error straight to
- * that type (not `instanceof`, banned repo-wide) instead of narrowing it, on
- * the narrower guarantee that it passes no signal, so the abort path cannot
- * arise there; a call site that does pass one must narrow instead.
+ * its code's details (not `instanceof`, banned repo-wide) instead of
+ * narrowing it, on the narrower guarantee that it passes no signal, so the
+ * abort path cannot arise there; a call site that does pass one must narrow
+ * instead.
  *
  * Guarantees: every chunk is attempted regardless of an earlier chunk's
  * failure — these writes are order-independent, so losing the later ones to an
@@ -68,14 +61,15 @@ export async function batchWriteAll(
       const failure = error as Error;
       /**
        * Anything but an incomplete batch is the drain's other documented
-       * throw, a cancel, and it leaves the loop at once. Reading the code
-       * rather than the class is the same realm-safe test the rest of this
-       * package makes, and it is what keeps a count this function cannot know
-       * out of the total: adding an absent `succeededCount` made it `NaN`.
+       * throw, a cancel, and it leaves the loop at once. Reading the brand and
+       * code rather than the class is the same realm-safe test the rest of
+       * this package makes, and it is what keeps a count this function cannot
+       * know out of the total: adding an absent `succeededCount` made it
+       * `NaN`.
        */
-      if (!isBatchWriteIncomplete(failure)) throw failure;
+      if (!hasErrorCode(failure, ErrorCode.BATCH_WRITE_INCOMPLETE)) throw failure;
       failedChunks.push(failure);
-      succeededCount += failure.succeededCount;
+      succeededCount += failure.details.succeededCount;
     }
   }
   if (failedChunks.length > 0) {

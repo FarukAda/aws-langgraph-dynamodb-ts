@@ -48,6 +48,22 @@ describe('isTransientS3Error', () => {
     loop.cause = loop;
     expect(isTransientS3Error(loop)).toBe(false);
   });
+
+  it('retries an error the SDK marks retryable by trait', () => {
+    const err = Object.assign(new Error('x'), { name: 'Unknown', $retryable: {} });
+    expect(isTransientS3Error(err)).toBe(true);
+  });
+
+  it('retries a nested cause carrying a network errno or syscall code', () => {
+    const byErrno = new Error('outer', {
+      cause: Object.assign(new Error('reset'), { errno: 'ECONNRESET' }),
+    });
+    expect(isTransientS3Error(byErrno)).toBe(true);
+    const bySyscall = new Error('outer', {
+      cause: Object.assign(new Error('pipe'), { syscall: 'EPIPE' }),
+    });
+    expect(isTransientS3Error(bySyscall)).toBe(true);
+  });
 });
 
 /**

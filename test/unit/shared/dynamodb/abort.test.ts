@@ -39,12 +39,14 @@ describe('isAbortError', () => {
     controller.abort();
     expect(isAbortError(abortErrorFrom(controller.signal))).toBe(true);
     expect(isAbortError(new AbortError('cancelled'))).toBe(true);
-    expect(isAbortError(Object.assign(new Error('x'), { code: ErrorCode.ABORTED }))).toBe(true);
   });
 
   it('says no to every other error, branded or not', () => {
     expect(isAbortError(new ValidationError('bad', 'field'))).toBe(false);
     expect(isAbortError(Object.assign(new Error('x'), { name: 'AbortError' }))).toBe(false);
     expect(isAbortError(new Error('plain'))).toBe(false);
+    // The brand is required: an unbranded object that merely carries the
+    // code looks like a cancel and is not one.
+    expect(isAbortError(Object.assign(new Error('x'), { code: ErrorCode.ABORTED }))).toBe(false);
   });
 });

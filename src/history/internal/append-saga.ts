@@ -1,4 +1,5 @@
 import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
+import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { toError } from '../../shared/errors/wrap-error';
 import type { ChatMessageItem } from '../types';
@@ -16,7 +17,7 @@ export interface AppendFields {
 
 /** True for the one failure shape that leaves the outcome ambiguous. */
 function isAmbiguous(error: Error): boolean {
-  return (error as { code?: string }).code === ErrorCode.RETRY_EXHAUSTED;
+  return hasErrorCode(error, ErrorCode.RETRY_EXHAUSTED);
 }
 
 /**

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { nowMs } from '../../shared/clock';
 import { MAX_WRITE_LIFETIME_MS, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
-import { getCancellationReasons } from '../../shared/dynamodb/cancellation';
+import { conditionFailedAt, conditionalCheckFailure } from '../../shared/dynamodb/cancellation';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import type { ChatMessageItem } from '../types';
 import {
@@ -20,11 +20,7 @@ export interface ChunkRetryOptions {
 
 /** True when a TransactWriteItems cancellation was caused solely by the SESSION update's ttl condition (always TransactItems index 0 — see buildInput below), not by any message item. */
 function isTtlConditionLoss(error: Error): boolean {
-  const reasons = getCancellationReasons(error);
-  return (
-    reasons?.[0]?.Code === 'ConditionalCheckFailed' &&
-    reasons.slice(1).every((reason) => reason.Code === 'None')
-  );
+  return conditionFailedAt(error, 0) && conditionalCheckFailure(error) !== undefined;
 }
 
 /**

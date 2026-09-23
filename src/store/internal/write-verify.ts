@@ -1,23 +1,26 @@
 import { REVISION_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
 import { readRow, verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
+import { hasErrorCode } from '../../shared/errors/base-error';
+import { ErrorCode } from '../../shared/errors/error-code';
 import type { StoreContext } from './setup';
 
 /**
- * Whether `error` is a {@link RetryExhaustedError}.
+ * Whether `error` is a spent retry budget.
  *
- * Accepts: any error, and equally anything else a `throw` can produce. The
- * test is by `name`, not `instanceof`, which is banned repo-wide: an error
- * crossing a module or realm boundary fails the identity check while still
- * being the same error.
+ * Accepts: any error, and equally anything else a `throw` can produce.
+ * Recognised by brand and code, not by its class name: `RetryExhaustedError`
+ * is the constructor that stamps `RETRY_EXHAUSTED`, but the class name is not
+ * a contract an error crossing a module or realm boundary can be relied on to
+ * keep, the way the code is.
  *
  * Returns: whether the write is ambiguous for the reason retries were spent,
  * which is the only failure a verification read is allowed to resolve.
  *
- * Throws: **nothing**, for any value. A value carrying no name is not a spent
- * budget, so the caller rethrows it rather than spending a read on it.
+ * Throws: **nothing**, for any value. A value carrying no such code is not a
+ * spent budget, so the caller rethrows it rather than spending a read on it.
  */
 export function isRetryExhausted(error: Error): boolean {
-  return (error as Error | undefined)?.name === 'RetryExhaustedError';
+  return hasErrorCode(error, ErrorCode.RETRY_EXHAUSTED);
 }
 
 /**

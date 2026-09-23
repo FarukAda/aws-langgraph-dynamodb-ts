@@ -1,10 +1,9 @@
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
-import {
-  type BatchWriteAllIncompleteError,
-  CompensationFailedError,
-} from '../../shared/errors/errors';
+import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
+import { ErrorCode } from '../../shared/errors/error-code';
+import { CompensationFailedError } from '../../shared/errors/errors';
 import { toError } from '../../shared/errors/wrap-error';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { ChatMessageItem } from '../types';
@@ -91,13 +90,14 @@ async function rollbackCommitted(
     );
   } catch (error) {
     /**
-     * `batchWriteAll` raises a {@link BatchWriteAllIncompleteError} for every
-     * failure but a cancel, and this call passes no signal, so the cancel
-     * cannot arise here — asserted rather than narrowed, since the false
-     * branch is unreachable and this project enforces 100% branch coverage. A
-     * signal reaching this call would have to narrow instead.
+     * `batchWriteAll` raises `BATCH_WRITE_INCOMPLETE` for every failure but a
+     * cancel, and this call passes no signal, so the cancel cannot arise here
+     * — asserted rather than narrowed, since the false branch is unreachable
+     * and this project enforces 100% branch coverage. A signal reaching this
+     * call would have to narrow instead.
      */
-    const deleted = (error as BatchWriteAllIncompleteError).succeededCount;
+    const deleted = (error as DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE>).details
+      .succeededCount;
     await revertSessionCount(context, sessionId, deleted, now);
     throw error;
   }

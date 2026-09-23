@@ -268,7 +268,7 @@ describe('putWrites', () => {
     );
     // A ConditionalCheckFailedException does NOT prove a competitor won: the
     // very same conditional PutCommand, retried after its response was lost
-    // (ETIMEDOUT/NetworkingError — see retry-classifier), hits its OWN
+    // (ETIMEDOUT/ECONNRESET), hits its OWN
     // just-committed row and fails the condition too. Deleting "our" upload
     // there would strand a live row pointing at a deleted object, so a lost
     // race never triggers an S3 delete. The loser's upload is left behind

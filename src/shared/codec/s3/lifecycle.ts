@@ -4,6 +4,8 @@ import type {
   TransitionDefaultMinimumObjectSize,
 } from '@aws-sdk/client-s3';
 
+import { classifyAwsError } from '../../errors/classify';
+import { ErrorCode } from '../../errors/error-code';
 import type { Logger } from '../../logging/logger';
 import { loadS3Sdk } from './client';
 import { assertScopedKeyPrefix, buildLifecycleRuleId, buildMarkerRuleId } from './config';
@@ -27,7 +29,7 @@ async function readState(client: S3Client, bucket: string): Promise<LifecycleSta
       transitionDefaultMinimumObjectSize: existing.TransitionDefaultMinimumObjectSize,
     };
   } catch (error) {
-    if ((error as { name?: string }).name === 'NoSuchLifecycleConfiguration') return { rules: [] };
+    if (classifyAwsError(error as Error) === ErrorCode.NOT_FOUND) return { rules: [] };
     throw error;
   }
 }

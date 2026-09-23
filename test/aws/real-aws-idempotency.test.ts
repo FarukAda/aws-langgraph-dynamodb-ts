@@ -336,7 +336,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
       if (result.status === 'fulfilled') continue;
       const error = result.reason as Error;
       // A clean loss: turned away by the condition, not by a spent budget.
-      expect(isConditionalCheckFailed(error as RejectionFields)).toBe(true);
+      expect(isConditionalCheckFailed(error)).toBe(true);
       expect((error as { code?: string }).code).not.toBe(ErrorCode.RETRY_EXHAUSTED);
     }
     expect(counter.attempts).toBeGreaterThanOrEqual(WRITERS);

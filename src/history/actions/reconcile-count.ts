@@ -1,6 +1,8 @@
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../shared/dynamodb/conditional-put';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
+import { classifyAwsError } from '../../shared/errors/classify';
+import { ErrorCode } from '../../shared/errors/error-code';
 import { ConflictError } from '../../shared/errors/errors';
 import { SESSION_SORT_KEY, sessionPartition } from '../internal/keys';
 import { countLiveMessages } from '../internal/message-count';
@@ -134,7 +136,7 @@ export async function reconcileMessageCount(
       await writeCount(context, sessionId, count, observed, signal);
       return count;
     } catch (error) {
-      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error;
+      if (classifyAwsError(error as Error) !== ErrorCode.CONDITION_CONFLICT) throw error;
     }
   }
   throw new ConflictError(

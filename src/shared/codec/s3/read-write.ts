@@ -3,6 +3,7 @@ import type { S3Client, ServerSideEncryption } from '@aws-sdk/client-s3';
 import { isAbortError } from '../../dynamodb/abort';
 import { withRetry } from '../../dynamodb/retry';
 import { DynamoDBLangGraphError } from '../../errors/base-error';
+import { classifyAwsError } from '../../errors/classify';
 import { ErrorCode } from '../../errors/error-code';
 import { redactedMessage } from '../../logging/secret-patterns';
 import { truncateForLog } from '../../logging/truncate';
@@ -44,11 +45,11 @@ function rethrowIfCancelled(error: Error): void {
  * *How to prevent object overwrites with conditional writes*). A key names one
  * write's upload, and only that upload's own requests write it, so the object
  * already there was stored by an earlier attempt of this upload. The upload
- * has nothing left to do, and the 412 is the success case, not a failure.
+ * has nothing left to do, and the 412 is the success case, not a failure. The
+ * classifier maps both `PreconditionFailed` and a bare 412 to the same code.
  */
 function alreadyStored(error: Error): boolean {
-  const failure = error as Error & { $metadata?: { httpStatusCode?: number } };
-  return error.name === 'PreconditionFailed' || failure.$metadata?.httpStatusCode === 412;
+  return classifyAwsError(error) === ErrorCode.CONDITION_CONFLICT;
 }
 
 /**
