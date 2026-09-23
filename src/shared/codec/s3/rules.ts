@@ -156,9 +156,10 @@ export function markerRule(id: string, prefix: string, existing?: LifecycleRule)
  * Accepts: `rule` — the rule holding `id`, or nothing. `prefix` — the one this
  * call scopes rules to.
  *
- * Returns: nothing; acceptance is the absence of a throw. A rule naming no
- * scope anywhere is taken over, and so is one already scoping this prefix —
- * including in the older schema, which is then upgraded to a filter.
+ * Returns: nothing: `rule` is kept under its declared type, and this checks
+ * it. A rule naming no scope anywhere is taken over, and so is one already
+ * scoping this prefix — including in the older schema, which is then upgraded
+ * to a filter.
  *
  * Throws: `VALIDATION` naming `s3.keyPrefix`. The id and the scope are
  * both bounded by {@link truncateForLog}: the scope is whatever the bucket's

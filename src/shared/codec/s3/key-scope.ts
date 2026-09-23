@@ -61,7 +61,8 @@ export function isKeyInScope(key: string, prefix: string, parts: readonly string
  *
  * Accepts: as {@link isKeyInScope}.
  *
- * Returns: nothing; acceptance is the absence of a throw.
+ * Returns: nothing: `key` is kept under its declared type, and this checks it
+ * against the scope `prefix` and `parts` compose.
  *
  * Throws: `VALIDATION` naming `s3Key`, quoting the key and the path the
  * row may reference, each bounded by {@link truncateForLog}: the key comes off

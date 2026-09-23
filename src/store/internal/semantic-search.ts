@@ -87,7 +87,8 @@ export function extractText(value: Record<string, JsonValue>, fields: string[]):
  * without it must keep working. `vector` — a document or query vector the model
  * just returned. `what` — names which of the two, for the message.
  *
- * Returns: nothing; agreement is the absence of a throw.
+ * Returns: nothing: `vector` is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `index.dims`.
  */

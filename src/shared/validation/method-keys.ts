@@ -25,7 +25,8 @@ export const CANCEL_KEYS = allKeysOf<CancelOptions>({ signal: 'signal' });
  * Accepts: `options` — as the caller passed it; absent is left alone, since
  * there is nothing to check.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `options.<key>` for the first key this
  * package does not read, or `signal` for a value that is not AbortSignal-like.

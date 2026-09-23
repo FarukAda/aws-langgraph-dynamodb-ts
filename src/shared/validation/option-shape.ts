@@ -41,7 +41,8 @@ export function isObjectShape(value: object | undefined): value is object {
  *
  * Accepts: `value` — as the caller gave it. `field` — what the error names.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`.
  */
@@ -58,7 +59,8 @@ export function assertObjectShape(value: object, field: string): void {
  * Accepts: `value` — the option object as the caller gave it. `allowed` — the
  * key list from {@link allKeysOf}. `field` — what the error names.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field` for a value that is not an object, and
  * `field.key` for an unknown key. A misspelt key is otherwise accepted and

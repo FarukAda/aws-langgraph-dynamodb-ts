@@ -21,8 +21,9 @@ const UNREDACTABLE = '[UNREDACTABLE]';
  * Accepts: `value` — the list as the caller gave it. `field` — what the error
  * names.
  *
- * Returns: nothing; validity is the absence of a throw. An empty list is
- * valid, and is how a caller turns value matching off.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it. An empty list is valid, and is how a caller turns value matching
+ * off.
  *
  * Throws: `VALIDATION` naming `field` for a non-array or an entry that is
  * not a `RegExp`. {@link redactText} skips such an entry, which protects
@@ -142,6 +143,13 @@ export interface RedactLoggerOptions {
  * rule to begin with, and was read as "none given", leaving the caller running
  * on a default it believed it had overridden. All three are refused here,
  * once, where they are configured.
+ *
+ * Accepts: `options` — as the caller gave it.
+ *
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
+ *
+ * Throws: `VALIDATION` naming `options`, `extraKeys` or `extraValuePatterns`.
  */
 function assertRedactionOptions(options: RedactLoggerOptions): void {
   assertObjectShape(options, 'options');

@@ -223,7 +223,8 @@ function hasControlChar(value: string): boolean {
  * rule is {@link parseString}'s; this form is for a value the caller keeps
  * under its declared type.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`.
  *
@@ -248,7 +249,8 @@ export function assertNoControlChars(value: string, field: string): void {
  * {@link parseString}'s; this form is for a value the caller keeps under its
  * declared type.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`.
  *

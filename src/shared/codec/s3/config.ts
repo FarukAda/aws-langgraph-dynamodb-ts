@@ -97,7 +97,8 @@ const UNSCOPED_SEGMENTS = new Set(['', '.', '..']);
  * control characters and well-formed UTF-16, the rules identifiers already
  * meet, since it is written into log lines and into a lifecycle rule's filter.
  *
- * Returns: nothing; acceptance is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `s3.keyPrefix`. The shape rule is reported
  * before the segment rule, so a prefix breaking both is named by its shape.

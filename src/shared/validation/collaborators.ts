@@ -54,7 +54,8 @@ export const ABORT_SIGNAL_MEMBERS: Readonly<Record<string, 'boolean' | 'function
  * Accepts: `value` — the collaborator as the caller gave it. `members` — every
  * method this package calls on it. `field` — what the error names.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field` for a non-object, `null` or an array,
  * and `field.member` for the first missing method — naming which member is
@@ -84,8 +85,9 @@ export function assertMembers(value: object, members: readonly string[], field: 
  * `DynamoDBDocument`, `Logger` or `SerializerProtocol` all satisfy, so any
  * adapter's options type is assignable without a cast.
  *
- * Returns: nothing; validity is the absence of a throw. A collaborator the
- * caller did not supply is left untouched, so it still reaches its default.
+ * Returns: nothing: each collaborator given is kept under its declared type,
+ * and this checks it. A collaborator the caller did not supply is left
+ * untouched, so it still reaches its default.
  *
  * Throws: see {@link assertMembers}.
  */
@@ -130,7 +132,8 @@ export function isAbortSignalLike(value: AbortSignal | undefined): boolean {
  * another option (`retry.signal`), so a caller whose top-level `signal` is
  * valid is not pointed at it.
  *
- * Returns: nothing; validity is the absence of a throw.
+ * Returns: nothing: the value is kept under its declared type, and this
+ * checks it.
  *
  * Throws: `VALIDATION` naming `field`. Left unchecked, a value that is not
  * an `AbortSignal` reaches whatever this package hands it to — an
