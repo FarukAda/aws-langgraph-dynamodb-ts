@@ -180,13 +180,26 @@ export function parseLimit(value: unknown, min: 0 | 1): PageLimit {
  * Returns: a copy of `value`, so a caller changing its own array afterwards
  * changes nothing this package acts on.
  *
- * Throws: `VALIDATION` naming `field`.
+ * Throws: `VALIDATION` naming `field`, its message identifying the offending
+ * index. Walked by position rather than `Array.prototype.some`, which skips a
+ * hole in a sparse array instead of visiting it, and copied by position rather
+ * than `Array.prototype.slice`, which carries a hole forward instead of
+ * filling it: unchecked, a hole passed as a string and reached a caller who
+ * declared `string[]`.
  */
 export function parseStringArray(value: unknown, field: string): string[] {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+  if (!Array.isArray(value)) {
     throw validationError(`${field} must be an array of strings`, field);
   }
-  return value.slice();
+  const result: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const item = value[index];
+    if (typeof item !== 'string') {
+      throw validationError(`${field}[${index}] must be a string`, field);
+    }
+    result.push(item);
+  }
+  return result;
 }
 
 /**

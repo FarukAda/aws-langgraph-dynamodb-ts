@@ -146,6 +146,26 @@ describe('getDeltaChannelHistory input validation', () => {
     }
   });
 
+  /**
+   * A hole used to survive as a literal `undefined` `channels` entry: the
+   * walk (`for...of`, which does not skip a hole the way `forEach`/`map` do)
+   * added a spurious `"undefined"` key to the returned record, and, because
+   * that phantom channel never resolved, never stopped early — it walked
+   * every ancestor of the thread instead of just the one named. Indexed
+   * access at the parser now reads the hole as the `undefined` it is and
+   * refuses it, naming the index.
+   */
+  it('refuses a hole in a sparse channels array, naming the index', async () => {
+    const { saver } = newSaver();
+    const config = { configurable: { thread_id: 't' } };
+    const channels: string[] = new Array(2) as string[];
+    channels[1] = 'a';
+    await expect(saver.getDeltaChannelHistory({ config, channels })).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'channels' },
+    });
+  });
+
   it('accepts channels: [], which reads nothing rather than being refused', async () => {
     const { saver } = newSaver();
     await expect(
