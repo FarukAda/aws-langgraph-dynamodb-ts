@@ -49,8 +49,15 @@ existing one.
 
 Positive. One `catch` and a `switch` on `code` is the whole error-handling
 story, and the codes say what to do. What an AWS failure means is decided in
-one place against cited sources, and the retry layer cannot disagree with the
-code a caller sees.
+one place against cited sources, and the retry layer's default tokens are
+derived from the same table, so the two share one list of transient names.
+They still differ at two edges. The retry layer retries anything carrying the
+SDK's `$retryable` trait, which the classifier does not read, so an error
+carrying it with a name the table does not know and a status that is not
+transient is retried, while the classifier, asked about the same error, answers
+`AWS_REQUEST_FAILED` rather than a retryable code. And the retry layer walks
+the cause chain matching `errno` and `syscall` as well as `name` and `code`,
+where the classifier reads one error's `name`, `code` and status only.
 
 Negative. This breaks every caller that imported a subclass or read one of
 their fields; the CHANGELOG maps each to its replacement. The public boundary

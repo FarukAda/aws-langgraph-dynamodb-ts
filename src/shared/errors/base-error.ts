@@ -116,7 +116,13 @@ export class DynamoDBLangGraphError<C extends ErrorCode = ErrorCode> extends Err
    * reuses one builder object cannot rewrite the context of an error already in
    * flight; `null` reads as an absent one. `cause` — the failure below this one,
    * kept as the native `cause` chain. `details` — the code-specific record
-   * {@link ErrorDetailsByCode} names, copied like `context`.
+   * {@link ErrorDetailsByCode} names, copied like `context`. The parameter is
+   * optional for every code, including the two whose `details` property is
+   * typed as always present (`BATCH_WRITE_INCOMPLETE`, `COMPENSATION_FAILED`):
+   * nothing at compile time stops a direct `new` from leaving it out, and an
+   * error built that way has no `details` at runtime whatever its type says.
+   * Inside this package those two codes are only ever built by the factories
+   * that always pass them.
    *
    * Returns: the error, branded so {@link isDynamoDBLangGraphError} recognises it
    * across realms and across two copies of this package. The brand is
@@ -157,7 +163,11 @@ export type AnyDynamoDBLangGraphError = { [C in ErrorCode]: DynamoDBLangGraphErr
  * `code`. A symbol registered by name, not `instanceof`: two copies of this
  * package in one dependency tree produce two classes but one symbol, and an
  * error crossing a realm boundary keeps its properties while losing its
- * prototype. Anything that cannot carry a property answers `false`.
+ * prototype. Anything that cannot carry a property answers `false`. Earlier
+ * releases set the same brand, so an older copy of this package installed
+ * beside this one has its errors recognised too — in that release's shape: no
+ * `details`, the counts as flat properties, and possibly a code this union
+ * does not list (`UPSTREAM`).
  *
  * Throws: nothing. The `in` operator raises a `TypeError` on a non-object, and
  * a guard that throws inside the `catch` it was called from would replace the

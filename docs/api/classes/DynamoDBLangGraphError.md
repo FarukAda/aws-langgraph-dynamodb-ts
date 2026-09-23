@@ -30,7 +30,7 @@ which is banned repo-wide.
 
 > **new DynamoDBLangGraphError**\<`C`\>(`message`, `code`, `context?`, `cause?`, `details?`): `DynamoDBLangGraphError`\<`C`\>
 
-Defined in: [shared/errors/base-error.ts:127](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L127)
+Defined in: [shared/errors/base-error.ts:133](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L133)
 
 Accepts: `message` — already redacted by whoever composed it, since it reaches
 `err.message`, which an application may print without a redacting logger.
@@ -39,7 +39,13 @@ only, never a payload or a credential. It is **copied**, so a caller that
 reuses one builder object cannot rewrite the context of an error already in
 flight; `null` reads as an absent one. `cause` — the failure below this one,
 kept as the native `cause` chain. `details` — the code-specific record
-[ErrorDetailsByCode](../interfaces/ErrorDetailsByCode.md) names, copied like `context`.
+[ErrorDetailsByCode](../interfaces/ErrorDetailsByCode.md) names, copied like `context`. The parameter is
+optional for every code, including the two whose `details` property is
+typed as always present (`BATCH_WRITE_INCOMPLETE`, `COMPENSATION_FAILED`):
+nothing at compile time stops a direct `new` from leaving it out, and an
+error built that way has no `details` at runtime whatever its type says.
+Inside this package those two codes are only ever built by the factories
+that always pass them.
 
 Returns: the error, branded so [isDynamoDBLangGraphError](../functions/isDynamoDBLangGraphError.md) recognises it
 across realms and across two copies of this package. The brand is

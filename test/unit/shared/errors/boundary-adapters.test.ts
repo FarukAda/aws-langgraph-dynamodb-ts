@@ -97,6 +97,41 @@ describe('public error boundary (CORE-01)', () => {
     );
   });
 
+  /**
+   * The README's `ABORTED` row says so: the classifier reads the name, not the
+   * signal, so a collaborator timing itself out is reported as a cancel even
+   * though the caller passed no signal at all.
+   */
+  it.each(['vectorBackend', 'index.embeddings'])(
+    "reports %s's own AbortError as ABORTED when the caller's signal never fired",
+    async (collaborator) => {
+      const { client } = createStrictDocumentMock();
+      const timeout = Object.assign(new Error('timed out'), { name: 'AbortError' });
+      const fromEmbeddings = collaborator === 'index.embeddings';
+      const store = new DynamoDBStore({
+        tableName: 'store',
+        client,
+        index: {
+          dims: 2,
+          embeddings: {
+            embedQuery: async () => (fromEmbeddings ? Promise.reject(timeout) : [0, 1]),
+            embedDocuments: () => Promise.resolve([[0, 1]]),
+          } as never,
+        },
+        vectorBackend: {
+          upsert: () => Promise.resolve(),
+          delete: () => Promise.resolve(),
+          query: async () => Promise.reject(timeout),
+        },
+      });
+      await expect(store.search(['users'], { query: 'q' })).rejects.toMatchObject({
+        code: ErrorCode.ABORTED,
+        context: { operation: 'store.search' },
+        cause: timeout,
+      });
+    },
+  );
+
   it('DynamoDBChatMessageHistory wraps a raw SDK error from getMessages', async () => {
     const { client, mock } = createStrictDocumentMock();
     const cause = sdkError();

@@ -8,7 +8,7 @@
 
 > **isDynamoDBLangGraphError**(`value`): `value is AnyDynamoDBLangGraphError`
 
-Defined in: [shared/errors/base-error.ts:166](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L166)
+Defined in: [shared/errors/base-error.ts:176](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L176)
 
 Whether `value` is one of this library's errors.
 
@@ -20,7 +20,11 @@ Returns: whether it carries the brand, narrowed to the union discriminated by
 `code`. A symbol registered by name, not `instanceof`: two copies of this
 package in one dependency tree produce two classes but one symbol, and an
 error crossing a realm boundary keeps its properties while losing its
-prototype. Anything that cannot carry a property answers `false`.
+prototype. Anything that cannot carry a property answers `false`. Earlier
+releases set the same brand, so an older copy of this package installed
+beside this one has its errors recognised too — in that release's shape: no
+`details`, the counts as flat properties, and possibly a code this union
+does not list (`UPSTREAM`).
 
 Throws: nothing. The `in` operator raises a `TypeError` on a non-object, and
 a guard that throws inside the `catch` it was called from would replace the

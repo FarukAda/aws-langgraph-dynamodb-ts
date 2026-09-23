@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0-rc.3] - 2026-09-23
 
-### Breaking
+Every error this package throws is now one class, `DynamoDBLangGraphError`, told apart by its `code`: the nine subclasses and `ErrorCode.UPSTREAM` are gone, a failure from below carries a code that says what to do about it — throttled, unavailable, contended, denied, not found, rejected — and the two codes that report more than a message carry it as typed `details`. The retry layer's default tokens are derived from the same classification table, the logs that named a failure's class now name its code, and the build now refuses an import that runs against the layer direction.
+
+### Changed (breaking)
 
 - **One error class.** Every error is a `DynamoDBLangGraphError`; branch on `code`. The nine subclasses are removed and `ErrorCode.UPSTREAM` is replaced by the codes below. `isDynamoDBLangGraphError` now narrows to a union discriminated by `code`, so `details` is typed without a cast.
 
@@ -25,18 +27,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | `CompensationFailedError` | `code === ErrorCode.COMPENSATION_FAILED`; `.rollbackError` → `details.rollbackError` |
   | `UpstreamError` / `ErrorCode.UPSTREAM` | the code the classifier assigns — `THROTTLED`, `SERVICE_UNAVAILABLE`, `CONTENTION`, `ACCESS_DENIED`, `NOT_FOUND`, `AWS_REJECTED`, `CONDITION_CONFLICT`, `ABORTED`, `AWS_REQUEST_FAILED`, or `UNEXPECTED_ERROR` for a failure that is not AWS's; `.upstreamName`, `.requestId`, `.httpStatusCode` → `context.awsErrorName`, `context.requestId`, `context.httpStatusCode` (or `cause.name` for a non-AWS failure) |
   | `error.name === 'ValidationError'` (any subclass name) | `error.name` is always `'DynamoDBLangGraphError'`; test `code` |
+  | `.unprocessed: WriteRequest[]`, `.failedChunks: Error[]` (mutable arrays) | `details.unprocessed: readonly WriteRequest[]`, `details.failedChunks: readonly Error[]`; copy before mutating (`[...details.unprocessed]`) |
+  | `JSON.stringify(error)` carried flat fields (`upstreamName`, `requestId`, `httpStatusCode`, `succeededCount`, `unprocessed`, `succeededChunks`, `totalChunks`, `failedChunks`, `rollbackError`) | it carries `code`, `context` and `details`: the AWS fields are `context.awsErrorName`, `context.requestId`, `context.httpStatusCode`, the counts are `details.*`. A log pipeline or alert keyed on a flat field reads the nested one instead |
 
 ### Changed
 
-- The default retry tokens are derived from the error classification table and shared by DynamoDB and S3. On DynamoDB calls, newly retried: `InternalFailure`, `ReplicatedWriteConflictException` — and S3's `SlowDown`, `InternalError`, `ConditionalRequestConflict`, which DynamoDB never returns. On S3 calls, newly retried: `InternalFailure`, `ReplicatedWriteConflictException`. No longer listed: `NetworkingError`, an SDK v2 name no installed SDK package emits — every network error code it stood in for is still retried under its own name.
+- The default retry tokens are derived from the error classification table and shared by DynamoDB and S3. On DynamoDB calls, newly retried: `InternalFailure`, `ReplicatedWriteConflictException` — and S3's `SlowDown`, `InternalError`, `ConditionalRequestConflict`, which DynamoDB never returns. On S3 calls, newly retried: `InternalFailure`, `ReplicatedWriteConflictException`. No longer listed: `NetworkingError`, an SDK v2 name no installed SDK package emits — every network error code it stood in for is still retried under its own name. What the retry layer and the classifier share is that list of names; they still differ at two edges: the retry layer also retries an error carrying the SDK's `$retryable` trait, which the classifier does not read (so one with a name the table does not know and a status that is not transient is retried, yet classifies as `AWS_REQUEST_FAILED`), and it walks the cause chain matching `errno` and `syscall` too, where the classifier reads one error's `name`, `code` and status.
 - A raw SDK `AbortError` reaching a public method is reported as `ABORTED` rather than as an upstream failure.
-- **`ensureS3LifecycleRule()` no longer tells a missing lifecycle configuration apart from a missing bucket while reading the bucket's current rules.** Both `NoSuchLifecycleConfiguration` and `NoSuchBucket` now classify as `NOT_FOUND`, and the read starts from an empty rule set either way, where it used to recognise only the configuration name and let a missing bucket propagate straight from the read. A missing bucket still makes the call throw — from the write that follows, rather than from the read itself — so the documented "throws for `NoSuchBucket`" behaviour is unchanged.
+- **`ensureS3LifecycleRule()` starts from an empty rule set only when the bucket has no lifecycle configuration (`NoSuchLifecycleConfiguration`), as in `1.0.0-rc.2`.** Any other failure of the read — a missing bucket included — still fails the call from the read, and a missing bucket now reaches the caller as `NOT_FOUND` where `1.0.0-rc.2` raised an `UpstreamError`.
 - **Six log events that used to quote a failure's class name now quote a library error's `code`, and still quote a foreign error's own name.** Every library error shared one class name, `DynamoDBLangGraphError`, so `retrying after a transient error`, `getMessages: skipped a corrupt message item`, `Failed to clean up orphaned S3 objects after`, `store vector-index sync failed; reconcileVectorIndex will repair`, `factory.destroy: an adapter did not release its resources`, and `search: skipped an unusable vectorBackend match` all logged the same value, `reason: 'DynamoDBLangGraphError'` (`error:` for the retry line), whether the underlying failure was a refused input or a spent retry budget. Each now logs `reason: 'VALIDATION'`, `reason: 'RETRY_EXHAUSTED'`, and so on for a library error, and the failure's own `name` as before for anything else.
 
 ### Internal
 
 - Type-aware lint and unused-code checks now gate the build; no behaviour change.
-- A static gate refuses an import that runs against the layer direction or between features; three modules moved to the layer that owns them, with no public change.
+- A static gate refuses an import that runs against the layer direction or between features. To satisfy it, the option-key lists that named each feature's option types left the shared layer for three new per-feature files (`checkpointer`, `store` and `history` `internal/option-keys.ts`), the `VectorScoreDirection` type moved beside `VectorBackend`, and the store's single-item read moved from its actions to its internals. No public type, export or behaviour changed.
 
 ## [1.0.0-rc.2] - 2026-09-21
 

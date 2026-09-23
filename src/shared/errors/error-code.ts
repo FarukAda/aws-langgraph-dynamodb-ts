@@ -25,8 +25,9 @@ export enum ErrorCode {
   /**
    * AWS throttled the request: `ProvisionedThroughputExceededException`,
    * `ThrottlingException`, `RequestLimitExceeded`, S3's `SlowDown`, an HTTP
-   * 429, or a cancelled transaction whose causes include a throttling reason.
-   * Back off, or raise the table's capacity or the account quota.
+   * 429, or a cancelled transaction whose causes are all transient and include
+   * a throttling reason. Back off, or raise the table's capacity or the account
+   * quota.
    */
   THROTTLED = 'THROTTLED',
   /**

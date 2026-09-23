@@ -331,7 +331,7 @@ Every DynamoDB call the library makes runs inside its own retry layer, and that 
 
 ## Error handling
 
-Every error the library throws is a `DynamoDBLangGraphError` carrying a stable `code` from the `ErrorCode` enum, a structured `context` (`tableName`, `operation`, `field`, `key`, `attempts`, `threadId`, `checkpointId`, and — when the failure underneath came from AWS — `awsErrorName`, `requestId` and `httpStatusCode`; identifiers and counts, never a payload), `details` for the two codes that carry more, and a native `cause` chain. Raw AWS SDK errors never escape a public method: each one is given the code the classifier assigns (the table below) and keeps the SDK error as `cause`. Branch on `code` and detect library errors with the exported brand check rather than `instanceof`, which breaks when a bundler duplicates the package. The check is safe on any caught value, including one that is not an object at all — which is what a `catch` clause can actually hold. `ErrorCode` is frozen: a member cannot be reassigned by anything sharing the process, so `error.code === ErrorCode.X` means the same thing to every consumer:
+Every error the library throws is a `DynamoDBLangGraphError` carrying a stable `code` from the `ErrorCode` enum, a structured `context` (`tableName`, `operation`, `field`, `key`, `attempts`, `threadId`, `checkpointId`, and — when the failure underneath came from AWS — `awsErrorName`, `requestId` and `httpStatusCode`; identifiers and counts, never a payload), `details` for the two codes that carry more, and a native `cause` chain. Raw AWS SDK errors never escape a public method: each one is given the code the classifier assigns (the table below) and keeps the SDK error as `cause`. Branch on `code` and detect library errors with the exported brand check rather than `instanceof`, which breaks when a bundler duplicates the package. Earlier releases set the same brand, so an error from an older copy installed beside this one is recognised too — in that release's shape: no `details`, its counts as flat properties, and possibly `code: 'UPSTREAM'`. The check is safe on any caught value, including one that is not an object at all — which is what a `catch` clause can actually hold. `ErrorCode` is frozen: a member cannot be reassigned by anything sharing the process, so `error.code === ErrorCode.X` means the same thing to every consumer:
 
 ```typescript
 import { ErrorCode, isDynamoDBLangGraphError } from '@farukada/aws-langgraph-dynamodb-ts';
@@ -339,10 +339,19 @@ import { ErrorCode, isDynamoDBLangGraphError } from '@farukada/aws-langgraph-dyn
 try {
   await store.put([''], 'k', { v: 1 });
 } catch (error) {
-  if (isDynamoDBLangGraphError(error as Error)) {
-    if (error.code === ErrorCode.VALIDATION) {  /* bad input: error.context.field names it */ }
-    if (error.code === ErrorCode.THROTTLED) { /* back off; error.context.awsErrorName says which limit */ }
-    if (error.code === ErrorCode.COMPENSATION_FAILED) { /* error.details.rollbackError; run reconcileMessageCount */ }
+  const e = error as Error; // guard a variable: a guard on `error as Error` leaves `error` itself unknown
+  if (isDynamoDBLangGraphError(e)) {
+    switch (e.code) {
+      case ErrorCode.VALIDATION:
+        console.error('bad input', e.context.field); // names the offending option or argument
+        break;
+      case ErrorCode.THROTTLED:
+        console.warn('back off', e.context.awsErrorName); // says which limit
+        break;
+      case ErrorCode.COMPENSATION_FAILED:
+        console.error(e.details.rollbackError); // typed by the code, no cast; then run reconcileMessageCount
+        break;
+    }
   }
 }
 ```
@@ -359,7 +368,7 @@ try {
 | `AWS_REQUEST_FAILED` | any method, for an AWS failure no narrower code fits; `context.awsErrorName` names it |
 | `UNEXPECTED_ERROR` | any method, for a failure that is neither this library's check nor AWS's: what your `vectorBackend`, `index.embeddings`, `serde` or the single-session adapter's backend threw, as `cause` |
 | `RETRY_EXHAUSTED` | every DynamoDB call after `retry.maxAttempts` transient failures (`context.attempts`, the last error as `cause`) |
-| `ABORTED` | any cancellable method whose `AbortSignal` fired, including `saver.deleteThread` and `history.clear` when it fires part-way through the delete, and `saver.getDeltaChannelHistory` when it fires part-way through the ancestor walk — the hop it fires on is the last read the call makes — a cancel is reported as a cancel, unwrapped, and no further row is issued after it |
+| `ABORTED` | any cancellable method whose `AbortSignal` fired, including `saver.deleteThread` and `history.clear` when it fires part-way through the delete, and `saver.getDeltaChannelHistory` when it fires part-way through the ancestor walk — the hop it fires on is the last read the call makes — a cancel is reported as a cancel, unwrapped, and no further row is issued after it. A collaborator's own abort is reported the same way: a `vectorBackend` or `index.embeddings` rejecting with an `AbortError` — from a timeout of its own, say — surfaces as `ABORTED` even though the caller's signal never fired, with that `AbortError` as `cause` |
 | `CONDITION_CONFLICT` | `history.reconcileMessageCount` when the session changed while it counted, and when the session does not exist — repairing one that is not there would mean creating a permanent, TTL-less metadata row |
 | `COMPENSATION_FAILED` | `history.addMessages` / `addMessage` when a multi-chunk append failed and the rollback of the committed chunks failed too (`details.rollbackError`; run `reconcileMessageCount`) |
 | `BATCH_WRITE_INCOMPLETE` | `saver.deleteThread`, `history.clear` when a row's delete fails — a cancelled pass raises `ABORTED` instead, and never this. `details.kind` says which shape the error carries: `'drain'` for one `BatchWriteItem` sequence that ran out of `UnprocessedItems` rounds (`details.succeededCount`, `details.unprocessed` — the requests to re-submit — and `details.retries`), `'pass'` for a pass that attempted every chunk or row (`details.unit`, `details.succeededChunks`, `details.totalChunks`, `details.failedChunks`, `details.succeededCount`). A partition delete sends one conditional request per row, so its counts are **rows** (`details.unit: 'row'`): `details.succeededChunks`/`details.totalChunks` are rows deleted and rows attempted across the whole pass, `details.succeededCount` repeats the first, `details.failedChunks` holds each failing row's own error, and the message names the row unit. A row the pin refused is not a failure and is in neither count. The chunked form — `details.unit: 'chunk'`, counts in 25-row `BatchWriteItem` chunks, with a `'drain'` error per failing chunk inside it — is now raised only by the rollback of a failed multi-chunk `history.addMessages`, where it reaches a caller as the `COMPENSATION_FAILED` error's `details.rollbackError`; there `details.succeededCount` is the individual writes confirmed persisted across every chunk |
