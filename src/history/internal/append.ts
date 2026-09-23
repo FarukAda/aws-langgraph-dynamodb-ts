@@ -472,8 +472,10 @@ function isTtlConditionLoss(error: Error): boolean {
  * retrying that matters most — the send made after a race has already been
  * lost. That deadline is a bound on the whole budget, never on the attempt
  * count. `minAttempts` is the contention floor: a caller policy may raise the
- * budget, never lower it. `retry.signal` aborts between attempts and
- * `retry.rng` replaces the backoff's jitter source.
+ * budget, never lower it. `retry.signal` aborts between attempts, and reaches
+ * the SDK request in flight as its `abortSignal`, so an attempt under way is
+ * cancelled rather than merely awaited; `retry.rng` replaces the backoff's
+ * jitter source.
  */
 async function attempt(
   context: HistoryContext,

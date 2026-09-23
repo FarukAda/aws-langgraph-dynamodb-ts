@@ -294,8 +294,9 @@ export async function deleteIdempotently(
  *
  * Returns: nothing, once the write committed.
  *
- * Throws: the guard's rejection, as `CONDITION_CONFLICT` carrying the row that
- * turned the write away; whatever the write throws once its retries are spent.
+ * Throws: the guard's rejection — a rejection that `isConditionalCheckFailed`
+ * answers true for, with the row that turned the write away readable through
+ * `rejectedItem`; whatever the write throws once its retries are spent.
  */
 export async function commitRow(
   deps: RowWriteDeps,

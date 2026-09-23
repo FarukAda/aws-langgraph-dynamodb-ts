@@ -391,6 +391,10 @@ describe('isRowAbsent', () => {
     mock.on(GetCommand).resolvesOnce({}).resolvesOnce({ Item: KEY });
     await expect(isRowAbsent({ client, tableName: TABLE }, KEY)).resolves.toBe(true);
     await expect(isRowAbsent({ client, tableName: TABLE }, KEY)).resolves.toBe(false);
+    expect(mock.commandCalls(GetCommand).map((call) => call.args[0].input.ConsistentRead)).toEqual([
+      true,
+      true,
+    ]);
   });
 
   it('is false when the read fails, because a failed read confirms nothing', async () => {

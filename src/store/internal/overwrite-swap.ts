@@ -56,8 +56,8 @@ import type { StoreContext } from './setup';
  * The pin decides which half of the token's guarantee applies, and the swap
  * below is written around the answer. An attempt the guard turns away commits
  * nothing, so nothing is cached for its token and a retry would be a fresh
- * evaluation — `putIdempotently` (shared/dynamodb/idempotent-write.ts), and
- * the transaction helper it delegates to, state that precondition in full —
+ * evaluation — {@link commitRow}, and the transaction helper it delegates to,
+ * state that precondition in full —
  * which is why a loss is
  * answered by re-reading and re-pinning under a new token rather than by
  * re-sending this one. What the token does cover is a
