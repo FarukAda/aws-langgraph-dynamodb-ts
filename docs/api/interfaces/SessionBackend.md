@@ -6,7 +6,7 @@
 
 # Interface: SessionBackend
 
-Defined in: [history/session-adapter.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L16)
+Defined in: [history/session-adapter.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L21)
 
 The session-scoped operations a single-session adapter delegates to.
 
@@ -16,7 +16,7 @@ The session-scoped operations a single-session adapter delegates to.
 
 > **addMessages**(`sessionId`, `messages`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L18)
+Defined in: [history/session-adapter.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L23)
 
 #### Parameters
 
@@ -38,7 +38,7 @@ Defined in: [history/session-adapter.ts:18](https://github.com/FarukAda/aws-lang
 
 > **clear**(`sessionId`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L19)
+Defined in: [history/session-adapter.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L24)
 
 #### Parameters
 
@@ -56,7 +56,7 @@ Defined in: [history/session-adapter.ts:19](https://github.com/FarukAda/aws-lang
 
 > **getMessages**(`sessionId`, `window?`): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/session-adapter.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L17)
+Defined in: [history/session-adapter.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L22)
 
 #### Parameters
 
