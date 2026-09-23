@@ -21,6 +21,10 @@ The static guards fail the build rather than rely on review:
 - comments are JSDoc only (`/** ... */`) — no `//` comments in `src`;
 - no `any`, no `unknown`, no `instanceof` in `src` (errors are detected by brand and `code`);
 - no re-exports outside `src/index.ts`, no import cycles, no dead `ErrorCode` member;
+- errors are recognised by code (`test/static/error-recognition.test.ts`);
+- every AWS error name is declared by the SDK or documented (`test/static/aws-error-names.test.ts`);
+- the removed class names appear nowhere a reader would act on them (`test/static/retired-error-names.test.ts`);
+- every `ErrorCode` is in the README's table (`test/static/error-codes.test.ts`);
 - every `info`/`warn`/`error` log event is documented in the README table, and the README IAM policy lists exactly the DynamoDB and S3 actions the code uses;
 - the public export set and the adapter method signatures are pinned in `test/types/public-surface.test.ts` — changing them is a deliberate, documented act;
 - `createClient` / `createS3Client` are `@internal` test seams and stay out of the shipped declarations;

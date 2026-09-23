@@ -4,45 +4,42 @@
 
 [AWS LangGraph DynamoDB TypeScript](../README.md) / DynamoDBLangGraphError
 
-# Class: DynamoDBLangGraphError
+# Class: DynamoDBLangGraphError\<C\>
 
-Defined in: [shared/errors/base-error.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L32)
+Defined in: [shared/errors/base-error.ts:105](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L105)
 
 Base class for every error this library throws. Carries a branchable
-[ErrorCode](../enumerations/ErrorCode.md), structured [ErrorContext](../interfaces/ErrorContext.md), and a native `cause`
-chain. Detected via [isDynamoDBLangGraphError](../functions/isDynamoDBLangGraphError.md) (a symbol brand) rather
-than `instanceof`, which is banned repo-wide.
+[ErrorCode](../enumerations/ErrorCode.md), structured [ErrorContext](../interfaces/ErrorContext.md), code-specific
+[details](#details), and a native `cause` chain. Detected via
+[isDynamoDBLangGraphError](../functions/isDynamoDBLangGraphError.md) (a symbol brand) rather than `instanceof`,
+which is banned repo-wide.
 
 ## Extends
 
 - `Error`
 
-## Extended by
+## Type Parameters
 
-- [`AbortError`](AbortError.md)
-- [`BatchWriteAllIncompleteError`](BatchWriteAllIncompleteError.md)
-- [`BatchWriteIncompleteError`](BatchWriteIncompleteError.md)
-- [`CompensationFailedError`](CompensationFailedError.md)
-- [`ConflictError`](ConflictError.md)
-- [`ResultTruncatedError`](ResultTruncatedError.md)
-- [`RetryExhaustedError`](RetryExhaustedError.md)
-- [`ValidationError`](ValidationError.md)
-- [`UpstreamError`](UpstreamError.md)
+### C
+
+`C` *extends* [`ErrorCode`](../enumerations/ErrorCode.md) = [`ErrorCode`](../enumerations/ErrorCode.md)
 
 ## Constructors
 
 ### Constructor
 
-> **new DynamoDBLangGraphError**(`message`, `code`, `context?`, `cause?`): `DynamoDBLangGraphError`
+> **new DynamoDBLangGraphError**\<`C`\>(`message`, `code`, `context?`, `cause?`, `details?`): `DynamoDBLangGraphError`\<`C`\>
 
-Defined in: [shared/errors/base-error.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L50)
+Defined in: [shared/errors/base-error.ts:127](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L127)
 
 Accepts: `message` — already redacted by whoever composed it, since it reaches
 `err.message`, which an application may print without a redacting logger.
-`context` — identifiers and counts only, never a payload or a credential.
-It is **copied**, so a caller that reuses one builder object cannot rewrite
-the context of an error already in flight; `null` reads as an absent one.
-`cause` — the failure below this one, kept as the native `cause` chain.
+`code` — the code this error branches on. `context` — identifiers and counts
+only, never a payload or a credential. It is **copied**, so a caller that
+reuses one builder object cannot rewrite the context of an error already in
+flight; `null` reads as an absent one. `cause` — the failure below this one,
+kept as the native `cause` chain. `details` — the code-specific record
+[ErrorDetailsByCode](../interfaces/ErrorDetailsByCode.md) names, copied like `context`.
 
 Returns: the error, branded so [isDynamoDBLangGraphError](../functions/isDynamoDBLangGraphError.md) recognises it
 across realms and across two copies of this package. The brand is
@@ -58,7 +55,7 @@ Throws: nothing; building an error may not fail.
 
 ##### code
 
-[`ErrorCode`](../enumerations/ErrorCode.md)
+`C`
 
 ##### context?
 
@@ -68,9 +65,13 @@ Throws: nothing; building an error may not fail.
 
 `Error`
 
+##### details?
+
+[`ErrorDetailsFor`](../type-aliases/ErrorDetailsFor.md)\<`C`\>
+
 #### Returns
 
-`DynamoDBLangGraphError`
+`DynamoDBLangGraphError`\<`C`\>
 
 #### Overrides
 
@@ -80,9 +81,9 @@ Throws: nothing; building an error may not fail.
 
 ### code
 
-> `readonly` **code**: [`ErrorCode`](../enumerations/ErrorCode.md)
+> `readonly` **code**: `C`
 
-Defined in: [shared/errors/base-error.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L33)
+Defined in: [shared/errors/base-error.ts:106](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L106)
 
 ***
 
@@ -90,4 +91,14 @@ Defined in: [shared/errors/base-error.ts:33](https://github.com/FarukAda/aws-lan
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L34)
+Defined in: [shared/errors/base-error.ts:107](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L107)
+
+***
+
+### details
+
+> `readonly` **details**: [`ErrorDetailsFor`](../type-aliases/ErrorDetailsFor.md)\<`C`\>
+
+Defined in: [shared/errors/base-error.ts:109](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L109)
+
+Declared, not emitted: a code without details leaves no `undefined`-valued own property.

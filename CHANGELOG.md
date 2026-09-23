@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **One error class.** Every error is a `DynamoDBLangGraphError`; branch on `code`. The nine subclasses are removed and `ErrorCode.UPSTREAM` is replaced by the codes below. `isDynamoDBLangGraphError` now narrows to a union discriminated by `code`, so `details` is typed without a cast.
+
+  | Removed | Now |
+  |---|---|
+  | `ValidationError` | `code === ErrorCode.VALIDATION`; `context.field` unchanged |
+  | `ConflictError` | `code === ErrorCode.CONDITION_CONFLICT` |
+  | `RetryExhaustedError` | `code === ErrorCode.RETRY_EXHAUSTED`; `context.attempts` unchanged |
+  | `ResultTruncatedError` | `code === ErrorCode.RESULT_TRUNCATED`; `context.field` unchanged |
+  | `AbortError` | `code === ErrorCode.ABORTED` |
+  | `BatchWriteIncompleteError` | `code === ErrorCode.BATCH_WRITE_INCOMPLETE` with `details.kind === 'drain'`; `.succeededCount`, `.unprocessed` → `details.succeededCount`, `details.unprocessed`; the retry rounds are `details.retries` |
+  | `BatchWriteAllIncompleteError` | `code === ErrorCode.BATCH_WRITE_INCOMPLETE` with `details.kind === 'pass'`; `.succeededChunks`, `.totalChunks`, `.failedChunks`, `.succeededCount` → `details.*`; the unit is `details.unit` |
+  | `CompensationFailedError` | `code === ErrorCode.COMPENSATION_FAILED`; `.rollbackError` → `details.rollbackError` |
+  | `UpstreamError` / `ErrorCode.UPSTREAM` | the code the classifier assigns — `THROTTLED`, `SERVICE_UNAVAILABLE`, `CONTENTION`, `ACCESS_DENIED`, `NOT_FOUND`, `AWS_REJECTED`, `CONDITION_CONFLICT`, `ABORTED`, `AWS_REQUEST_FAILED`, or `UNEXPECTED_ERROR` for a failure that is not AWS's; `.upstreamName`, `.requestId`, `.httpStatusCode` → `context.awsErrorName`, `context.requestId`, `context.httpStatusCode` (or `cause.name` for a non-AWS failure) |
+  | `error.name === 'ValidationError'` (any subclass name) | `error.name` is always `'DynamoDBLangGraphError'`; test `code` |
+
+### Changed
+
+- The default retry tokens are derived from the error classification table and shared by DynamoDB and S3. On DynamoDB calls, newly retried: `InternalFailure`, `ReplicatedWriteConflictException` — and S3's `SlowDown`, `InternalError`, `ConditionalRequestConflict`, which DynamoDB never returns. On S3 calls, newly retried: `InternalFailure`, `ReplicatedWriteConflictException`. No longer listed: `NetworkingError`, an SDK v2 name no installed SDK package emits — every network error code it stood in for is still retried under its own name.
+- A raw SDK `AbortError` reaching a public method is reported as `ABORTED` rather than as an upstream failure.
+- **`ensureS3LifecycleRule()` no longer tells a missing lifecycle configuration apart from a missing bucket while reading the bucket's current rules.** Both `NoSuchLifecycleConfiguration` and `NoSuchBucket` now classify as `NOT_FOUND`, and the read starts from an empty rule set either way, where it used to recognise only the configuration name and let a missing bucket propagate straight from the read. A missing bucket still makes the call throw — from the write that follows, rather than from the read itself — so the documented "throws for `NoSuchBucket`" behaviour is unchanged.
+- **Six log events that used to quote a failure's class name now quote a library error's `code`, and still quote a foreign error's own name.** Every library error shared one class name, `DynamoDBLangGraphError`, so `retrying after a transient error`, `getMessages: skipped a corrupt message item`, `Failed to clean up orphaned S3 objects after`, `store vector-index sync failed; reconcileVectorIndex will repair`, `factory.destroy: an adapter did not release its resources`, and `search: skipped an unusable vectorBackend match` all logged the same value, `reason: 'DynamoDBLangGraphError'` (`error:` for the retry line), whether the underlying failure was a refused input or a spent retry budget. Each now logs `reason: 'VALIDATION'`, `reason: 'RETRY_EXHAUSTED'`, and so on for a library error, and the failure's own `name` as before for anything else.
+
 ### Internal
 
 - Type-aware lint and unused-code checks now gate the build; no behaviour change.

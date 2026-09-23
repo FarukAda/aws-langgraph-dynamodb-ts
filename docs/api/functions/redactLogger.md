@@ -21,7 +21,7 @@ not it carries the `g` flag.
 
 Returns: a logger with the same four methods.
 
-Throws: ValidationError naming `logger` or `logger.<method>` for a logger it
+Throws: `VALIDATION` naming `logger` or `logger.<method>` for a logger it
 could not delegate to, and `options`, `extraKeys` or `extraValuePatterns`
 for an option of the wrong type. Nothing at log time.
 

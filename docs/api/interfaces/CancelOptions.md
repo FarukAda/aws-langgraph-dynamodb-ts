@@ -22,4 +22,4 @@ Per-call cancellation for the long-running adapter methods.
 
 Defined in: [shared/options.ts:84](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L84)
 
-Aborting it rejects the call with `AbortError` (`ABORTED`) at the next wait.
+Aborting it rejects the call with an `ABORTED` error at the next wait.

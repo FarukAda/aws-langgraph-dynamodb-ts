@@ -6,7 +6,7 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory/factory.ts:106](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L106)
+Defined in: [factory/factory.ts:107](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L107)
 
 Convenience constructors for the adapters.
 
@@ -29,7 +29,7 @@ field names (`options.<key>`, `tableName`, …) for anything inside one.
 
 > **new DynamoDBFactory**(`base?`): `DynamoDBFactory`
 
-Defined in: [factory/factory.ts:125](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L125)
+Defined in: [factory/factory.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L126)
 
 Accepts: `base` — the defaults every adapter inherits. Checked here, where
 the caller wrote them: an unknown key would otherwise be ignored, and a
@@ -44,7 +44,7 @@ own error with a bare `TypeError`.
 Returns: a factory holding those defaults. It opens nothing: every client
 is built by the `create*` call that needs one.
 
-Throws: ValidationError naming `options.<key>`, `client`, `clientConfig`,
+Throws: `VALIDATION` naming `options.<key>`, `client`, `clientConfig`,
 `logger` or `logger.<method>`. Everything else each adapter validates for
 itself, since a per-adapter value may still replace it.
 
@@ -64,7 +64,7 @@ itself, since a per-adapter value may still replace it.
 
 > **createAll**\<`O`\>(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
-Defined in: [factory/factory.ts:249](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L249)
+Defined in: [factory/factory.ts:250](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L250)
 
 Build the adapters whose sections are given, all on one shared client.
 
@@ -80,7 +80,7 @@ Returns: the adapters, typed by the sections asked for, and one `destroy`
 that releases all of them and the shared client. A client the factory was
 given rather than built is never destroyed.
 
-Throws: ValidationError naming `options` for an argument or a section that
+Throws: `VALIDATION` naming `options` for an argument or a section that
 is not an object, or `options.<key>` for a key that is not a section name.
 Whatever an adapter's constructor throws — after the adapters already
 built and the freshly created client have been released, so a failed call
@@ -113,7 +113,7 @@ others.
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:218](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L218)
+Defined in: [factory/factory.ts:219](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L219)
 
 A chat history on its own client.
 
@@ -139,7 +139,7 @@ Throws: as [createSaver](#createsaver).
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:190](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L190)
+Defined in: [factory/factory.ts:191](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L191)
 
 A saver on its own client.
 
@@ -150,7 +150,7 @@ replaces the factory's as a unit.
 Returns: the saver, which owns the client it built and releases it on
 `destroy()`.
 
-Throws: ValidationError for any invalid option, naming it as the saver's
+Throws: `VALIDATION` for any invalid option, naming it as the saver's
 constructor does — `options` for a value that is not an object, checked
 before the defaults are laid under it: `null` crashed reading `client`
 off it, and a string was spread into its characters.
@@ -171,7 +171,7 @@ off it, and a string was spread into its characters.
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:204](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L204)
+Defined in: [factory/factory.ts:205](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L205)
 
 A store on its own client.
 

@@ -31,7 +31,7 @@ against DynamoDB's 400 KB item limit; see that option's note.
 > `optional` **maxScanItems?**: `number`
 
 Cap on rows read into memory by one search, namespace listing or
-reconcile before `ResultTruncatedError`. Reaching it is an error, not a
+reconcile before `RESULT_TRUNCATED`. Reaching it is an error, not a
 truncation: a partial answer is never returned as a complete one.
 Defaults to `MAX_TOTAL_ITEMS_IN_MEMORY`.
 
@@ -67,5 +67,5 @@ Direction of the score a `vectorBackend` returns. `'relevance'` (the
 default) forwards it unchanged; `'distance'` negates and re-sorts, so a
 distance-native backend (S3 Vectors, FAISS L2, pgvector `<->`) satisfies
 the higher-is-better contract without the caller wrapping it. Any other
-value is rejected at construction with a `ValidationError` rather than
+value is rejected at construction with a `VALIDATION` error rather than
 silently ranking one direction as the other.

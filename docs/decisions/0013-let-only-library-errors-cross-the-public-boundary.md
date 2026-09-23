@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted. Its description of a class hierarchy and of UpstreamError is superseded by [19](0019-raise-one-error-class-and-classify-aws-failures-in-one-place.md); the boundary rule stands.
 
 ## Context
 

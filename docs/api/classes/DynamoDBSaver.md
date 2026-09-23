@@ -11,7 +11,7 @@ Defined in: [checkpointer/saver.ts:37](https://github.com/FarukAda/aws-langgraph
 DynamoDB-backed LangGraph checkpoint saver. A thin orchestrator: it resolves
 its collaborators once and delegates every operation to a focused action.
 Every public method is the library's error boundary — a raw AWS SDK error
-escaping an action surfaces as an `UpstreamError`.
+escaping an action is wrapped with the code the classifier assigns.
 
 ## Extends
 
@@ -33,7 +33,7 @@ gets.
 Returns: a saver that owns the client it built, or borrows the one it was
 given.
 
-Throws: ValidationError naming the offending option.
+Throws: `VALIDATION` naming the offending option.
 
 Guarantees: no I/O. Constructing a saver issues no request, so it is safe
 at module scope and in a Lambda's init phase.
@@ -66,13 +66,13 @@ Accepts: `threadId` — validated. `options.signal` — aborts between pages.
 
 Returns: nothing. Deleting a thread that does not exist is not an error.
 
-Throws: ValidationError naming `options` for options that are not an
+Throws: `VALIDATION` naming `options` for options that are not an
 object, `options.<key>` for a key this package does not read, `signal`
 for a signal that is not `AbortSignal`-shaped, or `thread_id` for a
 malformed `threadId`;
-BatchWriteAllIncompleteError when a row's delete fails, counting rows
-rather than batches and carrying what did succeed; UpstreamError;
-AbortError when the signal fires, which is what a cancel surfaces as
+`BATCH_WRITE_INCOMPLETE` when a row's delete fails, counting rows
+rather than batches and carrying what did succeed; a classified AWS failure;
+`ABORTED` when the signal fires, which is what a cancel surfaces as
 rather than an incomplete delete, even when it fires part-way through the
 pass. A row refused because it was rewritten after the partition read
 raises nothing: it is left exactly as its writer left it, reported at
@@ -149,8 +149,8 @@ match.
 Returns: nothing. Installing a rule that is already there is a no-op too,
 so calling it on every deploy is safe.
 
-Throws: ValidationError naming `s3.keyPrefix` on a rule-id collision;
-UpstreamError when the bucket's lifecycle cannot be read or written.
+Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
+a classified AWS failure when the bucket's lifecycle cannot be read or written.
 
 #### Returns
 
@@ -192,13 +192,13 @@ last read the call makes.
 Returns: per channel, its on-path writes oldest-first and the nearest
 stored value found.
 
-Throws: ValidationError naming `options` for options that are not an
+Throws: `VALIDATION` naming `options` for options that are not an
 object, `options.<key>` for an unknown key, `config`, `configurable` or
 `signal` for a config of the wrong shape, or `channels` for a value that
 is not an array of strings, and, once a channel is named, `thread_id`,
 `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
 identifier; `ANCESTOR_EXPIRED` when a checkpoint a channel still needs has
-expired; UpstreamError; RetryExhaustedError; AbortError, which a walk
+expired; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`, which a walk
 cancelled as it reached an expired ancestor reports in place of
 `ANCESTOR_EXPIRED`.
 
@@ -241,7 +241,7 @@ Returns: the tuple, or `undefined` for an unknown thread, an unknown
 checkpoint, a config naming no thread, or a checkpoint whose payload row is
 not there yet.
 
-Throws: ValidationError, before any read, naming `config` for a config that
+Throws: `VALIDATION`, before any read, naming `config` for a config that
 is not an object, `configurable` for a `configurable` that is present and
 not an object, `signal` for a signal that is not `AbortSignal`-shaped, or
 `thread_id`, `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a
@@ -254,7 +254,7 @@ payload the configured serializer refuses to reconstruct;
 `PAYLOAD_CORRUPT` for a payload that is no longer the form its row
 declares; `S3_OFFLOAD_FAILED` for an offloaded payload that cannot be
 downloaded; `COMPRESSION_LIMIT` for one whose decompressed size would pass
-the cap; UpstreamError; RetryExhaustedError; AbortError.
+the cap; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
 
 Guarantees: strongly consistent, so a checkpoint just written is always
 seen.
@@ -294,7 +294,7 @@ page size whose computation went wrong is reported instead of hidden.
 Returns: an async generator over the tuples. Abandoning it stops the read,
 so a consumer that breaks early pays for no further page.
 
-Throws: ValidationError, raised from the first `.next()`, since a
+Throws: `VALIDATION`, raised from the first `.next()`, since a
 generator runs none of its body until pulled, and before any read: naming
 `config`, `configurable` or `signal` for a config of the wrong shape, as
 [getTuple](#gettuple) does, or `thread_id`, `checkpoint_ns`, `checkpoint_id` or
@@ -305,9 +305,9 @@ object, `limit` for a limit that is not an integer from 0 to
 `MAX_PAGE_LIMIT` (10,000), and `before` for a `before` that is not an
 object or whose `configurable.checkpoint_id` is
 neither absent (`undefined`, `null` or `''`) nor a well-formed checkpoint
-id. `FORMAT_UNSUPPORTED`; ResultTruncatedError, without a `thread_id` and
-with `indexName`, for an index shard whose pages do not end; UpstreamError;
-RetryExhaustedError; AbortError.
+id. `FORMAT_UNSUPPORTED`; `RESULT_TRUNCATED`, without a `thread_id` and
+with `indexName`, for an index shard whose pages do not end; a classified AWS failure;
+`RETRY_EXHAUSTED`; `ABORTED`.
 
 Guarantees: eventually consistent — a listing tolerates the replica lag
 `getTuple` does not.
@@ -356,14 +356,14 @@ satisfy `BaseCheckpointSaver.put` and deliberately ignored; see
 Returns: the config addressing the stored checkpoint, which is what the
 caller passes back to continue the thread.
 
-Throws: ValidationError naming `config`, `configurable` or `signal` for a
+Throws: `VALIDATION` naming `config`, `configurable` or `signal` for a
 config of the wrong shape, `thread_id` for a missing or malformed thread
 id, `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
 identifier, `checkpoint` for a `null` or `undefined` checkpoint,
 `checkpoint_id` for a malformed `checkpoint.id`, `payload` for a payload
 too large to store inline without `s3`, or `s3Key` for an offloaded
 object's key over S3's cap; `S3_OFFLOAD_FAILED` when an offloaded payload
-cannot be uploaded; UpstreamError; RetryExhaustedError; AbortError.
+cannot be uploaded; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
 
 Guarantees: both rows land or neither does. Writing the same
 `checkpoint.id` again replaces both, so a retry is safe. Each put uploads
@@ -416,7 +416,7 @@ writes nothing. `taskId` — validated as the key segment it becomes.
 Returns: nothing. Losing a first-write-wins race is a normal outcome, not
 a failure.
 
-Throws: ValidationError naming `taskId` for a malformed task id; `config`,
+Throws: `VALIDATION` naming `taskId` for a malformed task id; `config`,
 `configurable` or `signal` for a config of the wrong shape; `thread_id`,
 `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
 identifier, and `checkpoint_id` when the config names none; `writes` for
@@ -424,7 +424,7 @@ writes that is not an array, or holds an entry that is not one; `channel`
 for a malformed channel; `sortKey` for identifiers composing a sort key
 over DynamoDB's cap; `payload` for a value too large to store inline
 without `s3`; or `s3Key` for an offloaded object's key over S3's cap.
-`S3_OFFLOAD_FAILED`; UpstreamError; RetryExhaustedError; AbortError.
+`S3_OFFLOAD_FAILED`; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
 
 Guarantees: regular writes are first-write-wins; special channels
 (`__interrupt__`, `__resume__`, `__error__`, `__scheduled__`) overwrite,

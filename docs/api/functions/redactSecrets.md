@@ -34,7 +34,7 @@ Returns: a redacted clone. The input is never mutated — a logger that
 scrubbed the caller's own object would corrupt the very data the application
 is working with.
 
-Throws: ValidationError naming `patterns` or `valuePatterns` for a list this
+Throws: `VALIDATION` naming `patterns` or `valuePatterns` for a list this
 function could not apply, which is a mistake in the call itself and is
 raised before anything is walked. Nothing after that: a value whose
 redaction fails — a throwing getter, a structure deep enough to exhaust the
