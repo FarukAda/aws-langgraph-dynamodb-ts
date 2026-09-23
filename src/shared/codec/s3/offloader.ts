@@ -168,7 +168,8 @@ export class S3Offloader {
    *
    * Accepts: as {@link ownsKey}.
    *
-   * Returns: nothing; being in scope is the absence of a throw.
+   * Returns: nothing: `key` is kept under its declared type, and this checks
+   * it against `scope`.
    *
    * Throws: `VALIDATION`. Every download of a key taken from a row goes
    * through here, so a tampered or foreign row cannot make a reader fetch an

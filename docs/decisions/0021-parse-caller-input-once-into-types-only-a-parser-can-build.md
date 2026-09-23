@@ -73,10 +73,16 @@ operation's shape a second time.
 Negative. Brands are unfamiliar and appear in internal signatures, which is a tax
 on every reader. The cast that applies a brand is a place where a mistake would be
 silent; the static guard confines it to one function per brand, but it cannot
-check that the function's checks are the right ones. Tests of internal functions
-must build their inputs through the parsers, which makes a fixture a parser would
-refuse fail where it is written — and makes such fixtures longer. `unknown` is
-back in `src`, in a narrow and gated form.
+check that the function's checks are the right ones. The guard also matches a
+cast by its literal syntax — `as B` or `<B>` naming the brand — so a generic
+helper that casts to a type parameter (`function forge<T>(v: unknown): T { return
+v as T; }`, called as `forge<ThreadId>(v)`) would build a brand without the guard
+ever seeing `ThreadId` written at the cast site; nothing in this package is
+written that way, and keeping it that way is a matter for review, not something
+this guard can check. Tests of internal functions must build their inputs
+through the parsers, which makes a fixture a parser would refuse fail where it is
+written — and makes such fixtures longer. `unknown` is back in `src`, in a narrow
+and gated form.
 
 Neutral. Not every value is branded. Functions that read rows back — the
 checkpoint read path, the key builders — take plain strings, because they are fed

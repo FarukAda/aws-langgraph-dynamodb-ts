@@ -37,6 +37,62 @@ describe('namingViolations', () => {
     ].join('\n');
     expect(namingViolations('a.ts', source)).toEqual([]);
   });
+
+  it('refuses validate* bound to a const arrow function or function expression, exported or not', () => {
+    expect(namingViolations('a.ts', 'const validateX = (v: string): void => {};')).toEqual([
+      'a.ts:1: validateX — validate* is retired: a parse* returns the checked value, an assert* returns nothing',
+    ]);
+    expect(
+      namingViolations('a.ts', 'export const validateY = function (v: string): void {};'),
+    ).toEqual([
+      'a.ts:1: validateY — validate* is retired: a parse* returns the checked value, an assert* returns nothing',
+    ]);
+  });
+
+  it('refuses an exported const parse*/assert* arrow function that breaks the convention', () => {
+    expect(namingViolations('a.ts', 'export const parseX = (v: string): void => {};')).toEqual([
+      'a.ts:1: parseX — a parse* function returns the value it checked, as a more precise type',
+    ]);
+    expect(namingViolations('a.ts', 'export const assertX = (v: string): string => v;')).toEqual([
+      'a.ts:1: assertX — an assert* function returns nothing; one that returns the value is a parse*',
+    ]);
+  });
+
+  it('accepts a const parse*/assert* that keeps the convention, and leaves an unexported one unchecked', () => {
+    const source = [
+      'export const parseX = (v: unknown): string => String(v);',
+      'export const assertY = function (v: string): void {};',
+      'const parseZ = (v: string): void => {};',
+    ].join('\n');
+    expect(namingViolations('a.ts', source)).toEqual([]);
+  });
+
+  it('refuses a class method named validate*, and a public parse*/assert* method that breaks the convention', () => {
+    const source = [
+      'class C {',
+      '  validateX(v: string): void {}',
+      '  parseY(v: string): void {}',
+      '  assertZ(v: string): string { return v; }',
+      '}',
+    ].join('\n');
+    expect(namingViolations('a.ts', source)).toEqual([
+      'a.ts:2: validateX — validate* is retired: a parse* returns the checked value, an assert* returns nothing',
+      'a.ts:3: parseY — a parse* function returns the value it checked, as a more precise type',
+      'a.ts:4: assertZ — an assert* function returns nothing; one that returns the value is a parse*',
+    ]);
+  });
+
+  it('accepts a public class method that keeps the convention, and leaves a private or protected one unchecked', () => {
+    const source = [
+      'class C {',
+      '  parseX(v: unknown): string { return String(v); }',
+      '  assertY(v: string): void {}',
+      '  private parseZ(v: string): void {}',
+      '  protected assertW(v: string): string { return v; }',
+      '}',
+    ].join('\n');
+    expect(namingViolations('a.ts', source)).toEqual([]);
+  });
 });
 
 describe('the source tree', () => {
