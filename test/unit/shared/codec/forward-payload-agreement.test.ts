@@ -5,6 +5,7 @@ import { getCheckpointTuple } from '../../../../src/checkpointer/actions/get-tup
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
+import { parseSessionId } from '../../../../src/history/internal/parse';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { DESCRIPTOR_SCHEMA_VERSION, PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -54,7 +55,7 @@ async function readHistory(): Promise<unknown> {
     onCorruptMessage: 'skip',
   };
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('a turn')]);
-  const item = await buildMessageItem(context, 's1', '01A', human);
+  const item = await buildMessageItem(context, parseSessionId('s1'), '01A', human);
   item.message = forwardDescriptor() as never;
   mock.on(QueryCommand).resolves({ Items: [item] });
   return getMessages(context, 's1');
@@ -173,7 +174,7 @@ describe('a payload a newer release wrote is an unsupported format, not payload 
       onCorruptMessage: 'skip',
     };
     const [human] = mapChatMessagesToStoredMessages([new HumanMessage('a turn')]);
-    const item = await buildMessageItem(context, 's1', '01A', human);
+    const item = await buildMessageItem(context, parseSessionId('s1'), '01A', human);
     mock.on(QueryCommand).resolves({ Items: [{ ...item, v: 99 }] });
     const forwardRow = await answerOf(() => getMessages(context, 's1'));
     const forwardPayload = await answerOf(readHistory);

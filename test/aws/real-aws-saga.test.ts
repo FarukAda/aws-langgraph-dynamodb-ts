@@ -16,6 +16,7 @@ import {
   SESSION_SORT_KEY,
   sessionPartition,
 } from '../../src/history/internal/keys';
+import { parseSessionId } from '../../src/history/internal/parse';
 import type { HistoryContext } from '../../src/history/internal/setup';
 import type { ChatMessageItem } from '../../src/history/types';
 import { PayloadLocation } from '../../src/shared/codec/codec';
@@ -26,6 +27,7 @@ import { liveRegion } from './helpers/env';
 const clientConfig = { region: liveRegion() };
 const tableName = `aws-langgraph-sagatest-${randomUUID()}`;
 const sessionId = 'saga-session';
+const SESSION_ID = parseSessionId(sessionId);
 
 /** What the saga raises when its rollback fails too: the trigger and the rollback failure. */
 interface RaisedCompensation {
@@ -122,7 +124,9 @@ describe('append saga unrecoverable rollback against real AWS', () => {
   it('raises COMPENSATION_FAILED and leaves the committed chunk in the real table', async () => {
     const chunks = [[messageItem('chunk1')], [messageItem('chunk2')]];
 
-    await expect(appendChunks(wrappedContext(), sessionId, chunks, { now: 'now' })).rejects.toEqual(
+    await expect(
+      appendChunks(wrappedContext(), SESSION_ID, chunks, { now: 'now' }),
+    ).rejects.toEqual(
       expect.objectContaining({
         name: 'DynamoDBLangGraphError',
         code: ErrorCode.COMPENSATION_FAILED,
@@ -139,7 +143,7 @@ describe('append saga unrecoverable rollback against real AWS', () => {
     transactCalls = 0;
     const chunks = [[messageItem('again1')], [messageItem('again2')]];
 
-    const error = (await appendChunks(wrappedContext(), sessionId, chunks, { now: 'now' }).catch(
+    const error = (await appendChunks(wrappedContext(), SESSION_ID, chunks, { now: 'now' }).catch(
       (caught: RaisedCompensation) => caught,
     )) as RaisedCompensation;
 

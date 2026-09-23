@@ -7,6 +7,7 @@ import type { CheckpointerContext } from '../../../../src/checkpointer/internal/
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
+import { parseSessionId } from '../../../../src/history/internal/parse';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { loadPayloadValue, PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -94,7 +95,7 @@ async function readHistory(serde: SerializerProtocol): Promise<unknown> {
     onCorruptMessage: 'skip',
   };
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
-  const item = await buildMessageItem(context, 's1', '01A', human);
+  const item = await buildMessageItem(context, parseSessionId('s1'), '01A', human);
   item.message = foreignDescriptor() as never;
   mock.on(QueryCommand).resolves({ Items: [item] });
   return getMessages(context, 's1');

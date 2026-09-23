@@ -2,6 +2,7 @@ import { nowSeconds } from '../../shared/clock';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { retryFor } from '../../shared/dynamodb/retry-policy';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
+import type { SessionId } from './parse';
 import type { HistoryContext } from './setup';
 
 /** The resolved ttl anchor plus whether the persisted SESSION-row value must be force-refreshed. */
@@ -45,7 +46,7 @@ export interface TtlAnchorResult {
  */
 export async function resolveTtlAnchor(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   candidate: number,
   signal?: AbortSignal,
 ): Promise<TtlAnchorResult> {

@@ -3,6 +3,7 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { MAX_LOOP_ITERATIONS, MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { queryRecencyIndex } from '../../../../src/shared/dynamodb/index-query';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { parseLimit } from '../../../../src/shared/validation/primitives';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 type StrictMock = ReturnType<typeof createStrictDocumentMock>;
@@ -15,28 +16,18 @@ function base(client: StrictMock['client'], limit: number) {
     tag: 'SESS' as const,
     shards: 2,
     concurrency: 2,
-    limit,
+    limit: parseLimit(limit, 0),
   };
 }
 
 /**
- * The page rule this listing shares with every other read: an integer from 0 to
- * {@link MAX_PAGE_LIMIT}. It used to demand at least 1 and carry no ceiling at
- * all, so `limit: 1e12` reached the merge loop.
+ * `queryRecencyIndex` takes its page size as a `PageLimit`, already checked
+ * against the package-wide page rule — an integer from 0 to {@link
+ * MAX_PAGE_LIMIT} — by the listing's own parser (`parseListSessionsRequest`),
+ * not by this function itself. It used to demand at least 1 and carry no
+ * ceiling at all, so `limit: 1e12` reached the merge loop.
  */
 describe('queryRecencyIndex page limits', () => {
-  it('refuses a limit above the ceiling, naming the ceiling', async () => {
-    const { client, mock } = createStrictDocumentMock();
-    await expect(queryRecencyIndex(base(client, MAX_PAGE_LIMIT + 1))).rejects.toMatchObject({
-      code: ErrorCode.VALIDATION,
-      context: { field: 'limit' },
-    });
-    await expect(queryRecencyIndex(base(client, 1e12))).rejects.toThrow(
-      `limit must be <= ${MAX_PAGE_LIMIT}`,
-    );
-    expect(mock.commandCalls(QueryCommand)).toHaveLength(0);
-  });
-
   it('accepts the ceiling itself', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });

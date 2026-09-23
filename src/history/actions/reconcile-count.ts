@@ -6,8 +6,8 @@ import { ErrorCode } from '../../shared/errors/error-code';
 import { conflictError } from '../../shared/errors/errors';
 import { SESSION_SORT_KEY, sessionPartition } from '../internal/keys';
 import { countLiveMessages } from '../internal/message-count';
+import { parseSessionId, type SessionId } from '../internal/parse';
 import type { HistoryContext } from '../internal/setup';
-import { validateSessionId } from '../internal/validation';
 
 /** The session row's stored count, and whether the row exists at all. */
 interface ObservedCount {
@@ -18,7 +18,7 @@ interface ObservedCount {
 /** Read the count this repair is about to replace, strongly consistently. */
 async function observeCount(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   signal?: AbortSignal,
 ): Promise<ObservedCount> {
   const result = await withDynamoDBRetry(
@@ -61,7 +61,7 @@ function countGuard(observed: ObservedCount): {
 /** Write the recomputed count, pinned to what the row held when it was computed. */
 async function writeCount(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   count: number,
   observed: ObservedCount,
   signal?: AbortSignal,
@@ -123,22 +123,22 @@ export async function reconcileMessageCount(
   sessionId: string,
   signal?: AbortSignal,
 ): Promise<number> {
-  validateSessionId(sessionId);
+  const session = parseSessionId(sessionId);
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
-    const observed = await observeCount(context, sessionId, signal);
+    const observed = await observeCount(context, session, signal);
     if (!observed.exists) {
-      throw conflictError(`Cannot reconcile messageCount: session "${sessionId}" does not exist`);
+      throw conflictError(`Cannot reconcile messageCount: session "${session}" does not exist`);
     }
-    const count = await countLiveMessages(context, sessionId, signal);
+    const count = await countLiveMessages(context, session, signal);
     try {
-      await writeCount(context, sessionId, count, observed, signal);
+      await writeCount(context, session, count, observed, signal);
       return count;
     } catch (error) {
       if (classifyAwsError(error as Error) !== ErrorCode.CONDITION_CONFLICT) throw error;
     }
   }
   throw conflictError(
-    `Cannot reconcile messageCount: session "${sessionId}" changed during every one of ` +
+    `Cannot reconcile messageCount: session "${session}" changed during every one of ` +
       `${OVERWRITE_CAS_MAX_ATTEMPTS} attempts; retry when it is quieter`,
   );
 }

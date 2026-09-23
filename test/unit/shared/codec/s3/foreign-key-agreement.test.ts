@@ -5,6 +5,7 @@ import { getCheckpointTuple } from '../../../../../src/checkpointer/actions/get-
 import type { CheckpointerContext } from '../../../../../src/checkpointer/internal/setup';
 import { getMessages } from '../../../../../src/history/actions/get-messages';
 import { buildMessageItem } from '../../../../../src/history/internal/item-mapper';
+import { parseSessionId } from '../../../../../src/history/internal/parse';
 import type { HistoryContext } from '../../../../../src/history/internal/setup';
 import { PayloadLocation } from '../../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../../src/shared/codec/json-serde';
@@ -67,7 +68,12 @@ async function readHistory(offloader: ReturnType<typeof scopedOffloader>): Promi
     offloader: offloader as never,
   };
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('offloaded')]);
-  const item = await buildMessageItem({ ...context, offloader: undefined }, 's1', '01A', human);
+  const item = await buildMessageItem(
+    { ...context, offloader: undefined },
+    parseSessionId('s1'),
+    '01A',
+    human,
+  );
   item.message = foreignDescriptor(['victim']) as never;
   mock.on(QueryCommand).resolves({ Items: [item] });
   return getMessages(context, 's1');

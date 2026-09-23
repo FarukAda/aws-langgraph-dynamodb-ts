@@ -12,12 +12,9 @@ import { failureLabel } from '../../shared/errors/base-error';
 import { toError } from '../../shared/errors/to-error';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';
-import { assertSignalLike } from '../../shared/validation/collaborators';
-import { assertShape } from '../../shared/validation/option-shape';
 import { readWindow } from '../internal/message-window';
-import { GET_MESSAGES_KEYS } from '../internal/option-keys';
+import { parseGetMessagesRequest, type SessionId } from '../internal/parse';
 import type { HistoryContext } from '../internal/setup';
-import { validateMessageWindow, validateSessionId } from '../internal/validation';
 import type { ChatMessageItem, MessageWindow } from '../types';
 
 /** One item's decode outcome: a rebuilt message, or a proof that it never can be. */
@@ -61,7 +58,7 @@ function corruptOrRethrow(error: Error): Decoded {
 async function decodeMessage(
   context: HistoryContext,
   item: ChatMessageItem,
-  sessionId: string,
+  sessionId: SessionId,
   signal: AbortSignal | undefined,
 ): Promise<Decoded> {
   const deps: CodecDeps = {
@@ -103,7 +100,7 @@ async function decodeMessage(
  *
  * Accepts: `options.limit` — the newest N, at least 1; absent asks for the
  * whole session, and `0` is refused rather than read as an empty conversation
- * (see {@link validateMessageWindow}).
+ * (see {@link parseMessageWindow}).
  * `options.before` — only messages appended before that instant.
  * `options.signal` — aborts the reads.
  *
@@ -135,16 +132,17 @@ export async function getMessages(
   sessionId: string,
   options: MessageWindow & CancelOptions = {},
 ): Promise<BaseMessage[]> {
-  assertShape(options, GET_MESSAGES_KEYS, 'options');
-  assertSignalLike(options.signal);
-  validateSessionId(sessionId);
-  validateMessageWindow(options);
-  const items: ChatMessageItem[] = await readWindow(context, sessionId, options);
-  /** Offloaded rows cost one S3 GET each, so they decode several at a time; the policy is applied in order. */
+  const request = parseGetMessagesRequest(sessionId, options);
+  const items: ChatMessageItem[] = await readWindow(
+    context,
+    request.sessionId,
+    request.window,
+    request.signal,
+  );
   const decoded = await mapWithConcurrency(
     items,
     context.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
-    (item) => decodeMessage(context, item, sessionId, options.signal),
+    (item) => decodeMessage(context, item, request.sessionId, request.signal),
   );
   const messages: BaseMessage[] = [];
   decoded.forEach((result, index) => {
@@ -154,7 +152,7 @@ export async function getMessages(
     }
     if (context.onCorruptMessage === 'throw') throw result.error;
     context.logger.error('getMessages: skipped a corrupt message item', {
-      sessionId,
+      sessionId: request.sessionId,
       sortKey: truncateForLog(items[index].SK),
       reason: truncateForLog(failureLabel(result.error)),
     });

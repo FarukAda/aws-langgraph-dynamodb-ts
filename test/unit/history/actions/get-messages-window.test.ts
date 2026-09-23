@@ -3,6 +3,7 @@ import { AIMessage, HumanMessage, mapChatMessagesToStoredMessages } from '@langc
 
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
+import { parseSessionId } from '../../../../src/history/internal/parse';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import type { ChatMessageItem } from '../../../../src/history/types';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -25,6 +26,7 @@ function context(client: HistoryContext['client']): HistoryContext {
 }
 
 const NOW_SECONDS = Math.floor(FROZEN_NOW_MS / 1000);
+const SESSION_ID = parseSessionId('s1');
 
 /** Message items m0..mN-1 in chronological order; `expired` names the ones already past their TTL. */
 async function items(
@@ -41,7 +43,7 @@ async function items(
     stored.map((message, i) =>
       buildMessageItem(
         context(client),
-        's1',
+        SESSION_ID,
         `01${i}`,
         message,
         expired.includes(i) ? NOW_SECONDS - 10 : undefined,

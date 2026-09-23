@@ -1,6 +1,7 @@
 import type { StoredMessage } from '@langchain/core/messages';
 
 import { buildMessageItem, narrowMessageItem } from '../../../../src/history/internal/item-mapper';
+import { parseSessionId } from '../../../../src/history/internal/parse';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { decodePayload, PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -19,10 +20,11 @@ function context(): HistoryContext {
 }
 
 const stored: StoredMessage = { type: 'human', data: { content: 'hi' } } as StoredMessage;
+const SESSION_ID = parseSessionId('s1');
 
 describe('history item-mapper', () => {
   it('builds a message item with PK/SK and round-trips the message', async () => {
-    const item = await buildMessageItem(context(), 's1', '01HZX', stored);
+    const item = await buildMessageItem(context(), SESSION_ID, '01HZX', stored);
     expect(item.PK).toBe('HIST#s1');
     expect(item.SK).toBe('HISTORY#MSG#01HZX');
     expect(item.sessionId).toBe('s1');
@@ -31,7 +33,7 @@ describe('history item-mapper', () => {
   });
 
   it('stamps a ttl when provided', async () => {
-    const item = await buildMessageItem(context(), 's1', '01HZX', stored, 1750);
+    const item = await buildMessageItem(context(), SESSION_ID, '01HZX', stored, 1750);
     expect(item.ttl).toBe(1750);
   });
 
@@ -49,7 +51,7 @@ describe('history item-mapper', () => {
     const ulid = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';
     const item = await buildMessageItem(
       { ...context(), offloader: offloader as never },
-      's1',
+      SESSION_ID,
       ulid,
       stored,
     );
@@ -78,7 +80,7 @@ describe('narrowMessageItem', () => {
   });
 
   it('accepts a row this package wrote', async () => {
-    const item = await buildMessageItem(context(), 's1', '01HZX', stored);
+    const item = await buildMessageItem(context(), SESSION_ID, '01HZX', stored);
     expect(narrowMessageItem(item)).toBe(item);
   });
 

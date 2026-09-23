@@ -1,5 +1,6 @@
 import { TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
+import { parseSessionId } from '../../../../src/history/internal/parse';
 import {
   revertSessionCount,
   revertSessionCreation,
@@ -16,10 +17,12 @@ function context(client: HistoryContext['client']): HistoryContext {
   return { client, tableName: 'history', logger: SILENT_LOGGER } as never;
 }
 
+const SESSION_ID = parseSessionId('s1');
+
 describe('revertSessionCount', () => {
   it('is a no-op when delta is 0', async () => {
     const { client, mock } = createStrictDocumentMock();
-    await revertSessionCount(context(client), 's1', 0, 'u');
+    await revertSessionCount(context(client), SESSION_ID, 0, 'u');
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
@@ -30,7 +33,7 @@ describe('revertSessionCount', () => {
     // this call's to revert.
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
-    await revertSessionCount(context(client), 's1', 2, '2026-09-01T12:00:00.000Z');
+    await revertSessionCount(context(client), SESSION_ID, 2, '2026-09-01T12:00:00.000Z');
     const update =
       mock.commandCalls(TransactWriteCommand)[0].args[0].input.TransactItems?.[0]?.Update;
     expect(update?.ConditionExpression).toBe('attribute_exists(PK) AND #c <= :now');
@@ -52,7 +55,7 @@ describe('revertSessionCount', () => {
         CancellationReasons: [{ Code: 'ConditionalCheckFailed' }],
       }),
     );
-    await expect(revertSessionCount(context(client), 's1', 2, 'u')).resolves.toBeUndefined();
+    await expect(revertSessionCount(context(client), SESSION_ID, 2, 'u')).resolves.toBeUndefined();
   });
 
   it('rethrows any other failure', async () => {
@@ -60,7 +63,7 @@ describe('revertSessionCount', () => {
     mock
       .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    await expect(revertSessionCount(context(client), 's1', 2, 'u')).rejects.toThrow('boom');
+    await expect(revertSessionCount(context(client), SESSION_ID, 2, 'u')).rejects.toThrow('boom');
   });
 
   it('rethrows a TransactionCanceledException whose cancellation reason is not ConditionalCheckFailed', async () => {
@@ -75,7 +78,9 @@ describe('revertSessionCount', () => {
         CancellationReasons: [{ Code: 'ItemCollectionSizeLimitExceeded' }],
       }),
     );
-    await expect(revertSessionCount(context(client), 's1', 2, 'u')).rejects.toThrow('cancelled');
+    await expect(revertSessionCount(context(client), SESSION_ID, 2, 'u')).rejects.toThrow(
+      'cancelled',
+    );
   });
 });
 
@@ -91,14 +96,14 @@ describe('revertSessionCreation', () => {
 
   it('is a no-op when the total is 0', async () => {
     const { client, mock } = createStrictDocumentMock();
-    await revertSessionCreation(context(client), 's1', 0, now);
+    await revertSessionCreation(context(client), SESSION_ID, 0, now);
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
   it('deletes the session row this call created, title and all', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
-    await revertSessionCreation(context(client), 's1', 2, now);
+    await revertSessionCreation(context(client), SESSION_ID, 2, now);
     const calls = mock.commandCalls(TransactWriteCommand);
     expect(calls).toHaveLength(1);
     const item = calls[0].args[0].input.TransactItems![0];
@@ -120,7 +125,7 @@ describe('revertSessionCreation', () => {
         }),
       )
       .resolves({});
-    await revertSessionCreation(context(client), 's1', 2, now);
+    await revertSessionCreation(context(client), SESSION_ID, 2, now);
     const calls = mock.commandCalls(TransactWriteCommand);
     expect(calls).toHaveLength(2);
     expect(calls[1].args[0].input.TransactItems![0].Update?.UpdateExpression).toBe(
@@ -133,7 +138,9 @@ describe('revertSessionCreation', () => {
     mock
       .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('boom'), { name: 'ValidationException' }));
-    await expect(revertSessionCreation(context(client), 's1', 2, now)).rejects.toThrow('boom');
+    await expect(revertSessionCreation(context(client), SESSION_ID, 2, now)).rejects.toThrow(
+      'boom',
+    );
   });
 
   it('strips the title it contributed when the row cannot be deleted (C4)', async () => {
@@ -152,7 +159,7 @@ describe('revertSessionCreation', () => {
       )
       .resolves({});
     mock.on(UpdateCommand).resolves({});
-    await revertSessionCreation(context(client), 's1', 2, now, 'tiny message 0');
+    await revertSessionCreation(context(client), SESSION_ID, 2, now, 'tiny message 0');
     const update = mock.commandCalls(UpdateCommand)[0].args[0].input;
     expect(update.UpdateExpression).toBe('REMOVE #title');
     expect(update.ExpressionAttributeValues).toEqual({ ':now': now, ':title': 'tiny message 0' });
@@ -169,7 +176,7 @@ describe('revertSessionCreation', () => {
         }),
       )
       .resolves({});
-    await revertSessionCreation(context(client), 's1', 2, now);
+    await revertSessionCreation(context(client), SESSION_ID, 2, now);
     expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
   });
 });
@@ -191,7 +198,7 @@ describe('a tokened revert stays inside the window its token is honoured for', (
     const ctx = { ...context(client), retry } as HistoryContext;
     const spy = jest.spyOn(retryModule, 'withDynamoDBRetry');
 
-    await revertSessionCount(ctx, 's1', 2, 'u');
+    await revertSessionCount(ctx, SESSION_ID, 2, 'u');
 
     expect(spy.mock.calls[0][1]).toEqual({
       ...retry,
@@ -209,7 +216,7 @@ describe('a tokened revert stays inside the window its token is honoured for', (
     const ctx = { ...context(client), retry } as HistoryContext;
     const spy = jest.spyOn(retryModule, 'withDynamoDBRetry');
 
-    await revertSessionCreation(ctx, 's1', 2, '2026-08-29T00:00:00.000Z');
+    await revertSessionCreation(ctx, SESSION_ID, 2, '2026-08-29T00:00:00.000Z');
 
     expect(spy.mock.calls[0][1]).toEqual({
       ...retry,
@@ -249,7 +256,7 @@ describe('a tokened revert stays inside the window its token is honoured for', (
     };
 
     await expect(
-      revertSessionCount({ ...context(client), retry }, 's1', 2, 'u'),
+      revertSessionCount({ ...context(client), retry }, SESSION_ID, 2, 'u'),
     ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(6);
   });

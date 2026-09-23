@@ -1,12 +1,11 @@
 import { type StoredMessage, HumanMessage } from '@langchain/core/messages';
 
 import {
-  toStoredMessages,
-  validateMessageList,
-  validateMessageWindow,
-  validateSessionId,
-  validateStorableMessages,
-} from '../../../../src/history/internal/validation';
+  parseMessages,
+  parseMessageWindow,
+  parseSessionId,
+  parseStoredMessages,
+} from '../../../../src/history/internal/parse';
 import {
   MAX_LOGGED_VALUE_CHARS,
   MAX_PAGE_LIMIT,
@@ -25,47 +24,47 @@ function expectValidationError(fn: () => void): void {
   }
 }
 
-describe('validateSessionId', () => {
+describe('parseSessionId', () => {
   it('accepts an ordinary session id', () => {
-    expect(() => validateSessionId('session-1')).not.toThrow();
+    expect(() => parseSessionId('session-1')).not.toThrow();
   });
 
   it('rejects an empty or non-string session id', () => {
-    expectValidationError(() => validateSessionId(''));
-    expectValidationError(() => validateSessionId(null as never));
+    expectValidationError(() => parseSessionId(''));
+    expectValidationError(() => parseSessionId(null));
   });
 
   it('rejects the reserved separator (M12)', () => {
-    expectValidationError(() => validateSessionId('a#b'));
+    expectValidationError(() => parseSessionId('a#b'));
   });
 
   it('bounds the session id at 1024 bytes and rejects a whitespace-only one (SEC-10)', () => {
-    expect(() => validateSessionId('s'.repeat(1024))).not.toThrow();
-    expectValidationError(() => validateSessionId('s'.repeat(1025)));
-    expectValidationError(() => validateSessionId('  '));
+    expect(() => parseSessionId('s'.repeat(1024))).not.toThrow();
+    expectValidationError(() => parseSessionId('s'.repeat(1025)));
+    expectValidationError(() => parseSessionId('  '));
   });
 
   it('rejects control characters (M7)', () => {
-    expectValidationError(() => validateSessionId('s\u001b[31m'));
+    expectValidationError(() => parseSessionId('s\u001b[31m'));
   });
 });
 
-describe('validateMessageList', () => {
+describe('parseMessages', () => {
   it('accepts an array, empty or not', () => {
-    expect(() => validateMessageList([])).not.toThrow();
-    expect(() => validateMessageList([new HumanMessage('hi')])).not.toThrow();
+    expect(() => parseMessages([])).not.toThrow();
+    expect(() => parseMessages([new HumanMessage('hi')])).not.toThrow();
   });
 
   it('rejects anything that is not an array, naming messages', () => {
     for (const messages of ['x', null, undefined, {}]) {
-      expectValidationError(() => validateMessageList(messages as never));
+      expectValidationError(() => parseMessages(messages as never));
     }
   });
 });
 
-describe('toStoredMessages', () => {
+describe('parseMessages', () => {
   it('serializes real messages in order', () => {
-    const stored = toStoredMessages([new HumanMessage('one'), new HumanMessage('two')]);
+    const stored = parseMessages([new HumanMessage('one'), new HumanMessage('two')]);
     expect(stored.map((message) => message.data.content)).toEqual(['one', 'two']);
   });
 
@@ -75,15 +74,15 @@ describe('toStoredMessages', () => {
    * index, no field, no sign of which library refused it.
    */
   it('names the offending index for a value that is not a message', () => {
-    expect(() => toStoredMessages([new HumanMessage('ok'), {} as never])).toThrow(
+    expect(() => parseMessages([new HumanMessage('ok'), {} as never])).toThrow(
       /messages\[1\] is not a LangChain message/,
     );
-    expectValidationError(() => toStoredMessages(['hi' as never]));
-    expectValidationError(() => toStoredMessages([null as never]));
+    expectValidationError(() => parseMessages(['hi' as never]));
+    expectValidationError(() => parseMessages([null as never]));
   });
 
   it('accepts an empty list', () => {
-    expect(toStoredMessages([])).toEqual([]);
+    expect(parseMessages([])).toEqual([]);
   });
 
   /**
@@ -99,7 +98,7 @@ describe('toStoredMessages', () => {
       },
     };
     try {
-      toStoredMessages([shape as never]);
+      parseMessages([shape as never]);
       throw new Error('should have thrown');
     } catch (error) {
       const coded = error as { context?: { field?: string }; message: string };
@@ -110,13 +109,13 @@ describe('toStoredMessages', () => {
   });
 });
 
-describe('validateStorableMessages (HIST-04)', () => {
+describe('parseStoredMessages (HIST-04)', () => {
   const stored = (type: string, data: Record<string, string | undefined>): StoredMessage =>
     ({ type, data: { content: 'c', ...data } }) as StoredMessage;
 
   it('accepts every message type the read side can rebuild', () => {
     expect(() =>
-      validateStorableMessages([
+      parseStoredMessages([
         stored('human', {}),
         stored('ai', {}),
         stored('system', {}),
@@ -128,19 +127,19 @@ describe('validateStorableMessages (HIST-04)', () => {
   });
 
   it('rejects a type the read side cannot rebuild, naming the offending index and type', () => {
-    expect(() =>
-      validateStorableMessages([stored('human', {}), stored('remove', { id: 'x' })]),
-    ).toThrow(/messages\[1\] of type "remove"/);
-    expectValidationError(() => validateStorableMessages([stored('remove', { id: 'x' })]));
+    expect(() => parseStoredMessages([stored('human', {}), stored('remove', { id: 'x' })])).toThrow(
+      /messages\[1\] of type "remove"/,
+    );
+    expectValidationError(() => parseStoredMessages([stored('remove', { id: 'x' })]));
   });
 
   it('rejects a tool message without its tool_call_id, and a function message without a name', () => {
-    expectValidationError(() => validateStorableMessages([stored('tool', {})]));
-    expectValidationError(() => validateStorableMessages([stored('function', {})]));
+    expectValidationError(() => parseStoredMessages([stored('tool', {})]));
+    expectValidationError(() => parseStoredMessages([stored('function', {})]));
   });
 
   it('accepts an empty list', () => {
-    expect(() => validateStorableMessages([])).not.toThrow();
+    expect(() => parseStoredMessages([])).not.toThrow();
   });
 
   /**
@@ -157,7 +156,7 @@ describe('validateStorableMessages (HIST-04)', () => {
   it('bounds the type it quotes and the text LangChain renders it into', () => {
     const type = 'r'.repeat(MAX_RELAYED_MESSAGE_CHARS * 4);
     try {
-      validateStorableMessages([stored(type, { id: 'x' })]);
+      parseStoredMessages([stored(type, { id: 'x' })]);
       throw new Error('should have thrown');
     } catch (error) {
       const coded = error as { context?: { field?: string }; message: string };
@@ -180,7 +179,7 @@ describe('validateStorableMessages (HIST-04)', () => {
   it('marks the relayed text with the length it really had, never a cut one', () => {
     const type = 'r'.repeat(MAX_RELAYED_MESSAGE_CHARS * 4);
     try {
-      validateStorableMessages([stored(type, { id: 'x' })]);
+      parseStoredMessages([stored(type, { id: 'x' })]);
       throw new Error('should have thrown');
     } catch (error) {
       const marks = [...(error as Error).message.matchAll(/…\(len (\d+)\)/g)].map((match) =>
@@ -193,10 +192,10 @@ describe('validateStorableMessages (HIST-04)', () => {
   });
 });
 
-describe('validateMessageWindow (HIST-06)', () => {
+describe('parseMessageWindow (HIST-06)', () => {
   it('accepts an empty window, a positive integer limit and a valid Date', () => {
-    expect(() => validateMessageWindow({})).not.toThrow();
-    expect(() => validateMessageWindow({ limit: 1, before: new Date(0) })).not.toThrow();
+    expect(() => parseMessageWindow({})).not.toThrow();
+    expect(() => parseMessageWindow({ limit: 1, before: new Date(0) })).not.toThrow();
   });
 
   /**
@@ -209,21 +208,21 @@ describe('validateMessageWindow (HIST-06)', () => {
    * transcript.
    */
   it('accepts the page ceiling and refuses a limit of zero', () => {
-    expect(() => validateMessageWindow({ limit: MAX_PAGE_LIMIT })).not.toThrow();
-    expectValidationError(() => validateMessageWindow({ limit: 0 }));
+    expect(() => parseMessageWindow({ limit: MAX_PAGE_LIMIT })).not.toThrow();
+    expectValidationError(() => parseMessageWindow({ limit: 0 }));
   });
 
   it('rejects a negative, fractional, oversized or non-numeric limit', () => {
-    expectValidationError(() => validateMessageWindow({ limit: -1 }));
-    expectValidationError(() => validateMessageWindow({ limit: 2.5 }));
-    expectValidationError(() => validateMessageWindow({ limit: MAX_PAGE_LIMIT + 1 }));
-    expectValidationError(() => validateMessageWindow({ limit: '3' as never }));
+    expectValidationError(() => parseMessageWindow({ limit: -1 }));
+    expectValidationError(() => parseMessageWindow({ limit: 2.5 }));
+    expectValidationError(() => parseMessageWindow({ limit: MAX_PAGE_LIMIT + 1 }));
+    expectValidationError(() => parseMessageWindow({ limit: '3' as never }));
   });
 
   it('rejects an invalid Date and a non-Date before', () => {
-    expectValidationError(() => validateMessageWindow({ before: new Date('x') }));
-    expectValidationError(() => validateMessageWindow({ before: 5 as never }));
-    expectValidationError(() => validateMessageWindow({ before: '2024-01-01' as never }));
+    expectValidationError(() => parseMessageWindow({ before: new Date('x') }));
+    expectValidationError(() => parseMessageWindow({ before: 5 as never }));
+    expectValidationError(() => parseMessageWindow({ before: '2024-01-01' as never }));
   });
 
   /**
@@ -235,9 +234,9 @@ describe('validateMessageWindow (HIST-06)', () => {
    * instead of the bound being clamped.
    */
   it('rejects a before outside the range a message id encodes', () => {
-    expectValidationError(() => validateMessageWindow({ before: new Date(-1) }));
-    expectValidationError(() => validateMessageWindow({ before: new Date(-1000) }));
-    expectValidationError(() => validateMessageWindow({ before: new Date(ULID_TIME_RANGE_MS) }));
-    expect(() => validateMessageWindow({ before: new Date(ULID_TIME_RANGE_MS - 1) })).not.toThrow();
+    expectValidationError(() => parseMessageWindow({ before: new Date(-1) }));
+    expectValidationError(() => parseMessageWindow({ before: new Date(-1000) }));
+    expectValidationError(() => parseMessageWindow({ before: new Date(ULID_TIME_RANGE_MS) }));
+    expect(() => parseMessageWindow({ before: new Date(ULID_TIME_RANGE_MS - 1) })).not.toThrow();
   });
 });

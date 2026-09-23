@@ -6,6 +6,7 @@ import { ROW_FORMAT_VERSION } from '../../shared/dynamodb/row-version';
 import type { DocItem } from '../../shared/dynamodb/types';
 import type { ChatMessageItem } from '../types';
 import { messageSortKey, sessionPartition } from './keys';
+import type { SessionId } from './parse';
 import type { HistoryContext } from './setup';
 
 function codecDeps(context: HistoryContext, signal?: AbortSignal): CodecDeps {
@@ -37,7 +38,7 @@ function codecDeps(context: HistoryContext, signal?: AbortSignal): CodecDeps {
  */
 export async function buildMessageItem(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   ulid: string,
   message: StoredMessage,
   ttlTimestamp?: number,

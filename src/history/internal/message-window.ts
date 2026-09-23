@@ -7,11 +7,11 @@ import { assertReadableRow } from '../../shared/dynamodb/row-version';
 import type { DocItem } from '../../shared/dynamodb/types';
 import { validationError } from '../../shared/errors/errors';
 import { truncateForLog } from '../../shared/logging/truncate';
-import type { CancelOptions } from '../../shared/options';
 import { ulidTimePrefix } from '../../shared/ulid';
-import type { ChatMessageItem, MessageWindow } from '../types';
+import type { ChatMessageItem } from '../types';
 import { narrowMessageItem } from './item-mapper';
 import { messageSortKey } from './keys';
+import type { ParsedWindow, SessionId } from './parse';
 import { messageQuery } from './query';
 import type { HistoryContext } from './setup';
 
@@ -33,7 +33,7 @@ import type { HistoryContext } from './setup';
  */
 function requireMessageItem(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   raw: DocItem,
 ): ChatMessageItem {
   assertReadableRow(raw, 'message');
@@ -62,13 +62,13 @@ function requireMessageItem(
  * sort-key bound: the message prefix plus the ULID time characters of that
  * instant, which every message id from that millisecond onwards sorts after.
  *
- * Accepts: `options.limit` — absent asks for the whole session, which is what
+ * Accepts: `window.limit` — absent asks for the whole session, which is what
  * `getMessages()` with no arguments means; otherwise at least 1, which is why
- * no zero case is handled below. `validateMessageWindow` refuses `0` for its
+ * no zero case is handled below. `parseMessageWindow` refuses `0` for its
  * own reason, and that refusal is also what keeps `Limit: 0` — which DynamoDB
  * rejects outright with a raw `ValidationException` — out of the query built
- * here. `options.before` — already validated as a real date. `options.signal`
- * — aborts between pages.
+ * here. `window.before` — already parsed as a real date. `signal` — aborts
+ * between pages.
  *
  * Returns: the live messages in chronological order, oldest first, whichever
  * direction the query walked.
@@ -88,21 +88,22 @@ function requireMessageItem(
  */
 export async function readWindow(
   context: HistoryContext,
-  sessionId: string,
-  options: MessageWindow & CancelOptions,
+  sessionId: SessionId,
+  window: ParsedWindow,
+  signal?: AbortSignal,
 ): Promise<ChatMessageItem[]> {
   const now = nowSeconds();
-  const limit = options.limit ?? Number.POSITIVE_INFINITY;
+  const limit = window.limit ?? Number.POSITIVE_INFINITY;
   const items: ChatMessageItem[] = [];
   for await (const raw of paginateQuery({
-    retry: retryFor(context, options.signal),
-    signal: options.signal,
+    retry: retryFor(context, signal),
+    signal,
     client: context.client,
     params: messageQuery(context.tableName, sessionId, {
       consistent: true,
-      descending: options.limit !== undefined,
-      limit: options.limit,
-      beforeSortKey: options.before && messageSortKey(ulidTimePrefix(options.before.getTime())),
+      descending: window.limit !== undefined,
+      limit: window.limit,
+      beforeSortKey: window.before && messageSortKey(ulidTimePrefix(window.before.getTime())),
     }),
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
@@ -124,5 +125,5 @@ export async function readWindow(
       { sessionId, messages: items.length },
     );
   }
-  return options.limit === undefined ? items : items.reverse();
+  return window.limit === undefined ? items : items.reverse();
 }

@@ -1,4 +1,4 @@
-import type { BaseMessage, StoredMessage } from '@langchain/core/messages';
+import type { BaseMessage } from '@langchain/core/messages';
 
 import { nowIso } from '../../shared/clock';
 import { collectS3Keys } from '../../shared/codec/descriptor-keys';
@@ -7,15 +7,15 @@ import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { appendChunks } from '../internal/append-saga';
 import { buildMessageItem } from '../internal/item-mapper';
 import { chunkBySize } from '../internal/message-chunker';
+import {
+  parseMessages,
+  parseSessionId,
+  type SessionId,
+  type StorableMessages,
+} from '../internal/parse';
 import type { HistoryContext } from '../internal/setup';
 import { deriveTitle } from '../internal/title-generator';
 import { resolveTtlAnchor } from '../internal/ttl-anchor';
-import {
-  toStoredMessages,
-  validateMessageList,
-  validateSessionId,
-  validateStorableMessages,
-} from '../internal/validation';
 import type { ChatMessageItem } from '../types';
 
 /** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
@@ -40,8 +40,8 @@ const MAX_TRANSACTION_BYTES = 3_500_000;
  */
 async function buildItems(
   context: HistoryContext,
-  sessionId: string,
-  stored: StoredMessage[],
+  sessionId: SessionId,
+  stored: StorableMessages,
   ttlTimestamp: number | undefined,
   signal: AbortSignal | undefined,
 ): Promise<ChatMessageItem[]> {
@@ -102,19 +102,17 @@ export async function addMessages(
   messages: BaseMessage[],
   signal?: AbortSignal,
 ): Promise<void> {
-  validateSessionId(sessionId);
-  validateMessageList(messages);
-  if (messages.length === 0) return;
-  const stored = toStoredMessages(messages);
-  validateStorableMessages(stored);
+  const session = parseSessionId(sessionId);
+  const stored = parseMessages(messages);
+  if (stored.length === 0) return;
   const anchor = context.ttl
-    ? await resolveTtlAnchor(context, sessionId, calculateTtlTimestamp(context.ttl), signal)
+    ? await resolveTtlAnchor(context, session, calculateTtlTimestamp(context.ttl), signal)
     : undefined;
-  const items = await buildItems(context, sessionId, stored, anchor?.ttlTimestamp, signal);
+  const items = await buildItems(context, session, stored, anchor?.ttlTimestamp, signal);
   const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
   await appendChunks(
     context,
-    sessionId,
+    session,
     chunks,
     {
       now: nowIso(),

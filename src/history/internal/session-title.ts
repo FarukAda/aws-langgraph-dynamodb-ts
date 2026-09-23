@@ -2,6 +2,7 @@ import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import { classifyAwsError } from '../../shared/errors/classify';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { SESSION_SORT_KEY, sessionPartition } from './keys';
+import type { SessionId } from './parse';
 import type { HistoryContext } from './setup';
 
 /** True when a plain UpdateItem was turned away by its ConditionExpression. */
@@ -36,7 +37,7 @@ function isConditionRejected(error: Error): boolean {
  */
 export async function removeRolledBackTitle(
   context: HistoryContext,
-  sessionId: string,
+  sessionId: SessionId,
   createdAt: string,
   title: string,
 ): Promise<void> {
