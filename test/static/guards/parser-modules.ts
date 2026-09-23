@@ -9,4 +9,5 @@
 export const PARSER_MODULES: readonly string[] = [
   'shared/validation/primitives.ts',
   'checkpointer/internal/parse.ts',
+  'history/internal/parse.ts',
 ];

@@ -46,6 +46,7 @@ const NO_UNKNOWN = {
 const PARSER_MODULES = [
   'src/shared/validation/primitives.ts',
   'src/checkpointer/internal/parse.ts',
+  'src/history/internal/parse.ts',
 ];
 const NO_UNKNOWN_OUTSIDE_PARSER_PARAMETERS = {
   selector:
