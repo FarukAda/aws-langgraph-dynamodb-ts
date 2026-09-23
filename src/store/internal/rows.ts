@@ -257,7 +257,7 @@ export interface ExistingRecordMeta {
  * can be hundreds of kilobytes the write would only discard), and the
  * revision the compare-and-swap pins.
  *
- * Lives apart from `actions/put.ts` so `persist.ts` can re-read on a lost swap
+ * Lives apart from `actions/put.ts` so `item-write.ts` can re-read on a lost swap
  * without importing its own caller.
  *
  * Accepts: `key` — the row's key. The row need not exist.

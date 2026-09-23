@@ -265,7 +265,7 @@ async function writeWithoutOffloader(
  * four writes at worst.
  *
  * The compare-and-swap runs only when an offloader is configured — matching
- * `store/internal/persist.ts` — because without one there is no S3 object to
+ * `store/internal/item-write.ts` — because without one there is no S3 object to
  * orphan, so a plain unconditional put stays correct and costs no extra
  * ConsistentRead or write capacity (see {@link writeWithoutOffloader}).
  *
@@ -413,7 +413,7 @@ export async function readSpecialRow(
  * - the read itself fails: nothing is confirmed, so the outcome still reports a
  *   commit and keeps the originating error. That leaks one S3 object at worst
  *   (reclaimed by `ensureS3LifecycleRule`) where the alternative strands a live
- *   row — the same trade `store/internal/persist.ts` makes.
+ *   row — the same trade `store/internal/item-write.ts` makes.
  *
  * Accepts: `attempted` — the state this attempt pinned, whose descriptor is the
  * one superseded if the write did land. `error` — the failure being explained.

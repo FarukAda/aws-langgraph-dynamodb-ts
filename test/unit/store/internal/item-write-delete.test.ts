@@ -6,7 +6,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { deleteStoreItem } from '../../../../src/store/internal/delete-item';
+import { deleteStoreItem } from '../../../../src/store/internal/item-write';
 import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { revisionGuardedTable } from '../../../shared/helpers/conditional-delete';
@@ -119,7 +119,7 @@ describe('deleteStoreItem deletes only the row the caller observed', () => {
    * and the vector and S3 cleanup still run, because clearing a stranded vector
    * for a key with no row is a repair path callers have today. The vector is
    * still cleared through the same confirmation every other path goes through,
-   * which is the second read here; `delete-vector-gate` owns that rule.
+   * which is the second read here; `item-write-delete-vector-gate` owns that rule.
    */
   it('sends no write when the pre-read finds no row, and still runs the trailing cleanup', async () => {
     const backend = { upsert: jest.fn(), query: jest.fn(), delete: jest.fn() };

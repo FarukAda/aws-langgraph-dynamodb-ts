@@ -4,7 +4,7 @@ import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { deleteStoreItem } from '../../../../src/store/internal/delete-item';
+import { deleteStoreItem } from '../../../../src/store/internal/item-write';
 import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { revisionGuardedTable } from '../../../shared/helpers/conditional-delete';

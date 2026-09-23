@@ -2,10 +2,9 @@ import { randomUUID } from 'node:crypto';
 
 import { nowIso } from '../../shared/clock';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
-import { deleteStoreItem } from '../internal/delete-item';
 import type { JsonValue } from '../internal/filter';
+import { deleteStoreItem, persistRecord } from '../internal/item-write';
 import type { ParsedDelete, ParsedPut } from '../internal/parse';
-import { persistRecord } from '../internal/persist';
 import { buildStoreItem, itemRowKey, readExisting } from '../internal/rows';
 import { embedPassages } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';

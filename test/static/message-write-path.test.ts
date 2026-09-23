@@ -53,7 +53,7 @@ const w = { Put: action };`;
     expect(
       findMessageWritePathBreaks([
         { path: MESSAGE_PUT_OWNER, text: 'const w = { Put: { TableName: t, Item: i } };' },
-        { path: 'store/internal/persist.ts', text: 'const w = { Put: { Item: i } }; c.put(i);' },
+        { path: 'store/internal/item-write.ts', text: 'const w = { Put: { Item: i } }; c.put(i);' },
       ]),
     ).toEqual([]);
   });

@@ -11,7 +11,7 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBStore } from '../../src/index';
 import { type PayloadDescriptor, PayloadLocation } from '../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../src/shared/logging/logger';
-import { putWithRevisionSwap } from '../../src/store/internal/overwrite-swap';
+import { putWithRevisionSwap } from '../../src/store/internal/item-write';
 import {
   type ExistingRecordMeta,
   partitionKey,
@@ -22,7 +22,7 @@ import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local'
 import { afterResponse } from './helpers/fault-injection';
 import { MemoryS3 } from './helpers/memory-s3';
 
-const tableName = 'overwrite-swap-itest';
+const tableName = 'item-write-swap-itest';
 const admin = new DynamoDBClient(DDB_LOCAL_CONFIG);
 let client: DynamoDBDocument;
 
@@ -83,14 +83,14 @@ describe('overwrite compare-and-swap (F5)', () => {
   // S3/offloader fake (checked). Driving this case through DynamoDBStore.put()
   // with a real offloader is therefore impossible without inventing a
   // parallel harness. This instead calls putWithRevisionSwap -- the actual
-  // compare-and-swap primitive that persist.ts hands the offloader path to
+  // compare-and-swap primitive that item-write.ts hands the offloader path to
   // -- directly against real DynamoDB, and pins the DynamoDB half of
   // the no-orphan invariant: whichever writer loses the immediate race
   // re-reads and reports having superseded the *other* writer's committed
   // descriptor, never the stale value it first observed and never its own.
-  // That this returned descriptor is exactly what persist.ts then deletes
+  // That this returned descriptor is exactly what item-write.ts then deletes
   // from S3 is already proven against a mocked client by
-  // test/unit/store/internal/overwrite-swap.test.ts and
+  // test/unit/store/internal/item-write-swap.test.ts and
   // test/unit/store/actions/put.test.ts; this case's job is only to
   // prove the guarded put/re-read cycle those mocks assume actually behaves
   // that way against a real DynamoDB.

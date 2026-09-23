@@ -10,7 +10,7 @@ import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-err
 import { toPublicError } from '../../../../src/shared/errors/boundary';
 import { toError } from '../../../../src/shared/errors/to-error';
 import { redactErrorText, redactedMessage } from '../../../../src/shared/logging/secret-patterns';
-import { isRetryExhausted } from '../../../../src/store/internal/write-verify';
+import { isRetryExhausted } from '../../../../src/store/internal/item-write';
 
 /**
  * Everything a `throw` can produce. `throw 'boom'` is legal JavaScript and a

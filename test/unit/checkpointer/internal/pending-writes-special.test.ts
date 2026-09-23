@@ -243,7 +243,7 @@ describe('writeSpecialItem', () => {
   it('skips the compare-and-swap and writes unconditionally when no offloader is configured', async () => {
     // Without an offloader there is no S3 object to orphan, so the read that
     // exists purely to feed the CAS guard is skipped entirely — matching
-    // store/internal/persist.ts's own offloader gate.
+    // store/internal/item-write.ts's own offloader gate.
     let gets = 0;
     const inputs: Record<string, unknown>[] = [];
     const context = {

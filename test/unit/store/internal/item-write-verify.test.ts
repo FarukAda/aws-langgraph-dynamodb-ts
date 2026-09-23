@@ -4,8 +4,8 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { isRowAbsent } from '../../../../src/shared/dynamodb/idempotent-write';
 import { retryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { isRetryExhausted, verifyWriteLanded } from '../../../../src/store/internal/item-write';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import { isRetryExhausted, verifyWriteLanded } from '../../../../src/store/internal/write-verify';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(client: StoreContext['client']): StoreContext {
