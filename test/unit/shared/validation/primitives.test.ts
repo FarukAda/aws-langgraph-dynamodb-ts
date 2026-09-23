@@ -1,3 +1,5 @@
+import { expectTypeOf } from 'expect-type';
+
 import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
@@ -5,6 +7,13 @@ import {
   assertNoControlChars,
   assertNoSeparator,
   assertWellFormed,
+  parseIdentifier,
+  parseInteger,
+  parseKeySegment,
+  parseLimit,
+  parseString,
+  parseStringArray,
+  type PageLimit,
   validateIdentifier,
   validateInteger,
   validateLimit,
@@ -314,5 +323,83 @@ describe('validateIdentifier', () => {
     );
     expect(() => validateIdentifier(lossy, '#', 'thread_id', 1024)).toThrow();
     expect(() => validateIdentifier(replacement, '#', 'thread_id', 1024)).not.toThrow();
+  });
+});
+
+describe('parseString', () => {
+  it('returns a string as it was given', () => {
+    expect(parseString('', 'f')).toBe('');
+    expect(parseString('x', 'f')).toBe('x');
+  });
+  it.each(NON_STRINGS)('refuses %p, naming the field', (value) => {
+    expectValidationError(() => parseString(value, 'f'), 'f');
+  });
+});
+
+describe('parseInteger', () => {
+  it('returns an integer inside its bounds', () => {
+    expect(parseInteger(3, 'n')).toBe(3);
+    expect(parseInteger(0, 'n', { min: 0, max: 0 })).toBe(0);
+  });
+  it.each([1.5, Number.NaN, Infinity, '1', null, undefined])(
+    'refuses %p as not an integer',
+    (value) => {
+      expect(() => parseInteger(value, 'n')).toThrow('n must be an integer');
+    },
+  );
+  it('reports the bound broken', () => {
+    expect(() => parseInteger(-1, 'n', { min: 0 })).toThrow('n must be >= 0');
+    expect(() => parseInteger(11, 'n', { max: 10 })).toThrow('n must be <= 10');
+  });
+});
+
+describe('parseLimit', () => {
+  it('returns the page size, typed as one that was checked', () => {
+    const limit = parseLimit(MAX_PAGE_LIMIT, 0);
+    expect(limit).toBe(MAX_PAGE_LIMIT);
+    expectTypeOf(limit).toEqualTypeOf<PageLimit>();
+    expectTypeOf<number>().not.toMatchTypeOf<PageLimit>();
+    expect(parseLimit(0, 0)).toBe(0);
+  });
+  it('refuses zero at a floor of one, and anything past the ceiling', () => {
+    expectValidationError(() => parseLimit(0, 1), 'limit');
+    expect(() => parseLimit(MAX_PAGE_LIMIT + 1, 0)).toThrow(`limit must be <= ${MAX_PAGE_LIMIT}`);
+    expectValidationError(() => parseLimit('5', 0), 'limit');
+  });
+});
+
+describe('parseKeySegment', () => {
+  it('accepts the empty string, which is a segment and not an absence', () => {
+    expect(parseKeySegment('', '#', 'ns', 256)).toBe('');
+    expect(parseKeySegment('inner', '#', 'ns', 256)).toBe('inner');
+  });
+  it('applies every identifier rule but non-blank, in order', () => {
+    expectValidationError(() => parseKeySegment(1, '#', 'ns', 256), 'ns');
+    expect(() => parseKeySegment('x'.repeat(257), '#', 'ns', 256)).toThrow(/at most 256 bytes/);
+    expect(() => parseKeySegment('a#b', '#', 'ns', 256)).toThrow(/separator/);
+    expect(() => parseKeySegment('a\nb', '#', 'ns', 256)).toThrow(/control characters/);
+    expect(() => parseKeySegment(`a${HIGH}b`, '#', 'ns', 256)).toThrow(/well-formed/);
+  });
+});
+
+describe('parseIdentifier', () => {
+  it('returns a well-formed identifier', () => {
+    expect(parseIdentifier(`${HIGH}${LOW}`, '#', 'id', 256)).toBe(`${HIGH}${LOW}`);
+  });
+  it('refuses a blank one before any other rule', () => {
+    expect(() => parseIdentifier('   ', '#', 'id', 1)).toThrow(/non-empty/);
+    expectValidationError(() => parseIdentifier(undefined, '#', 'id', 256), 'id');
+  });
+});
+
+describe('parseStringArray', () => {
+  it('returns a copy, so a later change to the caller array does not reach it', () => {
+    const given = ['a', 'b'];
+    const parsed = parseStringArray(given, 'fields');
+    given.push('c');
+    expect(parsed).toEqual(['a', 'b']);
+  });
+  it.each([undefined, 'a', [1], ['a', null]])('refuses %p', (value) => {
+    expectValidationError(() => parseStringArray(value, 'fields'), 'fields');
   });
 });
