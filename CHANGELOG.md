@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.3] - 2026-09-23
+
 ### Breaking
 
 - **One error class.** Every error is a `DynamoDBLangGraphError`; branch on `code`. The nine subclasses are removed and `ErrorCode.UPSTREAM` is replaced by the codes below. `isDynamoDBLangGraphError` now narrows to a union discriminated by `code`, so `details` is typed without a cast.
@@ -946,7 +948,8 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 
 ---
 
-[Unreleased]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.2...HEAD
+[Unreleased]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.3...HEAD
+[1.0.0-rc.3]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.2...v1.0.0-rc.3
 [1.0.0-rc.2]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.9.0...v1.0.0-rc.1
 [0.9.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.8.0...v0.9.0
