@@ -75,7 +75,17 @@ export function runWithTimeout(command, args, timeoutMs, { env = process.env } =
     let graceTimer;
     const kill = () => {
       if (process.platform === 'win32') {
-        spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+        const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+          stdio: 'ignore',
+        });
+        // `spawn` itself reports a failure to launch `taskkill` (missing from
+        // PATH, permission denied) asynchronously through this event; with no
+        // listener, Node treats it as uncaught and crashes the wrapper before
+        // the grace timer below ever gets to turn the hang it was trying to
+        // stop into the 124 exit a caller can act on.
+        killer.on('error', (error) => {
+          console.error(`run-with-timeout: taskkill failed to run: ${error.message}`);
+        });
       } else {
         try {
           process.kill(-child.pid, 'SIGKILL');
@@ -85,7 +95,13 @@ export function runWithTimeout(command, args, timeoutMs, { env = process.env } =
           child.kill('SIGKILL');
         }
       }
-      graceTimer = setTimeout(() => settle({ status: null, timedOut: true }), KILL_GRACE_MS);
+      graceTimer = setTimeout(() => {
+        console.error(
+          `run-with-timeout: process ${child.pid} did not report its exit within ` +
+            `${KILL_GRACE_MS}ms of the kill; it may still be running`,
+        );
+        settle({ status: null, timedOut: true });
+      }, KILL_GRACE_MS);
     };
 
     const timer = setTimeout(() => {

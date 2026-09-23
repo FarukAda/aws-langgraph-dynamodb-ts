@@ -90,6 +90,48 @@ describe('runWithTimeout', () => {
       `the heartbeat file grew from ${sizeJustAfter} to ${sizeLater} bytes after the kill; the grandchild is still running`,
     );
   });
+
+  it(
+    'on Windows, logs a failed taskkill instead of crashing, and logs clearly (naming the pid) ' +
+      'when the child still has not reported exit by the end of the kill grace period',
+    { skip: process.platform !== 'win32' && 'exercises the Windows taskkill fallback only' },
+    async (t) => {
+      const errorMock = t.mock.method(console, 'error');
+      // A bare `taskkill` is resolved by searching `PATH`/`PATHEXT`; breaking
+      // both for this process makes the kill `runWithTimeout` sends genuinely
+      // fail to launch — the same as a machine where `taskkill.exe` is
+      // missing or blocked, the scenario the fix exists for. The primary
+      // child is unaffected: it is spawned by its full, absolute
+      // `process.execPath`, which Windows resolves without consulting `PATH`
+      // at all.
+      const savedPath = process.env.PATH;
+      const savedPathExt = process.env.PATHEXT;
+      process.env.PATH = '';
+      process.env.PATHEXT = '.NOPE';
+      let result;
+      try {
+        result = await runWithTimeout(
+          process.execPath,
+          // Outlives the kill grace period on its own (so the "still
+          // running" branch is actually reached), then exits so nothing is
+          // left running once this test's assertions finish.
+          ['-e', 'setTimeout(() => process.exit(0), 11_500)'],
+          300,
+        );
+      } finally {
+        process.env.PATH = savedPath;
+        process.env.PATHEXT = savedPathExt;
+      }
+      assert.equal(result.timedOut, true);
+      assert.equal(result.status, null);
+      const loggedMessages = errorMock.mock.calls.map((call) => call.arguments[0]).join('\n');
+      assert.match(loggedMessages, /run-with-timeout: taskkill failed to run: .*ENOENT/);
+      assert.match(
+        loggedMessages,
+        /run-with-timeout: process \d+ did not report its exit within \d+ms of the kill; it may still be running/,
+      );
+    },
+  );
 });
 
 describe('the CLI', () => {
