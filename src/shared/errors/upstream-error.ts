@@ -2,7 +2,7 @@ import { redactedMessage } from '../logging/secret-patterns';
 import { truncateForLog } from '../logging/truncate';
 import { DynamoDBLangGraphError } from './base-error';
 import { ErrorCode } from './error-code';
-import { toError } from './wrap-error';
+import { toError } from './to-error';
 
 /** The request metadata an AWS SDK v3 error carries. */
 interface SdkMetadata {

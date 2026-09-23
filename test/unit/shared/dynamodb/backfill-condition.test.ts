@@ -213,7 +213,7 @@ describe('backfillRecencyIndex writes only to a row that is still there', () => 
     const outcome = await backfillRecencyIndex({ client, tableName: TABLE }).catch(
       (error: Error) => error,
     );
-    expect(outcome).toMatchObject({ name: 'UpstreamError', code: ErrorCode.UPSTREAM });
+    expect(outcome).toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.AWS_REJECTED });
     expect((outcome as Error).cause).toMatchObject({ name: 'ValidationException' });
   });
 

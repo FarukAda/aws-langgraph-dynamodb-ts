@@ -1,7 +1,7 @@
 import { verifyRow, type WriteVerdict } from '../../shared/dynamodb/write-verify';
 import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
-import { toError } from '../../shared/errors/wrap-error';
+import { toError } from '../../shared/errors/to-error';
 import type { ChatMessageItem } from '../types';
 import { type CommittedChunk, compensate } from './compensation';
 import { writeMessageChunk } from './message-transaction';

@@ -4,6 +4,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { DynamoDBChatMessageHistory } from '../../../../src/history/chat-message-history';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../../src/store/store';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -26,12 +27,14 @@ function sdkError(): Error {
 }
 
 const wrapped = (operation: string, cause: Error) => ({
-  name: 'UpstreamError',
-  code: 'UPSTREAM',
-  upstreamName: 'UnrecognizedClientException',
-  requestId: 'req-1',
-  httpStatusCode: 400,
-  context: { operation },
+  name: 'DynamoDBLangGraphError',
+  code: ErrorCode.ACCESS_DENIED,
+  context: {
+    operation,
+    awsErrorName: 'UnrecognizedClientException',
+    requestId: 'req-1',
+    httpStatusCode: 400,
+  },
   cause,
 });
 
@@ -71,9 +74,9 @@ describe('public error boundary (CORE-01)', () => {
 
   /**
    * The four single-operation methods share `batch`'s machinery and must not
-   * share its brand: an operator counting `UpstreamError` by
-   * `context.operation` is told which method the caller called, and the
-   * README's error table names the four separately.
+   * share its brand: an operator counting failures by `context.operation` is
+   * told which method the caller called, and the README's error table names
+   * the four separately.
    */
   it('DynamoDBStore brands a single-operation failure with the method the caller called', async () => {
     const { client, mock } = createStrictDocumentMock();

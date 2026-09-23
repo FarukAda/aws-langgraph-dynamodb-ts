@@ -1,7 +1,7 @@
 import { hasErrorCode } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { AbortError } from '../errors/errors';
-import { toError } from '../errors/wrap-error';
+import { toError } from '../errors/to-error';
 
 /** True when the abort reason already is this library's `AbortError` (a string or DOMException is not). */
 function isLibraryAbort(reason: Error | undefined): reason is AbortError {

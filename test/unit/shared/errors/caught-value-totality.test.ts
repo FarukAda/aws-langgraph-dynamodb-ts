@@ -8,7 +8,7 @@ import { getCancellationReasons } from '../../../../src/shared/dynamodb/cancella
 import { isRetryableError } from '../../../../src/shared/dynamodb/retry-classifier';
 import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { toPublicError } from '../../../../src/shared/errors/boundary';
-import { toError } from '../../../../src/shared/errors/wrap-error';
+import { toError } from '../../../../src/shared/errors/to-error';
 import { redactErrorText, redactedMessage } from '../../../../src/shared/logging/secret-patterns';
 import { isRetryExhausted } from '../../../../src/store/internal/write-verify';
 

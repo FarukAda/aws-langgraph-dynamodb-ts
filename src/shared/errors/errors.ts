@@ -2,7 +2,7 @@ import type { WriteRequest } from '../dynamodb/types';
 import { redactedMessage } from '../logging/secret-patterns';
 import { DynamoDBLangGraphError } from './base-error';
 import { ErrorCode } from './error-code';
-import { toError } from './wrap-error';
+import { toError } from './to-error';
 
 /** Input failed a validation rule before any AWS call was made; `context.field` names the input. */
 export class ValidationError extends DynamoDBLangGraphError<ErrorCode.VALIDATION> {

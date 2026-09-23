@@ -1,4 +1,4 @@
-import { toError } from '../errors/wrap-error';
+import { toError } from '../errors/to-error';
 import { truncateRelayedText } from './truncate';
 
 /** Marker substituted for anything recognised as secret. */

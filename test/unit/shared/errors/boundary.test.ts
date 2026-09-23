@@ -3,6 +3,7 @@ import {
   guardPublicIterable,
   toPublicError,
 } from '../../../../src/shared/errors/boundary';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { ValidationError } from '../../../../src/shared/errors/errors';
 
 function raw(name: string, message = name): Error {
@@ -15,19 +16,19 @@ describe('toPublicError', () => {
     expect(toPublicError(validation, 'op')).toBe(validation);
   });
 
-  it('wraps anything else in an UpstreamError naming the operation', () => {
+  it('wraps anything else with the code the classifier assigns, naming the operation', () => {
     const error = raw('InternalServerError', 'boom');
     expect(toPublicError(error, 'store.batch')).toMatchObject({
-      name: 'UpstreamError',
-      upstreamName: 'InternalServerError',
-      context: { operation: 'store.batch' },
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.SERVICE_UNAVAILABLE,
+      context: { operation: 'store.batch', awsErrorName: 'InternalServerError' },
       cause: error,
     });
   });
 
-  it('normalises a non-Error rejection value before wrapping it', () => {
+  it('normalises a non-Error rejection value before wrapping it as unexpected', () => {
     expect(toPublicError('plain string' as never, 'op')).toMatchObject({
-      name: 'UpstreamError',
+      code: ErrorCode.UNEXPECTED_ERROR,
       message: expect.stringContaining('plain string'),
     });
   });
@@ -43,7 +44,7 @@ describe('guardPublic', () => {
       guardPublic('op', () => {
         throw raw('ThrottlingException');
       }),
-    ).rejects.toMatchObject({ name: 'UpstreamError', upstreamName: 'ThrottlingException' });
+    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.THROTTLED });
     const validation = new ValidationError('bad');
     await expect(
       guardPublic('op', () => {
@@ -76,9 +77,9 @@ describe('guardPublicIterable', () => {
         for await (const n of guardPublicIterable('saver.list', source())) seen.push(n);
       })(),
     ).rejects.toMatchObject({
-      name: 'UpstreamError',
-      upstreamName: 'ThrottlingException',
-      context: { operation: 'saver.list' },
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.THROTTLED,
+      context: { operation: 'saver.list', awsErrorName: 'ThrottlingException' },
     });
     expect(seen).toEqual([1, 2]);
   });

@@ -1,6 +1,7 @@
 import { HumanMessage } from '@langchain/core/messages';
 
 import { DynamoDBSessionChatMessageHistory } from '../../../src/history/session-adapter';
+import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { ValidationError } from '../../../src/shared/errors/errors';
 
 function backend() {
@@ -106,9 +107,10 @@ describe('validates its constructor arguments', () => {
 /**
  * The backend behind this adapter is whatever the caller supplied to
  * `DynamoDBChatMessageHistory`, so a raw failure from it must still cross the
- * same error boundary every other public method does: unbranded becomes
- * `UpstreamError`, and an error this library already branded passes through
- * exactly as raised.
+ * same error boundary every other public method does: unbranded becomes a
+ * `DynamoDBLangGraphError` carrying the code the classifier assigns — here
+ * `UNEXPECTED_ERROR`, since a bare `Error` is not AWS-shaped — and an error
+ * this library already branded passes through exactly as raised.
  */
 describe('crosses the error boundary like every other public method', () => {
   const cause = new Error('boom');
@@ -120,8 +122,8 @@ describe('crosses the error boundary like every other public method', () => {
 
     b.getMessages.mockRejectedValueOnce(cause);
     await expect(history.getMessages()).rejects.toMatchObject({
-      name: 'UpstreamError',
-      code: 'UPSTREAM',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.UNEXPECTED_ERROR,
     });
 
     b.getMessages.mockRejectedValueOnce(validationError);
@@ -140,8 +142,8 @@ describe('crosses the error boundary like every other public method', () => {
 
     b.addMessages.mockRejectedValueOnce(cause);
     await expect(history.addMessage(message)).rejects.toMatchObject({
-      name: 'UpstreamError',
-      code: 'UPSTREAM',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.UNEXPECTED_ERROR,
     });
 
     b.addMessages.mockRejectedValueOnce(validationError);
@@ -160,8 +162,8 @@ describe('crosses the error boundary like every other public method', () => {
 
     b.addMessages.mockRejectedValueOnce(cause);
     await expect(history.addMessages([message])).rejects.toMatchObject({
-      name: 'UpstreamError',
-      code: 'UPSTREAM',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.UNEXPECTED_ERROR,
     });
 
     b.addMessages.mockRejectedValueOnce(validationError);
@@ -179,8 +181,8 @@ describe('crosses the error boundary like every other public method', () => {
 
     b.clear.mockRejectedValueOnce(cause);
     await expect(history.clear()).rejects.toMatchObject({
-      name: 'UpstreamError',
-      code: 'UPSTREAM',
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.UNEXPECTED_ERROR,
     });
 
     b.clear.mockRejectedValueOnce(validationError);

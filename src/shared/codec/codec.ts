@@ -3,7 +3,7 @@ import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 import { DynamoDBLangGraphError, isDynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { ValidationError } from '../errors/errors';
-import { toError } from '../errors/wrap-error';
+import { toError } from '../errors/to-error';
 import { truncateForLog } from '../logging/truncate';
 import { CompressionConfig, decompress } from './compression';
 import { bytesHoldDeclaredForm } from './declared-form';

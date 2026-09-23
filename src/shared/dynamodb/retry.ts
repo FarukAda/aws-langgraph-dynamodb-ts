@@ -6,7 +6,7 @@ import {
 } from '../constants';
 import { DEFAULT_RETRYABLE_ERRORS } from '../errors/classify';
 import { RetryExhaustedError } from '../errors/errors';
-import { toError } from '../errors/wrap-error';
+import { toError } from '../errors/to-error';
 import { redactedMessage } from '../logging/secret-patterns';
 import { abortErrorFrom } from './abort';
 import { fullJitter, sleep } from './backoff';

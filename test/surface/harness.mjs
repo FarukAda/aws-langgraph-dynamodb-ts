@@ -63,7 +63,7 @@ function outcome(e) {
   if (e === undefined) return 'RESOLVED';
   const name = e && e.name; const code = e && e.code; const field = e && e.context && e.context.field;
   const branded = e && typeof lib.isDynamoDBLangGraphError === 'function' && e instanceof Object && lib.isDynamoDBLangGraphError(e);
-  if (name === 'UpstreamError' && /unstubbed write/.test(e.message)) return 'REACHED-WRITE (input accepted, write attempted)';
+  if (code === 'UNEXPECTED_ERROR' && /unstubbed write/.test(e.message)) return 'REACHED-WRITE (input accepted, write attempted)';
   if (branded) return `throws ${name}/${code}${field ? ` field=${field}` : ''}`;
   return `BARE ${name}`;
 }

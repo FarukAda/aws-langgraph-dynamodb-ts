@@ -4,7 +4,7 @@ import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { CompensationFailedError } from '../../shared/errors/errors';
-import { toError } from '../../shared/errors/wrap-error';
+import { toError } from '../../shared/errors/to-error';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { ChatMessageItem } from '../types';
 import { revertSessionCount, revertSessionCreation } from './session-count';
