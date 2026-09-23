@@ -43,7 +43,10 @@ const NO_UNKNOWN = {
  * `test/static/no-any-unknown.test.ts` applies the same rule and checks that
  * the two lists agree.
  */
-const PARSER_MODULES = ['src/shared/validation/primitives.ts'];
+const PARSER_MODULES = [
+  'src/shared/validation/primitives.ts',
+  'src/checkpointer/internal/parse.ts',
+];
 const NO_UNKNOWN_OUTSIDE_PARSER_PARAMETERS = {
   selector:
     'TSUnknownKeyword:not(FunctionDeclaration[id.name=/^parse[A-Z]/] > Identifier.params > TSTypeAnnotation > TSUnknownKeyword)',

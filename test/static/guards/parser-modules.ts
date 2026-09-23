@@ -6,4 +6,7 @@
  * the same files, and `test/static/no-any-unknown.test.ts` checks the two lists
  * agree, so the lint rule and this guard cannot drift apart.
  */
-export const PARSER_MODULES: readonly string[] = ['shared/validation/primitives.ts'];
+export const PARSER_MODULES: readonly string[] = [
+  'shared/validation/primitives.ts',
+  'checkpointer/internal/parse.ts',
+];

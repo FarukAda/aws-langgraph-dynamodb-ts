@@ -7,6 +7,7 @@ import {
   partitionKey,
   payloadSortKey,
   writeSortKey,
+  writeSortKeyBytes,
   writeSortKeyPrefix,
 } from '../../../../src/checkpointer/internal/keys';
 
@@ -73,6 +74,20 @@ describe('writeSortKey composed length (SEC-10)', () => {
 
   it('accepts a composed sort key at the limit', () => {
     expect(() => writeSortKey('ns', 'c'.repeat(256), 't'.repeat(256), 0, 'ch')).not.toThrow();
+  });
+});
+
+describe('writeSortKeyBytes', () => {
+  it('measures the WRITE sort key, which is as long at every index a write can take', () => {
+    const bytes = writeSortKeyBytes('ns', 'cp', 'task', 'ch');
+    expect(bytes).toBe(Buffer.byteLength(writeSortKey('ns', 'cp', 'task', 0, 'ch'), 'utf8'));
+    expect(bytes).toBe(Buffer.byteLength(writeSortKey('ns', 'cp', 'task', -4, 'ch'), 'utf8'));
+    expect(bytes).toBe(Buffer.byteLength(writeSortKey('ns', 'cp', 'task', 99, 'ch'), 'utf8'));
+  });
+
+  it('measures past the cap without refusing, so a parser can name the cap itself', () => {
+    const segment = 'x'.repeat(256);
+    expect(writeSortKeyBytes(segment, segment, segment, segment)).toBeGreaterThan(1024);
   });
 });
 
