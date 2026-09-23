@@ -8,14 +8,18 @@ export interface ForbiddenTypeOptions {
 
 /**
  * Whether `node` — an `unknown` keyword — is the whole declared type of a
- * non-rest parameter of a function declaration named `parse[A-Z]…`. That is the
- * one place a parser module may use it: the value a parser is handed is not
- * yet known to be anything, and saying so is the point of the parser.
+ * plain, named, non-rest parameter with no default of a function declaration
+ * named `parse[A-Z]…`. That is the one place a parser module may use it: the
+ * value a parser is handed is not yet known to be anything, and saying so is
+ * the point of the parser. A default (`value: unknown = x`) or a destructured
+ * name (`{ a }: unknown`) is refused, as ESLint's selector refuses it: there the
+ * parameter is no longer a bare identifier.
  */
 function isParserParameterType(node: ts.Node): boolean {
   const parameter = node.parent;
   if (!ts.isParameter(parameter) || parameter.type !== node) return false;
   if (parameter.dotDotDotToken !== undefined) return false;
+  if (parameter.initializer !== undefined || !ts.isIdentifier(parameter.name)) return false;
   const owner = parameter.parent;
   return (
     ts.isFunctionDeclaration(owner) &&
@@ -28,7 +32,8 @@ function isParserParameterType(node: ts.Node): boolean {
  * Return the 1-based line numbers where the `any` or `unknown` type keyword
  * appears in `source`. Identifiers that merely contain the text are not
  * matched. With `parserModule`, an `unknown` that is the declared type of a
- * parameter of a `parse*` function declaration is allowed; `any` never is.
+ * plain parameter of a `parse*` function declaration (see
+ * {@link isParserParameterType}) is allowed; `any` never is.
  */
 export function findForbiddenTypes(source: string, options: ForbiddenTypeOptions = {}): number[] {
   const sourceFile = ts.createSourceFile('probe.ts', source, ts.ScriptTarget.Latest, true);

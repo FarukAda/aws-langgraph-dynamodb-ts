@@ -40,6 +40,8 @@ describe('findForbiddenTypes in a parser module', () => {
     expect(inParser('function parseA(value: string): unknown { return value; }')).toEqual([1]);
     expect(inParser('function parseA(...values: unknown[]): void {}')).toEqual([1]);
     expect(inParser('function parseA(value: { a: unknown }): void {}')).toEqual([1]);
+    expect(inParser('function parseA(value: unknown = 1): void {}')).toEqual([1]);
+    expect(inParser('function parseA({ a }: unknown): void {}')).toEqual([1]);
     expect(inParser('function check(value: unknown): void {}')).toEqual([1]);
     expect(inParser('function parse(value: unknown): void {}')).toEqual([1]);
     expect(inParser('const parseA = (value: unknown): void => {};')).toEqual([1]);
