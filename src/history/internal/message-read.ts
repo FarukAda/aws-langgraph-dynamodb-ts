@@ -12,9 +12,8 @@
 import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 
 import { nowSeconds } from '../../shared/clock';
-import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
 import type { DocItem } from '../../shared/dynamodb/client';
-import { paginateQuery } from '../../shared/dynamodb/paginate';
+import { LIST_SCAN_WARN_THRESHOLD, paginateQuery } from '../../shared/dynamodb/paginate';
 import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow, assertReadableRow } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';

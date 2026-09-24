@@ -7,11 +7,11 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import {
+  KEY_SEPARATOR,
   MAX_KEY_SEGMENT_BYTES,
   MAX_PARTITION_ID_BYTES,
   MAX_SORT_KEY_BYTES,
-} from '../../shared/constants';
-import { KEY_SEPARATOR } from '../../shared/dynamodb/table-schema';
+} from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
 import { assertSignalLike } from '../../shared/validation/collaborators';
 import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';

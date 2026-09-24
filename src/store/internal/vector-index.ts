@@ -13,8 +13,7 @@
 import type { IndexConfig, Item, SearchItem } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import { mapWithConcurrency } from '../../shared/concurrency';
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
 import { isRowAbsent } from '../../shared/dynamodb/idempotent-write';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry';

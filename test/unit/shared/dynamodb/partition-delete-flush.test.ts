@@ -6,10 +6,10 @@ import {
 import { marshall } from '@aws-sdk/util-dynamodb';
 
 import { type PayloadDescriptor, PayloadLocation } from '../../../../src/shared/codec/codec';
-import { DELETE_CONCURRENCY } from '../../../../src/shared/constants';
 import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import { writeIdGuard } from '../../../../src/shared/dynamodb/idempotent-write';
 import {
+  DELETE_CONCURRENCY,
   type FlushDeps,
   flushPendingDeletes,
   type PendingDelete,

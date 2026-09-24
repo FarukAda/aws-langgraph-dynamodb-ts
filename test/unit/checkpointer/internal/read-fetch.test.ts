@@ -6,7 +6,7 @@ import {
   fetchTargetMeta,
 } from '../../../../src/checkpointer/internal/read';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import { LIST_SCAN_WARN_THRESHOLD } from '../../../../src/shared/constants';
+import { LIST_SCAN_WARN_THRESHOLD } from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

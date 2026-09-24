@@ -11,8 +11,7 @@
 import type { Item, SearchItem } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import { mapWithConcurrency } from '../../shared/concurrency';
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
 import type { DocItem } from '../../shared/dynamodb/client';
 import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry';

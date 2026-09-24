@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { DEFAULT_S3_KEY_PREFIX } from '../../src/shared/codec/s3/config';
+import { S3_RELEASE_GRACE_DAYS } from '../../src/shared/codec/s3/lifecycle';
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
-  DEFAULT_S3_KEY_PREFIX,
   DEFAULT_SOCKET_TIMEOUT_MS,
-  S3_RELEASE_GRACE_DAYS,
-} from '../../src/shared/constants';
+} from '../../src/shared/dynamodb/client';
 import { readReadme } from './guards/iam-actions';
 import { SRC_ROOT } from './guards/source-files';
 

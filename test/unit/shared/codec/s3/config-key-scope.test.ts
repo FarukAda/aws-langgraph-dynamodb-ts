@@ -4,9 +4,8 @@ import {
   isKeyInScope,
   s3KeyScope,
 } from '../../../../../src/shared/codec/s3/config';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
-import { truncateForLog } from '../../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 const enc = (value: string): string => Buffer.from(value, 'utf8').toString('base64url');
 const ID = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';

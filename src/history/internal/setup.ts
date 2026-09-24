@@ -12,7 +12,6 @@ import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
-import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
 import { validationError } from '../../shared/errors/errors';
 import { createUlidFactory } from '../../shared/ulid';
 import { allKeysOf, assertShape } from '../../shared/validation/option-shape';
@@ -22,6 +21,20 @@ import type {
   GetMessagesOptions,
   ListSessionsOptions,
 } from '../types';
+
+/**
+ * Max attempts for the message-append transaction. It shares one session's
+ * metadata row across every concurrent `addMessages` caller on that session,
+ * so a burst of concurrent appends can collide repeatedly; combined with the
+ * existing 100ms base / 5000ms cap backoff, this keeps worst-case retrying
+ * within AWS's documented guidance to bound conflict retries to "around one
+ * minute" (see DynamoDB's "Error retries and exponential backoff" guide).
+ * This bound is exact for clients this library constructs, which disable the
+ * AWS SDK's own internal retries (`maxAttempts: 1`, see
+ * `resolveDynamoDBClient`). An injected client that keeps SDK retries stacks
+ * them inside each attempt; construction warns about that.
+ */
+export const MESSAGE_APPEND_RETRY_MAX_ATTEMPTS = 18;
 
 /**
  * The keys of each chat-history option bag, exhaustive in both directions:

@@ -3,11 +3,11 @@ import type { LifecycleRule } from '@aws-sdk/client-s3';
 import {
   alreadyCorrect,
   assertNoIdCollision,
+  S3_RELEASE_GRACE_DAYS,
   ttlRule,
 } from '../../../../../src/shared/codec/s3/lifecycle';
-import { MAX_LOGGED_VALUE_CHARS, S3_RELEASE_GRACE_DAYS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
-import { truncateForLog } from '../../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 const PREFIX = 'langgraph-checkpoints/';
 const TTL_ID = 'langgraph-ttl-langgraph-checkpoints';

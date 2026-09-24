@@ -10,8 +10,7 @@ import {
   loadPayloadValue,
   readPayloadBytes,
 } from '../../shared/codec/codec';
-import { mapWithConcurrency } from '../../shared/concurrency';
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
 import { failureLabel, toError } from '../../shared/errors/base-error';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';

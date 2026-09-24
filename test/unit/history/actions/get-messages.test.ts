@@ -8,11 +8,10 @@ import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { buildS3Key, assertKeyInScope } from '../../../../src/shared/codec/s3/config';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/logging/truncate';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 

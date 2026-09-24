@@ -13,11 +13,11 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import { type PayloadDescriptor, collectS3Keys, type DescriptorRef } from '../codec/codec';
 import { type S3Offloader, cleanUpS3Orphans } from '../codec/s3/offloader';
 import { mapWithConcurrency } from '../concurrency';
-import { BATCH_WRITE_MAX, DELETE_CONCURRENCY } from '../constants';
 import { batchWriteAllIncompleteError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
 import { truncateForLog } from '../logging/truncate';
 import { isAbortError } from './abort';
+import { BATCH_WRITE_MAX } from './batch-write';
 import type { DynamoDBDocumentLike, DocItem } from './client';
 import {
   type RevisionGuard,
@@ -29,6 +29,21 @@ import {
 import { paginateQuery } from './paginate';
 import { withDynamoDBRetry, type RetryOptions } from './retry';
 import { rowKeyOf } from './table-schema';
+
+/**
+ * Conditional row deletes a partition-wide delete keeps in flight. Pinning a
+ * row on the write that produced it costs one request per row where a batch
+ * carried twenty-five, so issuing them one at a time would have paid a round
+ * trip per row; eight at once gives most of that back while keeping a
+ * partition of any size from opening a socket per row. A fixed value rather
+ * than a caller option: this is a maintenance path, and it has no other knob.
+ *
+ * Its own literal at the same value as `DEFAULT_READ_CONCURRENCY`
+ * (`src/shared/concurrency.ts`), not an alias of it — aliasing two limits has
+ * already meant that retuning one silently moved the other (see
+ * `LIST_SCAN_WARN_THRESHOLD` (`src/shared/dynamodb/paginate.ts`)).
+ */
+export const DELETE_CONCURRENCY = 8;
 
 /**
  * One offloaded payload a row references, named by the attribute holding it.

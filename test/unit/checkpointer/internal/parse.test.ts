@@ -26,8 +26,8 @@ import {
   type ThreadId,
   type WriteChannel,
 } from '../../../../src/checkpointer/internal/parse';
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/validation/primitives';
 
 /** Matches the `VALIDATION` refusal naming `field`. */
 const refusal = (field: string) =>

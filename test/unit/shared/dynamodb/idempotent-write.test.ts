@@ -6,7 +6,6 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
 import {
   revisionGuard,
   commitRow,
@@ -18,7 +17,7 @@ import {
   transactIdempotently,
 } from '../../../../src/shared/dynamodb/idempotent-write';
 import * as retryModule from '../../../../src/shared/dynamodb/retry';
-import type { RetryOptions } from '../../../../src/shared/dynamodb/retry';
+import { MAX_WRITE_LIFETIME_MS, type RetryOptions } from '../../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';

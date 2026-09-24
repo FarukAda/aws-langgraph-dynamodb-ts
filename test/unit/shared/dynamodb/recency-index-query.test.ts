@@ -6,7 +6,7 @@ import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { listSessions } from '../../../../src/history/actions/list-sessions';
 import { DynamoDBChatMessageHistory } from '../../../../src/history/chat-message-history';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { DEFAULT_READ_CONCURRENCY } from '../../../../src/shared/constants';
+import { DEFAULT_READ_CONCURRENCY } from '../../../../src/shared/concurrency';
 import {
   iterateRecencyIndex,
   queryRecencyIndex,

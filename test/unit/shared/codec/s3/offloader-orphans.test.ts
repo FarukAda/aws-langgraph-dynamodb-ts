@@ -1,6 +1,5 @@
 import { cleanUpS3Orphans } from '../../../../../src/shared/codec/s3/offloader';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
-import { truncateForLog } from '../../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 function fakeLogger() {
   return { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };

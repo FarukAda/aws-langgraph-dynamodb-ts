@@ -1,5 +1,4 @@
-import { mapWithConcurrency } from '../../shared/concurrency';
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
 import type { ParsedOperation, StoreAddress } from './parse';
 
 /** What one operation touches, which is what decides whether it may run beside another. */

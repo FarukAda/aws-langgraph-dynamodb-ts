@@ -6,10 +6,9 @@ import { parseSessionId } from '../../../../src/history/internal/parse';
 import { buildMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/logging/truncate';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(

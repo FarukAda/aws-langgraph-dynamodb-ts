@@ -1,9 +1,8 @@
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { DynamoDBFactory } from '../../../src/factory/factory';
 import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-history';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../src/shared/constants';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
-import { truncateForLog } from '../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../src/shared/logging/truncate';
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 

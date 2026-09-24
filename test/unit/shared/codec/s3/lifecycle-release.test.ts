@@ -8,8 +8,10 @@ import {
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { buildLifecycleRuleId, buildMarkerRuleId } from '../../../../../src/shared/codec/s3/config';
-import { ensureLifecycleRule } from '../../../../../src/shared/codec/s3/lifecycle';
-import { S3_RELEASE_GRACE_DAYS } from '../../../../../src/shared/constants';
+import {
+  ensureLifecycleRule,
+  S3_RELEASE_GRACE_DAYS,
+} from '../../../../../src/shared/codec/s3/lifecycle';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 
 const s3Mock = mockClient(S3Client);

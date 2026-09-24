@@ -5,9 +5,8 @@ import {
   PayloadLocation,
 } from '../../../../src/shared/codec/codec';
 import { buildS3Key, assertKeyInScope } from '../../../../src/shared/codec/s3/config';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/logging/truncate';
 
 const serde = {
   dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>

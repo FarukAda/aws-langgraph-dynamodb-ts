@@ -1,10 +1,11 @@
+import { wrapForeignError } from '../../../../src/shared/errors/boundary';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
   MAX_LOGGED_VALUE_CHARS,
   MAX_RELAYED_MESSAGE_CHARS,
-} from '../../../../src/shared/constants';
-import { wrapForeignError } from '../../../../src/shared/errors/boundary';
-import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { truncateForLog, truncateRelayedText } from '../../../../src/shared/logging/truncate';
+  truncateForLog,
+  truncateRelayedText,
+} from '../../../../src/shared/logging/truncate';
 
 describe('wrapForeignError', () => {
   const throttled = Object.assign(new Error('Rate exceeded'), {

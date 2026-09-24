@@ -1,13 +1,13 @@
+import { MAX_INLINE_PAYLOAD_BYTES } from '../../../../src/shared/codec/codec';
+import { MAX_INDEX_SHARDS } from '../../../../src/shared/dynamodb/recency-index';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import type { BaseAdapterOptions, CodecOptions } from '../../../../src/shared/options';
 import {
-  MAX_INDEX_SHARDS,
-  MAX_INLINE_PAYLOAD_BYTES,
+  assertBaseAdapterOptions,
   MAX_PAYLOAD_BUFFER_BYTES,
   MAX_READ_CONCURRENCY,
   MAX_RETRY_DELAY_MS,
-} from '../../../../src/shared/constants';
-import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import type { BaseAdapterOptions, CodecOptions } from '../../../../src/shared/options';
-import { assertBaseAdapterOptions } from '../../../../src/shared/validation/options';
+} from '../../../../src/shared/validation/options';
 
 type Options = BaseAdapterOptions & CodecOptions;
 

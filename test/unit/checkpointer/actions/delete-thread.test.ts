@@ -4,7 +4,7 @@ import { deleteThread } from '../../../../src/checkpointer/actions/delete-thread
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { buildS3Key, isKeyInScope } from '../../../../src/shared/codec/s3/config';
-import { MAX_LOOP_ITERATIONS } from '../../../../src/shared/constants';
+import { MAX_LOOP_ITERATIONS } from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { conditionalTable } from '../../../shared/helpers/conditional-delete';

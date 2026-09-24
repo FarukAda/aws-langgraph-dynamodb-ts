@@ -20,12 +20,11 @@ import { unmarshall } from '@aws-sdk/util-dynamodb';
 
 import { nowMs } from '../clock';
 import { type PayloadDescriptor, PayloadLocation, type DescriptorRef } from '../codec/codec';
-import { MAX_WRITE_LIFETIME_MS } from '../constants';
 import { classifyAwsError } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
 import { conditionalCheckFailure } from './cancellation';
 import type { DynamoDBDocumentLike, DocItem } from './client';
-import { withDynamoDBRetry, retryFor } from './retry';
+import { MAX_WRITE_LIFETIME_MS, withDynamoDBRetry, retryFor } from './retry';
 import type { RetryOptions } from './retry';
 import { PARTITION_KEY_ATTRIBUTE, type RowKey } from './table-schema';
 

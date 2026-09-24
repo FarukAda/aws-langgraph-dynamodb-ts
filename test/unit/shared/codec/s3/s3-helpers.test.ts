@@ -5,9 +5,8 @@ import {
   encodeKeyPart,
 } from '../../../../../src/shared/codec/s3/config';
 import { oversizedObjectError } from '../../../../../src/shared/codec/s3/offloader';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
-import { truncateForLog } from '../../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 describe('oversizedObjectError', () => {
   const error = oversizedObjectError('ckpt/t/x.bin', 2_000, 1_000);

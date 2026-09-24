@@ -11,7 +11,6 @@
 
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import { MAX_INLINE_PAYLOAD_BYTES } from '../constants';
 import {
   DynamoDBLangGraphError,
   hasErrorCode,
@@ -30,6 +29,14 @@ import {
 } from './compression';
 import { bytesHoldDeclaredForm } from './json-serde';
 import type { S3Offloader } from './s3/offloader';
+
+/**
+ * Largest serialized payload stored inline when no S3 offloader is configured:
+ * DynamoDB's 400 KB item cap less 8 KB of headroom for the item's keys,
+ * attribute names and descriptor fields. Exceeding it fails before the write
+ * with a typed error instead of a raw `ValidationException` after it.
+ */
+export const MAX_INLINE_PAYLOAD_BYTES = 400 * 1024 - 8 * 1024;
 
 /** Where an encoded payload lives. */
 export enum PayloadLocation {

@@ -14,9 +14,9 @@ import {
   type SessionId,
   type StorableMessages,
 } from '../../../../src/history/internal/parse';
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { ULID_TIME_RANGE_MS } from '../../../../src/shared/ulid';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/validation/primitives';
 
 /** Matches the `VALIDATION` refusal naming `field`. */
 const refusal = (field: string) =>

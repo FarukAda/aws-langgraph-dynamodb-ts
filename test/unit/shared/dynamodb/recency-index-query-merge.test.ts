@@ -1,7 +1,7 @@
 import { QueryCommand, type QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import { MAX_LOOP_ITERATIONS } from '../../../../src/shared/constants';
 import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import { MAX_LOOP_ITERATIONS } from '../../../../src/shared/dynamodb/paginate';
 import { queryRecencyIndex } from '../../../../src/shared/dynamodb/recency-index';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { parseLimit } from '../../../../src/shared/validation/primitives';

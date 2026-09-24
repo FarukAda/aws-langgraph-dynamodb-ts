@@ -2,8 +2,6 @@ import {
   MAX_LOGGED_LABELS,
   MAX_LOGGED_VALUE_CHARS,
   MAX_RELAYED_MESSAGE_CHARS,
-} from '../../../../src/shared/constants';
-import {
   truncateForLog,
   truncateLabelsForLog,
   truncateRelayedText,

@@ -2,9 +2,8 @@ import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { downloadObject, uploadObject } from '../../../../../src/shared/codec/s3/offloader';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
-import { truncateForLog } from '../../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 const s3Mock = mockClient(S3Client);
 

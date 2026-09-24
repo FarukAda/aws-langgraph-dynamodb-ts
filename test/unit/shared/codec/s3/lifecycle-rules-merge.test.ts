@@ -1,7 +1,10 @@
 import type { LifecycleRule } from '@aws-sdk/client-s3';
 
-import { markerRule, ttlRule } from '../../../../../src/shared/codec/s3/lifecycle';
-import { S3_RELEASE_GRACE_DAYS } from '../../../../../src/shared/constants';
+import {
+  markerRule,
+  S3_RELEASE_GRACE_DAYS,
+  ttlRule,
+} from '../../../../../src/shared/codec/s3/lifecycle';
 
 const PREFIX = 'langgraph-checkpoints/';
 const TTL_ID = 'langgraph-ttl-langgraph-checkpoints';

@@ -1,9 +1,9 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
-import { MAX_LOOP_ITERATIONS, MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
+import { MAX_LOOP_ITERATIONS } from '../../../../src/shared/dynamodb/paginate';
 import { queryRecencyIndex } from '../../../../src/shared/dynamodb/recency-index';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { parseLimit } from '../../../../src/shared/validation/primitives';
+import { MAX_PAGE_LIMIT, parseLimit } from '../../../../src/shared/validation/primitives';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 type StrictMock = ReturnType<typeof createStrictDocumentMock>;

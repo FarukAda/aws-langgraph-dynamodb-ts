@@ -33,13 +33,13 @@ import { pathToFileURL } from 'node:url';
 
 /**
  * The key prefix swept when none is given. It mirrors `DEFAULT_S3_KEY_PREFIX`
- * in `src/shared/constants.ts`, and a static test pins the two together.
+ * in `src/shared/codec/s3/config.ts`, and a static test pins the two together.
  */
 export const DEFAULT_PREFIX = 'langgraph-checkpoints/';
 
 /**
  * Days a released payload survives behind its delete marker. It mirrors
- * `S3_RELEASE_GRACE_DAYS` in `src/shared/constants.ts` — the value
+ * `S3_RELEASE_GRACE_DAYS` in `src/shared/codec/s3/lifecycle.ts` — the value
  * `ensureS3LifecycleRule()` writes as `NoncurrentDays` — and a static test pins
  * the two together. Pass `--grace-days` when the bucket carries a longer floor.
  */
@@ -48,8 +48,8 @@ export const DEFAULT_GRACE_DAYS = 1;
 /**
  * How long one of this script's requests may run, and how long it may sit idle
  * mid-response. They mirror `DEFAULT_REQUEST_TIMEOUT_MS` and
- * `DEFAULT_SOCKET_TIMEOUT_MS` in `src/shared/constants.ts` — the bounds the
- * library's own clients carry — and a static test pins each pair together.
+ * `DEFAULT_SOCKET_TIMEOUT_MS` in `src/shared/dynamodb/client.ts` — the bounds
+ * the library's own clients carry — and a static test pins each pair together.
  */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 export const DEFAULT_SOCKET_TIMEOUT_MS = 5_000;

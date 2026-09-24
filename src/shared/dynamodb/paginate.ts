@@ -10,11 +10,32 @@
 
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import { MAX_LOOP_ITERATIONS, MAX_TOTAL_ITEMS_IN_MEMORY } from '../constants';
 import { resultTruncatedError, validationError } from '../errors/errors';
 import { abortErrorFrom } from './abort';
 import type { DynamoDBDocumentLike, DocItem } from './client';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
+
+/** Hard cap on query-pagination loop iterations (runaway-loop guard). */
+export const MAX_LOOP_ITERATIONS = 1000;
+
+/** Hard cap on items collected into memory across a paginated query. */
+export const MAX_TOTAL_ITEMS_IN_MEMORY = 10000;
+
+/**
+ * Raw rows a single `listCheckpoints` call may pull before it warns. The read
+ * itself is deliberately unbounded — capping it counted raw rows rather than
+ * filter-matched ones, which turned a caller asking for a handful of rare
+ * matches over a large thread into a hard error instead of the true answer.
+ * The warning restores the operational signal without restoring the wrong
+ * error.
+ *
+ * Its own literal, deliberately: this is the point at which a scan is worth
+ * telling an operator about, which is independent of
+ * {@link MAX_TOTAL_ITEMS_IN_MEMORY}'s hard collection cap. Aliasing the two
+ * meant retuning the memory cap silently moved the warning as well, and it
+ * left the pair reported as a duplicate export.
+ */
+export const LIST_SCAN_WARN_THRESHOLD = 10000;
 
 /** Options for {@link paginateQuery}. */
 export interface PaginateOptions extends PaginateCoreOptions {

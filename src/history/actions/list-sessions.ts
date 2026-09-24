@@ -1,5 +1,5 @@
 import { nowSeconds as currentSeconds } from '../../shared/clock';
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency';
 import { paginateScan } from '../../shared/dynamodb/paginate';
 import { DEFAULT_INDEX_SHARDS, queryRecencyIndex } from '../../shared/dynamodb/recency-index';
 import { retryFor } from '../../shared/dynamodb/retry';

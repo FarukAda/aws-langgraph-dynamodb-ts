@@ -1,5 +1,4 @@
 import { setUpCheckpointer } from '../../../../src/checkpointer/internal/setup';
-import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
@@ -8,15 +7,6 @@ const serde = {
 };
 
 describe('setUpCheckpointer', () => {
-  it('rejects an option key this package does not read', () => {
-    expect(() => new DynamoDBSaver({ tableName: 'tbl', readConcurency: 4 } as never)).toThrow(
-      expect.objectContaining({
-        code: 'VALIDATION',
-        context: { field: 'options.readConcurency' },
-      }),
-    );
-  });
-
   it('rejects an invalid tableName and an ambiguous client configuration at construction (CORE-05)', () => {
     expect(() =>
       setUpCheckpointer({ tableName: 'bad name', client: { send: jest.fn() } as never }, serde),

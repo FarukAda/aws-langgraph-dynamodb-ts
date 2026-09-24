@@ -23,8 +23,11 @@ import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 
 import { createDefaultS3Client } from '../../src/shared/codec/s3/client';
 import { readBodyBounded, type S3Body, downloadObject } from '../../src/shared/codec/s3/offloader';
-import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_SOCKET_TIMEOUT_MS } from '../../src/shared/constants';
-import { resolveDynamoDBClient } from '../../src/shared/dynamodb/client';
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_SOCKET_TIMEOUT_MS,
+  resolveDynamoDBClient,
+} from '../../src/shared/dynamodb/client';
 import { isTransientS3Error, isRetryableError } from '../../src/shared/dynamodb/retry';
 import { DEFAULT_RETRYABLE_ERRORS } from '../../src/shared/errors/classify';
 import { ErrorCode } from '../../src/shared/errors/error-code';

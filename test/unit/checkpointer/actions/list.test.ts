@@ -14,7 +14,7 @@ import type { CheckpointerContext } from '../../../../src/checkpointer/internal/
 import {
   LIST_SCAN_WARN_THRESHOLD,
   MAX_TOTAL_ITEMS_IN_MEMORY,
-} from '../../../../src/shared/constants';
+} from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

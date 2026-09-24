@@ -24,6 +24,30 @@ export const PARTITION_KEY_ATTRIBUTE = 'PK';
 export const SORT_KEY_ATTRIBUTE = 'SK';
 
 /**
+ * Byte caps on caller-supplied identifiers, measured as UTF-8. DynamoDB caps a
+ * partition key at 2048 bytes and a sort key at 1024; S3 caps an object key at
+ * 1024. These leave room for the adapter prefixes and separators that compose
+ * the stored keys, so a value that passes validation fails as a typed error
+ * here rather than as a raw AWS ValidationException on the write.
+ *
+ * Partition-key identifiers: `thread_id` and `sessionId`.
+ */
+export const MAX_PARTITION_ID_BYTES = 1024;
+
+/**
+ * Sort-key segments: `checkpoint_ns`, `checkpoint_id`, `taskId`, a pending-write
+ * channel, a store namespace element and a store `key`.
+ */
+export const MAX_KEY_SEGMENT_BYTES = 256;
+
+/**
+ * DynamoDB cap on a whole sort key; composed keys are checked against it too.
+ *
+ * @see https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.NamingRulesDataTypes.html
+ */
+export const MAX_SORT_KEY_BYTES = 1024;
+
+/**
  * The separator between the segments of every key this package composes. No
  * caller-supplied identifier may contain it (the parsers refuse it), which is
  * what lets a key be read back into its parts and matched by prefix (record 2).

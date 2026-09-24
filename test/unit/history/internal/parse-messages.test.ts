@@ -6,14 +6,15 @@ import {
   parseSessionId,
   parseStoredMessages,
 } from '../../../../src/history/internal/parse';
+import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
   MAX_LOGGED_VALUE_CHARS,
-  MAX_PAGE_LIMIT,
   MAX_RELAYED_MESSAGE_CHARS,
-} from '../../../../src/shared/constants';
-import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { truncateForLog, truncateRelayedText } from '../../../../src/shared/logging/truncate';
+  truncateForLog,
+  truncateRelayedText,
+} from '../../../../src/shared/logging/truncate';
 import { ULID_TIME_RANGE_MS } from '../../../../src/shared/ulid';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/validation/primitives';
 
 function expectValidationError(fn: () => void): void {
   try {

@@ -13,7 +13,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency';
 import type { DocItem } from '../../shared/dynamodb/client';
 import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
 import { DEFAULT_INDEX_SHARDS, iterateRecencyIndex } from '../../shared/dynamodb/recency-index';

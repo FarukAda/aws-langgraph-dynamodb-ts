@@ -5,8 +5,7 @@ import {
   type StoredMessage,
 } from '@langchain/core/messages';
 
-import { MAX_PARTITION_ID_BYTES } from '../../shared/constants';
-import { KEY_SEPARATOR } from '../../shared/dynamodb/table-schema';
+import { KEY_SEPARATOR, MAX_PARTITION_ID_BYTES } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
 import { redactedMessage } from '../../shared/logging/secret-patterns';
 import { truncateForLog } from '../../shared/logging/truncate';

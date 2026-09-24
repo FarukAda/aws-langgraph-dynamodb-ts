@@ -12,7 +12,7 @@
 import type { CompressionConfig } from './codec/compression';
 import { type AdapterName, offloaderConfigFor } from './codec/s3/config';
 import { S3Offloader } from './codec/s3/offloader';
-import { DEFAULT_READ_CONCURRENCY } from './constants';
+import { DEFAULT_READ_CONCURRENCY } from './concurrency';
 import {
   type DynamoDBDocumentLike,
   resolveDynamoDBClient,

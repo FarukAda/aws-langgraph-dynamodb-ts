@@ -1,20 +1,20 @@
 import { expectTypeOf } from 'expect-type';
 
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
+  assertInteger,
   assertNoControlChars,
+  assertNonEmptyString,
+  assertStringArray,
   assertWellFormed,
+  MAX_PAGE_LIMIT,
+  type PageLimit,
   parseIdentifier,
   parseInteger,
   parseKeySegment,
   parseLimit,
   parseString,
   parseStringArray,
-  type PageLimit,
-  assertInteger,
-  assertNonEmptyString,
-  assertStringArray,
 } from '../../../../src/shared/validation/primitives';
 
 /** The states a caller can reach that the declared `string` type rules out. */

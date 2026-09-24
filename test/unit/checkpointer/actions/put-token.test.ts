@@ -3,11 +3,10 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 
 import { putCheckpoint } from '../../../../src/checkpointer/actions/put';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
 import { conditionalCheckFailure } from '../../../../src/shared/dynamodb/cancellation';
 import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import * as retryModule from '../../../../src/shared/dynamodb/retry';
-import type { RetryOptions } from '../../../../src/shared/dynamodb/retry';
+import { MAX_WRITE_LIFETIME_MS, type RetryOptions } from '../../../../src/shared/dynamodb/retry';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';

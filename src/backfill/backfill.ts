@@ -10,8 +10,7 @@
 
 import { checkpointIndexTarget } from '../checkpointer/internal/rows';
 import { sessionIndexTarget } from '../history/internal/session';
-import { mapWithConcurrency } from '../shared/concurrency';
-import { DEFAULT_READ_CONCURRENCY, MAX_INDEX_SHARDS } from '../shared/constants';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../shared/concurrency';
 import type { DocItem, DynamoDBDocumentLike } from '../shared/dynamodb/client';
 import { isConditionalCheckFailed } from '../shared/dynamodb/idempotent-write';
 import {
@@ -19,6 +18,7 @@ import {
   type IndexKeys,
   indexKeys,
   type IndexTarget,
+  MAX_INDEX_SHARDS,
 } from '../shared/dynamodb/recency-index';
 import { type RetryOptions, withDynamoDBRetry } from '../shared/dynamodb/retry';
 import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../shared/dynamodb/table-schema';

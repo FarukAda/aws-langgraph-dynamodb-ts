@@ -1,7 +1,7 @@
 import type { S3Client } from '@aws-sdk/client-s3';
 
 import { S3Offloader, downloadObject } from '../../../../../src/shared/codec/s3/offloader';
-import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../../../../src/shared/constants';
+import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../../../../src/shared/dynamodb/client';
 
 type ClientModule = typeof import('../../../../../src/shared/codec/s3/client');
 

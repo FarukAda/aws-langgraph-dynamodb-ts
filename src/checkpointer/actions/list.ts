@@ -2,7 +2,7 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
+import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/dynamodb/paginate';
 import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import {
   metaRows,

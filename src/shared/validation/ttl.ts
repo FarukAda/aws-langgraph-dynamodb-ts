@@ -1,9 +1,21 @@
-import { MAX_TTL_DAYS, MAX_TTL_SECONDS, S3_LIFECYCLE_SWEEP_MARGIN_DAYS } from '../constants';
 import { validationError } from '../errors/errors';
 import { allKeysOf, assertShape } from './option-shape';
 import { assertInteger } from './primitives';
 
 const SECONDS_PER_DAY = 24 * 60 * 60;
+
+/** Maximum TTL expressed in days (5 years). */
+export const MAX_TTL_DAYS = 365 * 5;
+
+/** Maximum TTL expressed in seconds: the same five years as {@link MAX_TTL_DAYS}. */
+export const MAX_TTL_SECONDS = MAX_TTL_DAYS * 24 * 60 * 60;
+
+/**
+ * Extra days an S3 lifecycle rule adds over the TTL it backs. DynamoDB's TTL
+ * sweep can lag up to ~48 h past the `ttl` timestamp; the offloaded object
+ * must outlive its row, never the other way round.
+ */
+export const S3_LIFECYCLE_SWEEP_MARGIN_DAYS = 2;
 
 /** Time-to-live expressed in whole days or whole seconds. */
 export type TtlOption = { days: number } | { seconds: number };

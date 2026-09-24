@@ -2,14 +2,17 @@ import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { writeMessageChunk } from '../../../../src/history/internal/append';
 import type { ChatMessageItem } from '../../../../src/history/internal/rows';
-import type { HistoryContext } from '../../../../src/history/internal/setup';
+import {
+  type HistoryContext,
+  MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
+} from '../../../../src/history/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import * as retryModule from '../../../../src/shared/dynamodb/retry';
 import {
   MAX_WRITE_LIFETIME_MS,
-  MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
-} from '../../../../src/shared/constants';
-import * as retryModule from '../../../../src/shared/dynamodb/retry';
-import type { RetryAttemptInfo, RetryOptions } from '../../../../src/shared/dynamodb/retry';
+  type RetryAttemptInfo,
+  type RetryOptions,
+} from '../../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createUlidFactory } from '../../../../src/shared/ulid';

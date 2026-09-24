@@ -14,12 +14,7 @@ import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-check
 
 import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
-import {
-  DEFAULT_MAX_SEARCH_CANDIDATES,
-  MAX_SCAN_ITEMS,
-  MAX_SEARCH_CANDIDATES,
-  MAX_TOTAL_ITEMS_IN_MEMORY,
-} from '../../shared/constants';
+import { MAX_TOTAL_ITEMS_IN_MEMORY } from '../../shared/dynamodb/paginate';
 import { validationError } from '../../shared/errors/errors';
 import {
   assertMembers,
@@ -34,6 +29,24 @@ import {
   type VectorBackend,
   type VectorScoreDirection,
 } from '../vector-backend';
+
+/** Default cap on candidates the in-DB semantic ranker will score. */
+export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;
+
+/**
+ * Largest `maxSearchCandidates` an adapter accepts: this many decoded
+ * candidates are held and re-ranked in memory by one `search()` call, so an
+ * unbounded value lets a typo or hostile config hold an unbounded working set.
+ */
+export const MAX_SEARCH_CANDIDATES = 100_000;
+
+/**
+ * Largest `maxScanItems` an adapter accepts: this many raw rows are collected
+ * into memory across one paginated scan/query before it errors, so — like
+ * {@link MAX_SEARCH_CANDIDATES} — an unbounded value lets a typo or hostile
+ * config hold an unbounded working set.
+ */
+export const MAX_SCAN_ITEMS = 1_000_000;
 
 /** Resolved collaborators shared by every store action. */
 export interface StoreContext extends AdapterCore {

@@ -7,16 +7,10 @@
  * surfaces at construction rather than on the first call.
  */
 
+import { MAX_INLINE_PAYLOAD_BYTES } from '../codec/codec';
 import type { CompressionConfig } from '../codec/compression';
 import { assertScopedKeyPrefix, type S3OffloadConfig } from '../codec/s3/config';
-import {
-  MAX_INDEX_SHARDS,
-  MAX_INLINE_PAYLOAD_BYTES,
-  MAX_PAYLOAD_BUFFER_BYTES,
-  MAX_READ_CONCURRENCY,
-  MAX_RETRY_ATTEMPTS,
-  MAX_RETRY_DELAY_MS,
-} from '../constants';
+import { MAX_INDEX_SHARDS } from '../dynamodb/recency-index';
 import type { RetryPolicy } from '../dynamodb/retry';
 import { validationError } from '../errors/errors';
 import type { BaseAdapterOptions, CodecOptions } from '../options';
@@ -26,6 +20,33 @@ import { resolveTtlSeconds } from './ttl';
 
 /** DynamoDB's table-name rule: 3–255 characters from `[A-Za-z0-9_.-]`. */
 const TABLE_NAME_PATTERN = /^[A-Za-z0-9_.-]{3,255}$/;
+
+/**
+ * Largest `s3.maxDownloadBytes`/`compression.maxDecompressedBytes` an adapter
+ * accepts (512 MiB): both hold one buffer fully resident while it is read or
+ * inflated, and `BaseAdapterOptions.readConcurrency`'s doc multiplies the two
+ * together into the package's memory ceiling, so an unbounded value here is an
+ * unbounded process, not just an unbounded object.
+ */
+export const MAX_PAYLOAD_BUFFER_BYTES = 512 * 1024 * 1024;
+
+/** Largest `retry.maxAttempts` an adapter accepts; beyond it a retry loop is a hang, not a policy. */
+export const MAX_RETRY_ATTEMPTS = 100;
+
+/**
+ * Largest `retry.baseDelayMs`/`retry.maxDelayMs` an adapter accepts (one
+ * minute): combined with {@link MAX_RETRY_ATTEMPTS}, an unbounded per-attempt
+ * delay turns a bounded attempt count back into an effectively unbounded wait.
+ */
+export const MAX_RETRY_DELAY_MS = 60_000;
+
+/**
+ * Largest `readConcurrency` an adapter accepts: it is a multiplier on the
+ * memory-ceiling formula (see the option's own doc) and on requests fired at
+ * once, so an unbounded value turns a typo into an out-of-memory crash or a
+ * request storm against the table/bucket.
+ */
+export const MAX_READ_CONCURRENCY = 128;
 
 const RETRY_KEYS = allKeysOf<RetryPolicy>({
   maxAttempts: 'maxAttempts',

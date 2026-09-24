@@ -11,11 +11,16 @@
 
 import type { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 
-import { DEFAULT_S3_KEY_PREFIX, MAX_S3_KEY_BYTES } from '../../constants';
 import { validationError } from '../../errors/errors';
 import { truncateForLog } from '../../logging/truncate';
 import { assertNoControlChars, assertWellFormed } from '../../validation/primitives';
 import { s3ClientOptions, type S3ClientConfigLike, type S3ClientLike } from './client-types';
+
+/** Default S3 key prefix for offloaded payloads. */
+export const DEFAULT_S3_KEY_PREFIX = 'langgraph-checkpoints/';
+
+/** S3 cap on an object key, applied to the produced offload key. */
+export const MAX_S3_KEY_BYTES = 1024;
 
 /** Configuration for offloading large payloads to S3. */
 export interface S3OffloadConfig {

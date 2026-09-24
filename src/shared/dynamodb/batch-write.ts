@@ -6,18 +6,30 @@
  * that still cannot finish is reported with how much of it did.
  */
 
-import {
-  BATCH_WRITE_MAX,
-  INITIAL_BACKOFF_DELAY_MS,
-  MAX_BACKOFF_DELAY_MS,
-  MAX_UNPROCESSED_RETRIES,
-} from '../constants';
 import { hasErrorCode } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { batchWriteAllIncompleteError, batchWriteIncompleteError } from '../errors/errors';
 import { isAbortError } from './abort';
 import type { DynamoDBDocumentLike, WriteRequest } from './client';
-import { fullJitter, nextBackoffDelay, sleep, type RetryOptions, withDynamoDBRetry } from './retry';
+import {
+  fullJitter,
+  INITIAL_BACKOFF_DELAY_MS,
+  MAX_BACKOFF_DELAY_MS,
+  nextBackoffDelay,
+  sleep,
+  type RetryOptions,
+  withDynamoDBRetry,
+} from './retry';
+
+/**
+ * DynamoDB BatchWriteItem maximum requests per call.
+ *
+ * @see https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_BatchWriteItem.html
+ */
+export const BATCH_WRITE_MAX = 25;
+
+/** Maximum retries draining UnprocessedItems / UnprocessedKeys. */
+export const MAX_UNPROCESSED_RETRIES = 10;
 
 /**
  * Write an arbitrary number of requests, chunked into batches of 25 (the

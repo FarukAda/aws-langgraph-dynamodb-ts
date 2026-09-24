@@ -3,10 +3,10 @@ import { QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { listSessions } from '../../../../src/history/actions/list-sessions';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { DEFAULT_INDEX_SHARDS } from '../../../../src/shared/dynamodb/recency-index';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/validation/primitives';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(client: HistoryContext['client']): HistoryContext {

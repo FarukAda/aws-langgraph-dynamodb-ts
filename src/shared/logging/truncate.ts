@@ -1,4 +1,87 @@
-import { MAX_LOGGED_LABELS, MAX_LOGGED_VALUE_CHARS, MAX_RELAYED_MESSAGE_CHARS } from '../constants';
+/**
+ * Characters of an unchecked string one log line or one public error message
+ * carries, past which it is cut and marked with its real length.
+ *
+ * Most of what these lines quote is a row's sort key or an offloaded object's
+ * S3 key, so the service already caps each at 1024 bytes — the cost is not one
+ * long line but many. `list: skipped a row that is not a checkpoint meta item`
+ * and `left a foreign row in place` fire once per row, and those passes walk a
+ * whole partition, up to `MAX_TOTAL_ITEMS_IN_MEMORY`
+ * (`src/shared/dynamodb/paginate.ts`) rows: one call on a shared table could
+ * write megabytes of log. A consumer's `VectorBackend` carries no such service
+ * cap at all.
+ *
+ * 256 is `MAX_KEY_SEGMENT_BYTES` (`src/shared/dynamodb/table-schema.ts`), this
+ * package's own budget for one identifier inside a key, so any key composed
+ * from identifiers it validated is quoted whole in the common case and only a
+ * foreign row, a hand-written one or a backend's own answer — exactly the
+ * cases these lines report — is cut. Nothing is lost by cutting: the line's
+ * job is to say which row to go and look at, and the row holds the rest.
+ */
+export const MAX_LOGGED_VALUE_CHARS = 256;
+
+/**
+ * Labels of an unchecked `string[]` one log line or one public error message
+ * carries, past which the rest are dropped and the real depth is stated.
+ *
+ * An array is two unbounded things — how many labels there are and how long
+ * each one is — so a bound on the labels alone is not a bound: a backend
+ * answering with one label of a megabyte and one answering with a million
+ * labels of a character cost the same line. {@link MAX_LOGGED_VALUE_CHARS}
+ * covers the first, this covers the second.
+ *
+ * 8 is a budget rather than a rule about namespaces: a store namespace is a
+ * path, what identifies which path is its leading labels, and every namespace
+ * this package's own documentation forms is two or three deep. The marker
+ * states the depth it really had, so a deeper one is cut without being
+ * misreported.
+ *
+ * A `namespace` and `key` pair that passed `parseStoreAddress` needs none of
+ * this and goes in whole: that check measures the sort key they *compose*, so
+ * it bounds how many labels there are as well as how long each one is. A
+ * search or listing **prefix** passes no such check — nothing composes it into
+ * a key — so its depth is unchecked however carefully each label was checked,
+ * and a backend's own answer is unchecked in both.
+ */
+export const MAX_LOGGED_LABELS = 8;
+
+/**
+ * Characters of a relayed *cause's* text one public error message or one log
+ * line carries, past which it is cut and marked with its real length.
+ *
+ * Its own cap rather than {@link MAX_LOGGED_VALUE_CHARS} because the two bound
+ * different things. That one bounds an **identifier** — a sort key, an S3
+ * object key, a namespace label — and 256 is this package's own budget for one
+ * identifier inside a key, so a value past it is already abnormal and the line
+ * only has to say which row to go and look at. This one bounds **prose**: the
+ * sentence an AWS SDK error, a consumer's `VectorBackend` or a caller's own
+ * `serde` wrote to explain a failure, which `redactedMessage` relays into
+ * `err.message`. Cutting that at an identifier's budget would throw away the
+ * half of a diagnostic that says what to do about it, and a diagnostic is the
+ * entire value of relaying it at all.
+ *
+ * 1024 is measured against the longest text this package actually relays: an
+ * IAM `AccessDenied`, which names the calling principal's ARN, the action and
+ * the resource ARN and then says why no policy allows it, runs to the mid
+ * hundreds of characters, and a role ARN with a long path and a session name
+ * pushes it further. 1024 clears that whole, so the case an operator most
+ * needs to read arrives intact.
+ *
+ * What it is *for* is the other direction. `redactedMessage` also relays a
+ * **caller's own** thrown error — a `serde` refusing a value, a `vectorBackend`
+ * rejecting a query — whose length the caller controls entirely, and those
+ * messages are quoted once per row on paths that walk a whole prefix or table.
+ * Unbounded, one such error fills a log; at 1024 a thousand of them are a
+ * megabyte rather than an unbounded amount.
+ *
+ * Its own literal at the same value as `MAX_SORT_KEY_BYTES`
+ * (`src/shared/dynamodb/table-schema.ts`) and `MAX_S3_KEY_BYTES`
+ * (`src/shared/codec/s3/config.ts`) rather than an alias of either, for the
+ * reason `LIST_SCAN_WARN_THRESHOLD` (`src/shared/dynamodb/paginate.ts`)
+ * records: aliasing two caps has already meant that retuning one silently
+ * moved the other, and these three answer unrelated questions.
+ */
+export const MAX_RELAYED_MESSAGE_CHARS = 1024;
 
 /** True for the high half of a surrogate pair, whose low half follows it. */
 function isHighSurrogate(unit: number): boolean {

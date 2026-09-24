@@ -11,10 +11,10 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { mapWithConcurrency } from '../concurrency';
-import { MAX_LOOP_ITERATIONS } from '../constants';
 import { validationError, resultTruncatedError } from '../errors/errors';
 import { type PageLimit, parseLimit } from '../validation/primitives';
 import type { DocItem, DynamoDBDocumentLike } from './client';
+import { MAX_LOOP_ITERATIONS } from './paginate';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
 import { compareSortKeys } from './table-schema';
 
@@ -260,6 +260,15 @@ export interface IndexKeys {
 
 /** Default number of index partitions per adapter. */
 export const DEFAULT_INDEX_SHARDS = 8;
+
+/**
+ * The most shards a recency index may have. The indexed read builds every
+ * shard's partition key and issues at least one query per shard, so an
+ * unbounded value turns a config typo into an unbounded stream of requests and
+ * an out-of-memory crash. How many of those queries run at once is
+ * `readConcurrency`.
+ */
+export const MAX_INDEX_SHARDS = 1024;
 
 /**
  * A stable 32-bit FNV-1a hash of `value`.

@@ -6,10 +6,13 @@ import {
 } from '../../../../src/checkpointer/internal/delta-history';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { MAX_LOGGED_LABELS, MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import {
+  MAX_LOGGED_LABELS,
+  MAX_LOGGED_VALUE_CHARS,
+  truncateForLog,
+} from '../../../../src/shared/logging/truncate';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(client: CheckpointerContext['client']): CheckpointerContext {

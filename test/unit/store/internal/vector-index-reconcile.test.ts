@@ -1,9 +1,12 @@
 import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { MAX_LOGGED_LABELS, MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import {
+  MAX_LOGGED_LABELS,
+  MAX_LOGGED_VALUE_CHARS,
+  truncateForLog,
+} from '../../../../src/shared/logging/truncate';
 import { parseNamespace } from '../../../../src/store/internal/parse';
 import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';

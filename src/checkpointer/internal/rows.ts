@@ -31,8 +31,7 @@ import {
   type PayloadDescriptor,
 } from '../../shared/codec/codec';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
-import { mapWithConcurrency } from '../../shared/concurrency';
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
 import type { DocItem } from '../../shared/dynamodb/client';
 import { namedDescriptor, type NamedDescriptor } from '../../shared/dynamodb/partition-delete';
 import {

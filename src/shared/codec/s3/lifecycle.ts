@@ -14,13 +14,25 @@ import type {
   TransitionDefaultMinimumObjectSize,
 } from '@aws-sdk/client-s3';
 
-import { S3_RELEASE_GRACE_DAYS } from '../../constants';
 import { isMissingLifecycleConfiguration } from '../../errors/classify';
 import { validationError } from '../../errors/errors';
 import type { Logger } from '../../logging/logger';
 import { truncateForLog } from '../../logging/truncate';
 import { loadS3Sdk } from './client';
 import { assertScopedKeyPrefix, buildLifecycleRuleId, buildMarkerRuleId } from './config';
+
+/**
+ * Days a released payload's noncurrent version survives behind its delete
+ * marker before S3 reclaims it. One day is the smallest the lifecycle API
+ * accepts and it rounds up to the next UTC midnight, so the window is 24-48 h:
+ * long enough to restore a payload released in error, short enough that a
+ * versioned bucket does not pay for every release it has ever made. It is a
+ * floor and never a cap — a longer retention the bucket already carries is
+ * kept, because this package has no business shortening someone else's
+ * recovery window. Inert on an unversioned bucket, which has no noncurrent
+ * versions to expire.
+ */
+export const S3_RELEASE_GRACE_DAYS = 1;
 
 /** The bucket's current rules plus the bucket-level field a Put must carry back. */
 interface LifecycleState {

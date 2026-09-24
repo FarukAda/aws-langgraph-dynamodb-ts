@@ -3,8 +3,7 @@ import {
   reportGuardRejection,
 } from '../../../../src/checkpointer/internal/pending-writes';
 import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/logging/truncate';
 
 describe('rejectionProvesForeignRow', () => {
   const item = { writeGroup: 'G1' } as CheckpointWriteItem;

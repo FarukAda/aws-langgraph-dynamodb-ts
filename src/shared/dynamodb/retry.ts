@@ -9,12 +9,6 @@
  */
 
 import { nowMs } from '../clock';
-import {
-  DEFAULT_RETRY_MAX_ATTEMPTS,
-  INITIAL_BACKOFF_DELAY_MS,
-  MAX_BACKOFF_DELAY_MS,
-  MAX_WRITE_LIFETIME_MS,
-} from '../constants';
 import { failureLabel, toError } from '../errors/base-error';
 import { DEFAULT_RETRYABLE_ERRORS, TRANSIENT_HTTP_STATUSES } from '../errors/classify';
 import { retryExhaustedError } from '../errors/errors';
@@ -23,6 +17,35 @@ import { redactedMessage } from '../logging/secret-patterns';
 import { truncateForLog } from '../logging/truncate';
 import { abortErrorFrom } from './abort';
 import { transientCancellation } from './cancellation';
+
+/** Starting delay for UnprocessedItems / UnprocessedKeys backoff loops. */
+export const INITIAL_BACKOFF_DELAY_MS = 100;
+
+/** Maximum backoff delay for retry loops. */
+export const MAX_BACKOFF_DELAY_MS = 5000;
+
+/** Default maximum attempts for transient-error retries. */
+export const DEFAULT_RETRY_MAX_ATTEMPTS = 5;
+
+/**
+ * How long DynamoDB treats a repeated client request token as the same request
+ * rather than a new one, so re-sending a tokened write is deduplicated instead
+ * of applied twice (10 minutes). Recorded as its own constant so the margin
+ * {@link MAX_WRITE_LIFETIME_MS} keeps under it is legible.
+ */
+export const TOKEN_IDEMPOTENCY_WINDOW_MS = 600_000;
+
+/**
+ * Longest one token-carrying write may keep retrying (5 minutes): half of
+ * {@link TOKEN_IDEMPOTENCY_WINDOW_MS}. The other half absorbs the attempt
+ * still in flight when the budget ends, clock skew between this client's own
+ * clock and DynamoDB's timer, and SDK-internal queueing, so a write that
+ * retries to the end still finishes well inside the window its token is
+ * honoured for. Its own literal rather than a division of the window: aliasing
+ * two caps has already meant that retuning one silently moved the other (see
+ * `LIST_SCAN_WARN_THRESHOLD` (`src/shared/dynamodb/paginate.ts`)).
+ */
+export const MAX_WRITE_LIFETIME_MS = 300_000;
 
 /**
  * The per-request options one attempt hands to the SDK call it makes.

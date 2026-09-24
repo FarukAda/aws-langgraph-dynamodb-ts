@@ -1,6 +1,6 @@
 import type { S3Client } from '@aws-sdk/client-s3';
 
-import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../constants';
+import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../dynamodb/client';
 import { validationError } from '../../errors/errors';
 import type { S3ClientConfigLike } from './client-types';
 

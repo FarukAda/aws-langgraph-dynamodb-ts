@@ -6,7 +6,7 @@ import {
   revertSessionCreation,
 } from '../../../../src/history/internal/session';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
-import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
+import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/dynamodb/retry';
 import * as retryModule from '../../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';

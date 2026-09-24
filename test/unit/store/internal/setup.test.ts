@@ -1,10 +1,7 @@
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import {
-  DEFAULT_MAX_SEARCH_CANDIDATES,
-  MAX_TOTAL_ITEMS_IN_MEMORY,
-} from '../../../../src/shared/constants';
+import { MAX_TOTAL_ITEMS_IN_MEMORY } from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { setUpStore } from '../../../../src/store/internal/setup';
+import { DEFAULT_MAX_SEARCH_CANDIDATES, setUpStore } from '../../../../src/store/internal/setup';
 import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 describe('setUpStore', () => {

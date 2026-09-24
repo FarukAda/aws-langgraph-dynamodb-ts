@@ -1,8 +1,8 @@
 import type { Operation } from '@langchain/langgraph-checkpoint';
 import { expectTypeOf } from 'expect-type';
 
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/validation/primitives';
 import {
   type Namespace,
   type NamespacePrefix,

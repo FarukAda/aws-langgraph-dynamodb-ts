@@ -13,9 +13,9 @@ import {
 import type { CheckpointMetaItem } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/validation/primitives';
 
 function context(): CheckpointerContext {
   return {

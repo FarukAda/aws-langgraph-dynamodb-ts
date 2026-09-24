@@ -11,15 +11,8 @@
 
 import type { S3Client, ServerSideEncryption } from '@aws-sdk/client-s3';
 
-import {
-  DEFAULT_MAX_S3_DOWNLOAD_BYTES,
-  DEFAULT_S3_KEY_PREFIX,
-  DEFAULT_S3_SSE,
-  DEFAULT_S3_THRESHOLD_BYTES,
-  DEFAULT_SOCKET_TIMEOUT_MS,
-  S3_DELETE_BATCH_MAX,
-} from '../../constants';
 import { isAbortError } from '../../dynamodb/abort';
+import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../dynamodb/client';
 import {
   fullJitter,
   isTransientS3Error,
@@ -38,11 +31,30 @@ import type { S3ClientConfigLike } from './client-types';
 import {
   assertKeyInScope,
   buildS3Key,
+  DEFAULT_S3_KEY_PREFIX,
   encodeKeyPart,
   isKeyInScope,
   S3OffloadConfig,
 } from './config';
 import { ensureLifecycleRule } from './lifecycle';
+
+/** Default payload size that triggers S3 offload (350 KB; 50 KB under the DDB 400 KB cap). */
+export const DEFAULT_S3_THRESHOLD_BYTES = 350 * 1024;
+
+/** Default S3 server-side encryption algorithm. */
+export const DEFAULT_S3_SSE = 'AES256';
+
+/**
+ * Default cap on an offloaded object buffered from S3 (50 MiB), checked against
+ * `ContentLength` before the body is read and enforced while streaming when
+ * the length is unknown. Together with
+ * `DEFAULT_MAX_DECOMPRESSED_BYTES` (`src/shared/codec/compression.ts`)
+ * it bounds the memory any single payload can claim.
+ */
+export const DEFAULT_MAX_S3_DOWNLOAD_BYTES = 50 * 1024 * 1024;
+
+/** S3 DeleteObjects maximum keys per request. */
+export const S3_DELETE_BATCH_MAX = 1000;
 
 /**
  * Owns the S3 configuration and the lazily-built client; every method is a

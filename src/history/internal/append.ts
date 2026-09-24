@@ -14,7 +14,6 @@
 import { nowIso } from '../../shared/clock';
 import { PayloadLocation, type PayloadDescriptor, collectS3Keys } from '../../shared/codec/codec';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
-import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { conditionFailedAt, conditionalCheckFailure } from '../../shared/dynamodb/cancellation';
 import {
@@ -37,7 +36,7 @@ import {
   type SessionUpdateFields,
   type TtlAnchorResult,
 } from './session';
-import type { HistoryContext } from './setup';
+import { type HistoryContext, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from './setup';
 
 /** One append, parsed: the session, its messages in stored form, and the session's ttl anchor. */
 export interface AppendRequest {

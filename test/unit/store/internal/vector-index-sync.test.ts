@@ -1,6 +1,5 @@
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
 import type { Logger } from '../../../../src/shared/logging/logger';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/logging/truncate';
 import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { syncItemVector } from '../../../../src/store/internal/vector-index';

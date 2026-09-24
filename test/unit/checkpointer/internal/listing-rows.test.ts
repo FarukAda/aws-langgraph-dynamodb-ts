@@ -4,9 +4,9 @@ import { metaRows, narrowOrWarn } from '../../../../src/checkpointer/internal/li
 import { type ListScope, parseListScope } from '../../../../src/checkpointer/internal/parse';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { MAX_LOGGED_VALUE_CHARS, MAX_SORT_KEY_BYTES } from '../../../../src/shared/constants';
+import { MAX_SORT_KEY_BYTES } from '../../../../src/shared/dynamodb/table-schema';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/logging/truncate';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
 function context(

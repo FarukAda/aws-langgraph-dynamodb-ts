@@ -1,3 +1,8 @@
+import type { S3Client } from '@aws-sdk/client-s3';
+
+import { DynamoDBSaver } from '../../src/index';
+import { createDefaultS3Client } from '../../src/shared/codec/s3/client';
+import { downloadObject } from '../../src/shared/codec/s3/offloader';
 /**
  * What a caller's `abort()` does to a request that is already in flight.
  *
@@ -17,12 +22,7 @@
  * hope: a request the abort did not reach would end at the shipped idle timer
  * instead, seconds later, and with a different code.
  */
-import type { S3Client } from '@aws-sdk/client-s3';
-
-import { DynamoDBSaver } from '../../src/index';
-import { createDefaultS3Client } from '../../src/shared/codec/s3/client';
-import { downloadObject } from '../../src/shared/codec/s3/offloader';
-import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../src/shared/constants';
+import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../src/shared/errors/error-code';
 import { type MisbehavingServer, startMisbehavingServer } from './helpers/misbehaving-server';
 

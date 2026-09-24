@@ -1,10 +1,10 @@
+import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../../../src/history/internal/setup';
 import {
-  MAX_LOGGED_VALUE_CHARS,
   MAX_WRITE_LIFETIME_MS,
-  MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
-} from '../../../../src/shared/constants';
-import { withRetry, resolveRetryPolicy } from '../../../../src/shared/dynamodb/retry';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+  resolveRetryPolicy,
+  withRetry,
+} from '../../../../src/shared/dynamodb/retry';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/logging/truncate';
 
 const fakeLogger = () => ({ debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() });
 
