@@ -14,9 +14,13 @@ import { randomUUID } from 'node:crypto';
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { Item } from '@langchain/langgraph-checkpoint';
 
-import { type CodecDeps, decodePayload, type PayloadDescriptor } from '../../shared/codec/codec';
-import type { DescriptorRef } from '../../shared/codec/descriptor-keys';
-import { encodePayload } from '../../shared/codec/encode';
+import {
+  codecDepsOf,
+  decodePayload,
+  type DescriptorRef,
+  encodePayload,
+  type PayloadDescriptor,
+} from '../../shared/codec/codec';
 import type { DocItem } from '../../shared/dynamodb/client';
 import {
   backfilledAt,
@@ -425,20 +429,6 @@ export function narrowWholeRecord(raw: DocItem): StoreItemRecord | undefined {
   return stamped ? record : undefined;
 }
 
-/**
- * Map a store context to the codec collaborators, plus the caller's `signal`
- * where the call takes one. The write path passes none, because no store write
- * accepts a signal.
- */
-function storeCodecDeps(context: StoreContext, signal?: AbortSignal): CodecDeps {
-  return {
-    serde: context.serde,
-    compression: context.compression,
-    offloader: context.offloader,
-    signal,
-  };
-}
-
 /** Fields controlling a stored item's timestamps, embeddings, ttl and revision token. */
 export interface BuildItemOptions {
   createdAt: string;
@@ -483,7 +473,7 @@ export async function buildStoreItem(
   const pk = partitionKey(namespace);
   const sk = sortKey(namespace, key);
   const rev = options.rev ?? randomUUID();
-  const descriptor = await encodePayload(value, storeCodecDeps(context), {
+  const descriptor = await encodePayload(value, codecDepsOf(context), {
     keyParts: [...namespace, key],
     objectId: rev,
     row: { pk, sk },
@@ -536,7 +526,7 @@ export async function readStoreItem(
 ): Promise<Item> {
   const value = await decodePayload<Record<string, JsonValue>>(
     record.value,
-    storeCodecDeps(context, signal),
+    codecDepsOf(context, signal),
     [...record.namespace, record.key],
   );
   return {

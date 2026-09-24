@@ -1,7 +1,7 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 
-import { downloadObject, uploadObject } from '../../../../../src/shared/codec/s3/read-write';
+import { downloadObject, uploadObject } from '../../../../../src/shared/codec/s3/offloader';
 import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import { truncateForLog } from '../../../../../src/shared/logging/truncate';
@@ -137,14 +137,22 @@ describe('downloadObject', () => {
       Body: { transformToByteArray: () => new Uint8Array([7, 8]) } as never,
     });
     expect(
-      await downloadObject(new S3Client({ region: 'us-east-1' }), 'b', 'k.bin', 1024 * 1024),
+      await downloadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        maxBytes: 1024 * 1024,
+      }),
     ).toEqual(new Uint8Array([7, 8]));
   });
 
   it('throws S3_OFFLOAD_FAILED when the body is empty', async () => {
     s3Mock.on(GetObjectCommand).resolves({});
     await expect(
-      downloadObject(new S3Client({ region: 'us-east-1' }), 'b', 'k.bin', 1024 * 1024),
+      downloadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        maxBytes: 1024 * 1024,
+      }),
     ).rejects.toMatchObject({ code: ErrorCode.S3_OFFLOAD_FAILED });
   });
 
@@ -156,12 +164,11 @@ describe('downloadObject', () => {
   it('bounds the key the empty-body refusal quotes', async () => {
     const key = `${'w'.repeat(MAX_LOGGED_VALUE_CHARS * 4)}.bin`;
     s3Mock.on(GetObjectCommand).resolves({});
-    const refusal = await downloadObject(
-      new S3Client({ region: 'us-east-1' }),
-      'b',
+    const refusal = await downloadObject(new S3Client({ region: 'us-east-1' }), {
+      bucket: 'b',
       key,
-      1024 * 1024,
-    ).then(
+      maxBytes: 1024 * 1024,
+    }).then(
       () => new Error('should have thrown'),
       (error: Error) => error,
     );
@@ -200,9 +207,9 @@ describe('S3 retry classification (CODEC-02)', () => {
       .on(GetObjectCommand)
       .rejectsOnce(Object.assign(new Error('socket timed out'), { name: 'TimeoutError' }))
       .resolves({ Body: { transformToByteArray: () => new Uint8Array([1]) } as never });
-    await expect(downloadObject(client(), 'b', 'k.bin', 1024 * 1024)).resolves.toEqual(
-      new Uint8Array([1]),
-    );
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 1024 * 1024 }),
+    ).resolves.toEqual(new Uint8Array([1]));
     expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(2);
   });
 
@@ -213,7 +220,9 @@ describe('S3 retry classification (CODEC-02)', () => {
         $metadata: { httpStatusCode: 403 },
       }),
     );
-    await expect(downloadObject(client(), 'b', 'k.bin', 1024 * 1024)).rejects.toMatchObject({
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 1024 * 1024 }),
+    ).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,
     });
     expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(1);
@@ -229,7 +238,9 @@ describe('download size cap (CODEC-17, SEC-05)', () => {
       ContentLength: 6 * 1024 ** 3,
       Body: { transformToByteArray } as never,
     });
-    await expect(downloadObject(client(), 'b', 'k.bin', 1024)).rejects.toMatchObject({
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 1024 }),
+    ).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,
       context: { operation: 'download', key: 'k.bin' },
     });
@@ -250,7 +261,9 @@ describe('download size cap (CODEC-17, SEC-05)', () => {
       },
     };
     s3Mock.on(GetObjectCommand).resolves({ Body: body as never });
-    await expect(downloadObject(client(), 'b', 'k.bin', 5)).rejects.toMatchObject({
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 5 }),
+    ).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,
     });
     expect(yielded).toBe(2);
@@ -265,16 +278,18 @@ describe('download size cap (CODEC-17, SEC-05)', () => {
       },
     };
     s3Mock.on(GetObjectCommand).resolves({ Body: body as never });
-    await expect(downloadObject(client(), 'b', 'k.bin', 5)).resolves.toEqual(
-      new Uint8Array([1, 2, 3]),
-    );
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 5 }),
+    ).resolves.toEqual(new Uint8Array([1, 2, 3]));
   });
 
   it('falls back to transformToByteArray for a non-iterable body and still enforces the cap', async () => {
     s3Mock.on(GetObjectCommand).resolves({
       Body: { transformToByteArray: () => new Uint8Array(6) } as never,
     });
-    await expect(downloadObject(client(), 'b', 'k.bin', 5)).rejects.toMatchObject({
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 5 }),
+    ).rejects.toMatchObject({
       code: ErrorCode.S3_OFFLOAD_FAILED,
     });
   });
@@ -289,7 +304,11 @@ describe('download size cap on a stream without destroy()', () => {
     };
     s3Mock.on(GetObjectCommand).resolves({ Body: body as never });
     await expect(
-      downloadObject(new S3Client({ region: 'us-east-1' }), 'b', 'k.bin', 5),
+      downloadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        maxBytes: 5,
+      }),
     ).rejects.toMatchObject({ code: ErrorCode.S3_OFFLOAD_FAILED });
   });
 });

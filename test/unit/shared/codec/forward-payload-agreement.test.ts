@@ -7,9 +7,12 @@ import { getMessages } from '../../../../src/history/actions/get-messages';
 import { parseSessionId } from '../../../../src/history/internal/parse';
 import { buildMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
-import { DESCRIPTOR_SCHEMA_VERSION, PayloadLocation } from '../../../../src/shared/codec/codec';
+import {
+  DESCRIPTOR_SCHEMA_VERSION,
+  PayloadLocation,
+  isPermanentPayloadLoss,
+} from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-loss';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';

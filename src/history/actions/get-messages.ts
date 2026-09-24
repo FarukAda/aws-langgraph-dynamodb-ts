@@ -4,8 +4,12 @@ import {
   mapStoredMessagesToChatMessages,
 } from '@langchain/core/messages';
 
-import { type CodecDeps, loadPayloadValue, readPayloadBytes } from '../../shared/codec/codec';
-import { isPermanentPayloadLoss } from '../../shared/codec/payload-loss';
+import {
+  codecDepsOf,
+  isPermanentPayloadLoss,
+  loadPayloadValue,
+  readPayloadBytes,
+} from '../../shared/codec/codec';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { failureLabel } from '../../shared/errors/base-error';
@@ -62,12 +66,7 @@ async function decodeMessage(
   sessionId: SessionId,
   signal: AbortSignal | undefined,
 ): Promise<Decoded> {
-  const deps: CodecDeps = {
-    serde: context.serde,
-    compression: context.compression,
-    offloader: context.offloader,
-    signal,
-  };
+  const deps = codecDepsOf(context, signal);
   let bytes: Uint8Array;
   try {
     bytes = await readPayloadBytes(item.message, deps, [sessionId]);

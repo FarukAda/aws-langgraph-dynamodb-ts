@@ -11,8 +11,8 @@
  * and a put is a plain write.
  */
 
-import { collectS3Keys, type DescriptorRef } from '../../shared/codec/descriptor-keys';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
+import { collectS3Keys, type DescriptorRef } from '../../shared/codec/codec';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
 import {
   commitRow,
   deleteIdempotently,
@@ -218,13 +218,12 @@ export async function deleteStoreItem(context: StoreContext, address: StoreAddre
   }
   await dropVectorWhenGone(context, address);
   if (context.offloader && released?.value) {
-    await cleanUpS3Orphans(
-      context.offloader,
-      collectS3Keys([released.value]),
-      'store.delete',
-      context.logger,
-      { scope: [...address.namespace, address.key] },
-    );
+    await cleanUpS3Orphans(context.offloader, {
+      keys: collectS3Keys([released.value]),
+      operation: 'store.delete',
+      logger: context.logger,
+      scope: [...address.namespace, address.key],
+    });
   }
 }
 
@@ -243,13 +242,12 @@ async function cleanUp(
   scope?: readonly string[],
 ): Promise<void> {
   if (!context.offloader || !release) return;
-  await cleanUpS3Orphans(
-    context.offloader,
-    collectS3Keys([release]),
-    label,
-    context.logger,
-    scope === undefined ? {} : { scope },
-  );
+  await cleanUpS3Orphans(context.offloader, {
+    keys: collectS3Keys([release]),
+    operation: label,
+    logger: context.logger,
+    ...(scope === undefined ? {} : { scope }),
+  });
 }
 
 /**

@@ -1,5 +1,5 @@
-import { backlinkMetadata, metadataBytes } from '../../../../../src/shared/codec/s3/backlink';
 import { buildS3Key } from '../../../../../src/shared/codec/s3/config';
+import { backlinkMetadata, metadataBytes } from '../../../../../src/shared/codec/s3/offloader';
 
 const decode = (value: string): string => Buffer.from(value, 'base64url').toString('utf8');
 

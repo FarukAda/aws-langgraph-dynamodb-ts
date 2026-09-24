@@ -1,7 +1,6 @@
 import type { S3Client } from '@aws-sdk/client-s3';
 
-import { S3Offloader } from '../../../../../src/shared/codec/s3/offloader';
-import { downloadObject } from '../../../../../src/shared/codec/s3/read-write';
+import { S3Offloader, downloadObject } from '../../../../../src/shared/codec/s3/offloader';
 import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../../../../src/shared/constants';
 
 type ClientModule = typeof import('../../../../../src/shared/codec/s3/client');
@@ -216,9 +215,9 @@ describe('a download that stalls after its response headers have arrived', () =>
   it('retries the aborted read the destroy produces, which carries no TimeoutError', async () => {
     const whole = { transformToByteArray: () => new Uint8Array([7, 8]) };
     const { client, calls } = clientYielding([abortingBody(), whole]);
-    await expect(downloadObject(client, 'b', 'k.bin', 1024)).resolves.toEqual(
-      new Uint8Array([7, 8]),
-    );
+    await expect(
+      downloadObject(client, { bucket: 'b', key: 'k.bin', maxBytes: 1024 }),
+    ).resolves.toEqual(new Uint8Array([7, 8]));
     expect(calls()).toBe(2);
   });
 });

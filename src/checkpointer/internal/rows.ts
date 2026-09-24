@@ -23,10 +23,14 @@ import type {
 import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
 import { nowIso } from '../../shared/clock';
-import { type CodecDeps, decodePayload, type PayloadDescriptor } from '../../shared/codec/codec';
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
-import { encodePayload } from '../../shared/codec/encode';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
+import {
+  codecDepsOf,
+  collectS3Keys,
+  decodePayload,
+  encodePayload,
+  type PayloadDescriptor,
+} from '../../shared/codec/codec';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import type { DocItem } from '../../shared/dynamodb/client';
@@ -475,28 +479,6 @@ export interface WriteRowsSource {
   readonly signal: AbortSignal | undefined;
 }
 
-/**
- * Map a context to the codec collaborators.
- *
- * Accepts: the adapter's context, and the caller's `signal` when the call has
- * one — a cleanup or verification path deliberately passes none.
- *
- * Returns: the three collaborators the codec needs — the serializer, the
- * compression config and the offloader — so a codec call names what it uses
- * rather than taking the whole context, plus the signal that decides whether
- * an offloaded payload's request may be cancelled.
- *
- * Throws: nothing.
- */
-export function codecDeps(context: CheckpointerContext, signal?: AbortSignal): CodecDeps {
-  return {
-    serde: context.serde,
-    compression: context.compression,
-    offloader: context.offloader,
-    signal,
-  };
-}
-
 function withTtl<T extends { ttl?: number }>(item: T, ttlTimestamp?: number): T {
   if (ttlTimestamp !== undefined) item.ttl = ttlTimestamp;
   return item;
@@ -527,7 +509,11 @@ async function releaseUploads(
   operation: string,
 ): Promise<void> {
   if (!context.offloader) return;
-  await cleanUpS3Orphans(context.offloader, collectS3Keys(uploaded), operation, context.logger);
+  await cleanUpS3Orphans(context.offloader, {
+    keys: collectS3Keys(uploaded),
+    operation,
+    logger: context.logger,
+  });
 }
 
 /**
@@ -570,7 +556,7 @@ export async function buildCheckpointItems(
   ttlTimestamp?: number,
 ): Promise<{ meta: CheckpointMetaItem; payload: CheckpointPayloadItem }> {
   const { threadId, checkpointNs, checkpointId } = request.address;
-  const deps = codecDeps(context, request.signal);
+  const deps = codecDepsOf(context, request.signal);
   const pk = partitionKey(threadId);
   const objectId = nextPutObjectId();
   const checkpointDescriptor = await encodePayload(request.checkpoint, deps, {
@@ -659,7 +645,7 @@ export async function buildWriteItems(
 ): Promise<CheckpointWriteItem[]> {
   const { threadId, checkpointNs, checkpointId } = request.address;
   const { taskId } = request;
-  const deps = codecDeps(context, request.signal);
+  const deps = codecDepsOf(context, request.signal);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];
   /**
@@ -812,7 +798,7 @@ export async function readCheckpoint(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<Checkpoint> {
-  return decodePayload<Checkpoint>(item.checkpoint, codecDeps(context, signal), [threadId]);
+  return decodePayload<Checkpoint>(item.checkpoint, codecDepsOf(context, signal), [threadId]);
 }
 
 /**
@@ -831,7 +817,7 @@ export async function readMetadata(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<CheckpointMetadata> {
-  return decodePayload<CheckpointMetadata>(item.metadata, codecDeps(context, signal), [threadId]);
+  return decodePayload<CheckpointMetadata>(item.metadata, codecDepsOf(context, signal), [threadId]);
 }
 
 /**
@@ -856,7 +842,7 @@ export async function toPendingWrites(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<CheckpointPendingWrite[]> {
-  const deps = codecDeps(context, signal);
+  const deps = codecDepsOf(context, signal);
   const live = dropSupersededWrites(items);
   const values = await mapWithConcurrency(
     live,

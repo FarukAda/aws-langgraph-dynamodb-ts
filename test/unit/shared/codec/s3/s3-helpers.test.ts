@@ -1,10 +1,10 @@
-import { oversizedObjectError } from '../../../../../src/shared/codec/s3/bounded-body';
 import { s3ClientOptions } from '../../../../../src/shared/codec/s3/client-types';
 import {
   assertScopedKeyPrefix,
   defaultAdapterKeyPrefix,
+  encodeKeyPart,
 } from '../../../../../src/shared/codec/s3/config';
-import { encodeKeyPart } from '../../../../../src/shared/codec/s3/key-scope';
+import { oversizedObjectError } from '../../../../../src/shared/codec/s3/offloader';
 import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import { truncateForLog } from '../../../../../src/shared/logging/truncate';

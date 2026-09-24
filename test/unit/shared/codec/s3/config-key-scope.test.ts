@@ -1,9 +1,9 @@
-import { buildS3Key } from '../../../../../src/shared/codec/s3/config';
 import {
+  buildS3Key,
   assertKeyInScope,
   isKeyInScope,
   s3KeyScope,
-} from '../../../../../src/shared/codec/s3/key-scope';
+} from '../../../../../src/shared/codec/s3/config';
 import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import { truncateForLog } from '../../../../../src/shared/logging/truncate';

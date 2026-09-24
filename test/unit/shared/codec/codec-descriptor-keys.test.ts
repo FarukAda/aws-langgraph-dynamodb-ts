@@ -1,5 +1,4 @@
-import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import { collectS3Keys } from '../../../../src/shared/codec/descriptor-keys';
+import { PayloadLocation, collectS3Keys } from '../../../../src/shared/codec/codec';
 
 const offloaded = (s3Key: string) => ({ location: PayloadLocation.S3, s3Key });
 const inline = { location: PayloadLocation.INLINE };

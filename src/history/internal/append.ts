@@ -12,9 +12,8 @@
  */
 
 import { nowIso } from '../../shared/clock';
-import { PayloadLocation, type PayloadDescriptor } from '../../shared/codec/codec';
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
+import { PayloadLocation, type PayloadDescriptor, collectS3Keys } from '../../shared/codec/codec';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
 import { MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from '../../shared/constants';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { conditionFailedAt, conditionalCheckFailure } from '../../shared/dynamodb/cancellation';
@@ -119,12 +118,11 @@ async function buildItems(
     }
   } catch (error) {
     if (context.offloader) {
-      await cleanUpS3Orphans(
-        context.offloader,
-        collectS3Keys(items.map((item) => item.message)),
-        'history.addMessages.encode',
-        context.logger,
-      );
+      await cleanUpS3Orphans(context.offloader, {
+        keys: collectS3Keys(items.map((item) => item.message)),
+        operation: 'history.addMessages.encode',
+        logger: context.logger,
+      });
     }
     throw error;
   }
@@ -199,12 +197,11 @@ function reportStep(
 async function cleanBatchS3(context: HistoryContext, chunks: ChatMessageItem[][]): Promise<void> {
   if (!context.offloader) return;
   const descriptors = chunks.flat().map((item) => item.message);
-  await cleanUpS3Orphans(
-    context.offloader,
-    collectS3Keys(descriptors),
-    'history.addMessages',
-    context.logger,
-  );
+  await cleanUpS3Orphans(context.offloader, {
+    keys: collectS3Keys(descriptors),
+    operation: 'history.addMessages',
+    logger: context.logger,
+  });
 }
 
 /**

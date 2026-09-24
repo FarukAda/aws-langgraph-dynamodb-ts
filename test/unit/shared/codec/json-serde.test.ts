@@ -1,7 +1,7 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
+import { isPermanentPayloadLoss } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-loss';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../../src/store/store';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

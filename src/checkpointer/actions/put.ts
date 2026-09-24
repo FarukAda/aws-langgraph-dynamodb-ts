@@ -5,8 +5,8 @@ import type {
   CheckpointMetadata,
 } from '@langchain/langgraph-checkpoint';
 
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
+import { collectS3Keys } from '../../shared/codec/codec';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
 import {
   offloadedKey,
   type RowProbe,
@@ -146,12 +146,11 @@ export async function putCheckpoint(
       return stored;
     }
     if (verdict === 'not-landed') {
-      await cleanUpS3Orphans(
-        context.offloader,
-        collectS3Keys([meta.metadata, payload.checkpoint]),
-        'put',
-        context.logger,
-      );
+      await cleanUpS3Orphans(context.offloader, {
+        keys: collectS3Keys([meta.metadata, payload.checkpoint]),
+        operation: 'put',
+        logger: context.logger,
+      });
     }
     throw error;
   }

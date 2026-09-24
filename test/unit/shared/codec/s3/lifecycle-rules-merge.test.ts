@@ -1,6 +1,6 @@
 import type { LifecycleRule } from '@aws-sdk/client-s3';
 
-import { markerRule, ttlRule } from '../../../../../src/shared/codec/s3/rules';
+import { markerRule, ttlRule } from '../../../../../src/shared/codec/s3/lifecycle';
 import { S3_RELEASE_GRACE_DAYS } from '../../../../../src/shared/constants';
 
 const PREFIX = 'langgraph-checkpoints/';
@@ -12,7 +12,11 @@ const GLACIER = [{ Days: 10, StorageClass: 'GLACIER' as const }];
 const ABORT = { DaysAfterInitiation: 7 };
 
 function ttl(existing?: LifecycleRule): LifecycleRule {
-  return ttlRule(TTL_ID, PREFIX, TTL_DAYS, existing === undefined ? [] : [existing], existing);
+  return ttlRule(
+    { id: TTL_ID, prefix: PREFIX, days: TTL_DAYS },
+    existing === undefined ? [] : [existing],
+    existing,
+  );
 }
 
 /**

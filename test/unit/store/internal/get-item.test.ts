@@ -2,8 +2,7 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { buildS3Key } from '../../../../src/shared/codec/s3/config';
-import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
+import { buildS3Key, assertKeyInScope } from '../../../../src/shared/codec/s3/config';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';

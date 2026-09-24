@@ -1,7 +1,7 @@
 import { GetBucketVersioningCommand, S3Client } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 
-import { reportBucketVersioning } from '../../../../../src/shared/codec/s3/versioning';
+import { reportBucketVersioning } from '../../../../../src/shared/codec/s3/lifecycle';
 import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { truncateForLog } from '../../../../../src/shared/logging/truncate';
 

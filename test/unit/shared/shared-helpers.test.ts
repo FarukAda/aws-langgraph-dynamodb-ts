@@ -1,6 +1,6 @@
 import { DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
-import { readBodyBounded } from '../../../src/shared/codec/s3/bounded-body';
+import { readBodyBounded } from '../../../src/shared/codec/s3/offloader';
 import { deletePartitionRows } from '../../../src/shared/dynamodb/partition-delete';
 import { iterateRecencyIndex } from '../../../src/shared/dynamodb/recency-index';
 import { retryFor } from '../../../src/shared/dynamodb/retry';

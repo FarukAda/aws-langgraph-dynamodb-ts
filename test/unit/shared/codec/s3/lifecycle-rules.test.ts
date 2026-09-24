@@ -4,7 +4,7 @@ import {
   alreadyCorrect,
   assertNoIdCollision,
   ttlRule,
-} from '../../../../../src/shared/codec/s3/rules';
+} from '../../../../../src/shared/codec/s3/lifecycle';
 import { MAX_LOGGED_VALUE_CHARS, S3_RELEASE_GRACE_DAYS } from '../../../../../src/shared/constants';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import { truncateForLog } from '../../../../../src/shared/logging/truncate';
@@ -26,7 +26,8 @@ function holding(days: number, over: Partial<LifecycleRule> = {}): LifecycleRule
 
 /** The retention the ttl rule would carry over a bucket holding `rules`. */
 function floorOver(rules: LifecycleRule[]): number | undefined {
-  return ttlRule(TTL_ID, PREFIX, TTL_DAYS, rules).NoncurrentVersionExpiration?.NoncurrentDays;
+  return ttlRule({ id: TTL_ID, prefix: PREFIX, days: TTL_DAYS }, rules).NoncurrentVersionExpiration
+    ?.NoncurrentDays;
 }
 
 /**
@@ -101,7 +102,7 @@ describe('the rules that set the floor', () => {
    * the README says so: the way back down is to delete this package's rule.
    */
   it('keeps a floor it wrote once the rule that justified it is gone', () => {
-    const ours = ttlRule(TTL_ID, PREFIX, TTL_DAYS, [holding(90)]);
+    const ours = ttlRule({ id: TTL_ID, prefix: PREFIX, days: TTL_DAYS }, [holding(90)]);
     expect(floorOver([ours])).toBe(90);
   });
 
@@ -121,21 +122,25 @@ describe('the rules that set the floor', () => {
       NoncurrentVersionExpiration: { NoncurrentDays: 60 },
     };
     expect(
-      ttlRule(TTL_ID, PREFIX, TTL_DAYS, [ours], ours).NoncurrentVersionExpiration?.NoncurrentDays,
+      ttlRule({ id: TTL_ID, prefix: PREFIX, days: TTL_DAYS }, [ours], ours)
+        .NoncurrentVersionExpiration?.NoncurrentDays,
     ).toBe(60);
   });
 
   it('still refuses a disabled rule it does not hold', () => {
     const held: LifecycleRule = { ID: TTL_ID, Filter: { Prefix: PREFIX }, Status: 'Enabled' };
     expect(
-      ttlRule(TTL_ID, PREFIX, TTL_DAYS, [held, holding(90, { Status: 'Disabled' })], held)
-        .NoncurrentVersionExpiration?.NoncurrentDays,
+      ttlRule(
+        { id: TTL_ID, prefix: PREFIX, days: TTL_DAYS },
+        [held, holding(90, { Status: 'Disabled' })],
+        held,
+      ).NoncurrentVersionExpiration?.NoncurrentDays,
     ).toBe(S3_RELEASE_GRACE_DAYS);
   });
 });
 
 describe('alreadyCorrect', () => {
-  const desired = (): LifecycleRule => ttlRule(TTL_ID, PREFIX, TTL_DAYS, []);
+  const desired = (): LifecycleRule => ttlRule({ id: TTL_ID, prefix: PREFIX, days: TTL_DAYS }, []);
 
   it('holds for a rule that already says what would be written', () => {
     expect(alreadyCorrect(desired(), desired())).toBe(true);

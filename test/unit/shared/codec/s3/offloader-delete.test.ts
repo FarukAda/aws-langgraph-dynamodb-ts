@@ -1,7 +1,7 @@
 import { DeleteObjectsCommand, S3Client } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 
-import { deleteObjects } from '../../../../../src/shared/codec/s3/delete';
+import { deleteObjects } from '../../../../../src/shared/codec/s3/offloader';
 
 const s3Mock = mockClient(S3Client);
 

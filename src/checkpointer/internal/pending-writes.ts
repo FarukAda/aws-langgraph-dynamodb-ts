@@ -12,8 +12,8 @@
  */
 
 import type { PayloadDescriptor } from '../../shared/codec/codec';
-import { collectS3Keys } from '../../shared/codec/descriptor-keys';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/orphans';
+import { collectS3Keys } from '../../shared/codec/codec';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
 import type { DocItem } from '../../shared/dynamodb/client';
 import {
   commitRow,
@@ -80,12 +80,11 @@ async function releaseDeadUploads(
   dead: CheckpointWriteItem[],
 ): Promise<void> {
   if (!context.offloader) return;
-  await cleanUpS3Orphans(
-    context.offloader,
-    collectS3Keys(dead.map((item) => item.value)),
-    'putWrites',
-    context.logger,
-  );
+  await cleanUpS3Orphans(context.offloader, {
+    keys: collectS3Keys(dead.map((item) => item.value)),
+    operation: 'putWrites',
+    logger: context.logger,
+  });
 }
 
 /** Outcome of {@link attemptCasWrites}: either a settled write, or every attempt rejected. */
@@ -455,13 +454,12 @@ async function deleteDescriptors(
   scope?: readonly string[],
 ): Promise<void> {
   if (!context.offloader) return;
-  await cleanUpS3Orphans(
-    context.offloader,
-    collectS3Keys(descriptors.filter((ref): ref is PayloadDescriptor => Boolean(ref))),
-    label,
-    context.logger,
-    scope === undefined ? {} : { scope },
-  );
+  await cleanUpS3Orphans(context.offloader, {
+    keys: collectS3Keys(descriptors.filter((ref): ref is PayloadDescriptor => Boolean(ref))),
+    operation: label,
+    logger: context.logger,
+    ...(scope === undefined ? {} : { scope }),
+  });
 }
 
 /**

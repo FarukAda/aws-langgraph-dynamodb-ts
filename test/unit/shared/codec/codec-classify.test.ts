@@ -4,12 +4,10 @@ import {
   decodePayload,
   PayloadLocation,
   readPayloadBytes,
-} from '../../../../src/shared/codec/codec';
-import { encodePayload } from '../../../../src/shared/codec/encode';
-import {
+  encodePayload,
   isMissingObjectError,
   isPermanentPayloadLoss,
-} from '../../../../src/shared/codec/payload-loss';
+} from '../../../../src/shared/codec/codec';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { retryExhaustedError, validationError } from '../../../../src/shared/errors/errors';

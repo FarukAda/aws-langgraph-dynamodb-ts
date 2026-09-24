@@ -1,7 +1,4 @@
-import {
-  isPermanentPayloadLoss,
-  isMissingObjectError,
-} from '../../../../src/shared/codec/payload-loss';
+import { isPermanentPayloadLoss, isMissingObjectError } from '../../../../src/shared/codec/codec';
 import { isAbortError } from '../../../../src/shared/dynamodb/abort';
 import { getCancellationReasons } from '../../../../src/shared/dynamodb/cancellation';
 import { isTransientS3Error, isRetryableError } from '../../../../src/shared/dynamodb/retry';

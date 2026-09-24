@@ -8,7 +8,6 @@ import {
 import {
   buildCheckpointItems,
   buildWriteItems,
-  codecDeps,
   resolveWriteIndices,
 } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
@@ -282,27 +281,5 @@ describe('resolveWriteIndices', () => {
       ['__error__', 'e'],
     ]);
     expect(resolved.map((w) => w.channel)).toEqual(['__error__', 'regular']);
-  });
-});
-
-describe('codecDeps', () => {
-  it('hands the codec exactly the three collaborators it uses', () => {
-    const serde = {} as never;
-    const compression = { enabled: true } as never;
-    const offloader = {} as never;
-    expect(codecDeps({ serde, compression, offloader, tableName: 'x' } as never)).toEqual({
-      serde,
-      compression,
-      offloader,
-    });
-  });
-
-  it('carries absent optional collaborators through as absent', () => {
-    const serde = {} as never;
-    expect(codecDeps({ serde } as never)).toEqual({
-      serde,
-      compression: undefined,
-      offloader: undefined,
-    });
   });
 });

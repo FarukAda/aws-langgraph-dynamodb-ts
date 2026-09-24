@@ -12,8 +12,7 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { StoredMessage } from '@langchain/core/messages';
 
-import { type CodecDeps, type PayloadDescriptor } from '../../shared/codec/codec';
-import { encodePayload } from '../../shared/codec/encode';
+import { codecDepsOf, encodePayload, type PayloadDescriptor } from '../../shared/codec/codec';
 import type { DocItem } from '../../shared/dynamodb/client';
 import {
   ADAPTER_TAGS,
@@ -230,15 +229,6 @@ export interface ChatMessageItem {
   ttl?: number;
 }
 
-function codecDeps(context: HistoryContext, signal?: AbortSignal): CodecDeps {
-  return {
-    serde: context.serde,
-    compression: context.compression,
-    offloader: context.offloader,
-    signal,
-  };
-}
-
 /** One message as the row it becomes. */
 export interface MessageRowSource {
   readonly sessionId: SessionId;
@@ -278,7 +268,7 @@ export async function buildMessageItem(
   const { sessionId, messageId, message, ttlTimestamp } = source;
   const pk = sessionPartition(sessionId);
   const sk = messageSortKey(messageId);
-  const descriptor = await encodePayload(message, codecDeps(context, signal), {
+  const descriptor = await encodePayload(message, codecDepsOf(context, signal), {
     keyParts: [sessionId],
     objectId: messageId,
     row: { pk, sk },

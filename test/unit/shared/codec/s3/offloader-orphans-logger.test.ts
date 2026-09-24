@@ -3,7 +3,7 @@ import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBSaver } from '../../../../../src/checkpointer/saver';
-import { cleanUpS3Orphans } from '../../../../../src/shared/codec/s3/orphans';
+import { cleanUpS3Orphans } from '../../../../../src/shared/codec/s3/offloader';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import type { Logger } from '../../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../../shared/helpers/ddb-mock';
@@ -40,7 +40,10 @@ describe('cleanUpS3Orphans with a logger that throws', () => {
   it('absorbs the throw from the out-of-scope report', async () => {
     const offloader = { deleteBatch: jest.fn(), ownsKey: () => false };
     await expect(
-      cleanUpS3Orphans(offloader as never, ['foreign/b.bin'], 'deleteThread', throwingLogger(), {
+      cleanUpS3Orphans(offloader as never, {
+        keys: ['foreign/b.bin'],
+        operation: 'deleteThread',
+        logger: throwingLogger(),
         scope: ['t'],
       }),
     ).resolves.toBeUndefined();
@@ -58,7 +61,12 @@ describe('cleanUpS3Orphans with a logger that throws', () => {
     const offloader = { deleteBatch: jest.fn().mockResolvedValue(['k1']) };
     const logger = throwingLogger();
     await expect(
-      cleanUpS3Orphans(offloader as never, ['k1', 'k2'], 'put', logger, { rng: () => 0 }),
+      cleanUpS3Orphans(offloader as never, {
+        keys: ['k1', 'k2'],
+        operation: 'put',
+        logger,
+        rng: () => 0,
+      }),
     ).resolves.toBeUndefined();
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledTimes(1);
@@ -71,7 +79,12 @@ describe('cleanUpS3Orphans with a logger that throws', () => {
     const offloader = { deleteBatch: jest.fn().mockRejectedValue(accessDenied()) };
     const logger = throwingLogger();
     await expect(
-      cleanUpS3Orphans(offloader as never, ['k1'], 'put', logger, { rng: () => 0 }),
+      cleanUpS3Orphans(offloader as never, {
+        keys: ['k1'],
+        operation: 'put',
+        logger,
+        rng: () => 0,
+      }),
     ).resolves.toBeUndefined();
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledTimes(1);

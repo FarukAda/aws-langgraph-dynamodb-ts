@@ -11,9 +11,9 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import type { PayloadDescriptor } from '../codec/codec';
-import { collectS3Keys, type DescriptorRef } from '../codec/descriptor-keys';
+import { collectS3Keys, type DescriptorRef } from '../codec/codec';
 import type { S3Offloader } from '../codec/s3/offloader';
-import { cleanUpS3Orphans } from '../codec/s3/orphans';
+import { cleanUpS3Orphans } from '../codec/s3/offloader';
 import { mapWithConcurrency } from '../concurrency';
 import { BATCH_WRITE_MAX, DELETE_CONCURRENCY } from '../constants';
 import { batchWriteAllIncompleteError } from '../errors/errors';
@@ -444,13 +444,12 @@ export async function flushPendingDeletes(
      */
   }
   if (deps.offloader) {
-    await cleanUpS3Orphans(
-      deps.offloader,
-      collectS3Keys(tally.released),
-      deps.operation,
-      deps.logger,
-      { scope: deps.scope },
-    );
+    await cleanUpS3Orphans(deps.offloader, {
+      keys: collectS3Keys(tally.released),
+      operation: deps.operation,
+      logger: deps.logger,
+      scope: deps.scope,
+    });
   }
   return tally;
 }

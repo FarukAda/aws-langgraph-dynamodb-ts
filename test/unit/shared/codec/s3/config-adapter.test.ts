@@ -1,4 +1,4 @@
-import { offloaderConfigFor } from '../../../../../src/shared/codec/s3/adapter-config';
+import { offloaderConfigFor } from '../../../../../src/shared/codec/s3/config';
 
 describe('offloaderConfigFor (CODEC-15)', () => {
   it('inherits the DynamoDB region when the S3 client config names none', () => {

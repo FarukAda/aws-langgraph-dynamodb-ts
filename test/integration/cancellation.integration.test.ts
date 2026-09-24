@@ -21,7 +21,7 @@ import type { S3Client } from '@aws-sdk/client-s3';
 
 import { DynamoDBSaver } from '../../src/index';
 import { createDefaultS3Client } from '../../src/shared/codec/s3/client';
-import { downloadObject } from '../../src/shared/codec/s3/read-write';
+import { downloadObject } from '../../src/shared/codec/s3/offloader';
 import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../src/shared/constants';
 import { ErrorCode } from '../../src/shared/errors/error-code';
 import { type MisbehavingServer, startMisbehavingServer } from './helpers/misbehaving-server';
@@ -178,7 +178,11 @@ describe('(b) an S3 body that stalls after its headers', () => {
   it('is ended by the caller abort, where no timer of the handler would arm', async () => {
     const client = await s3At(stalled.url, UNARMED_SOCKET_TIMEOUT_MS);
     const { error, elapsedMs } = await abortedDuring((signal) =>
-      downloadObject(client, 'bucket', 'stall-abort.bin', MAX_DOWNLOAD_BYTES, signal),
+      downloadObject(
+        client,
+        { bucket: 'bucket', key: 'stall-abort.bin', maxBytes: MAX_DOWNLOAD_BYTES },
+        signal,
+      ),
     );
     record('(b) stalled download cancelled after', elapsedMs);
     expect(error.code).toBe(ErrorCode.ABORTED);
@@ -204,9 +208,7 @@ describe('(c) the controls, so that (a) and (b) prove a cancel rather than a bro
     const controller = new AbortController();
     const bytes = await downloadObject(
       client,
-      'bucket',
-      'healthy.bin',
-      MAX_DOWNLOAD_BYTES,
+      { bucket: 'bucket', key: 'healthy.bin', maxBytes: MAX_DOWNLOAD_BYTES },
       controller.signal,
     );
     expect(bytes).toEqual(new TextEncoder().encode('payload'));

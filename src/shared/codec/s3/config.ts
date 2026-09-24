@@ -1,8 +1,22 @@
-import { MAX_S3_KEY_BYTES } from '../../constants';
+/**
+ * Hides the S3 key layout: where a row's object lives, and which keys a row may touch.
+ *
+ * An offloaded object's key is the adapter's prefix, then the row's own
+ * identifiers each base64url-encoded, then the id of the write that produced
+ * it, so a key read back from a row can be checked against the path that row
+ * could have produced before anything is read or deleted. The configuration a
+ * caller passes, its checks, the default prefix per adapter and the lifecycle
+ * rule ids derived from a prefix are part of the same layout.
+ */
+
+import type { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
+
+import { DEFAULT_S3_KEY_PREFIX, MAX_S3_KEY_BYTES } from '../../constants';
 import { validationError } from '../../errors/errors';
+import { truncateForLog } from '../../logging/truncate';
 import { assertNoControlChars, assertWellFormed } from '../../validation/primitives';
+import { s3ClientOptions } from './client-types';
 import type { S3ClientConfigLike, S3ClientLike } from './client-types';
-import { encodeKeyPart } from './key-scope';
 
 /** Configuration for offloading large payloads to S3. */
 export interface S3OffloadConfig {
@@ -32,6 +46,21 @@ export interface S3OffloadConfig {
    * shipped declarations.
    */
   createS3Client?: (config: S3ClientConfigLike) => S3ClientLike;
+}
+
+/**
+ * One key part, base64url-encoded.
+ *
+ * Accepts: `part` — any string, including empty.
+ *
+ * Returns: base64url text, whose alphabet (`A-Z a-z 0-9 - _`) contains neither
+ * `/` nor `.`, so an encoded part can never be mistaken for a path separator
+ * or the `.bin` suffix.
+ *
+ * Throws: nothing.
+ */
+export function encodeKeyPart(part: string): string {
+  return Buffer.from(part, 'utf8').toString('base64url');
 }
 
 /**
@@ -209,4 +238,123 @@ export function buildMarkerRuleId(prefix: string): string {
  */
 export function defaultAdapterKeyPrefix(base: string, adapter: string): string {
   return `${base}${adapter}/`;
+}
+
+/**
+ * The path every key built from `parts` shares.
+ *
+ * Accepts: `prefix` — the configured key prefix, ending in `/`. `parts` —
+ * the row's identifiers; `[]` yields the prefix alone.
+ *
+ * Returns: the prefix plus the encoded parts joined by `/`, carrying neither
+ * `.bin` nor a trailing `/`.
+ *
+ * Throws: nothing.
+ */
+export function s3KeyScope(prefix: string, parts: readonly string[]): string {
+  return `${prefix}${parts.map(encodeKeyPart).join('/')}`;
+}
+
+/**
+ * Whether `key` lies inside the path `parts` produce.
+ *
+ * Accepts: `key` — a key read back from a row, or one this package built.
+ * `parts` — the row's leading identifiers; `[]` degrades to a prefix-only
+ * check.
+ *
+ * Returns: true when the key continues below the scope (`<scope>/…`, which is
+ * every key this release writes, since the write's object id is one segment
+ * deeper) or equals it (`<scope>.bin`, the key of a store item offloaded by a
+ * release that gave the key no per-write segment).
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: an identifier sharing a leading substring with another (`t` and
+ * `t1`) never matches its scope — the parts are base64url-encoded and joined
+ * by `/`, so the comparison is segment-wise, not textual.
+ */
+export function isKeyInScope(key: string, prefix: string, parts: readonly string[]): boolean {
+  const scope = s3KeyScope(prefix, parts);
+  if (parts.length === 0) return key.startsWith(scope);
+  return key === `${scope}.bin` || key.startsWith(`${scope}/`);
+}
+
+/**
+ * Refuse a row-sourced `s3Key` outside the path the row's own identifiers
+ * produce.
+ *
+ * Accepts: as {@link isKeyInScope}.
+ *
+ * Returns: nothing: `key` is kept under its declared type, and this checks it
+ * against the scope `prefix` and `parts` compose.
+ *
+ * Throws: `VALIDATION` naming `s3Key`, quoting the key and the path the
+ * row may reference, each bounded by {@link truncateForLog}: the key comes off
+ * the row and the path is composed from an `s3.keyPrefix` checked for shape
+ * and never for length, so neither is bounded by anything this package ran.
+ * The key stays named — a bounded prefix still says which object to go and
+ * look at. It reaches the caller on all three adapters, including
+ * `history.getMessages` under `onCorruptMessage: 'skip'`, because
+ * `isPermanentPayloadLoss` does **not** classify it — an out-of-scope key is
+ * not the same kind of thing as an unreadable descriptor. An unreadable
+ * descriptor condemns the payload itself: nobody can read those bytes, so
+ * skipping the row loses nothing that was ever retrievable. An out-of-scope
+ * key says only that *this* reader may not follow it — the object is very
+ * likely intact, under the prefix that does own it — and what produced it is a
+ * `keyPrefix` pointed at the wrong place, a table shared with another tenant,
+ * or a planted row. Every one of those is a condition an operator must see and
+ * can fix. Classifying it as loss made only `history` answer with a silently
+ * shorter conversation — the one adapter that consults the classifier — which
+ * the chain then re-persisted as the truth, while the store and the saver
+ * raised on the same row. A short answer is the one failure a caller cannot
+ * detect, and one row shape must not mean two things across three adapters.
+ *
+ * Guarantees: a row is trusted for its shape, never for the object it points
+ * at. A writer able to place one row in a partition cannot make this library
+ * download or delete another tenant's object, nor make it quietly return less.
+ */
+export function assertKeyInScope(key: string, prefix: string, parts: readonly string[]): void {
+  if (isKeyInScope(key, prefix, parts)) return;
+  throw validationError(
+    `s3Key "${truncateForLog(key)}" lies outside the S3 path this row may reference ` +
+      `("${truncateForLog(s3KeyScope(prefix, parts))}"); refusing to touch an object the row ` +
+      'does not own',
+    's3Key',
+  );
+}
+
+/** The adapters that share one bucket, each under its own default key prefix. */
+export type AdapterName = 'checkpointer' | 'store' | 'history';
+
+/**
+ * An adapter's `s3` option resolved into the offloader's configuration.
+ *
+ * Accepts: `s3` — as the caller gave it. `adapter` — names the default key
+ * prefix, so three adapters sharing one bucket do not share a path.
+ * `clientConfig` — the adapter's DynamoDB client config, read for its region
+ * only.
+ *
+ * Returns: `s3` with `keyPrefix` defaulted to the adapter's own path, and
+ * `clientConfig.region` filled in from the DynamoDB side when the S3 config
+ * names none. With no region on either side the field is left absent and the
+ * SDK resolves it from the environment.
+ *
+ * Throws: nothing.
+ *
+ * Guarantees: a bucket reachable only through the region the DynamoDB side was
+ * configured with is addressed in that region. The S3 SDK does not follow
+ * region redirects, so such a bucket otherwise failed with an opaque
+ * `PermanentRedirect` on the first offload.
+ */
+export function offloaderConfigFor(
+  s3: S3OffloadConfig,
+  adapter: AdapterName,
+  clientConfig?: DynamoDBClientConfig,
+): S3OffloadConfig {
+  const region = s3ClientOptions(s3.clientConfig).region ?? clientConfig?.region;
+  return {
+    ...s3,
+    keyPrefix: s3.keyPrefix ?? defaultAdapterKeyPrefix(DEFAULT_S3_KEY_PREFIX, adapter),
+    ...(region === undefined ? {} : { clientConfig: { ...s3.clientConfig, region } }),
+  };
 }

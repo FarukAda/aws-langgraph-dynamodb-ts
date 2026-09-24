@@ -4,8 +4,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { getCheckpointTuple } from '../../../../src/checkpointer/actions/get-tuple';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import { buildS3Key } from '../../../../src/shared/codec/s3/config';
-import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
+import { buildS3Key, assertKeyInScope } from '../../../../src/shared/codec/s3/config';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

@@ -8,7 +8,7 @@ import { assembleTuple } from '../../../src/checkpointer/internal/read';
 import type { CheckpointMetaItem } from '../../../src/checkpointer/internal/rows';
 import { setUpCheckpointer } from '../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
-import { isMissingObjectError } from '../../../src/shared/codec/payload-loss';
+import { isMissingObjectError } from '../../../src/shared/codec/codec';
 import type { DocItem } from '../../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';

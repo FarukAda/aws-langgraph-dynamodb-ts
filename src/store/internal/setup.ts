@@ -15,7 +15,7 @@ import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-check
 
 import type { CompressionConfig } from '../../shared/codec/compression';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
-import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
+import { offloaderConfigFor } from '../../shared/codec/s3/config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
 import {
   DEFAULT_MAX_SEARCH_CANDIDATES,

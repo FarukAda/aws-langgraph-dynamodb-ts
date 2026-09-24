@@ -1,4 +1,4 @@
-import { cleanUpS3Orphans } from '../../../../../src/shared/codec/s3/orphans';
+import { cleanUpS3Orphans } from '../../../../../src/shared/codec/s3/offloader';
 import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
 import { truncateForLog } from '../../../../../src/shared/logging/truncate';
 
@@ -10,7 +10,11 @@ describe('cleanUpS3Orphans', () => {
   it('deletes the non-empty keys and does not warn on success', async () => {
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
     const logger = fakeLogger();
-    await cleanUpS3Orphans(offloader as never, ['k1', undefined, ''], 'put', logger);
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1', undefined, ''],
+      operation: 'put',
+      logger,
+    });
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1']);
     expect(logger.warn).not.toHaveBeenCalled();
   });
@@ -18,14 +22,18 @@ describe('cleanUpS3Orphans', () => {
   it('warns when deleteBatch reports keys it could not delete', async () => {
     const offloader = { deleteBatch: jest.fn().mockResolvedValue(['k1']) };
     const logger = fakeLogger();
-    await cleanUpS3Orphans(offloader as never, ['k1', 'k2'], 'put', logger);
+    await cleanUpS3Orphans(offloader as never, { keys: ['k1', 'k2'], operation: 'put', logger });
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
   it('is a no-op when there are no real keys', async () => {
     const offloader = { deleteBatch: jest.fn() };
-    await cleanUpS3Orphans(offloader as never, [undefined, ''], 'put', fakeLogger());
+    await cleanUpS3Orphans(offloader as never, {
+      keys: [undefined, ''],
+      operation: 'put',
+      logger: fakeLogger(),
+    });
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
@@ -35,7 +43,12 @@ describe('cleanUpS3Orphans', () => {
       deleteBatch: jest.fn().mockRejectedValueOnce(transient).mockResolvedValueOnce([]),
     };
     const logger = fakeLogger();
-    await cleanUpS3Orphans(offloader as never, ['k1'], 'put', logger, { rng: () => 0 });
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1'],
+      operation: 'put',
+      logger,
+      rng: () => 0,
+    });
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
     expect(logger.warn).not.toHaveBeenCalled();
   });
@@ -46,7 +59,12 @@ describe('cleanUpS3Orphans', () => {
       deleteBatch: jest.fn().mockRejectedValueOnce(serverError).mockResolvedValueOnce([]),
     };
     const logger = fakeLogger();
-    await cleanUpS3Orphans(offloader as never, ['k1'], 'put', logger, { rng: () => 0 });
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1'],
+      operation: 'put',
+      logger,
+      rng: () => 0,
+    });
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
     expect(logger.warn).not.toHaveBeenCalled();
   });
@@ -56,14 +74,24 @@ describe('cleanUpS3Orphans', () => {
     const offloader = {
       deleteBatch: jest.fn().mockRejectedValueOnce(throttle).mockResolvedValueOnce([]),
     };
-    await cleanUpS3Orphans(offloader as never, ['k1'], 'put', fakeLogger(), { rng: () => 0 });
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1'],
+      operation: 'put',
+      logger: fakeLogger(),
+      rng: () => 0,
+    });
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
   });
 
   it('does not retry a non-transient failure and warns once', async () => {
     const offloader = { deleteBatch: jest.fn().mockRejectedValue(new Error('AccessDenied')) };
     const logger = fakeLogger();
-    await cleanUpS3Orphans(offloader as never, ['k1'], 'put', logger, { rng: () => 0 });
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1'],
+      operation: 'put',
+      logger,
+      rng: () => 0,
+    });
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
@@ -75,7 +103,10 @@ describe('cleanUpS3Orphans', () => {
     const controller = new AbortController();
     controller.abort();
     await expect(
-      cleanUpS3Orphans(offloader as never, ['k1'], 'put', logger, {
+      cleanUpS3Orphans(offloader as never, {
+        keys: ['k1'],
+        operation: 'put',
+        logger,
         rng: () => 0,
         signal: controller.signal,
       }),
@@ -89,7 +120,13 @@ describe('cleanUpS3Orphans', () => {
     const offloader = { deleteBatch: jest.fn().mockRejectedValue(transient) };
     const logger = fakeLogger();
     await expect(
-      cleanUpS3Orphans(offloader as never, ['k1'], 'put', logger, { rng: () => 0, maxAttempts: 2 }),
+      cleanUpS3Orphans(offloader as never, {
+        keys: ['k1'],
+        operation: 'put',
+        logger,
+        rng: () => 0,
+        maxAttempts: 2,
+      }),
     ).resolves.toBeUndefined();
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
     expect(logger.warn).toHaveBeenCalledTimes(1);
@@ -103,15 +140,12 @@ describe('cleanUpS3Orphans row scope (SEC-03)', () => {
       ownsKey: jest.fn((key: string) => key.startsWith('own/')),
     };
     const logger = fakeLogger();
-    await cleanUpS3Orphans(
-      offloader as never,
-      ['own/a.bin', 'foreign/b.bin'],
-      'deleteThread',
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['own/a.bin', 'foreign/b.bin'],
+      operation: 'deleteThread',
       logger,
-      {
-        scope: ['t'],
-      },
-    );
+      scope: ['t'],
+    });
     expect(offloader.ownsKey).toHaveBeenCalledWith('own/a.bin', ['t']);
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['own/a.bin']);
     expect(logger.warn).toHaveBeenCalledWith(
@@ -123,7 +157,10 @@ describe('cleanUpS3Orphans row scope (SEC-03)', () => {
   it('deletes nothing when every key is foreign, without calling S3', async () => {
     const offloader = { deleteBatch: jest.fn(), ownsKey: () => false };
     const logger = fakeLogger();
-    await cleanUpS3Orphans(offloader as never, ['foreign/b.bin'], 'deleteThread', logger, {
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['foreign/b.bin'],
+      operation: 'deleteThread',
+      logger,
       scope: ['t'],
     });
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
@@ -132,7 +169,11 @@ describe('cleanUpS3Orphans row scope (SEC-03)', () => {
 
   it('does not consult ownsKey when no scope is given (own uploads)', async () => {
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]), ownsKey: jest.fn() };
-    await cleanUpS3Orphans(offloader as never, ['k'], 'put', fakeLogger());
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k'],
+      operation: 'put',
+      logger: fakeLogger(),
+    });
     expect(offloader.ownsKey).not.toHaveBeenCalled();
   });
 });
@@ -152,7 +193,12 @@ describe('cleanUpS3Orphans bounds the failure it names', () => {
         .mockRejectedValue(Object.assign(new Error('denied'), { name: reason })),
     };
     const logger = fakeLogger();
-    await cleanUpS3Orphans(offloader as never, ['k1'], 'put', logger, { rng: () => 0 });
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1'],
+      operation: 'put',
+      logger,
+      rng: () => 0,
+    });
     expect(logger.warn).toHaveBeenCalledWith(expect.any(String), {
       reason: truncateForLog(reason),
     });

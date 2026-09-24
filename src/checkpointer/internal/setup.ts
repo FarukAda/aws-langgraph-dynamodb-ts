@@ -12,7 +12,7 @@ import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import type { CheckpointListOptions, SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { CompressionConfig } from '../../shared/codec/compression';
-import { offloaderConfigFor } from '../../shared/codec/s3/adapter-config';
+import { offloaderConfigFor } from '../../shared/codec/s3/config';
 import { S3Offloader } from '../../shared/codec/s3/offloader';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
 import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
