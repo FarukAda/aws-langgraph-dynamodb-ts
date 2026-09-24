@@ -15,10 +15,9 @@ import {
   MAX_BACKOFF_DELAY_MS,
   MAX_WRITE_LIFETIME_MS,
 } from '../constants';
-import { failureLabel } from '../errors/base-error';
+import { failureLabel, toError } from '../errors/base-error';
 import { DEFAULT_RETRYABLE_ERRORS, TRANSIENT_HTTP_STATUSES } from '../errors/classify';
 import { retryExhaustedError } from '../errors/errors';
-import { toError } from '../errors/to-error';
 import type { Logger } from '../logging/logger';
 import { redactedMessage } from '../logging/secret-patterns';
 import { truncateForLog } from '../logging/truncate';

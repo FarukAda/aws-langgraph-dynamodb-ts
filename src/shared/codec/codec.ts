@@ -16,11 +16,11 @@ import {
   DynamoDBLangGraphError,
   hasErrorCode,
   isDynamoDBLangGraphError,
+  toError,
 } from '../errors/base-error';
 import { isMissingObject } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
 import { validationError } from '../errors/errors';
-import { toError } from '../errors/to-error';
 import { truncateForLog } from '../logging/truncate';
 import {
   type CompressionConfig,
@@ -431,7 +431,7 @@ function assertSerialisedToBytes(raw: Uint8Array): void {
  * large to store inline — and is raised only when there is **no** offloader
  * and they exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that
  * cell cannot arise: `s3.thresholdBytes` is itself capped at that limit
- * (`src/shared/validation/codec-options.ts`, `assertS3`), so bytes too large
+ * (`src/shared/validation/options.ts`, `assertS3`), so bytes too large
  * to store inline are always at or above the threshold and offload instead.
  * The other names `value` — it serialises to nothing (see
  * {@link assertSerialisedToBytes}) — and is raised for an offloaded payload

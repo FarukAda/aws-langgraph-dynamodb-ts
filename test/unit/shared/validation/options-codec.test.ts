@@ -1,5 +1,5 @@
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { assertCompression, assertS3 } from '../../../../src/shared/validation/codec-options';
+import { assertCompression, assertS3 } from '../../../../src/shared/validation/options';
 
 function expectValidationError(fn: () => void, field: string): void {
   try {

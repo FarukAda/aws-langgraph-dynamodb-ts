@@ -2,9 +2,8 @@ import { isPermanentPayloadLoss, isMissingObjectError } from '../../../../src/sh
 import { isAbortError } from '../../../../src/shared/dynamodb/abort';
 import { getCancellationReasons } from '../../../../src/shared/dynamodb/cancellation';
 import { isTransientS3Error, isRetryableError } from '../../../../src/shared/dynamodb/retry';
-import { isDynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
+import { isDynamoDBLangGraphError, toError } from '../../../../src/shared/errors/base-error';
 import { toPublicError } from '../../../../src/shared/errors/boundary';
-import { toError } from '../../../../src/shared/errors/to-error';
 import { redactErrorText, redactedMessage } from '../../../../src/shared/logging/secret-patterns';
 import { isRetryExhausted } from '../../../../src/store/internal/item-write';
 

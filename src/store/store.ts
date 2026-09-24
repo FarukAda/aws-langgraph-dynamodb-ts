@@ -9,8 +9,7 @@ import {
 import { guardPublic } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { releaseOwned } from '../shared/release';
-import { assertSignalLike } from '../shared/validation/collaborators';
-import { assertCancelOptions } from '../shared/validation/method-keys';
+import { assertSignalLike, assertCancelOptions } from '../shared/validation/collaborators';
 import { assertShape } from '../shared/validation/option-shape';
 import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { listNamespaces } from './actions/list-namespaces';

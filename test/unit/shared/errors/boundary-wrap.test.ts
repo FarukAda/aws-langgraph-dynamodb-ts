@@ -2,8 +2,8 @@ import {
   MAX_LOGGED_VALUE_CHARS,
   MAX_RELAYED_MESSAGE_CHARS,
 } from '../../../../src/shared/constants';
+import { wrapForeignError } from '../../../../src/shared/errors/boundary';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { wrapForeignError } from '../../../../src/shared/errors/wrap-error';
 import { truncateForLog, truncateRelayedText } from '../../../../src/shared/logging/truncate';
 
 describe('wrapForeignError', () => {

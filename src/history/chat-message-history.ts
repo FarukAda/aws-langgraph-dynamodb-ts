@@ -3,7 +3,7 @@ import type { BaseMessage } from '@langchain/core/messages';
 import { guardPublic } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { releaseOwned } from '../shared/release';
-import { assertCancelOptions } from '../shared/validation/method-keys';
+import { assertCancelOptions } from '../shared/validation/collaborators';
 import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { addMessages as addMessagesAction } from './actions/add-messages';
 import { clearSession } from './actions/clear';

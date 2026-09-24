@@ -195,7 +195,13 @@ async function flushBuffer(options: PartitionDeleteOptions, state: PassState): P
   const cancelled = cancelAmong(tally.failures);
   if (cancelled !== undefined) throw cancelled;
   const { deleted, attempted } = state;
-  throw batchWriteAllIncompleteError(deleted, attempted, tally.failures, deleted, 'row');
+  throw batchWriteAllIncompleteError({
+    succeeded: deleted,
+    total: attempted,
+    failures: tally.failures,
+    succeededCount: deleted,
+    unit: 'row',
+  });
 }
 
 /**

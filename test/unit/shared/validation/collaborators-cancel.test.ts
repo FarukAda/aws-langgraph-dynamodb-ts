@@ -1,5 +1,5 @@
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { assertCancelOptions, CANCEL_KEYS } from '../../../../src/shared/validation/method-keys';
+import { assertCancelOptions, CANCEL_KEYS } from '../../../../src/shared/validation/collaborators';
 
 describe('the cancellation key list (compiler-verified against the type)', () => {
   it('lists exactly what a cancellation-only options bag carries', () => {

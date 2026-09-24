@@ -65,8 +65,7 @@ export { ErrorCode } from './shared/errors/error-code';
 
 export type { Logger, LogArgument } from './shared/logging/logger';
 export { redactLogger, redactSecrets } from './shared/logging/redaction';
-export type { RedactLoggerOptions } from './shared/logging/redaction';
-export type { Redactable } from './shared/logging/redaction-walk';
+export type { Redactable, RedactLoggerOptions } from './shared/logging/redaction';
 
 export type { CancelOptions, BaseAdapterOptions, CodecOptions } from './shared/options';
 export type { DynamoDBDocumentLike } from './shared/dynamodb/client';

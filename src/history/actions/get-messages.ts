@@ -12,8 +12,7 @@ import {
 } from '../../shared/codec/codec';
 import { mapWithConcurrency } from '../../shared/concurrency';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { failureLabel } from '../../shared/errors/base-error';
-import { toError } from '../../shared/errors/to-error';
+import { failureLabel, toError } from '../../shared/errors/base-error';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';
 import { readWindow } from '../internal/message-read';

@@ -13,7 +13,7 @@ import {
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { releaseOwned } from '../shared/release';
-import { assertCancelOptions } from '../shared/validation/method-keys';
+import { assertCancelOptions } from '../shared/validation/collaborators';
 import { checkedShape } from '../shared/validation/option-shape';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
 import { ensureS3Lifecycle } from './actions/ensure-lifecycle';

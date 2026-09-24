@@ -23,10 +23,9 @@ import {
   type WriteVerdict,
 } from '../../shared/dynamodb/idempotent-write';
 import { type RowKey, SORT_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
-import { DynamoDBLangGraphError, hasErrorCode } from '../../shared/errors/base-error';
+import { DynamoDBLangGraphError, hasErrorCode, toError } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { compensationFailedError } from '../../shared/errors/errors';
-import { toError } from '../../shared/errors/to-error';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { SessionId, StorableMessages } from './parse';
 import { buildMessageItem, type ChatMessageItem } from './rows';

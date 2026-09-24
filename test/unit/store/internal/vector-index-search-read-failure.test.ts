@@ -2,9 +2,9 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
+import { wrapForeignError } from '../../../../src/shared/errors/boundary';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { abortError, retryExhaustedError } from '../../../../src/shared/errors/errors';
-import { wrapForeignError } from '../../../../src/shared/errors/wrap-error';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';

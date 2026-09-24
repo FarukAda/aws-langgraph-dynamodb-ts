@@ -1,4 +1,4 @@
-import { toError } from '../../../../src/shared/errors/to-error';
+import { toError } from '../../../../src/shared/errors/base-error';
 
 describe('toError passes an error through', () => {
   it('returns an Error itself, keeping its fields and cause', () => {

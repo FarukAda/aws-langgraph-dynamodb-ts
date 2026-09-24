@@ -86,7 +86,12 @@ export async function batchWriteAll(
     }
   }
   if (failedChunks.length > 0) {
-    throw batchWriteAllIncompleteError(succeededChunks, totalChunks, failedChunks, succeededCount);
+    throw batchWriteAllIncompleteError({
+      succeeded: succeededChunks,
+      total: totalChunks,
+      failures: failedChunks,
+      succeededCount,
+    });
   }
 }
 

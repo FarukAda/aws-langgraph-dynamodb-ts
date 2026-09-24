@@ -9,10 +9,9 @@
 
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import { DynamoDBLangGraphError } from '../errors/base-error';
+import { DynamoDBLangGraphError, toError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { validationError } from '../errors/errors';
-import { toError } from '../errors/to-error';
 import { truncateForLog } from '../logging/truncate';
 
 /**

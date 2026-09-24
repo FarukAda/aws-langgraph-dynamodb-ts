@@ -1,4 +1,4 @@
-import { toError } from './errors/to-error';
+import { toError } from './errors/base-error';
 
 /** Anything an adapter holds open and must hand back when it is torn down. */
 export interface Releasable {

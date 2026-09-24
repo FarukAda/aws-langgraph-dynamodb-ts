@@ -6,7 +6,7 @@ import { iterateRecencyIndex } from '../../../src/shared/dynamodb/recency-index'
 import { retryFor } from '../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
-import { walkObject } from '../../../src/shared/logging/redaction-walk';
+import { walkObject } from '../../../src/shared/logging/redaction';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 
 describe('retryFor', () => {
