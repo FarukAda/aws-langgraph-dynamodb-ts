@@ -8,6 +8,6 @@
 
 > **TtlOption** = \{ `days`: `number`; \} \| \{ `seconds`: `number`; \}
 
-Defined in: [shared/validation/ttl.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/validation/ttl.ts#L9)
+Defined in: [shared/validation/ttl.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/validation/ttl.ts#L21)
 
 Time-to-live expressed in whole days or whole seconds.

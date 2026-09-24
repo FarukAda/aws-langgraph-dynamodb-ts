@@ -6,7 +6,7 @@
 
 # Class: DynamoDBStore
 
-Defined in: [store/store.ts:48](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L48)
+Defined in: [store/store.ts:47](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L47)
 
 DynamoDB-backed LangGraph store for long-term memory with optional semantic
 search. A thin orchestrator: get/put/delete/listNamespaces build the same
@@ -25,7 +25,7 @@ namespace rules.
 
 > **new DynamoDBStore**(`options`): `DynamoDBStore`
 
-Defined in: [store/store.ts:66](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L66)
+Defined in: [store/store.ts:64](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L64)
 
 Accepts: `options` — validated here, so a misconfiguration surfaces at
 construction rather than on the first request. A `vectorBackend` without an
@@ -59,7 +59,7 @@ Guarantees: no I/O. Constructing a store issues no request.
 
 > **batch**\<`Op`\>(`operations`): `Promise`\<`OperationResults`\<`Op`\>\>
 
-Defined in: [store/store.ts:151](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L151)
+Defined in: [store/store.ts:148](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L148)
 
 Execute a batch of operations and return their results in operation
 order.
@@ -124,7 +124,7 @@ about one round trip rather than ten (see `runBatch`).
 
 > **delete**(`namespace`, `key`): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:252](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L252)
+Defined in: [store/store.ts:249](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L249)
 
 Remove one item, as upstream does: a put operation carrying `null`.
 
@@ -178,7 +178,7 @@ is correct: a live row still names the object.
 
 > **destroy**(): `void`
 
-Defined in: [store/store.ts:382](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L382)
+Defined in: [store/store.ts:379](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L379)
 
 Release owned resources.
 
@@ -204,7 +204,7 @@ this adapter built leaked for the life of the process. The clause read
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:403](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L403)
+Defined in: [store/store.ts:400](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L400)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -235,7 +235,7 @@ per request.
 
 > **get**(`namespace`, `key`): `Promise`\<`Item` \| `null`\>
 
-Defined in: [store/store.ts:186](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L186)
+Defined in: [store/store.ts:183](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L183)
 
 Retrieve one item. Overrides the base implementation so the call is
 guarded here; the operation is the one upstream builds.
@@ -288,7 +288,7 @@ signal to fire.
 
 > **listNamespaces**(`options?`): `Promise`\<`string`[][]\>
 
-Defined in: [store/store.ts:274](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L274)
+Defined in: [store/store.ts:271](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L271)
 
 List the distinct namespaces, sorted, optionally filtered and truncated.
 
@@ -325,7 +325,7 @@ for an item written by a newer version; a classified AWS failure.
 
 > **put**(`namespace`, `key`, `value`, `index?`): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:212](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L212)
+Defined in: [store/store.ts:209](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L209)
 
 Store or replace one item. Overrides the base implementation, whose own
 namespace check threw an error this package does not brand. The value and
@@ -375,7 +375,7 @@ Throws: `VALIDATION` naming `namespace`, `namespace element`, `key`,
 
 > **reconcileVectorIndex**(`namespacePrefix`, `options?`): `Promise`\<[`VectorReconcileResult`](../interfaces/VectorReconcileResult.md)\>
 
-Defined in: [store/store.ts:341](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L341)
+Defined in: [store/store.ts:338](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L338)
 
 Repair the configured vector backend against the canonical items under
 `namespacePrefix`. A maintenance tool; see the action of the same name.
@@ -416,7 +416,7 @@ a vector is deleted only on evidence that its item is gone.
 
 > **search**(`namespacePrefix`, `options?`): `Promise`\<`SearchItem`[]\>
 
-Defined in: [store/store.ts:308](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L308)
+Defined in: [store/store.ts:305](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L305)
 
 Search with optional cancellation. Overrides the base implementation, which
 routes through [batch](#batch) and therefore cannot carry a signal.
@@ -468,7 +468,7 @@ the `vectorBackend` when one is configured.
 
 > **stop**(): `void`
 
-Defined in: [store/store.ts:363](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L363)
+Defined in: [store/store.ts:360](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L360)
 
 LangGraph's lifecycle hook.
 

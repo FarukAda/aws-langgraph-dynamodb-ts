@@ -6,7 +6,7 @@
 
 # Interface: BackfillResult
 
-Defined in: [shared/dynamodb/backfill-types.ts:5](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L5)
+Defined in: [backfill/backfill.ts:291](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L291)
 
 What one pass of the backfill did, and where to resume.
 
@@ -16,7 +16,7 @@ What one pass of the backfill did, and where to resume.
 
 > **indexed**: `number`
 
-Defined in: [shared/dynamodb/backfill-types.ts:9](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L9)
+Defined in: [backfill/backfill.ts:295](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L295)
 
 Rows given index keys.
 
@@ -26,7 +26,7 @@ Rows given index keys.
 
 > `optional` **nextCursor?**: `string`
 
-Defined in: [shared/dynamodb/backfill-types.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L19)
+Defined in: [backfill/backfill.ts:305](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L305)
 
 Opaque; absent when the table is fully walked. Pass it back to continue —
 the pass is resumable, so a large table can be backfilled in bounded runs.
@@ -37,7 +37,7 @@ the pass is resumable, so a large table can be backfilled in bounded runs.
 
 > **scanned**: `number`
 
-Defined in: [shared/dynamodb/backfill-types.ts:7](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L7)
+Defined in: [backfill/backfill.ts:293](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L293)
 
 Rows the scan evaluated.
 
@@ -47,7 +47,7 @@ Rows the scan evaluated.
 
 > **skipped**: `number`
 
-Defined in: [shared/dynamodb/backfill-types.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/backfill-types.ts#L14)
+Defined in: [backfill/backfill.ts:300](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L300)
 
 Rows this run wrote no keys for: one no listing reaches, and one whose
 write the condition refused because it already has keys or is gone.

@@ -6,7 +6,7 @@
 
 # Interface: BatchDrainDetails
 
-Defined in: [shared/errors/base-error.ts:39](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L39)
+Defined in: [shared/errors/base-error.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L49)
 
 What one `BatchWriteItem` drain left behind when it ran out of rounds.
 
@@ -16,7 +16,7 @@ What one `BatchWriteItem` drain left behind when it ran out of rounds.
 
 > `readonly` **kind**: `"drain"`
 
-Defined in: [shared/errors/base-error.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L40)
+Defined in: [shared/errors/base-error.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L50)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [shared/errors/base-error.ts:40](https://github.com/FarukAda/aws-lan
 
 > `readonly` **retries**: `number`
 
-Defined in: [shared/errors/base-error.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L46)
+Defined in: [shared/errors/base-error.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L56)
 
 `UnprocessedItems` rounds spent.
 
@@ -34,7 +34,7 @@ Defined in: [shared/errors/base-error.ts:46](https://github.com/FarukAda/aws-lan
 
 > `readonly` **succeededCount**: `number`
 
-Defined in: [shared/errors/base-error.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L42)
+Defined in: [shared/errors/base-error.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L52)
 
 Writes DynamoDB acknowledged; they persist, since there is no rollback.
 
@@ -44,6 +44,6 @@ Writes DynamoDB acknowledged; they persist, since there is no rollback.
 
 > `readonly` **unprocessed**: readonly `WriteRequest`[]
 
-Defined in: [shared/errors/base-error.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L44)
+Defined in: [shared/errors/base-error.ts:54](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L54)
 
 The requests DynamoDB did not acknowledge, verbatim, so they can be re-submitted.

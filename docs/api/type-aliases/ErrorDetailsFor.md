@@ -8,7 +8,7 @@
 
 > **ErrorDetailsFor**\<`C`\> = `C` *extends* keyof [`ErrorDetailsByCode`](../interfaces/ErrorDetailsByCode.md) ? [`ErrorDetailsByCode`](../interfaces/ErrorDetailsByCode.md)\[`C`\] : `undefined`
 
-Defined in: [shared/errors/base-error.ts:81](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L81)
+Defined in: [shared/errors/base-error.ts:91](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L91)
 
 The details a code carries; `undefined` for every code not in [ErrorDetailsByCode](../interfaces/ErrorDetailsByCode.md).
 

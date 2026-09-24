@@ -6,7 +6,7 @@
 
 # Interface: RetryAttemptInfo
 
-Defined in: [shared/dynamodb/retry.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L33)
+Defined in: [shared/dynamodb/retry.ts:68](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L68)
 
 What [RetryOptions.onRetry](RetryOptions.md#onretry) learns before each backoff sleep.
 
@@ -16,7 +16,7 @@ What [RetryOptions.onRetry](RetryOptions.md#onretry) learns before each backoff 
 
 > **attempt**: `number`
 
-Defined in: [shared/dynamodb/retry.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L34)
+Defined in: [shared/dynamodb/retry.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L69)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [shared/dynamodb/retry.ts:34](https://github.com/FarukAda/aws-langgr
 
 > **delayMs**: `number`
 
-Defined in: [shared/dynamodb/retry.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L35)
+Defined in: [shared/dynamodb/retry.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L70)
 
 ***
 
@@ -32,4 +32,4 @@ Defined in: [shared/dynamodb/retry.ts:35](https://github.com/FarukAda/aws-langgr
 
 > **error**: `Error`
 
-Defined in: [shared/dynamodb/retry.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L36)
+Defined in: [shared/dynamodb/retry.ts:71](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L71)

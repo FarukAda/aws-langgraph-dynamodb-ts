@@ -6,7 +6,7 @@
 
 # Interface: ErrorDetailsByCode
 
-Defined in: [shared/errors/base-error.ts:75](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L75)
+Defined in: [shared/errors/base-error.ts:85](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L85)
 
 The codes that carry details, and the shape each one carries.
 
@@ -16,7 +16,7 @@ The codes that carry details, and the shape each one carries.
 
 > **BATCH\_WRITE\_INCOMPLETE**: [`BatchWriteIncompleteDetails`](../type-aliases/BatchWriteIncompleteDetails.md)
 
-Defined in: [shared/errors/base-error.ts:76](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L76)
+Defined in: [shared/errors/base-error.ts:86](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L86)
 
 ***
 
@@ -24,4 +24,4 @@ Defined in: [shared/errors/base-error.ts:76](https://github.com/FarukAda/aws-lan
 
 > **COMPENSATION\_FAILED**: [`CompensationFailedDetails`](CompensationFailedDetails.md)
 
-Defined in: [shared/errors/base-error.ts:77](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L77)
+Defined in: [shared/errors/base-error.ts:87](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L87)
