@@ -1,3 +1,12 @@
+/**
+ * Hides the JSON form: writing it, reading it, and recognising it.
+ *
+ * The default serde writes a value as JSON under the `json` type and reads
+ * back only that type; the codec also asks, when a serde refuses stored bytes,
+ * whether those bytes are still JSON at all, which tells a corrupt payload from
+ * a serde that would not reconstruct it.
+ */
+
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBLangGraphError } from '../errors/base-error';
@@ -159,17 +168,17 @@ Object.freeze(JSON_SERDE);
  * own `JsonPlusSerializer` stamps on every value but a raw `Uint8Array`, which
  * it stamps `bytes`.
  *
- * It is exported so the serializer that writes this form and the check that
- * re-derives it read one constant. They had each decided separately what they
- * understood: the check took any other type at its word, while `JSON_SERDE`
- * ignored the declared type and ran `JSON.parse` on whatever it was handed. A
- * row declaring a form neither of them writes was therefore classified one way
- * through one serializer and the opposite way through the other — and a row
- * declaring `bytes`, which the checkpointer's default writes for a raw
- * `Uint8Array`, decoded to a *different value* rather than failing at all when
- * its bytes happened to parse as JSON.
+ * The one constant is shared by the serializer that writes this form and the
+ * check that re-derives it, within this module. They had each decided
+ * separately what they understood: the check took any other type at its
+ * word, while `JSON_SERDE` ignored the declared type and ran `JSON.parse` on
+ * whatever it was handed. A row declaring a form neither of them writes was
+ * therefore classified one way through one serializer and the opposite way
+ * through the other — and a row declaring `bytes`, which the checkpointer's
+ * default writes for a raw `Uint8Array`, decoded to a *different value*
+ * rather than failing at all when its bytes happened to parse as JSON.
  */
-export const JSON_SERDE_TYPE = 'json';
+const JSON_SERDE_TYPE = 'json';
 
 /**
  * Whether stored bytes are still the form the row that holds them declares.

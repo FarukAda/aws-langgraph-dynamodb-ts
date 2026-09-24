@@ -19,8 +19,7 @@ import type { TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 
 import { nowMs } from '../clock';
-import { type PayloadDescriptor, PayloadLocation } from '../codec/codec';
-import type { DescriptorRef } from '../codec/codec';
+import { type PayloadDescriptor, PayloadLocation, type DescriptorRef } from '../codec/codec';
 import { MAX_WRITE_LIFETIME_MS } from '../constants';
 import { classifyAwsError } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';

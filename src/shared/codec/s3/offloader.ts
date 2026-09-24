@@ -45,8 +45,8 @@ import {
 import { ensureLifecycleRule } from './lifecycle';
 
 /**
- * Thin holder composing the pure S3 functions. Owns config + the lazily-built
- * S3 client and delegates all real work; every method is a small delegation.
+ * Owns the S3 configuration and the lazily-built client; every method is a
+ * small delegation to this module's own functions, keyed to that config.
  */
 export class S3Offloader {
   private clientPromise: Promise<S3Client> | undefined;

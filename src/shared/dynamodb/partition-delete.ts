@@ -10,10 +10,8 @@
 
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import type { PayloadDescriptor } from '../codec/codec';
-import { collectS3Keys, type DescriptorRef } from '../codec/codec';
-import type { S3Offloader } from '../codec/s3/offloader';
-import { cleanUpS3Orphans } from '../codec/s3/offloader';
+import { type PayloadDescriptor, collectS3Keys, type DescriptorRef } from '../codec/codec';
+import { type S3Offloader, cleanUpS3Orphans } from '../codec/s3/offloader';
 import { mapWithConcurrency } from '../concurrency';
 import { BATCH_WRITE_MAX, DELETE_CONCURRENCY } from '../constants';
 import { batchWriteAllIncompleteError } from '../errors/errors';

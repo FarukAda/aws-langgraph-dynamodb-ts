@@ -15,8 +15,7 @@ import { DEFAULT_S3_KEY_PREFIX, MAX_S3_KEY_BYTES } from '../../constants';
 import { validationError } from '../../errors/errors';
 import { truncateForLog } from '../../logging/truncate';
 import { assertNoControlChars, assertWellFormed } from '../../validation/primitives';
-import { s3ClientOptions } from './client-types';
-import type { S3ClientConfigLike, S3ClientLike } from './client-types';
+import { s3ClientOptions, type S3ClientConfigLike, type S3ClientLike } from './client-types';
 
 /** Configuration for offloading large payloads to S3. */
 export interface S3OffloadConfig {

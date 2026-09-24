@@ -11,8 +11,7 @@
  * proves no live row names it — never on an outcome nothing confirmed.
  */
 
-import type { PayloadDescriptor } from '../../shared/codec/codec';
-import { collectS3Keys } from '../../shared/codec/codec';
+import { type PayloadDescriptor, collectS3Keys } from '../../shared/codec/codec';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
 import type { DocItem } from '../../shared/dynamodb/client';
 import {

@@ -1,8 +1,11 @@
 import type { Item } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import { PayloadLocation, isMissingObjectError } from '../../shared/codec/codec';
-import type { DescriptorRef } from '../../shared/codec/codec';
+import {
+  PayloadLocation,
+  isMissingObjectError,
+  type DescriptorRef,
+} from '../../shared/codec/codec';
 import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import type { StoreAddress } from './parse';
