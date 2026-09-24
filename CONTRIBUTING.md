@@ -23,6 +23,7 @@ The static guards fail the build rather than rely on review:
 - caller input is parsed once, at the boundary, into a branded type declared in a parser module and built by exactly one `parse*` function there; code downstream asks for the brand and does not check the value again. A test builds such a value through the parser, never with a cast. A function that returns the checked value is a `parse*`; one that returns nothing is an `assert*`; nothing is named `validate*` (decision record 21);
 - no re-exports outside `src/index.ts`, no import cycles, no dead `ErrorCode` member;
 - no module imports from a layer above its own or from another feature; the layer table is `test/static/guards/layers.ts` (`test/static/layer-direction.test.ts`);
+- a key is composed, and a key attribute named, only in `src/shared/dynamodb/table-schema.ts` and the three `src/<feature>/internal/rows.ts`; `messageCount` is read or written only in `src/history/internal/session.ts`; a `VectorBackend` is called only from `src/store/internal/vector-index.ts` (`test/static/owners.test.ts`, decision record 22);
 - errors are recognised by code (`test/static/error-recognition.test.ts`);
 - every AWS error name is declared by the SDK or documented (`test/static/aws-error-names.test.ts`);
 - the removed class names appear nowhere a reader would act on them (`test/static/retired-error-names.test.ts`);
