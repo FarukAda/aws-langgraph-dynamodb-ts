@@ -1,10 +1,9 @@
 import type { BaseMessage } from '@langchain/core/messages';
 
+import type { AdapterShell } from '../shared/adapter';
 import { guardPublic } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
-import { releaseOwned } from '../shared/release';
 import { assertCancelOptions } from '../shared/validation/collaborators';
-import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { addMessages as addMessagesAction } from './actions/add-messages';
 import { clearSession } from './actions/clear';
 import { getMessages as getMessagesAction } from './actions/get-messages';
@@ -29,8 +28,7 @@ import type {
  */
 export class DynamoDBChatMessageHistory {
   private readonly context: HistoryContext;
-  private readonly ownsClient: boolean;
-  private readonly ddbClient: ReturnType<typeof setUpHistory>['ddbClient'];
+  private readonly shell: AdapterShell;
 
   /**
    * Accepts: `options` — validated here, so a misconfiguration surfaces at
@@ -46,8 +44,7 @@ export class DynamoDBChatMessageHistory {
   constructor(options: DynamoDBChatMessageHistoryOptions) {
     const setup = setUpHistory(options);
     this.context = setup.context;
-    this.ownsClient = setup.ownsClient;
-    this.ddbClient = setup.ddbClient;
+    this.shell = setup.shell;
   }
 
   /**
@@ -266,7 +263,7 @@ export class DynamoDBChatMessageHistory {
    * "nothing this adapter raises", which a caller reads as nothing at all.
    */
   destroy(): void {
-    releaseOwned([this.context.offloader, this.ownsClient ? this.ddbClient : undefined]);
+    this.shell.release();
   }
 
   /**
@@ -286,12 +283,6 @@ export class DynamoDBChatMessageHistory {
    * per request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    return guardPublic('history.ensureS3LifecycleRule', async () => {
-      if (!this.context.offloader || !this.context.ttl) return;
-      await this.context.offloader.ensureLifecycleRule(
-        lifecycleExpirationDays(this.context.ttl),
-        this.context.logger,
-      );
-    });
+    return guardPublic('history.ensureS3LifecycleRule', () => this.shell.ensureLifecycleRule());
   }
 }

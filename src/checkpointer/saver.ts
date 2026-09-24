@@ -10,13 +10,12 @@ import {
   type PendingWrite,
 } from '@langchain/langgraph-checkpoint';
 
+import type { AdapterShell } from '../shared/adapter';
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
-import { releaseOwned } from '../shared/release';
 import { assertCancelOptions } from '../shared/validation/collaborators';
 import { checkedShape } from '../shared/validation/option-shape';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
-import { ensureS3Lifecycle } from './actions/ensure-lifecycle';
 import { getCheckpointTuple } from './actions/get-tuple';
 import { listCheckpoints } from './actions/list';
 import { putCheckpoint } from './actions/put';
@@ -34,8 +33,7 @@ import type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './types';
  */
 export class DynamoDBSaver extends BaseCheckpointSaver {
   private readonly context: CheckpointerContext;
-  private readonly ownsClient: boolean;
-  private readonly ddbClient: ReturnType<typeof setUpCheckpointer>['ddbClient'];
+  private readonly shell: AdapterShell;
 
   /**
    * Accepts: `options` — validated here, so a misconfiguration surfaces at
@@ -55,8 +53,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     super(checkedShape(options, SAVER_KEYS, 'options').serde);
     const setup = setUpCheckpointer(options, this.serde);
     this.context = setup.context;
-    this.ownsClient = setup.ownsClient;
-    this.ddbClient = setup.ddbClient;
+    this.shell = setup.shell;
   }
 
   /**
@@ -312,7 +309,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * "nothing this adapter raises", which a caller reads as nothing at all.
    */
   destroy(): void {
-    releaseOwned([this.context.offloader, this.ownsClient ? this.ddbClient : undefined]);
+    this.shell.release();
   }
 
   /**
@@ -334,6 +331,6 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * not per request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    return guardPublic('saver.ensureS3LifecycleRule', () => ensureS3Lifecycle(this.context));
+    return guardPublic('saver.ensureS3LifecycleRule', () => this.shell.ensureLifecycleRule());
   }
 }

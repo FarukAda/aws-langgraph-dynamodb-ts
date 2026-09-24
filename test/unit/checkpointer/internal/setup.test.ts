@@ -1,4 +1,5 @@
 import { setUpCheckpointer } from '../../../../src/checkpointer/internal/setup';
+import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
 
 const serde = {
@@ -8,9 +9,7 @@ const serde = {
 
 describe('setUpCheckpointer', () => {
   it('rejects an option key this package does not read', () => {
-    expect(() =>
-      setUpCheckpointer({ tableName: 'tbl', readConcurency: 4 } as never, serde),
-    ).toThrow(
+    expect(() => new DynamoDBSaver({ tableName: 'tbl', readConcurency: 4 } as never)).toThrow(
       expect.objectContaining({
         code: 'VALIDATION',
         context: { field: 'options.readConcurency' },
@@ -45,16 +44,18 @@ describe('setUpCheckpointer', () => {
       },
       serde,
     );
-    expect(setup.ownsClient).toBe(true);
+    setup.shell.release();
+    expect(fakeClient.destroy).toHaveBeenCalledTimes(1);
     expect(setup.context.tableName).toBe('ckpt');
     expect(setup.context.serde).toBe(serde);
     expect(setup.context.offloader).toBeUndefined();
   });
 
   it('does not own an injected client', () => {
-    const injected = { ...fakeClientMethods(), send: jest.fn() };
+    const injected = { ...fakeClientMethods(), send: jest.fn(), destroy: jest.fn() };
     const setup = setUpCheckpointer({ tableName: 'ckpt', client: injected }, serde);
-    expect(setup.ownsClient).toBe(false);
+    setup.shell.release();
+    expect(injected.destroy).not.toHaveBeenCalled();
     expect(setup.context.client).toBe(injected);
   });
 

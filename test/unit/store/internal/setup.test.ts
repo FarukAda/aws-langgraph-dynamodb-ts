@@ -40,7 +40,8 @@ describe('setUpStore', () => {
       clientConfig: { region: 'us-east-1' },
       createClient: () => fake as never,
     });
-    expect(setup.ownsClient).toBe(true);
+    setup.shell.release();
+    expect(fake.destroy).toHaveBeenCalledTimes(1);
     expect(setup.context.serde).toBe(JSON_SERDE);
     expect(setup.context.tableName).toBe('store');
     expect(setup.context.maxSearchCandidates).toBe(DEFAULT_MAX_SEARCH_CANDIDATES);
@@ -84,15 +85,17 @@ describe('setUpStore', () => {
       dims: 3,
       embeddings: { embedQuery: () => [0], embedDocuments: () => [[0]] } as never,
     };
+    const client = { ...fakeClientMethods(), destroy: jest.fn() };
     const setup = setUpStore({
       tableName: 'store',
-      client: fakeClientMethods(),
+      client,
       compression: { enabled: true },
       ttl: { days: 1 },
       index,
       s3: { bucketName: 'b' },
     });
-    expect(setup.ownsClient).toBe(false);
+    setup.shell.release();
+    expect(client.destroy).not.toHaveBeenCalled();
     expect(setup.context.compression).toEqual({ enabled: true });
     expect(setup.context.ttl).toEqual({ days: 1 });
     expect(setup.context.index).toBe(index);

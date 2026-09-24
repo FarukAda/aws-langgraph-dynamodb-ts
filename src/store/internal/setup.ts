@@ -10,37 +10,24 @@
  * defaults filled in.
  */
 
-import type { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import type { CompressionConfig } from '../../shared/codec/compression';
+import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
-import { offloaderConfigFor } from '../../shared/codec/s3/config';
-import { S3Offloader } from '../../shared/codec/s3/offloader';
 import {
   DEFAULT_MAX_SEARCH_CANDIDATES,
-  DEFAULT_READ_CONCURRENCY,
   MAX_SCAN_ITEMS,
   MAX_SEARCH_CANDIDATES,
   MAX_TOTAL_ITEMS_IN_MEMORY,
 } from '../../shared/constants';
-import { resolveDynamoDBClient, warnOnStackedRetries } from '../../shared/dynamodb/client';
-import type { DynamoDBDocumentLike } from '../../shared/dynamodb/client';
-import { DEFAULT_INDEX_SHARDS } from '../../shared/dynamodb/recency-index';
-import type { RetryOptions } from '../../shared/dynamodb/retry';
-import { resolveRetryPolicy } from '../../shared/dynamodb/retry';
 import { validationError } from '../../shared/errors/errors';
-import { type Logger, resolveLogger } from '../../shared/logging/logger';
 import {
-  assertBaseCollaborators,
   assertMembers,
   EMBEDDINGS_MEMBERS,
   VECTOR_BACKEND_MEMBERS,
 } from '../../shared/validation/collaborators';
 import { allKeysOf, assertShape } from '../../shared/validation/option-shape';
-import { assertBaseAdapterOptions } from '../../shared/validation/options';
 import { assertInteger, assertStringArray } from '../../shared/validation/primitives';
-import type { TtlOption } from '../../shared/validation/ttl';
 import type { DynamoDBStoreOptions, ListNamespacesOptions, SearchOptions } from '../types';
 import {
   VECTOR_SCORE_DIRECTIONS,
@@ -49,37 +36,19 @@ import {
 } from '../vector-backend';
 
 /** Resolved collaborators shared by every store action. */
-export interface StoreContext {
-  client: DynamoDBDocumentLike;
-  tableName: string;
+export interface StoreContext extends AdapterCore {
   serde: SerializerProtocol;
-  compression?: CompressionConfig;
-  offloader?: S3Offloader;
-  ttl?: TtlOption;
-  logger: Logger;
   index?: IndexConfig;
   vectorBackend?: VectorBackend;
   vectorScoreDirection: VectorScoreDirection;
   maxSearchCandidates: number;
   maxScanItems: number;
-  /** Retry budget and backoff for every DynamoDB call, with the retry debug log attached. */
-  retry?: RetryOptions;
-  /**
-   * Index partitions per adapter for the recency index; see `indexKeys`.
-   * Absent means the default, which is where it is resolved.
-   */
-  indexShards?: number;
-  /** Payloads decoded at once by one call; the memory ceiling’s multiplier. */
-  readConcurrency?: number;
-  /** Name of the recency index, when the table carries one; see `BaseAdapterOptions.indexName`. */
-  indexName?: string;
 }
 
 /** Result of wiring up a store from its options. */
 export interface StoreSetup {
   context: StoreContext;
-  ddbClient: DynamoDBClient | undefined;
-  ownsClient: boolean;
+  shell: AdapterShell;
 }
 
 /**
@@ -89,9 +58,8 @@ export interface StoreSetup {
  * is wrong. Everything optional has a default here and nowhere else, which is
  * what lets every action read `context.x` without re-deciding what absent means.
  *
- * Returns: the context every action shares, plus the client and whether this
- * store owns it — a client the caller passed in is never destroyed by
- * `destroy()`.
+ * Returns: the context every action shares, and the shell that releases what
+ * it holds — a client the caller passed in is never destroyed by `destroy()`.
  *
  * Throws: `VALIDATION` for any invalid option, naming the option.
  *
@@ -101,37 +69,25 @@ export interface StoreSetup {
  */
 export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
   assertShape(options, STORE_KEYS, 'options');
-  assertStoreOptions(options);
-  assertBaseCollaborators(options);
-  if (options.vectorBackend !== undefined) {
-    assertMembers(options.vectorBackend, VECTOR_BACKEND_MEMBERS, 'vectorBackend');
-  }
-  const logger = resolveLogger(options.logger);
-  const resolved = resolveDynamoDBClient(options);
-  if (!resolved.ownsClient) void warnOnStackedRetries(resolved.client, logger);
+  const shell = openAdapter(options, 'store', {
+    options: () => assertStoreOptions(options),
+    collaborators: () => {
+      if (options.vectorBackend !== undefined) {
+        assertMembers(options.vectorBackend, VECTOR_BACKEND_MEMBERS, 'vectorBackend');
+      }
+    },
+  });
   return {
+    shell,
     context: {
-      client: resolved.client,
-      tableName: options.tableName,
+      ...shell.core,
       serde: options.serde ?? JSON_SERDE,
-      compression: options.compression,
-      offloader: options.s3
-        ? new S3Offloader(offloaderConfigFor(options.s3, 'store', options.clientConfig))
-        : undefined,
-      ttl: options.ttl,
-      logger,
-      retry: resolveRetryPolicy(options.retry, logger),
-      indexShards: options.indexShards ?? DEFAULT_INDEX_SHARDS,
-      readConcurrency: options.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
-      indexName: options.indexName,
       index: options.index,
       vectorBackend: options.vectorBackend,
       vectorScoreDirection: options.vectorScoreDirection ?? 'relevance',
       maxSearchCandidates: options.maxSearchCandidates ?? DEFAULT_MAX_SEARCH_CANDIDATES,
       maxScanItems: options.maxScanItems ?? MAX_TOTAL_ITEMS_IN_MEMORY,
     },
-    ddbClient: resolved.ddbClient,
-    ownsClient: resolved.ownsClient,
   };
 }
 
@@ -254,7 +210,8 @@ function assertLimits(options: DynamoDBStoreOptions): void {
 }
 
 /**
- * Validate every store option at construction, shared options first.
+ * Validate the store's own options at construction; the shared ones are
+ * `openAdapter`'s, which checks them before these.
  *
  * A `vectorBackend` without an `index` is rejected outright rather than
  * silently degrading: with no embeddings configured, every `put` would compute
@@ -277,7 +234,6 @@ function assertLimits(options: DynamoDBStoreOptions): void {
  * at construction, where the fix is, rather than at the first put or search.
  */
 export function assertStoreOptions(options: DynamoDBStoreOptions): void {
-  assertBaseAdapterOptions(options);
   assertLimits(options);
   if (options.vectorBackend && !options.index) {
     throw validationError(

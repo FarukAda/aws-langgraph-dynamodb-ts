@@ -6,12 +6,11 @@ import {
   type SearchItem,
 } from '@langchain/langgraph-checkpoint';
 
+import type { AdapterShell } from '../shared/adapter';
 import { guardPublic } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
-import { releaseOwned } from '../shared/release';
 import { assertSignalLike, assertCancelOptions } from '../shared/validation/collaborators';
 import { assertShape } from '../shared/validation/option-shape';
-import { lifecycleExpirationDays } from '../shared/validation/ttl';
 import { listNamespaces } from './actions/list-namespaces';
 import { putItem } from './actions/put';
 import { reconcileVectorIndex as reconcileVectorIndexAction } from './actions/reconcile-vector-index';
@@ -47,8 +46,7 @@ type SingleResult = Item | null | SearchItem[] | string[][];
  */
 export class DynamoDBStore extends BaseStore {
   private readonly context: StoreContext;
-  private readonly ownsClient: boolean;
-  private readonly ddbClient: ReturnType<typeof setUpStore>['ddbClient'];
+  private readonly shell: AdapterShell;
 
   /**
    * Accepts: `options` — validated here, so a misconfiguration surfaces at
@@ -67,8 +65,7 @@ export class DynamoDBStore extends BaseStore {
     super();
     const setup = setUpStore(options);
     this.context = setup.context;
-    this.ownsClient = setup.ownsClient;
-    this.ddbClient = setup.ddbClient;
+    this.shell = setup.shell;
   }
 
   /**
@@ -380,7 +377,7 @@ export class DynamoDBStore extends BaseStore {
    * "nothing this adapter raises", which a caller reads as nothing at all.
    */
   destroy(): void {
-    releaseOwned([this.context.offloader, this.ownsClient ? this.ddbClient : undefined]);
+    this.shell.release();
   }
 
   /**
@@ -401,12 +398,6 @@ export class DynamoDBStore extends BaseStore {
    * per request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    return guardPublic('store.ensureS3LifecycleRule', async () => {
-      if (!this.context.offloader || !this.context.ttl) return;
-      await this.context.offloader.ensureLifecycleRule(
-        lifecycleExpirationDays(this.context.ttl),
-        this.context.logger,
-      );
-    });
+    return guardPublic('store.ensureS3LifecycleRule', () => this.shell.ensureLifecycleRule());
   }
 }
