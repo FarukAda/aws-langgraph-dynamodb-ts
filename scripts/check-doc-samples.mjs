@@ -45,7 +45,7 @@ export const DOCUMENTS = ['README.md', 'CONTRIBUTING.md', 'CHANGELOG.md'];
 export const EXPECTED_SKIPS = 2;
 
 /** A scan that finds fewer samples than this is broken, not clean. */
-export const MINIMUM_SAMPLES = 8;
+export const MINIMUM_SAMPLES = 15;
 
 /**
  * How long the compiler gets before this script kills it and fails rather

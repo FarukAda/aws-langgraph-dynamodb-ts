@@ -11,8 +11,9 @@ AWS instead of documenting it.
 
 Start with the [README](../README.md), which covers installation,
 configuration and day-to-day use. The [quick start](../README.md#quick-start)
-walks through the checkpointer, the store and chat history against a table
-you already have; [error handling](../README.md#error-handling) documents the
+installs the package and runs a minimal agent against a table you already
+have, and the [usage examples](../README.md#usage-examples) walk through the
+checkpointer, the store, chat history and the factory; [error handling](../README.md#error-handling) documents the
 `DynamoDBLangGraphError` shape and every `ErrorCode`; and
 [operations](../README.md#operations) covers limits, per-call costs,
 monitoring and what can still go wrong in production.

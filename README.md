@@ -38,12 +38,23 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 - [Key features](#key-features)
 - [Versioning and support](#versioning-and-support)
 - [Architecture](#architecture)
-- [Install](#install)
 - [Quick start](#quick-start)
-  - [Checkpointer](#checkpointer)
-  - [Store + semantic search](#store--semantic-search)
+  - [Installation](#installation)
+  - [Peer dependencies](#peer-dependencies)
+  - [Runtime requirements](#runtime-requirements)
+  - [Minimal agent](#minimal-agent)
+- [Usage examples](#usage-examples)
+  - [Resume a thread and read its history](#resume-a-thread-and-read-its-history)
+  - [Long-term memory with semantic search](#long-term-memory-with-semantic-search)
+  - [Memory inside a graph](#memory-inside-a-graph)
   - [Chat history](#chat-history)
-  - [Factory](#factory)
+  - [RunnableWithMessageHistory](#runnablewithmessagehistory)
+  - [One client for all three adapters](#one-client-for-all-three-adapters)
+  - [Large payloads: S3 offload and compression](#large-payloads-s3-offload-and-compression)
+  - [Expiry with TTL](#expiry-with-ttl)
+  - [Bring your own DynamoDB client](#bring-your-own-dynamodb-client)
+  - [Cancellation and timeouts](#cancellation-and-timeouts)
+  - [Listing sessions, threads and namespaces](#listing-sessions-threads-and-namespaces)
 - [Options](#options)
 - [Retries and backoff](#retries-and-backoff)
 - [Error handling](#error-handling)
@@ -154,14 +165,18 @@ The key each row is stored under is in [Table schema](#table-schema).
 
 ---
 
-## Install
+## Quick start
+
+### Installation
 
 ```bash
 npm install @farukada/aws-langgraph-dynamodb-ts \
   @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb \
-  @langchain/core @langchain/langgraph-checkpoint
-# plus @langchain/langgraph itself, which your application already depends on
+  @langchain/core @langchain/langgraph-checkpoint \
+  @langchain/langgraph
 ```
+
+`@langchain/langgraph` is your application's own dependency rather than this package's: the minimal agent below imports it to build the graph. The two DynamoDB SDK packages already ship with this package as dependencies; they are listed so that your own code can import them, as [Bring your own DynamoDB client](#bring-your-own-dynamodb-client) does.
 
 Optional peer dependencies, installed only if you use the matching feature:
 
@@ -183,7 +198,425 @@ import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts'; // ESM or T
 const { DynamoDBSaver } = require('@farukada/aws-langgraph-dynamodb-ts'); // CommonJS
 ```
 
-Node 22 or later is required; the shipped declarations target TypeScript 5.x and later. **Bundling:** the optional `@aws-sdk/client-s3` peer is loaded lazily through a dynamic `import()`, so a bundler (esbuild, rollup, webpack) must either have it installed or mark `@aws-sdk/*` external — CDK's `NodejsFunction` does the latter by default, a bare esbuild build does not.
+### Peer dependencies
+
+| Package | Range | Needed for |
+| --- | --- | --- |
+| `@langchain/core` | `^1.2.11` | every adapter: messages, `Embeddings`, `RunnableConfig` |
+| `@langchain/langgraph-checkpoint` | `^1.1.5` | every adapter: `BaseCheckpointSaver`, `BaseStore`, the serializer protocol |
+| `@aws-sdk/client-s3` | `^3.1132.0` | S3 offloading only; an optional peer |
+| `@langchain/langgraph` | any 1.x release depending on a supported `@langchain/langgraph-checkpoint` | your application's, not a peer: the graphs in the examples below |
+
+`@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb` and `@aws-sdk/util-dynamodb` are regular dependencies and install with the package. What each range is tested against is in [Supported runtimes and peers](#supported-runtimes-and-peers).
+
+### Runtime requirements
+
+- **Node.js** 22 or later; CI runs 22, 24 and 26 on Linux, macOS and Windows.
+- **Module format:** one CommonJS build, usable from both `import` and `require`, as shown above.
+- **TypeScript:** the shipped declarations target TypeScript 5.x and later.
+- **Tree-shaking:** the package declares `"sideEffects": false`.
+- **Bundling:** the optional `@aws-sdk/client-s3` peer is loaded lazily through a dynamic `import()`, so a bundler (esbuild, rollup, webpack) must either have it installed or mark `@aws-sdk/*` external — CDK's `NodejsFunction` does the latter by default, a bare esbuild build does not.
+- **Top-level `await`:** the samples in this README use it, which needs an ES module (a `.mjs` file, `"type": "module"`, or TypeScript emitting ES modules). In CommonJS, wrap a sample's body in an `async` function and call it.
+
+### Minimal agent
+
+The table must exist before the first call: [Infrastructure setup](#infrastructure-setup) creates it, and [IAM permissions](#iam-permissions) lists the actions the adapters call. This is a complete LangGraph agent whose conversation lives in DynamoDB:
+
+```typescript
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { END, MessagesAnnotation, START, StateGraph } from '@langchain/langgraph';
+import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts';
+
+declare const model: BaseChatModel; // any LangChain chat model, e.g. ChatBedrockConverse
+
+const checkpointer = new DynamoDBSaver({
+  tableName: 'langgraph',
+  clientConfig: { region: 'eu-west-1' },
+});
+
+const agent = new StateGraph(MessagesAnnotation)
+  .addNode('model', async (state) => ({ messages: [await model.invoke(state.messages)] }))
+  .addEdge(START, 'model')
+  .addEdge('model', END)
+  .compile({ checkpointer });
+
+const thread = { configurable: { thread_id: 'user-42' } };
+await agent.invoke({ messages: [{ role: 'user', content: 'My name is Ada.' }] }, thread);
+
+// A later request, even from another process: the conversation is read back from DynamoDB.
+const { messages } = await agent.invoke(
+  { messages: [{ role: 'user', content: 'What is my name?' }] },
+  thread,
+);
+console.log(messages.at(-1)?.content);
+
+checkpointer.destroy(); // releases the DynamoDB client this saver created
+```
+
+Every step of the graph writes a checkpoint under `thread_id`, and the second `invoke` starts from the newest one, so the model sees both turns. The saver built its own client from `clientConfig`, which is why `destroy()` closes it; an injected `client` is never closed ([Bring your own DynamoDB client](#bring-your-own-dynamodb-client)). The [examples](examples/README.md) directory has runnable scripts against real AWS, including an agent on a Bedrock chat model whose only memory is `DynamoDBSaver`.
+
+## Usage examples
+
+Each example below compiles in CI against the package's source. A sample that uses `saver`, `store`, `history`, `model` or `embeddings` without constructing it assumes an adapter built as in the examples around it, a LangChain chat model and a LangChain `Embeddings`. The [examples](examples/README.md) directory holds scripts that run against real AWS.
+
+### Resume a thread and read its history
+
+Use this when a user comes back to a conversation, or when you need to show, audit or delete what a thread did.
+
+```typescript
+import { END, MessagesAnnotation, START, StateGraph } from '@langchain/langgraph';
+
+const agent = new StateGraph(MessagesAnnotation)
+  .addNode('model', async (state) => ({ messages: [await model.invoke(state.messages)] }))
+  .addEdge(START, 'model')
+  .addEdge('model', END)
+  .compile({ checkpointer: saver });
+
+const thread = { configurable: { thread_id: 'user-42' } };
+
+// The newest checkpoint of the thread.
+const current = await agent.getState(thread);
+console.log(current.values.messages.length, current.next);
+
+// Every checkpoint of the thread, newest first.
+for await (const snapshot of agent.getStateHistory(thread)) {
+  console.log(snapshot.config.configurable?.checkpoint_id, snapshot.metadata?.step);
+}
+
+// Remove the thread: its checkpoints and pending writes, then (best-effort) their offloaded payloads.
+await saver.deleteThread('user-42');
+```
+
+`getState` reads through `saver.getTuple`, which is strongly consistent, so a checkpoint just written is always seen; `getStateHistory` reads through `saver.list`, which is eventually consistent. `deleteThread` reads the thread's partition once and deletes what it saw, so run it when no graph is still writing to the thread ([Checkpointer semantics](#features)).
+
+### Long-term memory with semantic search
+
+Use the store for facts that outlive one thread — a user's preferences, notes, documents — and search them by meaning, by field values, or both.
+
+```typescript
+import { BedrockEmbeddings } from '@langchain/aws';
+import { DynamoDBStore } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const store = new DynamoDBStore({
+  tableName: 'langgraph',
+  clientConfig: { region: 'eu-west-1' },
+  index: {
+    dims: 1024,
+    embeddings: new BedrockEmbeddings({ model: 'amazon.titan-embed-text-v2:0', region: 'eu-west-1' }),
+    fields: ['text'], // which fields to embed; defaults to the whole document ('$')
+  },
+});
+
+await store.put(['library'], 'doc-1', {
+  text: 'Amazon DynamoDB is a serverless NoSQL database',
+  kind: 'note',
+  stars: 5,
+});
+await store.put(['library'], 'doc-2', {
+  text: 'Espresso is a concentrated coffee',
+  kind: 'recipe',
+  stars: 3,
+});
+
+// Metadata filtering (operators: $eq, $ne, $gt, $gte, $lt, $lte, $in, $nin)
+const notes = await store.search(['library'], { filter: { kind: 'note', stars: { $gte: 4 } } });
+const either = await store.search(['library'], { filter: { kind: { $in: ['note', 'recipe'] } } });
+
+// Semantic search — ranked by cosine similarity to the query embedding
+const hits = await store.search(['library'], { query: 'cloud database', limit: 5 });
+//=> doc-1 should rank first, with a `score` on each SearchItem
+
+await store.get(['library'], 'doc-1');
+await store.delete(['library'], 'doc-1');
+await store.listNamespaces({ prefix: ['library'], maxDepth: 1 });
+
+store.destroy();
+```
+
+With an `index`, `put` embeds each configured field separately and `search` ranks an item by its best-matching vector, in process; a prefix holding more than `maxSearchCandidates` candidates (default 1000) is refused with a `VALIDATION` error rather than ranked. A filter names top-level fields of the stored value, every condition must hold, and `$gt`/`$gte`/`$lt`/`$lte` compare like types only — numbers with numbers, strings with strings — where `InMemoryStore` converts both sides with `Number()` ([Differences from the reference implementations](#differences-from-the-reference-implementations)). For a corpus larger than that cap, configure a `vectorBackend` ([Features](#features)).
+
+### Memory inside a graph
+
+Use this when a node should recall what it learned about a user in earlier threads, and remember new facts for later ones.
+
+```typescript
+import { SystemMessage } from '@langchain/core/messages';
+import {
+  END,
+  type LangGraphRunnableConfig,
+  MessagesAnnotation,
+  START,
+  StateGraph,
+} from '@langchain/langgraph';
+import { randomUUID } from 'node:crypto';
+
+async function respond(state: typeof MessagesAnnotation.State, config: LangGraphRunnableConfig) {
+  const userId = String(config.configurable?.user_id);
+  const query = String(state.messages.at(-1)?.content ?? '');
+
+  const memories = (await config.store?.search(['memories', userId], { query, limit: 3 })) ?? [];
+  const recalled = memories.map((memory) => String(memory.value.text)).join('\n');
+
+  const reply = await model.invoke([
+    new SystemMessage(`What you know about this user:\n${recalled}`),
+    ...state.messages,
+  ]);
+  await config.store?.put(['memories', userId], randomUUID(), { text: query });
+  return { messages: [reply] };
+}
+
+const agent = new StateGraph(MessagesAnnotation)
+  .addNode('respond', respond)
+  .addEdge(START, 'respond')
+  .addEdge('respond', END)
+  .compile({ checkpointer: saver, store });
+
+await agent.invoke(
+  { messages: [{ role: 'user', content: 'I prefer answers in French.' }] },
+  { configurable: { thread_id: 'thread-7', user_id: 'user-42' } },
+);
+```
+
+The checkpointer keeps this thread; the store keeps what outlives it, keyed by user rather than by thread. Inside a graph LangGraph reaches the store through `batch()`, so upstream's `put()`-only namespace rules (no `.` in a label, no `"langgraph"` root) do not apply there, and the per-item `index` argument of `put` is not forwarded ([Production notes](#production-notes), [Differences from `InMemoryStore`](#features)). Without an `index` on the store, a `search` with a `query` falls back to a plain, unranked search.
+
+### Chat history
+
+Use this when your application stores a plain message list per session — a chat UI, a support transcript — rather than a LangGraph state.
+
+```typescript
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { DynamoDBChatMessageHistory } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const history = new DynamoDBChatMessageHistory({
+  tableName: 'langgraph',
+  clientConfig: { region: 'eu-west-1' },
+});
+
+await history.addMessages('session-1', [new HumanMessage('Hello!')]);
+await history.addMessage('session-1', new AIMessage('Hi!'));
+const messages = await history.getMessages('session-1');
+const recent = await history.getMessages('session-1', { limit: 20 }); // newest 20, chronological
+await history.clear('session-1');
+
+history.destroy();
+```
+
+By default a read returns the whole session. `getMessages(sessionId, { limit, before })` returns a window instead — the newest `limit` messages, or only those appended before `before` — and `history.forSession(sessionId, { limit: 50 })` bounds what the adapter feeds the chain to the newest fifty, so a long-lived session does not grow the prompt without limit.
+
+`forSession` checks its arguments when it is called: a malformed session id, a window naming a key other than `limit`, or a `limit` that is not an integer of at least 1 and at most 10,000 throws `VALIDATION` synchronously, rather than returning an adapter that fails on first use. `RunnableWithMessageHistory` calls `getMessageHistory` from inside an async method, so there the throw surfaces as a rejected invocation.
+
+Listing sessions is in [Listing sessions, threads and namespaces](#listing-sessions-threads-and-namespaces).
+
+### RunnableWithMessageHistory
+
+Use this to give a LangChain chain (not a graph) a memory, through the single-session adapter `forSession`.
+
+```typescript
+import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts';
+import { RunnableWithMessageHistory } from '@langchain/core/runnables';
+import { DynamoDBChatMessageHistory } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const history = new DynamoDBChatMessageHistory({
+  tableName: 'langgraph',
+  clientConfig: { region: 'eu-west-1' },
+});
+
+const prompt = ChatPromptTemplate.fromMessages([
+  ['system', 'You are a helpful assistant.'],
+  new MessagesPlaceholder('history'),
+  ['human', '{input}'],
+]);
+
+const chat = new RunnableWithMessageHistory({
+  runnable: prompt.pipe(model),
+  getMessageHistory: (sessionId) => history.forSession(sessionId, { limit: 50 }),
+  inputMessagesKey: 'input',
+  historyMessagesKey: 'history',
+});
+
+const reply = await chat.invoke(
+  { input: 'Hi, I am Ada.' },
+  { configurable: { sessionId: 'session-1' } },
+);
+
+history.destroy();
+```
+
+Before each call the chain reads the newest fifty messages of the session into `{history}`; after it, the input and the reply are appended to the session. The window only bounds what is read — every message stays stored until `clear()` or its `ttl`.
+
+### One client for all three adapters
+
+Use the factory when one process runs the checkpointer, the store and the history together and should hold one DynamoDB client and one set of defaults.
+
+```typescript
+import { HumanMessage } from '@langchain/core/messages';
+import { DynamoDBFactory } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const factory = new DynamoDBFactory({
+  clientConfig: { region: 'eu-west-1' },
+  ttl: { days: 30 },
+  compression: { enabled: true },
+});
+
+const { saver, store, history, destroy } = factory.createAll({
+  saver: { tableName: 'langgraph' },
+  store: { tableName: 'langgraph', index: { dims: 1024, embeddings } },
+  history: { tableName: 'langgraph' },
+});
+
+try {
+  await store.put(['users', 'user-42'], 'profile', { text: 'Prefers French' });
+  await history.addMessage('session-1', new HumanMessage('Bonjour'));
+  // ... compile graphs with saver and store ...
+} finally {
+  destroy(); // closes the one shared client
+}
+```
+
+`createAll` builds all three adapters on **one shared DynamoDB client** and returns a single `destroy()` that tears everything down.
+
+Any section may be omitted (`createAll({ store: { tableName } })` returns `saver` and `history` as `undefined`), the factory's own `ttl`, `compression`, `s3`, `retry` and `logger` apply to every adapter unless a section overrides them, and `createSaver`, `createStore` and `createChatMessageHistory` build one adapter each on its own client with the same defaults.
+
+`destroy()` on an adapter — `DynamoDBSaver`, `DynamoDBStore` (also `stop()`) or `DynamoDBChatMessageHistory` — offers **every** resource it owns its release before it reports anything, and then raises the first failure, so a client that refuses to close can no longer strand the one behind it. A `client` you injected is yours and is never destroyed. The factory's `destroy()` is the deliberate exception: it tears down three adapters at once, so it releases them all, logs any that failed and never throws.
+
+The argument of each `create*` method, and each `createAll` section, is one adapter's options, and a mistake in it is named the way that adapter's constructor names it: `options` for a value that is not an object — `null` included, so a `null` section is refused rather than skipped — and `options.<key>`, `tableName` and so on for one inside it. `createAll` also refuses a key other than `saver`, `store` and `history`, naming `options.<key>`. The factory's own options are checked when it is constructed: options that are not an object, an unknown key, a `client` beside a `clientConfig`, a `clientConfig` that is not an object, and a `logger` missing one of its four methods, since `createAll` logs its own teardown failures through it. Its `ttl`, `compression`, `s3` and `retry` are checked by each adapter that inherits them, since an adapter's own options may replace them.
+
+### Large payloads: S3 offload and compression
+
+Use this when a checkpoint, a stored value or a message can approach DynamoDB's 400 KB item limit — long tool outputs, documents in state, many messages in one checkpoint.
+
+```typescript
+import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const saver = new DynamoDBSaver({
+  tableName: 'langgraph',
+  clientConfig: { region: 'eu-west-1' }, // the S3 client uses this region too
+  compression: { enabled: true },
+  s3: { bucketName: 'my-langgraph-payloads' },
+  ttl: { days: 30 },
+});
+
+await saver.ensureS3LifecycleRule(); // once, from a deployment step
+
+saver.destroy();
+```
+
+Compression gzips a payload of at least 1024 bytes at level 6 and keeps the gzipped form only when it is at least 10% smaller. A stored payload of at least 350 KB goes to S3 under the saver's own prefix, `langgraph-checkpoints/checkpointer/`, and the row keeps a descriptor pointing at it; without `s3`, a payload over 392 KB is refused. The S3 client inherits the DynamoDB `clientConfig.region` unless `s3.clientConfig.region` names another, and it needs the optional `@aws-sdk/client-s3` peer. `ensureS3LifecycleRule()` installs the rules that expire offloaded objects to match the `ttl`; it throws when it cannot write them, so it belongs in a deployment step ([S3 lifecycle rules](#s3-lifecycle-rules), [S3 offloading](#features)).
+
+### Expiry with TTL
+
+Use this when conversations and memories should disappear on their own after a retention period.
+
+```typescript
+import {
+  DynamoDBChatMessageHistory,
+  DynamoDBSaver,
+  DynamoDBStore,
+} from '@farukada/aws-langgraph-dynamodb-ts';
+
+const table = { tableName: 'langgraph', clientConfig: { region: 'eu-west-1' } };
+
+const saver = new DynamoDBSaver({ ...table, ttl: { days: 30 } });
+const store = new DynamoDBStore({ ...table, ttl: { days: 365 } });
+const history = new DynamoDBChatMessageHistory({ ...table, ttl: { seconds: 86_400 } });
+
+saver.destroy();
+store.destroy();
+history.destroy();
+```
+
+`ttl` takes one form, `{ days }` or `{ seconds }`, capped at five years, and is written to the `ttl` attribute as Unix-epoch seconds; enable DynamoDB TTL on that attribute for rows to be deleted. DynamoDB can take up to about 48 hours to sweep an expired row, so every read filters rows past their `ttl` in the meantime. Chat history anchors one TTL for the whole conversation on its session row, set when the session is created and shared by every message ([TTL expiry](#features)).
+
+### Bring your own DynamoDB client
+
+Use this when your application already configures a DynamoDB client — credentials, a VPC endpoint, tracing middleware — and the adapters should share it.
+
+```typescript
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const client = DynamoDBDocument.from(
+  new DynamoDBClient({
+    region: 'eu-west-1',
+    maxAttempts: 1, // the library retries; SDK retries would stack inside its budget
+    requestHandler: { requestTimeout: 10_000, throwOnRequestTimeout: true },
+  }),
+);
+
+const saver = new DynamoDBSaver({ tableName: 'langgraph', client });
+saver.destroy(); // does not close `client`: an injected client is yours
+```
+
+The adapter takes a `DynamoDBDocument`, not a raw `DynamoDBClient`, and uses it exactly as handed over. `maxAttempts: 1` keeps the library's retry layer the only one — an injected client whose SDK retries are on logs a `warn` at construction — and the request timeout bounds a single attempt, which `maxAttempts: 1` alone does not ([Retries and backoff](#retries-and-backoff)).
+
+### Cancellation and timeouts
+
+Use this to bound how long a request may wait on DynamoDB, or to stop work when the caller has gone away.
+
+```typescript
+import { END, MessagesAnnotation, START, StateGraph } from '@langchain/langgraph';
+import { ErrorCode, isDynamoDBLangGraphError } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const agent = new StateGraph(MessagesAnnotation)
+  .addNode('model', async (state) => ({ messages: [await model.invoke(state.messages)] }))
+  .addEdge(START, 'model')
+  .addEdge('model', END)
+  .compile({ checkpointer: saver });
+const thread = { configurable: { thread_id: 'user-42' } };
+
+const signal = AbortSignal.timeout(5_000);
+try {
+  const recent = await history.getMessages('session-1', { limit: 20, signal });
+  await agent.invoke({ messages: [{ role: 'user', content: 'Hello' }] }, { ...thread, signal });
+} catch (error) {
+  const e = error as Error;
+  if (isDynamoDBLangGraphError(e) && e.code === ErrorCode.ABORTED) {
+    console.warn('cancelled during a DynamoDB or S3 call', e.context.operation);
+  } else if (signal.aborted) {
+    console.warn('cancelled by LangGraph outside a saver call');
+  } else {
+    throw error;
+  }
+}
+```
+
+The signal reaches the AWS SDK on every DynamoDB request and S3 transfer, so a cancel ends a request in flight and rejects with `ABORTED`. LangGraph passes `config.signal` to the saver, and it also checks the signal itself: a timeout that fires while a node runs rejects `invoke` with LangGraph's own error rather than `ABORTED`, which is why the sample tests `signal.aborted` as well. `store.get`, `store.put` and `store.delete` take no signal, because upstream's `BaseStore` gives them no parameter for one ([Error handling](#error-handling)).
+
+### Listing sessions, threads and namespaces
+
+Use this for an admin view or a "your conversations" page. Paging sessions by cursor needs the recency index, so the adapters here are built with `indexName`.
+
+```typescript
+import { DynamoDBChatMessageHistory, DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const table = { tableName: 'langgraph', clientConfig: { region: 'eu-west-1' }, indexName: 'gsi1' };
+const history = new DynamoDBChatMessageHistory(table);
+const saver = new DynamoDBSaver(table);
+
+// With `indexName`: newest-updated first, paged by cursor.
+// Each page is { sessions: [{ sessionId, title, messageCount, expiresAt?, ... }], nextCursor?: string }
+let cursor: string | undefined;
+do {
+  const page = await history.listSessions({ limit: 50, cursor });
+  for (const session of page.sessions) {
+    console.log(session.sessionId, session.title, session.messageCount, session.updatedAt);
+  }
+  cursor = page.nextCursor;
+} while (cursor);
+
+// Checkpoints of every thread in the table, newest first, through the recency index.
+for await (const tuple of saver.list({}, { limit: 20 })) {
+  console.log(tuple.config.configurable?.thread_id);
+}
+
+await store.listNamespaces({ prefix: ['memories'], maxDepth: 2 });
+
+history.destroy();
+saver.destroy();
+```
+
+A `cursor` requires `indexName` and is refused without it. Without `indexName`, `listSessions` is a table scan that cannot be paged: `{ limit: 50 }` returns the newest fifty, and omitting `limit` returns every session. Stop when `nextCursor` is absent, not when a page looks short — expired rows are dropped after the read. These listings cross tenants ([Multi-tenant deployments](#multi-tenant-deployments)), and `backfillRecencyIndex()` must run before `indexName` is set on a table that already holds rows ([Maintenance operations](#maintenance-operations)); the index definition is in [Infrastructure setup](#infrastructure-setup).
 
 ## Table schema
 
@@ -237,132 +670,6 @@ How each adapter lays out keys (informational — you don't manage this):
 **Why the key spaces cannot collide.** Each adapter tags its partition key with its own prefix, and those three tags differ in their very first character, so no `CHKPT#…` can ever equal a `STORE#…` or `HIST#…` — whatever identifiers you pass. That matters because reusing one id across adapters (a "conversation id" used as both a `thread_id` and a `sessionId`) is an entirely ordinary design: without the tags it put unrelated adapters' rows in one partition, where `deleteThread()`/`history.clear()` would delete each other's data and identically-composed sort keys could silently overwrite one another.
 
 Two further guards back that up, for a table holding hand-written rows or rows written before an upgrade: `deleteThread()`/`clear()` delete only rows whose sort key belongs to the calling adapter and log anything they leave in place, and every read tests a row against the attributes its kind must carry before decoding it, rather than trusting the key it was found at: the checkpointer's `META#` rows, the store's items and the chat history's session and message rows are each bound to the key they were found at as well, and a checkpoint's payload and pending-write rows are refused by the descriptor guard, which is the attribute a narrow would have tested. What a read does with a row that fails differs by read: the checkpointer's `getTuple` and `list` skip it and say so at `warn`, as does `store.reconcileVectorIndex`; `store.get` answers `null` and warns; `store.search` and `history.listSessions` drop it silently, because those two walk a whole prefix or table and one line per foreign row would fill a log rather than inform anyone; and a chat-history message read **reports** it whatever `onCorruptMessage` is set to — a conversation that quietly skips a row it cannot account for is the one outcome worse than a failed read. `history.reconcileMessageCount` refuses the same row for the same reason: a repaired count that disagreed with the read would describe a session nobody can open. Every one of those reads checks the row's own format version **before** its shape, so none of that applies to a row a newer release wrote: attribute names are this release's names rather than a later one's, and a row whose `v` is ahead of this reader is reported as `FORMAT_UNSUPPORTED` (field `v`) instead of being skipped as foreign because its attributes are no longer recognised. An offloaded payload's `s3Key` is bound the same way: before it is downloaded or deleted it must lie under the adapter's `keyPrefix` *and* the S3 path the row's own identifiers produce (`enc(thread_id)/…`, `enc(namespace…)/enc(key)`, `enc(sessionId)/…`), and a store row's `namespace`/`key` must agree with the partition and sort key it was found at — so a row planted in one partition can never make the library read or delete another tenant's object. A read of such a row fails with a `VALIDATION` error (field `s3Key`) on all three adapters — chat history included, whatever `onCorruptMessage` is set to, because a key outside the row's own path is a configuration or tenancy fault to report rather than a payload to write off — and a delete skips the object with a warning.
-
-## Quick start
-
-### Checkpointer
-
-```typescript
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
-import { END, MessagesAnnotation, START, StateGraph } from '@langchain/langgraph';
-import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts';
-
-const checkpointer = new DynamoDBSaver({
-  tableName: 'langgraph',
-  clientConfig: { region: 'eu-west-1' },
-});
-
-const graph = new StateGraph(MessagesAnnotation)
-  .addNode('reply', (state) => ({
-    messages: [new AIMessage(`Messages in this thread so far: ${state.messages.length}`)],
-  }))
-  .addEdge(START, 'reply')
-  .addEdge('reply', END)
-  .compile({ checkpointer });
-
-const config = { configurable: { thread_id: 'user-42' } };
-await graph.invoke({ messages: [new HumanMessage('Hello')] }, config);
-
-// Resume later (even in a new process) — state is loaded from DynamoDB.
-const resumed = await graph.invoke({ messages: [new HumanMessage('Still there?')] }, config);
-
-checkpointer.destroy(); // releases the client this instance created
-```
-
-### Store + semantic search
-
-```typescript
-import { DynamoDBStore } from '@farukada/aws-langgraph-dynamodb-ts';
-import { BedrockEmbeddings } from '@langchain/aws';
-
-const store = new DynamoDBStore({
-  tableName: 'langgraph',
-  clientConfig: { region: 'eu-west-1' },
-  index: {
-    dims: 1024,
-    embeddings: new BedrockEmbeddings({ model: 'amazon.titan-embed-text-v2:0', region: 'eu-west-1' }),
-    fields: ['text'], // which fields to embed; defaults to the whole document ('$')
-  },
-});
-
-await store.put(['library'], 'doc-1', { text: 'Amazon DynamoDB is a serverless NoSQL database' });
-await store.put(['library'], 'doc-2', { text: 'Espresso is a concentrated coffee' });
-
-// Metadata filtering (operators: $eq, $ne, $gt, $gte, $lt, $lte)
-await store.search(['library'], { filter: { type: 'note', score: { $gte: 5 } } });
-
-// Semantic search — ranked by cosine similarity to the query embedding
-const hits = await store.search(['library'], { query: 'cloud database', limit: 5 });
-//=> doc-1 ranks first, with a `score` on each SearchItem
-
-await store.get(['library'], 'doc-1');
-await store.delete(['library'], 'doc-1');
-await store.listNamespaces({ prefix: ['library'], maxDepth: 1 });
-```
-
-### Chat history
-
-```typescript
-import { DynamoDBChatMessageHistory } from '@farukada/aws-langgraph-dynamodb-ts';
-import { AIMessage, HumanMessage } from '@langchain/core/messages';
-
-const history = new DynamoDBChatMessageHistory({
-  tableName: 'langgraph',
-  clientConfig: { region: 'eu-west-1' },
-});
-
-await history.addMessages('session-1', [new HumanMessage('Hello!')]);
-await history.addMessage('session-1', new AIMessage('Hi!'));
-const messages = await history.getMessages('session-1');
-const recent = await history.getMessages('session-1', { limit: 20 }); // newest 20, chronological
-// { sessions: [{ sessionId, title, messageCount, expiresAt?, ... }], nextCursor?: string }
-const page = await history.listSessions({ limit: 50 });
-const next = page.nextCursor ? await history.listSessions({ cursor: page.nextCursor }) : undefined;
-await history.clear('session-1');
-```
-
-Use it with LangChain's `RunnableWithMessageHistory` via the single-session adapter:
-
-```typescript
-import { RunnableWithMessageHistory } from '@langchain/core/runnables';
-
-const withHistory = new RunnableWithMessageHistory({
-  runnable: chain,
-  getMessageHistory: (sessionId) => history.forSession(sessionId),
-  inputMessagesKey: 'input',
-  historyMessagesKey: 'history',
-});
-```
-
-By default a read returns the whole session. `getMessages(sessionId, { limit, before })` returns a window instead — the newest `limit` messages, or only those appended before `before` — and `history.forSession(sessionId, { limit: 50 })` bounds what the adapter feeds the chain to the newest fifty, so a long-lived session does not grow the prompt without limit.
-
-`forSession` checks its arguments when it is called: a malformed session id, a window naming a key other than `limit`, or a `limit` that is not an integer of at least 1 and at most 10,000 throws `VALIDATION` synchronously, rather than returning an adapter that fails on first use. `RunnableWithMessageHistory` calls `getMessageHistory` from inside an async method, so there the throw surfaces as a rejected invocation.
-
-### Factory
-
-`createAll` builds all three adapters on **one shared DynamoDB client** and returns a single `destroy()` that tears everything down.
-
-```typescript
-import { DynamoDBFactory } from '@farukada/aws-langgraph-dynamodb-ts';
-
-const factory = new DynamoDBFactory({ clientConfig: { region: 'eu-west-1' } });
-
-const { saver, store, history, destroy } = factory.createAll({
-  saver: { tableName: 'langgraph' },
-  store: { tableName: 'langgraph', index: { dims: 1024, embeddings } },
-  history: { tableName: 'langgraph' },
-});
-
-// ... use saver / store / history ...
-
-destroy(); // closes the one shared client
-```
-
-Any section may be omitted (`createAll({ store: { tableName } })` returns `saver` and `history` as `undefined`), the factory's own `ttl`, `compression`, `s3`, `retry` and `logger` apply to every adapter unless a section overrides them, and `createSaver`, `createStore` and `createChatMessageHistory` build one adapter each on its own client with the same defaults.
-
-`destroy()` on an adapter — `DynamoDBSaver`, `DynamoDBStore` (also `stop()`) or `DynamoDBChatMessageHistory` — offers **every** resource it owns its release before it reports anything, and then raises the first failure, so a client that refuses to close can no longer strand the one behind it. A `client` you injected is yours and is never destroyed. The factory's `destroy()` is the deliberate exception: it tears down three adapters at once, so it releases them all, logs any that failed and never throws.
-
-The argument of each `create*` method, and each `createAll` section, is one adapter's options, and a mistake in it is named the way that adapter's constructor names it: `options` for a value that is not an object — `null` included, so a `null` section is refused rather than skipped — and `options.<key>`, `tableName` and so on for one inside it. `createAll` also refuses a key other than `saver`, `store` and `history`, naming `options.<key>`. The factory's own options are checked when it is constructed: options that are not an object, an unknown key, a `client` beside a `clientConfig`, a `clientConfig` that is not an object, and a `logger` missing one of its four methods, since `createAll` logs its own teardown failures through it. Its `ttl`, `compression`, `s3` and `retry` are checked by each adapter that inherits them, since an adapter's own options may replace them.
 
 ## Options
 
