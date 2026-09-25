@@ -1,4 +1,4 @@
-import { nowSeconds as currentSeconds } from '../../shared/clock';
+import { nowSeconds } from '../../shared/clock';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency';
 import { paginateScan } from '../../shared/dynamodb/paginate';
 import { DEFAULT_INDEX_SHARDS, queryRecencyIndex } from '../../shared/dynamodb/recency-index';
@@ -27,7 +27,7 @@ async function pageFromIndex(
   indexName: string,
   request: ListSessionsRequest,
 ): Promise<SessionPage> {
-  const nowSeconds = currentSeconds();
+  const atSeconds = nowSeconds();
   const page = await queryRecencyIndex({
     client: context.client,
     tableName: context.tableName,
@@ -41,7 +41,7 @@ async function pageFromIndex(
     signal: request.signal,
   });
   const sessions = page.items
-    .map((raw) => summariseSession(raw, nowSeconds))
+    .map((raw) => summariseSession(raw, atSeconds))
     .filter((session): session is SessionMetadata => session !== undefined);
   return { sessions, ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }) };
 }
@@ -75,7 +75,7 @@ async function allByScan(
   request: ListSessionsRequest,
 ): Promise<SessionPage> {
   const sessions: SessionMetadata[] = [];
-  const nowSeconds = currentSeconds();
+  const atSeconds = nowSeconds();
   for await (const raw of paginateScan({
     retry: retryFor(context, request.signal),
     signal: request.signal,
@@ -92,7 +92,7 @@ async function allByScan(
     maxIterations: request.maxIterations,
     maxItems: request.maxItems,
   })) {
-    const session = summariseSession(raw, nowSeconds);
+    const session = summariseSession(raw, atSeconds);
     if (session) sessions.push(session);
   }
   /**
