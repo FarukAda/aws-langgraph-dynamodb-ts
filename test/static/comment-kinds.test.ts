@@ -35,6 +35,41 @@ describe('commentViolations', () => {
     expect(commentViolations(source)).toEqual([]);
   });
 
+  it('accepts JSDoc on an object-literal method', () => {
+    const source = [
+      'const obj = {',
+      '  /** Doubles a number. */',
+      '  double(x: number): number {',
+      '    return x * 2;',
+      '  },',
+      '};',
+    ].join('\n');
+    expect(commentViolations(source)).toEqual([]);
+  });
+
+  it('accepts JSDoc on a namespace member', () => {
+    const source = [
+      'namespace N {',
+      '  /** A namespace member. */',
+      '  export const a = 1;',
+      '}',
+    ].join('\n');
+    expect(commentViolations(source)).toEqual([]);
+  });
+
+  it('accepts JSDoc on each overload signature', () => {
+    const source = [
+      '/** Accepts a number. */',
+      'function f(x: number): number;',
+      '/** Accepts a string. */',
+      'function f(x: string): string;',
+      'function f(x: number | string): number | string {',
+      '  return x;',
+      '}',
+    ].join('\n');
+    expect(commentViolations(source)).toEqual([]);
+  });
+
   it('refuses a JSDoc block that documents a local declaration inside a function body', () => {
     const source = 'function f() {\n  /** the answer */\n  const x = 42;\n  return x;\n}';
     expect(commentViolations(source)).toEqual([{ line: 2, rule: 'jsdoc-inside-body' }]);

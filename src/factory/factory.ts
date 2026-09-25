@@ -198,7 +198,7 @@ export class DynamoDBFactory {
    * constructor does — `options` for a value that is not an object, checked
    * before the defaults are laid under it: reading `.client` off a `null`
    * value would throw here, and spreading a string would iterate its
-   * characters instead of refusing them.
+   * characters instead of refusing it.
    */
   createSaver(options: DynamoDBSaverOptions): DynamoDBSaver {
     assertObjectShape(options, 'options');

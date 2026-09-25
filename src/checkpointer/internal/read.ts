@@ -141,14 +141,14 @@ export async function fetchTargetMeta(
   );
   // Both caps stay off, each for its own reason. `maxItems` counts the rows
   // yielded past the server-side filter, and a finite value there would add
-  // the probe {@link paginateQuery} runs to tell a reached cap apart from an
+  // the probe `paginateQuery` runs to tell a reached cap apart from an
   // exhausted read — more requests, on the read the page size above exists to
   // make cheaper. `maxIterations` is the runaway guard, but a finite value
   // would turn a namespace whose rows have all aged out into a thrown
   // `RESULT_TRUNCATED` where this function documents `undefined`, failing
   // every graph step on exactly the thread shape the page size is here to
   // serve. The page size is what bounds the walk instead: it divides the
-  // requests a dead head costs by {@link LATEST_META_PAGE_SIZE}.
+  // requests a dead head costs by `LATEST_META_PAGE_SIZE`.
   const rows = paginateQuery({
     retry: retryFor(context, signal),
     signal,

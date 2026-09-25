@@ -33,7 +33,8 @@ export const MAX_TOTAL_ROWS_IN_MEMORY = 10000;
  * {@link MAX_TOTAL_ROWS_IN_MEMORY}'s hard collection cap. Aliasing the two —
  * so one reused the other's literal — would let retuning the memory cap
  * silently move the warning threshold too, for constants that answer
- * unrelated questions.
+ * unrelated questions, and would make knip report the pair as a duplicate
+ * export.
  */
 export const LIST_SCAN_WARN_THRESHOLD = 10000;
 
@@ -44,14 +45,14 @@ export interface PaginateOptions extends PaginateCoreOptions {
 }
 
 /**
- * Every item a Query returns, across all its pages.
+ * Every row a Query returns, across all its pages.
  *
  * Accepts: `params` — the Query input; `ExclusiveStartKey` is set per page and
  * anything the caller put there is replaced. `retry` and `signal` are applied
  * to each page read, `maxItems` / `maxIterations` to the walk (see
  * {@link paginatePages}).
  *
- * Returns: an async generator over the items, following `LastEvaluatedKey`
+ * Returns: an async generator over the rows, following `LastEvaluatedKey`
  * until it is absent. A page carrying no `Items` is an empty page, not the end.
  *
  * Throws: whatever the page read throws, plus the caps and abort behaviour of
@@ -104,16 +105,16 @@ async function readPage(reader: Reader, startKey: AttributeMap | undefined): Pro
   return reader.fetchPage(startKey);
 }
 
-/** Why {@link yieldPageRows} stopped: the page ran out, or the item cap was reached. */
+/** Why {@link yieldPageRows} stopped: the page ran out, or the row cap was reached. */
 type PageOutcome = 'exhausted' | 'capped';
 
 /**
- * Yield one page's items, counting toward the shared `state.yielded` budget.
- * Reaching the cap with unyielded items still on the page is a truncation;
- * reaching it on the last item is reported as `capped` for the caller to settle.
+ * Yield one page's rows, counting toward the shared `state.yielded` budget.
+ * Reaching the cap with unyielded rows still on the page is a truncation;
+ * reaching it on the last row is reported as `capped` for the caller to settle.
  *
  * Synchronous and private: nothing here awaits, and `paginatePages` delegates
- * to it with `yield*` from inside its own `async function*`, so the items it
+ * to it with `yield*` from inside its own `async function*`, so the rows it
  * yields still reach callers through the same async-generator protocol.
  */
 function* yieldPageRows(

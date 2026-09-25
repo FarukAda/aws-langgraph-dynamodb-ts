@@ -102,11 +102,12 @@ async function writeIndexKeys(
           // `attribute_exists(PK)` is what makes this an update rather than an
           // upsert, which is what `UpdateItem` is by default. A condition naming
           // only the index attribute is satisfied by a key holding *nothing at
-          // all*, so a row deleted between the scan that found it and this update
-          // was re-created — as a stub carrying nothing but `PK`, `SK` and the
-          // two index keys, and carrying them it landed in the recency index that
-          // the cross-partition listings read. The tool exists to give keys to
-          // rows that are already there, so nothing legitimate is refused.
+          // all*, so without it, a row deleted between the scan that found it
+          // and this update would be re-created as a stub carrying nothing but
+          // `PK`, `SK` and the two index keys — and carrying them, it would land
+          // in the recency index that the cross-partition listings read. The
+          // tool exists to give keys to rows that are already there, so nothing
+          // legitimate is refused.
           ConditionExpression: `attribute_exists(${PARTITION_KEY_ATTRIBUTE}) AND attribute_not_exists(#gpk)`,
         },
         request,
