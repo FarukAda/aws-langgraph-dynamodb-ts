@@ -296,7 +296,7 @@ export async function buildMessageItem(
  * a message must have, not on a cast: this is the one boundary where a row may
  * not have been written by this adapter, so the key it was found at is not
  * trusted on its own. A `message` of `null` is refused here, as
- * `narrowMetaItem` refuses a `metadata` of `null`.
+ * `parseMetaRow` refuses a `metadata` of `null`.
  *
  * Throws: nothing; a row a newer release wrote is the caller's to refuse,
  * before the shape is judged against attribute types that release may no
@@ -305,7 +305,7 @@ export async function buildMessageItem(
  * Guarantees: a row's attributes are bound to the partition it lives in, so a
  * row planted under one session cannot claim to belong to another.
  */
-export function narrowMessageItem(raw: DocItem): ChatMessageItem | undefined {
+export function parseMessageRow(raw: DocItem): ChatMessageItem | undefined {
   const shaped =
     typeof raw.sessionId === 'string' && typeof raw.message === 'object' && raw.message !== null;
   if (!shaped) return undefined;

@@ -14,7 +14,7 @@ import type { AdapterShell } from '../shared/adapter';
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { assertCancelOptions } from '../shared/validation/collaborators';
-import { checkedShape } from '../shared/validation/option-shape';
+import { parseShape } from '../shared/validation/option-shape';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
 import { getCheckpointTuple } from './actions/get-tuple';
 import { listCheckpoints } from './actions/list';
@@ -49,7 +49,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * at module scope and in a Lambda's init phase.
    */
   constructor(options: DynamoDBSaverOptions) {
-    super(checkedShape(options, SAVER_KEYS, 'options').serde);
+    super(parseShape(options, SAVER_KEYS, 'options').serde);
     const setup = setUpCheckpointer(options, this.serde);
     this.context = setup.context;
     this.shell = setup.shell;

@@ -34,7 +34,7 @@ written, so nothing already on a table needs migrating. A row whose `v`
 exceeds what the running release understands throws `FORMAT_UNSUPPORTED`
 (`src/shared/errors/error-code.ts`) naming the field, rather than being
 matched against attribute names a later format may have renamed or
-repurposed. `narrowMetaItem` in `src/checkpointer/internal/rows.ts`
+repurposed. `parseMetaRow` in `src/checkpointer/internal/rows.ts`
 and `fetchPayload` / `fetchPendingWrites` in
 `src/checkpointer/internal/read.ts` all apply this check first, ahead of
 narrowing the row to a typed item, for exactly that reason: a foreign or

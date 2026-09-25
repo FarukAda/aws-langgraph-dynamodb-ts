@@ -178,7 +178,7 @@ function isAbsentId(value: string | undefined): boolean {
  * naming no thread, so `list` scanned every thread in the table; a signal that
  * is not `AbortSignal`-shaped failed only inside a retry's wait.
  */
-function checkConfigShape(config: RunnableConfig): void {
+function assertConfigShape(config: RunnableConfig): void {
   assertObjectShape(config, 'config');
   if (config.configurable !== undefined) assertObjectShape(config.configurable, 'configurable');
   assertSignalLike(config.signal);
@@ -186,7 +186,7 @@ function checkConfigShape(config: RunnableConfig): void {
 
 /** A shape-checked config's `configurable`, `{}` when it has none. */
 function configurableOf(config: RunnableConfig): CheckpointConfigurable {
-  checkConfigShape(config);
+  assertConfigShape(config);
   return (config.configurable ?? {}) as CheckpointConfigurable;
 }
 
@@ -324,7 +324,7 @@ export interface PutWritesRequest {
  * hole read as `undefined` downstream, past every later `.map` this parser
  * runs over the same array, and reached the `WriteChannel` brand unparsed.
  */
-function checkWriteEntries(writes: PendingWrite[]): void {
+function assertWriteEntries(writes: PendingWrite[]): void {
   if (!Array.isArray(writes)) {
     throw validationError('writes must be an array', 'writes');
   }
@@ -340,7 +340,7 @@ function checkWriteEntries(writes: PendingWrite[]): void {
  * Every segment is capped on its own, and four capped segments together still
  * exceed it.
  */
-function checkWriteKeyFits(
+function assertWriteKeyFits(
   address: CheckpointAddress,
   taskId: TaskId,
   channel: WriteChannel,
@@ -393,9 +393,9 @@ export function parsePutWritesRequest(
     checkpointNs: address.checkpointNs,
     checkpointId: address.checkpointId,
   };
-  checkWriteEntries(writes);
+  assertWriteEntries(writes);
   const channels = writes.map(([channel]) => parseWriteChannel(channel));
-  for (const channel of channels) checkWriteKeyFits(target, parsedTaskId, channel);
+  for (const channel of channels) assertWriteKeyFits(target, parsedTaskId, channel);
   return {
     address: target,
     taskId: parsedTaskId,
@@ -498,6 +498,6 @@ export interface DeltaHistoryRequest {
  */
 export function parseDeltaHistoryRequest(options: DeltaChannelHistoryOptions): DeltaHistoryRequest {
   assertShape(options, DELTA_CHANNEL_HISTORY_KEYS, 'options');
-  checkConfigShape(options.config);
+  assertConfigShape(options.config);
   return { config: options.config, channels: parseStringArray(options.channels, 'channels') };
 }

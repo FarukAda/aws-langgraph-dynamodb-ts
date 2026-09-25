@@ -1,6 +1,6 @@
 import { QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
-import { metaRows, narrowOrWarn } from '../../../../src/checkpointer/internal/listing';
+import { metaRows, parseListedRow } from '../../../../src/checkpointer/internal/listing';
 import { type ListScope, parseListScope } from '../../../../src/checkpointer/internal/parse';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -88,16 +88,16 @@ describe('metaRows', () => {
   });
 });
 
-describe('narrowOrWarn', () => {
+describe('parseListedRow', () => {
   it('returns the item for a row this adapter wrote', () => {
-    expect(narrowOrWarn(context({} as never), row('c1'))?.checkpointId).toBe('c1');
+    expect(parseListedRow(context({} as never), row('c1'))?.checkpointId).toBe('c1');
   });
 
   /** A foreign row sharing the META# prefix is skipped, and an operator is told it is there. */
   it('skips a foreign row and reports its sort key', () => {
     const warn = jest.fn();
     const ctx = context({} as never, { logger: { ...SILENT_LOGGER, warn } });
-    expect(narrowOrWarn(ctx, { PK: 'CHKPT#t', SK: 'META##zzz', value: {} })).toBeUndefined();
+    expect(parseListedRow(ctx, { PK: 'CHKPT#t', SK: 'META##zzz', value: {} })).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a checkpoint meta item'), {
       sortKey: 'META##zzz',
     });
@@ -112,7 +112,7 @@ describe('narrowOrWarn', () => {
     const warn = jest.fn();
     const ctx = context({} as never, { logger: { ...SILENT_LOGGER, warn } });
     const sortKey = `META##${'z'.repeat(MAX_SORT_KEY_BYTES)}`;
-    expect(narrowOrWarn(ctx, { PK: 'CHKPT#t', SK: sortKey, value: {} })).toBeUndefined();
+    expect(parseListedRow(ctx, { PK: 'CHKPT#t', SK: sortKey, value: {} })).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.any(String), {
       sortKey: truncateForLog(sortKey),
     });
@@ -123,7 +123,7 @@ describe('narrowOrWarn', () => {
 
   /** A row of ours from a newer release fails loudly rather than shortening the thread. */
   it('throws for a row of this adapter written by a newer format version', () => {
-    expect(() => narrowOrWarn(context({} as never), { ...row('c1'), v: 99 })).toThrow(
+    expect(() => parseListedRow(context({} as never), { ...row('c1'), v: 99 })).toThrow(
       /format version 99/,
     );
   });

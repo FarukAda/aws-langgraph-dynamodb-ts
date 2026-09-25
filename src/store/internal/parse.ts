@@ -72,7 +72,7 @@ const DEFAULT_LIST_LIMIT = 100;
  * separator, so a `.` costs nothing here, and a listing's `'*'` wildcard
  * satisfies every one of these rules, so it needs no exemption. Upstream
  * `BaseStore.put` refuses a `.` in a label and a `"langgraph"` root too, but
- * only in that one method — see {@link checkUpstreamPutNamespace}.
+ * only in that one method — see {@link assertUpstreamPutNamespace}.
  */
 function parseLabels(value: unknown, field: string): string[] {
   if (!Array.isArray(value)) {
@@ -347,7 +347,7 @@ export function parseListNamespacesOptions(options: ListNamespacesOptions): Pars
  * written there must stay readable, searchable and deletable here. Only
  * `put()` applies it, as upstream does; `batch()` does not.
  */
-function checkUpstreamPutNamespace(namespace: Namespace): void {
+function assertUpstreamPutNamespace(namespace: Namespace): void {
   if (namespace.some((label) => label.includes('.'))) {
     throw validationError(
       'namespace element must not contain "."; put() refuses it, as upstream BaseStore.put does',
@@ -382,7 +382,7 @@ export function parsePutArguments(
   index: PutOperation['index'],
 ): ParsedPut {
   const address = parseStoreAddress(namespace, key);
-  checkUpstreamPutNamespace(address.namespace);
+  assertUpstreamPutNamespace(address.namespace);
   if (value === null) {
     throw validationError('value must be an object; delete() removes an item', 'value');
   }

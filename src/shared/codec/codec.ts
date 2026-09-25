@@ -120,7 +120,7 @@ export function codecDepsOf(
   };
 }
 
-function requireOffloader(deps: CodecDeps): S3Offloader {
+function configuredOffloader(deps: CodecDeps): S3Offloader {
   if (!deps.offloader) {
     throw validationError(
       "this row's payload is offloaded to S3 but the adapter has no `s3` configuration; " +
@@ -219,7 +219,7 @@ export async function readPayloadBytes(
   assertReadableDescriptor(descriptor);
   let raw: Uint8Array;
   if (descriptor.location === PayloadLocation.S3) {
-    const offloader = requireOffloader(deps);
+    const offloader = configuredOffloader(deps);
     offloader.assertOwnedKey(descriptor.s3Key, scope);
     raw = await offloader.download(descriptor.s3Key, deps.signal);
   } else {

@@ -8,8 +8,8 @@ import { getItem } from '../../../../src/store/internal/get-item';
 import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import {
   buildStoreItem,
-  narrowStoreRecord,
-  narrowWholeRecord,
+  parseStoreRow,
+  parseWholeStoreRow,
 } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -51,11 +51,11 @@ async function rowWithout(ctx: StoreContext, key: string, ...missing: string[]):
  * `toISOString`. The row is narrowed away instead, where every other row this
  * adapter cannot speak for already is.
  */
-describe('narrowWholeRecord (L-05b)', () => {
+describe('parseWholeStoreRow (L-05b)', () => {
   it('narrows a row carrying both timestamps', async () => {
     const record = await rowWithout(context({} as never), 'good');
 
-    expect(narrowWholeRecord(record)).toBeDefined();
+    expect(parseWholeStoreRow(record)).toBeDefined();
   });
 
   it.each([['createdAt'], ['updatedAt'], ['createdAt', 'updatedAt']])(
@@ -63,14 +63,14 @@ describe('narrowWholeRecord (L-05b)', () => {
     async (...missing: string[]) => {
       const record = await rowWithout(context({} as never), 'bad', ...missing);
 
-      expect(narrowWholeRecord(record)).toBeUndefined();
+      expect(parseWholeStoreRow(record)).toBeUndefined();
     },
   );
 
   it('refuses a timestamp that is present but not a string', async () => {
     const record = await rowWithout(context({} as never), 'bad');
 
-    expect(narrowWholeRecord({ ...record, updatedAt: 1_700_000_000 })).toBeUndefined();
+    expect(parseWholeStoreRow({ ...record, updatedAt: 1_700_000_000 })).toBeUndefined();
   });
 
   /**
@@ -86,8 +86,8 @@ describe('narrowWholeRecord (L-05b)', () => {
       key: 'profile',
     };
 
-    expect(narrowStoreRecord(projected)).toBeDefined();
-    expect(narrowWholeRecord(projected)).toBeUndefined();
+    expect(parseStoreRow(projected)).toBeDefined();
+    expect(parseWholeStoreRow(projected)).toBeUndefined();
   });
 });
 

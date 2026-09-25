@@ -37,7 +37,7 @@ import {
   type CheckpointWriteItem,
   metaRowKey,
   metaSortKeyPrefix,
-  narrowHead,
+  parseHeadRow,
   partitionKey,
   payloadRowKey,
   readCheckpoint,
@@ -127,7 +127,7 @@ export async function fetchTargetMeta(
         ),
       retryFor(context, signal),
     );
-    const meta = narrowHead(context, result.Item as DocItem | undefined);
+    const meta = parseHeadRow(context, result.Item as DocItem | undefined);
     return meta && !isExpiredRow(meta, now) ? meta : undefined;
   }
   const params = beginsWithQuery(
@@ -160,7 +160,7 @@ export async function fetchTargetMeta(
     maxIterations: Number.POSITIVE_INFINITY,
   });
   for await (const raw of rows) {
-    const meta = narrowHead(context, raw);
+    const meta = parseHeadRow(context, raw);
     if (meta && !isExpiredRow(meta, now)) return meta;
   }
   return undefined;

@@ -41,7 +41,7 @@ import {
 import {
   itemRowKey,
   namespaceMatchesPrefix,
-  narrowWholeRecord,
+  parseWholeStoreRow,
   readStoreItem,
   scopedQuery,
   type StoreItemRecord,
@@ -253,7 +253,7 @@ export async function collectReconcileTargets(
     maxItems: context.maxScanItems,
   });
   for await (const raw of source) {
-    const record = narrowWholeRecord(raw);
+    const record = parseWholeStoreRow(raw);
     if (!record) {
       context.logger.warn('reconcileVectorIndex: skipped a row that is not a store item', {
         sortKey: truncateForLog(raw.SK as string),

@@ -96,12 +96,12 @@ export function assertShape(value: object, allowed: readonly string[], field: st
  * Returns: `value`, unchanged. This returning form exists because a subclass
  * constructor cannot run a statement before `super(...)`, so validating an
  * argument bound for `super(...)` has to happen inside that expression —
- * `super(checkedShape(options, ALLOWED, 'options').thing)` — where a `void`
+ * `super(parseShape(options, ALLOWED, 'options').thing)` — where a `void`
  * function would not compile.
  *
  * Throws: the same as {@link assertShape}.
  */
-export function checkedShape<T extends object>(
+export function parseShape<T extends object>(
   value: T,
   allowed: readonly string[],
   field: string,

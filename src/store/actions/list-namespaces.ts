@@ -4,7 +4,7 @@ import { nowSeconds } from '../../shared/clock';
 import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
 import { isExpiredRow, KEY_SEPARATOR, withoutExpired } from '../../shared/dynamodb/table-schema';
 import type { ParsedList } from '../internal/parse';
-import { narrowStoreRecord, projectKeys, scopedQuery, storeScan } from '../internal/rows';
+import { parseStoreRow, projectKeys, scopedQuery, storeScan } from '../internal/rows';
 import type { StoreContext } from '../internal/setup';
 
 const WILDCARD = '*';
@@ -172,7 +172,7 @@ export async function listNamespaces(context: StoreContext, op: ParsedList): Pro
   const seen = new Set<string>();
   const namespaces: string[][] = [];
   for await (const raw of namespaceSource(context, op, now)) {
-    const record = narrowStoreRecord(raw);
+    const record = parseStoreRow(raw);
     if (!record || isExpiredRow(record, now)) continue;
     const namespace = record.namespace;
     if (

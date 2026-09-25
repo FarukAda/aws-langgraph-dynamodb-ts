@@ -2,11 +2,7 @@ import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import {
-  buildStoreItem,
-  narrowStoreRecord,
-  readStoreItem,
-} from '../../../../src/store/internal/rows';
+import { buildStoreItem, parseStoreRow, readStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 
 function context(): StoreContext {
@@ -47,9 +43,9 @@ describe('store rows: item', () => {
 
   it('narrows a store row and rejects a foreign row', () => {
     expect(
-      narrowStoreRecord({ PK: 'STORE#users', SK: 'k', namespace: ['users'], key: 'k' }),
+      parseStoreRow({ PK: 'STORE#users', SK: 'k', namespace: ['users'], key: 'k' }),
     ).toBeDefined();
-    expect(narrowStoreRecord({ SK: 'META##c' })).toBeUndefined();
+    expect(parseStoreRow({ SK: 'META##c' })).toBeUndefined();
   });
 
   it('stores embedding and ttl when provided', async () => {
@@ -107,7 +103,7 @@ describe('store rows: item', () => {
   });
 });
 
-describe('narrowStoreRecord key consistency', () => {
+describe('parseStoreRow key consistency', () => {
   const value = {
     location: PayloadLocation.INLINE,
     serdeType: 'json',
@@ -126,22 +122,22 @@ describe('narrowStoreRecord key consistency', () => {
   });
 
   it('accepts a row whose namespace/key agree with the DynamoDB key it was found at', () => {
-    expect(narrowStoreRecord(row({}))).toBeDefined();
+    expect(parseStoreRow(row({}))).toBeDefined();
   });
 
   it('rejects a row whose namespace or key disagree with its partition or sort key', () => {
-    expect(narrowStoreRecord(row({ namespace: ['tenantB', 'u1'] }))).toBeUndefined();
-    expect(narrowStoreRecord(row({ key: 'other' }))).toBeUndefined();
-    expect(narrowStoreRecord(row({ key: 42 }))).toBeUndefined();
+    expect(parseStoreRow(row({ namespace: ['tenantB', 'u1'] }))).toBeUndefined();
+    expect(parseStoreRow(row({ key: 'other' }))).toBeUndefined();
+    expect(parseStoreRow(row({ key: 42 }))).toBeUndefined();
   });
 
   /** The binding is judged under this release's rules, so only for a row it can read. */
   it('still rejects a mismatched row stamped with a version it reads', () => {
-    expect(narrowStoreRecord(row({ namespace: ['tenantB', 'u1'], v: 1 }))).toBeUndefined();
+    expect(parseStoreRow(row({ namespace: ['tenantB', 'u1'], v: 1 }))).toBeUndefined();
   });
 });
 
-describe('narrowStoreRecord refuses a row from a newer format version', () => {
+describe('parseStoreRow refuses a row from a newer format version', () => {
   const row = {
     PK: 'STORE#n',
     SK: 'k',
@@ -153,13 +149,13 @@ describe('narrowStoreRecord refuses a row from a newer format version', () => {
   };
 
   it('reads a row without a version, and one at the supported version', () => {
-    expect(narrowStoreRecord(row as never)).toBeDefined();
-    expect(narrowStoreRecord({ ...row, v: 1 })).toBeDefined();
+    expect(parseStoreRow(row as never)).toBeDefined();
+    expect(parseStoreRow({ ...row, v: 1 })).toBeDefined();
   });
 
   /** Skipping it would hide an item that exists, so it fails loudly. */
   it('throws FORMAT_UNSUPPORTED rather than hiding a newer row', () => {
-    expect(() => narrowStoreRecord({ ...row, v: 99 })).toThrow(/format version 99/);
+    expect(() => parseStoreRow({ ...row, v: 99 })).toThrow(/format version 99/);
   });
 
   /**
@@ -170,7 +166,7 @@ describe('narrowStoreRecord refuses a row from a newer format version', () => {
    * for an item that exists.
    */
   it('reports a newer row whose attributes disagree with its key', () => {
-    expect(() => narrowStoreRecord({ ...row, key: 'other', v: 99 })).toThrow(
+    expect(() => parseStoreRow({ ...row, key: 'other', v: 99 })).toThrow(
       expect.objectContaining({
         code: ErrorCode.FORMAT_UNSUPPORTED,
         context: { field: 'v' },
@@ -186,10 +182,10 @@ describe('narrowStoreRecord refuses a row from a newer format version', () => {
    * table from costing a read every item beside it.
    */
   it('reports a newer row that carries no store attributes at all', () => {
-    expect(() => narrowStoreRecord({ PK: 'STORE#n', SK: 'k', v: 99 })).toThrow(
+    expect(() => parseStoreRow({ PK: 'STORE#n', SK: 'k', v: 99 })).toThrow(
       expect.objectContaining({ code: ErrorCode.FORMAT_UNSUPPORTED }),
     );
-    expect(narrowStoreRecord({ PK: 'STORE#n', SK: 'k', v: 1 })).toBeUndefined();
+    expect(parseStoreRow({ PK: 'STORE#n', SK: 'k', v: 1 })).toBeUndefined();
   });
 });
 

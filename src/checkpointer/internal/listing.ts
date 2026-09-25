@@ -33,7 +33,7 @@ import {
   metaAnyNamespacePrefix,
   metaSortKey,
   metaSortKeyPrefix,
-  narrowMetaItem,
+  parseMetaRow,
   partitionKey,
   readMetadata,
 } from './rows';
@@ -247,11 +247,11 @@ export function metaRows(
  * Guarantees: a foreign row is skipped, never assembled. Treating one as a
  * checkpoint would surface a tuple built from another adapter's data.
  */
-export function narrowOrWarn(
+export function parseListedRow(
   context: CheckpointerContext,
   raw: DocItem,
 ): CheckpointMetaItem | undefined {
-  const meta = narrowMetaItem(raw);
+  const meta = parseMetaRow(raw);
   if (!meta) {
     context.logger.warn('list: skipped a row that is not a checkpoint meta item', {
       sortKey: truncateForLog(raw.SK as string),

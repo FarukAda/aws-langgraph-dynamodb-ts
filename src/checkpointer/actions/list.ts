@@ -6,7 +6,7 @@ import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/dynamodb/paginate';
 import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import {
   metaRows,
-  narrowOrWarn,
+  parseListedRow,
   passesKeyFilters,
   passesMetadataFilter,
 } from '../internal/listing';
@@ -163,7 +163,7 @@ export async function* listCheckpoints(
         { threadId: scope.threadId, checkpointNs: scope.checkpointNs, scanned },
       );
     }
-    const meta = narrowOrWarn(context, raw);
+    const meta = parseListedRow(context, raw);
     if (!meta || isExpiredRow(meta, now)) continue;
     const tuple = await tupleFor(context, meta, scope);
     if (!tuple) continue;

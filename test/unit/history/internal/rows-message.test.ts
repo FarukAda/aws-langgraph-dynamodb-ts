@@ -1,7 +1,7 @@
 import type { StoredMessage } from '@langchain/core/messages';
 
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { buildMessageItem, narrowMessageItem } from '../../../../src/history/internal/rows';
+import { buildMessageItem, parseMessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { decodePayload, PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -78,7 +78,7 @@ describe('history rows: message', () => {
  * necessarily. The narrow is what stands between a hand-written or foreign row
  * and a decode that trusts the key it was found at.
  */
-describe('narrowMessageItem', () => {
+describe('parseMessageRow', () => {
   const message = { location: PayloadLocation.INLINE, serdeType: 'json', compressed: false };
   const row = (extra: Record<string, unknown>) => ({
     PK: 'HIST#s1',
@@ -92,7 +92,7 @@ describe('narrowMessageItem', () => {
       messageId: '01HZX',
       message: stored,
     });
-    expect(narrowMessageItem(item)).toBe(item);
+    expect(parseMessageRow(item)).toBe(item);
   });
 
   it.each([
@@ -103,6 +103,6 @@ describe('narrowMessageItem', () => {
     ['a message attribute that is not an object', row({ sessionId: 's1', message: 'x' })],
     ['a sessionId disagreeing with its partition', row({ sessionId: 'other', message })],
   ])('refuses a row with %s', (_name, raw) => {
-    expect(narrowMessageItem(raw)).toBeUndefined();
+    expect(parseMessageRow(raw)).toBeUndefined();
   });
 });

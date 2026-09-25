@@ -18,7 +18,7 @@ import { validationError } from '../../shared/errors/errors';
 import { truncateForLog } from '../../shared/logging/truncate';
 import { ulidTimePrefix } from '../../shared/ulid';
 import type { ParsedWindow, SessionId } from './parse';
-import { type ChatMessageItem, messageQuery, messageSortKey, narrowMessageItem } from './rows';
+import { type ChatMessageItem, messageQuery, messageSortKey, parseMessageRow } from './rows';
 import type { HistoryContext } from './setup';
 
 /**
@@ -37,13 +37,13 @@ import type { HistoryContext } from './setup';
  * one, because the error can only say that such a row exists and an operator
  * has to go and look at it.
  */
-function requireMessageItem(
+function parseSessionMessageRow(
   context: HistoryContext,
   sessionId: SessionId,
   raw: DocItem,
 ): ChatMessageItem {
   assertReadableRow(raw, 'message');
-  const item = narrowMessageItem(raw);
+  const item = parseMessageRow(raw);
   if (item) return item;
   context.logger.warn('getMessages: refused a row that is not a chat message item', {
     sessionId,
@@ -119,7 +119,7 @@ export async function readWindow(
      * this adapter's at all, both fail loudly rather than vanishing from the
      * window.
      */
-    const item = requireMessageItem(context, sessionId, raw);
+    const item = parseSessionMessageRow(context, sessionId, raw);
     if (isExpiredRow(item, now)) continue;
     items.push(item);
     if (items.length >= limit) break;
@@ -147,9 +147,9 @@ export async function readWindow(
  * open — a number that is not merely stale but describes nothing. The repair
  * refuses instead, and the read's own `warn` is what names the row.
  */
-function requireCountableRow(raw: DocItem, sessionId: SessionId): ChatMessageItem {
+function parseCountableRow(raw: DocItem, sessionId: SessionId): ChatMessageItem {
   assertReadableRow(raw, 'message');
-  const item = narrowMessageItem(raw);
+  const item = parseMessageRow(raw);
   if (item) return item;
   throw validationError(
     `session "${sessionId}" holds a row in its message key space that is not a chat message ` +
@@ -220,7 +220,7 @@ export async function countLiveMessages(
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
-    const row = requireCountableRow(raw, sessionId);
+    const row = parseCountableRow(raw, sessionId);
     if (!isExpiredRow(row, now)) total += 1;
   }
   return total;

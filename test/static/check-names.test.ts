@@ -28,12 +28,37 @@ describe('namingViolations', () => {
     ]);
   });
 
-  it('accepts the two conventions, and private helpers of any name', () => {
+  it('accepts the two conventions, and private helpers of any other name', () => {
     const source = [
       'export function parseX(v: unknown): string { return String(v); }',
       'export function assertY(v: string): void {}',
       'export async function assertZ(v: string): Promise<void> {}',
+      'function shapeProblems(v: string): void {}',
+    ].join('\n');
+    expect(namingViolations('a.ts', source)).toEqual([]);
+  });
+
+  it('refuses the retired verbs narrow*, require*, check* and checked*, exported or not', () => {
+    const source = [
+      'export function narrowRow(v: string): string { return v; }',
+      'function requireRow(v: string): string { return v; }',
       'function checkShape(v: string): void {}',
+      'export function checkedShape(v: string): string { return v; }',
+    ].join('\n');
+    const reason =
+      'is retired: a function returning the checked value is a parse*, one returning nothing an assert*';
+    expect(namingViolations('a.ts', source)).toEqual([
+      `a.ts:1: narrowRow — narrow* ${reason}`,
+      `a.ts:2: requireRow — require* ${reason}`,
+      `a.ts:3: checkShape — check* ${reason}`,
+      `a.ts:4: checkedShape — checked* ${reason}`,
+    ]);
+  });
+
+  it('leaves a name that only starts with those letters alone', () => {
+    const source = [
+      'export function checkpointRowKind(v: string): string { return v; }',
+      'function requirements(): void {}',
     ].join('\n');
     expect(namingViolations('a.ts', source)).toEqual([]);
   });

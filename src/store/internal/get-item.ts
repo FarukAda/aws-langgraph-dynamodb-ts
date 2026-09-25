@@ -11,7 +11,7 @@ import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import type { StoreAddress } from './parse';
 import {
   itemRowKey,
-  narrowWholeRecord,
+  parseWholeStoreRow,
   partitionKey,
   readStoreItem,
   sortKey,
@@ -47,7 +47,7 @@ async function readRow(
     retryFor(context, signal),
   );
   if (!result.Item) return undefined;
-  const record = narrowWholeRecord(result.Item);
+  const record = parseWholeStoreRow(result.Item);
   if (!record) {
     context.logger.warn('store.get: ignored a row that is not a store item', {
       partitionKey: partitionKey(namespace),

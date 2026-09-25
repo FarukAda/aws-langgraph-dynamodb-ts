@@ -77,7 +77,7 @@ export function storePartitionPrefix(): string {
  *
  * Returns: the partition key. The function is deliberately **total**: it maps
  * any array to a string rather than refusing a malformed one, because
- * `narrowStoreRecord` calls it on rows read from a shared table to test whether
+ * `parseStoreRow` calls it on rows read from a shared table to test whether
  * a row's own attributes agree with the key it was found at. A corrupt or
  * foreign row must be skipped there, not turned into a failed search.
  *
@@ -199,7 +199,7 @@ export function scopedQuery(tableName: string, prefix: string[]): QueryCommandIn
  * shared table that happens to carry a `namespace` attribute, and since a row
  * stamped with a format version above this release is *reported* rather than
  * skipped, one foreign row was enough to fail `search([])` and
- * `listNamespaces()` outright. Nothing legitimate is lost: `narrowStoreRecord`
+ * `listNamespaces()` outright. Nothing legitimate is lost: `parseStoreRow`
  * already requires `PK` to equal `partitionKey(namespace)`, which carries the
  * same tag, so every row the tag excludes was dropped after the read anyway.
  *
@@ -221,14 +221,14 @@ export function storeScan(tableName: string): ScanCommandInput {
 }
 
 /**
- * Restrict a Query/Scan to the attributes `narrowStoreRecord` needs, leaving the
+ * Restrict a Query/Scan to the attributes `parseStoreRow` needs, leaving the
  * payload behind: a namespace listing never reads a value.
  *
  * Accepts: any Query or Scan input; its own attribute names are preserved and
  * the projection's are added.
  *
  * Returns: the same input, projected onto the row's identity and its format
- * version `v`. The version is what lets `narrowStoreRecord` refuse a row a
+ * version `v`. The version is what lets `parseStoreRow` refuse a row a
  * newer release wrote; without it every projected row reads as version 0. A
  * row read this way can be narrowed but not decoded — {@link readStoreItem}
  * needs the whole row.
@@ -385,7 +385,7 @@ export interface StoreItemRecord {
  * attribute names it may no longer use. Skipping it would hide an item that
  * exists.
  */
-export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
+export function parseStoreRow(raw: DocItem): StoreItemRecord | undefined {
   // The version first. A later format may compose the row's key from
   // attributes this one does not know, so testing the shape first reads such a
   // row as foreign and hides an item that is there.
@@ -405,23 +405,23 @@ export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
  * handed back under a declared `Date`, which surfaces as a `RangeError` in the
  * caller's own code, far from the row that caused it.
  *
- * It is a separate narrow rather than a stricter {@link narrowStoreRecord}
+ * It is a separate narrow rather than a stricter {@link parseStoreRow}
  * because a namespace listing deliberately reads rows without their timestamps
  * (see `projectKeys`): requiring one there would hide every namespace in the
  * table.
  *
  * Accepts: `raw` — any whole row, as read by `get`, a search or a reconcile.
  *
- * Returns: the record, or undefined for a row {@link narrowStoreRecord}
+ * Returns: the record, or undefined for a row {@link parseStoreRow}
  * refuses and for one whose `createdAt` or `updatedAt` is not the string this
  * package writes there. A row this adapter cannot describe is skipped where a
  * foreign one already is, so one of them never costs a listing the rest of its
  * rows.
  *
- * Throws: as {@link narrowStoreRecord}.
+ * Throws: as {@link parseStoreRow}.
  */
-export function narrowWholeRecord(raw: DocItem): StoreItemRecord | undefined {
-  const record = narrowStoreRecord(raw);
+export function parseWholeStoreRow(raw: DocItem): StoreItemRecord | undefined {
+  const record = parseStoreRow(raw);
   if (record === undefined) return undefined;
   const stamped = typeof record.createdAt === 'string' && typeof record.updatedAt === 'string';
   return stamped ? record : undefined;
@@ -505,7 +505,7 @@ export async function buildStoreItem(
  *
  * Accepts: `record` — a whole row, never a projection: the value and the
  * timestamps are read from it, and `projectKeys` rows exist only to establish
- * identity for a namespace listing. {@link narrowWholeRecord} is what proves a
+ * identity for a namespace listing. {@link parseWholeStoreRow} is what proves a
  * raw row is one of those, timestamps included. `signal` — cancels the
  * download an offloaded value costs.
  *

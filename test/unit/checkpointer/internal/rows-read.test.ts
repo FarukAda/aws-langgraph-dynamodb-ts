@@ -3,8 +3,8 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import {
   type CheckpointWriteItem,
   dropSupersededWrites,
-  narrowHead,
-  narrowMetaItem,
+  parseHeadRow,
+  parseMetaRow,
   readCheckpoint,
   readMetadata,
   toPendingWrites,
@@ -210,7 +210,7 @@ describe('toPendingWrites offloaded reads', () => {
   });
 });
 
-describe('narrowMetaItem refuses a row from a newer format version', () => {
+describe('parseMetaRow refuses a row from a newer format version', () => {
   const meta = {
     PK: 'CHKPT#t',
     SK: 'META##c1',
@@ -221,8 +221,8 @@ describe('narrowMetaItem refuses a row from a newer format version', () => {
   };
 
   it('reads a row without a version, and one at the supported version', () => {
-    expect(narrowMetaItem(meta as never)).toBeDefined();
-    expect(narrowMetaItem({ ...meta, v: 1 })).toBeDefined();
+    expect(parseMetaRow(meta as never)).toBeDefined();
+    expect(parseMetaRow({ ...meta, v: 1 })).toBeDefined();
   });
 
   /**
@@ -231,7 +231,7 @@ describe('narrowMetaItem refuses a row from a newer format version', () => {
    * truncated history. It fails loudly instead.
    */
   it('throws FORMAT_UNSUPPORTED rather than skipping a newer row', () => {
-    expect(() => narrowMetaItem({ ...meta, v: 99 })).toThrow(/format version 99/);
+    expect(() => parseMetaRow({ ...meta, v: 99 })).toThrow(/format version 99/);
   });
 
   /**
@@ -242,7 +242,7 @@ describe('narrowMetaItem refuses a row from a newer format version', () => {
    * of the one error that names the remedy.
    */
   it('reports a newer row whose shape this release would otherwise refuse', () => {
-    expect(() => narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 99 })).toThrow(
+    expect(() => parseMetaRow({ PK: 'X', SK: 'META##c1', v: 99 })).toThrow(
       expect.objectContaining({
         code: ErrorCode.FORMAT_UNSUPPORTED,
         context: { field: 'v' },
@@ -252,8 +252,8 @@ describe('narrowMetaItem refuses a row from a newer format version', () => {
 
   /** A row at a version this release reads keeps the skip these narrows exist for. */
   it('still skips a foreign row at a version it reads', () => {
-    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 1 })).toBeUndefined();
-    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1' })).toBeUndefined();
+    expect(parseMetaRow({ PK: 'X', SK: 'META##c1', v: 1 })).toBeUndefined();
+    expect(parseMetaRow({ PK: 'X', SK: 'META##c1' })).toBeUndefined();
   });
 });
 
@@ -262,9 +262,9 @@ describe('narrowMetaItem refuses a row from a newer format version', () => {
  * the thread the assembled tuple reports. Unbound, a writer confined to its own
  * partition could put `threadId: 'tenantB'` on a row in its own partition and
  * have `list()` hand back tenant B's offloaded payload — the cross-tenant read
- * `narrowStoreRecord` already refuses for store items.
+ * `parseStoreRow` already refuses for store items.
  */
-describe('narrowMetaItem binds a row to the partition it lives in', () => {
+describe('parseMetaRow binds a row to the partition it lives in', () => {
   const row = (over: Record<string, unknown>) => ({
     PK: 'CHKPT#tenantA',
     SK: 'META#ns#c1',
@@ -276,14 +276,14 @@ describe('narrowMetaItem binds a row to the partition it lives in', () => {
   });
 
   it('accepts a row whose identifiers agree with the key it was found at', () => {
-    expect(narrowMetaItem(row({}) as never)).toBeDefined();
+    expect(parseMetaRow(row({}) as never)).toBeDefined();
   });
 
   it('rejects a row claiming a thread, namespace or checkpoint that is not its own', () => {
-    expect(narrowMetaItem(row({ threadId: 'tenantB' }) as never)).toBeUndefined();
-    expect(narrowMetaItem(row({ checkpointNs: 'other' }) as never)).toBeUndefined();
-    expect(narrowMetaItem(row({ checkpointId: 'c2' }) as never)).toBeUndefined();
-    expect(narrowMetaItem(row({ threadId: 42 }) as never)).toBeUndefined();
+    expect(parseMetaRow(row({ threadId: 'tenantB' }) as never)).toBeUndefined();
+    expect(parseMetaRow(row({ checkpointNs: 'other' }) as never)).toBeUndefined();
+    expect(parseMetaRow(row({ checkpointId: 'c2' }) as never)).toBeUndefined();
+    expect(parseMetaRow(row({ threadId: 42 }) as never)).toBeUndefined();
   });
 
   /**
@@ -293,7 +293,7 @@ describe('narrowMetaItem binds a row to the partition it lives in', () => {
    * compares may not mean there what it means here.
    */
   it('reports a mismatched row a newer format wrote rather than skipping it', () => {
-    expect(() => narrowMetaItem(row({ threadId: 'tenantB', v: 99 }) as never)).toThrow(
+    expect(() => parseMetaRow(row({ threadId: 'tenantB', v: 99 }) as never)).toThrow(
       expect.objectContaining({
         code: ErrorCode.FORMAT_UNSUPPORTED,
         context: { field: 'v' },
@@ -303,16 +303,16 @@ describe('narrowMetaItem binds a row to the partition it lives in', () => {
 
   /** At a version this release reads, a mismatched row is still skipped. */
   it('still skips a mismatched row stamped with a version it reads', () => {
-    expect(narrowMetaItem(row({ threadId: 'tenantB', v: 1 }) as never)).toBeUndefined();
+    expect(parseMetaRow(row({ threadId: 'tenantB', v: 1 }) as never)).toBeUndefined();
   });
 });
 
 /**
- * `narrowMetaItem` guards the one boundary where a row in this adapter's key
+ * `parseMetaRow` guards the one boundary where a row in this adapter's key
  * space may not have been written by it. A `metadata` of `null` passed the
  * `!== undefined` test and then raised a raw `TypeError` in the decoder.
  */
-describe('narrowMetaItem rejects a row whose descriptor is not one', () => {
+describe('parseMetaRow rejects a row whose descriptor is not one', () => {
   const base = {
     PK: 'CHKPT#t',
     SK: 'META##c',
@@ -327,15 +327,15 @@ describe('narrowMetaItem rejects a row whose descriptor is not one', () => {
     ['a string', 'INLINE'],
     ['a number', 7],
   ])('skips a row whose metadata is %s', (_name, metadata) => {
-    expect(narrowMetaItem({ ...base, metadata })).toBeUndefined();
+    expect(parseMetaRow({ ...base, metadata })).toBeUndefined();
   });
 
   it('accepts a row carrying a descriptor object', () => {
-    expect(narrowMetaItem({ ...base, metadata: { location: 'INLINE' } })).toBeDefined();
+    expect(parseMetaRow({ ...base, metadata: { location: 'INLINE' } })).toBeDefined();
   });
 });
 
-describe('narrowHead', () => {
+describe('parseHeadRow', () => {
   const ctx = (warn = jest.fn()) =>
     ({ logger: { info() {}, warn, error() {}, debug() {} } }) as never;
   const head = {
@@ -348,13 +348,13 @@ describe('narrowHead', () => {
   };
 
   it('returns the item for a real head row', () => {
-    expect(narrowHead(ctx(), head)?.checkpointId).toBe('c1');
+    expect(parseHeadRow(ctx(), head)?.checkpointId).toBe('c1');
   });
 
   /** An absent row is an ordinary answer, not something to warn about. */
   it('answers undefined silently when the read returned nothing', () => {
     const warn = jest.fn();
-    expect(narrowHead(ctx(warn), undefined)).toBeUndefined();
+    expect(parseHeadRow(ctx(warn), undefined)).toBeUndefined();
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -364,7 +364,7 @@ describe('narrowHead', () => {
    */
   it('skips a foreign row at the head and reports its sort key', () => {
     const warn = jest.fn();
-    expect(narrowHead(ctx(warn), { PK: 'CHKPT#t', SK: 'META##zzz' })).toBeUndefined();
+    expect(parseHeadRow(ctx(warn), { PK: 'CHKPT#t', SK: 'META##zzz' })).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a checkpoint meta item'), {
       sortKey: 'META##zzz',
     });

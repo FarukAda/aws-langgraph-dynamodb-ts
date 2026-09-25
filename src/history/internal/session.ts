@@ -722,7 +722,7 @@ function isSummarisable(raw: DocItem): boolean {
  * undefined for a foreign, malformed or expired row.
  *
  * The `sessionId` is bound to the partition the row was found in, as
- * `narrowMetaItem`, `narrowStoreRecord` and `narrowMessageItem` bind theirs.
+ * `parseMetaRow`, `parseStoreRow` and `parseMessageRow` bind theirs.
  * Both reads that reach here select rows by something other than the partition
  * — a table scan filtered on the sort key, and a recency-index query — so
  * without the binding a row planted anywhere in the table under this adapter's

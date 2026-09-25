@@ -716,11 +716,11 @@ export async function buildWriteItems(
  * attributes name the S3 scope the row's payloads are read under and the thread
  * the assembled tuple reports, so a writer confined to its own partition could
  * otherwise hand back another tenant's offloaded payload under that tenant's
- * `thread_id` — the same binding `narrowStoreRecord` makes for store items. The
+ * `thread_id` — the same binding `parseStoreRow` makes for store items. The
  * binding is judged under this release's rules, which is why it is judged only
  * for a row this release can read.
  */
-export function narrowMetaItem(raw: DocItem): CheckpointMetaItem | undefined {
+export function parseMetaRow(raw: DocItem): CheckpointMetaItem | undefined {
   // The version first. A row a newer version wrote is not a foreign row to
   // skip, and this release's names for its attributes are not that release's,
   // so testing the shape first decides a row is foreign whenever a later
@@ -750,18 +750,18 @@ export function narrowMetaItem(raw: DocItem): CheckpointMetaItem | undefined {
  * `warn` in the second case, because a foreign row at the head of a thread is
  * an operator's problem even though this read recovers from it.
  *
- * Throws: as {@link narrowMetaItem}.
+ * Throws: as {@link parseMetaRow}.
  *
  * Guarantees: a foreign row is skipped, never returned. Returning one made
  * `assembleTuple` miss its payload and report the thread as empty, so LangGraph
  * started a new run on top of the real history.
  */
-export function narrowHead(
+export function parseHeadRow(
   context: CheckpointerContext,
   raw: DocItem | undefined,
 ): CheckpointMetaItem | undefined {
   if (raw === undefined) return undefined;
-  const meta = narrowMetaItem(raw);
+  const meta = parseMetaRow(raw);
   if (!meta) {
     context.logger.warn('getTuple: skipped a row that is not a checkpoint meta item', {
       sortKey: truncateForLog(raw.SK as string),

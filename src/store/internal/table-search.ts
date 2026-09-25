@@ -22,7 +22,7 @@ import { validationError } from '../../shared/errors/errors';
 import { passesFilter } from './filter';
 import type { ParsedSearch } from './parse';
 import {
-  narrowWholeRecord,
+  parseWholeStoreRow,
   namespaceMatchesPrefix,
   readStoreItem,
   scopedQuery,
@@ -81,7 +81,7 @@ function candidateSource(
 
 /** The store record a raw row denotes, or undefined for a foreign, malformed, expired or out-of-prefix row. */
 function liveRecord(raw: DocItem, search: ParsedSearch, now: number): StoreItemRecord | undefined {
-  const record = narrowWholeRecord(raw);
+  const record = parseWholeStoreRow(raw);
   if (!record || isExpiredRow(record, now)) return undefined;
   return namespaceMatchesPrefix(record.namespace, search.namespacePrefix) ? record : undefined;
 }
