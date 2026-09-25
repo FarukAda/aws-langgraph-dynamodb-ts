@@ -18,7 +18,7 @@ import { type RetryOptions, withDynamoDBRetry } from './retry';
 /** Hard cap on query-pagination loop iterations (runaway-loop guard). */
 export const MAX_LOOP_ITERATIONS = 1000;
 
-/** Hard cap on items collected into memory across a paginated query. */
+/** Hard cap on rows collected into memory across a paginated query. */
 export const MAX_TOTAL_ROWS_IN_MEMORY = 10000;
 
 /**

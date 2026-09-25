@@ -577,9 +577,9 @@ function descriptorBytes(descriptor: PayloadDescriptor): number {
 }
 
 /**
- * Conservatively estimate a message item's stored size.
+ * Conservatively estimate a message row's stored size.
  *
- * Accepts: any message item, inline or offloaded — an offloaded one measures
+ * Accepts: any message row, inline or offloaded — an offloaded one measures
  * its S3 key, since that is what the row actually carries.
  *
  * Returns: an estimate at or above the real marshalled size. Erring high is the

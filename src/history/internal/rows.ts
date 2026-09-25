@@ -26,7 +26,7 @@ import type { SessionId } from './parse';
 import type { HistoryContext } from './setup';
 
 /**
- * Item-kind tag distinguishing this adapter's sort keys from another
+ * Row-kind tag distinguishing this adapter's sort keys from another
  * adapter's on a table shared via `DynamoDBFactory.createAll()` — matches the
  * pattern the checkpointer module already uses for its own META#/PAYLOAD#/
  * WRITE# keys. Without it, `SESSION_SORT_KEY` alone was a bare, common-word
@@ -218,7 +218,7 @@ export function messageQuery(
   return params;
 }
 
-/** A single stored chat message item (one per message, ordered by its ULID). */
+/** A single stored chat message row (one per message, ordered by its ULID). */
 export interface MessageRow {
   PK: string;
   SK: string;

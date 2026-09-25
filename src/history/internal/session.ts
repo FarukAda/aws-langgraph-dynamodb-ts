@@ -548,7 +548,7 @@ export function deriveTitle(messages: StoredMessage[]): string | undefined {
   return `${codePoints.slice(0, MAX_TITLE_LENGTH - 1).join('')}…`;
 }
 
-/** The per-session metadata item, updated atomically as messages are appended. */
+/** The per-session metadata row, updated atomically as messages are appended. */
 interface SessionRow {
   PK: string;
   SK: string;

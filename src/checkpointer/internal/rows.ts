@@ -70,7 +70,7 @@ export interface WriteRowLocation {
   readonly channel: string;
 }
 
-/** The lightweight `META#` item: structural fields + serialized metadata. */
+/** The lightweight `META#` row: structural fields + serialized metadata. */
 export interface CheckpointMetaRow {
   PK: string;
   SK: string;
@@ -87,7 +87,7 @@ export interface CheckpointMetaRow {
   ttl?: number;
 }
 
-/** The heavy `PAYLOAD#` item: the serialized checkpoint. */
+/** The heavy `PAYLOAD#` row: the serialized checkpoint. */
 export interface CheckpointPayloadRow {
   PK: string;
   SK: string;
@@ -97,7 +97,7 @@ export interface CheckpointPayloadRow {
   ttl?: number;
 }
 
-/** A `WRITE#` item: one pending write for a checkpoint/task. */
+/** A `WRITE#` row: one pending write for a checkpoint/task. */
 export interface CheckpointWriteRow {
   PK: string;
   SK: string;
@@ -521,7 +521,7 @@ async function releaseUploads(
 const nextPutObjectId = createUlidFactory();
 
 /**
- * Encode a checkpoint + metadata into its META and PAYLOAD items.
+ * Encode a checkpoint + metadata into its META and PAYLOAD rows.
  *
  * Each call draws one object id and uploads both offloaded payloads under it,
  * below the row that points at each. A second put of the same checkpoint id — a
@@ -614,7 +614,7 @@ export async function buildCheckpointRows(
 }
 
 /**
- * Encode a task's pending writes into one item per write.
+ * Encode a task's pending writes into one row per write.
  *
  * Accepts: `request` — parsed by `parsePutWritesRequest`, so every channel is
  * well-formed and every composed sort key fits before this runs, and a bad one
