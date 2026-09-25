@@ -141,7 +141,7 @@ export interface SessionRowsQueryOptions {
 }
 
 /**
- * Query input selecting every item in a session's partition.
+ * Query input selecting every row in a session's partition.
  *
  * Accepts: `options.consistent` — for a read whose answer a write depends on.
  *
@@ -240,7 +240,7 @@ export interface MessageRowSource {
 }
 
 /**
- * Encode a single stored message into its DynamoDB item.
+ * Encode a single stored message into its DynamoDB row.
  *
  * Accepts: `source.sessionId` — the session the message belongs to.
  * `source.messageId` — the message's own id, which orders it and names its

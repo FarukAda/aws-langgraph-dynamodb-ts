@@ -34,7 +34,7 @@ import type { CheckpointerContext } from '../internal/setup';
 const nextWriteGroup = createUlidFactory();
 
 /**
- * Persist a task's intermediate writes for a checkpoint, one item per write.
+ * Persist a task's intermediate writes for a checkpoint, one row per write.
  *
  * Accepts: `config` — must name a `checkpoint_id`, since writes always attach
  * to a checkpoint. `writes` — one task's, in order; their channels are

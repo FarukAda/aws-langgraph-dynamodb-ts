@@ -2,8 +2,10 @@
  * Hides that chat history is a set of actions behind one error boundary.
  *
  * The public class holds only what it resolved from its options and routes
- * each method to the action that implements it, through `guardPublic`, so no
- * error but the library's own reaches a caller (record 13). Where an action
+ * each read and write to the action that implements it, through
+ * `guardPublic`. Each asynchronous method is the error boundary, so no error
+ * but the library's own reaches a caller (record 13); `destroy` releases what
+ * the adapter owns and is the one synchronous exception. Where an action
  * lives, how it reads or writes, and which client or offloader it uses can
  * change without touching this surface; `forSession` is the one route from it
  * to LangChain's single-session history.

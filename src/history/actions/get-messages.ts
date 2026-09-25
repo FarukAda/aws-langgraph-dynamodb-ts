@@ -6,8 +6,9 @@
  * ever recover is confined to that message and handed to `onCorruptMessage`
  * (record 12); a transport fault, an out-of-scope key, a newer payload or a
  * serializer's refusal fails the read under either policy. A caller gets a
- * conversation that is whole or visibly missing a lost turn, never one
- * silently truncated, however many downloads run at once.
+ * conversation that is whole or, under `'skip'`, missing a lost turn
+ * reported at `error` — never one silently truncated without a trace —
+ * however many downloads run at once.
  */
 
 import {

@@ -37,7 +37,7 @@ import type { CheckpointerContext } from '../internal/setup';
 
 /**
  * Persist a checkpoint and its metadata as a transactional pair of META and
- * PAYLOAD items, returning the config that addresses the stored checkpoint. The
+ * PAYLOAD rows, returning the config that addresses the stored checkpoint. The
  * incoming `checkpoint_id` (if any) becomes the new checkpoint's parent.
  *
  * **Every channel value the checkpoint carries is stored.** `newVersions` is

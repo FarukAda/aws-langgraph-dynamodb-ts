@@ -460,7 +460,7 @@ async function deleteDescriptors(
 }
 
 /**
- * Write special (negative-index) items, then clean up the correct side of each.
+ * Write special (negative-index) rows, then clean up the correct side of each.
  *
  * Overwrite is correct here, matching every reference checkpointer. Each item
  * is written with a compare-and-swap on its row's `writeGroup` (see
@@ -616,7 +616,7 @@ async function verifyFailure(
 }
 
 /**
- * Write regular items with a first-write-wins guard. Every write fully settles
+ * Write regular rows with a first-write-wins guard. Every write fully settles
  * (`Promise.allSettled`) before this resolves and never rejects; a genuine
  * failure is reported via `error`, not thrown. The fan-out is one call per
  * item whichever shape {@link commitWriteRow} gives that item's write.

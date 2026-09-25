@@ -8,6 +8,6 @@
 
 > **CorruptMessagePolicy** = `"skip"` \| `"throw"`
 
-Defined in: [history/types.ts:43](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L43)
+Defined in: [history/types.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L44)
 
 How `getMessages` handles an item it cannot decode.
