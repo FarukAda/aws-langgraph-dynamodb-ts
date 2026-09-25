@@ -9,46 +9,138 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![AWS SDK v3](https://img.shields.io/badge/AWS%20SDK-v3-FF9900)
 [![npm provenance](https://img.shields.io/badge/npm-provenance-2ea44f?logo=npm)](https://www.npmjs.com/package/@farukada/aws-langgraph-dynamodb-ts#provenance)
-![coverage 100%](https://img.shields.io/badge/coverage-100%25-brightgreen)
+[![coverage 100%](https://img.shields.io/badge/coverage-100%25-brightgreen)](#testing)
 [![Sponsor](https://img.shields.io/badge/Sponsor-FarukAda-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/FarukAda)
 
 Built with [LangGraph](https://langchain-ai.github.io/langgraphjs/) · [LangChain](https://github.com/langchain-ai/langchainjs) · [AWS SDK v3](https://aws.amazon.com/sdk-for-javascript/) — [npm](https://www.npmjs.com/package/@farukada/aws-langgraph-dynamodb-ts) · [GitHub](https://github.com/FarukAda/aws-langgraph-dynamodb-ts) · [Issues](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/issues)
 
 ---
 
-A DynamoDB persistence layer for [LangGraph](https://langchain-ai.github.io/langgraphjs/) in TypeScript (CommonJS build, consumable from both ESM and CommonJS; Node ≥ 22). It provides three LangGraph/LangChain adapters plus a factory:
-
-- **`DynamoDBSaver`** — checkpoint + pending-writes persistence (`extends BaseCheckpointSaver`).
-- **`DynamoDBStore`** — long-term memory with optional semantic search (`extends BaseStore`).
-- **`DynamoDBChatMessageHistory`** — multi-session chat history, with a single-session adapter for `RunnableWithMessageHistory`.
-- **`DynamoDBFactory`** — convenience constructors, including `createAll` (one shared client + a `destroy()`).
+A DynamoDB persistence layer for [LangGraph](https://langchain-ai.github.io/langgraphjs/) in TypeScript (CommonJS build, consumable from both ESM and CommonJS; Node ≥ 22). It provides three LangGraph/LangChain adapters — a checkpoint saver, a long-term memory store and a chat message history — plus a factory, and all three can live in a single DynamoDB table.
 
 Every adapter supports optional **gzip compression**, **S3 offloading** of payloads over DynamoDB's 400 KB item limit, and **TTL-based expiry**. The store additionally supports **vector semantic search** — in-DynamoDB by default, or delegated to a **pluggable `VectorBackend`** (e.g. OpenSearch / pgvector) for large corpora — via any LangChain `Embeddings` implementation.
 
+> **Independent project.** Maintained by [Faruk Ada](https://github.com/FarukAda), one person, in their own time — see [SUPPORT.md](SUPPORT.md) for what that means for response times. It is **not affiliated with, endorsed by, or sponsored by** Amazon Web Services, Inc. or LangChain, Inc. "AWS", "Amazon DynamoDB" and "Amazon S3" are trademarks of Amazon.com, Inc. or its affiliates; "LangChain" and "LangGraph" are trademarks of LangChain, Inc. They are used here only to name the service this package talks to and the framework it plugs into.
+
+## At a glance
+
+| | |
+| --- | --- |
+| **What it is** | **`DynamoDBSaver`** — checkpoint + pending-writes persistence (`extends BaseCheckpointSaver`); **`DynamoDBStore`** — long-term memory with optional semantic search (`extends BaseStore`); **`DynamoDBChatMessageHistory`** — multi-session chat history, with a single-session adapter (`forSession`) for `RunnableWithMessageHistory`; **`DynamoDBFactory`** — convenience constructors, including `createAll` (one shared client + a `destroy()`). One table can back all three: see [Table schema](#table-schema). |
+| **Maturity** | `1.0.0-rc.3` at the time of writing — a release candidate of `1.0` (the npm badge above shows the current version). From `1.0` every `1.x` release reads every row a `1.0` release wrote; see [Versioning and support](#versioning-and-support) for what else is promised and who maintains it. |
+| **What it costs** | Nothing for the package. You pay AWS for DynamoDB request units and storage, for S3 requests and storage when payloads offload, and your embeddings provider (and `VectorBackend`, if you use one) for what the store sends it. [What each operation costs](#what-each-operation-costs) gives the requests per call. |
+| **The limits that bite** | DynamoDB's 400 KB item: without `s3`, a serialized payload over 392 KB is refused before the write. `thread_id` and `sessionId` at most 1024 bytes of UTF-8, every other key segment at most 256 bytes, and no `#` in any identifier. The in-DynamoDB semantic ranker refuses a search with more than 1000 candidates under its prefix by default (`maxSearchCandidates`, ceiling 100 000). [Full table](#limits). |
+| **When it breaks** | One error class, `DynamoDBLangGraphError`, carrying a `code` from the 20 `ErrorCode` members, a structured `context`, and the AWS error as `cause`. [Error handling](#error-handling) is the section to read first. |
+| **When *not* to use it** | A vector corpus far beyond the in-DynamoDB ranker's ceiling with no external `VectorBackend` to delegate to; sustained writes to a single `thread_id` or `sessionId` above what one DynamoDB partition absorbs ([hot partitions](#production-notes)); existing checkpoints from another saver that must come along — the package ships no importer; or chat turns written to one session by several processes that must stay strictly ordered, since order across processes follows their wall clocks ([chat history semantics](#features)). |
+
 ## Table of Contents
 
+- [Key features](#key-features)
+- [Versioning and support](#versioning-and-support)
+- [Architecture](#architecture)
 - [Install](#install)
-- [Table schema](#table-schema)
 - [Quick start](#quick-start)
   - [Checkpointer](#checkpointer)
   - [Store + semantic search](#store--semantic-search)
   - [Chat history](#chat-history)
   - [Factory](#factory)
 - [Options](#options)
-- [Features](#features)
 - [Retries and backoff](#retries-and-backoff)
 - [Error handling](#error-handling)
 - [Logging](#logging)
-- [Infrastructure setup](#infrastructure-setup)
-- [IAM permissions](#iam-permissions)
-- [Migrating from earlier versions](#migrating-from-earlier-versions)
-- [Versioning and compatibility](#versioning-and-compatibility)
+- [Features](#features)
 - [Production notes](#production-notes)
+- [Migrating from earlier versions](#migrating-from-earlier-versions)
+- [Infrastructure setup](#infrastructure-setup)
+- [Table schema](#table-schema)
+- [IAM permissions](#iam-permissions)
 - [Operations](#operations)
+- [Versioning and compatibility](#versioning-and-compatibility)
 - [Testing](#testing)
 - [Design decisions and evidence](#design-decisions-and-evidence)
 - [Support and policies](#support-and-policies)
 - [License](#license)
+
+## Key features
+
+| Feature | Description |
+| --- | --- |
+| **One table, disjoint key spaces** | All three adapters share one `PK`/`SK` table. Each tags its partition keys with its own prefix — `CHKPT#`, `STORE#`, `HIST#` — which differ in their first character, so one id reused as a `thread_id` and a `sessionId` can never touch the other adapter's rows. [Table schema](#table-schema) |
+| **Tested against LangGraph itself** | The conformance tier runs LangChain's official checkpointer validation suite and a compiled LangGraph graph (interrupt and resume, subgraph namespaces, forks, `Send` fan-out) over the saver; the integration tier checks parity with `InMemoryStore` and `InMemoryChatMessageHistory`. [What the suite proves](#what-the-suite-does-and-does-not-prove) |
+| **S3 offload behind a descriptor** | A payload at or above `s3.thresholdBytes` (default 350 KB) goes to S3 and the row keeps a small versioned descriptor; every write uploads under an id of its own, conditionally, so no two writes share an object. [Features](#features) |
+| **Gzip with a decompression guard** | `compression: { enabled: true }` gzips payloads of at least `minSizeBytes` (default 1 KB) when that saves 10% or more; reads refuse to inflate past `maxDecompressedBytes` (default 50 MiB). [Features](#features) |
+| **TTL with matching S3 lifecycle rules** | `ttl: { days }` or `{ seconds }` stamps a `ttl` attribute and every read hides expired rows during DynamoDB's sweep lag; `ensureS3LifecycleRule()` installs the lifecycle rules that expire the offloaded objects to match. [S3 lifecycle rules](#s3-lifecycle-rules) |
+| **Semantic search, in DynamoDB or delegated** | With an `index`, the store embeds each configured field and ranks by the best-matching vector in process; with a `vectorBackend` it hands similarity search to OpenSearch, pgvector or anything else, and DynamoDB stays the canonical copy. [Features](#features) |
+| **Listings without table scans** | An opt-in recency index (`indexName`, a GSI on `gsi1pk`/`gsi1sk`) turns `history.listSessions()` and a thread-less `saver.list()` from a `Scan` into sharded `Query`s, newest first; `backfillRecencyIndex` prepares existing rows. [Maintenance operations](#maintenance-operations) |
+| **Cancellation** | The long-running methods take an `AbortSignal`, which reaches the AWS SDK on every DynamoDB request and on both S3 transfers, so a cancel ends a request in flight and rejects with `ABORTED`. [Error handling](#error-handling) |
+| **One error class, stable codes, validated input** | Every failure is a `DynamoDBLangGraphError` with a branchable `code`; no raw AWS error escapes a public method. Options and identifiers are checked before any request, and a mistake is a `VALIDATION` error naming the field. [Error handling](#error-handling) |
+| **Silent by default, redactable logging** | Nothing is written to your console unless you pass a `logger`; `redactLogger` replaces secret-looking fields with `[REDACTED]` in what you do log. [Logging](#logging) |
+| **Supply-chain provenance** | Published to npm with provenance attestations. [npm provenance](https://www.npmjs.com/package/@farukada/aws-langgraph-dynamodb-ts#provenance) |
+
+## Versioning and support
+
+- **Semantic versioning.** A **minor** may add exports, optional options and parameters, optional fields on returned objects, and widen accepted inputs. A **patch** only fixes behaviour against what is documented. Removing or renaming an export, making an option required, narrowing an input or changing a return type needs a **major**, preceded by a deprecation.
+- **The data on disk.** Every `1.x` release reads every row a `1.0` release wrote; key formats, required attributes and the payload descriptor change only in a major, with a migration note.
+- **Errors.** `ErrorCode` values are append-only in `1.x`. Error and log *messages* are not covered — branch on `code` and the structured fields, never on text.
+- **Runtimes.** Node.js 22, 24 and 26; consumers on TypeScript 5.x and later. Peer ranges are in [Supported runtimes and peers](#supported-runtimes-and-peers).
+- **Who maintains it.** One person, in their own time; response times are best effort ([SUPPORT.md](SUPPORT.md)). Security reports go through [SECURITY.md](SECURITY.md), which commits to an acknowledgement within three business days.
+
+Full detail: [Versioning and compatibility](#versioning-and-compatibility).
+
+## Architecture
+
+```mermaid
+graph LR
+    App["Your LangGraph / LangChain app"] --> Saver["DynamoDBSaver"]
+    App --> Store["DynamoDBStore"]
+    App --> History["DynamoDBChatMessageHistory"]
+    Factory["DynamoDBFactory.createAll()"] -. "one shared client" .-> Saver
+    Factory -.-> Store
+    Factory -.-> History
+    Saver --> Table[("DynamoDB table<br/>PK / SK, optional gsi1")]
+    Store --> Table
+    History --> Table
+    Saver -. "payload at or above s3.thresholdBytes" .-> Bucket[("S3 bucket, optional")]
+    Store -.-> Bucket
+    History -.-> Bucket
+    Store -. "embedDocuments / embedQuery" .-> Embeddings["LangChain Embeddings, optional"]
+    Store -. "similarity search" .-> Backend["VectorBackend, optional"]
+```
+
+Every payload — a checkpoint, its metadata, a pending write, a store value, a chat message — takes the same path on the way in: it is serialized by the adapter's `serde`, refused if that yields zero bytes, gzipped when `compression` is enabled and the bytes reach `minSizeBytes` (and kept gzipped only when that saves at least 10%), and then either kept inline or, with `s3` configured and the stored bytes at or above `thresholdBytes`, uploaded with `If-None-Match: *` under a key made of the row's identifiers and the id of the write, carrying the row's key as S3 metadata. The row stores a descriptor saying which. Reads reverse it: an offloaded key must lie under the row's own path before it is downloaded, the download is capped at `s3.maxDownloadBytes` and the gunzip at `compression.maxDecompressedBytes` (50 MiB each by default), and the configured `serde` decodes the bytes.
+
+**Checkpoint write — `saver.put`:**
+
+1. The config and every identifier are validated before anything is encoded.
+2. The checkpoint, then its metadata, are encoded as above; the saver's `serde` defaults to LangGraph's `JsonPlusSerializer`. If the metadata cannot be encoded, the checkpoint's upload is released at once.
+3. Without `s3`, a payload over 392 KB is refused with a `VALIDATION` error naming `payload` before any write.
+4. One `TransactWriteItems` writes the `META` row (the metadata descriptor, the parent checkpoint id, the recency-index keys) and the `PAYLOAD` row (the checkpoint descriptor), both stamped with the `ttl` when one is configured. It carries a client request token drawn once, so every retry re-sends the identical request and a retry after a lost acknowledgement is not applied twice.
+5. If the transaction fails with `s3` configured, a consistent `GetItem` of the row carrying an offloaded descriptor decides the outcome: the transaction committed after all (success), did not commit (this call's uploads are deleted, the error is thrown), or cannot be told (nothing is deleted, the error is thrown).
+
+**Checkpoint read — `saver.getTuple`:**
+
+1. A config naming no thread answers `undefined`. Otherwise the `META` row is a consistent `GetItem` when `checkpoint_id` is given, or a consistent newest-first `Query` of the namespace's `META#` rows, 50 per page, keeping the first live one.
+2. A consistent `GetItem` reads the `PAYLOAD` row; when it is not there the answer is `undefined`.
+3. The checkpoint and the metadata are decoded while a consistent `Query` reads every pending `WRITE` row of the checkpoint, uncapped; superseded writes are dropped and the rest decoded `readConcurrency` at a time (8 by default).
+4. A row whose format version `v` is newer than this release reads fails with `FORMAT_UNSUPPORTED`, and rows past their `ttl` are skipped, however long DynamoDB's sweep lags.
+
+**Store — `store.put` and `store.search`:**
+
+1. `put` reads the row it replaces with a consistent `GetItem` for its `createdAt`, revision and descriptor.
+2. It embeds with `embedDocuments`: one vector per configured field onto the row, or — with a `vectorBackend` — one vector over the joined fields for the backend instead, never both. `index: false` embeds nothing.
+3. It encodes the value (plain-JSON `JSON_SERDE` by default) under this put's own revision id and writes the row: a `PutItem`, or with `s3` a compare-and-swap on the revision it read — a one-item `TransactWriteItems` with a request token when the payload was offloaded. A failed write is read back before this put's upload is released.
+4. Once the row is committed it releases the object the old row named, then upserts the vector to the `vectorBackend` best-effort: a backend failure is logged at `warn`, not thrown, and `reconcileVectorIndex` repairs it.
+5. `search` with a `query` and a `vectorBackend` embeds the query, asks the backend for the top matches and reads each canonical item from DynamoDB. Otherwise it runs an eventually consistent `Query` of the `STORE#<namespace[0]>` partition (a `Scan` only for the empty prefix `[]`), decodes rows `readConcurrency` at a time and applies `filter` in process — stopping as soon as the page is full when there is nothing to rank, and otherwise refusing more than `maxSearchCandidates` rows before any decode, then ranking every candidate by cosine similarity to the embedded query.
+
+**Chat history — `history.addMessages` and `history.getMessages`:**
+
+1. `addMessages` validates the session id and every message before anything is sent; with a `ttl`, a consistent `GetItem` of the session row reads the conversation's expiry anchor, which every message then shares.
+2. Each message is encoded under its own ULID (plain-JSON `JSON_SERDE` by default); if one fails, the uploads before it are released.
+3. The messages are cut into chunks of at most 99 messages or 3.5 MB. Each chunk is one `TransactWriteItems` of its message rows plus the update of the `HISTORY#SESSION` row — the message count, `updatedAt`, the title and the TTL anchor — so the count never disagrees with the messages. If a later chunk fails, the chunks already committed are deleted and the session row reverted; a rollback that cannot finish is `COMPENSATION_FAILED`.
+4. `getMessages` is a consistent `Query` of the session's `HISTORY#MSG#` rows — the whole session oldest first, or newest first up to `limit` — skipping expired rows and refusing a row this adapter did not write.
+5. Messages are decoded `readConcurrency` at a time and returned oldest first. A message whose payload is permanently lost is handled by `onCorruptMessage` — `'skip'`, the default, logs it at `error` and leaves it out; `'throw'` fails the read — and every other failure fails the read under either setting.
+
+The key each row is stored under is in [Table schema](#table-schema).
 
 ---
 
