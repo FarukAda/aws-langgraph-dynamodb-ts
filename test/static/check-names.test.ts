@@ -121,6 +121,10 @@ describe('namingViolations', () => {
 });
 
 describe('the source tree', () => {
+  it('finds the modules to check, so a broken scan cannot pass silently', () => {
+    expect(listSourceFiles().length).toBeGreaterThanOrEqual(80);
+  });
+
   it('uses parse* for a function returning the checked value and assert* for one returning nothing', () => {
     const violations = listSourceFiles().flatMap((path) =>
       namingViolations(relative(SRC_ROOT, path).split(sep).join('/'), readFileSync(path, 'utf8')),

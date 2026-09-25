@@ -49,6 +49,10 @@ describe('historyProse', () => {
 });
 
 describe('the source tree', () => {
+  it('finds the modules to check, so a broken scan cannot pass silently', () => {
+    expect(listSourceFiles().length).toBeGreaterThanOrEqual(80);
+  });
+
   it('says why the code is as it is, not what it used to do', () => {
     const hits = listSourceFiles().flatMap((path) =>
       historyProse(readFileSync(path, 'utf8')).map(

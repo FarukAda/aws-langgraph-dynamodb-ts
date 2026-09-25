@@ -60,6 +60,10 @@ describe('termViolation', () => {
 });
 
 describe('the source tree', () => {
+  it('finds the modules to check, so a broken scan cannot pass silently', () => {
+    expect(listSourceFiles().length).toBeGreaterThanOrEqual(80);
+  });
+
   it('uses one term for each concept in every module-level name', () => {
     const hits = listSourceFiles().flatMap((path) => {
       const file = relative(SRC_ROOT, path).split(sep).join('/');

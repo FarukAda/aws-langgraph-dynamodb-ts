@@ -120,6 +120,10 @@ describe('commentViolations', () => {
 });
 
 describe('the actual source tree', () => {
+  it('finds the modules to check, so a broken scan cannot pass silently', () => {
+    expect(listSourceFiles().length).toBeGreaterThanOrEqual(80);
+  });
+
   it('writes interface documentation as JSDoc and every other comment as a line comment', () => {
     const offenders = listSourceFiles().flatMap((path) =>
       commentViolations(readFileSync(path, 'utf8')).map(
