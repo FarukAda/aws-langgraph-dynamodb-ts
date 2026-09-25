@@ -1,23 +1,24 @@
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 
-import { partitionKey as checkpointerPartition } from '../../../src/checkpointer/internal/keys';
+import { partitionKey as checkpointerPartition } from '../../../src/checkpointer/internal/rows';
 import { listSessions } from '../../../src/history/actions/list-sessions';
 import {
   SESSION_SORT_KEY,
   historyPartitionPrefix,
   sessionPartition,
-} from '../../../src/history/internal/keys';
+} from '../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../src/shared/codec/json-serde';
+import { ADAPTER_TAGS } from '../../../src/shared/dynamodb/table-schema';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { searchItems } from '../../../src/store/actions/search';
-import { buildStoreItem } from '../../../src/store/internal/item-mapper';
 import {
+  buildStoreItem,
   partitionKey as storePartition,
   sortKey,
   storePartitionPrefix,
-} from '../../../src/store/internal/keys';
+} from '../../../src/store/internal/rows';
 import type { StoreContext } from '../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../shared/helpers/parsed-inputs';
@@ -41,6 +42,7 @@ describe('cross-adapter partition-key disjointness (C1, C2)', () => {
       storePartition([shared]),
     ];
     expect(new Set(keys).size).toBe(3);
+    expect(new Set(Object.values(ADAPTER_TAGS).map((tag) => tag[0])).size).toBe(3);
   });
 
   it('tags each partition with its own adapter', () => {
@@ -123,8 +125,7 @@ describe('a cross-partition scan reads only its own adapter key space', () => {
     const context = storeContext(client);
     const mine = await buildStoreItem(
       context,
-      ['users', 'u1'],
-      'k0',
+      { namespace: ['users', 'u1'], key: 'k0' },
       { kind: 'note' },
       { createdAt: 'c', updatedAt: 'u' },
     );
@@ -169,8 +170,18 @@ describe('a cross-partition scan reads only its own adapter key space', () => {
     const { client, mock } = createStrictDocumentMock();
     const context = storeContext(client);
     const rows = await Promise.all([
-      buildStoreItem(context, ['users', 'u1'], 'k0', { n: 1 }, { createdAt: 'c', updatedAt: 'u' }),
-      buildStoreItem(context, ['agents'], 'k1', { n: 2 }, { createdAt: 'c', updatedAt: 'u' }),
+      buildStoreItem(
+        context,
+        { namespace: ['users', 'u1'], key: 'k0' },
+        { n: 1 },
+        { createdAt: 'c', updatedAt: 'u' },
+      ),
+      buildStoreItem(
+        context,
+        { namespace: ['agents'], key: 'k1' },
+        { n: 2 },
+        { createdAt: 'c', updatedAt: 'u' },
+      ),
     ]);
     mock.on(ScanCommand).callsFake(simulatedScan(rows));
 
@@ -210,8 +221,7 @@ describe('the forward-version refusal still fires inside the key space', () => {
     const context = storeContext(client);
     const mine = await buildStoreItem(
       context,
-      ['users', 'u1'],
-      'k0',
+      { namespace: ['users', 'u1'], key: 'k0' },
       { kind: 'note' },
       { createdAt: 'c', updatedAt: 'u' },
     );

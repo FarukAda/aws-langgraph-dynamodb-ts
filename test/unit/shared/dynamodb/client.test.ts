@@ -4,8 +4,6 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   DEFAULT_SOCKET_TIMEOUT_MS,
-} from '../../../../src/shared/constants';
-import {
   resolveDynamoDBClient,
   warnOnStackedRetries,
 } from '../../../../src/shared/dynamodb/client';

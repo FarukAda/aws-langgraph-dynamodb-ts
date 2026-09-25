@@ -1,0 +1,205 @@
+import { cleanUpS3Orphans } from '../../../../../src/shared/codec/s3/offloader';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../../src/shared/logging/truncate';
+
+function fakeLogger() {
+  return { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+}
+
+describe('cleanUpS3Orphans', () => {
+  it('deletes the non-empty keys and does not warn on success', async () => {
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1', undefined, ''],
+      operation: 'put',
+      logger,
+    });
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1']);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('warns when deleteBatch reports keys it could not delete', async () => {
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue(['k1']) };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, { keys: ['k1', 'k2'], operation: 'put', logger });
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a no-op when there are no real keys', async () => {
+    const offloader = { deleteBatch: jest.fn() };
+    await cleanUpS3Orphans(offloader as never, {
+      keys: [undefined, ''],
+      operation: 'put',
+      logger: fakeLogger(),
+    });
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it('retries a transient failure then succeeds without warning', async () => {
+    const transient = Object.assign(new Error('slow'), { name: 'SlowDown' });
+    const offloader = {
+      deleteBatch: jest.fn().mockRejectedValueOnce(transient).mockResolvedValueOnce([]),
+    };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1'],
+      operation: 'put',
+      logger,
+      rng: () => 0,
+    });
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('treats a 5xx httpStatusCode as transient and retries', async () => {
+    const serverError = Object.assign(new Error('boom'), { $metadata: { httpStatusCode: 503 } });
+    const offloader = {
+      deleteBatch: jest.fn().mockRejectedValueOnce(serverError).mockResolvedValueOnce([]),
+    };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1'],
+      operation: 'put',
+      logger,
+      rng: () => 0,
+    });
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('treats a 429 httpStatusCode as transient and retries', async () => {
+    const throttle = Object.assign(new Error('slow'), { $metadata: { httpStatusCode: 429 } });
+    const offloader = {
+      deleteBatch: jest.fn().mockRejectedValueOnce(throttle).mockResolvedValueOnce([]),
+    };
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1'],
+      operation: 'put',
+      logger: fakeLogger(),
+      rng: () => 0,
+    });
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry a non-transient failure and warns once', async () => {
+    const offloader = { deleteBatch: jest.fn().mockRejectedValue(new Error('AccessDenied')) };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1'],
+      operation: 'put',
+      logger,
+      rng: () => 0,
+    });
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops retrying when the abort signal fires and still never throws', async () => {
+    const transient = Object.assign(new Error('slow'), { name: 'SlowDown' });
+    const offloader = { deleteBatch: jest.fn().mockRejectedValue(transient) };
+    const logger = fakeLogger();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      cleanUpS3Orphans(offloader as never, {
+        keys: ['k1'],
+        operation: 'put',
+        logger,
+        rng: () => 0,
+        signal: controller.signal,
+      }),
+    ).resolves.toBeUndefined();
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns and does not throw when transient deletion keeps failing', async () => {
+    const transient = Object.assign(new Error('slow'), { name: 'SlowDown' });
+    const offloader = { deleteBatch: jest.fn().mockRejectedValue(transient) };
+    const logger = fakeLogger();
+    await expect(
+      cleanUpS3Orphans(offloader as never, {
+        keys: ['k1'],
+        operation: 'put',
+        logger,
+        rng: () => 0,
+        maxAttempts: 2,
+      }),
+    ).resolves.toBeUndefined();
+    expect(offloader.deleteBatch).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('cleanUpS3Orphans row scope (SEC-03)', () => {
+  it("skips and warns for a key outside the row's scope, deleting only the owned keys", async () => {
+    const offloader = {
+      deleteBatch: jest.fn().mockResolvedValue([]),
+      ownsKey: jest.fn((key: string) => key.startsWith('own/')),
+    };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['own/a.bin', 'foreign/b.bin'],
+      operation: 'deleteThread',
+      logger,
+      scope: ['t'],
+    });
+    expect(offloader.ownsKey).toHaveBeenCalledWith('own/a.bin', ['t']);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['own/a.bin']);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('outside'),
+      expect.objectContaining({ key: 'foreign/b.bin' }),
+    );
+  });
+
+  it('deletes nothing when every key is foreign, without calling S3', async () => {
+    const offloader = { deleteBatch: jest.fn(), ownsKey: () => false };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['foreign/b.bin'],
+      operation: 'deleteThread',
+      logger,
+      scope: ['t'],
+    });
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not consult ownsKey when no scope is given (own uploads)', async () => {
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]), ownsKey: jest.fn() };
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k'],
+      operation: 'put',
+      logger: fakeLogger(),
+    });
+    expect(offloader.ownsKey).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The line names the failure rather than repeating what it said, and the name
+ * is the SDK's or an offloader's own — nothing this package ran checked its
+ * length. `message` is bounded where `redactedMessage` relays it, so relaying
+ * the name whole would split what is one value.
+ */
+describe('cleanUpS3Orphans bounds the failure it names', () => {
+  it('cuts an error name past the log cap and states its real length', async () => {
+    const reason = 'N'.repeat(MAX_LOGGED_VALUE_CHARS * 4);
+    const offloader = {
+      deleteBatch: jest
+        .fn()
+        .mockRejectedValue(Object.assign(new Error('denied'), { name: reason })),
+    };
+    const logger = fakeLogger();
+    await cleanUpS3Orphans(offloader as never, {
+      keys: ['k1'],
+      operation: 'put',
+      logger,
+      rng: () => 0,
+    });
+    expect(logger.warn).toHaveBeenCalledWith(expect.any(String), {
+      reason: truncateForLog(reason),
+    });
+  });
+});

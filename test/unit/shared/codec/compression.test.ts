@@ -1,5 +1,5 @@
+import { isPermanentPayloadLoss } from '../../../../src/shared/codec/codec';
 import { compress, decompress } from '../../../../src/shared/codec/compression';
-import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-loss';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 
 /** Compressible: 4 KiB of one byte, well over the default minimum. */

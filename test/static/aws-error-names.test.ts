@@ -47,7 +47,7 @@ const DOCUMENTED: Readonly<Record<string, string>> = {
   SlowDown: 'Amazon S3 API Reference, Error responses',
   TimeoutError: '@smithy/core retry TRANSIENT_ERROR_CODES; raised by @smithy/node-http-handler',
   AbortError: 'the name the SDK and the platform give a request an AbortSignal cancelled',
-  DOMException: "the web platform's own error type; redaction-walk.ts recognises its tag",
+  DOMException: "the web platform's own error type; redaction.ts recognises its tag",
 };
 
 /**

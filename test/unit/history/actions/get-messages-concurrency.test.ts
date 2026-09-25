@@ -2,8 +2,8 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage, mapChatMessagesToStoredMessages } from '@langchain/core/messages';
 
 import { getMessages } from '../../../../src/history/actions/get-messages';
-import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import { parseSessionId } from '../../../../src/history/internal/parse';
+import { buildMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -39,7 +39,9 @@ describe('offloaded reads run concurrently (CODEC-14)', () => {
       new AIMessage('m3'),
     ]);
     const items = await Promise.all(
-      stored.map((message, index) => buildMessageItem(ctx, SESSION_ID, `01${index}`, message)),
+      stored.map((message, index) =>
+        buildMessageItem(ctx, { sessionId: SESSION_ID, messageId: `01${index}`, message }),
+      ),
     );
     mock.on(QueryCommand).resolves({ Items: items });
     const messages = await getMessages(ctx, 's1');
@@ -67,7 +69,9 @@ describe('offloaded reads run concurrently (CODEC-14)', () => {
       new AIMessage('m5'),
     ]);
     const items = await Promise.all(
-      stored.map((message, index) => buildMessageItem(ctx, SESSION_ID, `01${index}`, message)),
+      stored.map((message, index) =>
+        buildMessageItem(ctx, { sessionId: SESSION_ID, messageId: `01${index}`, message }),
+      ),
     );
     mock.on(QueryCommand).resolves({ Items: items });
 

@@ -6,12 +6,15 @@ import { getCheckpointTuple } from '../../../../src/checkpointer/actions/get-tup
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { getMessages } from '../../../../src/history/actions/get-messages';
-import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import { parseSessionId } from '../../../../src/history/internal/parse';
+import { buildMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
-import { loadPayloadValue, PayloadLocation } from '../../../../src/shared/codec/codec';
+import {
+  loadPayloadValue,
+  PayloadLocation,
+  isPermanentPayloadLoss,
+} from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-loss';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { getItem } from '../../../../src/store/internal/get-item';
@@ -96,7 +99,11 @@ async function readHistory(serde: SerializerProtocol): Promise<unknown> {
     onCorruptMessage: 'skip',
   };
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
-  const item = await buildMessageItem(context, parseSessionId('s1'), '01A', human);
+  const item = await buildMessageItem(context, {
+    sessionId: parseSessionId('s1'),
+    messageId: '01A',
+    message: human,
+  });
   item.message = foreignDescriptor() as never;
   mock.on(QueryCommand).resolves({ Items: [item] });
   return getMessages(context, 's1');

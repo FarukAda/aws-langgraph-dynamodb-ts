@@ -75,7 +75,7 @@ const UNTRACKED_PLANNING_FILE =
  *
  * - A reordered "round N fix" is not caught. No plan has ever produced that
  *   ordering, and a pattern loose enough to catch it would also fire on
- *   `test/unit/shared/dynamodb/drain-unprocessed.test.ts`'s legitimate
+ *   `test/unit/shared/dynamodb/batch-write-drain.test.ts`'s legitimate
  *   BatchWriteItem retry-round prose ("Round 1: …", "round 2 …"), which
  *   names a retry round, not a plan-review round.
  * - A design-decision id in a trailing comment (`foo(); // D1`) is not

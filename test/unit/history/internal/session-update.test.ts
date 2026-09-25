@@ -1,4 +1,4 @@
-import { buildSessionUpdateItem } from '../../../../src/history/internal/session-update';
+import { buildSessionUpdateItem } from '../../../../src/history/internal/session';
 
 describe('buildSessionUpdateItem', () => {
   it('builds a transact Update that adds the count and sets timestamps + sessionId once', () => {

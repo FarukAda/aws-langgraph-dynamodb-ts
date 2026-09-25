@@ -36,3 +36,4 @@ the numbering, and that no number is used twice.
 | [19](0019-raise-one-error-class-and-classify-aws-failures-in-one-place.md) | Raise one error class and classify AWS failures in one place | Accepted |
 | [20](0020-make-the-layer-direction-a-build-gate.md) | Make the layer direction a build gate | Accepted |
 | [21](0021-parse-caller-input-once-into-types-only-a-parser-can-build.md) | Parse caller input once into types only a parser can build | Accepted |
+| [22](0022-give-each-row-format-denormalised-copy-and-write-protocol-one-owner.md) | Give each row format, denormalised copy and write protocol one owning module | Accepted |

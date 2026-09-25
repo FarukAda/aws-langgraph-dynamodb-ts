@@ -11,7 +11,7 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 
-import { downloadObject, uploadObject } from '../../../../../src/shared/codec/s3/read-write';
+import { downloadObject, uploadObject } from '../../../../../src/shared/codec/s3/offloader';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 
 const s3Mock = mockClient(S3Client);
@@ -62,7 +62,11 @@ describe('the signal reaches the S3 request', () => {
   it('is sent as abortSignal on the download', async () => {
     const controller = new AbortController();
     s3Mock.on(GetObjectCommand).resolves({ Body: bytesBody([new Uint8Array([7])]) as never });
-    await downloadObject(client(), 'b', 'k.bin', MAX_BYTES, controller.signal);
+    await downloadObject(
+      client(),
+      { bucket: 'b', key: 'k.bin', maxBytes: MAX_BYTES },
+      controller.signal,
+    );
     expect(requestOf(s3Mock.commandCalls(GetObjectCommand)[0])).toEqual({
       abortSignal: controller.signal,
     });
@@ -124,7 +128,11 @@ describe('a cancelled transfer is reported as a cancel', () => {
       } as never,
     });
     await expect(
-      downloadObject(client(), 'b', 'k.bin', MAX_BYTES, controller.signal),
+      downloadObject(
+        client(),
+        { bucket: 'b', key: 'k.bin', maxBytes: MAX_BYTES },
+        controller.signal,
+      ),
     ).rejects.toMatchObject({ code: ErrorCode.ABORTED, name: 'DynamoDBLangGraphError' });
     expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(1);
   });
@@ -134,7 +142,11 @@ describe('a cancelled transfer is reported as a cancel', () => {
     const controller = new AbortController();
     s3Mock.on(GetObjectCommand).rejects(Object.assign(new Error('nope'), { name: 'NoSuchKey' }));
     await expect(
-      downloadObject(client(), 'b', 'k.bin', MAX_BYTES, controller.signal),
+      downloadObject(
+        client(),
+        { bucket: 'b', key: 'k.bin', maxBytes: MAX_BYTES },
+        controller.signal,
+      ),
     ).rejects.toMatchObject({ code: ErrorCode.S3_OFFLOAD_FAILED });
   });
 });

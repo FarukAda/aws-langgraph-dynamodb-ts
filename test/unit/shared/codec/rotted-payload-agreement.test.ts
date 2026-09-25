@@ -6,13 +6,15 @@ import { getCheckpointTuple } from '../../../../src/checkpointer/actions/get-tup
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { getMessages } from '../../../../src/history/actions/get-messages';
-import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import { parseSessionId } from '../../../../src/history/internal/parse';
+import { buildMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
-import { loadPayloadValue, PayloadLocation } from '../../../../src/shared/codec/codec';
-import { bytesHoldDeclaredForm } from '../../../../src/shared/codec/declared-form';
-import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-loss';
+import {
+  loadPayloadValue,
+  PayloadLocation,
+  isPermanentPayloadLoss,
+} from '../../../../src/shared/codec/codec';
+import { bytesHoldDeclaredForm, JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -103,9 +105,17 @@ async function historyReading(
     onCorruptMessage: policy,
   };
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('still here')]);
-  const rotted = await buildMessageItem(context, parseSessionId('s1'), '01A', human);
+  const rotted = await buildMessageItem(context, {
+    sessionId: parseSessionId('s1'),
+    messageId: '01A',
+    message: human,
+  });
   rotted.message = rottedDescriptor() as never;
-  const intact = await buildMessageItem(context, parseSessionId('s1'), '01B', human);
+  const intact = await buildMessageItem(context, {
+    sessionId: parseSessionId('s1'),
+    messageId: '01B',
+    message: human,
+  });
   mock.on(QueryCommand).resolves({ Items: [rotted, intact] });
   return { context, read: () => getMessages(context, 's1') };
 }

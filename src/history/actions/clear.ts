@@ -1,14 +1,13 @@
-import { WRITE_ID_ATTRIBUTE } from '../../shared/dynamodb/conditional-put';
+import type { DocItem } from '../../shared/dynamodb/client';
+import { WRITE_ID_ATTRIBUTE } from '../../shared/dynamodb/idempotent-write';
 import {
   deletePartitionRows,
   namedDescriptor,
   type NamedDescriptor,
 } from '../../shared/dynamodb/partition-delete';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
-import type { DocItem } from '../../shared/dynamodb/types';
-import { isHistorySortKey } from '../internal/keys';
+import { retryFor } from '../../shared/dynamodb/retry';
 import { parseSessionId } from '../internal/parse';
-import { sessionItemsQuery } from '../internal/query';
+import { isHistorySortKey, sessionItemsQuery } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';
 
 /**

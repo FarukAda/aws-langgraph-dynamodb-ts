@@ -19,7 +19,10 @@ const EVERY_FACTORY = [
   ['resultTruncatedError', () => resultTruncatedError('maxItems', 1)],
   ['abortError', () => abortError()],
   ['batchWriteIncompleteError', () => batchWriteIncompleteError(0, [], 1)],
-  ['batchWriteAllIncompleteError', () => batchWriteAllIncompleteError(0, 1, [])],
+  [
+    'batchWriteAllIncompleteError',
+    () => batchWriteAllIncompleteError({ succeeded: 0, total: 1, failures: [] }),
+  ],
   ['compensationFailedError', () => compensationFailedError(new Error('t'), new Error('r'))],
 ] as const;
 
@@ -162,7 +165,13 @@ describe('batchWriteIncompleteError', () => {
 describe('batchWriteAllIncompleteError', () => {
   it('carries a pass record, in rows when asked, with the first failure as cause', () => {
     const first = new Error('first');
-    const error = batchWriteAllIncompleteError(1, 2, [first], 5, 'row');
+    const error = batchWriteAllIncompleteError({
+      succeeded: 1,
+      total: 2,
+      failures: [first],
+      succeededCount: 5,
+      unit: 'row',
+    });
     expect(error.cause).toBe(first);
     expect(error.details).toEqual({
       kind: 'pass',
@@ -175,16 +184,30 @@ describe('batchWriteAllIncompleteError', () => {
   });
 
   it('defaults succeededCount to 0 when the caller omits it', () => {
-    expect(batchWriteAllIncompleteError(0, 1, [new Error('boom')]).details).toMatchObject({
+    expect(
+      batchWriteAllIncompleteError({ succeeded: 0, total: 1, failures: [new Error('boom')] })
+        .details,
+    ).toMatchObject({
       succeededCount: 0,
     });
   });
 
   /** The chunk wording is the default, so the batch path's message is untouched. */
   it('counts rows when a caller deletes one row per request', () => {
-    const batched = batchWriteAllIncompleteError(1, 2, [new Error('boom')], 25);
+    const batched = batchWriteAllIncompleteError({
+      succeeded: 1,
+      total: 2,
+      failures: [new Error('boom')],
+      succeededCount: 25,
+    });
     expect(batched.message).toContain('batchWriteAll did not fully drain: 1/2 chunk(s) succeeded');
-    const perRow = batchWriteAllIncompleteError(1, 2, [new Error('boom')], 1, 'row');
+    const perRow = batchWriteAllIncompleteError({
+      succeeded: 1,
+      total: 2,
+      failures: [new Error('boom')],
+      succeededCount: 1,
+      unit: 'row',
+    });
     expect(perRow.message).toContain('the partition delete did not fully drain');
     expect(perRow.message).toContain('1/2 row(s) succeeded, 1 row(s) failed');
     expect(perRow.message).not.toContain('batchWriteAll');
@@ -192,18 +215,24 @@ describe('batchWriteAllIncompleteError', () => {
 
   it('keeps the chunks that had failed at the throw', () => {
     const failed = [new Error('boom')];
-    const error = batchWriteAllIncompleteError(0, 2, failed);
+    const error = batchWriteAllIncompleteError({ succeeded: 0, total: 2, failures: failed });
     failed.push(new Error('later'));
     expect(error.details).toMatchObject({ failedChunks: [expect.any(Error)] });
   });
 
   it('reads a missing or non-array failure list as empty rather than crashing', () => {
-    const missing = batchWriteAllIncompleteError(0, 1, undefined as never);
+    const missing = batchWriteAllIncompleteError({
+      succeeded: 0,
+      total: 1,
+      failures: undefined as never,
+    });
     expect(missing.code).toBe(ErrorCode.BATCH_WRITE_INCOMPLETE);
     expect(missing.details).toMatchObject({ failedChunks: [] });
     expect(missing.cause).toBeUndefined();
     expect(missing.message).toContain('0 chunk(s) failed');
-    expect(batchWriteAllIncompleteError(0, 1, 'x' as never).details).toMatchObject({
+    expect(
+      batchWriteAllIncompleteError({ succeeded: 0, total: 1, failures: 'x' as never }).details,
+    ).toMatchObject({
       failedChunks: [],
     });
   });

@@ -2,12 +2,14 @@ import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/constants';
-import { isExpiredRow } from '../../shared/dynamodb/expiry';
-import { assembleTuple } from '../internal/assemble';
-import { fetchTargetMeta } from '../internal/fetch';
-import { metaRows, narrowOrWarn } from '../internal/list-rows';
-import { passesKeyFilters, passesMetadataFilter } from '../internal/list-scope';
+import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/dynamodb/paginate';
+import { isExpiredRow } from '../../shared/dynamodb/table-schema';
+import {
+  metaRows,
+  narrowOrWarn,
+  passesKeyFilters,
+  passesMetadataFilter,
+} from '../internal/listing';
 import {
   type CheckpointId,
   type CheckpointNs,
@@ -15,8 +17,9 @@ import {
   parseListScope,
   type ThreadId,
 } from '../internal/parse';
+import { assembleTuple, fetchTargetMeta } from '../internal/read';
+import type { CheckpointMetaItem } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
-import type { CheckpointMetaItem } from '../types';
 
 /**
  * The tuple for one META item that passes every filter, assembled eventually
@@ -32,11 +35,16 @@ async function tupleFor(
   if (!passesKeyFilters(meta, scope)) return undefined;
   const verdict = await passesMetadataFilter(context, meta, scope);
   if (!verdict.pass) return undefined;
-  return assembleTuple(context, meta.threadId, meta.checkpointNs, meta, {
-    signal: scope.signal,
-    consistent: false,
-    metadata: verdict.metadata,
-  });
+  return assembleTuple(
+    context,
+    { threadId: meta.threadId, checkpointNs: meta.checkpointNs },
+    meta,
+    {
+      signal: scope.signal,
+      consistent: false,
+      metadata: verdict.metadata,
+    },
+  );
 }
 
 /** A `checkpoint_id` addresses one row: read it directly instead of scanning the namespace for it. */

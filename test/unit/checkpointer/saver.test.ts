@@ -51,6 +51,15 @@ describe('DynamoDBSaver', () => {
     );
   });
 
+  it('rejects an option key this package does not read', () => {
+    expect(() => new DynamoDBSaver({ tableName: 'tbl', readConcurency: 4 } as never)).toThrow(
+      expect.objectContaining({
+        code: 'VALIDATION',
+        context: { field: 'options.readConcurency' },
+      }),
+    );
+  });
+
   it('put delegates to a transactional write and returns the new config', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});

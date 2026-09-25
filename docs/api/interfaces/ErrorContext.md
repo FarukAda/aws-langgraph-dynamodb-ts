@@ -6,7 +6,7 @@
 
 # Interface: ErrorContext
 
-Defined in: [shared/errors/base-error.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L10)
+Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L20)
 
 Structured, log-safe context attached to every library error. Identifiers
 and counts only — never a payload or a credential.
@@ -17,7 +17,7 @@ and counts only — never a payload or a credential.
 
 > `optional` **attempts?**: `number`
 
-Defined in: [shared/errors/base-error.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L20)
+Defined in: [shared/errors/base-error.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L30)
 
 Attempts made before a retry budget was exhausted.
 
@@ -27,7 +27,7 @@ Attempts made before a retry budget was exhausted.
 
 > `optional` **awsErrorName?**: `string`
 
-Defined in: [shared/errors/base-error.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L31)
+Defined in: [shared/errors/base-error.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L41)
 
 The AWS exception name of the failure underneath, when that failure was
 AWS-shaped (it carried the SDK's `$metadata`, or a name the classifier
@@ -40,7 +40,7 @@ or an alert can branch on it without walking `cause`.
 
 > `optional` **checkpointId?**: `string`
 
-Defined in: [shared/errors/base-error.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L24)
+Defined in: [shared/errors/base-error.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L34)
 
 The checkpoint a checkpointer failure names.
 
@@ -50,7 +50,7 @@ The checkpoint a checkpointer failure names.
 
 > `optional` **field?**: `string`
 
-Defined in: [shared/errors/base-error.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L16)
+Defined in: [shared/errors/base-error.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L26)
 
 The option, argument or cap that failed validation or was exceeded.
 
@@ -60,7 +60,7 @@ The option, argument or cap that failed validation or was exceeded.
 
 > `optional` **httpStatusCode?**: `number`
 
-Defined in: [shared/errors/base-error.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L35)
+Defined in: [shared/errors/base-error.ts:45](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L45)
 
 The HTTP status of the failed AWS response (`cause.$metadata.httpStatusCode`).
 
@@ -70,7 +70,7 @@ The HTTP status of the failed AWS response (`cause.$metadata.httpStatusCode`).
 
 > `optional` **key?**: `string`
 
-Defined in: [shared/errors/base-error.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L18)
+Defined in: [shared/errors/base-error.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L28)
 
 The S3 object key involved, for offload failures.
 
@@ -80,7 +80,7 @@ The S3 object key involved, for offload failures.
 
 > `optional` **operation?**: `string`
 
-Defined in: [shared/errors/base-error.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L14)
+Defined in: [shared/errors/base-error.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L24)
 
 The public operation (`saver.put`, `store.batch`, …) or internal step that failed.
 
@@ -90,7 +90,7 @@ The public operation (`saver.put`, `store.batch`, …) or internal step that fai
 
 > `optional` **requestId?**: `string`
 
-Defined in: [shared/errors/base-error.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L33)
+Defined in: [shared/errors/base-error.ts:43](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L43)
 
 The AWS request id (`cause.$metadata.requestId`), which AWS Support asks for.
 
@@ -100,7 +100,7 @@ The AWS request id (`cause.$metadata.requestId`), which AWS Support asks for.
 
 > `optional` **tableName?**: `string`
 
-Defined in: [shared/errors/base-error.ts:12](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L12)
+Defined in: [shared/errors/base-error.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L22)
 
 The DynamoDB table the operation targeted, when known.
 
@@ -110,6 +110,6 @@ The DynamoDB table the operation targeted, when known.
 
 > `optional` **threadId?**: `string`
 
-Defined in: [shared/errors/base-error.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L22)
+Defined in: [shared/errors/base-error.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L32)
 
 The thread a checkpointer failure belongs to.

@@ -28,8 +28,8 @@ We never delete an object as the only defense against that ambiguity:
 every delete this package issues is either unconditional because a
 compare-and-swap first confirmed the row no longer holds that write, or
 explicitly best-effort and logged, never required for correctness. Each of
-the three adapters exposes `ensureS3LifecycleRule()` — the checkpointer's
-routed through `ensureS3Lifecycle()` — which provisions an S3 lifecycle
+the three adapters exposes `ensureS3LifecycleRule()` — all three
+routed through `ensureLifecycleFor()` — which provisions an S3 lifecycle
 rule expiring objects under the adapter's key prefix on the configured TTL,
 plus a second rule reclaiming the delete markers a release leaves on a
 versioned bucket, and reports the bucket's versioning state rather than

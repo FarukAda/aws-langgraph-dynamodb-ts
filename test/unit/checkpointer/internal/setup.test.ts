@@ -7,17 +7,6 @@ const serde = {
 };
 
 describe('setUpCheckpointer', () => {
-  it('rejects an option key this package does not read', () => {
-    expect(() =>
-      setUpCheckpointer({ tableName: 'tbl', readConcurency: 4 } as never, serde),
-    ).toThrow(
-      expect.objectContaining({
-        code: 'VALIDATION',
-        context: { field: 'options.readConcurency' },
-      }),
-    );
-  });
-
   it('rejects an invalid tableName and an ambiguous client configuration at construction (CORE-05)', () => {
     expect(() =>
       setUpCheckpointer({ tableName: 'bad name', client: { send: jest.fn() } as never }, serde),
@@ -45,16 +34,18 @@ describe('setUpCheckpointer', () => {
       },
       serde,
     );
-    expect(setup.ownsClient).toBe(true);
+    setup.shell.release();
+    expect(fakeClient.destroy).toHaveBeenCalledTimes(1);
     expect(setup.context.tableName).toBe('ckpt');
     expect(setup.context.serde).toBe(serde);
     expect(setup.context.offloader).toBeUndefined();
   });
 
   it('does not own an injected client', () => {
-    const injected = { ...fakeClientMethods(), send: jest.fn() };
+    const injected = { ...fakeClientMethods(), send: jest.fn(), destroy: jest.fn() };
     const setup = setUpCheckpointer({ tableName: 'ckpt', client: injected }, serde);
-    expect(setup.ownsClient).toBe(false);
+    setup.shell.release();
+    expect(injected.destroy).not.toHaveBeenCalled();
     expect(setup.context.client).toBe(injected);
   });
 

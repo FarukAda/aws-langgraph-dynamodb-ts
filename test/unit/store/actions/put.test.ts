@@ -6,7 +6,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import {
   answerDeleteReads,
@@ -184,7 +184,7 @@ describe('putItem', () => {
     expect(keys[0]).toMatch(/^users\/u1\/profile\//);
   });
 
-  // Integration-level: prove persistRecord wires verifyWriteLanded's landed/not-landed/unverified verdict correctly into the delete/rethrow decision (its own branches are unit-tested in write-verify.test.ts).
+  // Integration-level: prove persistRecord wires verifyWriteLanded's landed/not-landed/unverified verdict correctly into the delete/rethrow decision (its own branches are unit-tested in item-write-verify.test.ts).
   it('does not delete the new S3 object, and succeeds, when an ambiguous retry-exhaustion write actually landed', async () => {
     const { client, mock } = createStrictDocumentMock();
     let rev: string | undefined;
@@ -285,11 +285,16 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     const offloader = trackingOffloader({ buildKey: binKey });
     const ctx = context(client, { offloader: offloader as never });
-    const first = await buildStoreItem(ctx, ['users', 'u1'], 'profile', op({}).value as never, {
-      createdAt: 'c',
-      updatedAt: 'u',
-      rev: 'A',
-    });
+    const first = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 'profile' },
+      op({}).value as never,
+      {
+        createdAt: 'c',
+        updatedAt: 'u',
+        rev: 'A',
+      },
+    );
     mock.on(GetCommand).resolves({ Item: first });
     resolveRowWrites(mock);
 
@@ -310,11 +315,16 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     const offloader = trackingOffloader({ buildKey: binKey });
     const ctx = context(client, { offloader: offloader as never });
-    const first = await buildStoreItem(ctx, ['users', 'u1'], 'profile', op({}).value as never, {
-      createdAt: 'c',
-      updatedAt: 'u',
-      rev: 'A',
-    });
+    const first = await buildStoreItem(
+      ctx,
+      { namespace: ['users', 'u1'], key: 'profile' },
+      op({}).value as never,
+      {
+        createdAt: 'c',
+        updatedAt: 'u',
+        rev: 'A',
+      },
+    );
     mock.on(GetCommand).resolves({ Item: first });
     rejectRowWrites(mock, Object.assign(new Error('boom'), { name: 'ValidationException' }));
 

@@ -7,8 +7,10 @@ import {
 } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 
-import { ensureLifecycleRule } from '../../../../../src/shared/codec/s3/lifecycle';
-import { S3_RELEASE_GRACE_DAYS } from '../../../../../src/shared/constants';
+import {
+  ensureLifecycleRule,
+  S3_RELEASE_GRACE_DAYS,
+} from '../../../../../src/shared/codec/s3/lifecycle';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 
 const s3Mock = mockClient(S3Client);
@@ -48,16 +50,16 @@ function writes(): number {
 }
 
 /**
- * The rule-set reasoning is unit-tested directly against `rules.ts`; what these
- * cases prove is that the whole set reaches it through the read, and that what
- * comes back settles.
+ * The rule-set reasoning is unit-tested directly against `lifecycle.ts`; what
+ * these cases prove is that the whole set reaches it through the read, and
+ * that what comes back settles.
  */
 describe('ensureLifecycleRule over a bucket that already holds rules', () => {
   it('writes the retention of a rule it does not own', async () => {
     const bucket = bucketHolding([
       { ID: 'bucket-wide', Status: 'Enabled', NoncurrentVersionExpiration: { NoncurrentDays: 90 } },
     ]);
-    await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
+    await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     const ours = bucket.rules().find((rule) => rule.ID === TTL_ID);
     expect(ours?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(90);
   });
@@ -71,7 +73,7 @@ describe('ensureLifecycleRule over a bucket that already holds rules', () => {
         NoncurrentVersionExpiration: { NoncurrentDays: 365 },
       },
     ]);
-    await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
+    await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     const ours = bucket.rules().find((rule) => rule.ID === TTL_ID);
     expect(ours?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(S3_RELEASE_GRACE_DAYS);
   });
@@ -86,13 +88,13 @@ describe('ensureLifecycleRule over a bucket that already holds rules', () => {
     const bucket = bucketHolding([
       { ID: TTL_ID, Prefix: PREFIX, Status: 'Enabled', Expiration: { Days: 7 } },
     ]);
-    await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
+    await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     const upgraded = bucket.rules().find((rule) => rule.ID === TTL_ID);
     expect(upgraded?.Filter).toEqual({ Prefix: PREFIX });
     expect(upgraded === undefined || 'Prefix' in upgraded).toBe(false);
     expect(writes()).toBe(1);
 
-    await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
+    await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     expect(writes()).toBe(1);
   });
 
@@ -112,7 +114,7 @@ describe('ensureLifecycleRule over a bucket that already holds rules', () => {
       },
     ]);
     await expect(
-      ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent()),
+      ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent()),
     ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 's3.keyPrefix' },
@@ -130,7 +132,7 @@ describe('ensureLifecycleRule over a bucket that already holds rules', () => {
         Transitions: [{ Days: 10, StorageClass: 'GLACIER' }],
       },
     ]);
-    await ensureLifecycleRule(client(), 'b', PREFIX, TTL_DAYS, silent());
+    await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     const ours = bucket.rules().find((rule) => rule.ID === TTL_ID);
     expect(ours?.Transitions).toEqual([{ Days: 10, StorageClass: 'GLACIER' }]);
     expect(ours?.Expiration?.Days).toBe(TTL_DAYS);

@@ -8,7 +8,7 @@
 
 > `const` **JSON\_SERDE**: `SerializerProtocol`
 
-Defined in: [shared/codec/json-serde.ts:53](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/json-serde.ts#L53)
+Defined in: [shared/codec/json-serde.ts:60](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/json-serde.ts#L60)
 
 A plain JSON serializer implementing LangGraph's `SerializerProtocol`:
 the default `serde` of `DynamoDBStore` and `DynamoDBChatMessageHistory`, and

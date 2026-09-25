@@ -22,9 +22,9 @@ import {
   type VectorMatch,
   type VectorRef,
 } from '../../src/index';
-import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../src/shared/dynamodb/conditional-put';
+import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../src/shared/dynamodb/idempotent-write';
 import { SILENT_LOGGER } from '../../src/shared/logging/logger';
-import { partitionKey, sortKey } from '../../src/store/internal/keys';
+import { partitionKey, sortKey } from '../../src/store/internal/rows';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 import { FakeEmbeddings } from './helpers/fake-embeddings';
 import { afterResponse, beforeRequest } from './helpers/fault-injection';

@@ -1,20 +1,20 @@
 import { expectTypeOf } from 'expect-type';
 
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
+  assertInteger,
   assertNoControlChars,
+  assertNonEmptyString,
+  assertStringArray,
   assertWellFormed,
+  MAX_PAGE_LIMIT,
+  type PageLimit,
   parseIdentifier,
   parseInteger,
   parseKeySegment,
   parseLimit,
   parseString,
   parseStringArray,
-  type PageLimit,
-  assertInteger,
-  assertNonEmptyString,
-  assertStringArray,
 } from '../../../../src/shared/validation/primitives';
 
 /** The states a caller can reach that the declared `string` type rules out. */
@@ -378,5 +378,21 @@ describe('parseStringArray', () => {
   });
   it.each([undefined, 'a', [1], ['a', null]])('refuses %p', (value) => {
     expectValidationError(() => parseStringArray(value, 'fields'), 'fields');
+  });
+
+  /**
+   * `Array.prototype.some` skips a hole in a sparse array instead of visiting
+   * it, and `Array.prototype.slice` carries one forward instead of filling
+   * it, so `[, 'a']` used to pass this check and reach a caller who declared
+   * `string[]` still holding the hole. Indexed access reads a hole as the
+   * `undefined` it is and refuses it the same as any other non-string entry.
+   * Built with `Array(2)` rather than a sparse literal, since some tooling
+   * silently fills a literal's holes with `undefined`.
+   */
+  it('refuses a hole in a sparse array rather than skipping it, naming the index', () => {
+    const sparse: string[] = new Array(2) as string[];
+    sparse[1] = 'a';
+    expect(() => parseStringArray(sparse, 'fields')).toThrow(/fields\[0\]/);
+    expectValidationError(() => parseStringArray(sparse, 'fields'), 'fields');
   });
 });

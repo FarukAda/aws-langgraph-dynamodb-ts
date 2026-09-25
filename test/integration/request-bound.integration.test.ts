@@ -21,13 +21,14 @@
  */
 import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 
-import { readBodyBounded, type S3Body } from '../../src/shared/codec/s3/bounded-body';
 import { createDefaultS3Client } from '../../src/shared/codec/s3/client';
-import { downloadObject } from '../../src/shared/codec/s3/read-write';
-import { isTransientS3Error } from '../../src/shared/codec/s3/retry';
-import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_SOCKET_TIMEOUT_MS } from '../../src/shared/constants';
-import { resolveDynamoDBClient } from '../../src/shared/dynamodb/client';
-import { isRetryableError } from '../../src/shared/dynamodb/retry-classifier';
+import { readBodyBounded, type S3Body, downloadObject } from '../../src/shared/codec/s3/offloader';
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_SOCKET_TIMEOUT_MS,
+  resolveDynamoDBClient,
+} from '../../src/shared/dynamodb/client';
+import { isTransientS3Error, isRetryableError } from '../../src/shared/dynamodb/retry';
 import { DEFAULT_RETRYABLE_ERRORS } from '../../src/shared/errors/classify';
 import { ErrorCode } from '../../src/shared/errors/error-code';
 import { type MisbehavingServer, startMisbehavingServer } from './helpers/misbehaving-server';
@@ -309,7 +310,11 @@ describe('(b) a response whose headers arrive and whose body then stalls', () =>
   it('reaches the download path as a retryable S3_OFFLOAD_FAILED, not as a hang', async () => {
     const client = await s3At(stalled.url, SHORT_SOCKET_TIMEOUT_MS);
     const { error, elapsedMs } = await failureOf(() =>
-      downloadObject(client, 'bucket', 'stalled.bin', MAX_DOWNLOAD_BYTES),
+      downloadObject(client, {
+        bucket: 'bucket',
+        key: 'stalled.bin',
+        maxBytes: MAX_DOWNLOAD_BYTES,
+      }),
     );
     record('(b) download path exhausted', elapsedMs);
     expect(error.code).toBe(ErrorCode.S3_OFFLOAD_FAILED);
@@ -330,7 +335,11 @@ describe('(c) the control, so that (a) and (b) prove a timeout rather than a bro
   /** The shipped idle timer, because here the shipped configuration is what has to complete. */
   it('completes an S3 download against the healthy route', async () => {
     const client = await s3At(healthyBytes.url, DEFAULT_SOCKET_TIMEOUT_MS);
-    const bytes = await downloadObject(client, 'bucket', 'healthy.bin', MAX_DOWNLOAD_BYTES);
+    const bytes = await downloadObject(client, {
+      bucket: 'bucket',
+      key: 'healthy.bin',
+      maxBytes: MAX_DOWNLOAD_BYTES,
+    });
     expect(bytes).toEqual(new TextEncoder().encode('payload'));
     expect(healthyBytes.requests()).toBe(1);
   }, 15_000);

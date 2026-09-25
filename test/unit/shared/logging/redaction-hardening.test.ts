@@ -1,7 +1,7 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { mockClient } from 'aws-sdk-client-mock';
 
-import { downloadObject, uploadObject } from '../../../../src/shared/codec/s3/read-write';
+import { downloadObject, uploadObject } from '../../../../src/shared/codec/s3/offloader';
 import { withRetry } from '../../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { compensationFailedError } from '../../../../src/shared/errors/errors';
@@ -390,6 +390,8 @@ describe('the S3 offload never copies an SDK message verbatim (CORE-23)', () => 
   it('redacts the credential a download failure quotes', async () => {
     s3Mock.on(GetObjectCommand).rejects(signingFailure());
     const client = new S3Client({ region: 'us-east-1' });
-    expectRedacted(await failureOf(downloadObject(client, 'b', 'k.bin', 1024)));
+    expectRedacted(
+      await failureOf(downloadObject(client, { bucket: 'b', key: 'k.bin', maxBytes: 1024 })),
+    );
   });
 });

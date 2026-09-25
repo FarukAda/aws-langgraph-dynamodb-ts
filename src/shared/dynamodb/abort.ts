@@ -1,7 +1,6 @@
-import { DynamoDBLangGraphError, hasErrorCode } from '../errors/base-error';
+import { DynamoDBLangGraphError, hasErrorCode, toError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { abortError } from '../errors/errors';
-import { toError } from '../errors/to-error';
 
 /**
  * True when the abort reason already is this library's own `ABORTED` error (a

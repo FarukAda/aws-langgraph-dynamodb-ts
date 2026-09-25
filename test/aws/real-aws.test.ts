@@ -12,8 +12,8 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { ERROR, type Checkpoint } from '@langchain/langgraph-checkpoint';
 
-import { partitionKey, payloadSortKey } from '../../src/checkpointer/internal/keys';
-import { sessionPartition } from '../../src/history/internal/keys';
+import { partitionKey, payloadSortKey } from '../../src/checkpointer/internal/rows';
+import { sessionPartition } from '../../src/history/internal/rows';
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { liveRegion } from './helpers/env';
 

@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import test from 'node:test';
+import { setTimeout } from 'node:timers';
 
 import { collectRows, retainedStubCount } from './harness.mjs';
 import { canonicalLines, countBare, countMisnamed, countUpstream, duplicateLabels } from './normalise.mjs';
@@ -109,5 +110,46 @@ test('a run of the harness leaves no stub behind', async () => {
     retained,
     0,
     `${retained} sinon stubs outlived the harness run that made them; stub through the per-run sandbox so it releases them`,
+  );
+});
+
+/**
+ * `PipeWrap` is the one resource kind excluded: `node --test` runs this file in
+ * its own child process and talks to the parent over a pipe, so two `PipeWrap`
+ * handles (its stdio/IPC channel) are open for the file's whole life, before
+ * `collectRows()` ever runs and after this test ends — they belong to the
+ * runner, not to anything the harness or the library under test left behind.
+ * Nothing else survived a run once this file's own `docMock`/`rowMock` stopped
+ * building a bare `DynamoDBClient` per call: that call started an AWS SDK
+ * credentials/region read from `~/.aws/*` that was still in flight when a test
+ * ended, and it is what left the stray `FSReqPromise`s behind.
+ */
+const RUNNER_OWN_RESOURCES = new Set(['PipeWrap']);
+
+/**
+ * Polls instead of a single fixed wait: one library entry point this tier
+ * fuzzes (`DynamoDBFactory` built with no client or `clientConfig` at all) is
+ * deliberately left to build a real client from the environment, which starts
+ * its own short-lived credentials read. That read finishes well within this
+ * deadline on its own; nothing here waits on it directly, since a future
+ * regression must still be caught even if it never finishes.
+ */
+async function activeResourcesOnceSettled(deadlineMs = 2000, pollMs = 10) {
+  const deadline = Date.now() + deadlineMs;
+  for (;;) {
+    const info = process.getActiveResourcesInfo();
+    const leftover = info.filter((kind) => !RUNNER_OWN_RESOURCES.has(kind));
+    if (leftover.length === 0 || Date.now() > deadline) return { info, leftover };
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+}
+
+test('a run of the harness leaves no active resource behind but the test runner\'s own', async () => {
+  await collectRows();
+  const { info, leftover } = await activeResourcesOnceSettled();
+  assert.deepEqual(
+    leftover,
+    [],
+    `active resources remained once the run settled: ${JSON.stringify(info)}; a client, timer or socket the harness or the library built is still open`,
   );
 });

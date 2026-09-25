@@ -1,13 +1,8 @@
 import { validationError } from '../../shared/errors/errors';
-import { collectReconcileTargets, pruneOrphans, pushEmbeddings } from '../internal/index-reconcile';
 import { parseNamespace } from '../internal/parse';
 import type { StoreContext } from '../internal/setup';
-
-/** Counts returned by {@link reconcileVectorIndex}. */
-export interface VectorReconcileResult {
-  upserted: number;
-  pruned: number;
-}
+import { hasVectorBackend, reconcileVectors } from '../internal/vector-index';
+import type { VectorReconcileResult } from '../types';
 
 /**
  * Repair the vector backend against the canonical DynamoDB items under
@@ -39,15 +34,11 @@ export async function reconcileVectorIndex(
   options: { signal?: AbortSignal } = {},
 ): Promise<VectorReconcileResult> {
   const prefix = parseNamespace(namespacePrefix, 'namespacePrefix');
-  if (!context.index || !context.vectorBackend) {
+  if (!hasVectorBackend(context)) {
     throw validationError(
       'reconcileVectorIndex requires a configured index and vectorBackend',
       'vectorBackend',
     );
   }
-  const backend = context.vectorBackend;
-  const targets = await collectReconcileTargets(context, prefix, options.signal);
-  const upserted = await pushEmbeddings(backend, targets);
-  const pruned = await pruneOrphans(context, backend, prefix, targets);
-  return { upserted, pruned };
+  return reconcileVectors(context, prefix, options.signal);
 }

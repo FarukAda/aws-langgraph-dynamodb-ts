@@ -13,7 +13,7 @@ import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { buildLifecycleRuleId, buildMarkerRuleId } from '../../src/shared/codec/s3/config';
-import { S3_RELEASE_GRACE_DAYS } from '../../src/shared/constants';
+import { S3_RELEASE_GRACE_DAYS } from '../../src/shared/codec/s3/lifecycle';
 import { liveRegion } from './helpers/env';
 import { rejection } from './helpers/probe';
 import { deleteBucketCompletely, deleteTableCompletely, settleAll } from './helpers/teardown';

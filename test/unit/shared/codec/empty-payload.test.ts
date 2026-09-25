@@ -1,7 +1,7 @@
 import { GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
-import { encodePayload } from '../../../../src/shared/codec/encode';
+import { encodePayload } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 

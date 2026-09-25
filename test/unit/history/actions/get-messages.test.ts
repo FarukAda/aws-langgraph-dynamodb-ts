@@ -2,18 +2,16 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { AIMessage, HumanMessage, mapChatMessagesToStoredMessages } from '@langchain/core/messages';
 
 import { getMessages } from '../../../../src/history/actions/get-messages';
-import { buildMessageItem } from '../../../../src/history/internal/item-mapper';
 import { parseSessionId } from '../../../../src/history/internal/parse';
+import { buildMessageItem } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { buildS3Key } from '../../../../src/shared/codec/s3/config';
-import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
+import { buildS3Key, assertKeyInScope } from '../../../../src/shared/codec/s3/config';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/logging/truncate';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
 
@@ -73,9 +71,21 @@ describe('getMessages', () => {
       new HumanMessage('hi'),
       new AIMessage('hello'),
     ]);
-    const good = await buildMessageItem(context(client), SESSION_ID, '01A', human);
-    const alsoGood = await buildMessageItem(context(client), SESSION_ID, '01C', ai);
-    const corrupt = await buildMessageItem(context(client), SESSION_ID, '01B', human);
+    const good = await buildMessageItem(context(client), {
+      sessionId: SESSION_ID,
+      messageId: '01A',
+      message: human,
+    });
+    const alsoGood = await buildMessageItem(context(client), {
+      sessionId: SESSION_ID,
+      messageId: '01C',
+      message: ai,
+    });
+    const corrupt = await buildMessageItem(context(client), {
+      sessionId: SESSION_ID,
+      messageId: '01B',
+      message: human,
+    });
     corrupt.message = {
       location: PayloadLocation.INLINE,
       serdeType: 'json',
@@ -103,7 +113,11 @@ describe('getMessages', () => {
   it('bounds the sort key it reports for a corrupt item', async () => {
     const { client, mock } = createStrictDocumentMock();
     const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
-    const corrupt = await buildMessageItem(context(client), SESSION_ID, '01B', human);
+    const corrupt = await buildMessageItem(context(client), {
+      sessionId: SESSION_ID,
+      messageId: '01B',
+      message: human,
+    });
     corrupt.SK = `HISTORY#MSG#${'0'.repeat(MAX_LOGGED_VALUE_CHARS * 4)}`;
     corrupt.message = {
       location: PayloadLocation.INLINE,
@@ -123,7 +137,11 @@ describe('getMessages', () => {
   it('throws on a corrupt item when onCorruptMessage is "throw" (I6)', async () => {
     const { client, mock } = createStrictDocumentMock();
     const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
-    const corrupt = await buildMessageItem(context(client), SESSION_ID, '01B', human);
+    const corrupt = await buildMessageItem(context(client), {
+      sessionId: SESSION_ID,
+      messageId: '01B',
+      message: human,
+    });
     corrupt.message = {
       location: PayloadLocation.INLINE,
       serdeType: 'json',
@@ -142,7 +160,7 @@ describe('getMessages', () => {
         offloader: offloaderStub(() => Promise.resolve(new Uint8Array())) as never,
       });
       const [human] = mapChatMessagesToStoredMessages([new HumanMessage('offloaded')]);
-      return buildMessageItem(writer, SESSION_ID, '01A', human);
+      return buildMessageItem(writer, { sessionId: SESSION_ID, messageId: '01A', message: human });
     }
 
     it("rethrows a transient S3 failure under 'skip' instead of silently dropping the message", async () => {
@@ -184,7 +202,11 @@ describe('getMessages', () => {
         logger: { ...SILENT_LOGGER, error },
       });
       const [ai] = mapChatMessagesToStoredMessages([new AIMessage('inline')]);
-      const inline = await buildMessageItem(context(client), SESSION_ID, '01B', ai);
+      const inline = await buildMessageItem(context(client), {
+        sessionId: SESSION_ID,
+        messageId: '01B',
+        message: ai,
+      });
       mock.on(QueryCommand).resolves({ Items: [await offloadedHuman(client), inline] });
       const messages = await getMessages(reader, 's1');
       expect(messages.map((m) => m.content)).toEqual(['inline']);
@@ -211,12 +233,22 @@ describe('getMessages', () => {
       ]);
       const ctx = context(client);
       const items = [
-        await buildMessageItem(ctx, SESSION_ID, '01A', human),
-        await buildMessageItem(ctx, SESSION_ID, '01B', {
-          type: 'remove',
-          data: { content: '', id: 'x', role: undefined, name: undefined, tool_call_id: undefined },
+        await buildMessageItem(ctx, { sessionId: SESSION_ID, messageId: '01A', message: human }),
+        await buildMessageItem(ctx, {
+          sessionId: SESSION_ID,
+          messageId: '01B',
+          message: {
+            type: 'remove',
+            data: {
+              content: '',
+              id: 'x',
+              role: undefined,
+              name: undefined,
+              tool_call_id: undefined,
+            },
+          },
         }),
-        await buildMessageItem(ctx, SESSION_ID, '01C', ai),
+        await buildMessageItem(ctx, { sessionId: SESSION_ID, messageId: '01C', message: ai }),
       ];
       mock.on(QueryCommand).resolves({ Items: items });
       const messages = await getMessages({ ...ctx, logger: { ...SILENT_LOGGER, error } }, 's1');
@@ -236,9 +268,16 @@ describe('getMessages', () => {
         new HumanMessage('x'.repeat(4096)),
         new AIMessage('ok'),
       ]);
-      const compressed = await buildMessageItem(writer, SESSION_ID, '01A', big);
+      const compressed = await buildMessageItem(writer, {
+        sessionId: SESSION_ID,
+        messageId: '01A',
+        message: big,
+      });
       expect(compressed.message.compressed).toBe(true);
-      const items = [compressed, await buildMessageItem(writer, SESSION_ID, '01B', small)];
+      const items = [
+        compressed,
+        await buildMessageItem(writer, { sessionId: SESSION_ID, messageId: '01B', message: small }),
+      ];
       mock.on(QueryCommand).resolves({ Items: items });
       const reader = context(client, {
         compression: { enabled: true, maxDecompressedBytes: 16 },
@@ -267,8 +306,16 @@ describe('getMessages', () => {
       new AIMessage('hello'),
     ]);
     const items = [
-      await buildMessageItem(context(client), SESSION_ID, '01A', human),
-      await buildMessageItem(context(client), SESSION_ID, '01B', ai),
+      await buildMessageItem(context(client), {
+        sessionId: SESSION_ID,
+        messageId: '01A',
+        message: human,
+      }),
+      await buildMessageItem(context(client), {
+        sessionId: SESSION_ID,
+        messageId: '01B',
+        message: ai,
+      }),
     ];
     mock.on(QueryCommand).resolves({ Items: items });
     const messages = await getMessages(context(client), 's1');
@@ -290,8 +337,17 @@ describe('getMessages', () => {
       new AIMessage('gone'),
     ]);
     const items = [
-      await buildMessageItem(context(client), SESSION_ID, '01A', live),
-      await buildMessageItem(context(client), SESSION_ID, '01B', gone, NOW_SECONDS - 10),
+      await buildMessageItem(context(client), {
+        sessionId: SESSION_ID,
+        messageId: '01A',
+        message: live,
+      }),
+      await buildMessageItem(context(client), {
+        sessionId: SESSION_ID,
+        messageId: '01B',
+        message: gone,
+        ttlTimestamp: NOW_SECONDS - 10,
+      }),
     ];
     mock.on(QueryCommand).resolves({ Items: items });
     const messages = await getMessages(context(client), 's1');
@@ -308,7 +364,11 @@ describe('getMessages', () => {
     for (let i = 0; i < pageCount; i++) {
       const items = await Promise.all(
         Array.from({ length: pageSize }, (_, j) =>
-          buildMessageItem(context(client), SESSION_ID, `01${i}${j}`, human),
+          buildMessageItem(context(client), {
+            sessionId: SESSION_ID,
+            messageId: `01${i}${j}`,
+            message: human,
+          }),
         ),
       );
       mockChain = mockChain.resolvesOnce({
@@ -352,12 +412,11 @@ describe('S3 key binding (SEC-03)', () => {
     offloader: ReturnType<typeof binding>,
   ) {
     const [human] = mapChatMessagesToStoredMessages([new HumanMessage('offloaded')]);
-    const item = await buildMessageItem(
-      context(client, { offloader: offloader as never }),
-      SESSION_ID,
-      '01A',
-      human,
-    );
+    const item = await buildMessageItem(context(client, { offloader: offloader as never }), {
+      sessionId: SESSION_ID,
+      messageId: '01A',
+      message: human,
+    });
     item.message = {
       location: PayloadLocation.S3,
       serdeType: 'json',

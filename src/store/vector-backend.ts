@@ -91,3 +91,9 @@ export interface VectorBackend {
    */
   listKeys?(namespacePrefix: string[]): Promise<VectorRef[]>;
 }
+
+/**
+ * Every direction `toRelevanceScores` (store/internal/vector-index.ts)
+ * recognises, for validating input.
+ */
+export const VECTOR_SCORE_DIRECTIONS: readonly VectorScoreDirection[] = ['relevance', 'distance'];

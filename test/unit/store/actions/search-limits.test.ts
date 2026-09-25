@@ -4,7 +4,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -39,22 +39,19 @@ describe('searchItems (caps and truncation)', () => {
     const threeUsers = [
       await buildStoreItem(
         ctx,
-        ['users', 'u1'],
-        'a',
+        { namespace: ['users', 'u1'], key: 'a' },
         { kind: 'note' },
         { createdAt: 'c', updatedAt: 'u' },
       ),
       await buildStoreItem(
         ctx,
-        ['users', 'u1'],
-        'b',
+        { namespace: ['users', 'u1'], key: 'b' },
         { kind: 'note' },
         { createdAt: 'c', updatedAt: 'u' },
       ),
       await buildStoreItem(
         ctx,
-        ['users', 'u1'],
-        'c',
+        { namespace: ['users', 'u1'], key: 'c' },
         { kind: 'note' },
         { createdAt: 'c', updatedAt: 'u' },
       ),

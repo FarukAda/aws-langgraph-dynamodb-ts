@@ -1,13 +1,12 @@
-import { oversizedObjectError } from '../../../../../src/shared/codec/s3/bounded-body';
 import { s3ClientOptions } from '../../../../../src/shared/codec/s3/client-types';
 import {
   assertScopedKeyPrefix,
   defaultAdapterKeyPrefix,
+  encodeKeyPart,
 } from '../../../../../src/shared/codec/s3/config';
-import { encodeKeyPart } from '../../../../../src/shared/codec/s3/key-scope';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../../src/shared/constants';
+import { oversizedObjectError } from '../../../../../src/shared/codec/s3/offloader';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
-import { truncateForLog } from '../../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../../src/shared/logging/truncate';
 
 describe('oversizedObjectError', () => {
   const error = oversizedObjectError('ckpt/t/x.bin', 2_000, 1_000);

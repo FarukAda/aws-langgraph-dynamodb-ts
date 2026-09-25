@@ -6,7 +6,7 @@
 
 # Interface: BatchPassDetails
 
-Defined in: [shared/errors/base-error.ts:54](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L54)
+Defined in: [shared/errors/base-error.ts:64](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L64)
 
 The tally of a pass that attempted every chunk (`unit: 'chunk'`, 25-row
 `BatchWriteItem` chunks) or every row (`unit: 'row'`, one conditional delete
@@ -18,7 +18,7 @@ per row) before reporting.
 
 > `readonly` **failedChunks**: readonly `Error`[]
 
-Defined in: [shared/errors/base-error.ts:60](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L60)
+Defined in: [shared/errors/base-error.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L70)
 
 Each failing chunk's or row's own error.
 
@@ -28,7 +28,7 @@ Each failing chunk's or row's own error.
 
 > `readonly` **kind**: `"pass"`
 
-Defined in: [shared/errors/base-error.ts:55](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L55)
+Defined in: [shared/errors/base-error.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L65)
 
 ***
 
@@ -36,7 +36,7 @@ Defined in: [shared/errors/base-error.ts:55](https://github.com/FarukAda/aws-lan
 
 > `readonly` **succeededChunks**: `number`
 
-Defined in: [shared/errors/base-error.ts:57](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L57)
+Defined in: [shared/errors/base-error.ts:67](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L67)
 
 ***
 
@@ -44,7 +44,7 @@ Defined in: [shared/errors/base-error.ts:57](https://github.com/FarukAda/aws-lan
 
 > `readonly` **succeededCount**: `number`
 
-Defined in: [shared/errors/base-error.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L62)
+Defined in: [shared/errors/base-error.ts:72](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L72)
 
 Individual writes confirmed persisted across the whole pass.
 
@@ -54,7 +54,7 @@ Individual writes confirmed persisted across the whole pass.
 
 > `readonly` **totalChunks**: `number`
 
-Defined in: [shared/errors/base-error.ts:58](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L58)
+Defined in: [shared/errors/base-error.ts:68](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L68)
 
 ***
 
@@ -62,4 +62,4 @@ Defined in: [shared/errors/base-error.ts:58](https://github.com/FarukAda/aws-lan
 
 > `readonly` **unit**: `"chunk"` \| `"row"`
 
-Defined in: [shared/errors/base-error.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L56)
+Defined in: [shared/errors/base-error.ts:66](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L66)

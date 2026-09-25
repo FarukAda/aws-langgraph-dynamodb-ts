@@ -26,7 +26,13 @@ export type Layer = (typeof LAYERS)[number];
 /** The features, which never import each other. */
 export const FEATURES: readonly string[] = ['checkpointer', 'store', 'history'];
 
-/** Directory prefixes and the layer everything under them belongs to. */
+/**
+ * Directory prefixes and the layer everything under them belongs to.
+ *
+ * `backfill/` is an operator tool that asks each feature's row owner which
+ * rows the recency index covers, so it sits in the layer that composes the
+ * features.
+ */
 const DIRECTORY_LAYERS: Readonly<Record<string, Layer>> = {
   shared: 'shared',
   'checkpointer/internal': 'internal',
@@ -36,6 +42,7 @@ const DIRECTORY_LAYERS: Readonly<Record<string, Layer>> = {
   'store/actions': 'actions',
   'history/actions': 'actions',
   factory: 'factory',
+  backfill: 'factory',
 };
 
 /** Single modules and their layer. */

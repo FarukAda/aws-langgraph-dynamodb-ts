@@ -1,20 +1,21 @@
-import { toPendingWrites } from '../../../../src/checkpointer/internal/item-reader';
+import {
+  type CheckpointWriteItem,
+  toPendingWrites,
+} from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/types';
 import {
   type CodecDeps,
   decodePayload,
   type PayloadDescriptor,
   readPayloadBytes,
+  isPermanentPayloadLoss,
 } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { isPermanentPayloadLoss } from '../../../../src/shared/codec/payload-loss';
 import { toPublicError } from '../../../../src/shared/errors/boundary';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { readStoreItem } from '../../../../src/store/internal/item-mapper';
+import { readStoreItem, type StoreItemRecord } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
-import type { StoreItemRecord } from '../../../../src/store/types';
 
 /** A serde that records whether anything ever asked it to deserialize. */
 function countingSerde() {

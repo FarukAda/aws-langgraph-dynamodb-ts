@@ -1,12 +1,11 @@
 import type { SearchItem } from '@langchain/langgraph-checkpoint';
 
 import { truncateLabelsForLog } from '../../shared/logging/truncate';
-import { searchViaBackend } from '../internal/backend-search';
-import { collectCandidates } from '../internal/candidates';
 import type { ParsedSearch } from '../internal/parse';
-import { rankInMemory } from '../internal/ranker';
 import { assertVectorDims } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
+import { collectCandidates, rankInMemory } from '../internal/table-search';
+import { hasVectorBackend, searchViaBackend } from '../internal/vector-index';
 
 /**
  * Search items under a namespace prefix: metadata filtering plus optional
@@ -48,14 +47,8 @@ export async function searchItems(
    * rather than avoiding it.
    */
   if (limit === 0) return [];
-  if (search.query && context.index && context.vectorBackend) {
-    const ranked = await searchViaBackend(
-      context,
-      context.vectorBackend,
-      context.index,
-      search,
-      signal,
-    );
+  if (search.query && hasVectorBackend(context)) {
+    const ranked = await searchViaBackend(context, search, signal);
     return ranked.slice(offset, offset + limit);
   }
   if (!search.query || !context.index) {

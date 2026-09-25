@@ -7,8 +7,8 @@ import {
   isConditionalCheckFailed,
   rejectedItem,
   writeIdGuard,
-} from '../../src/shared/dynamodb/conditional-put';
-import { deleteIdempotently } from '../../src/shared/dynamodb/idempotent-write';
+  deleteIdempotently,
+} from '../../src/shared/dynamodb/idempotent-write';
 import { ErrorCode } from '../../src/shared/errors/error-code';
 import { liveRegion } from './helpers/env';
 import { countTransactAttempts, rejection, report } from './helpers/probe';

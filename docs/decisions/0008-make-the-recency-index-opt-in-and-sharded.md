@@ -25,8 +25,8 @@ still finds the row exactly as before.
 ## Decision
 
 We offer a sharded recency GSI, on `gsi1pk`/`gsi1sk`
-(`src/checkpointer/internal/list-rows.ts`,
-`src/shared/dynamodb/index-keys.ts`), only when an adapter is constructed
+(`src/checkpointer/internal/listing.ts`,
+`src/shared/dynamodb/recency-index.ts`), only when an adapter is constructed
 with `indexName`. `gsi1pk`/`gsi1sk` are written on every row a listing
 crosses partitions for — checkpointer META, store items, history SESSION —
 whether or not the table defines the index at all, so enabling `indexName`
@@ -35,7 +35,7 @@ partition key is spread across `indexShards` shards (default 8, ceiling
 1024) rather than one, and a listing reads all of a run's shards at once,
 up to `readConcurrency` in flight, following each newest-first. A table
 that already has rows predating the index runs
-`backfillRecencyIndex()` (`src/shared/dynamodb/backfill-index.ts`) first —
+`backfillRecencyIndex()` (`src/backfill/backfill.ts`) first —
 a conditional `UpdateItem` per row, safe to run against a live table and
 safe to re-run, that gives an existing row its keys without ever
 overwriting a live adapter's own write or resurrecting a row that has since

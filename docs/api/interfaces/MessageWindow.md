@@ -6,7 +6,7 @@
 
 # Interface: MessageWindow
 
-Defined in: [history/types.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L41)
+Defined in: [history/types.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L40)
 
 Which slice of a session `getMessages` returns. Both bounds are optional
 and combine: `{ limit: 50, before }` is the fifty messages just before
@@ -18,7 +18,7 @@ and combine: `{ limit: 50, before }` is the fifty messages just before
 
 > `optional` **before?**: `Date`
 
-Defined in: [history/types.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L52)
+Defined in: [history/types.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L51)
 
 Return only messages appended before this instant (millisecond precision).
 
@@ -28,7 +28,7 @@ Return only messages appended before this instant (millisecond precision).
 
 > `optional` **limit?**: `number`
 
-Defined in: [history/types.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L50)
+Defined in: [history/types.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L49)
 
 Return only the newest `limit` messages — still in chronological order. An
 integer from 1 to `MAX_PAGE_LIMIT` (10,000): the page rule every `limit` in

@@ -6,12 +6,15 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
+import type {
+  CheckpointMetaItem,
+  CheckpointPayloadItem,
+} from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import type { CheckpointMetaItem, CheckpointPayloadItem } from '../../../../src/checkpointer/types';
 import {
   LIST_SCAN_WARN_THRESHOLD,
   MAX_TOTAL_ITEMS_IN_MEMORY,
-} from '../../../../src/shared/constants';
+} from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';

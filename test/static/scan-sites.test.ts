@@ -12,7 +12,7 @@ import { listSourceFiles, SRC_ROOT } from './guards/source-files';
 describe('findScanCalls', () => {
   it('finds a call and ignores an import or a mention of the same name', () => {
     expect(findScanCalls('const rows = paginateScan({ client });')).toEqual([1]);
-    expect(findScanCalls("import { paginateScan } from './scan';")).toEqual([]);
+    expect(findScanCalls("import { paginateScan } from './paginate';")).toEqual([]);
     expect(findScanCalls('/** paginateScan is what a listing avoids. */')).toEqual([]);
     expect(findScanCalls('const paginateScanCount = 1;')).toEqual([]);
   });
@@ -43,8 +43,8 @@ describe('unlistedScanSites', () => {
 
   it('passes the index backfill and the paginator, which the design names', () => {
     const sites = findScanSites([
-      { path: 'shared/dynamodb/backfill-index.ts', text: 'await options.client.scan(input);' },
-      { path: 'shared/dynamodb/scan.ts', text: 'return options.client.scan(input);' },
+      { path: 'backfill/backfill.ts', text: 'await options.client.scan(input);' },
+      { path: 'shared/dynamodb/paginate.ts', text: 'return options.client.scan(input);' },
     ]);
     expect(sites).toHaveLength(2);
     expect(unlistedScanSites(sites)).toEqual([]);

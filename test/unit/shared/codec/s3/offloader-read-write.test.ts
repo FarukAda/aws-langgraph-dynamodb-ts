@@ -1,0 +1,313 @@
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { mockClient } from 'aws-sdk-client-mock';
+
+import { downloadObject, uploadObject } from '../../../../../src/shared/codec/s3/offloader';
+import { ErrorCode } from '../../../../../src/shared/errors/error-code';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../../src/shared/logging/truncate';
+
+const s3Mock = mockClient(S3Client);
+
+afterEach(() => s3Mock.reset());
+
+describe('uploadObject', () => {
+  it('puts the object with content type and SSE', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    await uploadObject(new S3Client({ region: 'us-east-1' }), {
+      bucket: 'b',
+      key: 'k.bin',
+      data: new Uint8Array([1]),
+      serverSideEncryption: 'AES256',
+    });
+    const call = s3Mock.commandCalls(PutObjectCommand)[0];
+    expect(call.args[0].input).toMatchObject({
+      Bucket: 'b',
+      Key: 'k.bin',
+      ServerSideEncryption: 'AES256',
+      ContentType: 'application/octet-stream',
+    });
+  });
+
+  it('includes the KMS key id when provided', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    await uploadObject(new S3Client({ region: 'us-east-1' }), {
+      bucket: 'b',
+      key: 'k.bin',
+      data: new Uint8Array([1]),
+      serverSideEncryption: 'aws:kms',
+      sseKmsKeyId: 'arn:key',
+    });
+    expect(s3Mock.commandCalls(PutObjectCommand)[0].args[0].input).toMatchObject({
+      SSEKMSKeyId: 'arn:key',
+    });
+  });
+
+  it('wraps a failure as S3_OFFLOAD_FAILED', async () => {
+    s3Mock.on(PutObjectCommand).rejects(new Error('boom'));
+    try {
+      await uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k',
+        data: new Uint8Array(),
+      });
+      throw new Error('should have thrown');
+    } catch (error) {
+      expect((error as { code: ErrorCode }).code).toBe(ErrorCode.S3_OFFLOAD_FAILED);
+    }
+  });
+
+  it('retries a transient S3 error on upload', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejectsOnce(Object.assign(new Error('slow down'), { name: 'SlowDown' }))
+      .resolves({});
+    await uploadObject(new S3Client({ region: 'us-east-1' }), {
+      bucket: 'b',
+      key: 'k',
+      data: new Uint8Array([1]),
+    });
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(2);
+  });
+
+  /**
+   * The first request stored the object and its response was lost. The retry
+   * of that same upload, to that same key, is refused with `412` because the
+   * key is taken — by this upload's own earlier request, the only one that
+   * writes this key.
+   */
+  it('resolves a retried upload that S3 refuses with 412 because its own first attempt stored it', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejectsOnce(Object.assign(new Error('internal'), { name: 'InternalError' }))
+      .rejects(
+        Object.assign(new Error('At least one of the pre-conditions you specified did not hold'), {
+          name: 'PreconditionFailed',
+          $metadata: { httpStatusCode: 412 },
+        }),
+      );
+    await expect(
+      uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        data: new Uint8Array([1]),
+      }),
+    ).resolves.toBeUndefined();
+    const calls = s3Mock.commandCalls(PutObjectCommand).map((call) => call.args[0].input);
+    expect(calls).toHaveLength(2);
+    expect(calls.map((input) => [input.Key, input.IfNoneMatch])).toEqual([
+      ['k.bin', '*'],
+      ['k.bin', '*'],
+    ]);
+  });
+
+  it('does not retry a permanent S3 error on upload', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejects(Object.assign(new Error('denied'), { name: 'AccessDenied' }));
+    await expect(
+      uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k',
+        data: new Uint8Array([1]),
+      }),
+    ).rejects.toThrow();
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(1);
+  });
+
+  it('wraps retry exhaustion as S3_OFFLOAD_FAILED, not the inner RETRY_EXHAUSTED code', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejects(Object.assign(new Error('slow down'), { name: 'SlowDown' }));
+    await expect(
+      uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k',
+        data: new Uint8Array([1]),
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.S3_OFFLOAD_FAILED,
+      context: { operation: 'upload', key: 'k' },
+    });
+  });
+});
+
+describe('downloadObject', () => {
+  it('returns the body bytes', async () => {
+    s3Mock.on(GetObjectCommand).resolves({
+      Body: { transformToByteArray: () => new Uint8Array([7, 8]) } as never,
+    });
+    expect(
+      await downloadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        maxBytes: 1024 * 1024,
+      }),
+    ).toEqual(new Uint8Array([7, 8]));
+  });
+
+  it('throws S3_OFFLOAD_FAILED when the body is empty', async () => {
+    s3Mock.on(GetObjectCommand).resolves({});
+    await expect(
+      downloadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        maxBytes: 1024 * 1024,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.S3_OFFLOAD_FAILED });
+  });
+
+  /**
+   * The empty-body refusal is raised inside the retry and relayed as the
+   * public message, so a row-sourced key reaches `err.message` through it.
+   * `context.key` still carries the key whole.
+   */
+  it('bounds the key the empty-body refusal quotes', async () => {
+    const key = `${'w'.repeat(MAX_LOGGED_VALUE_CHARS * 4)}.bin`;
+    s3Mock.on(GetObjectCommand).resolves({});
+    const refusal = await downloadObject(new S3Client({ region: 'us-east-1' }), {
+      bucket: 'b',
+      key,
+      maxBytes: 1024 * 1024,
+    }).then(
+      () => new Error('should have thrown'),
+      (error: Error) => error,
+    );
+    expect(refusal).toMatchObject({ context: { operation: 'download', key } });
+    expect(refusal.message).not.toContain(key);
+    expect(refusal.message).toContain(truncateForLog(key));
+  });
+});
+
+describe('S3 retry classification (CODEC-02)', () => {
+  const client = () => new S3Client({ region: 'us-east-1' });
+  const params = { bucket: 'b', key: 'k', data: new Uint8Array([1]) };
+
+  it('retries the SDK transport TimeoutError on upload', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejectsOnce(Object.assign(new Error('socket timed out'), { name: 'TimeoutError' }))
+      .resolves({});
+    await uploadObject(client(), params);
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(2);
+  });
+
+  it('retries a bodiless 5xx that is named only by its status code', async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejectsOnce(
+        Object.assign(new Error(''), { name: '503', $metadata: { httpStatusCode: 503 } }),
+      )
+      .resolves({});
+    await uploadObject(client(), params);
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(2);
+  });
+
+  it('retries a transport timeout on download too', async () => {
+    s3Mock
+      .on(GetObjectCommand)
+      .rejectsOnce(Object.assign(new Error('socket timed out'), { name: 'TimeoutError' }))
+      .resolves({ Body: { transformToByteArray: () => new Uint8Array([1]) } as never });
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 1024 * 1024 }),
+    ).resolves.toEqual(new Uint8Array([1]));
+    expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(2);
+  });
+
+  it('does not retry a 403 AccessDenied', async () => {
+    s3Mock.on(GetObjectCommand).rejects(
+      Object.assign(new Error('denied'), {
+        name: 'AccessDenied',
+        $metadata: { httpStatusCode: 403 },
+      }),
+    );
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 1024 * 1024 }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.S3_OFFLOAD_FAILED,
+    });
+    expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(1);
+  });
+});
+
+describe('download size cap (CODEC-17, SEC-05)', () => {
+  const client = () => new S3Client({ region: 'us-east-1' });
+
+  it('refuses an object whose ContentLength exceeds the cap without reading the body', async () => {
+    const transformToByteArray = jest.fn(() => new Uint8Array([1]));
+    s3Mock.on(GetObjectCommand).resolves({
+      ContentLength: 6 * 1024 ** 3,
+      Body: { transformToByteArray } as never,
+    });
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 1024 }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.S3_OFFLOAD_FAILED,
+      context: { operation: 'download', key: 'k.bin' },
+    });
+    expect(transformToByteArray).not.toHaveBeenCalled();
+    expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(1);
+  });
+
+  it('stops reading a stream of unknown length once it passes the cap', async () => {
+    let yielded = 0;
+    const destroy = jest.fn();
+    const body = {
+      destroy,
+      *[Symbol.asyncIterator]() {
+        for (const chunk of [new Uint8Array(3), new Uint8Array(3), new Uint8Array(3)]) {
+          yielded += 1;
+          yield chunk;
+        }
+      },
+    };
+    s3Mock.on(GetObjectCommand).resolves({ Body: body as never });
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 5 }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.S3_OFFLOAD_FAILED,
+    });
+    expect(yielded).toBe(2);
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('assembles a stream that stays under the cap', async () => {
+    const body = {
+      *[Symbol.asyncIterator]() {
+        yield new Uint8Array([1, 2]);
+        yield new Uint8Array([3]);
+      },
+    };
+    s3Mock.on(GetObjectCommand).resolves({ Body: body as never });
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 5 }),
+    ).resolves.toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it('falls back to transformToByteArray for a non-iterable body and still enforces the cap', async () => {
+    s3Mock.on(GetObjectCommand).resolves({
+      Body: { transformToByteArray: () => new Uint8Array(6) } as never,
+    });
+    await expect(
+      downloadObject(client(), { bucket: 'b', key: 'k.bin', maxBytes: 5 }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.S3_OFFLOAD_FAILED,
+    });
+  });
+});
+
+describe('download size cap on a stream without destroy()', () => {
+  it('abandons a destroy-less stream over the cap with the same typed error', async () => {
+    const body = {
+      *[Symbol.asyncIterator]() {
+        yield new Uint8Array(6);
+      },
+    };
+    s3Mock.on(GetObjectCommand).resolves({ Body: body as never });
+    await expect(
+      downloadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        maxBytes: 5,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.S3_OFFLOAD_FAILED });
+  });
+});

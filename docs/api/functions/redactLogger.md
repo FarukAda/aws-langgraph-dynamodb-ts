@@ -8,7 +8,7 @@
 
 > **redactLogger**(`inner`, `options?`): [`Logger`](../interfaces/Logger.md)
 
-Defined in: [shared/logging/redaction.ts:186](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L186)
+Defined in: [shared/logging/redaction.ts:198](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/redaction.ts#L198)
 
 Wrap a logger so object args are redacted before delegation.
 

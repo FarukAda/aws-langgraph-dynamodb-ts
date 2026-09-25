@@ -1,8 +1,12 @@
-import type { WriteRequest } from '../dynamodb/types';
+import type { WriteRequest } from '../dynamodb/client';
 import { redactedMessage } from '../logging/secret-patterns';
-import { DynamoDBLangGraphError, type ErrorContext, type ErrorDetailsFor } from './base-error';
+import {
+  DynamoDBLangGraphError,
+  toError,
+  type ErrorContext,
+  type ErrorDetailsFor,
+} from './base-error';
 import { ErrorCode } from './error-code';
-import { toError } from './to-error';
 
 /**
  * Build one error, with the stack starting at the code that called `factory`
@@ -10,13 +14,21 @@ import { toError } from './to-error';
  */
 function build<C extends ErrorCode>(
   factory: (...args: never[]) => DynamoDBLangGraphError,
-  message: string,
-  code: C,
-  context: ErrorContext,
-  cause?: Error,
-  details?: ErrorDetailsFor<C>,
+  spec: {
+    message: string;
+    code: C;
+    context: ErrorContext;
+    cause?: Error;
+    details?: ErrorDetailsFor<C>;
+  },
 ): DynamoDBLangGraphError<C> {
-  const error = new DynamoDBLangGraphError(message, code, context, cause, details);
+  const error = new DynamoDBLangGraphError(
+    spec.message,
+    spec.code,
+    spec.context,
+    spec.cause,
+    spec.details,
+  );
   Error.captureStackTrace(error, factory);
   return error;
 }
@@ -39,13 +51,12 @@ export function validationError(
   field?: string,
   cause?: Error,
 ): DynamoDBLangGraphError<ErrorCode.VALIDATION> {
-  return build(
-    validationError,
+  return build(validationError, {
     message,
-    ErrorCode.VALIDATION,
-    field === undefined ? {} : { field },
+    code: ErrorCode.VALIDATION,
+    context: field === undefined ? {} : { field },
     cause,
-  );
+  });
 }
 
 /**
@@ -63,7 +74,7 @@ export function conflictError(
   message: string,
   cause?: Error,
 ): DynamoDBLangGraphError<ErrorCode.CONDITION_CONFLICT> {
-  return build(conflictError, message, ErrorCode.CONDITION_CONFLICT, {}, cause);
+  return build(conflictError, { message, code: ErrorCode.CONDITION_CONFLICT, context: {}, cause });
 }
 
 /**
@@ -85,13 +96,12 @@ export function retryExhaustedError(
   attempts?: number,
   cause?: Error,
 ): DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED> {
-  return build(
-    retryExhaustedError,
+  return build(retryExhaustedError, {
     message,
-    ErrorCode.RETRY_EXHAUSTED,
-    attempts === undefined ? {} : { attempts },
+    code: ErrorCode.RETRY_EXHAUSTED,
+    context: attempts === undefined ? {} : { attempts },
     cause,
-  );
+  });
 }
 
 /**
@@ -113,12 +123,11 @@ export function resultTruncatedError(
   cap: string,
   limit: number,
 ): DynamoDBLangGraphError<ErrorCode.RESULT_TRUNCATED> {
-  return build(
-    resultTruncatedError,
-    `paginated read truncated at the ${cap} cap (${limit}) with more data remaining`,
-    ErrorCode.RESULT_TRUNCATED,
-    { field: cap },
-  );
+  return build(resultTruncatedError, {
+    message: `paginated read truncated at the ${cap} cap (${limit}) with more data remaining`,
+    code: ErrorCode.RESULT_TRUNCATED,
+    context: { field: cap },
+  });
 }
 
 /**
@@ -137,7 +146,7 @@ export function abortError(
   message = 'Operation aborted',
   cause?: Error,
 ): DynamoDBLangGraphError<ErrorCode.ABORTED> {
-  return build(abortError, message, ErrorCode.ABORTED, {}, cause);
+  return build(abortError, { message, code: ErrorCode.ABORTED, context: {}, cause });
 }
 
 /**
@@ -166,15 +175,27 @@ export function batchWriteIncompleteError(
   cause?: Error,
 ): DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE> {
   const items = Array.isArray(unprocessed) ? [...unprocessed] : [];
-  return build(
-    batchWriteIncompleteError,
-    `batchWrite did not drain after ${retries} UnprocessedItems retries: ` +
+  return build(batchWriteIncompleteError, {
+    message:
+      `batchWrite did not drain after ${retries} UnprocessedItems retries: ` +
       `${succeededCount} item(s) persisted, ${items.length} still un-acked.`,
-    ErrorCode.BATCH_WRITE_INCOMPLETE,
-    {},
+    code: ErrorCode.BATCH_WRITE_INCOMPLETE,
+    context: {},
     cause,
-    { kind: 'drain', succeededCount, unprocessed: items, retries },
-  );
+    details: { kind: 'drain', succeededCount, unprocessed: items, retries },
+  });
+}
+
+/** What a batch that could not finish reports. */
+export interface IncompleteBatch {
+  /** Chunks (or rows) that committed. */
+  readonly succeeded: number;
+  /** Chunks (or rows) the batch had. */
+  readonly total: number;
+  readonly failures: Error[];
+  /** Requests that committed, when a chunk is more than one request. */
+  readonly succeededCount?: number;
+  readonly unit?: 'row';
 }
 
 /**
@@ -187,13 +208,13 @@ export function batchWriteIncompleteError(
  * of twenty-five, so it counts rows where a batch counts chunks and says so in
  * its message.
  *
- * Accepts: `succeededChunks`/`totalChunks` — the chunk tally. `failedChunks`
+ * Accepts: `batch.succeeded`/`batch.total` — the chunk tally. `batch.failures`
  * — each failing chunk's own error, commonly a `BATCH_WRITE_INCOMPLETE` drain
- * error. `succeededCount` — individual writes confirmed persisted across
+ * error. `batch.succeededCount` — individual writes confirmed persisted across
  * every chunk (full chunks plus any failed chunk's own partial drain), which
- * is more precise than the chunk tally when a chunk partially drains. `unit` —
- * what the first two counts count; omitting it reproduces the batch wording
- * exactly.
+ * is more precise than the chunk tally when a chunk partially drains.
+ * `batch.unit` — what the first two counts count; omitting it reproduces the
+ * batch wording exactly.
  *
  * Returns: a `BATCH_WRITE_INCOMPLETE` error whose `details` (`kind: 'pass'`)
  * carry the tally, with the first failing chunk's error as `cause`. Every
@@ -205,23 +226,27 @@ export function batchWriteIncompleteError(
  * errors reads as an empty list rather than crashing the report.
  */
 export function batchWriteAllIncompleteError(
-  succeededChunks: number,
-  totalChunks: number,
-  failedChunks: Error[],
-  succeededCount = 0,
-  unit: 'chunk' | 'row' = 'chunk',
+  batch: IncompleteBatch,
 ): DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE> {
-  const failed = Array.isArray(failedChunks) ? [...failedChunks] : [];
-  return build(
-    batchWriteAllIncompleteError,
-    `${unit === 'chunk' ? 'batchWriteAll' : 'the partition delete'} did not fully drain: ` +
-      `${succeededChunks}/${totalChunks} ${unit}(s) succeeded, ` +
+  const { succeeded, total, succeededCount = 0, unit = 'chunk' } = batch;
+  const failed = Array.isArray(batch.failures) ? [...batch.failures] : [];
+  return build(batchWriteAllIncompleteError, {
+    message:
+      `${unit === 'chunk' ? 'batchWriteAll' : 'the partition delete'} did not fully drain: ` +
+      `${succeeded}/${total} ${unit}(s) succeeded, ` +
       `${failed.length} ${unit}(s) failed. ${succeededCount} write(s) persisted before the failure.`,
-    ErrorCode.BATCH_WRITE_INCOMPLETE,
-    {},
-    failed[0],
-    { kind: 'pass', unit, succeededChunks, totalChunks, failedChunks: failed, succeededCount },
-  );
+    code: ErrorCode.BATCH_WRITE_INCOMPLETE,
+    context: {},
+    cause: failed[0],
+    details: {
+      kind: 'pass',
+      unit,
+      succeededChunks: succeeded,
+      totalChunks: total,
+      failedChunks: failed,
+      succeededCount,
+    },
+  });
 }
 
 /**
@@ -248,13 +273,13 @@ export function compensationFailedError(
 ): DynamoDBLangGraphError<ErrorCode.COMPENSATION_FAILED> {
   const trigger = toError(cause);
   const rollback = toError(rollbackError);
-  return build(
-    compensationFailedError,
-    `compensation failed after an append error: ${redactedMessage(trigger)} ` +
+  return build(compensationFailedError, {
+    message:
+      `compensation failed after an append error: ${redactedMessage(trigger)} ` +
       `(rollback: ${redactedMessage(rollback)})`,
-    ErrorCode.COMPENSATION_FAILED,
-    {},
-    trigger,
-    { rollbackError: rollback },
-  );
+    code: ErrorCode.COMPENSATION_FAILED,
+    context: {},
+    cause: trigger,
+    details: { rollbackError: rollback },
+  });
 }

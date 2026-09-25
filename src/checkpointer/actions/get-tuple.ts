@@ -1,9 +1,8 @@
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
-import { assembleTuple } from '../internal/assemble';
-import { fetchTargetMeta } from '../internal/fetch';
 import { parseConfig, ROOT_NAMESPACE, type ThreadAddress } from '../internal/parse';
+import { assembleTuple, fetchTargetMeta } from '../internal/read';
 import type { CheckpointerContext } from '../internal/setup';
 
 /**
@@ -41,8 +40,13 @@ export async function getCheckpointTuple(
   };
   const meta = await fetchTargetMeta(context, address, parsed.signal);
   if (!meta) return undefined;
-  return assembleTuple(context, address.threadId, address.checkpointNs, meta, {
-    signal: parsed.signal,
-    consistent: true,
-  });
+  return assembleTuple(
+    context,
+    { threadId: address.threadId, checkpointNs: address.checkpointNs },
+    meta,
+    {
+      signal: parsed.signal,
+      consistent: true,
+    },
+  );
 }

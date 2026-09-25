@@ -49,13 +49,24 @@ const w = { Put: action };`;
     expect(findMessageWritePathBreaks([{ path: 'history/internal/x.ts', text }])).toEqual([]);
   });
 
-  it('accepts the owning file and ignores the other adapters', () => {
+  it('accepts a Put built inside the owning function, and ignores the other adapters', () => {
     expect(
       findMessageWritePathBreaks([
-        { path: MESSAGE_PUT_OWNER, text: 'const w = { Put: { TableName: t, Item: i } };' },
-        { path: 'store/internal/persist.ts', text: 'const w = { Put: { Item: i } }; c.put(i);' },
+        {
+          path: MESSAGE_PUT_OWNER,
+          text: 'async function attempt() { const w = { Put: { TableName: t, Item: i } }; }',
+        },
+        { path: 'store/internal/item-write.ts', text: 'const w = { Put: { Item: i } }; c.put(i);' },
       ]),
     ).toEqual([]);
+  });
+
+  it('flags a Put built in the owning file outside the owning function', () => {
+    const text = `async function attempt() { const w = { Put: { TableName: t, Item: i } }; }
+async function rollbackCommitted() { const w = { Put: { TableName: t, Item: i } }; }`;
+    expect(findMessageWritePathBreaks([{ path: MESSAGE_PUT_OWNER, text }])).toEqual([
+      `${MESSAGE_PUT_OWNER}: builds a Put action`,
+    ]);
   });
 });
 

@@ -27,16 +27,16 @@ quietly missing, which is worse than refusing to read it at all.
 ## Decision
 
 We stamp every row this package writes with its format version, `v`
-(`src/shared/dynamodb/row-version.ts`), and every read that returns a row's
+(`src/shared/dynamodb/table-schema.ts`), and every read that returns a row's
 content checks that version *before* it checks the row's shape. A row
 without `v` reads as version 0, under the rules that applied when it was
 written, so nothing already on a table needs migrating. A row whose `v`
 exceeds what the running release understands throws `FORMAT_UNSUPPORTED`
 (`src/shared/errors/error-code.ts`) naming the field, rather than being
 matched against attribute names a later format may have renamed or
-repurposed. `narrowMetaItem` in `src/checkpointer/internal/item-reader.ts`
+repurposed. `narrowMetaItem` in `src/checkpointer/internal/rows.ts`
 and `fetchPayload` / `fetchPendingWrites` in
-`src/checkpointer/internal/fetch.ts` all apply this check first, ahead of
+`src/checkpointer/internal/read.ts` all apply this check first, ahead of
 narrowing the row to a typed item, for exactly that reason: a foreign or
 newer row is reported as newer, not silently treated as absent or invalid.
 A payload descriptor carries the same rule under its own `schemaVersion`.

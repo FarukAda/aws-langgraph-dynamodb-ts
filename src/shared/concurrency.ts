@@ -1,4 +1,13 @@
 /**
+ * Offloaded payloads decoded at once by one read (`getTuple` pending writes,
+ * `search` candidates, `getMessages`). Each offloaded row costs one S3 GET, so
+ * a serial loop scaled latency linearly with the row count; eight in flight
+ * keeps the win without bursting a bucket. Also the recency-index shards one
+ * listing queries at once when the adapter names no `readConcurrency`.
+ */
+export const DEFAULT_READ_CONCURRENCY = 8;
+
+/**
  * Map `items` through `fn` with at most `limit` calls in flight.
  *
  * Accepts: `items` — any length, including empty, which calls `fn` never.

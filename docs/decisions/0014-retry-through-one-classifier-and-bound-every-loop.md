@@ -28,19 +28,18 @@ forever waiting for capacity that never arrives.
 ## Decision
 
 We decide retryability in one function, `isRetryableError`
-(`src/shared/dynamodb/retry-classifier.ts`). Every DynamoDB call reaches it
-through `withRetry` / `withDynamoDBRetry` (`src/shared/dynamodb/retry.ts`);
-S3's own transient signals (`isTransientS3Error`,
-`src/shared/codec/s3/retry.ts`) are `isRetryableError` given a longer token
-list, plugged into `withRetry` as `isRetryable` on the read and write
-paths, and consulted directly by the one hand-rolled, best-effort loop —
-orphan cleanup after a failed write — that is not itself built on
-`withRetry`. It checks, in order: whether a
-transaction cancellation's reasons are *all* transient (a mixed
-cancellation is never retried, since a permanent reason shares the same
-HTTP status as a transient one); the SDK's own retryable trait; a
-transient HTTP status, for a failure the SDK could not map to a name; and
-finally an exact match against a token list, never a substring match.
+(`src/shared/dynamodb/retry.ts`). Every DynamoDB call reaches it
+through `withRetry` / `withDynamoDBRetry`; S3's own transient signals
+(`isTransientS3Error`) are `isRetryableError` given the shared default token
+list (`DEFAULT_RETRYABLE_ERRORS`), plugged into `withRetry` as `isRetryable`
+on the read and write paths, and consulted directly by the one hand-rolled,
+best-effort loop — orphan cleanup after a failed write — that is not itself
+built on `withRetry`. It checks, in order: whether a transaction
+cancellation's reasons are *all* transient (a mixed cancellation is never
+retried, since a permanent reason shares the same HTTP status as a transient
+one); the SDK's own retryable trait; a transient HTTP status, for a failure
+the SDK could not map to a name; and finally an exact match against a token
+list, never a substring match.
 `test/static/retry-options.test.ts` fails the build for any
 `withDynamoDBRetry` call outside the retry module itself that does not
 pass the adapter's own retry options through, so a call site cannot
@@ -52,7 +51,7 @@ inside the token's idempotency window (record 6). A page walk
 (`paginateQuery`, `paginateScan`) takes `maxItems` and `maxIterations`,
 raising `ResultTruncatedError` rather than returning a silently partial
 result when either is reached. A `BatchWriteItem` drain
-(`drainUnprocessedWrites`, `src/shared/dynamodb/drain-unprocessed.ts`)
+(`drainUnprocessedWrites`, `src/shared/dynamodb/batch-write.ts`)
 re-submits `UnprocessedItems` for at most `maxRetries` rounds before
 raising `BatchWriteIncompleteError` naming what did and did not persist.
 

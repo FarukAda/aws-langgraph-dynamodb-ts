@@ -26,8 +26,8 @@ import {
   type ThreadId,
   type WriteChannel,
 } from '../../../../src/checkpointer/internal/parse';
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/validation/primitives';
 
 /** Matches the `VALIDATION` refusal naming `field`. */
 const refusal = (field: string) =>
@@ -351,6 +351,23 @@ describe('parseDeltaHistoryRequest', () => {
     expect(() => parseDeltaHistoryRequest({ config: {}, channels: 'm' as never })).toThrow(
       refusal('channels'),
     );
+  });
+
+  /**
+   * `Array.prototype.some` skips a hole in a sparse array instead of visiting
+   * it, and `Array.prototype.slice` carried it forward instead of filling it,
+   * so a hole used to pass `parseStringArray` and reach the walk as a literal
+   * `undefined` channel. Built with `Array(2)` rather than a sparse literal,
+   * which lint forbids outright.
+   */
+  it('refuses a hole in a sparse channels array rather than skipping it', () => {
+    const channels: string[] = new Array(2) as string[];
+    channels[1] = 'a';
+    const config: RunnableConfig = { configurable: { thread_id: 'a#b' } };
+    expect(() => parseDeltaHistoryRequest({ config, channels })).toThrow(
+      'channels[0] must be a string',
+    );
+    expect(() => parseDeltaHistoryRequest({ config, channels })).toThrow(refusal('channels'));
   });
 });
 

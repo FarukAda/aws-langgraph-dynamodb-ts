@@ -11,7 +11,7 @@ import {
   type RevisionGuard,
   rejectedItem,
   writeIdGuard,
-} from '../../src/shared/dynamodb/conditional-put';
+} from '../../src/shared/dynamodb/idempotent-write';
 import { liveRegion } from './helpers/env';
 import { rejection, report } from './helpers/probe';
 import { createTestTable } from './helpers/table';

@@ -1,8 +1,12 @@
 export { DynamoDBSaver } from './checkpointer/saver';
 export type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './checkpointer/types';
 export { DynamoDBStore } from './store/store';
-export type { DynamoDBStoreOptions, ListNamespacesOptions, SearchOptions } from './store/types';
-export type { VectorReconcileResult } from './store/actions/reconcile-vector-index';
+export type {
+  DynamoDBStoreOptions,
+  ListNamespacesOptions,
+  SearchOptions,
+  VectorReconcileResult,
+} from './store/types';
 export type {
   VectorBackend,
   VectorMatch,
@@ -26,8 +30,8 @@ export type {
  * Run it before setting `indexName` on any adapter — see its own documentation
  * for why enabling the index first hides pre-existing rows from the listings.
  */
-export { backfillRecencyIndex } from './shared/dynamodb/backfill-index';
-export type { BackfillOptions, BackfillResult } from './shared/dynamodb/backfill-types';
+export { backfillRecencyIndex } from './backfill/backfill';
+export type { BackfillOptions, BackfillResult } from './backfill/backfill';
 
 export { DynamoDBFactory } from './factory/factory';
 export type {
@@ -61,13 +65,11 @@ export { ErrorCode } from './shared/errors/error-code';
 
 export type { Logger, LogArgument } from './shared/logging/logger';
 export { redactLogger, redactSecrets } from './shared/logging/redaction';
-export type { RedactLoggerOptions } from './shared/logging/redaction';
-export type { Redactable } from './shared/logging/redaction-walk';
+export type { Redactable, RedactLoggerOptions } from './shared/logging/redaction';
 
 export type { CancelOptions, BaseAdapterOptions, CodecOptions } from './shared/options';
-export type { DynamoDBDocumentLike } from './shared/dynamodb/client-types';
-export type { RetryAttemptInfo, RetryOptions } from './shared/dynamodb/retry';
-export type { RetryPolicy } from './shared/dynamodb/retry-policy';
+export type { DynamoDBDocumentLike } from './shared/dynamodb/client';
+export type { RetryAttemptInfo, RetryOptions, RetryPolicy } from './shared/dynamodb/retry';
 export type { TtlOption } from './shared/validation/ttl';
 export type { CompressionConfig } from './shared/codec/compression';
 export type { S3OffloadConfig } from './shared/codec/s3/config';

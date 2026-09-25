@@ -32,22 +32,25 @@ describe('setUpHistory', () => {
       clientConfig: { region: 'us-east-1' },
       createClient: () => fake as never,
     });
-    expect(setup.ownsClient).toBe(true);
+    setup.shell.release();
+    expect(fake.destroy).toHaveBeenCalledTimes(1);
     expect(setup.context.serde).toBe(JSON_SERDE);
     expect(setup.context.offloader).toBeUndefined();
     expect(typeof setup.context.ulid()).toBe('string');
   });
 
   it('does not own an injected client and builds an offloader + ttl/compression', () => {
+    const client = { ...fakeClientMethods(), destroy: jest.fn() };
     const setup = setUpHistory({
       tableName: 'history',
-      client: fakeClientMethods(),
+      client,
       s3: { bucketName: 'b' },
       compression: { enabled: true },
       ttl: { days: 1 },
       serde: JSON_SERDE,
     });
-    expect(setup.ownsClient).toBe(false);
+    setup.shell.release();
+    expect(client.destroy).not.toHaveBeenCalled();
     expect(setup.context.offloader).toBeDefined();
     expect(setup.context.compression).toEqual({ enabled: true });
     expect(setup.context.ttl).toEqual({ days: 1 });

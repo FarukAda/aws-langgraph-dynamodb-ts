@@ -1,16 +1,22 @@
 import type { Item } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import { PayloadLocation } from '../../shared/codec/codec';
-import type { DescriptorRef } from '../../shared/codec/descriptor-keys';
-import { isMissingObjectError } from '../../shared/codec/payload-loss';
-import { isExpiredRow } from '../../shared/dynamodb/expiry';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import { retryFor } from '../../shared/dynamodb/retry-policy';
-import type { StoreItemRecord } from '../types';
-import { narrowWholeRecord, readStoreItem } from './item-mapper';
-import { partitionKey, sortKey } from './keys';
+import {
+  PayloadLocation,
+  isMissingObjectError,
+  type DescriptorRef,
+} from '../../shared/codec/codec';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
+import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import type { StoreAddress } from './parse';
+import {
+  itemRowKey,
+  narrowWholeRecord,
+  partitionKey,
+  readStoreItem,
+  sortKey,
+  type StoreItemRecord,
+} from './rows';
 import type { StoreContext } from './setup';
 
 /**
@@ -33,7 +39,7 @@ async function readRow(
       context.client.get(
         {
           TableName: context.tableName,
-          Key: { PK: partitionKey(namespace), SK: sortKey(namespace, key) },
+          Key: itemRowKey({ namespace, key }),
           ConsistentRead: true,
         },
         request,

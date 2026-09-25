@@ -1,5 +1,5 @@
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/validation/primitives';
 import {
   parseListOperation,
   parseNamespace,

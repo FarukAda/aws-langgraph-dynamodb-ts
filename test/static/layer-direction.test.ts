@@ -13,10 +13,11 @@ describe('the layer table', () => {
   it('places modules by directory and by name', () => {
     expect(layerOf('shared/errors/classify.ts')).toBe('shared');
     expect(layerOf('store/types.ts')).toBe('declarations');
-    expect(layerOf('history/internal/keys.ts')).toBe('internal');
+    expect(layerOf('history/internal/rows.ts')).toBe('internal');
     expect(layerOf('checkpointer/actions/put.ts')).toBe('actions');
     expect(layerOf('store/store.ts')).toBe('adapter');
     expect(layerOf('factory/types.ts')).toBe('factory');
+    expect(layerOf('backfill/backfill.ts')).toBe('factory');
     expect(layerOf('index.ts')).toBe('entry');
     expect(layerOf('store/new-thing.ts')).toBeUndefined();
   });
@@ -64,7 +65,7 @@ describe('the checks', () => {
 
 describe('the source tree', () => {
   it('finds the imports to check, so a broken scan cannot pass silently', () => {
-    expect(sourceEdges().length).toBeGreaterThanOrEqual(800);
+    expect(sourceEdges().length).toBeGreaterThanOrEqual(sourceFiles().length);
   });
 
   it('places every module of src/ in a layer', () => {

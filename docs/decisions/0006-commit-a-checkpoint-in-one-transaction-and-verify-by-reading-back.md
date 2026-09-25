@@ -46,7 +46,7 @@ the only thing that can turn a re-send away.
 
 When the transaction throws and S3 offload is configured, we do not assume
 either outcome: `verifyCheckpointLanded`
-(`src/checkpointer/internal/checkpoint-write-verify.ts`) reads back
+(`src/checkpointer/actions/put.ts`) reads back
 whichever row carries an offloaded descriptor and reports one of three
 verdicts. `'landed'` reports success without a second write. `'not-landed'`
 releases what this attempt uploaded. `'unverified'` — the read itself

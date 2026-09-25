@@ -4,18 +4,21 @@ import {
   mapStoredMessagesToChatMessages,
 } from '@langchain/core/messages';
 
-import { type CodecDeps, loadPayloadValue, readPayloadBytes } from '../../shared/codec/codec';
-import { isPermanentPayloadLoss } from '../../shared/codec/payload-loss';
-import { mapWithConcurrency } from '../../shared/concurrency';
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/constants';
-import { failureLabel } from '../../shared/errors/base-error';
-import { toError } from '../../shared/errors/to-error';
+import {
+  codecDepsOf,
+  isPermanentPayloadLoss,
+  loadPayloadValue,
+  readPayloadBytes,
+} from '../../shared/codec/codec';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
+import { failureLabel, toError } from '../../shared/errors/base-error';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';
-import { readWindow } from '../internal/message-window';
+import { readWindow } from '../internal/message-read';
 import { parseGetMessagesRequest, type SessionId } from '../internal/parse';
+import type { ChatMessageItem } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';
-import type { ChatMessageItem, MessageWindow } from '../types';
+import type { MessageWindow } from '../types';
 
 /** One item's decode outcome: a rebuilt message, or a proof that it never can be. */
 type Decoded = { kind: 'ok'; message: BaseMessage } | { kind: 'corrupt'; error: Error };
@@ -61,12 +64,7 @@ async function decodeMessage(
   sessionId: SessionId,
   signal: AbortSignal | undefined,
 ): Promise<Decoded> {
-  const deps: CodecDeps = {
-    serde: context.serde,
-    compression: context.compression,
-    offloader: context.offloader,
-    signal,
-  };
+  const deps = codecDepsOf(context, signal);
   let bytes: Uint8Array;
   try {
     bytes = await readPayloadBytes(item.message, deps, [sessionId]);

@@ -1,20 +1,29 @@
-import { TransactWriteCommand, type TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
+import {
+  GetCommand,
+  PutCommand,
+  TransactWriteCommand,
+  type TransactWriteCommandInput,
+} from '@aws-sdk/lib-dynamodb';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import { MAX_WRITE_LIFETIME_MS } from '../../../../src/shared/constants';
-import { REVISION_ATTRIBUTE, revisionGuard } from '../../../../src/shared/dynamodb/conditional-put';
 import {
+  revisionGuard,
+  commitRow,
   deleteIdempotently,
-  type IdempotentWriteDeps,
+  isRowAbsent,
+  type RowWriteDeps,
   putIdempotently,
   referencesS3Object,
   transactIdempotently,
 } from '../../../../src/shared/dynamodb/idempotent-write';
 import * as retryModule from '../../../../src/shared/dynamodb/retry';
-import type { RetryOptions } from '../../../../src/shared/dynamodb/retry';
+import { MAX_WRITE_LIFETIME_MS, type RetryOptions } from '../../../../src/shared/dynamodb/retry';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';
+
+/** A shared module's test has no business with the store's row; a sample name suffices. */
+const REVISION_ATTRIBUTE = 'rev';
 
 const TABLE = 'adapter-table';
 const ITEM = {
@@ -36,7 +45,7 @@ const instantPolicy = (overrides: RetryOptions = {}): RetryOptions => ({
   ...overrides,
 });
 
-let client: IdempotentWriteDeps['client'];
+let client: RowWriteDeps['client'];
 let mock: ReturnType<typeof createStrictDocumentMock>['mock'];
 
 beforeEach(() => {
@@ -351,5 +360,44 @@ describe('transactIdempotently', () => {
     expect(inputs).toHaveLength(2);
     expect(inputs[0]).toBe(inputs[1]);
     expect(inputs[0].ClientRequestToken).toBe(inputs[1].ClientRequestToken);
+  });
+});
+
+describe('commitRow', () => {
+  it('sends a row that names an S3 object as a tokened one-item transaction', async () => {
+    mock.on(TransactWriteCommand).resolves({});
+    await commitRow({ client, tableName: TABLE }, ITEM, ITEM.value);
+    expect(putOf(emitted()[0])?.Item).toEqual(ITEM);
+    expect(mock.commandCalls(PutCommand)).toHaveLength(0);
+  });
+
+  it('sends an inline row as a plain put that carries its guard', async () => {
+    mock.on(PutCommand).resolves({});
+    const inline = { ...ITEM, value: { location: PayloadLocation.INLINE } };
+    const guard = revisionGuard(REVISION_ATTRIBUTE, { exists: false });
+    await commitRow({ client, tableName: TABLE }, inline, inline.value, { guard });
+    expect(mock.commandCalls(PutCommand)[0].args[0].input).toEqual({
+      TableName: TABLE,
+      Item: inline,
+      ...guard,
+    });
+    expect(emitted()).toHaveLength(0);
+  });
+});
+
+describe('isRowAbsent', () => {
+  it('is true only when a strongly consistent read finds no row', async () => {
+    mock.on(GetCommand).resolvesOnce({}).resolvesOnce({ Item: KEY });
+    await expect(isRowAbsent({ client, tableName: TABLE }, KEY)).resolves.toBe(true);
+    await expect(isRowAbsent({ client, tableName: TABLE }, KEY)).resolves.toBe(false);
+    expect(mock.commandCalls(GetCommand).map((call) => call.args[0].input.ConsistentRead)).toEqual([
+      true,
+      true,
+    ]);
+  });
+
+  it('is false when the read fails, because a failed read confirms nothing', async () => {
+    mock.on(GetCommand).rejects(new Error('read failed'));
+    await expect(isRowAbsent({ client, tableName: TABLE }, KEY)).resolves.toBe(false);
   });
 });

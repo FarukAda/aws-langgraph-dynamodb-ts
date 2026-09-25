@@ -5,17 +5,17 @@ import {
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 
-import { beginsWithQuery, partitionQuery } from '../../../../src/checkpointer/internal/query';
+import { beginsWithQuery, partitionQuery } from '../../../../src/checkpointer/internal/rows';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { sessionItemsQuery } from '../../../../src/history/internal/query';
+import { sessionItemsQuery } from '../../../../src/history/internal/rows';
 import { type PayloadDescriptor, PayloadLocation } from '../../../../src/shared/codec/codec';
+import type { DocItem } from '../../../../src/shared/dynamodb/client';
 import {
   deletePartitionRows,
   namedDescriptor,
   type NamedDescriptor,
   type PartitionDeleteOptions,
 } from '../../../../src/shared/dynamodb/partition-delete';
-import type { DocItem } from '../../../../src/shared/dynamodb/types';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { abortError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';

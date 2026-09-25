@@ -1,11 +1,6 @@
 import { promisify } from 'node:util';
 import { gunzip, gzip } from 'node:zlib';
 
-import {
-  DEFAULT_COMPRESSION_LEVEL,
-  DEFAULT_COMPRESSION_MIN_BYTES,
-  DEFAULT_MAX_DECOMPRESSED_BYTES,
-} from '../constants';
 import { DynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 
@@ -14,6 +9,15 @@ const gunzipAsync = promisify(gunzip);
 
 /** Minimum fraction of the original size the gzip output must beat to be kept. */
 const COMPRESSION_GAIN_RATIO = 0.9;
+
+/** Default minimum payload size before gzip compression is attempted. */
+export const DEFAULT_COMPRESSION_MIN_BYTES = 1024;
+
+/** Default gzip compression level (balanced speed/ratio). */
+export const DEFAULT_COMPRESSION_LEVEL = 6;
+
+/** Default gzip-bomb guard: maximum decompressed output (50 MiB). */
+export const DEFAULT_MAX_DECOMPRESSED_BYTES = 50 * 1024 * 1024;
 
 /** Configuration for payload compression. */
 export interface CompressionConfig {

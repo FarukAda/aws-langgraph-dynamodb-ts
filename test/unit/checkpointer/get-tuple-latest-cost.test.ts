@@ -3,7 +3,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 
 import type { CheckpointerContext } from '../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
-import type { DocItem } from '../../../src/shared/dynamodb/types';
+import type { DocItem } from '../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 import { checkpointItems } from '../../shared/helpers/parsed-inputs';

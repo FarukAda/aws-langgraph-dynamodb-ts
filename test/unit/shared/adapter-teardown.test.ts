@@ -3,8 +3,8 @@ import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-history';
+import { releaseOwned } from '../../../src/shared/adapter';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
-import { releaseOwned } from '../../../src/shared/release';
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 

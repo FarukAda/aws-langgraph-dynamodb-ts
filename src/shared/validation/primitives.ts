@@ -1,5 +1,36 @@
-import { MAX_PAGE_LIMIT } from '../constants';
 import { validationError } from '../errors/errors';
+
+/**
+ * Largest `limit` any read accepts, on every method that takes one.
+ *
+ * Chosen from what a page costs, which is linear in `limit` and amortised
+ * nowhere: every row of a page is held decoded and resident until the whole
+ * page is handed back, and an offloaded row is an S3 GET and a decompression
+ * of its own, `readConcurrency` at a time. A page of N rows is therefore N
+ * objects held at once and, in the worst case, N round trips before the caller
+ * sees the first of them.
+ *
+ * Ten thousand is where this package already says a read has stopped being one
+ * and become an export: `MAX_TOTAL_ITEMS_IN_MEMORY`
+ * (`src/shared/dynamodb/paginate.ts`) refuses to collect more than that across
+ * a whole paginated query, and `LIST_SCAN_WARN_THRESHOLD`
+ * (`src/shared/dynamodb/paginate.ts`) tells an operator about a listing that
+ * walks that far. A single page allowed past either would hold more than every
+ * other path in the package may. Its own literal at the same value rather than
+ * an alias of them, for the reason `LIST_SCAN_WARN_THRESHOLD`
+ * (`src/shared/dynamodb/paginate.ts`) records.
+ *
+ * What it does *not* do is promise a memory figure: rows are the caller's own
+ * data, so ten thousand session summaries are a few megabytes while a hundred
+ * items at `MAX_INLINE_PAYLOAD_BYTES` (`src/shared/codec/codec.ts`) are forty.
+ * It bounds a typo — the `1e12` that used to resolve — not a working set.
+ *
+ * What a caller loses at the ceiling is one large page, never the rows: every
+ * bounded read has a way to continue — `listSessions` a cursor, `search` an
+ * `offset`, `getMessages` a `before`, and `saver.list` streams and never
+ * accumulates — so an answer larger than this is paid for as pages.
+ */
+export const MAX_PAGE_LIMIT = 10_000;
 
 declare const pageLimitBrand: unique symbol;
 
@@ -180,13 +211,26 @@ export function parseLimit(value: unknown, min: 0 | 1): PageLimit {
  * Returns: a copy of `value`, so a caller changing its own array afterwards
  * changes nothing this package acts on.
  *
- * Throws: `VALIDATION` naming `field`.
+ * Throws: `VALIDATION` naming `field`, its message identifying the offending
+ * index. Walked by position rather than `Array.prototype.some`, which skips a
+ * hole in a sparse array instead of visiting it, and copied by position rather
+ * than `Array.prototype.slice`, which carries a hole forward instead of
+ * filling it: unchecked, a hole passed as a string and reached a caller who
+ * declared `string[]`.
  */
 export function parseStringArray(value: unknown, field: string): string[] {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+  if (!Array.isArray(value)) {
     throw validationError(`${field} must be an array of strings`, field);
   }
-  return value.slice();
+  const result: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const item = value[index];
+    if (typeof item !== 'string') {
+      throw validationError(`${field}[${index}] must be a string`, field);
+    }
+    result.push(item);
+  }
+  return result;
 }
 
 /**

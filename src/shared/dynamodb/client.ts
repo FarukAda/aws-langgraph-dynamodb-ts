@@ -1,9 +1,66 @@
-import { DynamoDBClient, type DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+/**
+ * Hides the DynamoDB client: the part of the DocumentClient this package calls,
+ * the item shapes that part speaks, and how a client this package builds bounds
+ * each request.
+ *
+ * The structural type is what lets a caller inject any DocumentClient-shaped
+ * object, and it is public; the item shapes travel through every module that
+ * reads or writes a row; the construction is the one place a request timeout
+ * and a socket timeout are set, and the one place that knows whether the
+ * adapter owns the client it holds.
+ */
 
-import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_SOCKET_TIMEOUT_MS } from '../constants';
+import { DynamoDBClient, type DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocument, type NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
+
 import type { Logger } from '../logging/logger';
-import type { DynamoDBDocumentLike } from './client-types';
+
+/**
+ * How long one request attempt may take on a client this library builds
+ * (10 seconds) before the SDK's request handler destroys it and rejects with a
+ * retryable `TimeoutError`. `MAX_WRITE_LIFETIME_MS`
+ * (`src/shared/dynamodb/retry.ts`) bounds how many attempts *start*; it is
+ * checked between them, so it can refuse to begin another wait and can never
+ * shorten the attempt already in flight. Without a handler timeout — every one
+ * of them defaults to 0 — a hung socket holds that attempt open forever and
+ * the write lifetime bounds nothing.
+ *
+ * Measured, not picked. Across the fan-out widths this package documents, the
+ * worst interval the handler itself saw — socket acquisition including the
+ * wait behind the agent's fifty sockets, connect, request write and
+ * time-to-first-response-header — was 0.92 s, at a thousand concurrent writes
+ * of 20 KB values, and ten seconds is roughly eleven times that. The asymmetry
+ * settles the close call: too large leaves one attempt hanging for at most ten
+ * seconds, which the write lifetime's own headroom absorbs, while too small
+ * turns a healthy wide fan-out into a retry storm.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * How long a socket may sit idle (5 seconds) on a client this library builds
+ * before the request handler destroys the request. Which error that surfaces
+ * as depends on when it fires: before response headers the handler's own
+ * rejection reaches the caller as a `TimeoutError`, while after them the call
+ * has already resolved and the destroy arrives through the response stream
+ * instead, as an `ECONNRESET` abort. Both are classified retryable, so either
+ * way a stalled transfer becomes a retry of this library's own. An idle timer
+ * rather than a deadline: activity in either direction resets it, so it bounds
+ * a transfer that has stalled and never one that is merely slow, and its clock
+ * starts at socket assignment rather than at request creation. What each
+ * client needs it *for* differs, so that belongs at each client's own call
+ * site rather than here.
+ *
+ * Not a tuning knob. The handler installs the socket listener immediately only
+ * below 6 000 ms; at or above that it defers registration by 3 000 ms and
+ * returns the deferral's timer id, which the handler's clear-on-resolve
+ * cancels when response headers arrive — so at 6 000 or more the field
+ * silently stops doing anything for every response that answers inside three
+ * seconds, which is the normal case. That is a fact about the request handler
+ * and about neither client. A unit assertion holds this value under that
+ * threshold so raising it fails loudly instead of disabling the only bound a
+ * stalled transfer has.
+ */
+export const DEFAULT_SOCKET_TIMEOUT_MS = 5_000;
 
 /** A resolved DynamoDB client plus its ownership flag. */
 export interface ResolvedDynamoDBClient {
@@ -131,3 +188,49 @@ export async function warnOnStackedRetries(
     /** A client that cannot report its retry setting is left alone. */
   }
 }
+
+/**
+ * A DynamoDB item as returned/accepted by the DocumentClient. Reads that we
+ * wrote ourselves are narrowed with a single structural `as` at the mapper
+ * boundary (never `as any`/`as unknown`); untrusted shared-table scans go
+ * through `narrowStoreRecord`.
+ */
+export type DocItem = Record<string, NativeAttributeValue>;
+
+/** A BatchWriteItem PutRequest. */
+interface PutWriteRequest {
+  PutRequest: { Item: DocItem };
+}
+
+/** A BatchWriteItem DeleteRequest. */
+interface DeleteWriteRequest {
+  DeleteRequest: { Key: DocItem };
+}
+
+/** A single BatchWriteItem write request. */
+export type WriteRequest = PutWriteRequest | DeleteWriteRequest;
+
+/**
+ * The DocumentClient surface this library uses, named by shape rather than by
+ * identity. A `DynamoDBDocument` satisfies it, and so does a client built from
+ * a different copy of `@aws-sdk/lib-dynamodb`.
+ *
+ * That second case is the reason it exists. A consumer pinned to an older SDK
+ * than this package depends on gets a second, newer copy nested under the
+ * package; naming `DynamoDBDocument` in an option type would name *that* copy,
+ * and the client the consumer built is then a different type with the same
+ * name — refused at compile time for a method this library never calls, on the
+ * injection path the documentation recommends. Injection always worked at
+ * runtime; only the compiler stood in the way.
+ *
+ * The members are the eight the runtime collaborator check already requires,
+ * pinned equal to that list by a test — a client this type accepts and the
+ * constructor then rejects, or the reverse, would be worse than either rule
+ * alone. Picking them off `DynamoDBDocument` keeps each signature the SDK's
+ * own, so the internals stay exactly as type-safe as they were and the
+ * signatures cannot drift from the SDK this package installs.
+ */
+export type DynamoDBDocumentLike = Pick<
+  DynamoDBDocument,
+  'batchWrite' | 'delete' | 'get' | 'put' | 'query' | 'scan' | 'transactWrite' | 'update'
+>;

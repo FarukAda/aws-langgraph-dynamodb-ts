@@ -2,14 +2,13 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { buildS3Key } from '../../../../src/shared/codec/s3/config';
-import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
+import { buildS3Key, assertKeyInScope } from '../../../../src/shared/codec/s3/config';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { getItem } from '../../../../src/store/internal/get-item';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
 import { parseStoreAddress } from '../../../../src/store/internal/parse';
+import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -59,8 +58,7 @@ describe('getItem', () => {
     const { client, mock } = createStrictDocumentMock();
     const record = await buildStoreItem(
       context(client),
-      ['users', 'u1'],
-      'profile',
+      { namespace: ['users', 'u1'], key: 'profile' },
       { name: 'Faruk' },
       {
         createdAt: '2024-01-01T00:00:00.000Z',
@@ -131,15 +129,13 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
   async function records(ctx: StoreContext) {
     const old = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'p',
+      { namespace: ['users', 'u1'], key: 'p' },
       { name: 'old' },
       { ...timestamps, rev: 'A' },
     );
     const replaced = await buildStoreItem(
       ctx,
-      ['users', 'u1'],
-      'p',
+      { namespace: ['users', 'u1'], key: 'p' },
       { name: 'new' },
       { ...timestamps, rev: 'B' },
     );

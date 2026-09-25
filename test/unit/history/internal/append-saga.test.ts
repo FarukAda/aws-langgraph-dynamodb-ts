@@ -5,9 +5,9 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 
-import { appendChunks } from '../../../../src/history/internal/append-saga';
+import { appendChunks } from '../../../../src/history/internal/append';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import type { ChatMessageItem } from '../../../../src/history/types';
+import type { ChatMessageItem } from '../../../../src/history/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { retryExhaustedError } from '../../../../src/shared/errors/errors';
@@ -48,14 +48,13 @@ describe('appendChunks', () => {
   it('commits every chunk in order and never rolls back on success', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
-    await appendChunks(
-      context(client),
-      SESSION_ID,
-      [[inlineItem('MSG#1')], [inlineItem('MSG#2')]],
-      {
+    await appendChunks(context(client), {
+      sessionId: SESSION_ID,
+      chunks: [[inlineItem('MSG#1')], [inlineItem('MSG#2')]],
+      fields: {
         now: 'u',
       },
-    );
+    });
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(2);
     expect(mock.commandCalls(BatchWriteCommand)).toHaveLength(0);
     expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
@@ -74,12 +73,11 @@ describe('appendChunks', () => {
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 
     await expect(
-      appendChunks(
-        context(client, undefined, logger),
-        SESSION_ID,
-        [[inlineItem('MSG#1'), inlineItem('MSG#2')], [inlineItem('MSG#3')]],
-        { now: 'u' },
-      ),
+      appendChunks(context(client, undefined, logger), {
+        sessionId: SESSION_ID,
+        chunks: [[inlineItem('MSG#1'), inlineItem('MSG#2')], [inlineItem('MSG#3')]],
+        fields: { now: 'u' },
+      }),
     ).rejects.toThrow('boom');
 
     const deletes =
@@ -112,12 +110,11 @@ describe('appendChunks', () => {
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 
     await expect(
-      appendChunks(
-        context(client, undefined, logger),
-        SESSION_ID,
-        [[inlineItem('MSG#1')], [inlineItem('MSG#2')]],
-        { now: 'u' },
-      ),
+      appendChunks(context(client, undefined, logger), {
+        sessionId: SESSION_ID,
+        chunks: [[inlineItem('MSG#1')], [inlineItem('MSG#2')]],
+        fields: { now: 'u' },
+      }),
     ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: 'COMPENSATION_FAILED' });
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining('rollback failed'),
@@ -146,8 +143,12 @@ describe('appendChunks', () => {
       throw Object.assign(new Error('delete-down'), { name: 'ValidationException' });
     });
     await expect(
-      appendChunks(context(client), SESSION_ID, [committedMessages, [inlineItem('MSG#trigger')]], {
-        now: 'u',
+      appendChunks(context(client), {
+        sessionId: SESSION_ID,
+        chunks: [committedMessages, [inlineItem('MSG#trigger')]],
+        fields: {
+          now: 'u',
+        },
       }),
     ).rejects.toMatchObject({
       name: 'DynamoDBLangGraphError',
@@ -172,14 +173,13 @@ describe('appendChunks', () => {
       .rejects(Object.assign(new Error('x'), { name: 'ValidationException' }));
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
     await expect(
-      appendChunks(
-        context(client, offloader),
-        SESSION_ID,
-        [[s3Item('MSG#1', 'k1'), s3Item('MSG#2', 'k2')]],
-        {
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1'), s3Item('MSG#2', 'k2')]],
+        fields: {
           now: 'u',
         },
-      ),
+      }),
     ).rejects.toThrow('x');
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1', 'k2']);
   });
@@ -203,12 +203,11 @@ describe('appendChunks', () => {
       }),
     };
     await expect(
-      appendChunks(
-        context(client, offloader),
-        SESSION_ID,
-        [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
-        { now: 'u' },
-      ),
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
+        fields: { now: 'u' },
+      }),
     ).rejects.toThrow('boom');
     expect(order).toEqual(['ddb-delete', 's3-delete-k1']);
   });
@@ -224,12 +223,11 @@ describe('appendChunks', () => {
       .rejects(Object.assign(new Error('rollback-down'), { name: 'ValidationException' }));
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
     await expect(
-      appendChunks(
-        context(client, offloader),
-        SESSION_ID,
-        [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
-        { now: 'u' },
-      ),
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
+        fields: { now: 'u' },
+      }),
     ).rejects.toMatchObject({
       name: 'DynamoDBLangGraphError',
       code: ErrorCode.COMPENSATION_FAILED,
@@ -249,8 +247,12 @@ describe('appendChunks', () => {
       .resolves({});
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     await expect(
-      appendChunks(context(client), SESSION_ID, [[inlineItem('MSG#1')], [inlineItem('MSG#2')]], {
-        now: 'u',
+      appendChunks(context(client), {
+        sessionId: SESSION_ID,
+        chunks: [[inlineItem('MSG#1')], [inlineItem('MSG#2')]],
+        fields: {
+          now: 'u',
+        },
       }),
     ).rejects.toThrow('boom');
     expect(mock.commandCalls(UpdateCommand)).toHaveLength(0);
@@ -282,12 +284,11 @@ describe('appendChunks', () => {
     // after an append error: boom (rollback: cancelled)"), so a loose
     // substring match would pass even without the fix.
     await expect(
-      appendChunks(
-        context(client),
-        SESSION_ID,
-        [[inlineItem('MSG#1'), inlineItem('MSG#2')], [inlineItem('MSG#3')]],
-        { now: 'u' },
-      ),
+      appendChunks(context(client), {
+        sessionId: SESSION_ID,
+        chunks: [[inlineItem('MSG#1'), inlineItem('MSG#2')], [inlineItem('MSG#3')]],
+        fields: { now: 'u' },
+      }),
     ).rejects.toMatchObject({ name: 'ValidationException', message: 'boom' });
     // 4 transactions: two chunk appends, the compensating delete, and its
     // count-revert fallback — both of the latter swallowed, neither retried.
@@ -312,10 +313,14 @@ describe('appendChunks', () => {
       .resolves({});
     mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
     await expect(
-      appendChunks(context(client), SESSION_ID, [[inlineItem('MSG#1')], [inlineItem('MSG#2')]], {
-        now: 'u',
-        forceTtlRefresh: true,
-        ttlTimestamp: 9999,
+      appendChunks(context(client), {
+        sessionId: SESSION_ID,
+        chunks: [[inlineItem('MSG#1')], [inlineItem('MSG#2')]],
+        fields: {
+          now: 'u',
+          forceTtlRefresh: true,
+          ttlTimestamp: 9999,
+        },
       }),
     ).rejects.toThrow('boom');
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(4);
@@ -349,7 +354,11 @@ describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
     mock.on(GetCommand).resolves({ Item: { SK: 'MSG#1' } });
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
     await expect(
-      appendChunks(context(client, offloader), SESSION_ID, [[s3Item('MSG#1', 'k1')]], { now: 'u' }),
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')]],
+        fields: { now: 'u' },
+      }),
     ).resolves.toBeUndefined();
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
     const read = mock.commandCalls(GetCommand)[0].args[0].input;
@@ -363,7 +372,11 @@ describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
     mock.on(GetCommand).resolves({});
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
     await expect(
-      appendChunks(context(client, offloader), SESSION_ID, [[s3Item('MSG#1', 'k1')]], { now: 'u' }),
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')]],
+        fields: { now: 'u' },
+      }),
     ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.RETRY_EXHAUSTED });
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1']);
   });
@@ -376,7 +389,11 @@ describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
       .rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
     await expect(
-      appendChunks(context(client, offloader), SESSION_ID, [[s3Item('MSG#1', 'k1')]], { now: 'u' }),
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')]],
+        fields: { now: 'u' },
+      }),
     ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.RETRY_EXHAUSTED });
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
@@ -389,12 +406,11 @@ describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
       .rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
     await expect(
-      appendChunks(
-        context(client, offloader),
-        SESSION_ID,
-        [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
-        { now: 'u' },
-      ),
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
+        fields: { now: 'u' },
+      }),
     ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.RETRY_EXHAUSTED });
     // k1 may be referenced by a live row; k2's chunk was never attempted.
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
@@ -407,7 +423,11 @@ describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
       .on(TransactWriteCommand)
       .rejects(Object.assign(new Error('bad'), { name: 'ValidationException' }));
     await expect(
-      appendChunks(context(client), SESSION_ID, [[inlineItem('MSG#1')]], { now: 'u' }),
+      appendChunks(context(client), {
+        sessionId: SESSION_ID,
+        chunks: [[inlineItem('MSG#1')]],
+        fields: { now: 'u' },
+      }),
     ).rejects.toThrow('bad');
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
   });

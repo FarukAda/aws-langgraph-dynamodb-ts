@@ -2,7 +2,7 @@ import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynam
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { cleanUpS3Orphans } from '../../../../src/shared/codec/s3/orphans';
+import { cleanUpS3Orphans } from '../../../../src/shared/codec/s3/offloader';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
 import type { StoreContext } from '../../../../src/store/internal/setup';
@@ -13,7 +13,8 @@ import {
 } from '../../../shared/helpers/ddb-mock';
 import { parsedPut } from '../../../shared/helpers/parsed-inputs';
 
-jest.mock('../../../../src/shared/codec/s3/orphans', () => ({
+jest.mock('../../../../src/shared/codec/s3/offloader', () => ({
+  ...jest.requireActual('../../../../src/shared/codec/s3/offloader'),
   cleanUpS3Orphans: jest.fn(() => undefined),
 }));
 
@@ -69,13 +70,12 @@ describe('store put/delete bind row-sourced S3 keys to the item (SEC-03)', () =>
         value: { name: 'x' },
       }),
     );
-    expect(cleanUpMock).toHaveBeenCalledWith(
-      expect.anything(),
-      ['p/previous.bin'],
-      'store.put.overwrite',
-      expect.anything(),
-      { scope: ['users', 'u1', 'profile'] },
-    );
+    expect(cleanUpMock).toHaveBeenCalledWith(expect.anything(), {
+      keys: ['p/previous.bin'],
+      operation: 'store.put.overwrite',
+      logger: expect.anything(),
+      scope: ['users', 'u1', 'profile'],
+    });
   });
 
   it("cleans up the deleted item's object under the namespace/key scope", async () => {
@@ -86,12 +86,11 @@ describe('store put/delete bind row-sourced S3 keys to the item (SEC-03)', () =>
       context(client),
       parsedPut({ namespace: ['users', 'u1'], key: 'profile', value: null }),
     );
-    expect(cleanUpMock).toHaveBeenCalledWith(
-      expect.anything(),
-      ['p/previous.bin'],
-      'store.delete',
-      expect.anything(),
-      { scope: ['users', 'u1', 'profile'] },
-    );
+    expect(cleanUpMock).toHaveBeenCalledWith(expect.anything(), {
+      keys: ['p/previous.bin'],
+      operation: 'store.delete',
+      logger: expect.anything(),
+      scope: ['users', 'u1', 'profile'],
+    });
   });
 });

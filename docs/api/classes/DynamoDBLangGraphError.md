@@ -6,7 +6,7 @@
 
 # Class: DynamoDBLangGraphError\<C\>
 
-Defined in: [shared/errors/base-error.ts:105](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L105)
+Defined in: [shared/errors/base-error.ts:115](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L115)
 
 Base class for every error this library throws. Carries a branchable
 [ErrorCode](../enumerations/ErrorCode.md), structured [ErrorContext](../interfaces/ErrorContext.md), code-specific
@@ -30,7 +30,7 @@ which is banned repo-wide.
 
 > **new DynamoDBLangGraphError**\<`C`\>(`message`, `code`, `context?`, `cause?`, `details?`): `DynamoDBLangGraphError`\<`C`\>
 
-Defined in: [shared/errors/base-error.ts:133](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L133)
+Defined in: [shared/errors/base-error.ts:143](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L143)
 
 Accepts: `message` — already redacted by whoever composed it, since it reaches
 `err.message`, which an application may print without a redacting logger.
@@ -89,7 +89,7 @@ Throws: nothing; building an error may not fail.
 
 > `readonly` **code**: `C`
 
-Defined in: [shared/errors/base-error.ts:106](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L106)
+Defined in: [shared/errors/base-error.ts:116](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L116)
 
 ***
 
@@ -97,7 +97,7 @@ Defined in: [shared/errors/base-error.ts:106](https://github.com/FarukAda/aws-la
 
 > `readonly` **context**: [`ErrorContext`](../interfaces/ErrorContext.md)
 
-Defined in: [shared/errors/base-error.ts:107](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L107)
+Defined in: [shared/errors/base-error.ts:117](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L117)
 
 ***
 
@@ -105,6 +105,6 @@ Defined in: [shared/errors/base-error.ts:107](https://github.com/FarukAda/aws-la
 
 > `readonly` **details**: [`ErrorDetailsFor`](../type-aliases/ErrorDetailsFor.md)\<`C`\>
 
-Defined in: [shared/errors/base-error.ts:109](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L109)
+Defined in: [shared/errors/base-error.ts:119](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L119)
 
 Declared, not emitted: a code without details leaves no `undefined`-valued own property.

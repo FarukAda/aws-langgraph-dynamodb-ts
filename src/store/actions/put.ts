@@ -2,21 +2,18 @@ import { randomUUID } from 'node:crypto';
 
 import { nowIso } from '../../shared/clock';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
-import { deleteStoreItem } from '../internal/delete-item';
 import type { JsonValue } from '../internal/filter';
-import { syncVectorIndex } from '../internal/index-sync';
-import { buildStoreItem } from '../internal/item-mapper';
-import { partitionKey, sortKey } from '../internal/keys';
+import { deleteStoreItem, persistRecord } from '../internal/item-write';
 import type { ParsedDelete, ParsedPut } from '../internal/parse';
-import { persistRecord } from '../internal/persist';
-import { readExisting } from '../internal/read-existing';
-import { embedPassages, embedValue } from '../internal/semantic-search';
+import { buildStoreItem, itemRowKey, readExisting } from '../internal/rows';
+import { embedPassages } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
+import { itemVector, syncItemVector } from '../internal/vector-index';
 
 /**
  * The vectors a put stores on the row: one per extracted path, scored by best
  * match on read. Not computed when a `vectorBackend` holds the vectors, which
- * takes a single vector per item instead (see {@link resolveEmbedding}).
+ * takes a single vector per item instead (see {@link itemVector}).
  */
 async function resolvePassages(
   context: StoreContext,
@@ -25,16 +22,6 @@ async function resolvePassages(
 ): Promise<number[][] | undefined> {
   if (op.index === false) return undefined;
   return embedPassages(context, value, op.index);
-}
-
-/** Compute the single joined embedding a `vectorBackend` indexes, honoring `op.index`. */
-async function resolveEmbedding(
-  context: StoreContext,
-  op: ParsedPut,
-  value: Record<string, JsonValue>,
-): Promise<number[] | undefined> {
-  if (op.index === false) return undefined;
-  return embedValue(context, value, op.index);
 }
 
 /**
@@ -67,21 +54,18 @@ export async function putItem(context: StoreContext, op: ParsedPut | ParsedDelet
     return;
   }
   const { namespace, key } = op.address;
-  const pk = partitionKey(namespace);
-  const sk = sortKey(namespace, key);
   const value = op.value;
   const timestamp = nowIso();
-  const existing = await readExisting(context, pk, sk);
+  const existing = await readExisting(context, itemRowKey(op.address));
   /**
    * The two indexing modes are exclusive, so only one of them embeds: the row
    * carries a vector per extracted path, while a configured backend takes one
    * vector per item because that is what its `upsert` contract addresses.
    */
-  const backend = context.vectorBackend;
-  const embedding = backend ? await resolveEmbedding(context, op, value) : undefined;
-  const embeddings = backend ? undefined : await resolvePassages(context, op, value);
+  const embedding = await itemVector(context, op);
+  const embeddings = context.vectorBackend ? undefined : await resolvePassages(context, op, value);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const record = await buildStoreItem(context, namespace, key, value, {
+  const record = await buildStoreItem(context, { namespace, key }, value, {
     createdAt: existing.createdAt ?? timestamp,
     updatedAt: timestamp,
     embeddings,
@@ -89,7 +73,5 @@ export async function putItem(context: StoreContext, op: ParsedPut | ParsedDelet
     rev: randomUUID(),
   });
   await persistRecord(context, record, existing);
-  if (backend) {
-    await syncVectorIndex(backend, namespace, key, embedding, context.logger);
-  }
+  await syncItemVector(context, op.address, embedding);
 }

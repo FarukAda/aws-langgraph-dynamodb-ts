@@ -12,7 +12,7 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBSaver, DynamoDBStore } from '../../src/index';
-import { DEFAULT_RETRY_MAX_ATTEMPTS } from '../../src/shared/constants';
+import { DEFAULT_RETRY_MAX_ATTEMPTS } from '../../src/shared/dynamodb/retry';
 import { dropResponses, installFaults } from '../integration/helpers/fault-injection';
 import { liveRegion } from './helpers/env';
 import { rejection, report } from './helpers/probe';

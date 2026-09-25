@@ -3,7 +3,7 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
-import { buildStoreItem } from '../../../../src/store/internal/item-mapper';
+import { buildStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
@@ -32,8 +32,7 @@ describe('searchItems offloaded reads (CODEC-14)', () => {
       records.push(
         await buildStoreItem(
           ctx,
-          ['users', 'u1'],
-          `k${i}`,
+          { namespace: ['users', 'u1'], key: `k${i}` },
           { i },
           { createdAt: 'c', updatedAt: 'u' },
         ),

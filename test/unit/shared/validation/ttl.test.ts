@@ -1,8 +1,9 @@
-import { MAX_TTL_DAYS, MAX_TTL_SECONDS } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
   calculateTtlTimestamp,
   lifecycleExpirationDays,
+  MAX_TTL_DAYS,
+  MAX_TTL_SECONDS,
   resolveTtlSeconds,
 } from '../../../../src/shared/validation/ttl';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';

@@ -7,9 +7,9 @@ import type {
 
 import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
-import { MAX_PAGE_LIMIT } from '../../../../src/shared/constants';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
+import { MAX_PAGE_LIMIT } from '../../../../src/shared/validation/primitives';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { checkpointItems } from '../../../shared/helpers/parsed-inputs';
 import { FROZEN_NOW_MS } from '../../../shared/helpers/test-setup';

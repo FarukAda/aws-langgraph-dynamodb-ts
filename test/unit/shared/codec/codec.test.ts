@@ -1,10 +1,12 @@
-import { decodePayload, PayloadLocation } from '../../../../src/shared/codec/codec';
-import { encodePayload } from '../../../../src/shared/codec/encode';
-import { buildS3Key } from '../../../../src/shared/codec/s3/config';
-import { assertKeyInScope } from '../../../../src/shared/codec/s3/key-scope';
-import { MAX_LOGGED_VALUE_CHARS } from '../../../../src/shared/constants';
+import {
+  codecDepsOf,
+  decodePayload,
+  encodePayload,
+  PayloadLocation,
+} from '../../../../src/shared/codec/codec';
+import { buildS3Key, assertKeyInScope } from '../../../../src/shared/codec/s3/config';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { truncateForLog } from '../../../../src/shared/logging/truncate';
+import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/logging/truncate';
 
 const serde = {
   dumpsTyped: (value: unknown): Promise<[string, Uint8Array]> =>
@@ -12,6 +14,29 @@ const serde = {
   loadsTyped: (_type: string, data: Uint8Array | string): Promise<unknown> =>
     Promise.resolve(JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data))),
 };
+
+describe('codecDepsOf', () => {
+  it('hands the codec exactly the three collaborators it uses, plus the call signal', () => {
+    const compression = { enabled: true } as never;
+    const offloader = {} as never;
+    const signal = new AbortController().signal;
+    expect(codecDepsOf({ serde, compression, offloader }, signal)).toEqual({
+      serde,
+      compression,
+      offloader,
+      signal,
+    });
+  });
+
+  it('carries absent optional collaborators, and an absent signal, through as absent', () => {
+    expect(codecDepsOf({ serde })).toEqual({
+      serde,
+      compression: undefined,
+      offloader: undefined,
+      signal: undefined,
+    });
+  });
+});
 
 describe('encodePayload / decodePayload', () => {
   it('round-trips an inline payload', async () => {

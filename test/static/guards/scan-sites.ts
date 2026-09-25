@@ -33,7 +33,7 @@ import * as ts from 'typescript';
  *   rows those are without reading them all. It is an operator tool, not a
  *   read an adapter serves.
  *
- * The paginator the scanning reads above go through, `shared/dynamodb/scan.ts`,
+ * The paginator the scanning reads above go through, `shared/dynamodb/paginate.ts`,
  * is listed too: it is where their `Scan` requests are sent, not a read of its
  * own.
  *
@@ -41,13 +41,13 @@ import * as ts from 'typescript';
  * key could have served, which is exactly what the rule forbids.
  */
 export const ALLOWED_SCAN_SITES: Readonly<Record<string, string>> = {
-  'checkpointer/internal/list-rows.ts': 'saver.list() across threads, without a recency index',
+  'checkpointer/internal/listing.ts': 'saver.list() across threads, without a recency index',
   'history/actions/list-sessions.ts': 'history.listSessions(), without a recency index',
   'store/actions/list-namespaces.ts': 'listNamespaces() with no concrete prefix root',
-  'store/internal/candidates.ts': 'store.search([]) over every namespace',
-  'shared/dynamodb/backfill-index.ts':
+  'store/internal/table-search.ts': 'store.search([]) over every namespace',
+  'backfill/backfill.ts':
     'backfillRecencyIndex(), a migration that reads every row by construction',
-  'shared/dynamodb/scan.ts': 'paginateScan itself, which sends the Scan of the reads above',
+  'shared/dynamodb/paginate.ts': 'paginateScan itself, which sends the Scan of the reads above',
 };
 
 /** A line that scans, and the source file it is in, by its path relative to `src`. */

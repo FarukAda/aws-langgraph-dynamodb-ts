@@ -1,8 +1,4 @@
 import {
-  MAX_LOGGED_VALUE_CHARS,
-  MAX_RELAYED_MESSAGE_CHARS,
-} from '../../../../src/shared/constants';
-import {
   binaryLabel,
   DEFAULT_SECRET_KEY_PATTERNS,
   DEFAULT_SECRET_VALUE_PATTERNS,
@@ -14,7 +10,11 @@ import {
   redactText,
   redactedMessage,
 } from '../../../../src/shared/logging/secret-patterns';
-import { truncateRelayedText } from '../../../../src/shared/logging/truncate';
+import {
+  MAX_LOGGED_VALUE_CHARS,
+  MAX_RELAYED_MESSAGE_CHARS,
+  truncateRelayedText,
+} from '../../../../src/shared/logging/truncate';
 
 describe('normaliseKey', () => {
   it('folds case and drops every separator, so one pattern covers every spelling', () => {

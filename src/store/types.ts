@@ -4,7 +4,6 @@ import type {
   SerializerProtocol,
 } from '@langchain/langgraph-checkpoint';
 
-import type { PayloadDescriptor } from '../shared/codec/codec';
 import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';
 import type { VectorBackend, VectorScoreDirection } from './vector-backend';
 
@@ -88,37 +87,8 @@ export interface ListNamespacesOptions {
   offset?: number;
 }
 
-/** The DynamoDB item backing a single stored value. */
-export interface StoreItemRecord {
-  PK: string;
-  SK: string;
-  /** Row format version; absent on rows written before it existed (see `row-version.ts`). */
-  v?: number;
-  /** Recency-index keys; absent on rows written before the index existed. */
-  gsi1pk?: string;
-  gsi1sk?: string;
-  namespace: string[];
-  key: string;
-  value: PayloadDescriptor;
-  createdAt: string;
-  updatedAt: string;
-  /**
-   * One vector per extracted path, scored by best match on read. Absent when
-   * the value has no indexable text, or when a `vectorBackend` holds the
-   * vectors instead.
-   */
-  embeddings?: number[][];
-  /**
-   * The single joined vector rows carried before the store embedded each path
-   * separately. Never written now; still read, and scored as a one-element
-   * list, so rows written by an earlier version rank exactly as they did.
-   */
-  embedding?: number[];
-  ttl?: number;
-  /**
-   * Revision token, rewritten on every put. Pins the compare-and-swap that
-   * keeps two concurrent overwrites from both deleting the same superseded S3
-   * object. Optional: rows written before 0.9.0 carry none.
-   */
-  rev?: string;
+/** Counts returned by {@link DynamoDBStore.reconcileVectorIndex}. */
+export interface VectorReconcileResult {
+  upserted: number;
+  pruned: number;
 }

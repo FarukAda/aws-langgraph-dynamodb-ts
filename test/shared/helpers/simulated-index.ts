@@ -1,6 +1,6 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import type { DocItem } from '../../../src/shared/dynamodb/types';
+import type { DocItem } from '../../../src/shared/dynamodb/client';
 
 /**
  * Is `key` below `bound` in the order DynamoDB applies to a string sort key —

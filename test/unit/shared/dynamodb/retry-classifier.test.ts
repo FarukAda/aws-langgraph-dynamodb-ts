@@ -1,4 +1,4 @@
-import { isRetryableError } from '../../../../src/shared/dynamodb/retry-classifier';
+import { isRetryableError } from '../../../../src/shared/dynamodb/retry';
 import { DEFAULT_RETRYABLE_ERRORS } from '../../../../src/shared/errors/classify';
 
 describe('isRetryableError', () => {

@@ -32,7 +32,11 @@ describe('ensureLifecycleRule', () => {
       .on(GetBucketLifecycleConfigurationCommand)
       .resolves({ Rules: [{ ID: 'user-rule', Status: 'Enabled' }] });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30, silent());
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
+      silent(),
+    );
     const put = s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0];
     const rules = put.args[0].input.LifecycleConfiguration?.Rules ?? [];
     expect(rules.map((r) => r.ID)).toEqual([
@@ -50,7 +54,11 @@ describe('ensureLifecycleRule', () => {
       ],
     });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30, silent());
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
+      silent(),
+    );
     const rules =
       s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0].args[0].input
         .LifecycleConfiguration?.Rules ?? [];
@@ -77,7 +85,11 @@ describe('ensureLifecycleRule', () => {
         },
       ],
     });
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30, silent());
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
+      silent(),
+    );
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
   });
 
@@ -94,7 +106,11 @@ describe('ensureLifecycleRule', () => {
       ],
     });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30, silent());
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
+      silent(),
+    );
     const rules =
       s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0].args[0].input
         .LifecycleConfiguration?.Rules ?? [];
@@ -119,7 +135,9 @@ describe('ensureLifecycleRule', () => {
         },
       ],
     });
-    await expect(ensureLifecycleRule(client(), 'b', 'a-b/', 30, silent())).rejects.toMatchObject({
+    await expect(
+      ensureLifecycleRule(client(), { bucket: 'b', prefix: 'a-b/', days: 30 }, silent()),
+    ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 's3.keyPrefix' },
     });
@@ -129,7 +147,11 @@ describe('ensureLifecycleRule', () => {
   it('treats a response with no Rules field as an empty rule set', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 14, silent());
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 14 },
+      silent(),
+    );
     const rules =
       s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0].args[0].input
         .LifecycleConfiguration?.Rules ?? [];
@@ -147,7 +169,11 @@ describe('ensureLifecycleRule', () => {
       ],
     });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30, silent());
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
+      silent(),
+    );
     const rules =
       s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0].args[0].input
         .LifecycleConfiguration?.Rules ?? [];
@@ -162,7 +188,11 @@ describe('ensureLifecycleRule', () => {
       .on(GetBucketLifecycleConfigurationCommand)
       .rejects(Object.assign(new Error('none'), { name: 'NoSuchLifecycleConfiguration' }));
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 7, silent());
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 7 },
+      silent(),
+    );
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
   });
 
@@ -171,7 +201,11 @@ describe('ensureLifecycleRule', () => {
       .on(GetBucketLifecycleConfigurationCommand)
       .rejects(Object.assign(new Error('denied'), { name: 'AccessDenied' }));
     await expect(
-      ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 7, silent()),
+      ensureLifecycleRule(
+        client(),
+        { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 7 },
+        silent(),
+      ),
     ).rejects.toThrow('denied');
   });
 
@@ -183,7 +217,11 @@ describe('ensureLifecycleRule', () => {
         .rejects(Object.assign(new Error('missing'), { name, $metadata: { httpStatusCode: 404 } }));
       s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
       await expect(
-        ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 7, silent()),
+        ensureLifecycleRule(
+          client(),
+          { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 7 },
+          silent(),
+        ),
       ).rejects.toMatchObject({ name });
       expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
     },
@@ -194,7 +232,9 @@ describe('ensureLifecycleRule prefix guard (SEC-04, CODEC-07)', () => {
   it.each(['', '/', 'app'])('refuses prefix %j before touching S3', async (prefix) => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-    await expect(ensureLifecycleRule(client(), 'b', prefix, 7, silent())).rejects.toMatchObject({
+    await expect(
+      ensureLifecycleRule(client(), { bucket: 'b', prefix, days: 7 }, silent()),
+    ).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
       context: { field: 's3.keyPrefix' },
     });
@@ -209,7 +249,11 @@ describe('ensureLifecycleRule rule shape (CODEC-12)', () => {
       TransitionDefaultMinimumObjectSize: 'varies_by_storage_class',
     });
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30, silent());
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
+      silent(),
+    );
     expect(
       s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0].args[0].input
         .TransitionDefaultMinimumObjectSize,
@@ -219,7 +263,11 @@ describe('ensureLifecycleRule rule shape (CODEC-12)', () => {
   it('omits TransitionDefaultMinimumObjectSize when the bucket had none', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30, silent());
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
+      silent(),
+    );
     expect(
       'TransitionDefaultMinimumObjectSize' in
         s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0].args[0].input,
@@ -231,7 +279,11 @@ describe('the versioning report beside the rules', () => {
   it('reads the bucket versioning state after writing the rules', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30, silent());
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
+      silent(),
+    );
     expect(s3Mock.calls().map((call) => call.args[0].constructor.name)).toEqual([
       'GetBucketLifecycleConfigurationCommand',
       'PutBucketLifecycleConfigurationCommand',
@@ -248,7 +300,11 @@ describe('the versioning report beside the rules', () => {
       .rejects(Object.assign(new Error('denied'), { name: 'AccessDenied' }));
     const logger = silent();
     await expect(
-      ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30, logger),
+      ensureLifecycleRule(
+        client(),
+        { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
+        logger,
+      ),
     ).resolves.toBeUndefined();
     const rules =
       s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)[0].args[0].input
@@ -285,7 +341,11 @@ describe('the versioning report beside the rules', () => {
     });
     s3Mock.on(GetBucketVersioningCommand).resolves({});
     const logger = silent();
-    await ensureLifecycleRule(client(), 'b', 'langgraph-checkpoints/', 30, logger);
+    await ensureLifecycleRule(
+      client(),
+      { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
+      logger,
+    );
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });

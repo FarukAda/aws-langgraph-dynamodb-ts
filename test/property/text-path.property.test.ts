@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import fc from 'fast-check';
 
 import type { JsonValue } from '../../src/store/internal/filter';
-import { getTextAtPath, tokenizePath } from '../../src/store/internal/text-path';
+import { getTextAtPath, tokenizePath } from '../../src/store/internal/semantic-search';
 
 // The implementation InMemoryStore actually uses (the package root exports a
 // string-only variant); reached by absolute path because it is not in the
