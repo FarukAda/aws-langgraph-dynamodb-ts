@@ -6,6 +6,8 @@ import {
   keySchemaWrites,
   MESSAGE_COUNT_OWNER,
   messageCountUses,
+  PAGE_WALK_OWNERS,
+  pageResumes,
   VECTOR_COPY_OWNER,
   vectorBackendCalls,
 } from './guards/owners';
@@ -52,6 +54,21 @@ describe('vectorBackendCalls', () => {
   });
 });
 
+describe('pageResumes', () => {
+  it('finds a request resumed from a key, however the key is spread in', () => {
+    const source = [
+      'const a = { ExclusiveStartKey: k };',
+      'const b = { ...(k === undefined ? {} : { ExclusiveStartKey: k }) };',
+    ].join('\n');
+    expect(pageResumes(source)).toEqual([1, 2]);
+  });
+
+  it('leaves reading the next key off a response, and declaring the field, alone', () => {
+    const source = 'const next = page.LastEvaluatedKey;\ntype T = { ExclusiveStartKey?: K };';
+    expect(pageResumes(source)).toEqual([]);
+  });
+});
+
 describe('the source tree', () => {
   const files = listSourceFiles().map((path) => ({
     path: relative(SRC_ROOT, path).split(sep).join('/'),
@@ -76,11 +93,21 @@ describe('the source tree', () => {
     expect(outside([VECTOR_COPY_OWNER], vectorBackendCalls)).toEqual([]);
   });
 
+  it('resumes a paged read only in the page-walking owners', () => {
+    expect(outside(PAGE_WALK_OWNERS, pageResumes)).toEqual([]);
+  });
+
   it('names owners that exist and own what they are named for', () => {
-    for (const owner of [...KEY_SCHEMA_OWNERS, MESSAGE_COUNT_OWNER, VECTOR_COPY_OWNER]) {
+    for (const owner of [
+      ...KEY_SCHEMA_OWNERS,
+      ...PAGE_WALK_OWNERS,
+      MESSAGE_COUNT_OWNER,
+      VECTOR_COPY_OWNER,
+    ]) {
       expect(existsSync(resolve(SRC_ROOT, owner))).toBe(true);
     }
     for (const owner of KEY_SCHEMA_OWNERS) expect(hits(owner, keySchemaWrites)).toBeGreaterThan(0);
+    for (const owner of PAGE_WALK_OWNERS) expect(hits(owner, pageResumes)).toBeGreaterThan(0);
     expect(hits(MESSAGE_COUNT_OWNER, messageCountUses)).toBeGreaterThan(0);
     expect(hits(VECTOR_COPY_OWNER, vectorBackendCalls)).toBeGreaterThan(0);
   });

@@ -27,6 +27,20 @@ export const MESSAGE_COUNT_OWNER = 'history/internal/session.ts';
  */
 export const VECTOR_COPY_OWNER = 'store/internal/vector-index.ts';
 
+/**
+ * The modules that resume a paged read by setting `ExclusiveStartKey`. A read
+ * walks its pages through `paginate.ts`, which alone decides the caps, the
+ * probe at a cap and where cancellation is checked. The recency index keeps
+ * one cursor per shard and merges them, and the backfill hands its cursor to
+ * an operator between calls, so neither follows one `LastEvaluatedKey` to the
+ * end and both keep their own.
+ */
+export const PAGE_WALK_OWNERS: readonly string[] = [
+  'shared/dynamodb/paginate.ts',
+  'shared/dynamodb/recency-index.ts',
+  'backfill/backfill.ts',
+];
+
 /** A key attribute's name as a whole word, inside any string or template piece. */
 const KEY_ATTRIBUTE_WORD = /\b[PS]K\b/;
 
@@ -124,4 +138,9 @@ export function vectorBackendCalls(text: string): number[] {
       BACKEND_RECEIVER.test(node.expression.expression.getText(file))
     );
   });
+}
+
+/** Lines of `text` that resume a read: an object property named `ExclusiveStartKey`. */
+export function pageResumes(text: string): number[] {
+  return linesWhere(text, (node) => assignedName(node) === 'ExclusiveStartKey');
 }

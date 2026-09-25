@@ -9,12 +9,10 @@
  * returns.
  */
 
-import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
-
 import { nowSeconds } from '../../shared/clock';
 import type { DocItem } from '../../shared/dynamodb/client';
 import { LIST_SCAN_WARN_THRESHOLD, paginateQuery } from '../../shared/dynamodb/paginate';
-import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow, assertReadableRow } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
 import { truncateForLog } from '../../shared/logging/truncate';
@@ -190,9 +188,10 @@ function requireCountableRow(raw: DocItem, sessionId: SessionId): ChatMessageIte
  * `message.location` that every descriptor this package has written carries,
  * which proves the attribute is there and a map without reading the bytes it
  * holds. Every check runs here rather than in a filter, because a filter would
- * drop an expired row before its version could be checked. The paging is
- * deliberately uncapped: a partial count is not a repair, it is a new and
- * wrong number, so the count either completes or fails.
+ * drop an expired row before its version could be checked. The pages are
+ * walked by the shared paginator with both of its caps lifted: a partial count
+ * is not a repair, it is a new and wrong number, so the count either completes
+ * or fails.
  */
 export async function countLiveMessages(
   context: HistoryContext,
@@ -201,30 +200,28 @@ export async function countLiveMessages(
 ): Promise<number> {
   const now = nowSeconds();
   const query = messageQuery(context.tableName, sessionId);
-  const base = {
-    ...query,
-    ProjectionExpression: '#pk, #sid, #msg.#loc, #v, #ttl',
-    ExpressionAttributeNames: {
-      ...query.ExpressionAttributeNames,
-      '#sid': 'sessionId',
-      '#msg': 'message',
-      '#loc': 'location',
-      '#v': 'v',
-      '#ttl': 'ttl',
-    },
-  };
   let total = 0;
-  let startKey: Record<string, NativeAttributeValue> | undefined;
-  do {
-    const page = await withDynamoDBRetry(
-      (request) => context.client.query({ ...base, ExclusiveStartKey: startKey }, request),
-      retryFor(context, signal),
-    );
-    for (const raw of page.Items ?? []) {
-      const row = requireCountableRow(raw, sessionId);
-      if (!isExpiredRow(row, now)) total += 1;
-    }
-    startKey = page.LastEvaluatedKey;
-  } while (startKey);
+  for await (const raw of paginateQuery({
+    retry: retryFor(context, signal),
+    signal,
+    client: context.client,
+    params: {
+      ...query,
+      ProjectionExpression: '#pk, #sid, #msg.#loc, #v, #ttl',
+      ExpressionAttributeNames: {
+        ...query.ExpressionAttributeNames,
+        '#sid': 'sessionId',
+        '#msg': 'message',
+        '#loc': 'location',
+        '#v': 'v',
+        '#ttl': 'ttl',
+      },
+    },
+    maxItems: Number.POSITIVE_INFINITY,
+    maxIterations: Number.POSITIVE_INFINITY,
+  })) {
+    const row = requireCountableRow(raw, sessionId);
+    if (!isExpiredRow(row, now)) total += 1;
+  }
   return total;
 }

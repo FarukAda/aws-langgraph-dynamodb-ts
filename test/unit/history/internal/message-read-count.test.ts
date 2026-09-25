@@ -5,6 +5,10 @@ import { parseMessageWindow, parseSessionId } from '../../../../src/history/inte
 import { messageSortKey } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
+import {
+  MAX_LOOP_ITERATIONS,
+  MAX_TOTAL_ITEMS_IN_MEMORY,
+} from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -128,6 +132,47 @@ describe('countLiveMessages', () => {
       PK: 'HIST#s1',
       SK: 'p1',
     });
+  });
+
+  // Uncapped: a count that stopped at the paginator's default would be a new, wrong number.
+  it('counts past the default item cap in one page', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const rows = Array.from({ length: MAX_TOTAL_ITEMS_IN_MEMORY + 1 }, (_, index) =>
+      message(`01${String(index).padStart(6, '0')}`),
+    );
+    serve(mock, [rows]);
+    await expect(countLiveMessages(context(client), SESSION_ID)).resolves.toBe(
+      MAX_TOTAL_ITEMS_IN_MEMORY + 1,
+    );
+  });
+
+  it('follows every page past the default page cap', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    serve(
+      mock,
+      Array.from({ length: MAX_LOOP_ITERATIONS + 1 }, (_, index) => [
+        message(`01${String(index).padStart(6, '0')}`),
+      ]),
+    );
+    await expect(countLiveMessages(context(client), SESSION_ID)).resolves.toBe(
+      MAX_LOOP_ITERATIONS + 1,
+    );
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(MAX_LOOP_ITERATIONS + 1);
+  });
+
+  it('stops at the page boundary after the signal fires, sending no further query', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    let call = 0;
+    mock.on(QueryCommand).callsFake(() => {
+      call += 1;
+      if (call === 1) controller.abort();
+      return { Items: [message('01A')], LastEvaluatedKey: { PK: 'HIST#s1', SK: `p${call}` } };
+    });
+    await expect(
+      countLiveMessages(context(client), SESSION_ID, controller.signal),
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED });
+    expect(mock.commandCalls(QueryCommand)).toHaveLength(1);
   });
 
   it('answers zero for a session with no messages', async () => {
