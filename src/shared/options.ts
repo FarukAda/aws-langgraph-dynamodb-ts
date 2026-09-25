@@ -16,7 +16,7 @@ export interface BaseAdapterOptions {
   tableName: string;
   /** Pre-built DocumentClient to reuse; when set, the adapter does not own it. */
   client?: DynamoDBDocumentLike;
-  /** Config used to build a client when `client` is not provided. */
+  /** The config a client is built from when `client` is not provided. */
   clientConfig?: DynamoDBClientConfig;
   /**
    * @internal Test seam and dependency-injection hook for constructing the

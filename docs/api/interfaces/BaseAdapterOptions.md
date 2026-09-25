@@ -29,7 +29,7 @@ Pre-built DocumentClient to reuse; when set, the adapter does not own it.
 
 Defined in: [shared/options.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L20)
 
-Config used to build a client when `client` is not provided.
+The config a client is built from when `client` is not provided.
 
 ***
 

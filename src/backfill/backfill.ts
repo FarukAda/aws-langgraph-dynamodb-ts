@@ -305,12 +305,7 @@ export interface BackfillResult {
   nextCursor?: string;
 }
 
-/**
- * What the backfill needs to walk a table.
- *
- * Kept next to `assertBackfillOptions`, which builds a compiler-verified key
- * list against it (`allKeysOf<BackfillOptions>`).
- */
+/** What the backfill needs to walk a table. A key this type does not declare is refused. */
 export interface BackfillOptions {
   client: DynamoDBDocumentLike;
   tableName: string;

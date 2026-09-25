@@ -19,12 +19,12 @@ import type {
 } from './types';
 
 /**
- * DynamoDB-backed multi-session chat history. Each message is its own item
- * (ordered by a monotonic ULID, compressed / S3-offloaded as needed) alongside a
- * per-session metadata item; every message in a session shares one uniform TTL.
- * Appends are O(1) and lock-free. Use {@link forSession} to get a single-session
- * LangChain adapter. Every public method is the library's error boundary — a
- * raw AWS SDK error escaping an action is wrapped with the code the classifier assigns.
+ * DynamoDB-backed multi-session chat history. Each message is its own row,
+ * ordered by when it was appended, beside one metadata row per session, and
+ * every message in a session shares one TTL. An append costs the same however
+ * long the session is and takes no lock. Use {@link forSession} to get a
+ * single-session LangChain adapter. Every public method rejects only with this
+ * library's error.
  */
 export class DynamoDBChatMessageHistory {
   private readonly context: HistoryContext;
@@ -256,11 +256,8 @@ export class DynamoDBChatMessageHistory {
    * — that one is theirs to close.
    *
    * Throws: whatever a resource's own `destroy` raises — but only after every
-   * other one has been released, so a client that fails to close can no longer
-   * strand the one behind it (see `releaseOwned`). It used to: an S3
-   * client whose sockets were already gone threw first, and the DynamoDB client
-   * this adapter built leaked for the life of the process. The clause read
-   * "nothing this adapter raises", which a caller reads as nothing at all.
+   * other one has been released, so a client that fails to close never strands
+   * the one behind it.
    */
   destroy(): void {
     this.shell.release();

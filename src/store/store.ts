@@ -38,11 +38,10 @@ type SingleResult = Item | null | SearchItem[] | string[][];
 
 /**
  * DynamoDB-backed LangGraph store for long-term memory with optional semantic
- * search. A thin orchestrator: get/put/delete/listNamespaces build the same
- * operations the base class builds and funnel them into the same validation
- * and dispatch {@link batch} runs; they are overridden so each call is guarded
- * in this package under its own name, and so `put` keeps upstream's own
- * namespace rules.
+ * search. `get`, `put`, `delete` and `listNamespaces` answer and refuse exactly
+ * as the same operation inside a {@link batch} does, and `put` keeps upstream's
+ * own namespace rules. Every public method rejects only with this library's
+ * error.
  */
 export class DynamoDBStore extends BaseStore {
   private readonly context: StoreContext;
@@ -143,7 +142,7 @@ export class DynamoDBStore extends BaseStore {
    * get after a put of the same item sees it, a get before one does not, and a
    * search sees every write that precedes it and none that follow. Operations
    * addressing different items run concurrently, so a batch of ten gets costs
-   * about one round trip rather than ten (see `runBatch`).
+   * about one round trip rather than ten.
    */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
     return guardPublic('store.batch', async () => {
@@ -370,11 +369,8 @@ export class DynamoDBStore extends BaseStore {
    * — that one is theirs to close.
    *
    * Throws: whatever a resource's own `destroy` raises — but only after every
-   * other one has been released, so a client that fails to close can no longer
-   * strand the one behind it (see `releaseOwned`). It used to: an S3
-   * client whose sockets were already gone threw first, and the DynamoDB client
-   * this adapter built leaked for the life of the process. The clause read
-   * "nothing this adapter raises", which a caller reads as nothing at all.
+   * other one has been released, so a client that fails to close never strands
+   * the one behind it.
    */
   destroy(): void {
     this.shell.release();

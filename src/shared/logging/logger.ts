@@ -7,9 +7,10 @@ export type LogArgument = string | number | boolean | null | object;
  * adapter for a structured logger (pino, winston) can merge them into one
  * record; the message is a fixed string and never carries a value.
  *
- * It is the one piece of foreign code every adapter of this package calls, and
- * it is called almost entirely from `catch` blocks — see
- * `absorbLoggerFailure` for what that costs and where it is paid.
+ * It is the one piece of foreign code every adapter of this package calls,
+ * almost always from a `catch` block, so an adapter wraps it: anything one of
+ * its methods throws is absorbed at the log call and never replaces the error
+ * being reported.
  */
 export interface Logger {
   info(message: string, ...args: LogArgument[]): void;

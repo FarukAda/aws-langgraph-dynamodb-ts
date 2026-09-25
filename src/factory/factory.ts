@@ -227,10 +227,9 @@ export class DynamoDBFactory {
    * Accepts: `options` — a section per adapter, laid over the factory's shared
    * defaults; omitting one, or giving it as `undefined`, skips that adapter,
    * and `{}` builds none. A key that is not a section name is refused rather
-   * than ignored: a misspelt one silently built nothing and handed back three
-   * `undefined`s. Each section is that adapter's options, so one that is not
-   * an object — `null` included, which used to build nothing and hand back
-   * `null` — is refused before any client is built.
+   * than ignored, so a misspelt one cannot silently build nothing. Each section
+   * is that adapter's options, so one that is not an object, `null` included,
+   * is refused before any client is built.
    *
    * Returns: the adapters, typed by the sections asked for, and one `destroy`
    * that releases all of them and the shared client. A client the factory was

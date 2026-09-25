@@ -6,7 +6,7 @@
 
 # Interface: RetryPolicy
 
-Defined in: [shared/dynamodb/retry.ts:352](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L352)
+Defined in: [shared/dynamodb/retry.ts:354](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L354)
 
 Caller-facing retry tunables for every DynamoDB call an adapter makes. The
 schedule is full-jitter exponential backoff: `baseDelayMs` doubling per
@@ -19,7 +19,7 @@ message-append path never goes below its own contention floor.
 
 > `optional` **baseDelayMs?**: `number`
 
-Defined in: [shared/dynamodb/retry.ts:356](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L356)
+Defined in: [shared/dynamodb/retry.ts:358](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L358)
 
 First backoff delay in milliseconds (default 100).
 
@@ -29,7 +29,7 @@ First backoff delay in milliseconds (default 100).
 
 > `optional` **maxAttempts?**: `number`
 
-Defined in: [shared/dynamodb/retry.ts:354](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L354)
+Defined in: [shared/dynamodb/retry.ts:356](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L356)
 
 Attempts per call before `RETRY_EXHAUSTED` (default 5).
 
@@ -39,6 +39,6 @@ Attempts per call before `RETRY_EXHAUSTED` (default 5).
 
 > `optional` **maxDelayMs?**: `number`
 
-Defined in: [shared/dynamodb/retry.ts:358](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L358)
+Defined in: [shared/dynamodb/retry.ts:360](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/retry.ts#L360)
 
 Cap on a single backoff delay in milliseconds (default 5000).

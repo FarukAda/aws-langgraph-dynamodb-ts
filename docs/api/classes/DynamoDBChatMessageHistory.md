@@ -8,12 +8,12 @@
 
 Defined in: [history/chat-message-history.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L29)
 
-DynamoDB-backed multi-session chat history. Each message is its own item
-(ordered by a monotonic ULID, compressed / S3-offloaded as needed) alongside a
-per-session metadata item; every message in a session shares one uniform TTL.
-Appends are O(1) and lock-free. Use [forSession](#forsession) to get a single-session
-LangChain adapter. Every public method is the library's error boundary — a
-raw AWS SDK error escaping an action is wrapped with the code the classifier assigns.
+DynamoDB-backed multi-session chat history. Each message is its own row,
+ordered by when it was appended, beside one metadata row per session, and
+every message in a session shares one TTL. An append costs the same however
+long the session is and takes no lock. Use [forSession](#forsession) to get a
+single-session LangChain adapter. Every public method rejects only with this
+library's error.
 
 ## Constructors
 
@@ -175,7 +175,7 @@ row then over-counts until `reconcileMessageCount` repairs it.
 
 > **destroy**(): `void`
 
-Defined in: [history/chat-message-history.ts:265](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L265)
+Defined in: [history/chat-message-history.ts:262](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L262)
 
 Release owned resources.
 
@@ -185,11 +185,8 @@ Returns: nothing. Idempotent, and a no-op for a client the caller injected
 — that one is theirs to close.
 
 Throws: whatever a resource's own `destroy` raises — but only after every
-other one has been released, so a client that fails to close can no longer
-strand the one behind it (see `releaseOwned`). It used to: an S3
-client whose sockets were already gone threw first, and the DynamoDB client
-this adapter built leaked for the life of the process. The clause read
-"nothing this adapter raises", which a caller reads as nothing at all.
+other one has been released, so a client that fails to close never strands
+the one behind it.
 
 #### Returns
 
@@ -201,7 +198,7 @@ this adapter built leaked for the life of the process. The clause read
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:285](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L285)
+Defined in: [history/chat-message-history.ts:282](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L282)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.

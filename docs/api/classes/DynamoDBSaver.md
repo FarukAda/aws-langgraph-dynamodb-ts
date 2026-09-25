@@ -6,12 +6,11 @@
 
 # Class: DynamoDBSaver
 
-Defined in: [checkpointer/saver.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L34)
+Defined in: [checkpointer/saver.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L33)
 
-DynamoDB-backed LangGraph checkpoint saver. A thin orchestrator: it resolves
-its collaborators once and delegates every operation to a focused action.
-Every public method is the library's error boundary — a raw AWS SDK error
-escaping an action is wrapped with the code the classifier assigns.
+DynamoDB-backed LangGraph checkpoint saver. Every public method rejects only
+with this library's error, whose `code` says what failed — an AWS failure
+included.
 
 ## Extends
 
@@ -23,7 +22,7 @@ escaping an action is wrapped with the code the classifier assigns.
 
 > **new DynamoDBSaver**(`options`): `DynamoDBSaver`
 
-Defined in: [checkpointer/saver.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L52)
+Defined in: [checkpointer/saver.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L51)
 
 Accepts: `options` — validated here, so a misconfiguration surfaces at
 construction rather than on the first request. `options.serde` reaches the
@@ -111,7 +110,7 @@ no object this call could have released.
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/saver.ts:311](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L311)
+Defined in: [checkpointer/saver.ts:308](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L308)
 
 Release owned resources.
 
@@ -121,11 +120,8 @@ Returns: nothing. Idempotent, and a no-op for a client the caller injected
 — that one is theirs to close.
 
 Throws: whatever a resource's own `destroy` raises — but only after every
-other one has been released, so a client that fails to close can no longer
-strand the one behind it (see `releaseOwned`). It used to: an S3
-client whose sockets were already gone threw first, and the DynamoDB client
-this adapter built leaked for the life of the process. The clause read
-"nothing this adapter raises", which a caller reads as nothing at all.
+other one has been released, so a client that fails to close never strands
+the one behind it.
 
 #### Returns
 
@@ -137,7 +133,7 @@ this adapter built leaked for the life of the process. The clause read
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:333](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L333)
+Defined in: [checkpointer/saver.ts:330](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L330)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded payloads don't outlive the items that point at them.
@@ -177,7 +173,7 @@ channel's on-path writes oldest-first and its nearest stored value.
 Overrides the inherited walk, which stops silently at an ancestor it cannot
 read and lets the consumer restart the channel from empty. A TTL computed
 per put puts that within reach here, so an ancestor a channel still needs
-that has expired is reported instead of dropped; see `deltaChannelHistory`.
+that has expired is reported instead of dropped.
 
 Accepts: `options` — must be an object naming exactly `config` and
 `channels`, the shape `BaseCheckpointSaver`'s own signature declares.
@@ -226,7 +222,7 @@ snapshot.
 
 > **getTuple**(`config`): `Promise`\<`CheckpointTuple` \| `undefined`\>
 
-Defined in: [checkpointer/saver.ts:91](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L91)
+Defined in: [checkpointer/saver.ts:90](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L90)
 
 Read one checkpoint with its metadata and pending writes.
 
@@ -279,7 +275,7 @@ seen.
 
 > **list**(`config`, `options?`): `AsyncGenerator`\<`CheckpointTuple`\>
 
-Defined in: [checkpointer/saver.ts:130](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L130)
+Defined in: [checkpointer/saver.ts:129](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L129)
 
 Stream checkpoints newest first.
 
@@ -350,8 +346,9 @@ Accepts: `config` — shaped as [getTuple](#gettuple) requires, and naming a
 `thread_id`. `config.configurable.checkpoint_id` — becomes the new
 checkpoint's parent. `config.signal` — aborts the write. `checkpoint` —
 every channel value it carries is stored. `newVersions` — accepted to
-satisfy `BaseCheckpointSaver.put` and deliberately ignored; see
-`putCheckpoint` for why narrowing by it lost state on a fork.
+satisfy `BaseCheckpointSaver.put` and deliberately ignored: LangGraph passes
+it empty for a fork and for an empty update, so narrowing by it would store
+nothing for either (decision record 10).
 
 Returns: the config addressing the stored checkpoint, which is what the
 caller passes back to continue the thread.

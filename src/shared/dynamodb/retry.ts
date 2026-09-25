@@ -71,16 +71,18 @@ export interface RetryAttemptInfo {
   error: Error;
 }
 
-/** Options controlling {@link withRetry}. */
+/**
+ * How a failed request is retried: how many attempts, how long each wait, and
+ * which failures qualify.
+ */
 export interface RetryOptions {
   maxAttempts?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
   retryableErrors?: readonly string[];
   /**
-   * Decides retryability instead of `retryableErrors`, so a call site can
-   * share one classifier (see `isTransientS3Error`) with paths that do not
-   * go through `withRetry`.
+   * Decides retryability instead of `retryableErrors`: called with each failed
+   * attempt's error, it retries when it returns `true`.
    */
   isRetryable?: (error: Error) => boolean;
   /** Called before every backoff sleep, so retries are visible before the budget is exhausted. */
