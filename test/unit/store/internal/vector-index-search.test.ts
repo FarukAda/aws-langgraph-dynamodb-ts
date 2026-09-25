@@ -8,7 +8,7 @@ import {
   MAX_LOGGED_VALUE_CHARS,
   truncateForLog,
 } from '../../../../src/shared/logging/truncate';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { searchViaBackend } from '../../../../src/store/internal/vector-index';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -39,7 +39,7 @@ describe('searchViaBackend', () => {
   it('returns the matched items in the backend s order, each carrying its score', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
@@ -64,7 +64,7 @@ describe('searchViaBackend', () => {
   it('drops a match that lies outside the prefix without reading it', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
@@ -150,7 +150,7 @@ describe('searchViaBackend', () => {
   it('reads each distinct match once, however many rounds the filter forces', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client, { maxSearchCandidates: 8 });
-    const kept = await buildStoreItem(
+    const kept = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'keep' },
       { keep: true },
@@ -159,7 +159,7 @@ describe('searchViaBackend', () => {
         updatedAt: 'u',
       },
     );
-    const dropped = await buildStoreItem(
+    const dropped = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'drop' },
       { keep: false },
@@ -192,7 +192,7 @@ describe('searchViaBackend', () => {
   it('reads a repeated key once and still scores both matches', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
@@ -218,7 +218,7 @@ describe('searchViaBackend', () => {
     const { client, mock } = createStrictDocumentMock();
     const warn = jest.fn();
     const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
@@ -247,7 +247,7 @@ describe('searchViaBackend', () => {
     const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });
     const filler = Array.from({ length: MAX_LOGGED_LABELS }, (_unused, at) => `d${at}`);
     const deep = ['users', ...filler];
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: deep, key: 'a' },
       { a: 1 },

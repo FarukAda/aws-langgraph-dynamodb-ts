@@ -33,7 +33,7 @@ against DynamoDB's 400 KB item limit; see that option's note.
 Cap on rows read into memory by one search, namespace listing or
 reconcile before `RESULT_TRUNCATED`. Reaching it is an error, not a
 truncation: a partial answer is never returned as a complete one.
-Defaults to `MAX_TOTAL_ITEMS_IN_MEMORY`.
+Defaults to `MAX_TOTAL_ROWS_IN_MEMORY`.
 
 ### maxSearchCandidates?
 

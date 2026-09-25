@@ -18,9 +18,9 @@ import { rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { parsePutRequest } from '../internal/parse';
 import {
-  buildCheckpointItems,
-  type CheckpointMetaItem,
-  type CheckpointPayloadItem,
+  buildCheckpointRows,
+  type CheckpointMetaRow,
+  type CheckpointPayloadRow,
 } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
 
@@ -84,7 +84,7 @@ export async function putCheckpoint(
   const request = parsePutRequest(config, checkpoint, metadata);
   const { threadId, checkpointNs, checkpointId } = request.address;
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const { meta, payload } = await buildCheckpointItems(context, request, ttlTimestamp);
+  const { meta, payload } = await buildCheckpointRows(context, request, ttlTimestamp);
   const stored: RunnableConfig = {
     configurable: { thread_id: threadId, checkpoint_ns: checkpointNs, checkpoint_id: checkpointId },
   };
@@ -162,7 +162,7 @@ export async function putCheckpoint(
  * nothing to protect and no read to spend, which {@link verifyRow} answers
  * `'not-landed'` for an absent `expected`.
  */
-function chooseProbe(meta: CheckpointMetaItem, payload: CheckpointPayloadItem): RowProbe {
+function chooseProbe(meta: CheckpointMetaRow, payload: CheckpointPayloadRow): RowProbe {
   const metaKey = offloadedKey(meta.metadata);
   if (metaKey !== undefined) {
     return {
@@ -206,8 +206,8 @@ function chooseProbe(meta: CheckpointMetaItem, payload: CheckpointPayloadItem): 
  */
 export async function verifyCheckpointLanded(
   context: CheckpointerContext,
-  meta: CheckpointMetaItem,
-  payload: CheckpointPayloadItem,
+  meta: CheckpointMetaRow,
+  payload: CheckpointPayloadRow,
 ): Promise<WriteVerdict> {
   const { verdict } = await verifyRow(context, chooseProbe(meta, payload));
   return verdict;

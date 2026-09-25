@@ -13,7 +13,7 @@ import {
   parseThreadConfig,
   type ThreadAddress,
 } from '../../../src/checkpointer/internal/parse';
-import { buildCheckpointItems, buildWriteItems } from '../../../src/checkpointer/internal/rows';
+import { buildCheckpointRows, buildWriteRows } from '../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../src/checkpointer/internal/setup';
 import {
   parseNamespacePrefix,
@@ -60,13 +60,13 @@ export async function checkpointItems(
   parentCheckpointId?: string,
   ttlTimestamp?: number,
   signal?: AbortSignal,
-): ReturnType<typeof buildCheckpointItems> {
+): ReturnType<typeof buildCheckpointRows> {
   const request = parsePutRequest(
     configFor(threadId, checkpointNs, parentCheckpointId, signal),
     checkpoint,
     metadata,
   );
-  return buildCheckpointItems(context, request, ttlTimestamp);
+  return buildCheckpointRows(context, request, ttlTimestamp);
 }
 
 /** The WRITE rows a putWrites of `writes` would write. */
@@ -80,13 +80,13 @@ export async function writeItems(
   writeGroup: string,
   ttlTimestamp?: number,
   signal?: AbortSignal,
-): ReturnType<typeof buildWriteItems> {
+): ReturnType<typeof buildWriteRows> {
   const request = parsePutWritesRequest(
     configFor(threadId, checkpointNs, checkpointId, signal),
     writes,
     taskId,
   );
-  return buildWriteItems(context, request, writeGroup, ttlTimestamp);
+  return buildWriteRows(context, request, writeGroup, ttlTimestamp);
 }
 
 /** A batch put (or, for a `null` value, delete) as the store dispatches it. */

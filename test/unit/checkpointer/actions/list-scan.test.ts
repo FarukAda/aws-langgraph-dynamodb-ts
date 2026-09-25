@@ -7,8 +7,8 @@ import type {
 
 import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
 import type {
-  CheckpointMetaItem,
-  CheckpointPayloadItem,
+  CheckpointMetaRow,
+  CheckpointPayloadRow,
 } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { DEFAULT_INDEX_SHARDS } from '../../../../src/shared/dynamodb/recency-index';
@@ -39,8 +39,8 @@ async function collect(gen: AsyncGenerator<CheckpointTuple>): Promise<Checkpoint
 }
 
 interface Row {
-  meta: CheckpointMetaItem;
-  payload: CheckpointPayloadItem;
+  meta: CheckpointMetaRow;
+  payload: CheckpointPayloadRow;
 }
 
 /** Checkpoints across two threads and two namespaces, with distinct metadata sources. */

@@ -4,7 +4,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { putCheckpoint } from '../../../../src/checkpointer/actions/put';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { conditionalCheckFailure } from '../../../../src/shared/dynamodb/cancellation';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import * as retryModule from '../../../../src/shared/dynamodb/retry';
 import { MAX_WRITE_LIFETIME_MS, type RetryOptions } from '../../../../src/shared/dynamodb/retry';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -125,7 +125,7 @@ describe('the checkpoint pair is sent once, under its own request token', () => 
 
 /** The request the checkpoint transaction takes, as a hand-rolled double reads it. */
 interface TransactInput {
-  TransactItems: { Put: { Item: DocItem } }[];
+  TransactItems: { Put: { Item: AttributeMap } }[];
   ClientRequestToken?: string;
 }
 
@@ -142,7 +142,7 @@ interface TransactInput {
  */
 function racedByAThreadDelete() {
   const applied = new Set<string>();
-  const rows = new Map<string, DocItem>();
+  const rows = new Map<string, AttributeMap>();
   let requests = 0;
   const client = {
     transactWrite: (input: TransactInput): Record<string, never> => {

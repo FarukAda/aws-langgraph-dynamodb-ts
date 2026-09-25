@@ -7,7 +7,7 @@ import type { CheckpointerContext } from '../../../../src/checkpointer/internal/
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { buildMessageItem } from '../../../../src/history/internal/rows';
+import { buildMessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import {
   loadPayloadValue,
@@ -105,13 +105,13 @@ async function historyReading(
     onCorruptMessage: policy,
   };
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('still here')]);
-  const rotted = await buildMessageItem(context, {
+  const rotted = await buildMessageRow(context, {
     sessionId: parseSessionId('s1'),
     messageId: '01A',
     message: human,
   });
   rotted.message = rottedDescriptor() as never;
-  const intact = await buildMessageItem(context, {
+  const intact = await buildMessageRow(context, {
     sessionId: parseSessionId('s1'),
     messageId: '01B',
     message: human,

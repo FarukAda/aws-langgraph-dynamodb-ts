@@ -5,7 +5,7 @@ import { type BatchWriteCommandInput, DynamoDBDocument } from '@aws-sdk/lib-dyna
 
 import {
   isConditionalCheckFailed,
-  rejectedItem,
+  rejectedRow,
   writeIdGuard,
   deleteIdempotently,
 } from '../../src/shared/dynamodb/idempotent-write';
@@ -184,7 +184,7 @@ describe('the batch delete path, its cost and its contention, against real AWS',
       expect(isConditionalCheckFailed(error)).toBe(true);
       expect((error as { code?: string }).code).not.toBe(ErrorCode.RETRY_EXHAUSTED);
       // Already gone, not rewritten: the loser may release what it read.
-      expect(rejectedItem(error)).toBeUndefined();
+      expect(rejectedRow(error)).toBeUndefined();
     }
   });
 });

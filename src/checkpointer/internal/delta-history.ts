@@ -17,7 +17,7 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
@@ -259,7 +259,7 @@ export async function probeAncestor(
       ),
     retryFor(context, config.signal),
   );
-  const row = result.Item as DocItem | undefined;
+  const row = result.Item as AttributeMap | undefined;
   return {
     threadId,
     checkpointId,

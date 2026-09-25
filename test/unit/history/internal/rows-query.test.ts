@@ -1,18 +1,18 @@
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { messageQuery, sessionItemsQuery } from '../../../../src/history/internal/rows';
+import { messageQuery, sessionRowsQuery } from '../../../../src/history/internal/rows';
 
 const SESSION_ID = parseSessionId('s1');
 
-describe('sessionItemsQuery', () => {
+describe('sessionRowsQuery', () => {
   it('selects every item in the session partition', () => {
-    const input = sessionItemsQuery('history', SESSION_ID);
+    const input = sessionRowsQuery('history', SESSION_ID);
     expect(input.KeyConditionExpression).toBe('#pk = :pk');
     expect(input.ExpressionAttributeValues).toEqual({ ':pk': 'HIST#s1' });
     expect(input.ConsistentRead).toBeUndefined();
   });
 
   it('sets ConsistentRead when requested', () => {
-    const input = sessionItemsQuery('history', SESSION_ID, { consistent: true });
+    const input = sessionRowsQuery('history', SESSION_ID, { consistent: true });
     expect(input.ConsistentRead).toBe(true);
   });
 });

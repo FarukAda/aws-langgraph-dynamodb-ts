@@ -1,7 +1,7 @@
 import type { CancellationReason } from '../../../../src/shared/dynamodb/cancellation';
 import {
   isConditionalCheckFailed,
-  rejectedItem,
+  rejectedRow,
   revisionGuard,
   WRITE_ID_ATTRIBUTE,
   writeIdGuard,
@@ -85,7 +85,7 @@ describe('revisionGuard returns the rejected row', () => {
   });
 });
 
-describe('rejectedItem', () => {
+describe('rejectedRow', () => {
   it('unmarshalls the raw AttributeValue item a rejection carries', () => {
     const error = Object.assign(new Error('rejected'), {
       name: 'ConditionalCheckFailedException',
@@ -102,7 +102,7 @@ describe('rejectedItem', () => {
         },
       },
     });
-    expect(rejectedItem(error)).toEqual({
+    expect(rejectedRow(error)).toEqual({
       rev: 'other',
       createdAt: 'c',
       value: {
@@ -116,7 +116,7 @@ describe('rejectedItem', () => {
 
   it('is undefined when the rejection carries no item', () => {
     expect(
-      rejectedItem(Object.assign(new Error('x'), { name: 'ConditionalCheckFailedException' })),
+      rejectedRow(Object.assign(new Error('x'), { name: 'ConditionalCheckFailedException' })),
     ).toBeUndefined();
   });
 });
@@ -147,17 +147,17 @@ describe('isConditionalCheckFailed reads a cancelled transaction', () => {
   });
 });
 
-describe('rejectedItem reads a cancelled transaction', () => {
+describe('rejectedRow reads a cancelled transaction', () => {
   it('unmarshalls the raw row attached to the rejected item', () => {
     const error = cancelled([
       { Code: 'None' },
       { Code: 'ConditionalCheckFailed', Item: { rev: { S: 'other' }, writeGroup: { S: 'g2' } } },
     ]);
-    expect(rejectedItem(error)).toEqual({ rev: 'other', writeGroup: 'g2' });
+    expect(rejectedRow(error)).toEqual({ rev: 'other', writeGroup: 'g2' });
   });
 
   it('is undefined when the rejected item carries no row', () => {
-    expect(rejectedItem(cancelled([{ Code: 'ConditionalCheckFailed' }]))).toBeUndefined();
+    expect(rejectedRow(cancelled([{ Code: 'ConditionalCheckFailed' }]))).toBeUndefined();
   });
 });
 

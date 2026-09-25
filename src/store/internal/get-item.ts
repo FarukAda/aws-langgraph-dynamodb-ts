@@ -15,7 +15,7 @@ import {
   partitionKey,
   readStoreItem,
   sortKey,
-  type StoreItemRecord,
+  type StoreItemRow,
 } from './rows';
 import type { StoreContext } from './setup';
 
@@ -33,7 +33,7 @@ async function readRow(
   namespace: string[],
   key: string,
   signal?: AbortSignal,
-): Promise<StoreItemRecord | undefined> {
+): Promise<StoreItemRow | undefined> {
   const result = await withDynamoDBRetry(
     (request) =>
       context.client.get(
@@ -70,7 +70,7 @@ async function readRow(
  * the coded error that names the descriptor — not with a property read that
  * would replace the download's own failure with a bare `TypeError`.
  */
-function sameObject(read: StoreItemRecord, reread: StoreItemRecord): boolean {
+function sameObject(read: StoreItemRow, reread: StoreItemRow): boolean {
   const fresh: DescriptorRef | undefined = reread.value;
   if (!fresh) return false;
   return (

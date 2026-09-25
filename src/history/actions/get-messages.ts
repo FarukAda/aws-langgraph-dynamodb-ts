@@ -16,7 +16,7 @@ import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';
 import { readWindow } from '../internal/message-read';
 import { parseGetMessagesRequest, type SessionId } from '../internal/parse';
-import type { ChatMessageItem } from '../internal/rows';
+import type { MessageRow } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';
 import type { MessageWindow } from '../types';
 
@@ -60,7 +60,7 @@ function corruptOrRethrow(error: Error): Decoded {
  */
 async function decodeMessage(
   context: HistoryContext,
-  item: ChatMessageItem,
+  item: MessageRow,
   sessionId: SessionId,
   signal: AbortSignal | undefined,
 ): Promise<Decoded> {
@@ -131,7 +131,7 @@ export async function getMessages(
   options: MessageWindow & CancelOptions = {},
 ): Promise<BaseMessage[]> {
   const request = parseGetMessagesRequest(sessionId, options);
-  const items: ChatMessageItem[] = await readWindow(
+  const items: MessageRow[] = await readWindow(
     context,
     request.sessionId,
     request.window,

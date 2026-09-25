@@ -21,7 +21,7 @@ import {
   encodePayload,
   type PayloadDescriptor,
 } from '../../shared/codec/codec';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import {
   backfilledAt,
   DEFAULT_INDEX_SHARDS,
@@ -252,7 +252,7 @@ export function projectKeys<T extends QueryCommandInput | ScanCommandInput>(para
 }
 
 /** The previous row's createdAt, payload descriptor and revision. */
-export interface ExistingRecordMeta {
+export interface ExistingRowMeta {
   exists: boolean;
   createdAt?: string;
   value?: DescriptorRef;
@@ -281,10 +281,7 @@ export interface ExistingRecordMeta {
  * Guarantees: strongly consistent — a put must supersede the row that is really
  * there, not one a replica still shows.
  */
-export async function readExisting(
-  context: StoreContext,
-  key: RowKey,
-): Promise<ExistingRecordMeta> {
+export async function readExisting(context: StoreContext, key: RowKey): Promise<ExistingRowMeta> {
   const existing = await withDynamoDBRetry(
     (request) =>
       context.client.get(
@@ -305,11 +302,11 @@ export async function readExisting(
       ),
     context.retry,
   );
-  return existingFrom(existing.Item as DocItem | undefined);
+  return existingFrom(existing.Item as AttributeMap | undefined);
 }
 
 /**
- * Project a raw row onto {@link ExistingRecordMeta}.
+ * Project a raw row onto {@link ExistingRowMeta}.
  *
  * Accepts: `item` — a read result, or the row a conditional-check rejection
  * carried with it; `undefined` means there is no row.
@@ -319,7 +316,7 @@ export async function readExisting(
  *
  * Throws: nothing.
  */
-export function existingFrom(item: DocItem | undefined): ExistingRecordMeta {
+export function existingFrom(item: AttributeMap | undefined): ExistingRowMeta {
   return {
     exists: item !== undefined,
     createdAt: item?.createdAt as string | undefined,
@@ -329,7 +326,7 @@ export function existingFrom(item: DocItem | undefined): ExistingRecordMeta {
 }
 
 /** The DynamoDB item backing a single stored value. */
-export interface StoreItemRecord {
+export interface StoreItemRow {
   PK: string;
   SK: string;
   /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
@@ -364,7 +361,7 @@ export interface StoreItemRecord {
 }
 
 /**
- * Narrow a raw scanned row to a {@link StoreItemRecord}, or `undefined` for a
+ * Narrow a raw scanned row to a {@link StoreItemRow}, or `undefined` for a
  * foreign row on a shared table (no `namespace`) — and for a row whose
  * `namespace`/`key` attributes disagree with the DynamoDB key it was found at.
  * The attributes name the S3 path the row may reference, so they must be bound
@@ -385,13 +382,13 @@ export interface StoreItemRecord {
  * attribute names it may no longer use. Skipping it would hide an item that
  * exists.
  */
-export function parseStoreRow(raw: DocItem): StoreItemRecord | undefined {
+export function parseStoreRow(raw: AttributeMap): StoreItemRow | undefined {
   // The version first. A later format may compose the row's key from
   // attributes this one does not know, so testing the shape first reads such a
   // row as foreign and hides an item that is there.
   assertReadableRow(raw, 'store item');
   if (!Array.isArray(raw.namespace) || typeof raw.key !== 'string') return undefined;
-  const record = raw as StoreItemRecord;
+  const record = raw as StoreItemRow;
   const consistent =
     record.PK === partitionKey(record.namespace) &&
     record.SK === sortKey(record.namespace, record.key);
@@ -420,7 +417,7 @@ export function parseStoreRow(raw: DocItem): StoreItemRecord | undefined {
  *
  * Throws: as {@link parseStoreRow}.
  */
-export function parseWholeStoreRow(raw: DocItem): StoreItemRecord | undefined {
+export function parseWholeStoreRow(raw: AttributeMap): StoreItemRow | undefined {
   const record = parseStoreRow(raw);
   if (record === undefined) return undefined;
   const stamped = typeof record.createdAt === 'string' && typeof record.updatedAt === 'string';
@@ -428,7 +425,7 @@ export function parseWholeStoreRow(raw: DocItem): StoreItemRecord | undefined {
 }
 
 /** Fields controlling a stored item's timestamps, embeddings, ttl and revision token. */
-export interface BuildItemOptions {
+export interface BuildRowOptions {
   createdAt: string;
   updatedAt: string;
   embeddings?: number[][];
@@ -461,12 +458,12 @@ export interface BuildItemOptions {
  * uploaded. Encoding happens before any write, so a value that cannot be stored
  * never half-writes a row.
  */
-export async function buildStoreItem(
+export async function buildStoreRow(
   context: StoreContext,
   address: { namespace: string[]; key: string },
   value: Record<string, JsonValue>,
-  options: BuildItemOptions,
-): Promise<StoreItemRecord> {
+  options: BuildRowOptions,
+): Promise<StoreItemRow> {
   const { namespace, key } = address;
   const pk = partitionKey(namespace);
   const sk = sortKey(namespace, key);
@@ -483,7 +480,7 @@ export async function buildStoreItem(
     options.updatedAt,
     context.indexShards ?? DEFAULT_INDEX_SHARDS,
   );
-  const record: StoreItemRecord = {
+  const record: StoreItemRow = {
     PK: pk,
     SK: sk,
     v: ROW_FORMAT_VERSION,
@@ -519,7 +516,7 @@ export async function buildStoreItem(
  */
 export async function readStoreItem(
   context: StoreContext,
-  record: StoreItemRecord,
+  record: StoreItemRow,
   signal?: AbortSignal,
 ): Promise<Item> {
   const value = await decodePayload<Record<string, JsonValue>>(
@@ -547,7 +544,7 @@ export async function readStoreItem(
  *
  * Throws: nothing.
  */
-export function storeIndexTarget(row: DocItem): IndexTarget | undefined {
+export function storeIndexTarget(row: AttributeMap): IndexTarget | undefined {
   const pk = typeof row.PK === 'string' ? row.PK : '';
   const sk = typeof row.SK === 'string' ? row.SK : '';
   if (!pk.startsWith(storePartitionPrefix())) return undefined;

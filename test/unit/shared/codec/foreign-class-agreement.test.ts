@@ -7,7 +7,7 @@ import type { CheckpointerContext } from '../../../../src/checkpointer/internal/
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { buildMessageItem } from '../../../../src/history/internal/rows';
+import { buildMessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import {
   loadPayloadValue,
@@ -99,7 +99,7 @@ async function readHistory(serde: SerializerProtocol): Promise<unknown> {
     onCorruptMessage: 'skip',
   };
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
-  const item = await buildMessageItem(context, {
+  const item = await buildMessageRow(context, {
     sessionId: parseSessionId('s1'),
     messageId: '01A',
     message: human,

@@ -5,7 +5,7 @@ import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { parsePutWritesRequest } from '../internal/parse';
 import { commitPendingWrites } from '../internal/pending-writes';
-import { buildWriteItems } from '../internal/rows';
+import { buildWriteRows } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
 
 /**
@@ -64,7 +64,7 @@ export async function putWrites(
   const request = parsePutWritesRequest(config, writes, taskId);
   if (request.writes.length === 0) return;
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const items = await buildWriteItems(context, request, nextWriteGroup(), ttlTimestamp);
+  const items = await buildWriteRows(context, request, nextWriteGroup(), ttlTimestamp);
   await commitPendingWrites(context, {
     threadId: request.address.threadId,
     items,

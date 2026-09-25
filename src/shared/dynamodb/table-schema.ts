@@ -15,7 +15,7 @@ import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb'
 
 import { DynamoDBLangGraphError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
-import type { DocItem } from './client';
+import type { AttributeMap } from './client';
 
 /** The attribute every row is partitioned by. */
 export const PARTITION_KEY_ATTRIBUTE = 'PK';
@@ -77,7 +77,7 @@ export interface RowKey {
  *
  * Throws: nothing.
  */
-export function rowKeyOf(row: DocItem): RowKey {
+export function rowKeyOf(row: AttributeMap): RowKey {
   return { PK: row.PK as string, SK: row.SK as string };
 }
 
@@ -150,7 +150,7 @@ export function assertReadableRow(row: VersionedRow, what: string): void {
  *
  * Throws: nothing.
  */
-export function withRowVersion<T extends DocItem>(item: T): T & { v: number } {
+export function withRowVersion<T extends AttributeMap>(item: T): T & { v: number } {
   return { ...item, v: ROW_FORMAT_VERSION };
 }
 

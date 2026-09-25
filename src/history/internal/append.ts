@@ -27,9 +27,9 @@ import { ErrorCode } from '../../shared/errors/error-code';
 import { compensationFailedError } from '../../shared/errors/errors';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { SessionId, StorableMessages } from './parse';
-import { buildMessageItem, type ChatMessageItem } from './rows';
+import { buildMessageRow, type MessageRow } from './rows';
 import {
-  buildSessionUpdateItem,
+  buildSessionUpdate,
   deriveTitle,
   revertSessionCount,
   revertSessionCreation,
@@ -58,7 +58,7 @@ interface AppendFields {
 /** An append cut into chunks, with the fields every chunk's SESSION update stamps. */
 export interface ChunkedAppend {
   readonly sessionId: SessionId;
-  readonly chunks: ChatMessageItem[][];
+  readonly chunks: MessageRow[][];
   readonly fields: AppendFields;
   readonly signal?: AbortSignal;
 }
@@ -83,7 +83,7 @@ const MAX_MESSAGES_PER_TRANSACTION = 99;
 /**
  * Aggregate byte budget per transaction. Held ~500 KB below DynamoDB's 4 MB
  * `TransactWriteItems` ceiling so the conservative per-item estimate (see
- * `ITEM_OVERHEAD_BYTES`) cannot push a chunk over the real limit at commit time.
+ * `ROW_OVERHEAD_BYTES`) cannot push a chunk over the real limit at commit time.
  */
 const MAX_TRANSACTION_BYTES = 3_500_000;
 
@@ -98,17 +98,17 @@ const MAX_TRANSACTION_BYTES = 3_500_000;
  * Nothing will ever reference those objects, so they are safe to delete
  * unconditionally on the way out.
  */
-async function buildItems(
+async function buildMessageRows(
   context: HistoryContext,
   request: AppendRequest,
-): Promise<ChatMessageItem[]> {
+): Promise<MessageRow[]> {
   const { sessionId, signal } = request;
   const ttlTimestamp = request.anchor?.ttlTimestamp;
-  const items: ChatMessageItem[] = [];
+  const items: MessageRow[] = [];
   try {
     for (const message of request.messages) {
       items.push(
-        await buildMessageItem(
+        await buildMessageRow(
           context,
           { sessionId, messageId: context.ulid(), message, ttlTimestamp },
           signal,
@@ -145,7 +145,7 @@ export async function appendMessages(
   context: HistoryContext,
   request: AppendRequest,
 ): Promise<void> {
-  const items = await buildItems(context, request);
+  const items = await buildMessageRows(context, request);
   const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
   await appendChunks(context, {
     sessionId: request.sessionId,
@@ -193,7 +193,7 @@ function reportStep(
  * {@link compensate} calls it once per commit status, never for the whole
  * batch, so a committed chunk's objects arrive only once its rows are gone.
  */
-async function cleanBatchS3(context: HistoryContext, chunks: ChatMessageItem[][]): Promise<void> {
+async function cleanBatchS3(context: HistoryContext, chunks: MessageRow[][]): Promise<void> {
   if (!context.offloader) return;
   const descriptors = chunks.flat().map((item) => item.message);
   await cleanUpS3Orphans(context.offloader, {
@@ -338,7 +338,7 @@ function isAmbiguous(error: Error): boolean {
  */
 async function verifyChunkLanded(
   context: HistoryContext,
-  chunk: ChatMessageItem[],
+  chunk: MessageRow[],
 ): Promise<WriteVerdict> {
   const { verdict } = await verifyRow(context, {
     key: rowKeyOf(chunk[0]),
@@ -353,7 +353,7 @@ async function verifyChunkLanded(
 async function commitChunk(
   context: HistoryContext,
   append: ChunkedAppend,
-  chunk: ChatMessageItem[],
+  chunk: MessageRow[],
 ): Promise<Error | undefined> {
   try {
     await writeMessageChunk(
@@ -368,7 +368,7 @@ async function commitChunk(
   }
 }
 
-function asCommitted(chunk: ChatMessageItem[]): CommittedChunk {
+function asCommitted(chunk: MessageRow[]): CommittedChunk {
   return { keys: chunk.map((item) => rowKeyOf(item)), count: chunk.length };
 }
 
@@ -475,14 +475,14 @@ function isTtlConditionLoss(error: Error): boolean {
  */
 async function attempt(
   context: HistoryContext,
-  items: ChatMessageItem[],
+  items: MessageRow[],
   fields: SessionUpdateFields,
   retry: ChunkRetryOptions,
 ): Promise<void> {
   await transactIdempotently(
     context,
     [
-      buildSessionUpdateItem(context.tableName, fields),
+      buildSessionUpdate(context.tableName, fields),
       ...items.map((item) => ({ Put: { TableName: context.tableName, Item: item } })),
     ],
     { signal: retry.signal, rng: retry.rng, minAttempts: MESSAGE_APPEND_RETRY_MAX_ATTEMPTS },
@@ -528,7 +528,7 @@ async function attempt(
  */
 export async function writeMessageChunk(
   context: HistoryContext,
-  items: ChatMessageItem[],
+  items: MessageRow[],
   fields: Omit<SessionUpdateFields, 'writeId'>,
   retry: ChunkRetryOptions = {},
 ): Promise<void> {
@@ -557,7 +557,7 @@ export async function writeMessageChunk(
  * estimate stays at or above the real marshalled item size and chunks never
  * overshoot the transaction byte limit.
  */
-const ITEM_OVERHEAD_BYTES = 256;
+const ROW_OVERHEAD_BYTES = 256;
 
 /**
  * Byte length of a string as DynamoDB stores it. `String.length` counts UTF-16
@@ -588,13 +588,13 @@ function descriptorBytes(descriptor: PayloadDescriptor): number {
  *
  * Throws: nothing.
  */
-export function estimateItemBytes(item: ChatMessageItem): number {
+export function estimateRowBytes(item: MessageRow): number {
   return (
     utf8Bytes(item.PK) +
     utf8Bytes(item.SK) +
     utf8Bytes(item.sessionId) +
     descriptorBytes(item.message) +
-    ITEM_OVERHEAD_BYTES
+    ROW_OVERHEAD_BYTES
   );
 }
 
@@ -625,15 +625,15 @@ function shouldFlush(
  * caller wrote them in, which is the order their ULIDs already encode.
  */
 export function chunkBySize(
-  items: ChatMessageItem[],
+  items: MessageRow[],
   maxItems: number,
   maxBytes: number,
-): ChatMessageItem[][] {
-  const chunks: ChatMessageItem[][] = [];
-  let current: ChatMessageItem[] = [];
+): MessageRow[][] {
+  const chunks: MessageRow[][] = [];
+  let current: MessageRow[] = [];
   let currentBytes = 0;
   for (const item of items) {
-    const size = estimateItemBytes(item);
+    const size = estimateRowBytes(item);
     if (shouldFlush({ count: current.length, bytes: currentBytes }, size, { maxItems, maxBytes })) {
       chunks.push(current);
       current = [];

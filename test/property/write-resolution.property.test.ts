@@ -2,7 +2,7 @@ import { type PendingWrite, WRITES_IDX_MAP } from '@langchain/langgraph-checkpoi
 import fc from 'fast-check';
 
 import {
-  type CheckpointWriteItem,
+  type CheckpointWriteRow,
   dropSupersededWrites,
   resolveWriteIndices,
 } from '../../src/checkpointer/internal/rows';
@@ -52,7 +52,7 @@ const writeItem = fc.record({
   index: fc.nat({ max: 5 }),
 });
 const writeItems = fc.array(writeItem, { maxLength: 30 }).map((rows) =>
-  rows.map((row, position): CheckpointWriteItem => ({
+  rows.map((row, position): CheckpointWriteRow => ({
     PK: 'p',
     SK: `s${position}`,
     value: {
@@ -64,7 +64,7 @@ const writeItems = fc.array(writeItem, { maxLength: 30 }).map((rows) =>
     ...row,
   })),
 );
-const identity = (row: CheckpointWriteItem): string =>
+const identity = (row: CheckpointWriteRow): string =>
   JSON.stringify([row.taskId, row.channel, row.occurrence ?? 0]);
 
 describe('dropSupersededWrites (property)', () => {

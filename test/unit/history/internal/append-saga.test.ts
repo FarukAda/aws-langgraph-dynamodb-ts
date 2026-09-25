@@ -7,7 +7,7 @@ import {
 
 import { appendChunks } from '../../../../src/history/internal/append';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import type { ChatMessageItem } from '../../../../src/history/internal/rows';
+import type { MessageRow } from '../../../../src/history/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { retryExhaustedError } from '../../../../src/shared/errors/errors';
@@ -15,7 +15,7 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createUlidFactory } from '../../../../src/shared/ulid';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
-function inlineItem(sk: string): ChatMessageItem {
+function inlineItem(sk: string): MessageRow {
   return {
     PK: 's1',
     SK: sk,
@@ -29,7 +29,7 @@ function inlineItem(sk: string): ChatMessageItem {
   };
 }
 
-function s3Item(sk: string, s3Key: string): ChatMessageItem {
+function s3Item(sk: string, s3Key: string): MessageRow {
   return {
     PK: 's1',
     SK: sk,

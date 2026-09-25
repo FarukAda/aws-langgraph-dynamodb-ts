@@ -1,7 +1,7 @@
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { writeMessageChunk } from '../../../../src/history/internal/append';
-import type { ChatMessageItem } from '../../../../src/history/internal/rows';
+import type { MessageRow } from '../../../../src/history/internal/rows';
 import {
   type HistoryContext,
   MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
@@ -28,7 +28,7 @@ function ttlConditionFailure(): Error {
   });
 }
 
-function messageItem(sk: string): ChatMessageItem {
+function messageItem(sk: string): MessageRow {
   return {
     PK: 's1',
     SK: sk,

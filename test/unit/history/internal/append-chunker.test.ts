@@ -1,8 +1,8 @@
-import { chunkBySize, estimateItemBytes } from '../../../../src/history/internal/append';
-import type { ChatMessageItem } from '../../../../src/history/internal/rows';
+import { chunkBySize, estimateRowBytes } from '../../../../src/history/internal/append';
+import type { MessageRow } from '../../../../src/history/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 
-function inlineItem(sk: string, byteLength: number): ChatMessageItem {
+function inlineItem(sk: string, byteLength: number): MessageRow {
   return {
     PK: 's1',
     SK: sk,
@@ -16,7 +16,7 @@ function inlineItem(sk: string, byteLength: number): ChatMessageItem {
   };
 }
 
-function s3Item(sk: string, key: string): ChatMessageItem {
+function s3Item(sk: string, key: string): MessageRow {
   return {
     PK: 's1',
     SK: sk,
@@ -25,17 +25,17 @@ function s3Item(sk: string, key: string): ChatMessageItem {
   };
 }
 
-describe('estimateItemBytes', () => {
+describe('estimateRowBytes', () => {
   it('counts the inline payload plus key and overhead', () => {
-    const small = estimateItemBytes(inlineItem('MSG#1', 0));
-    const big = estimateItemBytes(inlineItem('MSG#1', 1000));
+    const small = estimateRowBytes(inlineItem('MSG#1', 0));
+    const big = estimateRowBytes(inlineItem('MSG#1', 1000));
     expect(big - small).toBe(1000);
     expect(small).toBeGreaterThan(0);
   });
 
   it('treats an offloaded item as small (just its key)', () => {
-    expect(estimateItemBytes(s3Item('MSG#1', 'k'))).toBeLessThan(
-      estimateItemBytes(inlineItem('MSG#1', 100000)),
+    expect(estimateRowBytes(s3Item('MSG#1', 'k'))).toBeLessThan(
+      estimateRowBytes(inlineItem('MSG#1', 100000)),
     );
   });
 });
@@ -66,14 +66,14 @@ describe('chunkBySize', () => {
   });
 });
 
-describe('estimateItemBytes UTF-8 accounting', () => {
+describe('estimateRowBytes UTF-8 accounting', () => {
   it('counts a non-ASCII session id in UTF-8 bytes, not UTF-16 code units', () => {
     // The doc comment promises an estimate at or above the real marshalled
     // size. A 100-character Hiragana id is 300 UTF-8 bytes but only 100 UTF-16
     // code units, so `.length` understated it — in the wrong direction.
     const sessionId = 'あ'.repeat(100);
     const item = inlineItem('HISTORY#MSG#U', 0);
-    const estimate = estimateItemBytes({ ...item, sessionId, PK: `HIST#${sessionId}` });
+    const estimate = estimateRowBytes({ ...item, sessionId, PK: `HIST#${sessionId}` });
     const trueFieldBytes = Buffer.byteLength(sessionId, 'utf8') * 2;
     expect(estimate).toBeGreaterThan(trueFieldBytes);
   });
@@ -81,6 +81,6 @@ describe('estimateItemBytes UTF-8 accounting', () => {
   it('counts an offloaded descriptor s3Key in UTF-8 bytes too', () => {
     const key = 'キー'.repeat(50);
     const item = s3Item('HISTORY#MSG#U', key);
-    expect(estimateItemBytes(item)).toBeGreaterThan(Buffer.byteLength(key, 'utf8'));
+    expect(estimateRowBytes(item)).toBeGreaterThan(Buffer.byteLength(key, 'utf8'));
   });
 });

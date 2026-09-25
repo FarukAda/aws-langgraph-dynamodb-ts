@@ -23,7 +23,7 @@ encode loop, after earlier writes of the same call had been serialized and
 uploaded. And because the checked value kept its
 loose type, functions downstream took it loose too: a thread, namespace and
 checkpoint travelled as three positional strings through the write path, and
-`buildWriteItems` took nine parameters.
+`buildWriteRows` (then `buildWriteItems`) took nine parameters.
 
 The coding guidelines this package follows (rules 83–94) and the reference
 repository's record 9 describe the alternative: parse at the boundary into a type

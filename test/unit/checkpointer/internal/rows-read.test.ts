@@ -1,7 +1,7 @@
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import {
-  type CheckpointWriteItem,
+  type CheckpointWriteRow,
   dropSupersededWrites,
   parseHeadRow,
   parseMetaRow,
@@ -38,12 +38,12 @@ const checkpoint: Checkpoint = {
 const metadata: CheckpointMetadata = { source: 'loop', step: 3, parents: {} };
 
 describe('rows: read', () => {
-  it('round-trips a checkpoint written by buildCheckpointItems', async () => {
+  it('round-trips a checkpoint written by buildCheckpointRows', async () => {
     const { payload } = await checkpointItems(context(), 't', '', checkpoint, metadata);
     expect(await readCheckpoint(context(), payload, 't')).toEqual(checkpoint);
   });
 
-  it('round-trips metadata written by buildCheckpointItems', async () => {
+  it('round-trips metadata written by buildCheckpointRows', async () => {
     const { meta } = await checkpointItems(context(), 't', '', checkpoint, metadata);
     expect(await readMetadata(context(), meta, 't')).toEqual(metadata);
   });
@@ -76,7 +76,7 @@ describe('dropSupersededWrites', () => {
     writeGroup: string,
     taskId = 'task-1',
     occurrence = 0,
-  ): CheckpointWriteItem => ({
+  ): CheckpointWriteRow => ({
     PK: 'CHKPT#t',
     SK: `WRITE##c1#${taskId}#${String(index + 8).padStart(10, '0')}#${channel}`,
     taskId,

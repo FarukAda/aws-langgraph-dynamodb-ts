@@ -1,0 +1,57 @@
+import * as ts from 'typescript';
+
+/** The words of a camelCase, PascalCase or SCREAMING_CASE name, lower-cased. */
+export function wordsOf(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[\s_]+/)
+    .filter((word) => word !== '');
+}
+
+/** Every name `source` declares at module level: functions, classes, interfaces, types, enums, variables. */
+export function moduleLevelNames(source: string): string[] {
+  const file = ts.createSourceFile('probe.ts', source, ts.ScriptTarget.Latest, true);
+  return file.statements.flatMap((statement) => {
+    if (ts.isVariableStatement(statement)) {
+      return statement.declarationList.declarations.flatMap((declaration) =>
+        ts.isIdentifier(declaration.name) ? [declaration.name.text] : [],
+      );
+    }
+    if (
+      (ts.isFunctionDeclaration(statement) ||
+        ts.isClassDeclaration(statement) ||
+        ts.isInterfaceDeclaration(statement) ||
+        ts.isTypeAliasDeclaration(statement) ||
+        ts.isEnumDeclaration(statement)) &&
+      statement.name !== undefined
+    ) {
+      return [statement.name.text];
+    }
+    return [];
+  });
+}
+
+/**
+ * Why `name`, declared at module level in `file` (relative to `src/`), uses a
+ * term for something else, or `undefined` (decision record 24): a DynamoDB row
+ * is a `row`; `item` names the LangGraph store's `Item`, so it appears only
+ * under `store/`; `record` is not a noun here — as the first word of a
+ * camelCase name it is the verb, and allowed.
+ */
+export function termViolation(file: string, name: string): string | undefined {
+  const words = wordsOf(name);
+  const verbFirst = /^[a-z]/.test(name);
+  if (!file.startsWith('store/') && words.some((word) => word === 'item' || word === 'items')) {
+    return `${file}: ${name} — a DynamoDB row is a row; "item" names the store's Item`;
+  }
+  if (
+    words.some(
+      (word, index) => (word === 'record' || word === 'records') && !(index === 0 && verbFirst),
+    )
+  ) {
+    return `${file}: ${name} — a DynamoDB row is a row, not a record`;
+  }
+  return undefined;
+}

@@ -19,7 +19,7 @@ import {
   isConditionalCheckFailed,
   isRowAbsent,
   OVERWRITE_CAS_MAX_ATTEMPTS,
-  rejectedItem,
+  rejectedRow,
   revisionGuard,
   verifyRow,
   type WriteVerdict,
@@ -30,12 +30,12 @@ import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import type { StoreAddress } from './parse';
 import {
-  type ExistingRecordMeta,
+  type ExistingRowMeta,
   existingFrom,
   itemRowKey,
   readExisting,
   REVISION_ATTRIBUTE,
-  type StoreItemRecord,
+  type StoreItemRow,
 } from './rows';
 import type { StoreContext } from './setup';
 import { dropVectorWhenGone } from './vector-index';
@@ -48,7 +48,7 @@ import { dropVectorWhenGone } from './vector-index';
  * cancellation carrying **no** row means the row was deleted between the
  * observation and this attempt, so there is nothing left to remove. A spent
  * retry budget is *ambiguous* — the delete may have landed with only its
- * acknowledgement lost — and is resolved the way `persistRecord` resolves its
+ * acknowledgement lost — and is resolved the way `persistRow` resolves its
  * own: with a strongly-consistent read, treating a confirmed absence as a
  * delete that landed. Under a request token that read has little to settle,
  * because every attempt inside one budget re-sends the identical request and a
@@ -62,10 +62,10 @@ async function repinOrResolve(
   context: StoreContext,
   key: RowKey,
   error: Error,
-): Promise<ExistingRecordMeta | undefined> {
+): Promise<ExistingRowMeta | undefined> {
   if (isConditionalCheckFailed(error)) {
-    /** Raw `AttributeValue`s: `rejectedItem` unmarshalls, `existingFrom` does not. */
-    const rejected = rejectedItem(error);
+    /** Raw `AttributeValue`s: `rejectedRow` unmarshalls, `existingFrom` does not. */
+    const rejected = rejectedRow(error);
     return rejected === undefined ? undefined : existingFrom(rejected);
   }
   if (isRetryExhausted(error) && (await isRowAbsent(context, key))) return undefined;
@@ -105,8 +105,8 @@ async function repinOrResolve(
 async function removeObservedRow(
   context: StoreContext,
   key: RowKey,
-  existing: ExistingRecordMeta,
-): Promise<ExistingRecordMeta | undefined> {
+  existing: ExistingRowMeta,
+): Promise<ExistingRowMeta | undefined> {
   let observed = existing;
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
     try {
@@ -296,10 +296,10 @@ async function cleanUp(
  * deleted object is unreadable data, so every ambiguous case leaks instead of
  * deletes.
  */
-export async function persistRecord(
+export async function persistRow(
   context: StoreContext,
-  record: StoreItemRecord,
-  existing: ExistingRecordMeta,
+  record: StoreItemRow,
+  existing: ExistingRowMeta,
 ): Promise<void> {
   let superseded = existing;
   try {
@@ -375,8 +375,8 @@ export async function persistRecord(
  */
 async function put(
   context: StoreContext,
-  record: StoreItemRecord,
-  observed?: ExistingRecordMeta,
+  record: StoreItemRow,
+  observed?: ExistingRowMeta,
 ): Promise<void> {
   const guard = observed ? revisionGuard(REVISION_ATTRIBUTE, observed) : undefined;
   await commitRow(context, record, record.value, { guard });
@@ -427,9 +427,9 @@ async function put(
  */
 export async function putWithRevisionSwap(
   context: StoreContext,
-  record: StoreItemRecord,
-  existing: ExistingRecordMeta,
-): Promise<ExistingRecordMeta> {
+  record: StoreItemRow,
+  existing: ExistingRowMeta,
+): Promise<ExistingRowMeta> {
   let observed = existing;
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
     const attempted = observed;
@@ -440,7 +440,7 @@ export async function putWithRevisionSwap(
       const rejection = error as Error;
       if (!isConditionalCheckFailed(rejection)) throw rejection;
       /** The rejection carries the row that turned it away; the read is spent only when it does not. */
-      const rejected = rejectedItem(rejection);
+      const rejected = rejectedRow(rejection);
       observed = rejected ? existingFrom(rejected) : await readExisting(context, rowKeyOf(record));
       if (record.rev !== undefined && observed.revision === record.rev) return attempted;
       // A row that vanished between attempts (a concurrent delete) makes this a fresh creation.

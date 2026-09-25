@@ -1,6 +1,6 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { queryRecencyIndex } from '../../../../src/shared/dynamodb/recency-index';
 import { compareSortKeys } from '../../../../src/shared/dynamodb/table-schema';
 import { parseLimit } from '../../../../src/shared/validation/primitives';
@@ -14,7 +14,7 @@ const HIGH_BMP = '！';
 
 type StrictMock = ReturnType<typeof createStrictDocumentMock>;
 
-const ids = (items: DocItem[]) => items.map((item) => item.sessionId as string);
+const ids = (items: AttributeMap[]) => items.map((item) => item.sessionId as string);
 
 /**
  * Read the whole index `limit` rows at a time, following the cursor, so the

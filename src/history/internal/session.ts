@@ -16,7 +16,7 @@ import type { StoredMessage } from '@langchain/core/messages';
 
 import { nowSeconds } from '../../shared/clock';
 import { conditionFailedAt } from '../../shared/dynamodb/cancellation';
-import type { DocItem, TransactAction } from '../../shared/dynamodb/client';
+import type { AttributeMap, TransactAction } from '../../shared/dynamodb/client';
 import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   transactIdempotently,
@@ -272,10 +272,7 @@ export interface SessionUpdateFields {
  * Throws: nothing. The condition it carries is evaluated by DynamoDB, and a
  * failed condition surfaces from the transaction, not from here.
  */
-export function buildSessionUpdateItem(
-  tableName: string,
-  fields: SessionUpdateFields,
-): TransactAction {
+export function buildSessionUpdate(tableName: string, fields: SessionUpdateFields): TransactAction {
   const index = indexKeys(
     'SESS',
     fields.sessionId,
@@ -456,7 +453,7 @@ export interface TtlAnchorResult {
  * anchor an earlier append committed is always seen. Two appends that start
  * together on a session that has none each propose their own candidate; the
  * append transaction's own condition is what settles which persists, so this
- * read never has to be the arbiter (see {@link buildSessionUpdateItem}).
+ * read never has to be the arbiter (see {@link buildSessionUpdate}).
  */
 export async function resolveTtlAnchor(
   context: HistoryContext,
@@ -552,7 +549,7 @@ export function deriveTitle(messages: StoredMessage[]): string | undefined {
 }
 
 /** The per-session metadata item, updated atomically as messages are appended. */
-interface ChatSessionItem {
+interface SessionRow {
   PK: string;
   SK: string;
   /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
@@ -691,7 +688,7 @@ export async function repairMessageCount(
  * anything past the ±8.64e12 seconds a `Date` spans are all numbers whose
  * `toISOString` throws `RangeError` — which failed the whole listing.
  */
-function hasReadableTtl(ttl: DocItem[string]): boolean {
+function hasReadableTtl(ttl: AttributeMap[string]): boolean {
   if (ttl === undefined) return true;
   return typeof ttl === 'number' && Number.isFinite(new Date(ttl * 1000).getTime());
 }
@@ -707,7 +704,7 @@ function hasReadableTtl(ttl: DocItem[string]): boolean {
  * `RangeError`. A row this release cannot speak for is dropped the way a
  * foreign row is, never at the cost of the rest of the page.
  */
-function isSummarisable(raw: DocItem): boolean {
+function isSummarisable(raw: AttributeMap): boolean {
   return (
     typeof raw.messageCount === 'number' &&
     typeof raw.createdAt === 'string' &&
@@ -743,8 +740,11 @@ function isSummarisable(raw: DocItem): boolean {
  * names it may no longer use, and the answer does not depend on the reading
  * machine's clock.
  */
-export function summariseSession(raw: DocItem, atSeconds: number): SessionMetadata | undefined {
-  const item = raw as ChatSessionItem;
+export function summariseSession(
+  raw: AttributeMap,
+  atSeconds: number,
+): SessionMetadata | undefined {
+  const item = raw as SessionRow;
   assertReadableRow(item, 'session');
   if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') return undefined;
   if (item.PK !== sessionPartition(item.sessionId)) return undefined;
@@ -770,7 +770,7 @@ export function summariseSession(raw: DocItem, atSeconds: number): SessionMetada
  *
  * Throws: nothing.
  */
-export function sessionIndexTarget(row: DocItem): IndexTarget | undefined {
+export function sessionIndexTarget(row: AttributeMap): IndexTarget | undefined {
   const pk = typeof row.PK === 'string' ? row.PK : '';
   const sk = typeof row.SK === 'string' ? row.SK : '';
   if (!pk.startsWith(historyPartitionPrefix())) return undefined;

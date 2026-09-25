@@ -6,7 +6,7 @@
  * S3 key, so the service already caps each at 1024 bytes — the cost is not one
  * long line but many. `list: skipped a row that is not a checkpoint meta item`
  * and `left a foreign row in place` fire once per row, and those passes walk a
- * whole partition, up to `MAX_TOTAL_ITEMS_IN_MEMORY`
+ * whole partition, up to `MAX_TOTAL_ROWS_IN_MEMORY`
  * (`src/shared/dynamodb/paginate.ts`) rows: one call on a shared table could
  * write megabytes of log. A consumer's `VectorBackend` carries no such service
  * cap at all.

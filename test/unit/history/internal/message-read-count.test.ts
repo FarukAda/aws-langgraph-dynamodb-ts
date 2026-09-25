@@ -7,7 +7,7 @@ import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import {
   MAX_LOOP_ITERATIONS,
-  MAX_TOTAL_ITEMS_IN_MEMORY,
+  MAX_TOTAL_ROWS_IN_MEMORY,
 } from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -137,12 +137,12 @@ describe('countLiveMessages', () => {
   // Uncapped: a count that stopped at the paginator's default would be a new, wrong number.
   it('counts past the default item cap in one page', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const rows = Array.from({ length: MAX_TOTAL_ITEMS_IN_MEMORY + 1 }, (_, index) =>
+    const rows = Array.from({ length: MAX_TOTAL_ROWS_IN_MEMORY + 1 }, (_, index) =>
       message(`01${String(index).padStart(6, '0')}`),
     );
     serve(mock, [rows]);
     await expect(countLiveMessages(context(client), SESSION_ID)).resolves.toBe(
-      MAX_TOTAL_ITEMS_IN_MEMORY + 1,
+      MAX_TOTAL_ROWS_IN_MEMORY + 1,
     );
   });
 

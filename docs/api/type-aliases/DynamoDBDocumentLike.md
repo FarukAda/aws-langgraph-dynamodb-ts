@@ -8,7 +8,7 @@
 
 > **DynamoDBDocumentLike** = `Pick`\<`DynamoDBDocument`, `"batchWrite"` \| `"delete"` \| `"get"` \| `"put"` \| `"query"` \| `"scan"` \| `"transactWrite"` \| `"update"`\>
 
-Defined in: [shared/dynamodb/client.ts:240](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/client.ts#L240)
+Defined in: [shared/dynamodb/client.ts:239](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/dynamodb/client.ts#L239)
 
 The DocumentClient surface this library uses, named by shape rather than by
 identity. A `DynamoDBDocument` satisfies it, and so does a client built from

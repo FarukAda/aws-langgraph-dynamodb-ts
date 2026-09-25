@@ -45,7 +45,7 @@ function trackingOffloader(
 describe('putWrites special (negative-index) writes', () => {
   it("cleans up a special item's never-committed upload when its write hard-fails outright", async () => {
     // A bare SDK-level rejection (not a ConditionalCheckFailedException) is
-    // reported directly by writeSpecialItem's outcome — no reconstruction
+    // reported directly by writeSpecialRow's outcome — no reconstruction
     // needed, unlike the old UnprocessedItems accounting.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});

@@ -3,7 +3,7 @@ import { HumanMessage, mapChatMessagesToStoredMessages } from '@langchain/core/m
 
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { buildMessageItem } from '../../../../src/history/internal/rows';
+import { buildMessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -31,7 +31,7 @@ const SESSION_ID = parseSessionId('s1');
 /** One real message row, so a refusal is never just an empty session. */
 async function realRow(client: HistoryContext['client'], ulid: string) {
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
-  return buildMessageItem(context(client), {
+  return buildMessageRow(context(client), {
     sessionId: SESSION_ID,
     messageId: ulid,
     message: human,

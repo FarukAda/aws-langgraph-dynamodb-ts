@@ -44,7 +44,7 @@ import {
   parseWholeStoreRow,
   readStoreItem,
   scopedQuery,
-  type StoreItemRecord,
+  type StoreItemRow,
 } from './rows';
 import { assertVectorDims, embedValue, embedValues } from './semantic-search';
 import type { StoreContext } from './setup';
@@ -194,7 +194,7 @@ function refIdentity(namespace: string[], key: string): string {
 /** Decode the buffered rows with the same bounded concurrency the search path uses. */
 async function drainPending(
   context: StoreContext,
-  pending: StoreItemRecord[],
+  pending: StoreItemRow[],
   live: LiveItem[],
   signal: AbortSignal | undefined,
 ): Promise<void> {
@@ -243,7 +243,7 @@ export async function collectReconcileTargets(
 ): Promise<ReconcileTarget[]> {
   const now = nowSeconds();
   const live: LiveItem[] = [];
-  const pending: StoreItemRecord[] = [];
+  const pending: StoreItemRow[] = [];
   const batchLimit = context.readConcurrency ?? DEFAULT_READ_CONCURRENCY;
   const source = paginateQuery({
     retry: retryFor(context, signal),

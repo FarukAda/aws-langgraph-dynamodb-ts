@@ -1,5 +1,5 @@
 import {
-  type CheckpointWriteItem,
+  type CheckpointWriteRow,
   toPendingWrites,
 } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
@@ -14,7 +14,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { toPublicError } from '../../../../src/shared/errors/boundary';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { readStoreItem, type StoreItemRecord } from '../../../../src/store/internal/rows';
+import { readStoreItem, type StoreItemRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 
 /** A serde that records whether anything ever asked it to deserialize. */
@@ -33,7 +33,7 @@ function countingSerde() {
 }
 
 /** A WRITE row whose payload descriptor never survived — `null`, as a row can hold. */
-const writeRow = (value: PayloadDescriptor): CheckpointWriteItem => ({
+const writeRow = (value: PayloadDescriptor): CheckpointWriteRow => ({
   PK: 'THREAD#t',
   SK: 'WRITE##ckpt-1#task-7#0',
   taskId: 'task-7',
@@ -118,7 +118,7 @@ describe('every read path answers one malformed descriptor the same way', () => 
     };
   }
 
-  const storeRow = (): StoreItemRecord => ({
+  const storeRow = (): StoreItemRow => ({
     PK: 'STORE#users',
     SK: 'u1#profile',
     namespace: ['users', 'u1'],

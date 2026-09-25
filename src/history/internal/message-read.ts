@@ -10,7 +10,7 @@
  */
 
 import { nowSeconds } from '../../shared/clock';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import { LIST_SCAN_WARN_THRESHOLD, paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow, assertReadableRow } from '../../shared/dynamodb/table-schema';
@@ -18,7 +18,7 @@ import { validationError } from '../../shared/errors/errors';
 import { truncateForLog } from '../../shared/logging/truncate';
 import { ulidTimePrefix } from '../../shared/ulid';
 import type { ParsedWindow, SessionId } from './parse';
-import { type ChatMessageItem, messageQuery, messageSortKey, parseMessageRow } from './rows';
+import { type MessageRow, messageQuery, messageSortKey, parseMessageRow } from './rows';
 import type { HistoryContext } from './setup';
 
 /**
@@ -40,8 +40,8 @@ import type { HistoryContext } from './setup';
 function parseSessionMessageRow(
   context: HistoryContext,
   sessionId: SessionId,
-  raw: DocItem,
-): ChatMessageItem {
+  raw: AttributeMap,
+): MessageRow {
   assertReadableRow(raw, 'message');
   const item = parseMessageRow(raw);
   if (item) return item;
@@ -97,10 +97,10 @@ export async function readWindow(
   sessionId: SessionId,
   window: ParsedWindow,
   signal?: AbortSignal,
-): Promise<ChatMessageItem[]> {
+): Promise<MessageRow[]> {
   const now = nowSeconds();
   const limit = window.limit ?? Number.POSITIVE_INFINITY;
-  const items: ChatMessageItem[] = [];
+  const items: MessageRow[] = [];
   for await (const raw of paginateQuery({
     retry: retryFor(context, signal),
     signal,
@@ -147,7 +147,7 @@ export async function readWindow(
  * open — a number that is not merely stale but describes nothing. The repair
  * refuses instead, and the read's own `warn` is what names the row.
  */
-function parseCountableRow(raw: DocItem, sessionId: SessionId): ChatMessageItem {
+function parseCountableRow(raw: AttributeMap, sessionId: SessionId): MessageRow {
   assertReadableRow(raw, 'message');
   const item = parseMessageRow(raw);
   if (item) return item;

@@ -6,7 +6,7 @@ import { wrapForeignError } from '../../../../src/shared/errors/boundary';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { abortError, retryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { searchViaBackend } from '../../../../src/store/internal/vector-index';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -67,7 +67,7 @@ describe('searchViaBackend when a match cannot be read', () => {
   it.each(propagated)('fails the whole search for %s', async (_label, failure) => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'k1' },
       { a: 1 },
@@ -87,7 +87,7 @@ describe('searchViaBackend when a match cannot be read', () => {
   it('fails rather than shortening the page when a read is throttled out of its budget', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client, { retry: { maxAttempts: 1 } });
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'k1' },
       { a: 1 },
@@ -118,7 +118,7 @@ describe('searchViaBackend when a match cannot be read', () => {
     const { client, mock } = createStrictDocumentMock();
     const warn = jest.fn();
     const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'k1' },
       { a: 1 },
@@ -151,7 +151,7 @@ describe('searchViaBackend when a match cannot be read', () => {
     const { client, mock } = createStrictDocumentMock();
     const warn = jest.fn();
     const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'k1' },
       { a: 1 },

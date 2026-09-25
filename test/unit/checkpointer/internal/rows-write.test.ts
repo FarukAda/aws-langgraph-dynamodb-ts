@@ -6,8 +6,8 @@ import {
   parsePutWritesRequest,
 } from '../../../../src/checkpointer/internal/parse';
 import {
-  buildCheckpointItems,
-  buildWriteItems,
+  buildCheckpointRows,
+  buildWriteRows,
   resolveWriteIndices,
 } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
@@ -53,9 +53,9 @@ const checkpoint: Checkpoint = {
 
 const metadata: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
 
-describe('buildCheckpointItems', () => {
+describe('buildCheckpointRows', () => {
   it('builds META and PAYLOAD items with the right keys and inline descriptors', async () => {
-    const { meta, payload } = await buildCheckpointItems(
+    const { meta, payload } = await buildCheckpointRows(
       context(),
       parsePutRequest(
         { configurable: { thread_id: 'thread-1', checkpoint_ns: '', checkpoint_id: 'parent-0' } },
@@ -128,9 +128,9 @@ describe('buildCheckpointItems', () => {
   });
 });
 
-describe('buildWriteItems', () => {
+describe('buildWriteRows', () => {
   it('builds one item per write with task id, index, and channel', async () => {
-    const items = await buildWriteItems(
+    const items = await buildWriteRows(
       context(),
       parsePutWritesRequest(
         { configurable: { thread_id: 't', checkpoint_ns: '', checkpoint_id: 'ckpt-1' } },

@@ -4,7 +4,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { reconcileVectorIndex } from '../../../../src/store/actions/reconcile-vector-index';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
@@ -63,13 +63,13 @@ describe('reconcileVectorIndex', () => {
       index: { dims: 1, embeddings: embeddings as never },
       vectorBackend: backend,
     });
-    const recordA = await buildStoreItem(
+    const recordA = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { text: 'hello' },
       { createdAt: 'c', updatedAt: 'u' },
     );
-    const recordB = await buildStoreItem(
+    const recordB = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'b' },
       { text: 'world' },
@@ -114,7 +114,7 @@ describe('reconcileVectorIndex', () => {
     const records = [];
     for (let i = 0; i < 10; i++) {
       records.push(
-        await buildStoreItem(
+        await buildStoreRow(
           ctx,
           { namespace: ['users', 'u1'], key: `k${i}` },
           { text: `value${i}` },
@@ -148,7 +148,7 @@ describe('reconcileVectorIndex', () => {
     // configured cap (not the old unconfigurable 10,000 default) is in effect.
     const records = [];
     for (let i = 0; i < 6; i++) {
-      const record = await buildStoreItem(
+      const record = await buildStoreRow(
         ctx,
         { namespace: ['users', 'u1'], key: `k${i}` },
         { text: `value${i}` },
@@ -180,7 +180,7 @@ describe('reconcileVectorIndex prefix scoping', () => {
       index: { dims: 1, embeddings: embeddings as never },
       vectorBackend: backend,
     });
-    const inside = await buildStoreItem(
+    const inside = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { text: 'hello' },
@@ -189,7 +189,7 @@ describe('reconcileVectorIndex prefix scoping', () => {
         updatedAt: 'u',
       },
     );
-    const sibling = await buildStoreItem(
+    const sibling = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u10'], key: 'a' },
       { text: 'other' },

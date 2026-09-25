@@ -11,7 +11,7 @@
 import { checkpointIndexTarget } from '../checkpointer/internal/rows';
 import { sessionIndexTarget } from '../history/internal/session';
 import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../shared/concurrency';
-import type { DocItem, DynamoDBDocumentLike } from '../shared/dynamodb/client';
+import type { AttributeMap, DynamoDBDocumentLike } from '../shared/dynamodb/client';
 import { isConditionalCheckFailed } from '../shared/dynamodb/idempotent-write';
 import {
   DEFAULT_INDEX_SHARDS,
@@ -59,7 +59,11 @@ function runRetry(options: BackfillOptions): RetryOptions {
  * Any other failure is rethrown and ends the run, because nothing about it says
  * this row needed no writing.
  */
-async function indexRow(options: BackfillOptions, row: DocItem, shards: number): Promise<boolean> {
+async function indexRow(
+  options: BackfillOptions,
+  row: AttributeMap,
+  shards: number,
+): Promise<boolean> {
   const target = indexTargetOf(row);
   if (target === undefined) return false;
   const keys = indexKeys(target.tag, target.id, target.at, shards);
@@ -76,7 +80,7 @@ async function indexRow(options: BackfillOptions, row: DocItem, shards: number):
 /** The conditional `UpdateItem` that gives one row the keys computed for it. */
 async function writeIndexKeys(
   options: BackfillOptions,
-  row: DocItem,
+  row: AttributeMap,
   keys: IndexKeys,
 ): Promise<void> {
   await withDynamoDBRetry(
@@ -117,8 +121,8 @@ async function writeIndexKeys(
 async function backfillPage(
   options: BackfillOptions,
   shards: number,
-  startKey: DocItem | undefined,
-): Promise<{ rows: number; indexed: number; nextKey: DocItem | undefined }> {
+  startKey: AttributeMap | undefined,
+): Promise<{ rows: number; indexed: number; nextKey: AttributeMap | undefined }> {
   const result = await withDynamoDBRetry(
     (request) =>
       options.client.scan(
@@ -134,14 +138,14 @@ async function backfillPage(
       ),
     runRetry(options),
   );
-  const rows = (result.Items ?? []) as DocItem[];
+  const rows = (result.Items ?? []) as AttributeMap[];
   const written = await mapWithConcurrency(rows, DEFAULT_READ_CONCURRENCY, (row) =>
     indexRow(options, row, shards),
   );
   return {
     rows: rows.length,
     indexed: written.filter(Boolean).length,
-    nextKey: result.LastEvaluatedKey as DocItem | undefined,
+    nextKey: result.LastEvaluatedKey as AttributeMap | undefined,
   };
 }
 
@@ -235,7 +239,7 @@ export async function backfillRecencyIndex(options: BackfillOptions): Promise<Ba
  * Throws: nothing. A backfill walks the whole table; one unrecognised row must
  * be skipped, not fatal.
  */
-export function indexTargetOf(row: DocItem): IndexTarget | undefined {
+export function indexTargetOf(row: AttributeMap): IndexTarget | undefined {
   return checkpointIndexTarget(row) ?? storeIndexTarget(row) ?? sessionIndexTarget(row);
 }
 
@@ -249,12 +253,12 @@ export function indexTargetOf(row: DocItem): IndexTarget | undefined {
  *
  * Throws: nothing.
  */
-export function encodeScanCursor(key: DocItem): string {
+export function encodeScanCursor(key: AttributeMap): string {
   return Buffer.from(JSON.stringify(key), 'utf8').toString('base64url');
 }
 
 /** Whether `value` is exactly the base table's primary key: `PK` and `SK`, both strings, nothing else. */
-function isTableKeyShape(value: DocItem): boolean {
+function isTableKeyShape(value: AttributeMap): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const keys = Object.keys(value);
   return keys.length === 2 && typeof value.PK === 'string' && typeof value.SK === 'string';
@@ -277,9 +281,9 @@ function isTableKeyShape(value: DocItem): boolean {
  * `ExclusiveStartKey`, so a value of the wrong shape is refused here rather
  * than surfacing as a raw `ValidationException` from the service.
  */
-export function decodeScanCursor(cursor: string): DocItem {
+export function decodeScanCursor(cursor: string): AttributeMap {
   try {
-    const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as DocItem;
+    const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as AttributeMap;
     if (!isTableKeyShape(decoded)) throw new Error('not a scan position');
     return decoded;
   } catch {

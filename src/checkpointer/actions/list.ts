@@ -18,7 +18,7 @@ import {
   type ThreadId,
 } from '../internal/parse';
 import { assembleTuple, fetchTargetMeta } from '../internal/read';
-import type { CheckpointMetaItem } from '../internal/rows';
+import type { CheckpointMetaRow } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
 
 /**
@@ -29,7 +29,7 @@ import type { CheckpointerContext } from '../internal/setup';
  */
 async function tupleFor(
   context: CheckpointerContext,
-  meta: CheckpointMetaItem,
+  meta: CheckpointMetaRow,
   scope: ListScope,
 ): Promise<CheckpointTuple | undefined> {
   if (!passesKeyFilters(meta, scope)) return undefined;

@@ -15,7 +15,7 @@ import { DEFAULT_READ_CONCURRENCY } from '../../../src/shared/concurrency';
 import { BATCH_WRITE_MAX, MAX_UNPROCESSED_RETRIES } from '../../../src/shared/dynamodb/batch-write';
 import {
   LIST_SCAN_WARN_THRESHOLD,
-  MAX_TOTAL_ITEMS_IN_MEMORY,
+  MAX_TOTAL_ROWS_IN_MEMORY,
 } from '../../../src/shared/dynamodb/paginate';
 import { MAX_INDEX_SHARDS } from '../../../src/shared/dynamodb/recency-index';
 import {
@@ -101,7 +101,7 @@ describe('the limits each module owns', () => {
    * relation is pinned even though the constants are not shared.
    */
   it('keeps the page ceiling no larger than the in-memory collection cap', () => {
-    expect(MAX_PAGE_LIMIT).toBeLessThanOrEqual(MAX_TOTAL_ITEMS_IN_MEMORY);
+    expect(MAX_PAGE_LIMIT).toBeLessThanOrEqual(MAX_TOTAL_ROWS_IN_MEMORY);
     expect(MAX_PAGE_LIMIT).toBeLessThanOrEqual(LIST_SCAN_WARN_THRESHOLD);
   });
 });

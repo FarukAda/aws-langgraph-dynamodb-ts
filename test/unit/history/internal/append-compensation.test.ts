@@ -2,7 +2,7 @@ import { BatchWriteCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { compensate } from '../../../../src/history/internal/append';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import type { ChatMessageItem } from '../../../../src/history/internal/rows';
+import type { MessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -32,7 +32,7 @@ function context(
   };
 }
 
-const item = (ulid: string, key = 'k'): ChatMessageItem =>
+const item = (ulid: string, key = 'k'): MessageRow =>
   ({
     PK: 'HIST#s1',
     SK: `HISTORY#MSG#${ulid}`,
@@ -44,7 +44,7 @@ const item = (ulid: string, key = 'k'): ChatMessageItem =>
       schemaVersion: 1,
       compressed: false,
     },
-  }) as ChatMessageItem;
+  }) as MessageRow;
 
 function offloaderSpy() {
   const deleted: string[] = [];

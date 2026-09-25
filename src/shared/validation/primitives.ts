@@ -11,7 +11,7 @@ import { validationError } from '../errors/errors';
  * sees the first of them.
  *
  * Ten thousand is where this package already says a read has stopped being one
- * and become an export: `MAX_TOTAL_ITEMS_IN_MEMORY`
+ * and become an export: `MAX_TOTAL_ROWS_IN_MEMORY`
  * (`src/shared/dynamodb/paginate.ts`) refuses to collect more than that across
  * a whole paginated query, and `LIST_SCAN_WARN_THRESHOLD`
  * (`src/shared/dynamodb/paginate.ts`) tells an operator about a listing that

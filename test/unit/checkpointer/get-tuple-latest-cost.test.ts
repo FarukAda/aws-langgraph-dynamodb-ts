@@ -3,7 +3,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 
 import type { CheckpointerContext } from '../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
-import type { DocItem } from '../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 import { checkpointItems } from '../../shared/helpers/parsed-inputs';
@@ -45,7 +45,7 @@ interface QueryInput {
  */
 function answerMetaQueries(
   mock: ReturnType<typeof createStrictDocumentMock>['mock'],
-  rows: DocItem[],
+  rows: AttributeMap[],
 ): () => number {
   let metaQueries = 0;
   mock.on(QueryCommand).callsFake((raw: QueryInput) => {
@@ -71,7 +71,7 @@ async function seedThread(
   const { client, mock } = createStrictDocumentMock();
   const context: CheckpointerContext = { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
   const { meta, payload } = await checkpointItems(context, 't', '', checkpoint, metadata);
-  const rows: DocItem[] = Array.from({ length: expiredAhead }, (_unused, index) => ({
+  const rows: AttributeMap[] = Array.from({ length: expiredAhead }, (_unused, index) => ({
     ...meta,
     SK: `META##dead-${index}`,
     checkpointId: `dead-${index}`,

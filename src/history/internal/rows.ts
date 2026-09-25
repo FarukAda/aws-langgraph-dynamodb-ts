@@ -13,7 +13,7 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { StoredMessage } from '@langchain/core/messages';
 
 import { codecDepsOf, encodePayload, type PayloadDescriptor } from '../../shared/codec/codec';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import {
   ADAPTER_TAGS,
   KEY_SEPARATOR,
@@ -135,8 +135,8 @@ export function messageSortKeyPrefix(): string {
   return MESSAGE_PREFIX;
 }
 
-/** Options for {@link sessionItemsQuery}. */
-export interface SessionItemsQueryOptions {
+/** Options for {@link sessionRowsQuery}. */
+export interface SessionRowsQueryOptions {
   consistent?: boolean;
 }
 
@@ -151,10 +151,10 @@ export interface SessionItemsQueryOptions {
  *
  * Throws: nothing.
  */
-export function sessionItemsQuery(
+export function sessionRowsQuery(
   tableName: string,
   sessionId: SessionId,
-  options: SessionItemsQueryOptions = {},
+  options: SessionRowsQueryOptions = {},
 ): QueryCommandInput {
   const params: QueryCommandInput = {
     TableName: tableName,
@@ -167,7 +167,7 @@ export function sessionItemsQuery(
 }
 
 /** Options for {@link messageQuery}. */
-export interface MessageQueryOptions extends SessionItemsQueryOptions {
+export interface MessageQueryOptions extends SessionRowsQueryOptions {
   /** Walk the messages newest-first; the caller restores chronological order. */
   descending?: boolean;
   /** Cap the rows DynamoDB evaluates per page. */
@@ -219,7 +219,7 @@ export function messageQuery(
 }
 
 /** A single stored chat message item (one per message, ordered by its ULID). */
-export interface ChatMessageItem {
+export interface MessageRow {
   PK: string;
   SK: string;
   /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
@@ -260,11 +260,11 @@ export interface MessageRowSource {
  * Encoding precedes the transaction, so a message that cannot be stored never
  * half-writes a turn.
  */
-export async function buildMessageItem(
+export async function buildMessageRow(
   context: HistoryContext,
   source: MessageRowSource,
   signal?: AbortSignal,
-): Promise<ChatMessageItem> {
+): Promise<MessageRow> {
   const { sessionId, messageId, message, ttlTimestamp } = source;
   const pk = sessionPartition(sessionId);
   const sk = messageSortKey(messageId);
@@ -273,7 +273,7 @@ export async function buildMessageItem(
     objectId: messageId,
     row: { pk, sk },
   });
-  const item: ChatMessageItem = {
+  const item: MessageRow = {
     PK: pk,
     SK: sk,
     v: ROW_FORMAT_VERSION,
@@ -285,7 +285,7 @@ export async function buildMessageItem(
 }
 
 /**
- * Narrow a raw row to a {@link ChatMessageItem}.
+ * Narrow a raw row to a {@link MessageRow}.
  *
  * Accepts: `raw` — any row read from a session's partition under the message
  * sort-key prefix, which on a shared table another writer can produce too.
@@ -305,10 +305,10 @@ export async function buildMessageItem(
  * Guarantees: a row's attributes are bound to the partition it lives in, so a
  * row planted under one session cannot claim to belong to another.
  */
-export function parseMessageRow(raw: DocItem): ChatMessageItem | undefined {
+export function parseMessageRow(raw: AttributeMap): MessageRow | undefined {
   const shaped =
     typeof raw.sessionId === 'string' && typeof raw.message === 'object' && raw.message !== null;
   if (!shaped) return undefined;
-  const item = raw as ChatMessageItem;
+  const item = raw as MessageRow;
   return item.PK === sessionPartition(item.sessionId) ? item : undefined;
 }

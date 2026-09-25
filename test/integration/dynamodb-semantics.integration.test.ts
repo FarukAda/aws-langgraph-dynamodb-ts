@@ -2,7 +2,7 @@ import { type AttributeValue, DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 
-import { rejectedItem } from '../../src/shared/dynamodb/idempotent-write';
+import { rejectedRow } from '../../src/shared/dynamodb/idempotent-write';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 
 const tableName = 'semantics-itest';
@@ -38,13 +38,13 @@ describe('DynamoDB semantics the unit mocks assume', () => {
       }),
     );
     expect(failure?.name).toBe('ConditionalCheckFailedException');
-    /** The document client leaves an error payload marshalled — exactly what pending-writes.ts and rejectedItem rely on. */
+    /** The document client leaves an error payload marshalled — exactly what pending-writes.ts and rejectedRow rely on. */
     const raw = (failure as { Item?: Record<string, AttributeValue> }).Item;
     expect(raw?.channel).toEqual({ S: 'messages' });
     expect(unmarshall(raw as Record<string, AttributeValue>)).toMatchObject({
       channel: 'messages',
     });
-    expect(rejectedItem(failure as Error)).toMatchObject({ channel: 'messages', writeGroup: 'g1' });
+    expect(rejectedRow(failure as Error)).toMatchObject({ channel: 'messages', writeGroup: 'g1' });
   });
 
   it('rejects duplicate keys inside one BatchWriteItem and one TransactWriteItems', async () => {

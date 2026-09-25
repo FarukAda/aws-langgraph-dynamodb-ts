@@ -14,7 +14,7 @@ import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-check
 
 import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
-import { MAX_TOTAL_ITEMS_IN_MEMORY } from '../../shared/dynamodb/paginate';
+import { MAX_TOTAL_ROWS_IN_MEMORY } from '../../shared/dynamodb/paginate';
 import { validationError } from '../../shared/errors/errors';
 import {
   assertMembers,
@@ -99,7 +99,7 @@ export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
       vectorBackend: options.vectorBackend,
       vectorScoreDirection: options.vectorScoreDirection ?? 'relevance',
       maxSearchCandidates: options.maxSearchCandidates ?? DEFAULT_MAX_SEARCH_CANDIDATES,
-      maxScanItems: options.maxScanItems ?? MAX_TOTAL_ITEMS_IN_MEMORY,
+      maxScanItems: options.maxScanItems ?? MAX_TOTAL_ROWS_IN_MEMORY,
     },
   };
 }

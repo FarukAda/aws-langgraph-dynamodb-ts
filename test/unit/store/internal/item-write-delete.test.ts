@@ -3,7 +3,7 @@ import { marshall } from '@aws-sdk/util-dynamodb';
 
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { deleteStoreItem } from '../../../../src/store/internal/item-write';
@@ -22,14 +22,14 @@ const throttled = (): Error =>
   Object.assign(new Error('slow down'), { name: 'ThrottlingException' });
 
 /** The cancellation a guard rejection arrives as, carrying the row that turned it away. */
-const rejectedWith = (item: DocItem): Error =>
+const rejectedWith = (item: AttributeMap): Error =>
   Object.assign(new Error('Transaction cancelled'), {
     name: 'TransactionCanceledException',
     CancellationReasons: [{ Code: 'ConditionalCheckFailed', Item: marshall(item) }],
   });
 
 /** A whole row as the table holds it, offloaded under `s3Key`. */
-const row = (rev: string | undefined, s3Key = 'users/u1/profile.bin'): DocItem => ({
+const row = (rev: string | undefined, s3Key = 'users/u1/profile.bin'): AttributeMap => ({
   PK,
   SK,
   createdAt: 'T0',
@@ -38,9 +38,12 @@ const row = (rev: string | undefined, s3Key = 'users/u1/profile.bin'): DocItem =
 });
 
 /** The same row as the pre-read's projection returns it: no keys, no inline bytes. */
-const projected = (item: DocItem): DocItem => ({
+const projected = (item: AttributeMap): AttributeMap => ({
   createdAt: item.createdAt,
-  value: { location: (item.value as DocItem).location, s3Key: (item.value as DocItem).s3Key },
+  value: {
+    location: (item.value as AttributeMap).location,
+    s3Key: (item.value as AttributeMap).s3Key,
+  },
   ...(item.rev === undefined ? {} : { rev: item.rev }),
 });
 

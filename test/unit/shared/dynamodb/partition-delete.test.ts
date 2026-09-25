@@ -7,9 +7,9 @@ import {
 
 import { beginsWithQuery, partitionQuery } from '../../../../src/checkpointer/internal/rows';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { sessionItemsQuery } from '../../../../src/history/internal/rows';
+import { sessionRowsQuery } from '../../../../src/history/internal/rows';
 import { type PayloadDescriptor, PayloadLocation } from '../../../../src/shared/codec/codec';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import {
   deletePartitionRows,
   namedDescriptor,
@@ -27,19 +27,19 @@ function s3(s3Key: string, writeId?: string): PayloadDescriptor {
   return { location: PayloadLocation.S3, serdeType: 'json', compressed: false, s3Key, writeId };
 }
 
-const meta = (id: string, writeId?: string): DocItem => ({
+const meta = (id: string, writeId?: string): AttributeMap => ({
   PK: 'CHKPT#t',
   SK: `META##${id}`,
   metadata: s3(`k-meta-${id}`, writeId),
 });
 
-const payload = (id: string, writeId?: string): DocItem => ({
+const payload = (id: string, writeId?: string): AttributeMap => ({
   PK: 'CHKPT#t',
   SK: `PAYLOAD##${id}`,
   checkpoint: s3(`k-payload-${id}`, writeId),
 });
 
-const write = (id: string, writeGroup: string): DocItem => ({
+const write = (id: string, writeGroup: string): AttributeMap => ({
   PK: 'CHKPT#t',
   SK: `WRITE##${id}#task#0000000008#ch`,
   writeGroup,
@@ -47,7 +47,7 @@ const write = (id: string, writeGroup: string): DocItem => ({
 });
 
 /** Exactly what `deleteThread` supplies, down to the narrowing helper. */
-function namedDescriptors(row: DocItem): NamedDescriptor[] {
+function namedDescriptors(row: AttributeMap): NamedDescriptor[] {
   return (['metadata', 'checkpoint', 'value'] as const).flatMap((attribute) => {
     const entry = namedDescriptor(row, attribute);
     return entry === undefined ? [] : [entry];
@@ -104,8 +104,8 @@ function historyOptions(
 
 /** Run a pass whose query answers `observed` while the table holds `current`. */
 function stage(
-  observed: readonly DocItem[],
-  current: readonly DocItem[] = observed,
+  observed: readonly AttributeMap[],
+  current: readonly AttributeMap[] = observed,
 ): {
   client: DynamoDBDocument;
   mock: ReturnType<typeof createStrictDocumentMock>['mock'];
@@ -298,11 +298,11 @@ describe('deletePartitionRows carries a refusal forward', () => {
    * a refused SESSION row stops no message row from being deleted.
    */
   it('carries nothing forward when the caller names no unit', async () => {
-    const observed: DocItem[] = [
+    const observed: AttributeMap[] = [
       { PK: 'HIST#s', SK: 'HISTORY#MSG#01A', message: s3('k-a', 'm1') },
       { PK: 'HIST#s', SK: 'HISTORY#SESSION', writeId: 'w1' },
     ];
-    const current: DocItem[] = [observed[0], { ...observed[1], writeId: 'w2' }];
+    const current: AttributeMap[] = [observed[0], { ...observed[1], writeId: 'w2' }];
     const { client, table } = stage(observed, current);
     const warn = jest.fn();
     const info = jest.fn();
@@ -357,7 +357,7 @@ describe('the partition read this pass depends on', () => {
    */
   it('scans ascending, which is what puts a refusal before the rows it suppresses', () => {
     expect(partitionQuery('t', 'CHKPT#t').ScanIndexForward).toBeUndefined();
-    expect(sessionItemsQuery('t', parseSessionId('s')).ScanIndexForward).toBeUndefined();
+    expect(sessionRowsQuery('t', parseSessionId('s')).ScanIndexForward).toBeUndefined();
     expect(beginsWithQuery('t', 'CHKPT#t', 'META#').ScanIndexForward).toBe(false);
   });
 });

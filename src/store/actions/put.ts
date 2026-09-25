@@ -3,9 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { nowIso } from '../../shared/clock';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import type { JsonValue } from '../internal/filter';
-import { deleteStoreItem, persistRecord } from '../internal/item-write';
+import { deleteStoreItem, persistRow } from '../internal/item-write';
 import type { ParsedDelete, ParsedPut } from '../internal/parse';
-import { buildStoreItem, itemRowKey, readExisting } from '../internal/rows';
+import { buildStoreRow, itemRowKey, readExisting } from '../internal/rows';
 import { embedPassages } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
 import { itemVector, syncItemVector } from '../internal/vector-index';
@@ -65,13 +65,13 @@ export async function putItem(context: StoreContext, op: ParsedPut | ParsedDelet
   const embedding = await itemVector(context, op);
   const embeddings = context.vectorBackend ? undefined : await resolvePassages(context, op, value);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const record = await buildStoreItem(context, { namespace, key }, value, {
+  const record = await buildStoreRow(context, { namespace, key }, value, {
     createdAt: existing.createdAt ?? timestamp,
     updatedAt: timestamp,
     embeddings,
     ttlTimestamp,
     rev: randomUUID(),
   });
-  await persistRecord(context, record, existing);
+  await persistRow(context, record, existing);
   await syncItemVector(context, op.address, embedding);
 }

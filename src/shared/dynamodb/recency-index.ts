@@ -13,14 +13,14 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import { mapWithConcurrency } from '../concurrency';
 import { validationError, resultTruncatedError } from '../errors/errors';
 import { type PageLimit, parseLimit } from '../validation/primitives';
-import type { DocItem, DynamoDBDocumentLike } from './client';
+import type { AttributeMap, DynamoDBDocumentLike } from './client';
 import { MAX_LOOP_ITERATIONS } from './paginate';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
 import { compareSortKeys } from './table-schema';
 
 /** One page of a recency listing, and where the next one resumes. */
 export interface IndexPage {
-  items: DocItem[];
+  items: AttributeMap[];
   /** Absent when the page is the last one. */
   nextCursor?: string;
 }
@@ -111,7 +111,7 @@ async function refillDryShards(
  * part company at an astral id. `''` is a safe starting bound because a
  * DynamoDB key attribute is never the empty string, so no row can lose to it.
  */
-function takeNewest(readers: ShardReader[]): DocItem | undefined {
+function takeNewest(readers: ShardReader[]): AttributeMap | undefined {
   let newest: ShardReader | undefined;
   let newestKey = '';
   for (const reader of readers) {
@@ -176,7 +176,7 @@ export async function queryRecencyIndex(options: IndexQueryOptions): Promise<Ind
   const readers = indexPartitions(options.tag, options.shards).map((partition) =>
     shardReader(partition),
   );
-  const items: DocItem[] = [];
+  const items: AttributeMap[] = [];
   while (items.length < options.limit) {
     await refillDryShards(options, readers, before, options.limit - items.length);
     const row = takeNewest(readers);
@@ -217,7 +217,7 @@ const STREAM_PAGE_SIZE: PageLimit = parseLimit(100, 0);
  */
 export async function* iterateRecencyIndex(
   options: Omit<IndexQueryOptions, 'limit' | 'cursor'>,
-): AsyncGenerator<DocItem> {
+): AsyncGenerator<AttributeMap> {
   let cursor: string | undefined;
   do {
     const page = await queryRecencyIndex({ ...options, limit: STREAM_PAGE_SIZE, cursor });
@@ -248,7 +248,7 @@ export const BACKFILLED_AT = '1970-01-01T00:00:00.000Z';
  *
  * Throws: nothing.
  */
-export function backfilledAt(recorded: DocItem[string]): string {
+export function backfilledAt(recorded: AttributeMap[string]): string {
   return typeof recorded === 'string' ? recorded : BACKFILLED_AT;
 }
 
@@ -380,9 +380,9 @@ export interface ShardReader {
    * page yet, oldest first, so the newest is the last element and leaves with
    * `pop()`. Never more than one page.
    */
-  buffer: DocItem[];
+  buffer: AttributeMap[];
   /** Where the shard's next page starts; absent before its first page. */
-  startKey: DocItem | undefined;
+  startKey: AttributeMap | undefined;
   /** True once DynamoDB reported no data past the last page read. */
   exhausted: boolean;
   /** DynamoDB pages read from this shard so far. */
@@ -466,7 +466,7 @@ export async function readShardPage(
     { ...options.retry, signal: options.signal },
   );
   reader.pages += 1;
-  reader.buffer = ((result.Items ?? []) as DocItem[]).slice().reverse();
-  reader.startKey = result.LastEvaluatedKey as DocItem | undefined;
+  reader.buffer = ((result.Items ?? []) as AttributeMap[]).slice().reverse();
+  reader.startKey = result.LastEvaluatedKey as AttributeMap | undefined;
   reader.exhausted = reader.startKey === undefined;
 }

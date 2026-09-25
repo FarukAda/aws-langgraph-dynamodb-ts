@@ -1,13 +1,13 @@
 import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
 import { getItem } from '../../../../src/store/internal/get-item';
 import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import {
-  buildStoreItem,
+  buildStoreRow,
   parseStoreRow,
   parseWholeStoreRow,
 } from '../../../../src/store/internal/rows';
@@ -30,14 +30,18 @@ function context(client: StoreContext['client']): StoreContext {
 const AT = '2026-01-01T00:00:00.000Z';
 
 /** A store row as this package writes it, minus the attributes `missing` names. */
-async function rowWithout(ctx: StoreContext, key: string, ...missing: string[]): Promise<DocItem> {
-  const record = await buildStoreItem(
+async function rowWithout(
+  ctx: StoreContext,
+  key: string,
+  ...missing: string[]
+): Promise<AttributeMap> {
+  const record = await buildStoreRow(
     ctx,
     { namespace: ['users', 'u1'], key },
     { kind: 'note' },
     { createdAt: AT, updatedAt: AT },
   );
-  const row: DocItem = {};
+  const row: AttributeMap = {};
   for (const [name, value] of Object.entries(record)) {
     if (!missing.includes(name)) row[name] = value;
   }

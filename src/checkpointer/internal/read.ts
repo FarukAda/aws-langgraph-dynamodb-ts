@@ -20,7 +20,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import { LIST_SCAN_WARN_THRESHOLD, paginateQuery } from '../../shared/dynamodb/paginate';
 import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import {
@@ -32,9 +32,9 @@ import type { ThreadAddress } from './parse';
 import {
   beginsWithQuery,
   type CheckpointLocation,
-  type CheckpointMetaItem,
-  type CheckpointPayloadItem,
-  type CheckpointWriteItem,
+  type CheckpointMetaRow,
+  type CheckpointPayloadRow,
+  type CheckpointWriteRow,
   metaRowKey,
   metaSortKeyPrefix,
   parseHeadRow,
@@ -110,7 +110,7 @@ export async function fetchTargetMeta(
   context: CheckpointerContext,
   address: ThreadAddress,
   signal?: AbortSignal,
-): Promise<CheckpointMetaItem | undefined> {
+): Promise<CheckpointMetaRow | undefined> {
   const { threadId, checkpointNs, checkpointId } = address;
   /** Expired rows are absent to every reader, however long DynamoDB's sweep lags. */
   const now = nowSeconds();
@@ -127,7 +127,7 @@ export async function fetchTargetMeta(
         ),
       retryFor(context, signal),
     );
-    const meta = parseHeadRow(context, result.Item as DocItem | undefined);
+    const meta = parseHeadRow(context, result.Item as AttributeMap | undefined);
     return meta && !isExpiredRow(meta, now) ? meta : undefined;
   }
   const params = beginsWithQuery(
@@ -183,7 +183,7 @@ export async function fetchPayload(
   context: CheckpointerContext,
   at: CheckpointLocation,
   read: ReadOptions = {},
-): Promise<CheckpointPayloadItem | undefined> {
+): Promise<CheckpointPayloadRow | undefined> {
   const result = await withDynamoDBRetry(
     (request) =>
       context.client.get(
@@ -196,7 +196,7 @@ export async function fetchPayload(
       ),
     retryFor(context, read.signal),
   );
-  const item = result.Item as CheckpointPayloadItem | undefined;
+  const item = result.Item as CheckpointPayloadRow | undefined;
   // A payload of ours written by a newer release fails loudly, as its META row
   // would: decoding it under today's rules is how a checkpoint comes back with
   // state silently missing.
@@ -240,7 +240,7 @@ export async function fetchPendingWrites(
    * count toward any cap. Past the warning threshold the read still succeeds,
    * but an operator is told the checkpoint is unusually heavy.
    */
-  const items: CheckpointWriteItem[] = [];
+  const items: CheckpointWriteRow[] = [];
   for await (const item of paginateQuery({
     retry: retryFor(context, read.signal),
     signal: read.signal,
@@ -253,7 +253,7 @@ export async function fetchPendingWrites(
     // on every row regardless of format, and a newer format may give the
     // attribute a different meaning.
     assertReadableRow(item, 'pending write');
-    items.push(item as CheckpointWriteItem);
+    items.push(item as CheckpointWriteRow);
   }
   if (items.length >= LIST_SCAN_WARN_THRESHOLD) {
     context.logger.warn(
@@ -304,7 +304,7 @@ function configFor(threadId: string, checkpointNs: string, checkpointId: string)
 export async function assembleTuple(
   context: CheckpointerContext,
   thread: ThreadLocation,
-  meta: CheckpointMetaItem,
+  meta: CheckpointMetaRow,
   options: AssembleOptions,
 ): Promise<CheckpointTuple | undefined> {
   const read = { signal: options.signal, consistent: options.consistent };

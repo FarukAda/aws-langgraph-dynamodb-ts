@@ -3,7 +3,7 @@ import { AIMessage, HumanMessage, mapChatMessagesToStoredMessages } from '@langc
 
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { buildMessageItem, type ChatMessageItem } from '../../../../src/history/internal/rows';
+import { buildMessageRow, type MessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -32,7 +32,7 @@ async function items(
   client: HistoryContext['client'],
   count: number,
   expired: readonly number[] = [],
-): Promise<ChatMessageItem[]> {
+): Promise<MessageRow[]> {
   const stored = mapChatMessagesToStoredMessages(
     Array.from({ length: count }, (_, i) =>
       i % 2 === 0 ? new HumanMessage(`m${i}`) : new AIMessage(`m${i}`),
@@ -40,7 +40,7 @@ async function items(
   );
   return Promise.all(
     stored.map((message, i) =>
-      buildMessageItem(context(client), {
+      buildMessageRow(context(client), {
         sessionId: SESSION_ID,
         messageId: `01${i}`,
         message,

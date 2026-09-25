@@ -1,5 +1,5 @@
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { MAX_TOTAL_ITEMS_IN_MEMORY } from '../../../../src/shared/dynamodb/paginate';
+import { MAX_TOTAL_ROWS_IN_MEMORY } from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { DEFAULT_MAX_SEARCH_CANDIDATES, setUpStore } from '../../../../src/store/internal/setup';
 import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
@@ -117,7 +117,7 @@ describe('setUpStore', () => {
 
   it('defaults maxScanItems to the shared in-memory cap, but accepts an override', () => {
     const defaulted = setUpStore({ tableName: 'store', client: fakeClientMethods() });
-    expect(defaulted.context.maxScanItems).toBe(MAX_TOTAL_ITEMS_IN_MEMORY);
+    expect(defaulted.context.maxScanItems).toBe(MAX_TOTAL_ROWS_IN_MEMORY);
 
     const overridden = setUpStore({
       tableName: 'store',

@@ -1,10 +1,10 @@
 import fc from 'fast-check';
 
-import { chunkBySize, estimateItemBytes } from '../../src/history/internal/append';
-import type { ChatMessageItem } from '../../src/history/internal/rows';
+import { chunkBySize, estimateRowBytes } from '../../src/history/internal/append';
+import type { MessageRow } from '../../src/history/internal/rows';
 import { PayloadLocation } from '../../src/shared/codec/codec';
 
-function makeItem(skLen: number, bytesLen: number): ChatMessageItem {
+function makeItem(skLen: number, bytesLen: number): MessageRow {
   return {
     PK: 's',
     SK: 'M'.repeat(skLen + 1),
@@ -52,7 +52,7 @@ describe('chunkBySize (property)', () => {
     fc.assert(
       fc.property(itemsArb, maxItemsArb, maxBytesArb, (items, maxItems, maxBytes) => {
         for (const chunk of chunkBySize(items, maxItems, maxBytes)) {
-          const bytes = chunk.reduce((sum, item) => sum + estimateItemBytes(item), 0);
+          const bytes = chunk.reduce((sum, item) => sum + estimateRowBytes(item), 0);
           if (bytes > maxBytes) expect(chunk).toHaveLength(1);
         }
       }),

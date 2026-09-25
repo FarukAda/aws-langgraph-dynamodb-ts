@@ -4,7 +4,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -31,7 +31,7 @@ describe('searchItems vectorBackend contract', () => {
   it('reads the matched items concurrently, not one round-trip at a time', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'a' },
       { a: 1 },
@@ -77,7 +77,7 @@ describe('searchItems vectorBackend contract', () => {
     // or displaying it expects. Ascending scores are that exact signature.
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
-    const recA = await buildStoreItem(
+    const recA = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },
@@ -122,7 +122,7 @@ describe('searchItems vectorBackend contract', () => {
   it('does not warn for a correctly ordered backend', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
-    const recA = await buildStoreItem(
+    const recA = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },
@@ -153,7 +153,7 @@ describe('searchItems vectorBackend contract', () => {
     // instead of dropping the one unusable match.
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
-    const recA = await buildStoreItem(
+    const recA = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'ok' },
       { score: 1 },
@@ -187,7 +187,7 @@ describe('vectorScoreDirection', () => {
   it('does not warn about ascending scores when the backend is declared distance-scored', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
-    const recA = await buildStoreItem(
+    const recA = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },
@@ -221,7 +221,7 @@ describe('vectorScoreDirection', () => {
   it('still warns for an undeclared backend returning ascending scores', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
-    const recA = await buildStoreItem(
+    const recA = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },

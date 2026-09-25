@@ -2,7 +2,7 @@ import { ScanCommand, UpdateCommand, type UpdateCommandInput } from '@aws-sdk/li
 
 import { backfillRecencyIndex } from '../../../src/backfill/backfill';
 import type { BackfillResult } from '../../../src/backfill/backfill';
-import type { DocItem } from '../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
 
@@ -58,7 +58,7 @@ function rejection(): Error {
 function clauseHolds(
   clause: string,
   names: Record<string, string>,
-  row: DocItem | undefined,
+  row: AttributeMap | undefined,
 ): boolean {
   const parsed = /^attribute_(not_)?exists\(([^)]+)\)$/.exec(clause.trim());
   if (parsed === null) throw new Error(`this fake does not evaluate '${clause}'`);
@@ -68,7 +68,7 @@ function clauseHolds(
 }
 
 /** Whether every `AND`-joined clause of the update's condition holds. */
-function conditionHolds(input: UpdateCommandInput, row: DocItem | undefined): boolean {
+function conditionHolds(input: UpdateCommandInput, row: AttributeMap | undefined): boolean {
   if (input.ConditionExpression === undefined) return true;
   const names = input.ExpressionAttributeNames ?? {};
   return input.ConditionExpression.split(' AND ').every((clause) =>
@@ -81,12 +81,12 @@ function conditionHolds(input: UpdateCommandInput, row: DocItem | undefined): bo
  * `Key` when it is not there: `UpdateItem` upserts, and that is the behaviour
  * the condition exists to stop, so the fake has to have it.
  */
-function applyUpdate(input: UpdateCommandInput, row: DocItem | undefined): DocItem {
+function applyUpdate(input: UpdateCommandInput, row: AttributeMap | undefined): AttributeMap {
   const names = input.ExpressionAttributeNames ?? {};
   const values = input.ExpressionAttributeValues ?? {};
   const expression = input.UpdateExpression ?? '';
   if (!expression.startsWith('SET ')) throw new Error(`this fake does not apply '${expression}'`);
-  const next: DocItem = { ...(row ?? (input.Key as DocItem)) };
+  const next: AttributeMap = { ...(row ?? (input.Key as AttributeMap)) };
   for (const assignment of expression.slice('SET '.length).split(', ')) {
     const [name, value] = assignment.split(' = ');
     next[names[name] ?? name] = values[value];
@@ -95,8 +95,8 @@ function applyUpdate(input: UpdateCommandInput, row: DocItem | undefined): DocIt
 }
 
 /** A table the backfill's conditional `UpdateItem` is evaluated and applied against. */
-function updateTable(items: readonly DocItem[]): {
-  rows: Map<string, DocItem>;
+function updateTable(items: readonly AttributeMap[]): {
+  rows: Map<string, AttributeMap>;
   handler: (input: UpdateCommandInput) => object;
 } {
   const rows = new Map(items.map((item) => [rowKey(item), item]));
@@ -120,10 +120,10 @@ function updateTable(items: readonly DocItem[]): {
  * the last page raises rather than answering something the run could count.
  */
 async function backfillAgainst(
-  pages: readonly (readonly DocItem[])[],
-  current: readonly DocItem[],
+  pages: readonly (readonly AttributeMap[])[],
+  current: readonly AttributeMap[],
   run: { maxPages?: number } = {},
-): Promise<{ rows: Map<string, DocItem>; outcome: BackfillResult | Error }> {
+): Promise<{ rows: Map<string, AttributeMap>; outcome: BackfillResult | Error }> {
   const { client, mock } = createStrictDocumentMock();
   const table = updateTable(current);
   let page = 0;

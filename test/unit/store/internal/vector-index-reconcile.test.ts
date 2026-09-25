@@ -8,7 +8,7 @@ import {
   truncateForLog,
 } from '../../../../src/shared/logging/truncate';
 import { parseNamespace } from '../../../../src/store/internal/parse';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import {
   collectReconcileTargets,
@@ -200,7 +200,7 @@ describe('collectReconcileTargets', () => {
       embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { text: 'hello' },
@@ -226,13 +226,13 @@ describe('collectReconcileTargets', () => {
       index: { dims: 1, embeddings: embeddings as never, fields: ['text'] },
     });
     const meta = { createdAt: 'c', updatedAt: 'u' };
-    const a = await buildStoreItem(
+    const a = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { text: 'ab' },
       meta,
     );
-    const b = await buildStoreItem(
+    const b = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'b' },
       { text: 'abcd' },
@@ -260,7 +260,7 @@ describe('collectReconcileTargets', () => {
       embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
-    const match = await buildStoreItem(
+    const match = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { text: 'hi' },

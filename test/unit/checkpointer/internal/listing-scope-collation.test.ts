@@ -4,7 +4,7 @@ import {
   parseListScope,
   type ThreadId,
 } from '../../../../src/checkpointer/internal/parse';
-import { type CheckpointMetaItem, metaSortKey } from '../../../../src/checkpointer/internal/rows';
+import { type CheckpointMetaRow, metaSortKey } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -33,14 +33,14 @@ function scope(before: string): ListScope & { threadId: ThreadId } {
   return { ...built, threadId: built.threadId };
 }
 
-const meta = (checkpointId: string): CheckpointMetaItem =>
+const meta = (checkpointId: string): CheckpointMetaRow =>
   ({
     PK: 'CHKPT#t',
     SK: metaSortKey('', checkpointId),
     threadId: 't',
     checkpointNs: '',
     checkpointId,
-  }) as CheckpointMetaItem;
+  }) as CheckpointMetaRow;
 
 /** Whether DynamoDB's `BETWEEN … AND :before` admits `sortKey`, by its own byte order. */
 function serverAdmits(sortKey: string, bound: unknown): boolean {

@@ -8,7 +8,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 
-import type { DocItem } from '../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../src/shared/dynamodb/client';
 
 /**
  * Build a `DynamoDBDocument` whose every command rejects unless explicitly
@@ -60,7 +60,7 @@ export function rejectRowWrites(mock: DocumentMock, error: Error): void {
  */
 export interface RowPutInput {
   TableName?: string;
-  Item?: DocItem;
+  Item?: AttributeMap;
   ConditionExpression?: string;
   ExpressionAttributeNames?: Record<string, string>;
   ExpressionAttributeValues?: Record<string, string | number | boolean>;
@@ -85,10 +85,10 @@ export function rowWriteInputs(mock: DocumentMock): RowPutInput[] {
 }
 
 /** The rows committed, in the order they were sent, across both shapes. */
-export function committedRows(mock: DocumentMock): DocItem[] {
+export function committedRows(mock: DocumentMock): AttributeMap[] {
   return rowWriteInputs(mock)
     .map((put) => put.Item)
-    .filter((item): item is DocItem => item !== undefined);
+    .filter((item): item is AttributeMap => item !== undefined);
 }
 
 /**
@@ -130,15 +130,15 @@ export function resolveRowDeletes(mock: DocumentMock): void {
 }
 
 /** The keys deleted, in the order they were sent, across both shapes. */
-export function deletedKeys(mock: DocumentMock): DocItem[] {
-  const keys: DocItem[] = [];
+export function deletedKeys(mock: DocumentMock): AttributeMap[] {
+  const keys: AttributeMap[] = [];
   for (const call of mock.commandCalls(DeleteCommand)) {
-    const { Key } = call.args[0].input as { Key?: DocItem };
+    const { Key } = call.args[0].input as { Key?: AttributeMap };
     if (Key) keys.push(Key);
   }
   for (const call of mock.commandCalls(TransactWriteCommand)) {
     const { TransactItems } = call.args[0].input as {
-      TransactItems?: { Delete?: { Key?: DocItem } }[];
+      TransactItems?: { Delete?: { Key?: AttributeMap } }[];
     };
     for (const item of TransactItems ?? []) if (item.Delete?.Key) keys.push(item.Delete.Key);
   }
@@ -156,8 +156,8 @@ export function deletedKeys(mock: DocumentMock): DocItem[] {
  */
 export function answerDeleteReads(
   mock: DocumentMock,
-  observed?: DocItem,
-  stillThere?: DocItem,
+  observed?: AttributeMap,
+  stillThere?: AttributeMap,
 ): void {
   mock
     .on(GetCommand)
@@ -167,7 +167,7 @@ export function answerDeleteReads(
 }
 
 /** A store row a delete's pre-read can observe, carrying `value` when given one. */
-export function observableRow(value?: DocItem): DocItem {
+export function observableRow(value?: AttributeMap): AttributeMap {
   return { createdAt: 'T0', rev: 'r0', ...(value === undefined ? {} : { value }) };
 }
 

@@ -194,21 +194,20 @@ export async function warnOnStackedRetries(
 }
 
 /**
- * A DynamoDB item as returned/accepted by the DocumentClient. Reads that we
- * wrote ourselves are narrowed with a single structural `as` at the mapper
- * boundary (never `as any`/`as unknown`); untrusted shared-table scans go
- * through `parseStoreRow`.
+ * A row, or a key, as the DocumentClient returns and takes it: attribute names
+ * mapped to values that nothing has checked yet. Each feature's row parser
+ * turns one into that feature's row type.
  */
-export type DocItem = Record<string, NativeAttributeValue>;
+export type AttributeMap = Record<string, NativeAttributeValue>;
 
 /** A BatchWriteItem PutRequest. */
 interface PutWriteRequest {
-  PutRequest: { Item: DocItem };
+  PutRequest: { Item: AttributeMap };
 }
 
 /** A BatchWriteItem DeleteRequest. */
 interface DeleteWriteRequest {
-  DeleteRequest: { Key: DocItem };
+  DeleteRequest: { Key: AttributeMap };
 }
 
 /** A single BatchWriteItem write request. */

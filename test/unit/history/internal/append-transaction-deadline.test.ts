@@ -1,7 +1,7 @@
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { writeMessageChunk } from '../../../../src/history/internal/append';
-import type { ChatMessageItem } from '../../../../src/history/internal/rows';
+import type { MessageRow } from '../../../../src/history/internal/rows';
 import {
   type HistoryContext,
   MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
@@ -29,7 +29,7 @@ const ITEM = {
     compressed: false,
     bytes: new Uint8Array(),
   },
-} as ChatMessageItem;
+} as MessageRow;
 
 const FIELDS = { sessionId: 's1', count: 1, now: 'u' };
 const TTL_FIELDS = { ...FIELDS, ttlTimestamp: 5000, forceTtlRefresh: true };

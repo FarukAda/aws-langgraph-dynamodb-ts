@@ -6,7 +6,7 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { listNamespaces } from '../../../../src/store/actions/list-namespaces';
 import { searchItems } from '../../../../src/store/actions/search';
 import { parseListOperation } from '../../../../src/store/internal/parse';
-import { buildStoreItem, type StoreItemRecord } from '../../../../src/store/internal/rows';
+import { buildStoreRow, type StoreItemRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -37,11 +37,11 @@ async function rows(
   ctx: StoreContext,
   count: number,
   kindOf: (i: number) => string,
-): Promise<StoreItemRecord[]> {
-  const out: StoreItemRecord[] = [];
+): Promise<StoreItemRow[]> {
+  const out: StoreItemRow[] = [];
   for (let i = 0; i < count; i++) {
     out.push(
-      await buildStoreItem(
+      await buildStoreRow(
         ctx,
         { namespace: ['users', 'u1'], key: `k${i}` },
         { kind: kindOf(i), i },

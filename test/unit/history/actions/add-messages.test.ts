@@ -43,7 +43,7 @@ describe('addMessages', () => {
   });
 
   it('cleans up already-uploaded S3 objects when a later message fails to encode', async () => {
-    // buildItems uploads sequentially with no try/catch, ahead of the append
+    // buildMessageRows uploads sequentially with no try/catch, ahead of the append
     // saga's compensation machinery — so a failure on message N left messages
     // 1..N-1's objects with no cleanup path at all, despite the rest of this
     // subsystem guaranteeing no orphans.

@@ -1,7 +1,7 @@
 import type { StoredMessage } from '@langchain/core/messages';
 
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { buildMessageItem, parseMessageRow } from '../../../../src/history/internal/rows';
+import { buildMessageRow, parseMessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { decodePayload, PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -24,7 +24,7 @@ const SESSION_ID = parseSessionId('s1');
 
 describe('history rows: message', () => {
   it('builds a message item with PK/SK and round-trips the message', async () => {
-    const item = await buildMessageItem(context(), {
+    const item = await buildMessageRow(context(), {
       sessionId: SESSION_ID,
       messageId: '01HZX',
       message: stored,
@@ -37,7 +37,7 @@ describe('history rows: message', () => {
   });
 
   it('stamps a ttl when provided', async () => {
-    const item = await buildMessageItem(context(), {
+    const item = await buildMessageRow(context(), {
       sessionId: SESSION_ID,
       messageId: '01HZX',
       message: stored,
@@ -58,7 +58,7 @@ describe('history rows: message', () => {
       upload,
     };
     const ulid = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';
-    const item = await buildMessageItem(
+    const item = await buildMessageRow(
       { ...context(), offloader: offloader as never },
       { sessionId: SESSION_ID, messageId: ulid, message: stored },
     );
@@ -87,7 +87,7 @@ describe('parseMessageRow', () => {
   });
 
   it('accepts a row this package wrote', async () => {
-    const item = await buildMessageItem(context(), {
+    const item = await buildMessageRow(context(), {
       sessionId: SESSION_ID,
       messageId: '01HZX',
       message: stored,

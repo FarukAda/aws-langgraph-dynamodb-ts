@@ -10,7 +10,7 @@ import {
   parseListScope,
   type ThreadId,
 } from '../../../../src/checkpointer/internal/parse';
-import type { CheckpointMetaItem } from '../../../../src/checkpointer/internal/rows';
+import type { CheckpointMetaRow } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -76,7 +76,7 @@ const inline = (value: unknown) => ({
   bytes: new TextEncoder().encode(JSON.stringify(value)),
 });
 
-const meta = (over: Partial<CheckpointMetaItem> = {}): CheckpointMetaItem => ({
+const meta = (over: Partial<CheckpointMetaRow> = {}): CheckpointMetaRow => ({
   PK: 'CHKPT#t',
   SK: 'META##c1',
   threadId: 't',

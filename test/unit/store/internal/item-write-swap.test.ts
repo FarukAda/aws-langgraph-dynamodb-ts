@@ -1,7 +1,7 @@
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putWithRevisionSwap } from '../../../../src/store/internal/item-write';
-import type { ExistingRecordMeta, StoreItemRecord } from '../../../../src/store/internal/rows';
+import type { ExistingRowMeta, StoreItemRow } from '../../../../src/store/internal/rows';
 
 const descriptor = (s3Key: string) => ({
   location: PayloadLocation.S3 as const,
@@ -10,7 +10,7 @@ const descriptor = (s3Key: string) => ({
   s3Key,
 });
 
-const record = (): StoreItemRecord => ({
+const record = (): StoreItemRow => ({
   PK: 'STORE#n',
   SK: 'k',
   namespace: ['n'],
@@ -40,7 +40,7 @@ interface TransactInput {
 
 function harness(options: {
   failures: number;
-  reReads: ExistingRecordMeta[];
+  reReads: ExistingRowMeta[];
   logger?: typeof SILENT_LOGGER;
 }) {
   let puts = 0;
@@ -73,7 +73,7 @@ function harness(options: {
 describe('putWithRevisionSwap', () => {
   it('commits on the first attempt and reports what it superseded', async () => {
     const { context, inputs } = harness({ failures: 0, reReads: [] });
-    const previous: ExistingRecordMeta = {
+    const previous: ExistingRowMeta = {
       exists: true,
       revision: 'r0',
       value: descriptor('old'),
@@ -185,7 +185,7 @@ describe('putWithRevisionSwap', () => {
   });
 
   it('does not mistake a revision-less row for its own write when the record carries no nonce', async () => {
-    // `rev` is optional on StoreItemRecord, so `observed.revision === record.rev`
+    // `rev` is optional on StoreItemRow, so `observed.revision === record.rev`
     // was a false-positive `undefined === undefined` against a pre-0.9.0 row:
     // the swap would report having won a race it never entered and delete the
     // descriptor it had pinned rather than retrying. put.ts always stamps a

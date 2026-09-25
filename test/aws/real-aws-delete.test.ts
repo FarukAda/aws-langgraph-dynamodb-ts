@@ -9,7 +9,7 @@ import {
 } from '../../src/shared/dynamodb/cancellation';
 import {
   type RevisionGuard,
-  rejectedItem,
+  rejectedRow,
   writeIdGuard,
 } from '../../src/shared/dynamodb/idempotent-write';
 import { liveRegion } from './helpers/env';
@@ -145,9 +145,9 @@ describe('the delete-side contract this design rests on, against real AWS', () =
     expect(reason?.Code).toBe('ConditionalCheckFailed');
     expect(reason?.Item?.rev).toEqual({ S: 'R1' });
     expect(reason?.Item?.v).toEqual({ N: '7' });
-    expect(rejectedItem(refused)).toEqual(row);
+    expect(rejectedRow(refused)).toEqual(row);
 
-    const observed = String(rejectedItem(refused)?.rev);
+    const observed = String(rejectedRow(refused)?.rev);
     await doc.transactWrite(tokenedDelete(randomUUID(), key, writeIdGuard('rev', observed)));
     const after = await doc.get({ TableName: tableName, Key: key, ConsistentRead: true });
     expect(after.Item).toBeUndefined();
@@ -173,7 +173,7 @@ describe('the delete-side contract this design rests on, against real AWS', () =
     );
     expect(refused.name).toBe('ConditionalCheckFailedException');
     expect((refused as { Item?: object }).Item).toBeUndefined();
-    expect(rejectedItem(refused)).toBeUndefined();
+    expect(rejectedRow(refused)).toBeUndefined();
   });
 
   /**
@@ -199,7 +199,7 @@ describe('the delete-side contract this design rests on, against real AWS', () =
     expect(reasons).toHaveLength(1);
     expect(reasons[0].Code).toBe('ConditionalCheckFailed');
     expect(reasons[0].Item).toBeUndefined();
-    expect(rejectedItem(refused)).toBeUndefined();
+    expect(rejectedRow(refused)).toBeUndefined();
   });
 
   /**
@@ -246,7 +246,7 @@ describe('the delete-side contract this design rests on, against real AWS', () =
       expect(refused.name).toBe('ConditionalCheckFailedException');
       // And the refusal still carries the row, so the "already gone" versus
       // "rewritten since the read" decode above holds for the inner miss too.
-      expect(rejectedItem(refused)).toEqual(row);
+      expect(rejectedRow(refused)).toEqual(row);
     }
   });
 });

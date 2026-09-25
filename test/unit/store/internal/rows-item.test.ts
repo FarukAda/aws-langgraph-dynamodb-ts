@@ -2,7 +2,7 @@ import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { buildStoreItem, parseStoreRow, readStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow, parseStoreRow, readStoreItem } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 
 function context(): StoreContext {
@@ -19,7 +19,7 @@ function context(): StoreContext {
 
 describe('store rows: item', () => {
   it('builds a record with keys, namespace, timestamps, and round-trips the value', async () => {
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       context(),
       { namespace: ['users', 'u1'], key: 'profile' },
       { name: 'Faruk' },
@@ -49,7 +49,7 @@ describe('store rows: item', () => {
   });
 
   it('stores embedding and ttl when provided', async () => {
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       context(),
       { namespace: ['n'], key: 'k' },
       { a: 1 },
@@ -80,7 +80,7 @@ describe('store rows: item', () => {
       } as never,
     };
     const build = (rev?: string) =>
-      buildStoreItem(
+      buildStoreRow(
         ctx,
         { namespace: ['n'], key: 'k' },
         { a: 1 },
@@ -189,9 +189,9 @@ describe('parseStoreRow refuses a row from a newer format version', () => {
   });
 });
 
-describe('buildStoreItem stamps the row format version', () => {
+describe('buildStoreRow stamps the row format version', () => {
   it('writes v on every item', async () => {
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       { serde: JSON_SERDE } as never,
       { namespace: ['n'], key: 'k' },
       { a: 1 },

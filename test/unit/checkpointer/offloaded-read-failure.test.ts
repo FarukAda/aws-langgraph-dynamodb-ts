@@ -5,11 +5,11 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { assembleTuple } from '../../../src/checkpointer/internal/read';
-import type { CheckpointMetaItem } from '../../../src/checkpointer/internal/rows';
+import type { CheckpointMetaRow } from '../../../src/checkpointer/internal/rows';
 import { setUpCheckpointer } from '../../../src/checkpointer/internal/setup';
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { isMissingObjectError } from '../../../src/shared/codec/codec';
-import type { DocItem } from '../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import {
@@ -109,9 +109,9 @@ function stubS3(failure?: Failure): void {
 
 /** The rows one checkpoint and one pending write commit. */
 interface Rows {
-  meta: CheckpointMetaItem;
-  payload: DocItem;
-  writes: DocItem[];
+  meta: CheckpointMetaRow;
+  payload: AttributeMap;
+  writes: AttributeMap[];
 }
 
 /**
@@ -127,9 +127,10 @@ async function seed(): Promise<Rows> {
   await saver.put(THREAD, checkpoint, metadata);
   await saver.putWrites(CHECKPOINT, [['messages', 'x']], 'task-1');
   const rows = committedRows(mock);
-  const at = (prefix: string): DocItem[] => rows.filter((row) => String(row.SK).startsWith(prefix));
+  const at = (prefix: string): AttributeMap[] =>
+    rows.filter((row) => String(row.SK).startsWith(prefix));
   return {
-    meta: at('META#')[0] as CheckpointMetaItem,
+    meta: at('META#')[0] as CheckpointMetaRow,
     payload: at('PAYLOAD#')[0],
     writes: at('WRITE#'),
   };
@@ -148,13 +149,13 @@ function keyOf(descriptor: unknown): string {
 
 /** Serve `rows` back to every read a tuple assembly makes. */
 function serveRows(mock: ReturnType<typeof createStrictDocumentMock>['mock'], rows: Rows): void {
-  mock.on(QueryCommand).callsFake((input: { ExpressionAttributeValues: DocItem }) => {
+  mock.on(QueryCommand).callsFake((input: { ExpressionAttributeValues: AttributeMap }) => {
     const prefix = String(input.ExpressionAttributeValues[':skPrefix']);
     return prefix.startsWith('META') ? { Items: [rows.meta] } : { Items: rows.writes };
   });
   mock
     .on(GetCommand)
-    .callsFake((input: { Key: DocItem }) =>
+    .callsFake((input: { Key: AttributeMap }) =>
       String(input.Key.SK).startsWith('META') ? { Item: rows.meta } : { Item: rows.payload },
     );
 }

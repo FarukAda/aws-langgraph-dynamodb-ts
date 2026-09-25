@@ -7,13 +7,13 @@ import type {
 
 import { listCheckpoints } from '../../../../src/checkpointer/actions/list';
 import type {
-  CheckpointMetaItem,
-  CheckpointPayloadItem,
+  CheckpointMetaRow,
+  CheckpointPayloadRow,
 } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import {
   LIST_SCAN_WARN_THRESHOLD,
-  MAX_TOTAL_ITEMS_IN_MEMORY,
+  MAX_TOTAL_ROWS_IN_MEMORY,
 } from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -68,16 +68,16 @@ describe('listCheckpoints', () => {
       step: 1,
       parents: {},
     });
-    const metas: Record<string, CheckpointMetaItem> = { c2: a.meta, c1: b.meta };
-    const payloads: Record<string, CheckpointPayloadItem> = { c2: a.payload, c1: b.payload };
+    const metas: Record<string, CheckpointMetaRow> = { c2: a.meta, c1: b.meta };
+    const payloads: Record<string, CheckpointPayloadRow> = { c2: a.payload, c1: b.payload };
     return { metas, payloads };
   }
 
   function wire(
     mock: ReturnType<typeof createStrictDocumentMock>['mock'],
     data: {
-      metas: Record<string, CheckpointMetaItem>;
-      payloads: Record<string, CheckpointPayloadItem>;
+      metas: Record<string, CheckpointMetaRow>;
+      payloads: Record<string, CheckpointPayloadRow>;
     },
   ) {
     mock.on(QueryCommand).callsFake((input) => {
@@ -101,7 +101,7 @@ describe('listCheckpoints', () => {
     const { metas } = await fixtures(client);
     const template = metas.c2;
     mock.on(QueryCommand).resolves({
-      Items: Array.from({ length: MAX_TOTAL_ITEMS_IN_MEMORY + 1 }, (_, i) => ({
+      Items: Array.from({ length: MAX_TOTAL_ROWS_IN_MEMORY + 1 }, (_, i) => ({
         ...template,
         SK: `META##c${i}`,
         checkpointId: `c${i}`,

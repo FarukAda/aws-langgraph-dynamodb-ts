@@ -1,9 +1,9 @@
 import {
-  type CheckpointWriteItem,
+  type CheckpointWriteRow,
   dropSupersededWrites,
 } from '../../../../src/checkpointer/internal/rows';
 
-function row(writeGroup: string | undefined, value: string): CheckpointWriteItem {
+function row(writeGroup: string | undefined, value: string): CheckpointWriteRow {
   return {
     PK: 'CHKPT#t',
     SK: `WRITE#ns#c1#task#0000000008#ch`,
@@ -13,7 +13,7 @@ function row(writeGroup: string | undefined, value: string): CheckpointWriteItem
     occurrence: 0,
     value: { location: 'INLINE', serdeType: 'json', compressed: false, bytes: Buffer.from(value) },
     ...(writeGroup === undefined ? {} : { writeGroup }),
-  } as CheckpointWriteItem;
+  } as CheckpointWriteRow;
 }
 
 describe('dropSupersededWrites across an upgrade', () => {

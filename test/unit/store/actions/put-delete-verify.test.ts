@@ -114,7 +114,7 @@ describe('deleteStoreItem ambiguous-failure verification', () => {
  * both the put and the read deleted record.value out from under a row that may
  * well be live. Only a *confirmed* non-commit may delete the new upload.
  */
-describe('persistRecord ambiguous-failure verification', () => {
+describe('persistRow ambiguous-failure verification', () => {
   it('does not delete the new S3 object when the verification read cannot answer', async () => {
     const { client, mock } = createStrictDocumentMock();
     // readExisting succeeds (no previous row); the put exhausts its retries,
@@ -231,7 +231,7 @@ describe('deleteStoreItem releases the object its own observation named', () => 
   });
 });
 
-describe('persistRecord verifies an ambiguous inline overwrite by rev', () => {
+describe('persistRow verifies an ambiguous inline overwrite by rev', () => {
   it('reports success and cleans up the previous offloaded object when the inline put actually landed', async () => {
     const { client, mock } = createStrictDocumentMock();
     let rev: string | undefined;

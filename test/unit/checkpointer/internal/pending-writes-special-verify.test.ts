@@ -5,7 +5,7 @@ import {
   specialRowProbe,
   verifyAfterFailure,
 } from '../../../../src/checkpointer/internal/pending-writes';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
+import type { CheckpointWriteRow } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -27,7 +27,7 @@ const descriptor = {
   compressed: false,
 } as never as import('../../../../src/shared/codec/codec').PayloadDescriptor;
 
-const item = (over: Partial<CheckpointWriteItem> = {}): CheckpointWriteItem =>
+const item = (over: Partial<CheckpointWriteRow> = {}): CheckpointWriteRow =>
   ({
     PK: 'CHKPT#t',
     SK: 'WRITE##c1#task-1#-0000000001#__interrupt__',
@@ -36,7 +36,7 @@ const item = (over: Partial<CheckpointWriteItem> = {}): CheckpointWriteItem =>
     writeGroup: 'group-a',
     value: descriptor,
     ...over,
-  }) as CheckpointWriteItem;
+  }) as CheckpointWriteRow;
 
 /**
  * A cancellation carrying the row that turned the write away, in the

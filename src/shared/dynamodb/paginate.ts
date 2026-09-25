@@ -12,14 +12,14 @@ import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb'
 
 import { resultTruncatedError, validationError } from '../errors/errors';
 import { abortErrorFrom } from './abort';
-import type { DynamoDBDocumentLike, DocItem } from './client';
+import type { DynamoDBDocumentLike, AttributeMap } from './client';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
 
 /** Hard cap on query-pagination loop iterations (runaway-loop guard). */
 export const MAX_LOOP_ITERATIONS = 1000;
 
 /** Hard cap on items collected into memory across a paginated query. */
-export const MAX_TOTAL_ITEMS_IN_MEMORY = 10000;
+export const MAX_TOTAL_ROWS_IN_MEMORY = 10000;
 
 /**
  * Raw rows a single `listCheckpoints` call may pull before it warns. The read
@@ -31,7 +31,7 @@ export const MAX_TOTAL_ITEMS_IN_MEMORY = 10000;
  *
  * Its own literal, deliberately: this is the point at which a scan is worth
  * telling an operator about, which is independent of
- * {@link MAX_TOTAL_ITEMS_IN_MEMORY}'s hard collection cap. Aliasing the two
+ * {@link MAX_TOTAL_ROWS_IN_MEMORY}'s hard collection cap. Aliasing the two
  * meant retuning the memory cap silently moved the warning as well, and it
  * left the pair reported as a duplicate export.
  */
@@ -57,7 +57,7 @@ export interface PaginateOptions extends PaginateCoreOptions {
  * Throws: whatever the page read throws, plus the caps and abort behaviour of
  * {@link paginatePages}.
  */
-export function paginateQuery(options: PaginateOptions): AsyncGenerator<DocItem> {
+export function paginateQuery(options: PaginateOptions): AsyncGenerator<AttributeMap> {
   return paginatePages(async (startKey) => {
     const page = await withDynamoDBRetry(
       (request) =>
@@ -65,16 +65,16 @@ export function paginateQuery(options: PaginateOptions): AsyncGenerator<DocItem>
       { ...options.retry, signal: options.signal },
     );
     return {
-      items: (page.Items as DocItem[] | undefined) ?? [],
-      lastKey: page.LastEvaluatedKey as DocItem | undefined,
+      items: (page.Items as AttributeMap[] | undefined) ?? [],
+      lastKey: page.LastEvaluatedKey as AttributeMap | undefined,
     };
   }, options);
 }
 
 /** One page of results plus the key to resume from (undefined when exhausted). */
 export interface PageResult {
-  items: DocItem[];
-  lastKey: DocItem | undefined;
+  items: AttributeMap[];
+  lastKey: AttributeMap | undefined;
 }
 
 /** Options shared by the paginators built on {@link paginatePages}. */
@@ -88,14 +88,14 @@ export interface PaginateCoreOptions {
 
 /** A page reader plus the fetch budget every page, probe included, is charged against. */
 interface Reader {
-  fetchPage: (startKey: DocItem | undefined) => Promise<PageResult>;
+  fetchPage: (startKey: AttributeMap | undefined) => Promise<PageResult>;
   maxIterations: number;
   iterations: number;
   signal?: AbortSignal;
 }
 
 /** Read the next page, honouring the abort signal and the iteration cap first. */
-async function readPage(reader: Reader, startKey: DocItem | undefined): Promise<PageResult> {
+async function readPage(reader: Reader, startKey: AttributeMap | undefined): Promise<PageResult> {
   if (reader.iterations >= reader.maxIterations) {
     throw resultTruncatedError('maxIterations', reader.maxIterations);
   }
@@ -104,7 +104,7 @@ async function readPage(reader: Reader, startKey: DocItem | undefined): Promise<
   return reader.fetchPage(startKey);
 }
 
-/** Why {@link yieldPageItems} stopped: the page ran out, or the item cap was reached. */
+/** Why {@link yieldPageRows} stopped: the page ran out, or the item cap was reached. */
 type PageOutcome = 'exhausted' | 'capped';
 
 /**
@@ -116,11 +116,11 @@ type PageOutcome = 'exhausted' | 'capped';
  * to it with `yield*` from inside its own `async function*`, so the items it
  * yields still reach callers through the same async-generator protocol.
  */
-function* yieldPageItems(
+function* yieldPageRows(
   page: PageResult,
   state: { yielded: number },
   maxItems: number,
-): Generator<DocItem, PageOutcome> {
+): Generator<AttributeMap, PageOutcome> {
   for (let index = 0; index < page.items.length; index++) {
     yield page.items[index];
     state.yielded += 1;
@@ -140,7 +140,7 @@ function* yieldPageItems(
  * they run out (the result was complete). The probe is charged against the same
  * iteration budget and honours the same signal as the read itself.
  */
-async function dataRemains(reader: Reader, startKey: DocItem | undefined): Promise<boolean> {
+async function dataRemains(reader: Reader, startKey: AttributeMap | undefined): Promise<boolean> {
   let key = startKey;
   while (key !== undefined) {
     const page = await readPage(reader, key);
@@ -166,7 +166,7 @@ function assertPositiveCap(value: number, field: string): number {
  *
  * Accepts: `fetchPage` — performs one page read from a start key.
  * `options.maxItems` — how many items may be yielded, default
- * {@link MAX_TOTAL_ITEMS_IN_MEMORY}. `options.maxIterations` — how many page
+ * {@link MAX_TOTAL_ROWS_IN_MEMORY}. `options.maxIterations` — how many page
  * reads may be issued, default {@link MAX_LOOP_ITERATIONS}; the probe below is
  * charged against it too. Both accept `Infinity` to read to true completion
  * (deletes do), and both must otherwise be at least 1 — an accepted cap of 0
@@ -187,10 +187,10 @@ function assertPositiveCap(value: number, field: string): number {
  * (truncated) or they run out (the result was complete).
  */
 export async function* paginatePages(
-  fetchPage: (startKey: DocItem | undefined) => Promise<PageResult>,
+  fetchPage: (startKey: AttributeMap | undefined) => Promise<PageResult>,
   options: PaginateCoreOptions = {},
-): AsyncGenerator<DocItem> {
-  const maxItems = assertPositiveCap(options.maxItems ?? MAX_TOTAL_ITEMS_IN_MEMORY, 'maxItems');
+): AsyncGenerator<AttributeMap> {
+  const maxItems = assertPositiveCap(options.maxItems ?? MAX_TOTAL_ROWS_IN_MEMORY, 'maxItems');
   const reader: Reader = {
     fetchPage,
     maxIterations: assertPositiveCap(options.maxIterations ?? MAX_LOOP_ITERATIONS, 'maxIterations'),
@@ -198,10 +198,10 @@ export async function* paginatePages(
     signal: options.signal,
   };
   const state = { yielded: 0 };
-  let startKey: DocItem | undefined;
+  let startKey: AttributeMap | undefined;
   for (;;) {
     const page = await readPage(reader, startKey);
-    const outcome = yield* yieldPageItems(page, state, maxItems);
+    const outcome = yield* yieldPageRows(page, state, maxItems);
     if (outcome === 'capped') {
       if (await dataRemains(reader, page.lastKey)) throw resultTruncatedError('maxItems', maxItems);
       return;
@@ -231,15 +231,15 @@ export interface ScanOptions extends PaginateCoreOptions {
  * allowed to call this are fixed and guarded; `test/static/guards/scan-sites.ts`
  * lists them and states the rule they follow.
  */
-export function paginateScan(options: ScanOptions): AsyncGenerator<DocItem> {
+export function paginateScan(options: ScanOptions): AsyncGenerator<AttributeMap> {
   return paginatePages(async (startKey) => {
     const page = await withDynamoDBRetry(
       (request) => options.client.scan({ ...options.params, ExclusiveStartKey: startKey }, request),
       { ...options.retry, signal: options.signal },
     );
     return {
-      items: (page.Items as DocItem[] | undefined) ?? [],
-      lastKey: page.LastEvaluatedKey as DocItem | undefined,
+      items: (page.Items as AttributeMap[] | undefined) ?? [],
+      lastKey: page.LastEvaluatedKey as AttributeMap | undefined,
     };
   }, options);
 }

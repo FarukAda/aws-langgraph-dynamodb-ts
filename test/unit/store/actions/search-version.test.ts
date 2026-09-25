@@ -4,7 +4,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
-import { buildStoreItem, type StoreItemRecord } from '../../../../src/store/internal/rows';
+import { buildStoreRow, type StoreItemRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -22,8 +22,8 @@ function context(client: StoreContext['client']): StoreContext {
 }
 
 /** One healthy item of this release's, built the way a put builds it. */
-async function item(ctx: StoreContext, key: string): Promise<StoreItemRecord> {
-  return buildStoreItem(
+async function item(ctx: StoreContext, key: string): Promise<StoreItemRow> {
+  return buildStoreRow(
     ctx,
     { namespace: ['users', 'u1'], key },
     { kind: 'note' },

@@ -2,7 +2,7 @@ import { PutCommand } from '@aws-sdk/lib-dynamodb';
 
 import { parseThreadId } from '../../../../src/checkpointer/internal/parse';
 import { commitPendingWrites } from '../../../../src/checkpointer/internal/pending-writes';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
+import type { CheckpointWriteRow } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -13,7 +13,7 @@ const serde = {
   loadsTyped: (): Promise<unknown> => Promise.resolve({}),
 };
 
-const row = (index: number, channel: string): CheckpointWriteItem => ({
+const row = (index: number, channel: string): CheckpointWriteRow => ({
   PK: 'CHKPT#t',
   SK: `WRITE#ns#c1#task#${index}#${channel}`,
   taskId: 'task',

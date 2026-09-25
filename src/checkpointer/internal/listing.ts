@@ -14,7 +14,7 @@ import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb'
 import type { CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
 import { DEFAULT_INDEX_SHARDS, iterateRecencyIndex } from '../../shared/dynamodb/recency-index';
 import { retryFor } from '../../shared/dynamodb/retry';
@@ -29,7 +29,7 @@ import type { FilterValue, ListScope, ThreadId } from './parse';
 import {
   beginsWithQuery,
   checkpointerPartitionPrefix,
-  type CheckpointMetaItem,
+  type CheckpointMetaRow,
   metaAnyNamespacePrefix,
   metaSortKey,
   metaSortKeyPrefix,
@@ -119,7 +119,7 @@ export function listScan(context: CheckpointerContext, scope: ListScope): ScanCo
  *
  * Throws: nothing.
  */
-export function passesKeyFilters(meta: CheckpointMetaItem, scope: ListScope): boolean {
+export function passesKeyFilters(meta: CheckpointMetaRow, scope: ListScope): boolean {
   return (
     (scope.before === undefined || compareSortKeys(meta.checkpointId, scope.before) < 0) &&
     (scope.checkpointNs === undefined || meta.checkpointNs === scope.checkpointNs) &&
@@ -147,7 +147,7 @@ export type MetadataVerdict = { pass: false } | { pass: true; metadata?: Checkpo
  */
 export async function passesMetadataFilter(
   context: CheckpointerContext,
-  meta: CheckpointMetaItem,
+  meta: CheckpointMetaRow,
   scope: ListScope,
 ): Promise<MetadataVerdict> {
   if (!scope.filter) return { pass: true };
@@ -172,7 +172,7 @@ function threadlessRows(
   context: CheckpointerContext,
   scope: ListScope,
   now: number,
-): AsyncGenerator<DocItem> {
+): AsyncGenerator<AttributeMap> {
   if (context.indexName === undefined) {
     return paginateScan({
       retry: retryFor(context, scope.signal),
@@ -219,7 +219,7 @@ export function metaRows(
   context: CheckpointerContext,
   scope: ListScope,
   now: number,
-): AsyncGenerator<DocItem> {
+): AsyncGenerator<AttributeMap> {
   const retry = retryFor(context, scope.signal);
   const bounds = { maxItems: Number.POSITIVE_INFINITY, maxIterations: Number.POSITIVE_INFINITY };
   return scope.threadId === undefined
@@ -249,8 +249,8 @@ export function metaRows(
  */
 export function parseListedRow(
   context: CheckpointerContext,
-  raw: DocItem,
-): CheckpointMetaItem | undefined {
+  raw: AttributeMap,
+): CheckpointMetaRow | undefined {
   const meta = parseMetaRow(raw);
   if (!meta) {
     context.logger.warn('list: skipped a row that is not a checkpoint meta item', {
