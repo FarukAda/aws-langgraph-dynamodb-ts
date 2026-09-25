@@ -1,3 +1,14 @@
+/**
+ * Hides the rules chat-history input must meet before anything reads it.
+ *
+ * A session id, an append's messages, a read window and the listing options
+ * are each parsed once into a type only this module can build (record 21), so
+ * an action that holds one never checks it again. Which messages may be
+ * stored is decided by the read side's own rebuild, so write and read agree
+ * by construction, and which instants a `before` may name follows from the
+ * range a message id can express.
+ */
+
 import {
   type BaseMessage,
   mapChatMessagesToStoredMessages,

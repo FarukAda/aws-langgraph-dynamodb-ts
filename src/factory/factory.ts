@@ -1,3 +1,14 @@
+/**
+ * Hides how several adapters share one client and one set of defaults.
+ *
+ * A caller states its defaults once; which adapter gets the base client
+ * choice and which its own, how the DynamoDB region reaches a shared `s3`
+ * config, and who destroys a client the factory built rather than was handed
+ * are decided here. Teardown is total — one adapter failing to release cannot
+ * strand the others — and a `createAll` that fails partway releases what it
+ * had built before its own error propagates.
+ */
+
 import { DynamoDBSaver } from '../checkpointer/saver';
 import type { DynamoDBSaverOptions } from '../checkpointer/types';
 import { DynamoDBChatMessageHistory } from '../history/chat-message-history';

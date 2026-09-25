@@ -1,3 +1,18 @@
+/**
+ * AWS DynamoDB implementation of LangGraph's checkpoint saver, memory store
+ * and chat message history, in TypeScript.
+ *
+ * Hides where anything lives.
+ *
+ * This module re-exports and declares nothing of its own, so which module
+ * holds an adapter, the factory, the error class, the serializer or a
+ * collaborator type is free to change without moving anything a caller
+ * imports. What appears here is the whole supported surface; the package's
+ * exports map admits no deep import, so nothing else is reachable.
+ *
+ * @packageDocumentation
+ */
+
 export { DynamoDBSaver } from './checkpointer/saver';
 export type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './checkpointer/types';
 export { DynamoDBStore } from './store/store';

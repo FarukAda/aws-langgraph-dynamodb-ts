@@ -1,3 +1,13 @@
+/**
+ * Hides what deleting a thread means for the checkpointer's rows.
+ *
+ * The partition delete itself is shared; what is decided here is which rows of
+ * a thread's partition are the checkpointer's to remove, which objects each one
+ * names, and which write id pins each delete, so a checkpoint or a pending
+ * write rewritten after the read is left alone. A caller names a thread and
+ * never learns the row kinds, their sort keys or how a refusal is counted.
+ */
+
 import { deletePartitionRows } from '../../shared/dynamodb/partition-delete';
 import { retryFor } from '../../shared/dynamodb/retry';
 import { parseThreadId } from '../internal/parse';

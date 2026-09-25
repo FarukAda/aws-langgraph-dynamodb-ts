@@ -1,3 +1,14 @@
+/**
+ * Hides that chat history is a set of actions behind one error boundary.
+ *
+ * The public class holds only what it resolved from its options and routes
+ * each method to the action that implements it, through `guardPublic`, so no
+ * error but the library's own reaches a caller (record 13). Where an action
+ * lives, how it reads or writes, and which client or offloader it uses can
+ * change without touching this surface; `forSession` is the one route from it
+ * to LangChain's single-session history.
+ */
+
 import type { BaseMessage } from '@langchain/core/messages';
 
 import type { AdapterShell } from '../shared/adapter';

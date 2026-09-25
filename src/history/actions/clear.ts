@@ -1,3 +1,15 @@
+/**
+ * Hides which rows a clear may delete.
+ *
+ * A clear removes only what the partition read observed and this adapter
+ * wrote, each row pinned to the write id it was read with, and reaches a
+ * message's offloaded payload through the attribute that holds it. A caller
+ * asks for a session to go and never decides that a foreign row, or one a
+ * concurrent append rewrote, is left in place and reported rather than
+ * deleted; the paging, the per-row deletes and the S3 cleanup are the shared
+ * partition delete's.
+ */
+
 import type { AttributeMap } from '../../shared/dynamodb/client';
 import { WRITE_ID_ATTRIBUTE } from '../../shared/dynamodb/idempotent-write';
 import {

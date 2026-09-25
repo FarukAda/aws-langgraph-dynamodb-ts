@@ -1,3 +1,14 @@
+/**
+ * Hides what it takes for a checkpoint to land exactly once.
+ *
+ * The META and PAYLOAD rows go out as one transaction under a request token
+ * drawn once, and a failure with S3 offload configured is read back before
+ * any upload is released, so a lost acknowledgement reports success and only a
+ * confirmed non-commit cleans up (record 6). Every channel value is stored
+ * whatever `newVersions` says (record 10). A caller gets back the config that
+ * addresses the stored checkpoint and none of this.
+ */
+
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type {
   ChannelVersions,

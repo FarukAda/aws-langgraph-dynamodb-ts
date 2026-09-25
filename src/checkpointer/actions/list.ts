@@ -1,3 +1,14 @@
+/**
+ * Hides when a listing reads, and when it stops.
+ *
+ * A `limit` of `0` is answered before any request is built, a config that
+ * pins one checkpoint in a known namespace is a single direct read rather than
+ * a range, and every other listing streams tuples until the caller stops
+ * pulling or `limit` is reached. The read is deliberately unbounded and
+ * eventually consistent; past a threshold an operator is warned instead of the
+ * caller being refused. Where the rows come from is `listing`'s concern.
+ */
+
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 

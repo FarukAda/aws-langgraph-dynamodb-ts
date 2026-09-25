@@ -1,3 +1,14 @@
+/**
+ * Hides whether a listing reads the recency index or scans the table.
+ *
+ * With a configured `indexName` a listing is a cursor-paged, newest-first
+ * merge of the index shards; without one it is a filtered scan sorted in
+ * memory, with no cursor (record 8). A caller passes the same options and gets
+ * the same `SessionPage` either way: `limit` is the newest N on both paths,
+ * `0` reads neither, and the same rule summarises each session and drops the
+ * expired, foreign and malformed ones.
+ */
+
 import { nowSeconds } from '../../shared/clock';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency';
 import { paginateScan } from '../../shared/dynamodb/paginate';

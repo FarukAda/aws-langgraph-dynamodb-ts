@@ -1,3 +1,13 @@
+/**
+ * Hides the saver's own modules from the shapes a caller types against.
+ *
+ * The saver's options, the options its delta-channel walk accepts and the
+ * narrowed `configurable` it reads are declared here, apart from the saver and
+ * its actions, so a caller can type what it builds without importing either.
+ * The delta-channel options are pinned equal to upstream's inline parameter
+ * type, so they change only when LangGraph's do.
+ */
+
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 

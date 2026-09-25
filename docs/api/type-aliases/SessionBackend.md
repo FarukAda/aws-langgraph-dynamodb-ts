@@ -8,7 +8,7 @@
 
 > **SessionBackend** = [`MultiSessionHistory`](../interfaces/MultiSessionHistory.md)
 
-Defined in: [history/session-adapter.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L35)
+Defined in: [history/session-adapter.ts:45](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L45)
 
 The earlier name of [MultiSessionHistory](../interfaces/MultiSessionHistory.md), the same type.
 

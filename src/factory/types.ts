@@ -1,3 +1,12 @@
+/**
+ * Hides how the factory's options are typed by what a caller asks for.
+ *
+ * The defaults every adapter inherits, the per-adapter sections of `createAll`
+ * without the shared client's fields, and a result whose adapters are typed
+ * `undefined` for each section left out are declared here, so a caller's
+ * compiler knows which adapters it got without a runtime check.
+ */
+
 import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 
 import type { DynamoDBSaver } from '../checkpointer/saver';

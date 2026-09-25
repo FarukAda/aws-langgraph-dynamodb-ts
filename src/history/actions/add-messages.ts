@@ -1,3 +1,14 @@
+/**
+ * Hides what an append settles before its first write.
+ *
+ * The session id and every message are parsed before anything is sent, so a
+ * message that could never be read back fails with its index and nothing
+ * stored; an empty list ends here, the no-op a turn without a message is; and
+ * with a ttl configured, the session's creation-anchored expiry is read first
+ * so every message of the append shares it. How the rows and the count are
+ * then written together is `appendMessages`' decision, not this module's.
+ */
+
 import type { BaseMessage } from '@langchain/core/messages';
 
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';

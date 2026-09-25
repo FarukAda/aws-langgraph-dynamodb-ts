@@ -8,7 +8,7 @@
 
 > **DynamoDBChatMessageHistoryOptions** = [`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md) & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
 
-Defined in: [history/types.ts:6](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L6)
+Defined in: [history/types.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L16)
 
 Options for [DynamoDBChatMessageHistory](../classes/DynamoDBChatMessageHistory.md).
 

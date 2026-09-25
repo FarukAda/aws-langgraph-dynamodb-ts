@@ -1,3 +1,13 @@
+/**
+ * Hides a multi-session history behind LangChain's single-session interface.
+ *
+ * `RunnableWithMessageHistory` wants a history bound to one conversation and
+ * calls it with no session id. This view fixes the session and the read window
+ * at construction, validates both there, and forwards each call to the
+ * multi-session history it wraps, through the same error boundary. The window
+ * bounds what a chain reads, never what is written or cleared.
+ */
+
 import { BaseListChatMessageHistory } from '@langchain/core/chat_history';
 import type { BaseMessage } from '@langchain/core/messages';
 

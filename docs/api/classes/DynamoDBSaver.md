@@ -6,7 +6,7 @@
 
 # Class: DynamoDBSaver
 
-Defined in: [checkpointer/saver.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L33)
+Defined in: [checkpointer/saver.ts:43](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L43)
 
 DynamoDB-backed LangGraph checkpoint saver. Every public method rejects only
 with this library's error, whose `code` says what failed — an AWS failure
@@ -22,7 +22,7 @@ included.
 
 > **new DynamoDBSaver**(`options`): `DynamoDBSaver`
 
-Defined in: [checkpointer/saver.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L51)
+Defined in: [checkpointer/saver.ts:61](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L61)
 
 Accepts: `options` — validated here, so a misconfiguration surfaces at
 construction rather than on the first request. `options.serde` reaches the
@@ -57,7 +57,7 @@ at module scope and in a Lambda's init phase.
 
 > **deleteThread**(`threadId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:239](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L239)
+Defined in: [checkpointer/saver.ts:249](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L249)
 
 Delete every checkpoint, payload and pending write of a thread.
 
@@ -110,7 +110,7 @@ no object this call could have released.
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/saver.ts:308](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L308)
+Defined in: [checkpointer/saver.ts:318](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L318)
 
 Release owned resources.
 
@@ -133,7 +133,7 @@ the one behind it.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:330](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L330)
+Defined in: [checkpointer/saver.ts:340](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L340)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded payloads don't outlive the items that point at them.
@@ -165,7 +165,7 @@ not per request.
 
 > **getDeltaChannelHistory**(`options`): `Promise`\<`Record`\<`string`, `DeltaChannelHistory`\>\>
 
-Defined in: [checkpointer/saver.ts:282](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L282)
+Defined in: [checkpointer/saver.ts:292](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L292)
 
 Walk a checkpoint's ancestors for the delta channels named, returning each
 channel's on-path writes oldest-first and its nearest stored value.
@@ -222,7 +222,7 @@ snapshot.
 
 > **getTuple**(`config`): `Promise`\<`CheckpointTuple` \| `undefined`\>
 
-Defined in: [checkpointer/saver.ts:90](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L90)
+Defined in: [checkpointer/saver.ts:100](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L100)
 
 Read one checkpoint with its metadata and pending writes.
 
@@ -275,7 +275,7 @@ seen.
 
 > **list**(`config`, `options?`): `AsyncGenerator`\<`CheckpointTuple`\>
 
-Defined in: [checkpointer/saver.ts:129](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L129)
+Defined in: [checkpointer/saver.ts:139](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L139)
 
 Stream checkpoints newest first.
 
@@ -338,7 +338,7 @@ yielded tuple (see the README cost table).
 
 > **put**(`config`, `checkpoint`, `metadata`, `newVersions?`): `Promise`\<`RunnableConfig`\<`Record`\<`string`, `any`\>\>\>
 
-Defined in: [checkpointer/saver.ts:162](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L162)
+Defined in: [checkpointer/saver.ts:172](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L172)
 
 Store a checkpoint and its metadata in one transaction.
 
@@ -400,7 +400,7 @@ rows named are not deleted with them: they are left to the lifecycle rule
 
 > **putWrites**(`config`, `writes`, `taskId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:205](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L205)
+Defined in: [checkpointer/saver.ts:215](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L215)
 
 Store a task's pending writes for the checkpoint `config` names.
 

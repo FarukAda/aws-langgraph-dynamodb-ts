@@ -1,3 +1,14 @@
+/**
+ * Hides the rules a checkpointer's caller input is held to.
+ *
+ * Every config, option and identifier an action accepts is parsed here once
+ * into a branded type only these parsers can build (record 21), so code
+ * downstream asks for a `ThreadId` or a `PutWritesRequest` and never checks it
+ * again. Which markers mean "no id", how the legacy `thread_ts` alias
+ * resolves, which field a refusal names and in what order the checks run are
+ * all settled here and nowhere else.
+ */
+
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type {
   Checkpoint,

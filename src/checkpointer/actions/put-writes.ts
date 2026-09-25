@@ -1,3 +1,14 @@
+/**
+ * Hides how one `putWrites` call's rows are known to be one call's.
+ *
+ * Every call draws a write group from a strictly monotonic ULID factory, and
+ * that one id serves three ends: the object id each offloaded write is uploaded
+ * under (record 4), the owner a guard rejection is compared against to tell a
+ * rival call from this call's own retry, and the order the read side uses to
+ * pick the earliest call that wrote a channel. A caller passes writes and a
+ * task id and never sees the group.
+ */
+
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
