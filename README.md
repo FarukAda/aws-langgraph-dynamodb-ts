@@ -274,9 +274,13 @@ const agent = new StateGraph(MessagesAnnotation)
 
 const thread = { configurable: { thread_id: 'user-42' } };
 
-// The newest checkpoint of the thread.
+// Resume: the graph starts from the thread's newest checkpoint in DynamoDB.
+await agent.invoke({ messages: [{ role: 'user', content: 'Where were we?' }] }, thread);
+
+// The newest checkpoint of the thread. A thread with no checkpoint reads as
+// { values: {}, next: [] }, so `messages` may be absent.
 const current = await agent.getState(thread);
-console.log(current.values.messages.length, current.next);
+console.log(current.values.messages?.length ?? 0, current.next);
 
 // Every checkpoint of the thread, newest first.
 for await (const snapshot of agent.getStateHistory(thread)) {
@@ -287,7 +291,7 @@ for await (const snapshot of agent.getStateHistory(thread)) {
 await saver.deleteThread('user-42');
 ```
 
-`getState` reads through `saver.getTuple`, which is strongly consistent, so a checkpoint just written is always seen; `getStateHistory` reads through `saver.list`, which is eventually consistent. `deleteThread` reads the thread's partition once and deletes what it saw, so run it when no graph is still writing to the thread ([Checkpointer semantics](#features)).
+`invoke` on an existing `thread_id` continues from its newest checkpoint; on an unknown one it starts empty, and `getState` of an unknown thread returns empty `values` rather than throwing. `getState` reads through `saver.getTuple`, which is strongly consistent, so a checkpoint just written is always seen; `getStateHistory` reads through `saver.list`, which is eventually consistent. `deleteThread` reads the thread's partition once and deletes what it saw, so run it when no graph is still writing to the thread ([Checkpointer semantics](#features)).
 
 ### Long-term memory with semantic search
 
@@ -351,7 +355,10 @@ import {
 import { randomUUID } from 'node:crypto';
 
 async function respond(state: typeof MessagesAnnotation.State, config: LangGraphRunnableConfig) {
-  const userId = String(config.configurable?.user_id);
+  const userId: unknown = config.configurable?.user_id;
+  if (typeof userId !== 'string' || userId === '') {
+    throw new Error('configurable.user_id is required: memories are namespaced per user');
+  }
   const query = String(state.messages.at(-1)?.content ?? '');
 
   const memories = (await config.store?.search(['memories', userId], { query, limit: 3 })) ?? [];
@@ -361,6 +368,7 @@ async function respond(state: typeof MessagesAnnotation.State, config: LangGraph
     new SystemMessage(`What you know about this user:\n${recalled}`),
     ...state.messages,
   ]);
+  // Stored verbatim to keep the sample short; a real app would extract facts first.
   await config.store?.put(['memories', userId], randomUUID(), { text: query });
   return { messages: [reply] };
 }
@@ -501,7 +509,7 @@ await saver.ensureS3LifecycleRule(); // once, from a deployment step
 saver.destroy();
 ```
 
-Compression gzips a payload of at least 1024 bytes at level 6 and keeps the gzipped form only when it is at least 10% smaller. A stored payload of at least 350 KB goes to S3 under the saver's own prefix, `langgraph-checkpoints/checkpointer/`, and the row keeps a descriptor pointing at it; without `s3`, a payload over 392 KB is refused. The S3 client inherits the DynamoDB `clientConfig.region` unless `s3.clientConfig.region` names another, and it needs the optional `@aws-sdk/client-s3` peer. `ensureS3LifecycleRule()` installs the rules that expire offloaded objects to match the `ttl`; it throws when it cannot write them, so it belongs in a deployment step ([S3 lifecycle rules](#s3-lifecycle-rules), [S3 offloading](#features)).
+Compression gzips a payload of at least 1024 bytes at level 6 and keeps the gzipped form only when it is more than 10% smaller. A stored payload of at least 350 KB goes to S3 under the saver's own prefix, `langgraph-checkpoints/checkpointer/`, and the row keeps a descriptor pointing at it; without `s3`, a payload over 392 KB is refused. The S3 client inherits the DynamoDB `clientConfig.region` unless `s3.clientConfig.region` names another, and it needs the optional `@aws-sdk/client-s3` peer. `ensureS3LifecycleRule()` installs the rules that expire offloaded objects to match the `ttl`; it throws when it cannot write them, so it belongs in a deployment step ([S3 lifecycle rules](#s3-lifecycle-rules), [S3 offloading](#features)).
 
 ### Expiry with TTL
 
@@ -525,7 +533,7 @@ store.destroy();
 history.destroy();
 ```
 
-`ttl` takes one form, `{ days }` or `{ seconds }`, capped at five years, and is written to the `ttl` attribute as Unix-epoch seconds; enable DynamoDB TTL on that attribute for rows to be deleted. DynamoDB can take up to about 48 hours to sweep an expired row, so every read filters rows past their `ttl` in the meantime. Chat history anchors one TTL for the whole conversation on its session row, set when the session is created and shared by every message ([TTL expiry](#features)).
+`ttl` takes one form, `{ days }` or `{ seconds }`, capped at five years, and is written to the `ttl` attribute as Unix-epoch seconds; enable DynamoDB TTL on that attribute for rows to be deleted. DynamoDB can take up to about 48 hours to sweep an expired row, so every read filters rows past their `ttl` in the meantime. Chat history anchors one TTL for the whole conversation on its session row, set when the session is created and shared by every message. Turning `ttl` on for a table that already holds sessions stamps the session row and every *new* message only: message rows written before keep no `ttl` and outlive their session, so clear or backfill those sessions ([TTL expiry](#features)).
 
 ### Bring your own DynamoDB client
 
@@ -552,7 +560,7 @@ The adapter takes a `DynamoDBDocument`, not a raw `DynamoDBClient`, and uses it 
 
 ### Cancellation and timeouts
 
-Use this to bound how long a request may wait on DynamoDB, or to stop work when the caller has gone away.
+Use this to bound how long a request may wait on DynamoDB, or to stop work when the caller has gone away. A signal passed to `invoke` bounds the whole run, the model calls included, so size it for the slowest turn you accept rather than for one DynamoDB request.
 
 ```typescript
 import { END, MessagesAnnotation, START, StateGraph } from '@langchain/langgraph';
@@ -565,7 +573,7 @@ const agent = new StateGraph(MessagesAnnotation)
   .compile({ checkpointer: saver });
 const thread = { configurable: { thread_id: 'user-42' } };
 
-const signal = AbortSignal.timeout(5_000);
+const signal = AbortSignal.timeout(30_000); // the whole turn: DynamoDB, S3 and the model
 try {
   const recent = await history.getMessages('session-1', { limit: 20, signal });
   await agent.invoke({ messages: [{ role: 'user', content: 'Hello' }] }, { ...thread, signal });
@@ -616,7 +624,7 @@ history.destroy();
 saver.destroy();
 ```
 
-A `cursor` requires `indexName` and is refused without it. Without `indexName`, `listSessions` is a table scan that cannot be paged: `{ limit: 50 }` returns the newest fifty, and omitting `limit` returns every session. Stop when `nextCursor` is absent, not when a page looks short — expired rows are dropped after the read. These listings cross tenants ([Multi-tenant deployments](#multi-tenant-deployments)), and `backfillRecencyIndex()` must run before `indexName` is set on a table that already holds rows ([Maintenance operations](#maintenance-operations)); the index definition is in [Infrastructure setup](#infrastructure-setup).
+A `cursor` requires `indexName` and is refused without it. Without `indexName`, `listSessions` is a table scan that cannot be paged: `{ limit: 50 }` returns the newest fifty, and omitting `limit` returns every session. That unpaged scan is still capped: past `maxItems` rows (default 10 000) or `maxIterations` pages (default 1000) it fails with `RESULT_TRUNCATED` rather than returning a partial list. Stop when `nextCursor` is absent, not when a page looks short — expired rows are dropped after the read. These listings cross tenants ([Multi-tenant deployments](#multi-tenant-deployments)), and `backfillRecencyIndex()` must run before `indexName` is set on a table that already holds rows ([Maintenance operations](#maintenance-operations)); the index definition is in [Infrastructure setup](#infrastructure-setup).
 
 ## Table schema
 
