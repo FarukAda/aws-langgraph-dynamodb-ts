@@ -58,6 +58,7 @@
     "docs": "typedoc",
     "docs:watch": "typedoc --watch",
     "check:docs": "node scripts/check-doc-samples.mjs",
+    "check:links": "node scripts/check-doc-links.mjs",
     "unused": "knip",
     "depcheck": "depcheck .",
     "peer-floors": "node scripts/peer-floors.mjs",
