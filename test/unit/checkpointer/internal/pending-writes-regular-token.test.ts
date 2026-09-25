@@ -1,13 +1,13 @@
-import { writeRegularItems } from '../../../../src/checkpointer/internal/pending-writes';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
+import { writeRegularRows } from '../../../../src/checkpointer/internal/pending-writes';
+import type { CheckpointWriteRow } from '../../../../src/checkpointer/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 
 /** The request a plain put takes, and the item shape a transaction wraps. */
 interface WriteInput {
   TableName: string;
-  Item: DocItem;
+  Item: AttributeMap;
   ConditionExpression?: string;
   ReturnValuesOnConditionCheckFailure?: string;
 }
@@ -41,7 +41,7 @@ const inline = () => ({
   bytes: new Uint8Array([1, 2, 3]),
 });
 
-const item = (writeGroup: string, value: CheckpointWriteItem['value']): CheckpointWriteItem => ({
+const item = (writeGroup: string, value: CheckpointWriteRow['value']): CheckpointWriteRow => ({
   PK: 'CHKPT#t',
   SK: `WRITE##c1#task#0000000008#ch-${writeGroup}`,
   taskId: 'task',
@@ -53,7 +53,7 @@ const item = (writeGroup: string, value: CheckpointWriteItem['value']): Checkpoi
 });
 
 /** The first-write-wins rejection as a one-item transaction reports it. */
-const cancelledGuard = (row?: DocItem) =>
+const cancelledGuard = (row?: AttributeMap) =>
   Object.assign(new Error('cancelled'), {
     name: 'TransactionCanceledException',
     CancellationReasons: [{ Code: 'ConditionalCheckFailed', ...(row ? { Item: row } : {}) }],
@@ -92,7 +92,7 @@ describe('an offloaded regular write goes out under a request token', () => {
     const { context, emitted } = recorder();
     const row = item('G1', offloaded('k/G1'));
 
-    await expect(writeRegularItems(context as never, [row])).resolves.toEqual({ deadUploads: [] });
+    await expect(writeRegularRows(context as never, [row])).resolves.toEqual({ deadUploads: [] });
 
     expect(emitted.map((entry) => entry.kind)).toEqual(['transact']);
     expect(emitted[0].items).toBe(1);
@@ -113,7 +113,7 @@ describe('an offloaded regular write goes out under a request token', () => {
       item('G3', offloaded('c')),
     ];
 
-    await writeRegularItems(context as never, rows);
+    await writeRegularRows(context as never, rows);
 
     expect(emitted).toHaveLength(3);
     expect(emitted.map((entry) => entry.items)).toEqual([1, 1, 1]);
@@ -127,7 +127,7 @@ describe('an inline regular write is left exactly as it was', () => {
     const { context, emitted } = recorder();
     const row = item('G1', inline());
 
-    await writeRegularItems(context as never, [row]);
+    await writeRegularRows(context as never, [row]);
 
     expect(emitted.map((entry) => entry.kind)).toEqual(['put']);
     expect(emitted[0].token).toBeUndefined();
@@ -148,7 +148,7 @@ describe('an inline regular write is left exactly as it was', () => {
   it('routes each item of a mixed fan-out on its own descriptor, not on the adapter', async () => {
     const { context, emitted } = recorder();
 
-    await writeRegularItems(context as never, [
+    await writeRegularRows(context as never, [
       item('G1', inline()),
       item('G2', offloaded('b')),
       item('G3', inline()),
@@ -165,7 +165,7 @@ describe('a first-write-wins rejection arriving as a cancelled transaction', () 
       cancelledGuard({ channel: { S: 'ch' }, writeGroup: { S: 'OTHER' } }),
     );
 
-    await expect(writeRegularItems(context as never, [row])).resolves.toEqual({
+    await expect(writeRegularRows(context as never, [row])).resolves.toEqual({
       deadUploads: [row],
     });
   });
@@ -176,7 +176,7 @@ describe('a first-write-wins rejection arriving as a cancelled transaction', () 
       cancelledGuard({ channel: { S: 'ch' }, writeGroup: { S: 'G1' } }),
     );
 
-    await expect(writeRegularItems(context as never, [row])).resolves.toEqual({ deadUploads: [] });
+    await expect(writeRegularRows(context as never, [row])).resolves.toEqual({ deadUploads: [] });
   });
 });
 
@@ -193,9 +193,9 @@ describe('a first-write-wins rejection arriving as a cancelled transaction', () 
  */
 function racedByADelete() {
   const applied = new Set<string>();
-  let row: DocItem | undefined;
+  let row: AttributeMap | undefined;
   let requests = 0;
-  const send = (written: DocItem, token?: string): Record<string, never> => {
+  const send = (written: AttributeMap, token?: string): Record<string, never> => {
     requests += 1;
     if (token !== undefined && applied.has(token)) return {};
     row = written;
@@ -223,7 +223,7 @@ describe('a lost acknowledgement whose retry re-lands', () => {
   it('leaves the row a concurrent delete removed deleted, when the payload was offloaded', async () => {
     const table = racedByADelete();
 
-    await writeRegularItems(table.context as never, [item('G1', offloaded('k/G1'))]);
+    await writeRegularRows(table.context as never, [item('G1', offloaded('k/G1'))]);
 
     expect(table.requests()).toBe(2);
     expect(table.survives()).toBe(false);
@@ -232,7 +232,7 @@ describe('a lost acknowledgement whose retry re-lands', () => {
   it('still resurrects an inline row, which is the outcome that has not changed', async () => {
     const table = racedByADelete();
 
-    await writeRegularItems(table.context as never, [item('G1', inline())]);
+    await writeRegularRows(table.context as never, [item('G1', inline())]);
 
     expect(table.requests()).toBe(2);
     expect(table.survives()).toBe(true);

@@ -14,7 +14,7 @@ import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb'
 import type { CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
 import { DEFAULT_INDEX_SHARDS, iterateRecencyIndex } from '../../shared/dynamodb/recency-index';
 import { retryFor } from '../../shared/dynamodb/retry';
@@ -29,11 +29,11 @@ import type { FilterValue, ListScope, ThreadId } from './parse';
 import {
   beginsWithQuery,
   checkpointerPartitionPrefix,
-  type CheckpointMetaItem,
+  type CheckpointMetaRow,
   metaAnyNamespacePrefix,
   metaSortKey,
   metaSortKeyPrefix,
-  narrowMetaItem,
+  parseMetaRow,
   partitionKey,
   readMetadata,
 } from './rows';
@@ -112,14 +112,14 @@ export function listScan(context: CheckpointerContext, scope: ListScope): ScanCo
  * "Older" is {@link compareSortKeys}, because on the query path the same bound
  * is already a `BETWEEN` on the composed sort key, which DynamoDB evaluates in
  * UTF-8 byte order. JavaScript's `<` orders UTF-16 code units instead, and at
- * an astral id the two disagree — which turned the redundant pass into a
- * second, different filter that dropped rows the query had rightly returned.
+ * an astral id the two disagree, so `<` here would turn the redundant pass
+ * into a second, different filter that drops rows the query rightly returned.
  * Every id in one namespace shares its sort key's prefix, so comparing the id
  * is comparing the sort key.
  *
  * Throws: nothing.
  */
-export function passesKeyFilters(meta: CheckpointMetaItem, scope: ListScope): boolean {
+export function passesKeyFilters(meta: CheckpointMetaRow, scope: ListScope): boolean {
   return (
     (scope.before === undefined || compareSortKeys(meta.checkpointId, scope.before) < 0) &&
     (scope.checkpointNs === undefined || meta.checkpointNs === scope.checkpointNs) &&
@@ -147,7 +147,7 @@ export type MetadataVerdict = { pass: false } | { pass: true; metadata?: Checkpo
  */
 export async function passesMetadataFilter(
   context: CheckpointerContext,
-  meta: CheckpointMetaItem,
+  meta: CheckpointMetaRow,
   scope: ListScope,
 ): Promise<MetadataVerdict> {
   if (!scope.filter) return { pass: true };
@@ -172,7 +172,7 @@ function threadlessRows(
   context: CheckpointerContext,
   scope: ListScope,
   now: number,
-): AsyncGenerator<DocItem> {
+): AsyncGenerator<AttributeMap> {
   if (context.indexName === undefined) {
     return paginateScan({
       retry: retryFor(context, scope.signal),
@@ -219,7 +219,7 @@ export function metaRows(
   context: CheckpointerContext,
   scope: ListScope,
   now: number,
-): AsyncGenerator<DocItem> {
+): AsyncGenerator<AttributeMap> {
   const retry = retryFor(context, scope.signal);
   const bounds = { maxItems: Number.POSITIVE_INFINITY, maxIterations: Number.POSITIVE_INFINITY };
   return scope.threadId === undefined
@@ -247,11 +247,11 @@ export function metaRows(
  * Guarantees: a foreign row is skipped, never assembled. Treating one as a
  * checkpoint would surface a tuple built from another adapter's data.
  */
-export function narrowOrWarn(
+export function parseListedRow(
   context: CheckpointerContext,
-  raw: DocItem,
-): CheckpointMetaItem | undefined {
-  const meta = narrowMetaItem(raw);
+  raw: AttributeMap,
+): CheckpointMetaRow | undefined {
+  const meta = parseMetaRow(raw);
   if (!meta) {
     context.logger.warn('list: skipped a row that is not a checkpoint meta item', {
       sortKey: truncateForLog(raw.SK as string),

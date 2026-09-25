@@ -140,7 +140,7 @@ describe('sleep leaves nothing pending when attaching the listener fails', () =>
   });
 });
 
-describe('sleep abort normalisation (DDB-05)', () => {
+describe('sleep abort normalisation', () => {
   it('rejects with the library ABORTED error while pending, keeping the raw reason as cause', async () => {
     const controller = new AbortController();
     const pending = sleep(10_000, controller.signal);

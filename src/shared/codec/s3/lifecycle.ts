@@ -310,10 +310,10 @@ export function markerRule(id: string, prefix: string, existing?: LifecycleRule)
  * `s3.keyPrefix` checked for shape and never for length.
  *
  * Guarantees: the scope is read wherever the rule names it, through the same
- * {@link scopeOf} the floor uses. Reading only `Filter.Prefix` let a rule in
- * the older schema through, and the rewrite then replaced its scope with this
- * one's — so the objects that rule governed silently lost their expiration,
- * and a bucket-wide rule was narrowed to this prefix.
+ * {@link scopeOf} the floor uses. Reading only `Filter.Prefix` would let a
+ * rule in the older schema through, and the rewrite would then replace its
+ * scope with this one's — so the objects that rule governs would silently
+ * lose their expiration, and a bucket-wide rule would narrow to this prefix.
  */
 export function assertNoIdCollision(
   rule: LifecycleRule | undefined,
@@ -397,26 +397,22 @@ export async function reportBucketVersioning(
   logger: Logger,
 ): Promise<void> {
   const { GetBucketVersioningCommand } = await loadS3Sdk();
-  /**
-   * `s3.bucketName` is checked for being a non-empty string and never for
-   * length, so it reaches these three lines as whatever the caller's options
-   * carried. It is quoted here as the identifier it is, cut at the log cap:
-   * the line's job is to say which bucket to go and look at, and the bucket
-   * holds the rest.
-   */
+  // `s3.bucketName` is checked for being a non-empty string and never for
+  // length, so it reaches these three lines as whatever the caller's options
+  // carried. It is quoted here as the identifier it is, cut at the log cap:
+  // the line's job is to say which bucket to go and look at, and the bucket
+  // holds the rest.
   const named = truncateForLog(bucket);
   let status: string | undefined;
   try {
     status = (await client.send(new GetBucketVersioningCommand({ Bucket: bucket }))).Status;
   } catch (error) {
-    /**
-     * The error's name, never its message, which can carry credential text —
-     * and read off a shape rather than an Error, because a client seam can
-     * reject with anything at all and this function promises not to throw. Cut
-     * like the bucket beside it: a name is a string the SDK or a client seam
-     * produced, `message` is already bounded where `redactedMessage` relays
-     * it, and the two are one value.
-     */
+    // The error's name, never its message, which can carry credential text —
+    // and read off a shape rather than an Error, because a client seam can
+    // reject with anything at all and this function promises not to throw. Cut
+    // like the bucket beside it: a name is a string the SDK or a client seam
+    // produced, `message` is already bounded where `redactedMessage` relays
+    // it, and the two are one value.
     const reason = truncateForLog((error as { name?: string } | null)?.name ?? 'unknown');
     logger.warn(
       'ensureS3LifecycleRule: could not read the offload bucket versioning state, so whether a released payload is recoverable is unknown; the lifecycle rules were written, and the role needs s3:GetBucketVersioning',

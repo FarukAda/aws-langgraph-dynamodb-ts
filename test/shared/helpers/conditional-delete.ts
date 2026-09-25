@@ -1,12 +1,12 @@
 import type { DeleteCommandInput, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 import { marshall } from '@aws-sdk/util-dynamodb';
 
-import type { DocItem } from '../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../src/shared/dynamodb/client';
 
 /** A table a conditional delete is evaluated against. */
 export interface ConditionalTable {
   /** The rows still there, keyed `PK|SK`. */
-  rows: Map<string, DocItem>;
+  rows: Map<string, AttributeMap>;
   /** The handler for `mock.on(DeleteCommand).callsFake(...)`. */
   handler: (input: DeleteCommandInput) => object;
   /** Every sort key a delete was issued for, in the order it was issued. */
@@ -29,7 +29,7 @@ function rowKey(item: { PK?: unknown; SK?: unknown }): string {
  * caller reads that as "already gone", and it counts a live row as deleted and
  * releases the objects that row still names.
  */
-function rejection(input: DeleteCommandInput, row: DocItem | undefined): Error {
+function rejection(input: DeleteCommandInput, row: AttributeMap | undefined): Error {
   const asked = input.ReturnValuesOnConditionCheckFailure === 'ALL_OLD';
   return Object.assign(new Error('The conditional request failed'), {
     name: 'ConditionalCheckFailedException',
@@ -43,13 +43,14 @@ function rejection(input: DeleteCommandInput, row: DocItem | undefined): Error {
  * top-level attribute, and `#pin.#field = :pin` over a document path. A delete
  * with no condition always holds, including against an absent row.
  */
-function conditionHolds(input: DeleteCommandInput, row: DocItem | undefined): boolean {
+function conditionHolds(input: DeleteCommandInput, row: AttributeMap | undefined): boolean {
   if (input.ConditionExpression === undefined) return true;
   if (row === undefined) return false;
   const names = input.ExpressionAttributeNames ?? {};
-  const attribute = row[names['#pin']] as DocItem | string | undefined;
+  const attribute = row[names['#pin']] as AttributeMap | string | undefined;
   const field = names['#field'];
-  const observed = field === undefined ? attribute : (attribute as DocItem | undefined)?.[field];
+  const observed =
+    field === undefined ? attribute : (attribute as AttributeMap | undefined)?.[field];
   return observed === input.ExpressionAttributeValues?.[':pin'];
 }
 
@@ -66,7 +67,7 @@ function conditionHolds(input: DeleteCommandInput, row: DocItem | undefined): bo
  * Seed it with the rows as they stand when the deletes land, which is not
  * necessarily what the query returned — that difference is the race under test.
  */
-export function conditionalTable(items: readonly DocItem[]): ConditionalTable {
+export function conditionalTable(items: readonly AttributeMap[]): ConditionalTable {
   const rows = new Map(items.map((item) => [rowKey(item), item]));
   const issued: string[] = [];
   return {
@@ -91,7 +92,7 @@ type TransactDelete = NonNullable<
 /** A table a revision-guarded, tokened delete transaction is evaluated against. */
 export interface RevisionTable {
   /** The rows still there, keyed `PK|SK`. */
-  rows: Map<string, DocItem>;
+  rows: Map<string, AttributeMap>;
   /** The handler for `mock.on(TransactWriteCommand).callsFake(...)`. */
   handler: (input: TransactWriteCommandInput) => object;
   /** The request token every attempt carried, in the order the attempts were sent. */
@@ -109,7 +110,7 @@ export interface RevisionTable {
  * the revision attribute's absence, and equality on it. An unguarded delete
  * always holds.
  */
-function revisionHolds(item: TransactDelete, row: DocItem | undefined): boolean {
+function revisionHolds(item: TransactDelete, row: AttributeMap | undefined): boolean {
   const expression = item.ConditionExpression;
   if (expression === undefined) return true;
   if (expression === 'attribute_not_exists(PK)') return row === undefined;
@@ -126,7 +127,7 @@ function revisionHolds(item: TransactDelete, row: DocItem | undefined): boolean 
  * two shapes the delete path has to tell apart, and attaching the row when the
  * request did not ask for it would hide a guard that forgot to ask.
  */
-function cancellation(item: TransactDelete, row: DocItem | undefined): Error {
+function cancellation(item: TransactDelete, row: AttributeMap | undefined): Error {
   const asked = item.ReturnValuesOnConditionCheckFailure === 'ALL_OLD';
   const attached = row === undefined || !asked ? {} : { Item: marshall(row) };
   return Object.assign(new Error('Transaction cancelled'), {
@@ -150,8 +151,8 @@ function cancellation(item: TransactDelete, row: DocItem | undefined): Error {
  * stand, which is where a test lands a competing write between two attempts.
  */
 export function revisionGuardedTable(
-  items: readonly DocItem[],
-  beforeAttempt?: (attempt: number, rows: Map<string, DocItem>) => void,
+  items: readonly AttributeMap[],
+  beforeAttempt?: (attempt: number, rows: Map<string, AttributeMap>) => void,
 ): RevisionTable {
   const rows = new Map(items.map((item) => [rowKey(item), item]));
   const tokens: string[] = [];

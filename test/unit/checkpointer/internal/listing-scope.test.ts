@@ -10,7 +10,7 @@ import {
   parseListScope,
   type ThreadId,
 } from '../../../../src/checkpointer/internal/parse';
-import type { CheckpointMetaItem } from '../../../../src/checkpointer/internal/rows';
+import type { CheckpointMetaRow } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -76,7 +76,7 @@ const inline = (value: unknown) => ({
   bytes: new TextEncoder().encode(JSON.stringify(value)),
 });
 
-const meta = (over: Partial<CheckpointMetaItem> = {}): CheckpointMetaItem => ({
+const meta = (over: Partial<CheckpointMetaRow> = {}): CheckpointMetaRow => ({
   PK: 'CHKPT#t',
   SK: 'META##c1',
   threadId: 't',
@@ -150,13 +150,13 @@ describe('parseListScope', () => {
   });
 
   /**
-   * H-10: an unchecked cast used to let a numeric `checkpoint_id` reach
+   * An unchecked cast used to let a numeric `checkpoint_id` reach
    * `ListScope.before` (typed `string | undefined`); `passesKeyFilters` then
    * compared a stored string against it and every checkpoint failed the
    * filter, so the listing came back silently empty instead of naming the
    * bad value.
    */
-  it('refuses a non-string checkpoint_id in `before` (H-10)', () => {
+  it('refuses a non-string checkpoint_id in `before`', () => {
     expect(() =>
       parseListScope(
         { configurable: { thread_id: 't' } },
@@ -204,7 +204,7 @@ describe('parseListScope', () => {
    * no bound, not a malformed one — an equal comparison against those three
    * exact values, not JS truthiness. Left as an unchecked cast, an empty
    * string reached `ListScope.before` and compared `false` against every
-   * stored id (H-10's symptom again, reached with a string instead of a
+   * stored id (the numeric id's symptom again, reached with a string instead of a
    * number).
    */
   it('treats undefined, null and "" as absent, not malformed', () => {

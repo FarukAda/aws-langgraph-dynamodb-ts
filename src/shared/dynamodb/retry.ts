@@ -5,7 +5,10 @@
  * HTTP status and its retryable trait, and from a cancelled transaction's
  * reasons — the full-jitter backoff schedule, the attempt budget and the
  * deadline that can cut it short, and the policy an adapter resolves from its
- * options at construction are one decision, used by every DynamoDB and S3 call.
+ * options at construction are one decision. Every DynamoDB call goes through
+ * it, and so does an S3 object upload and download; the bucket lifecycle calls
+ * (`maxAttempts: 1` on the S3 client) and orphan release, which retries on its
+ * own loop, do not.
  */
 
 import { nowMs } from '../clock';
@@ -41,8 +44,8 @@ export const TOKEN_IDEMPOTENCY_WINDOW_MS = 600_000;
  * still in flight when the budget ends, clock skew between this client's own
  * clock and DynamoDB's timer, and SDK-internal queueing, so a write that
  * retries to the end still finishes well inside the window its token is
- * honoured for. Its own literal rather than a division of the window: aliasing
- * two caps has already meant that retuning one silently moved the other (see
+ * honoured for. Its own literal rather than a division of the window:
+ * aliasing them would move one whenever the other is retuned (see
  * `LIST_SCAN_WARN_THRESHOLD` (`src/shared/dynamodb/paginate.ts`)).
  */
 export const MAX_WRITE_LIFETIME_MS = 300_000;
@@ -71,16 +74,18 @@ export interface RetryAttemptInfo {
   error: Error;
 }
 
-/** Options controlling {@link withRetry}. */
+/**
+ * How a failed request is retried: how many attempts, how long each wait, and
+ * which failures qualify.
+ */
 export interface RetryOptions {
   maxAttempts?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
   retryableErrors?: readonly string[];
   /**
-   * Decides retryability instead of `retryableErrors`, so a call site can
-   * share one classifier (see `isTransientS3Error`) with paths that do not
-   * go through `withRetry`.
+   * Decides retryability instead of `retryableErrors`: called with each failed
+   * attempt's error, it retries when it returns `true`.
    */
   isRetryable?: (error: Error) => boolean;
   /** Called before every backoff sleep, so retries are visible before the budget is exhausted. */
@@ -204,11 +209,9 @@ export async function withRetry<T>(
 
   assertNotAborted(options.signal);
 
-  /**
-   * Built once and handed to every attempt. The SDK reads it and keeps
-   * nothing, so one object costs one allocation per operation instead of one
-   * per attempt, and a re-send cannot differ from the send before it.
-   */
+  // Built once and handed to every attempt. The SDK reads it and keeps
+  // nothing, so one object costs one allocation per operation instead of one
+  // per attempt, and a re-send cannot differ from the send before it.
   const request: SdkRequestOptions = { abortSignal: options.signal };
   let lastError: Error = new Error('Retry failed without error');
   let attempts = 0;
@@ -217,14 +220,12 @@ export async function withRetry<T>(
     try {
       return await fn(request);
     } catch (error) {
-      /**
-       * Read before the error is classified. A cancelled request rejects with
-       * whatever the transport produced — the SDK's own `AbortError` for one
-       * cut before the response, a socket error for one cut mid-body — and
-       * both would otherwise be classified, retried against a signal that has
-       * already fired, and finally reported as a transport failure. A caller
-       * who cancelled is owed `ABORTED`, not a diagnosis of its own stop.
-       */
+      // Read before the error is classified. A cancelled request rejects with
+      // whatever the transport produced — the SDK's own `AbortError` for one
+      // cut before the response, a socket error for one cut mid-body — and
+      // both would otherwise be classified, retried against a signal that has
+      // already fired, and finally reported as a transport failure. A caller
+      // who cancelled is owed `ABORTED`, not a diagnosis of its own stop.
       assertNotAborted(options.signal);
       lastError = toError(error as Error);
       if (!isRetryable(lastError)) throw lastError;
@@ -448,25 +449,21 @@ export function resolveRetryPolicy(
     baseDelayMs: policy?.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS,
     maxDelayMs: policy?.maxDelayMs ?? MAX_BACKOFF_DELAY_MS,
   };
-  /**
-   * Measured at the attempts the adapter will really make, not at the ones the
-   * caller wrote. The history append raises a caller's count to its own floor
-   * while keeping the caller's delays, so a policy that only raises
-   * `maxDelayMs` produces a budget far past the deadline and would otherwise
-   * be warned about nowhere. An adapter with no floor passes none.
-   */
+  // Measured at the attempts the adapter will really make, not at the ones the
+  // caller wrote. The history append raises a caller's count to its own floor
+  // while keeping the caller's delays, so a policy that only raises
+  // `maxDelayMs` produces a budget far past the deadline and would otherwise
+  // be warned about nowhere. An adapter with no floor passes none.
   warnIfOutlivesWriteLifetime(
     { ...resolved, maxAttempts: Math.max(resolved.maxAttempts, attemptFloor) },
     logger,
   );
   return {
     ...resolved,
-    /**
-     * The name, never the message — and bounded: the transient failure came
-     * from the SDK, the transport or a caller's own collaborator, and nothing
-     * this package ran checked how long its name is. This line fires once per
-     * retry, so an unbounded one is paid for per attempt.
-     */
+    // The name, never the message — and bounded: the transient failure came
+    // from the SDK, the transport or a caller's own collaborator, and nothing
+    // this package ran checked how long its name is. This line fires once per
+    // retry, so an unbounded one is paid for per attempt.
     onRetry: ({ attempt, delayMs, error }) =>
       logger.debug('retrying after a transient error', {
         attempt,
@@ -520,10 +517,8 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     return Promise.reject(abortErrorFrom(signal));
   }
   return new Promise((resolve, reject) => {
-    /**
-     * One holder for both flags, declared before `onAbort` reads the timer:
-     * the timer is assigned only once armed, after the listener is attached.
-     */
+    // One holder for both flags, declared before `onAbort` reads the timer:
+    // the timer is assigned only once armed, after the listener is attached.
     const wait: { settled: boolean; timer?: ReturnType<typeof setTimeout> } = { settled: false };
     const onAbort = (): void => {
       if (wait.settled) return;

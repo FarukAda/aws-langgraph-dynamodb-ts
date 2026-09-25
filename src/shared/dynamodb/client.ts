@@ -1,17 +1,21 @@
 /**
  * Hides the DynamoDB client: the part of the DocumentClient this package calls,
- * the item shapes that part speaks, and how a client this package builds bounds
+ * the row shapes that part speaks, and how a client this package builds bounds
  * each request.
  *
  * The structural type is what lets a caller inject any DocumentClient-shaped
- * object, and it is public; the item shapes travel through every module that
+ * object, and it is public; the row shapes travel through every module that
  * reads or writes a row; the construction is the one place a request timeout
  * and a socket timeout are set, and the one place that knows whether the
  * adapter owns the client it holds.
  */
 
 import { DynamoDBClient, type DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocument, type NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
+import {
+  DynamoDBDocument,
+  type NativeAttributeValue,
+  type TransactWriteCommandInput,
+} from '@aws-sdk/lib-dynamodb';
 
 import type { Logger } from '../logging/logger';
 
@@ -81,9 +85,9 @@ export interface ResolveClientOptions {
  * The DocumentClient an adapter will use, and whether it owns it.
  *
  * Accepts: `client` — an injected DocumentClient, used as-is; `clientConfig` —
- * used to build one when no client is injected; `createClient` — the test seam
- * that builds it. `assertBaseAdapterOptions` rejects an injected client given
- * alongside either of the other two, so only one branch is ever taken.
+ * what one is built from when no client is injected; `createClient` — the test
+ * seam that builds it. `assertBaseAdapterOptions` rejects an injected client
+ * given alongside either of the other two, so only one branch is ever taken.
  *
  * Returns: the document client, the raw client behind it when this call built
  * one, and `ownsClient` — true only then. An injected client is never
@@ -106,21 +110,19 @@ export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDy
     return { ddbClient: undefined, client: options.client, ownsClient: false };
   }
   const createClient = options.createClient ?? ((config) => new DynamoDBClient(config));
-  /**
-   * `throwOnRequestTimeout` is what makes the request timeout a bound: without
-   * it the handler only logs a warning when the timeout is breached.
-   * `socketTimeout` is here because `requestTimeout` stops applying the moment
-   * response *headers* arrive — the handler resolves there and clears its
-   * timers — so it says nothing about a response body that then stalls
-   * mid-stream, and an idle timer does. No `connectionTimeout` is passed,
-   * deliberately — its timer starts when the request is created and is
-   * cleared only when the agent *assigns* a socket, so the time a request
-   * spends queued behind `maxSockets` counts against it. At the thousand-wide
-   * fan-out this package documents, any value short enough to be useful
-   * destroys healthy writes that this library then retries, and any value
-   * long enough to be safe bounds nothing the request timeout does not
-   * already bound.
-   */
+  // `throwOnRequestTimeout` is what makes the request timeout a bound: without
+  // it the handler only logs a warning when the timeout is breached.
+  // `socketTimeout` is here because `requestTimeout` stops applying the moment
+  // response *headers* arrive — the handler resolves there and clears its
+  // timers — so it says nothing about a response body that then stalls
+  // mid-stream, and an idle timer does. No `connectionTimeout` is passed,
+  // deliberately — its timer starts when the request is created and is
+  // cleared only when the agent *assigns* a socket, so the time a request
+  // spends queued behind `maxSockets` counts against it. At the thousand-wide
+  // fan-out this package documents, any value short enough to be useful
+  // destroys healthy writes that this library then retries, and any value
+  // long enough to be safe bounds nothing the request timeout does not
+  // already bound.
   const ddbClient = createClient({
     maxAttempts: 1,
     requestHandler: {
@@ -185,30 +187,32 @@ export async function warnOnStackedRetries(
       );
     }
   } catch {
-    /** A client that cannot report its retry setting is left alone. */
+    // A client that cannot report its retry setting is left alone.
   }
 }
 
 /**
- * A DynamoDB item as returned/accepted by the DocumentClient. Reads that we
- * wrote ourselves are narrowed with a single structural `as` at the mapper
- * boundary (never `as any`/`as unknown`); untrusted shared-table scans go
- * through `narrowStoreRecord`.
+ * A row, or a key, as the DocumentClient returns and takes it: attribute names
+ * mapped to values that nothing has checked yet. Each feature's row parser
+ * turns one into that feature's row type.
  */
-export type DocItem = Record<string, NativeAttributeValue>;
+export type AttributeMap = Record<string, NativeAttributeValue>;
 
 /** A BatchWriteItem PutRequest. */
 interface PutWriteRequest {
-  PutRequest: { Item: DocItem };
+  PutRequest: { Item: AttributeMap };
 }
 
 /** A BatchWriteItem DeleteRequest. */
 interface DeleteWriteRequest {
-  DeleteRequest: { Key: DocItem };
+  DeleteRequest: { Key: AttributeMap };
 }
 
 /** A single BatchWriteItem write request. */
 export type WriteRequest = PutWriteRequest | DeleteWriteRequest;
+
+/** One action of a `TransactWriteItems` request, as the document client takes it. */
+export type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
 
 /**
  * The DocumentClient surface this library uses, named by shape rather than by

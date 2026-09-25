@@ -1,6 +1,6 @@
 import { QueryCommand, type QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { MAX_LOOP_ITERATIONS } from '../../../../src/shared/dynamodb/paginate';
 import { queryRecencyIndex } from '../../../../src/shared/dynamodb/recency-index';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -22,7 +22,7 @@ function base(client: StrictMock['client'], limit: number) {
   };
 }
 
-const ids = (items: DocItem[]) => items.map((item) => item.sessionId as string);
+const ids = (items: AttributeMap[]) => items.map((item) => item.sessionId as string);
 
 /** One logged `Query`: the shard it read, the `Limit` it asked for and the rows it got. */
 interface LoggedQuery {

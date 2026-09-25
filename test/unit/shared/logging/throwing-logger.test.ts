@@ -4,7 +4,7 @@ import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkp
 import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import type { Logger } from '../../../../src/shared/logging/logger';
 import { DynamoDBStore } from '../../../../src/store/store';
@@ -100,10 +100,10 @@ describe('a caller whose logger throws', () => {
 
   it('still sees saver.put report the checkpoint its own read proved committed', async () => {
     const { client, mock } = createStrictDocumentMock();
-    let sent: DocItem | undefined;
+    let sent: AttributeMap | undefined;
     mock
       .on(TransactWriteCommand)
-      .callsFake((input: { TransactItems: { Put: { Item: DocItem } }[] }) => {
+      .callsFake((input: { TransactItems: { Put: { Item: AttributeMap } }[] }) => {
         sent = input.TransactItems[0].Put.Item;
         throw accessDenied();
       });

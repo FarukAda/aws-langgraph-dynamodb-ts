@@ -1,4 +1,14 @@
 /**
+ * Hides how much of an unchecked string a line may quote.
+ *
+ * A log line or public error message that quotes a string this package did
+ * not length-check passes it through here. The caps for an identifier, for a
+ * relayed cause's prose and for a list of labels, and the mark that states a
+ * cut value's real length, are chosen here, so a call site says what kind of
+ * value it quotes and never how many characters it keeps.
+ */
+
+/**
  * Characters of an unchecked string one log line or one public error message
  * carries, past which it is cut and marked with its real length.
  *
@@ -6,7 +16,7 @@
  * S3 key, so the service already caps each at 1024 bytes — the cost is not one
  * long line but many. `list: skipped a row that is not a checkpoint meta item`
  * and `left a foreign row in place` fire once per row, and those passes walk a
- * whole partition, up to `MAX_TOTAL_ITEMS_IN_MEMORY`
+ * whole partition, up to `MAX_TOTAL_ROWS_IN_MEMORY`
  * (`src/shared/dynamodb/paginate.ts`) rows: one call on a shared table could
  * write megabytes of log. A consumer's `VectorBackend` carries no such service
  * cap at all.
@@ -78,8 +88,8 @@ export const MAX_LOGGED_LABELS = 8;
  * (`src/shared/dynamodb/table-schema.ts`) and `MAX_S3_KEY_BYTES`
  * (`src/shared/codec/s3/config.ts`) rather than an alias of either, for the
  * reason `LIST_SCAN_WARN_THRESHOLD` (`src/shared/dynamodb/paginate.ts`)
- * records: aliasing two caps has already meant that retuning one silently
- * moved the other, and these three answer unrelated questions.
+ * records: aliasing two caps would move one whenever the other is retuned,
+ * and these three answer unrelated questions.
  */
 export const MAX_RELAYED_MESSAGE_CHARS = 1024;
 

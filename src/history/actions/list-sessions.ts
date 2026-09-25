@@ -1,3 +1,14 @@
+/**
+ * Hides whether a listing reads the recency index or scans the table.
+ *
+ * With a configured `indexName` a listing is a cursor-paged, newest-first
+ * merge of the index shards; without one it is a filtered scan sorted in
+ * memory, with no cursor (record 8). A caller passes the same options and gets
+ * the same `SessionPage` either way: `limit` is the newest N on both paths,
+ * `0` reads neither, and the same rule summarises each session and drops the
+ * expired, foreign and malformed ones.
+ */
+
 import { nowSeconds } from '../../shared/clock';
 import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency';
 import { paginateScan } from '../../shared/dynamodb/paginate';
@@ -95,12 +106,10 @@ async function allByScan(
     const session = summariseSession(raw, atSeconds);
     if (session) sessions.push(session);
   }
-  /**
-   * Ordinal, not `localeCompare`: these are ISO-8601 timestamps, whose byte
-   * order already is their chronological order. Locale-aware collation applies
-   * rules (case folding, punctuation weighting) that have no meaning here and
-   * are not guaranteed to agree with it in every locale.
-   */
+  // Ordinal, not `localeCompare`: these are ISO-8601 timestamps, whose byte
+  // order already is their chronological order. Locale-aware collation applies
+  // rules (case folding, punctuation weighting) that have no meaning here and
+  // are not guaranteed to agree with it in every locale.
   sessions.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
   return { sessions: request.limit === undefined ? sessions : sessions.slice(0, request.limit) };
 }
@@ -125,7 +134,7 @@ async function allByScan(
  * remain. A page can come back shorter than `limit` while more remain: expired
  * and foreign rows are dropped after the read, and so is a row of this
  * package's own whose `messageCount`, `createdAt`, `updatedAt`, `title` or
- * `ttl` is not the type written there — one unreadable `ttl` used to fail the
+ * `ttl` is not the type written there — otherwise one unreadable `ttl` would fail the
  * whole call, taking every healthy session with it. The cursor is a position in
  * the index rather than a count of what survived filtering. A cursor does not
  * promise more rows: the page after it can come back empty (see

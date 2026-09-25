@@ -1,3 +1,13 @@
+/**
+ * Hides that repairing `messageCount` is the session row's own job.
+ *
+ * The public repair only parses the session id and hands it to the module
+ * that owns the count (record 22). The recount, the compare-and-swap on the
+ * value it read, and the retry when an append lands in between all live
+ * there, beside the append that keeps the count in step, so the repair and
+ * the append cannot come to disagree about what the count means.
+ */
+
 import { parseSessionId } from '../internal/parse';
 import { repairMessageCount } from '../internal/session';
 import type { HistoryContext } from '../internal/setup';

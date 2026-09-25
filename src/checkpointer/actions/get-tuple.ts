@@ -1,3 +1,13 @@
+/**
+ * Hides which checkpoint a read config resolves to.
+ *
+ * A config may name a checkpoint, only a namespace, or no thread at all, and
+ * each has one answer here: the checkpoint named, else the newest in the
+ * namespace (the root when none is given), else nothing rather than an error,
+ * as the reference saver answers. That the read is strongly consistent, so a
+ * checkpoint just written is always seen, is fixed here too.
+ */
+
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointTuple } from '@langchain/langgraph-checkpoint';
 

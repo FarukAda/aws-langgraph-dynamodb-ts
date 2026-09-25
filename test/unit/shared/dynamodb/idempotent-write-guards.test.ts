@@ -1,7 +1,7 @@
 import type { CancellationReason } from '../../../../src/shared/dynamodb/cancellation';
 import {
   isConditionalCheckFailed,
-  rejectedItem,
+  rejectedRow,
   revisionGuard,
   WRITE_ID_ATTRIBUTE,
   writeIdGuard,
@@ -73,7 +73,7 @@ describe('isConditionalCheckFailed', () => {
   });
 });
 
-describe('revisionGuard returns the rejected row (DDB-07)', () => {
+describe('revisionGuard returns the rejected row', () => {
   it('asks DynamoDB to attach the existing item to every rejection', () => {
     for (const observed of [
       { exists: false },
@@ -85,7 +85,7 @@ describe('revisionGuard returns the rejected row (DDB-07)', () => {
   });
 });
 
-describe('rejectedItem (DDB-07)', () => {
+describe('rejectedRow', () => {
   it('unmarshalls the raw AttributeValue item a rejection carries', () => {
     const error = Object.assign(new Error('rejected'), {
       name: 'ConditionalCheckFailedException',
@@ -102,7 +102,7 @@ describe('rejectedItem (DDB-07)', () => {
         },
       },
     });
-    expect(rejectedItem(error)).toEqual({
+    expect(rejectedRow(error)).toEqual({
       rev: 'other',
       createdAt: 'c',
       value: {
@@ -116,12 +116,12 @@ describe('rejectedItem (DDB-07)', () => {
 
   it('is undefined when the rejection carries no item', () => {
     expect(
-      rejectedItem(Object.assign(new Error('x'), { name: 'ConditionalCheckFailedException' })),
+      rejectedRow(Object.assign(new Error('x'), { name: 'ConditionalCheckFailedException' })),
     ).toBeUndefined();
   });
 });
 
-describe('isConditionalCheckFailed reads a cancelled transaction (T3)', () => {
+describe('isConditionalCheckFailed reads a cancelled transaction', () => {
   it('matches a cancellation whose one reason is a conditional check failure', () => {
     expect(isConditionalCheckFailed(cancelled([{ Code: 'ConditionalCheckFailed' }]))).toBe(true);
   });
@@ -147,21 +147,21 @@ describe('isConditionalCheckFailed reads a cancelled transaction (T3)', () => {
   });
 });
 
-describe('rejectedItem reads a cancelled transaction (T3)', () => {
+describe('rejectedRow reads a cancelled transaction', () => {
   it('unmarshalls the raw row attached to the rejected item', () => {
     const error = cancelled([
       { Code: 'None' },
       { Code: 'ConditionalCheckFailed', Item: { rev: { S: 'other' }, writeGroup: { S: 'g2' } } },
     ]);
-    expect(rejectedItem(error)).toEqual({ rev: 'other', writeGroup: 'g2' });
+    expect(rejectedRow(error)).toEqual({ rev: 'other', writeGroup: 'g2' });
   });
 
   it('is undefined when the rejected item carries no row', () => {
-    expect(rejectedItem(cancelled([{ Code: 'ConditionalCheckFailed' }]))).toBeUndefined();
+    expect(rejectedRow(cancelled([{ Code: 'ConditionalCheckFailed' }]))).toBeUndefined();
   });
 });
 
-describe('a cancelled guard rejection is classified as one always was (T3)', () => {
+describe('a cancelled guard rejection is classified as one always was', () => {
   it('recognises the rejection and still refuses to retry it', () => {
     const error = cancelled([{ Code: 'ConditionalCheckFailed' }]);
     expect(isConditionalCheckFailed(error)).toBe(true);

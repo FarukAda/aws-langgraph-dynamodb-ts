@@ -1,6 +1,6 @@
 import type { ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import type { DocItem } from '../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../src/shared/dynamodb/client';
 
 /** The scalar kinds the filters this package emits compare. */
 type Scalar = string | number | boolean | null | undefined;
@@ -34,7 +34,7 @@ function tokenise(expression: string): string[] {
  * An attribute the row does not carry reads as `undefined`, which is what
  * `attribute_exists` and `attribute_not_exists` are asking about.
  */
-function operand(token: string, row: DocItem, bindings: Bindings): Scalar {
+function operand(token: string, row: AttributeMap, bindings: Bindings): Scalar {
   if (token.startsWith(':')) return bindings.values[token];
   return row[token.startsWith('#') ? bindings.names[token] : token] as Scalar;
 }
@@ -85,7 +85,12 @@ function callFunction(name: string, args: Scalar[]): boolean {
   throw new Error(`simulatedScan: unsupported function ${name}`);
 }
 
-function parseFunction(name: string, cursor: Cursor, row: DocItem, bindings: Bindings): boolean {
+function parseFunction(
+  name: string,
+  cursor: Cursor,
+  row: AttributeMap,
+  bindings: Bindings,
+): boolean {
   cursor.at += 1;
   const args: Scalar[] = [];
   while (cursor.tokens[cursor.at] !== ')') {
@@ -97,7 +102,7 @@ function parseFunction(name: string, cursor: Cursor, row: DocItem, bindings: Bin
   return callFunction(name, args);
 }
 
-function parsePrimary(cursor: Cursor, row: DocItem, bindings: Bindings): boolean {
+function parsePrimary(cursor: Cursor, row: AttributeMap, bindings: Bindings): boolean {
   const token = cursor.tokens[cursor.at];
   cursor.at += 1;
   if (token === '(') {
@@ -116,7 +121,7 @@ function parsePrimary(cursor: Cursor, row: DocItem, bindings: Bindings): boolean
  * `AND` binds tighter than `OR`, as it does on the server. Neither side is
  * short-circuited: both have to be read for the cursor to end up past them.
  */
-function parseAnd(cursor: Cursor, row: DocItem, bindings: Bindings): boolean {
+function parseAnd(cursor: Cursor, row: AttributeMap, bindings: Bindings): boolean {
   let value = parsePrimary(cursor, row, bindings);
   while (cursor.tokens[cursor.at] === 'AND') {
     cursor.at += 1;
@@ -125,7 +130,7 @@ function parseAnd(cursor: Cursor, row: DocItem, bindings: Bindings): boolean {
   return value;
 }
 
-function parseOr(cursor: Cursor, row: DocItem, bindings: Bindings): boolean {
+function parseOr(cursor: Cursor, row: AttributeMap, bindings: Bindings): boolean {
   let value = parseAnd(cursor, row, bindings);
   while (cursor.tokens[cursor.at] === 'OR') {
     cursor.at += 1;
@@ -138,7 +143,7 @@ function parseOr(cursor: Cursor, row: DocItem, bindings: Bindings): boolean {
  * Whether `row` survives `input`'s `FilterExpression`. A request carrying none
  * admits every row, which is what a `Scan` without one does.
  */
-export function matchesFilter(input: ScanCommandInput, row: DocItem): boolean {
+export function matchesFilter(input: ScanCommandInput, row: AttributeMap): boolean {
   if (input.FilterExpression === undefined) return true;
   const bindings: Bindings = {
     names: input.ExpressionAttributeNames ?? {},
@@ -161,8 +166,8 @@ export function matchesFilter(input: ScanCommandInput, row: DocItem): boolean {
  * One page, no `ProjectionExpression` and no 1 MB cut: the subject here is
  * which rows the filter admits, and `simulatedIndex` already covers paging.
  */
-export function simulatedScan(rows: readonly DocItem[]) {
-  return (input: ScanCommandInput): { Items: DocItem[] } => ({
+export function simulatedScan(rows: readonly AttributeMap[]) {
+  return (input: ScanCommandInput): { Items: AttributeMap[] } => ({
     Items: rows.filter((row) => matchesFilter(input, row)),
   });
 }

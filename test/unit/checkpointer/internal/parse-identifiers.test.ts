@@ -39,7 +39,7 @@ describe('the checkpointer identifier parsers', () => {
     expectValidationError(() => parseTaskId(''));
   });
 
-  it('rejects control characters in any identifier (M7)', () => {
+  it('rejects control characters in any identifier', () => {
     // An unvalidated ANSI escape in an id is a log/terminal-injection surface
     // for any consuming app that writes these values to a raw log.
     expectValidationError(() => parseThreadId('thread\u001b[31m'));
@@ -48,7 +48,7 @@ describe('the checkpointer identifier parsers', () => {
     expectValidationError(() => parseTaskId('task\u007f'));
   });
 
-  it('bounds thread_id at 1024 bytes and every sort-key segment at 256 bytes (SEC-10)', () => {
+  it('bounds thread_id at 1024 bytes and every sort-key segment at 256 bytes', () => {
     expect(() => parseThreadId('t'.repeat(1024))).not.toThrow();
     expectValidationError(() => parseThreadId('t'.repeat(1025)));
     expect(() => parseCheckpointNs('n'.repeat(256))).not.toThrow();
@@ -65,12 +65,12 @@ describe('the checkpointer identifier parsers', () => {
     expectValidationError(() => parseTaskId(String.fromCharCode(9)));
   });
 
-  it('still accepts an empty checkpoint namespace, the root namespace (M7)', () => {
+  it('still accepts an empty checkpoint namespace, the root namespace', () => {
     expect(() => parseCheckpointNs('')).not.toThrow();
   });
 });
 
-describe('parseWriteChannel (SEC-09)', () => {
+describe('parseWriteChannel', () => {
   it('applies the key-segment rules to a pending-write channel name', () => {
     expect(() => parseWriteChannel('branch:to:node')).not.toThrow();
     expect(() => parseWriteChannel('c'.repeat(256))).not.toThrow();

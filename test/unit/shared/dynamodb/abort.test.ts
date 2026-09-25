@@ -2,7 +2,7 @@ import { abortErrorFrom, isAbortError } from '../../../../src/shared/dynamodb/ab
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { abortError, validationError } from '../../../../src/shared/errors/errors';
 
-describe('abortErrorFrom (DDB-05)', () => {
+describe('abortErrorFrom', () => {
   it('wraps the DOMException a bare abort() produces as the cause of a library ABORTED error', () => {
     const controller = new AbortController();
     controller.abort();
@@ -48,5 +48,9 @@ describe('isAbortError', () => {
     // The brand is required: an unbranded object that merely carries the
     // code looks like a cancel and is not one.
     expect(isAbortError(Object.assign(new Error('x'), { code: ErrorCode.ABORTED }))).toBe(false);
+  });
+
+  it('answers false for an absent reason, which a signal aborted without one can carry', () => {
+    expect(isAbortError(undefined)).toBe(false);
   });
 });

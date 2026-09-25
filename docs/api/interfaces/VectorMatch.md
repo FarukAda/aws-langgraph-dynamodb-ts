@@ -6,7 +6,7 @@
 
 # Interface: VectorMatch
 
-Defined in: [store/vector-backend.ts:2](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L2)
+Defined in: [store/vector-backend.ts:12](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L12)
 
 A vector-similarity match returned by an external [VectorBackend](VectorBackend.md).
 
@@ -16,7 +16,7 @@ A vector-similarity match returned by an external [VectorBackend](VectorBackend.
 
 > **key**: `string`
 
-Defined in: [store/vector-backend.ts:4](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L4)
+Defined in: [store/vector-backend.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L14)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [store/vector-backend.ts:4](https://github.com/FarukAda/aws-langgrap
 
 > **namespace**: `string`[]
 
-Defined in: [store/vector-backend.ts:3](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L3)
+Defined in: [store/vector-backend.ts:13](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L13)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [store/vector-backend.ts:3](https://github.com/FarukAda/aws-langgrap
 
 > **score**: `number`
 
-Defined in: [store/vector-backend.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L17)
+Defined in: [store/vector-backend.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L27)
 
 Relevance, where **higher means a better match** — the same direction as
 upstream `SearchItem.score`, which this value is forwarded to verbatim.

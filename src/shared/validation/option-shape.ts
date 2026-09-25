@@ -1,3 +1,13 @@
+/**
+ * Hides how an option object is told apart from a misspelt one.
+ *
+ * An option type lists its keys once, checked by the compiler against the
+ * type, and an object carrying any other key is refused naming that key. No
+ * caller writes the plain-object test or the unknown-key walk itself, so the
+ * message and the field a refusal names are the same for every option object
+ * this package reads.
+ */
+
 import { validationError } from '../errors/errors';
 
 /**
@@ -96,12 +106,12 @@ export function assertShape(value: object, allowed: readonly string[], field: st
  * Returns: `value`, unchanged. This returning form exists because a subclass
  * constructor cannot run a statement before `super(...)`, so validating an
  * argument bound for `super(...)` has to happen inside that expression —
- * `super(checkedShape(options, ALLOWED, 'options').thing)` — where a `void`
+ * `super(parseShape(options, ALLOWED, 'options').thing)` — where a `void`
  * function would not compile.
  *
  * Throws: the same as {@link assertShape}.
  */
-export function checkedShape<T extends object>(
+export function parseShape<T extends object>(
   value: T,
   allowed: readonly string[],
   field: string,

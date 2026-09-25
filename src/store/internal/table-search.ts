@@ -12,7 +12,7 @@ import type { Item, SearchItem } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
 import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema';
@@ -22,11 +22,11 @@ import { validationError } from '../../shared/errors/errors';
 import { passesFilter } from './filter';
 import type { ParsedSearch } from './parse';
 import {
-  narrowWholeRecord,
+  parseWholeStoreRow,
   namespaceMatchesPrefix,
   readStoreItem,
   scopedQuery,
-  type StoreItemRecord,
+  type StoreItemRow,
   storeScan,
 } from './rows';
 import { cosineSimilarity } from './semantic-search';
@@ -45,14 +45,14 @@ export type CollectBound = { kind: 'page'; need: number } | { kind: 'semantic'; 
  * per-path vectors, or the single joined vector of an earlier version read as
  * a one-element list so it ranks as it always did.
  */
-function storedVectors(record: StoreItemRecord): number[][] | undefined {
+function storedVectors(record: StoreItemRow): number[][] | undefined {
   if (record.embeddings) return record.embeddings;
   return record.embedding ? [record.embedding] : undefined;
 }
 
 /** Rows waiting for a decode batch, and the candidates decoded so far. */
 interface Collector {
-  pending: StoreItemRecord[];
+  pending: StoreItemRow[];
   collected: RankCandidate[];
 }
 
@@ -61,7 +61,7 @@ function candidateSource(
   search: ParsedSearch,
   signal: AbortSignal | undefined,
   now: number,
-): AsyncGenerator<DocItem> {
+): AsyncGenerator<AttributeMap> {
   return search.namespacePrefix.length > 0
     ? paginateQuery({
         retry: retryFor(context, signal),
@@ -80,8 +80,8 @@ function candidateSource(
 }
 
 /** The store record a raw row denotes, or undefined for a foreign, malformed, expired or out-of-prefix row. */
-function liveRecord(raw: DocItem, search: ParsedSearch, now: number): StoreItemRecord | undefined {
-  const record = narrowWholeRecord(raw);
+function liveRow(raw: AttributeMap, search: ParsedSearch, now: number): StoreItemRow | undefined {
+  const record = parseWholeStoreRow(raw);
   if (!record || isExpiredRow(record, now)) return undefined;
   return namespaceMatchesPrefix(record.namespace, search.namespacePrefix) ? record : undefined;
 }
@@ -170,7 +170,7 @@ export async function collectCandidates(
   const limit = context.readConcurrency ?? DEFAULT_READ_CONCURRENCY;
   const state: Collector = { pending: [], collected: [] };
   for await (const raw of candidateSource(context, search, signal, now)) {
-    const record = liveRecord(raw, search, now);
+    const record = liveRow(raw, search, now);
     if (!record) continue;
     state.pending.push(record);
     if (bound.kind === 'semantic') {

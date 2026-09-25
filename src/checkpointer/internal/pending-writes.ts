@@ -13,13 +13,13 @@
 
 import { type PayloadDescriptor, collectS3Keys } from '../../shared/codec/codec';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import {
   commitRow,
   isConditionalCheckFailed,
   OVERWRITE_CAS_MAX_ATTEMPTS,
   readRow,
-  rejectedItem,
+  rejectedRow,
   type RevisionGuard,
   revisionGuard,
   type RowProbe,
@@ -31,14 +31,14 @@ import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { truncateForLog } from '../../shared/logging/truncate';
 import type { ThreadId } from './parse';
-import { type CheckpointWriteItem, WRITE_GROUP_ATTRIBUTE } from './rows';
+import { type CheckpointWriteRow, WRITE_GROUP_ATTRIBUTE } from './rows';
 import type { CheckpointerContext } from './setup';
 
 /** One call's rows, ready to commit. */
 export interface PendingWriteBatch {
   /** The caller's thread, which scopes every superseded object this commit may release. */
   readonly threadId: ThreadId;
-  readonly items: CheckpointWriteItem[];
+  readonly items: CheckpointWriteRow[];
   readonly signal: AbortSignal | undefined;
 }
 
@@ -61,8 +61,8 @@ export async function commitPendingWrites(
   const special = batch.items.filter((item) => item.index < 0);
   const regular = batch.items.filter((item) => item.index >= 0);
   const [specialError, regularOutcome] = await Promise.all([
-    writeSpecialItemsWithCleanup(context, batch.threadId, special, batch.signal),
-    writeRegularItems(context, regular, batch.signal),
+    writeSpecialRowsWithCleanup(context, batch.threadId, special, batch.signal),
+    writeRegularRows(context, regular, batch.signal),
   ]);
   await releaseDeadUploads(context, regularOutcome.deadUploads);
   const firstError = specialError ?? regularOutcome.error;
@@ -76,7 +76,7 @@ export async function commitPendingWrites(
  */
 async function releaseDeadUploads(
   context: CheckpointerContext,
-  dead: CheckpointWriteItem[],
+  dead: CheckpointWriteRow[],
 ): Promise<void> {
   if (!context.offloader) return;
   await cleanUpS3Orphans(context.offloader, {
@@ -134,7 +134,7 @@ type CasAttemptResult =
  */
 async function commitSpecialRow(
   context: CheckpointerContext,
-  item: CheckpointWriteItem,
+  item: CheckpointWriteRow,
   guard?: RevisionGuard,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -144,7 +144,7 @@ async function commitSpecialRow(
 /**
  * Retry a conditional put up to {@link OVERWRITE_CAS_MAX_ATTEMPTS} times,
  * re-reading the row each time a racer's write invalidates the pinned
- * `writeGroup`. Extracted from {@link writeSpecialItem} to keep both
+ * `writeGroup`. Extracted from {@link writeSpecialRow} to keep both
  * functions under the repo's block-nesting limit.
  *
  * A rejection is not proof a competitor won: `withDynamoDBRetry` retries
@@ -168,7 +168,7 @@ async function commitSpecialRow(
  */
 async function attemptCasWrites(
   context: CheckpointerContext,
-  item: CheckpointWriteItem,
+  item: CheckpointWriteRow,
   initial: SpecialRowState,
   signal?: AbortSignal,
 ): Promise<CasAttemptResult> {
@@ -209,7 +209,7 @@ async function attemptCasWrites(
  */
 async function overwriteUnconditionally(
   context: CheckpointerContext,
-  item: CheckpointWriteItem,
+  item: CheckpointWriteRow,
   observed: SpecialRowState,
   signal?: AbortSignal,
 ): Promise<SpecialWriteOutcome> {
@@ -233,7 +233,7 @@ async function overwriteUnconditionally(
  */
 async function writeWithoutOffloader(
   context: CheckpointerContext,
-  item: CheckpointWriteItem,
+  item: CheckpointWriteRow,
   signal?: AbortSignal,
 ): Promise<SpecialWriteOutcome> {
   try {
@@ -286,9 +286,9 @@ async function writeWithoutOffloader(
  * to the same channel cannot both delete the same object and orphan the loser's
  * upload.
  */
-export async function writeSpecialItem(
+export async function writeSpecialRow(
   context: CheckpointerContext,
-  item: CheckpointWriteItem,
+  item: CheckpointWriteRow,
   signal?: AbortSignal,
 ): Promise<SpecialWriteOutcome> {
   if (!context.offloader) return writeWithoutOffloader(context, item, signal);
@@ -303,12 +303,10 @@ export async function writeSpecialItem(
     );
     return await overwriteUnconditionally(context, item, attempt.observed, signal);
   } catch (error) {
-    /**
-     * The attempts settle every put they issue, so what reaches here is the
-     * initial read, before any put, or the warning. Neither is a verdict read
-     * from the row, and this call releases its own upload only on one, so it is
-     * reported the way every unverified outcome is: kept, for the lifecycle rule.
-     */
+    // The attempts settle every put they issue, so what reaches here is the
+    // initial read, before any put, or the warning. Neither is a verdict read
+    // from the row, and this call releases its own upload only on one, so it is
+    // reported the way every unverified outcome is: kept, for the lifecycle rule.
     return { committed: true, error: error as Error };
   }
 }
@@ -353,7 +351,7 @@ export interface VerifiedFailure {
  *
  * Throws: nothing.
  */
-export function specialRowProbe(item: CheckpointWriteItem): RowProbe {
+export function specialRowProbe(item: CheckpointWriteRow): RowProbe {
   return {
     key: rowKeyOf(item),
     kind: 'attribute',
@@ -364,7 +362,7 @@ export function specialRowProbe(item: CheckpointWriteItem): RowProbe {
 }
 
 /** A read row, in the shape the compare-and-swap pins its next attempt to. */
-function stateOf(row: DocItem | undefined): SpecialRowState {
+function stateOf(row: AttributeMap | undefined): SpecialRowState {
   if (!row) return { exists: false };
   return {
     exists: true,
@@ -387,7 +385,7 @@ function stateOf(row: DocItem | undefined): SpecialRowState {
  */
 export async function readSpecialRow(
   context: CheckpointerContext,
-  item: CheckpointWriteItem,
+  item: CheckpointWriteRow,
 ): Promise<SpecialRowState> {
   return stateOf(await readRow(context, specialRowProbe(item)));
 }
@@ -397,7 +395,7 @@ export async function readSpecialRow(
  * did — never assuming it did nothing.
  *
  * A guard rejection already carries the row that turned it away (see
- * `rejectedItem`), so the strongly-consistent read is spent only for a failure
+ * `rejectedRow`), so the strongly-consistent read is spent only for a failure
  * that does not: a lost response, or a rejection whose row vanished since.
  *
  * Three answers are possible:
@@ -426,12 +424,12 @@ export async function readSpecialRow(
  */
 export async function verifyAfterFailure(
   context: CheckpointerContext,
-  item: CheckpointWriteItem,
+  item: CheckpointWriteRow,
   attempted: SpecialRowState,
   error: Error,
 ): Promise<VerifiedFailure> {
   const probe = specialRowProbe(item);
-  const rejected = isConditionalCheckFailed(error) ? rejectedItem(error) : undefined;
+  const rejected = isConditionalCheckFailed(error) ? rejectedRow(error) : undefined;
   const { verdict, row } = rejected
     ? { verdict: verdictFor(probe, rejected), row: rejected }
     : await verifyRow(context, probe);
@@ -462,11 +460,11 @@ async function deleteDescriptors(
 }
 
 /**
- * Write special (negative-index) items, then clean up the correct side of each.
+ * Write special (negative-index) rows, then clean up the correct side of each.
  *
  * Overwrite is correct here, matching every reference checkpointer. Each item
  * is written with a compare-and-swap on its row's `writeGroup` (see
- * {@link writeSpecialItem}) so a concurrent call to the same special channel
+ * {@link writeSpecialRow}) so a concurrent call to the same special channel
  * cannot make both callers delete the same superseded object and orphan one
  * upload. A committed item cleans up the payload it actually superseded, and an
  * item confirmed never to have committed cleans up its own new upload. Neither
@@ -474,7 +472,7 @@ async function deleteDescriptors(
  * a row another call writes never names this item's upload, and this item's
  * row names only that upload, never the payload it superseded.
  *
- * "Confirmed" is load-bearing, and {@link writeSpecialItem} is what earns it:
+ * "Confirmed" is load-bearing, and {@link writeSpecialRow} is what earns it:
  * an ambiguous failure, or a first read of the row that failed, is reported as
  * committed unless a read proves otherwise. Deleting on *unknown* would strand
  * a live row pointing at a deleted object; leaking one object instead is
@@ -486,7 +484,7 @@ async function deleteDescriptors(
  * Returns: the first failure, or undefined when every item committed.
  *
  * Throws: nothing — a failure is reported via the return value, because the
- * caller runs this concurrently with `writeRegularItems` under `Promise.all`,
+ * caller runs this concurrently with `writeRegularRows` under `Promise.all`,
  * whose own cleanup depends on every branch resolving rather than
  * short-circuiting.
  *
@@ -495,17 +493,17 @@ async function deleteDescriptors(
  * row returned with its rejected write, shows the row holding another call's
  * write or no row at all.
  */
-export async function writeSpecialItemsWithCleanup(
+export async function writeSpecialRowsWithCleanup(
   context: CheckpointerContext,
   threadId: ThreadId,
-  items: CheckpointWriteItem[],
+  items: CheckpointWriteRow[],
   signal?: AbortSignal,
 ): Promise<Error | undefined> {
   if (items.length === 0) return undefined;
   const outcomes = await Promise.all(
-    items.map(async (item): Promise<[CheckpointWriteItem, SpecialWriteOutcome]> => [
+    items.map(async (item): Promise<[CheckpointWriteRow, SpecialWriteOutcome]> => [
       item,
-      await writeSpecialItem(context, item, signal),
+      await writeSpecialRow(context, item, signal),
     ]),
   );
   await deleteDescriptors(
@@ -523,7 +521,7 @@ export async function writeSpecialItemsWithCleanup(
 }
 
 /**
- * Outcome of {@link writeRegularItems}: never rejects. `deadUploads` holds
+ * Outcome of {@link writeRegularRows}: never rejects. `deadUploads` holds
  * exactly the items whose own S3 upload is confirmed unreferenced by this
  * call's row — a verified non-commit, or a guard rejection whose returned row
  * provably belongs to another call. Everything else either committed, was
@@ -534,7 +532,7 @@ export async function writeSpecialItemsWithCleanup(
  * key ends in this call's own `writeGroup`, which no row of another call names.
  */
 export interface RegularWriteOutcome {
-  deadUploads: CheckpointWriteItem[];
+  deadUploads: CheckpointWriteRow[];
   error?: Error;
 }
 
@@ -594,9 +592,9 @@ const FIRST_WRITE_WINS: RevisionGuard = {
  * concurrent `deleteThread` released its object, or after a ttl sweep and the
  * lifecycle rule did.
  */
-async function commitItem(
+async function commitWriteRow(
   context: CheckpointerContext,
-  item: CheckpointWriteItem,
+  item: CheckpointWriteRow,
   signal?: AbortSignal,
 ): Promise<void> {
   await commitRow(context, item, item.value, { guard: FIRST_WRITE_WINS, signal });
@@ -610,7 +608,7 @@ async function commitItem(
  */
 async function verifyFailure(
   context: CheckpointerContext,
-  item: CheckpointWriteItem,
+  item: CheckpointWriteRow,
 ): Promise<WriteVerdict> {
   if (!context.offloader) return 'not-landed';
   const { verdict } = await verifyRow(context, specialRowProbe(item));
@@ -618,10 +616,10 @@ async function verifyFailure(
 }
 
 /**
- * Write regular items with a first-write-wins guard. Every write fully settles
+ * Write regular rows with a first-write-wins guard. Every write fully settles
  * (`Promise.allSettled`) before this resolves and never rejects; a genuine
  * failure is reported via `error`, not thrown. The fan-out is one call per
- * item whichever shape {@link commitItem} gives that item's write.
+ * item whichever shape {@link commitWriteRow} gives that item's write.
  *
  * A failure is not proof of a non-commit: `withDynamoDBRetry` re-issues a put
  * whose response was lost, and the re-issues can time out at the transport, so
@@ -644,12 +642,14 @@ async function verifyFailure(
  * Guarantees: first-write-wins. A rejection means the row is already held, which
  * is the expected outcome of a retry, not a failure.
  */
-export async function writeRegularItems(
+export async function writeRegularRows(
   context: CheckpointerContext,
-  items: CheckpointWriteItem[],
+  items: CheckpointWriteRow[],
   signal?: AbortSignal,
 ): Promise<RegularWriteOutcome> {
-  const results = await Promise.allSettled(items.map((item) => commitItem(context, item, signal)));
+  const results = await Promise.allSettled(
+    items.map((item) => commitWriteRow(context, item, signal)),
+  );
   const outcome: RegularWriteOutcome = { deadUploads: [] };
   for (const [index, result] of results.entries()) {
     if (result.status === 'fulfilled') continue;
@@ -674,7 +674,7 @@ export async function writeRegularItems(
  * 'ALL_OLD'` attaches the existing item to the exception at no extra round trip).
  */
 function rejectedChannel(error: Error): string | undefined {
-  return rejectedItem(error)?.channel as string | undefined;
+  return rejectedRow(error)?.channel as string | undefined;
 }
 
 /**
@@ -697,7 +697,7 @@ function rejectedChannel(error: Error): string | undefined {
  */
 export function reportGuardRejection(
   context: CheckpointerContext,
-  item: CheckpointWriteItem,
+  item: CheckpointWriteRow,
   error: Error,
 ): void {
   const found = rejectedChannel(error);
@@ -731,7 +731,7 @@ export function reportGuardRejection(
  *
  * Throws: nothing.
  */
-export function rejectionProvesForeignRow(item: CheckpointWriteItem, error: Error): boolean {
-  const group = rejectedItem(error)?.writeGroup as string | undefined;
+export function rejectionProvesForeignRow(item: CheckpointWriteRow, error: Error): boolean {
+  const group = rejectedRow(error)?.writeGroup as string | undefined;
   return group !== undefined && group !== item.writeGroup;
 }

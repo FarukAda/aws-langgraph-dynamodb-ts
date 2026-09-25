@@ -373,7 +373,7 @@ describe('assertBaseAdapterOptions', () => {
     });
 
     /**
-     * The read issues at least one query per shard (audit H-08), so an
+     * The read issues at least one query per shard, so an
      * unbounded shard count turns a config typo into an unbounded request storm.
      */
     it('refuses an indexShards value that would fan out unboundedly, bounded at MAX_INDEX_SHARDS', () => {

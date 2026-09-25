@@ -1,18 +1,18 @@
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { messageQuery, sessionItemsQuery } from '../../../../src/history/internal/rows';
+import { messageQuery, sessionRowsQuery } from '../../../../src/history/internal/rows';
 
 const SESSION_ID = parseSessionId('s1');
 
-describe('sessionItemsQuery', () => {
+describe('sessionRowsQuery', () => {
   it('selects every item in the session partition', () => {
-    const input = sessionItemsQuery('history', SESSION_ID);
+    const input = sessionRowsQuery('history', SESSION_ID);
     expect(input.KeyConditionExpression).toBe('#pk = :pk');
     expect(input.ExpressionAttributeValues).toEqual({ ':pk': 'HIST#s1' });
     expect(input.ConsistentRead).toBeUndefined();
   });
 
   it('sets ConsistentRead when requested', () => {
-    const input = sessionItemsQuery('history', SESSION_ID, { consistent: true });
+    const input = sessionRowsQuery('history', SESSION_ID, { consistent: true });
     expect(input.ConsistentRead).toBe(true);
   });
 });
@@ -31,7 +31,7 @@ describe('messageQuery', () => {
   });
 });
 
-describe('messageQuery window options (HIST-06)', () => {
+describe('messageQuery window options', () => {
   it('reads newest-first with a page cap when descending and limit are set', () => {
     const input = messageQuery('history', SESSION_ID, { descending: true, limit: 5 });
     expect(input.ScanIndexForward).toBe(false);

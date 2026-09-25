@@ -1,3 +1,14 @@
+/**
+ * Hides how several adapters share one client and one set of defaults.
+ *
+ * A caller states its defaults once; which adapter gets the base client
+ * choice and which its own, how the DynamoDB region reaches a shared `s3`
+ * config, and who destroys a client the factory built rather than was handed
+ * are decided here. Teardown is total — one adapter failing to release cannot
+ * strand the others — and a `createAll` that fails partway releases what it
+ * had built before its own error propagates.
+ */
+
 import { DynamoDBSaver } from '../checkpointer/saver';
 import type { DynamoDBSaverOptions } from '../checkpointer/types';
 import { DynamoDBChatMessageHistory } from '../history/chat-message-history';
@@ -67,13 +78,11 @@ function release(logger: Logger, close: () => void): void {
   try {
     close();
   } catch (error) {
-    /**
-     * The name, never the message — and bounded, because a name is a string an
-     * adapter's own `close` threw and nothing this package ran checked its
-     * length. `message` is bounded at `redactedMessage`, and relaying the two
-     * halves of "what the failure was" under different rules is the split that
-     * rule exists to remove.
-     */
+    // The name, never the message — and bounded, because a name is a string an
+    // adapter's own `close` threw and nothing this package ran checked its
+    // length. `message` is bounded at `redactedMessage`, and relaying the two
+    // halves of "what the failure was" under different rules is the split that
+    // rule exists to remove.
     logger.warn('factory.destroy: an adapter did not release its resources', {
       reason: truncateForLog(failureLabel(error as Error)),
     });
@@ -143,15 +152,17 @@ export class DynamoDBFactory {
    * (`offloaderConfigFor`), but the adapters {@link createAll} builds are given
    * the one shared `client` instead — and a `clientConfig` beside a `client` is
    * refused, because for the DynamoDB client it would be silently ignored. So
-   * the region has to be carried here, on the config that still needs it. A
-   * bucket reachable only through that region otherwise failed with an opaque
-   * `PermanentRedirect` on the first offload, while the identical configuration
-   * through `createStore` worked.
+   * the region has to be carried here, on the config that still needs it:
+   * without it, a bucket reachable only through that region fails with an
+   * opaque `PermanentRedirect` on the first offload, unlike the identical
+   * configuration through `createStore`, which resolves its own region
+   * directly.
    *
    * A base `s3`, or its `clientConfig`, that is not an object is handed on
-   * unchanged, for each adapter to refuse by its own name. Reading a region off
-   * a `null` one crashed here, and filling a region into a malformed
-   * `clientConfig` turned it into an object the adapter then accepted.
+   * unchanged, for each adapter to refuse by its own name: reading `.region`
+   * off a `null` one would throw here instead, and writing a region into a
+   * malformed `clientConfig` would turn it into an object shape an adapter
+   * then accepts instead of refusing.
    */
   private sharedS3(): S3OffloadConfig | undefined {
     const s3 = this.base.s3;
@@ -185,8 +196,9 @@ export class DynamoDBFactory {
    *
    * Throws: `VALIDATION` for any invalid option, naming it as the saver's
    * constructor does — `options` for a value that is not an object, checked
-   * before the defaults are laid under it: `null` crashed reading `client`
-   * off it, and a string was spread into its characters.
+   * before the defaults are laid under it: reading `.client` off a `null`
+   * value would throw here, and spreading a string would iterate its
+   * characters instead of refusing it.
    */
   createSaver(options: DynamoDBSaverOptions): DynamoDBSaver {
     assertObjectShape(options, 'options');
@@ -227,10 +239,9 @@ export class DynamoDBFactory {
    * Accepts: `options` — a section per adapter, laid over the factory's shared
    * defaults; omitting one, or giving it as `undefined`, skips that adapter,
    * and `{}` builds none. A key that is not a section name is refused rather
-   * than ignored: a misspelt one silently built nothing and handed back three
-   * `undefined`s. Each section is that adapter's options, so one that is not
-   * an object — `null` included, which used to build nothing and hand back
-   * `null` — is refused before any client is built.
+   * than ignored, so a misspelt one cannot silently build nothing. Each section
+   * is that adapter's options, so one that is not an object, `null` included,
+   * is refused before any client is built.
    *
    * Returns: the adapters, typed by the sections asked for, and one `destroy`
    * that releases all of them and the shared client. A client the factory was
@@ -257,7 +268,7 @@ export class DynamoDBFactory {
     const resolved = resolveDynamoDBClient(this.base);
     const shared = { ...this.sharedDefaults(), s3: this.sharedS3(), client: resolved.client };
     const built: Destroyable[] = [];
-    /** Record an adapter the moment it exists, so a later failure can still tear it down. */
+    // Record an adapter the moment it exists, so a later failure can still tear it down.
     const track = <T extends Destroyable>(adapter: T): T => {
       built.push(adapter);
       return adapter;

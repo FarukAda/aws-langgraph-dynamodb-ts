@@ -48,7 +48,7 @@ const serde = JSON_SERDE;
  * logging" gap: enabling logging could not surface them without a code
  * change. Each path must now leave a trace an operator can alert on.
  */
-describe('critical paths leave an operational trace (I7)', () => {
+describe('critical paths leave an operational trace', () => {
   it('deleteThread reports what it deleted and what it refused to touch', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({

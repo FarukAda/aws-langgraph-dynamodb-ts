@@ -6,7 +6,7 @@
 
 # Interface: S3CommandLike
 
-Defined in: [shared/codec/s3/client-types.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L41)
+Defined in: [shared/codec/s3/client-types.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L51)
 
 What every SDK command object carries: its `input`.
 
@@ -16,4 +16,4 @@ What every SDK command object carries: its `input`.
 
 > **input**: `object`
 
-Defined in: [shared/codec/s3/client-types.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L42)
+Defined in: [shared/codec/s3/client-types.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L52)

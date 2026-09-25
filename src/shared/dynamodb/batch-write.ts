@@ -84,14 +84,12 @@ export async function batchWriteAll(
       succeededCount += chunk.length;
     } catch (error) {
       const failure = error as Error;
-      /**
-       * Anything but an incomplete batch is the drain's other documented
-       * throw, a cancel, and it leaves the loop at once. Reading the brand and
-       * code rather than the class is the same realm-safe test the rest of
-       * this package makes, and it is what keeps a count this function cannot
-       * know out of the total: adding an absent `succeededCount` made it
-       * `NaN`.
-       */
+      // Anything but an incomplete batch is the drain's other documented
+      // throw, a cancel, and it leaves the loop at once. Reading the brand and
+      // code rather than the class is the same realm-safe test the rest of
+      // this package makes, and it is what keeps a count this function cannot
+      // know out of the total: adding an absent `succeededCount` made it
+      // `NaN`.
       if (!hasErrorCode(failure, ErrorCode.BATCH_WRITE_INCOMPLETE)) throw failure;
       failedChunks.push(failure);
       succeededCount += failure.details.succeededCount;
@@ -118,9 +116,9 @@ export interface DrainOptions {
 
 /**
  * The backoff window between rounds: the adapter's configured policy, never
- * module constants. Reading the constants here meant a caller raising
- * `baseDelayMs` still got 100 ms on this one path, so the documented "one
- * policy governs every wait" held everywhere except the drain.
+ * module constants — reading the constants here instead would leave a caller
+ * who raises `baseDelayMs` still waiting the module's default 100 ms on this
+ * one path, breaking the documented "one policy governs every wait".
  */
 function drainBackoff(retry?: RetryOptions): { base: number; max: number } {
   return {

@@ -193,7 +193,7 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
   });
 
   /**
-   * The timeline of C-02c, with every put uploading under its own object id:
+   * The timeline below shows every put uploading under its own object id:
    *
    * 1. Another put committed this checkpoint id with the same checkpoint bytes
    *    and different metadata. Its rows name objects under its own id.

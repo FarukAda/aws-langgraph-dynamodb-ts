@@ -12,7 +12,7 @@ import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { appendChunks } from '../../src/history/internal/append';
 import { parseSessionId } from '../../src/history/internal/parse';
 import {
-  type ChatMessageItem,
+  type MessageRow,
   messageSortKey,
   messageSortKeyPrefix,
   SESSION_SORT_KEY,
@@ -35,7 +35,7 @@ interface RaisedCompensation {
   details: { rollbackError: Error & { cause?: Error } };
 }
 
-function messageItem(ulid: string): ChatMessageItem {
+function messageItem(ulid: string): MessageRow {
   return {
     PK: sessionPartition(sessionId),
     SK: messageSortKey(ulid),

@@ -3,7 +3,7 @@ import { AIMessage, HumanMessage, mapChatMessagesToStoredMessages } from '@langc
 
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { buildMessageItem } from '../../../../src/history/internal/rows';
+import { buildMessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -27,7 +27,7 @@ function context(
 
 const SESSION_ID = parseSessionId('s1');
 
-describe('offloaded reads run concurrently (CODEC-14)', () => {
+describe('offloaded reads run concurrently', () => {
   it('decodes offloaded messages up to 8 at a time, preserving order', async () => {
     const { client, mock } = createStrictDocumentMock();
     const { offloader, maxInFlight } = overlapOffloader();
@@ -40,7 +40,7 @@ describe('offloaded reads run concurrently (CODEC-14)', () => {
     ]);
     const items = await Promise.all(
       stored.map((message, index) =>
-        buildMessageItem(ctx, { sessionId: SESSION_ID, messageId: `01${index}`, message }),
+        buildMessageRow(ctx, { sessionId: SESSION_ID, messageId: `01${index}`, message }),
       ),
     );
     mock.on(QueryCommand).resolves({ Items: items });
@@ -70,7 +70,7 @@ describe('offloaded reads run concurrently (CODEC-14)', () => {
     ]);
     const items = await Promise.all(
       stored.map((message, index) =>
-        buildMessageItem(ctx, { sessionId: SESSION_ID, messageId: `01${index}`, message }),
+        buildMessageRow(ctx, { sessionId: SESSION_ID, messageId: `01${index}`, message }),
       ),
     );
     mock.on(QueryCommand).resolves({ Items: items });

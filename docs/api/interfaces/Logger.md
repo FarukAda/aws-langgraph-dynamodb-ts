@@ -6,16 +6,17 @@
 
 # Interface: Logger
 
-Defined in: [shared/logging/logger.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L14)
+Defined in: [shared/logging/logger.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L25)
 
 Pluggable logging interface — consumers supply their own implementation.
 `args` are structured fields, at most one plain object per call, so an
 adapter for a structured logger (pino, winston) can merge them into one
 record; the message is a fixed string and never carries a value.
 
-It is the one piece of foreign code every adapter of this package calls, and
-it is called almost entirely from `catch` blocks — see
-`absorbLoggerFailure` for what that costs and where it is paid.
+It is the one piece of foreign code every adapter of this package calls,
+almost always from a `catch` block, so an adapter wraps it: anything one of
+its methods throws is absorbed at the log call and never replaces the error
+being reported.
 
 ## Methods
 
@@ -23,7 +24,7 @@ it is called almost entirely from `catch` blocks — see
 
 > **debug**(`message`, ...`args`): `void`
 
-Defined in: [shared/logging/logger.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L18)
+Defined in: [shared/logging/logger.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L29)
 
 #### Parameters
 
@@ -45,7 +46,7 @@ Defined in: [shared/logging/logger.ts:18](https://github.com/FarukAda/aws-langgr
 
 > **error**(`message`, ...`args`): `void`
 
-Defined in: [shared/logging/logger.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L17)
+Defined in: [shared/logging/logger.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L28)
 
 #### Parameters
 
@@ -67,7 +68,7 @@ Defined in: [shared/logging/logger.ts:17](https://github.com/FarukAda/aws-langgr
 
 > **info**(`message`, ...`args`): `void`
 
-Defined in: [shared/logging/logger.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L15)
+Defined in: [shared/logging/logger.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L26)
 
 #### Parameters
 
@@ -89,7 +90,7 @@ Defined in: [shared/logging/logger.ts:15](https://github.com/FarukAda/aws-langgr
 
 > **warn**(`message`, ...`args`): `void`
 
-Defined in: [shared/logging/logger.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L16)
+Defined in: [shared/logging/logger.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L27)
 
 #### Parameters
 

@@ -12,7 +12,7 @@ describe('setUpHistory', () => {
     );
   });
 
-  it('rejects an invalid tableName and an unknown corrupt-message policy at construction (CORE-05)', () => {
+  it('rejects an invalid tableName and an unknown corrupt-message policy at construction', () => {
     const client = { send: jest.fn() } as never;
     expect(() => setUpHistory({ tableName: 'bad name', client })).toThrow(/tableName/);
     expect(() =>
@@ -73,7 +73,7 @@ describe('setUpHistory', () => {
   });
 });
 
-describe('collaborator shape (DDB-09)', () => {
+describe('collaborator shape', () => {
   it('refuses an injected client missing a method this package calls', () => {
     expect(() =>
       setUpHistory({ tableName: 'history', client: { send: jest.fn() } as never }),
@@ -105,7 +105,7 @@ describe('collaborator shape (DDB-09)', () => {
   });
 });
 
-describe('S3 region inheritance (CODEC-15)', () => {
+describe('S3 region inheritance', () => {
   it('builds the S3 client in the DynamoDB region when s3.clientConfig names none', async () => {
     let seen: { region?: unknown } | undefined;
     const ddb = {
@@ -138,7 +138,7 @@ describe('S3 region inheritance (CODEC-15)', () => {
   });
 });
 
-describe('retry policy (DDB-03)', () => {
+describe('retry policy', () => {
   it('resolves the retry policy onto the context, defaulting to five attempts', () => {
     const client = fakeClientMethods() as never;
     expect(setUpHistory({ tableName: 't123', client }).context.retry?.maxAttempts).toBe(5);

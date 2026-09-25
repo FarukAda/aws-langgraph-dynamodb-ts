@@ -1,3 +1,14 @@
+/**
+ * Hides what a well-formed store operation is (record 21).
+ *
+ * Every namespace, key, address, search, listing and batch is checked here,
+ * once, into branded types only these parsers build, and each operation's
+ * kind is decided from its shape here and nowhere else. Which of upstream's
+ * own rules apply — no `.` in a label and no `"langgraph"` root, for `put()`
+ * alone — and every default a caller may leave out are settled here too, so
+ * no later step checks again.
+ */
+
 import type {
   BaseStore,
   ListNamespacesOperation,
@@ -68,11 +79,11 @@ const DEFAULT_LIST_LIMIT = 100;
  * with `for…of`, so a hole in a sparse array is checked as the `undefined` it
  * reads as rather than skipped.
  *
- * These are this backend's own rules, and only those: `#` is this backend's
+ * These are this package's own rules, and only those: `#` is this package's
  * separator, so a `.` costs nothing here, and a listing's `'*'` wildcard
  * satisfies every one of these rules, so it needs no exemption. Upstream
  * `BaseStore.put` refuses a `.` in a label and a `"langgraph"` root too, but
- * only in that one method — see {@link checkUpstreamPutNamespace}.
+ * only in that one method — see {@link assertUpstreamPutNamespace}.
  */
 function parseLabels(value: unknown, field: string): string[] {
   if (!Array.isArray(value)) {
@@ -347,7 +358,7 @@ export function parseListNamespacesOptions(options: ListNamespacesOptions): Pars
  * written there must stay readable, searchable and deletable here. Only
  * `put()` applies it, as upstream does; `batch()` does not.
  */
-function checkUpstreamPutNamespace(namespace: Namespace): void {
+function assertUpstreamPutNamespace(namespace: Namespace): void {
   if (namespace.some((label) => label.includes('.'))) {
     throw validationError(
       'namespace element must not contain "."; put() refuses it, as upstream BaseStore.put does',
@@ -382,7 +393,7 @@ export function parsePutArguments(
   index: PutOperation['index'],
 ): ParsedPut {
   const address = parseStoreAddress(namespace, key);
-  checkUpstreamPutNamespace(address.namespace);
+  assertUpstreamPutNamespace(address.namespace);
   if (value === null) {
     throw validationError('value must be an object; delete() removes an item', 'value');
   }

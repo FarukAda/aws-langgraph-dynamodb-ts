@@ -58,8 +58,8 @@ function trackingOffloader() {
  * cleanup and the vector-backend delete even when the row was gone
  * server-side and only the acknowledgement had been lost.
  */
-describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
-  it('completes vector and S3 cleanup when an ambiguous delete actually landed (I4)', async () => {
+describe('deleteStoreItem ambiguous-failure verification', () => {
+  it('completes vector and S3 cleanup when an ambiguous delete actually landed', async () => {
     // put() re-verifies an ambiguous retry-exhausted write via verifyWriteLanded;
     // delete() had no equivalent and just propagated, skipping S3-orphan
     // cleanup and the vector-backend delete even when the row was gone
@@ -81,7 +81,7 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
     expect(vectorBackend.delete).toHaveBeenCalledWith(['users', 'u1'], 'profile');
   });
 
-  it('propagates an ambiguous delete failure when the row is still present (I4)', async () => {
+  it('propagates an ambiguous delete failure when the row is still present', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(TransactWriteCommand)
@@ -94,7 +94,7 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
     expect(vectorBackend.delete).not.toHaveBeenCalled();
   });
 
-  it('propagates a non-ambiguous delete failure untouched (I4)', async () => {
+  it('propagates a non-ambiguous delete failure untouched', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(TransactWriteCommand)
@@ -114,7 +114,7 @@ describe('deleteStoreItem ambiguous-failure verification (I4)', () => {
  * both the put and the read deleted record.value out from under a row that may
  * well be live. Only a *confirmed* non-commit may delete the new upload.
  */
-describe('persistRecord ambiguous-failure verification', () => {
+describe('persistRow ambiguous-failure verification', () => {
   it('does not delete the new S3 object when the verification read cannot answer', async () => {
     const { client, mock } = createStrictDocumentMock();
     // readExisting succeeds (no previous row); the put exhausts its retries,
@@ -231,7 +231,7 @@ describe('deleteStoreItem releases the object its own observation named', () => 
   });
 });
 
-describe('persistRecord verifies an ambiguous inline overwrite by rev (STORE-13)', () => {
+describe('persistRow verifies an ambiguous inline overwrite by rev', () => {
   it('reports success and cleans up the previous offloaded object when the inline put actually landed', async () => {
     const { client, mock } = createStrictDocumentMock();
     let rev: string | undefined;

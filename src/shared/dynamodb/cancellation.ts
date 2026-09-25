@@ -1,3 +1,14 @@
+/**
+ * Hides how a cancelled transaction says why it failed.
+ *
+ * A `TransactionCanceledException` carries one raw reason per item, in the
+ * order the items were sent, under codes that are not the exception names the
+ * same failures carry outside a transaction. Which reason is a guard
+ * rejection, which are transient or throttling, and which item failed its
+ * condition are read here and nowhere else, so the retry layer, the error
+ * classifier and the writers that act on a rejection cannot read one apart.
+ */
+
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
 
 /**
@@ -123,13 +134,11 @@ const TRANSIENT_CANCELLATION_REASONS: readonly string[] = [
 export function transientCancellation(error: RejectionFields): boolean | undefined {
   const reasons = getCancellationReasons(error);
   if (!reasons) return undefined;
-  /**
-   * `length > 0` is load-bearing: `.every()` is vacuously true on an empty
-   * array, which would make a reason-less cancellation retryable — the exact
-   * opposite of what this function documents. AWS populates one reason per
-   * `TransactItems` entry, so an empty array should not occur; if it ever
-   * does, the conservative answer is not to retry.
-   */
+  // `length > 0` is load-bearing: `.every()` is vacuously true on an empty
+  // array, which would make a reason-less cancellation retryable — the exact
+  // opposite of what this function documents. AWS populates one reason per
+  // `TransactItems` entry, so an empty array should not occur; if it ever
+  // does, the conservative answer is not to retry.
   return (
     reasons.length > 0 &&
     reasons.every(

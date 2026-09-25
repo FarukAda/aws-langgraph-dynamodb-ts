@@ -41,6 +41,7 @@ import type {
   LogArgument,
   Logger,
   MessageWindow,
+  MultiSessionHistory,
   Redactable,
   RedactLoggerOptions,
   RetryAttemptInfo,
@@ -87,7 +88,7 @@ const VALUE_EXPORTS = [
   'redactSecrets',
 ] as const;
 
-describe('public value exports (CORE-12, TEST-10)', () => {
+describe('public value exports', () => {
   it('are exactly the documented set, at runtime and in the types', () => {
     expect(Object.keys(api).sort()).toEqual([...VALUE_EXPORTS].sort());
     expectTypeOf<keyof typeof api>().toEqualTypeOf<(typeof VALUE_EXPORTS)[number]>();
@@ -104,7 +105,7 @@ describe('public value exports (CORE-12, TEST-10)', () => {
   });
 });
 
-describe('public type exports (CORE-12, TEST-10)', () => {
+describe('public type exports', () => {
   it('each resolve to a real type (the import list above is the lock)', () => {
     expectTypeOf<AdapterSection<DynamoDBSaverOptions>>().not.toHaveProperty('client');
     expectTypeOf<AdapterWindow>().toEqualTypeOf<{ limit?: number }>();
@@ -159,7 +160,8 @@ describe('public type exports (CORE-12, TEST-10)', () => {
     expectTypeOf<SearchOptions>().toEqualTypeOf<
       Pick<SearchOperation, 'filter' | 'limit' | 'offset' | 'query'> & CancelOptions
     >();
-    expectTypeOf<SessionBackend>().toHaveProperty('getMessages');
+    expectTypeOf<MultiSessionHistory>().toHaveProperty('getMessages');
+    expectTypeOf<SessionBackend>().toEqualTypeOf<MultiSessionHistory>();
     expectTypeOf<SessionMetadata['expiresAt']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<TtlOption>().toEqualTypeOf<{ days: number } | { seconds: number }>();
     expectTypeOf<VectorBackend>().toHaveProperty('query');
@@ -174,7 +176,7 @@ describe('public type exports (CORE-12, TEST-10)', () => {
   });
 });
 
-describe('adapter signatures (TEST-10)', () => {
+describe('adapter signatures', () => {
   it('the checkpointer implements BaseCheckpointSaver and takes a cancellable deleteThread', () => {
     expectTypeOf<DynamoDBSaver>().toMatchTypeOf<BaseCheckpointSaver>();
     expectTypeOf<DynamoDBSaver['deleteThread']>().parameters.toEqualTypeOf<

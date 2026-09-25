@@ -1,3 +1,13 @@
+/**
+ * Hides which of three paths serves a search.
+ *
+ * A query with a `vectorBackend` is answered by the backend; no query, or no
+ * `index` to embed one with, is a page read from the table that stops once
+ * full; anything else is ranked in memory over at most `maxSearchCandidates`.
+ * A page of zero is answered before any of them. A caller gets the same shape
+ * of page whichever path ran, scored exactly when a query could be ranked.
+ */
+
 import type { SearchItem } from '@langchain/langgraph-checkpoint';
 
 import { truncateLabelsForLog } from '../../shared/logging/truncate';
@@ -38,14 +48,12 @@ export async function searchItems(
   signal?: AbortSignal,
 ): Promise<SearchItem[]> {
   const { offset, limit } = search;
-  /**
-   * A zero page is answered here, ahead of all three paths below, because each
-   * of them pays for it: `collectCandidates` pulls the first row out of the
-   * paginator before it tests its `offset + limit` bound, so even a page that
-   * needs nothing costs one Query or Scan, and the two ranked paths embed the
-   * query as well. Slicing the result to nothing afterwards hid the cost
-   * rather than avoiding it.
-   */
+  // A zero page is answered here, ahead of all three paths below, because each
+  // of them pays for it: `collectCandidates` pulls the first row out of the
+  // paginator before it tests its `offset + limit` bound, so even a page that
+  // needs nothing costs one Query or Scan, and the two ranked paths embed the
+  // query as well. Slicing the result to nothing afterwards hid the cost
+  // rather than avoiding it.
   if (limit === 0) return [];
   if (search.query && hasVectorBackend(context)) {
     const ranked = await searchViaBackend(context, search, signal);

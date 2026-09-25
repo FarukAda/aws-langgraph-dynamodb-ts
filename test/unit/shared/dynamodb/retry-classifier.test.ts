@@ -49,7 +49,7 @@ describe('isRetryableError', () => {
     expect(isRetryableError(err, DEFAULT_RETRYABLE_ERRORS)).toBe(false);
   });
 
-  it('treats a cancellation carrying an empty reasons array as non-retryable (M3)', () => {
+  it('treats a cancellation carrying an empty reasons array as non-retryable', () => {
     // `.every()` on an empty array is vacuously true, which contradicted the
     // documented "a bare cancellation with no reasons is not retryable".
     const err = Object.assign(new Error('cancelled'), {
@@ -109,7 +109,7 @@ describe('isRetryableError', () => {
   });
 });
 
-describe('isRetryableError parity with the SDK classifier (DDB-02)', () => {
+describe('isRetryableError parity with the SDK classifier', () => {
   const withStatus = (name: string, status: number): Error =>
     Object.assign(new Error(name), { name, $metadata: { httpStatusCode: status } });
 

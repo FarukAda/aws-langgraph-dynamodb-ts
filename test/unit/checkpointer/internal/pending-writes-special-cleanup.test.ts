@@ -1,6 +1,6 @@
 import { parseThreadId } from '../../../../src/checkpointer/internal/parse';
-import { writeSpecialItemsWithCleanup } from '../../../../src/checkpointer/internal/pending-writes';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
+import { writeSpecialRowsWithCleanup } from '../../../../src/checkpointer/internal/pending-writes';
+import type { CheckpointWriteRow } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -27,7 +27,7 @@ const descriptor = (s3Key: string) => ({
 function specialItem(
   s3Key: string,
   sk = 'WRITE##c1#task-1#0000000007#__error__',
-): CheckpointWriteItem {
+): CheckpointWriteRow {
   return {
     PK: 't',
     SK: sk,
@@ -71,14 +71,14 @@ function context(client: ClientStub, offloader?: ReturnType<typeof trackingOfflo
   } as unknown as CheckpointerContext;
 }
 
-describe('writeSpecialItemsWithCleanup', () => {
+describe('writeSpecialRowsWithCleanup', () => {
   it('is a no-op for an empty items list', async () => {
     const client: ClientStub = {
       get: () => Promise.resolve({}),
       put: () => Promise.resolve({}),
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(
+    const result = await writeSpecialRowsWithCleanup(
       context(client, offloader),
       parseThreadId('t'),
       [],
@@ -93,7 +93,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: () => Promise.resolve({}),
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(
+    const result = await writeSpecialRowsWithCleanup(
       context(client, offloader),
       parseThreadId('t'),
       [specialItem('new.bin')],
@@ -111,7 +111,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       },
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(
+    const result = await writeSpecialRowsWithCleanup(
       context(client, offloader),
       parseThreadId('t'),
       [specialItem('new.bin')],
@@ -125,7 +125,7 @@ describe('writeSpecialItemsWithCleanup', () => {
     const client: ClientStub = {
       get: () => Promise.resolve({}),
       put: (input) => {
-        const item = input.Item as CheckpointWriteItem;
+        const item = input.Item as CheckpointWriteRow;
         if (item.SK.endsWith('one')) {
           throw Object.assign(new Error('first'), { name: 'ResourceNotFoundException' });
         }
@@ -133,7 +133,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       },
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(
+    const result = await writeSpecialRowsWithCleanup(
       context(client, offloader),
       parseThreadId('t'),
       [
@@ -150,7 +150,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: () => Promise.resolve({}),
     };
     await expect(
-      writeSpecialItemsWithCleanup(context(client), parseThreadId('t'), [specialItem('new.bin')]),
+      writeSpecialRowsWithCleanup(context(client), parseThreadId('t'), [specialItem('new.bin')]),
     ).resolves.toBeUndefined();
   });
 
@@ -160,7 +160,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       put: () => Promise.resolve({}),
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(
+    const result = await writeSpecialRowsWithCleanup(
       context(client, offloader),
       parseThreadId('t'),
       [specialItem('new.bin')],
@@ -181,7 +181,7 @@ describe('writeSpecialItemsWithCleanup', () => {
         return {};
       },
       put: async (input) => {
-        const item = input.Item as CheckpointWriteItem;
+        const item = input.Item as CheckpointWriteRow;
         if (item.SK.endsWith('failed')) {
           throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
         }
@@ -189,7 +189,7 @@ describe('writeSpecialItemsWithCleanup', () => {
       },
     };
     const offloader = trackingOffloader();
-    const result = await writeSpecialItemsWithCleanup(
+    const result = await writeSpecialRowsWithCleanup(
       context(client, offloader),
       parseThreadId('t'),
       [
@@ -207,7 +207,7 @@ describe('writeSpecialItemsWithCleanup', () => {
  * The special row a call with `writeGroup` builds for `value`, with the key its
  * upload gets: the real item builder, so the key is the one the call would use.
  */
-async function builtItem(value: unknown, writeGroup: string): Promise<CheckpointWriteItem> {
+async function builtItem(value: unknown, writeGroup: string): Promise<CheckpointWriteRow> {
   const offloading = context(
     { get: () => Promise.resolve({}), put: () => Promise.resolve({}) },
     trackingOffloader(),
@@ -224,10 +224,10 @@ async function builtItem(value: unknown, writeGroup: string): Promise<Checkpoint
   return built;
 }
 
-const keyOf = (built: CheckpointWriteItem): string => (built.value as { s3Key: string }).s3Key;
+const keyOf = (built: CheckpointWriteRow): string => (built.value as { s3Key: string }).s3Key;
 
 /**
- * The timeline of C-02b, with every call uploading under its own writeGroup:
+ * The timeline below shows every call uploading under its own writeGroup:
  *
  * 1. No row exists when this call reads it, so its put is pinned to "no row".
  * 2. Every attempt at that put times out, so the retry budget is spent.
@@ -253,12 +253,12 @@ async function raceOnSpecialRow(racerValue: object | null) {
     ...context(client, offloader),
     retry: { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
   } as CheckpointerContext;
-  const error = await writeSpecialItemsWithCleanup(ctx, parseThreadId('t'), [own]);
+  const error = await writeSpecialRowsWithCleanup(ctx, parseThreadId('t'), [own]);
   const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
   return { error, deleted, own: keyOf(own) };
 }
 
-describe("writeSpecialItemsWithCleanup never releases a racer's committed object (C-02b)", () => {
+describe("writeSpecialRowsWithCleanup never releases a racer's committed object", () => {
   it.each([
     ['the same value', { error: 'boom' }],
     ['another value', { error: 'another' }],
@@ -303,7 +303,7 @@ describe("writeSpecialItemsWithCleanup never releases a racer's committed object
       },
     };
     const offloader = trackingOffloader();
-    const error = await writeSpecialItemsWithCleanup(
+    const error = await writeSpecialRowsWithCleanup(
       context(client, offloader),
       parseThreadId('t'),
       [specialItem('new.bin')],
@@ -327,7 +327,7 @@ describe("writeSpecialItemsWithCleanup never releases a racer's committed object
  *
  * The invariant is that the racer's committed object is never released.
  */
-describe('writeSpecialItemsWithCleanup releases a superseded object without reading the row again', () => {
+describe('writeSpecialRowsWithCleanup releases a superseded object without reading the row again', () => {
   it("releases exactly the superseded object, which the racer's committed row does not name", async () => {
     const superseded = await builtItem({ error: 'first' }, 'g0');
     const racer = await builtItem({ error: 'first' }, 'group-racer');
@@ -342,7 +342,7 @@ describe('writeSpecialItemsWithCleanup releases a superseded object without read
     };
     const offloader = trackingOffloader();
 
-    const error = await writeSpecialItemsWithCleanup(
+    const error = await writeSpecialRowsWithCleanup(
       context(client, offloader),
       parseThreadId('t'),
       [own],
@@ -356,7 +356,7 @@ describe('writeSpecialItemsWithCleanup releases a superseded object without read
   });
 });
 
-describe('writeSpecialItemsWithCleanup S3 key binding (SEC-03)', () => {
+describe('writeSpecialRowsWithCleanup S3 key binding', () => {
   it("never deletes a superseded object outside the thread's own path", async () => {
     const client: ClientStub = {
       get: () =>
@@ -370,7 +370,7 @@ describe('writeSpecialItemsWithCleanup S3 key binding (SEC-03)', () => {
       logger: { ...SILENT_LOGGER, warn },
     } as CheckpointerContext;
     await expect(
-      writeSpecialItemsWithCleanup(ctx, parseThreadId('t'), [specialItem('new.bin')]),
+      writeSpecialRowsWithCleanup(ctx, parseThreadId('t'), [specialItem('new.bin')]),
     ).resolves.toBeUndefined();
     expect(offloader.ownsKey).toHaveBeenCalledWith('foreign/old.bin', ['t']);
     expect(offloader.deleteBatch).not.toHaveBeenCalled();

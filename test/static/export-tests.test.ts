@@ -36,7 +36,7 @@ describe('unaddressedExports', () => {
  * An export reached only through its callers has no test that states what it
  * promises, so the first change to it breaks nothing until it breaks a caller.
  */
-describe('every exported function is addressed by a test (DOCS-09)', () => {
+describe('every exported function is addressed by a test', () => {
   it('leaves no exported function unnamed across the whole suite', () => {
     expect(unaddressedExports(allExportedFunctions(), allTestSources())).toEqual([]);
   });

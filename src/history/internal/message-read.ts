@@ -9,18 +9,16 @@
  * returns.
  */
 
-import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
-
 import { nowSeconds } from '../../shared/clock';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import { LIST_SCAN_WARN_THRESHOLD, paginateQuery } from '../../shared/dynamodb/paginate';
-import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
+import { retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow, assertReadableRow } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
 import { truncateForLog } from '../../shared/logging/truncate';
 import { ulidTimePrefix } from '../../shared/ulid';
 import type { ParsedWindow, SessionId } from './parse';
-import { type ChatMessageItem, messageQuery, messageSortKey, narrowMessageItem } from './rows';
+import { type MessageRow, messageQuery, messageSortKey, parseMessageRow } from './rows';
 import type { HistoryContext } from './setup';
 
 /**
@@ -39,13 +37,13 @@ import type { HistoryContext } from './setup';
  * one, because the error can only say that such a row exists and an operator
  * has to go and look at it.
  */
-function requireMessageItem(
+function parseSessionMessageRow(
   context: HistoryContext,
   sessionId: SessionId,
-  raw: DocItem,
-): ChatMessageItem {
+  raw: AttributeMap,
+): MessageRow {
   assertReadableRow(raw, 'message');
-  const item = narrowMessageItem(raw);
+  const item = parseMessageRow(raw);
   if (item) return item;
   context.logger.warn('getMessages: refused a row that is not a chat message item', {
     sessionId,
@@ -99,10 +97,10 @@ export async function readWindow(
   sessionId: SessionId,
   window: ParsedWindow,
   signal?: AbortSignal,
-): Promise<ChatMessageItem[]> {
+): Promise<MessageRow[]> {
   const now = nowSeconds();
   const limit = window.limit ?? Number.POSITIVE_INFINITY;
-  const items: ChatMessageItem[] = [];
+  const items: MessageRow[] = [];
   for await (const raw of paginateQuery({
     retry: retryFor(context, signal),
     signal,
@@ -116,12 +114,10 @@ export async function readWindow(
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
-    /**
-     * A message newer than this version reads, and a row that is not one of
-     * this adapter's at all, both fail loudly rather than vanishing from the
-     * window.
-     */
-    const item = requireMessageItem(context, sessionId, raw);
+    // A message newer than this version reads, and a row that is not one of
+    // this adapter's at all, both fail loudly rather than vanishing from the
+    // window.
+    const item = parseSessionMessageRow(context, sessionId, raw);
     if (isExpiredRow(item, now)) continue;
     items.push(item);
     if (items.length >= limit) break;
@@ -149,9 +145,9 @@ export async function readWindow(
  * open — a number that is not merely stale but describes nothing. The repair
  * refuses instead, and the read's own `warn` is what names the row.
  */
-function requireCountableRow(raw: DocItem, sessionId: SessionId): ChatMessageItem {
+function parseCountableRow(raw: AttributeMap, sessionId: SessionId): MessageRow {
   assertReadableRow(raw, 'message');
-  const item = narrowMessageItem(raw);
+  const item = parseMessageRow(raw);
   if (item) return item;
   throw validationError(
     `session "${sessionId}" holds a row in its message key space that is not a chat message ` +
@@ -190,9 +186,10 @@ function requireCountableRow(raw: DocItem, sessionId: SessionId): ChatMessageIte
  * `message.location` that every descriptor this package has written carries,
  * which proves the attribute is there and a map without reading the bytes it
  * holds. Every check runs here rather than in a filter, because a filter would
- * drop an expired row before its version could be checked. The paging is
- * deliberately uncapped: a partial count is not a repair, it is a new and
- * wrong number, so the count either completes or fails.
+ * drop an expired row before its version could be checked. The pages are
+ * walked by the shared paginator with both of its caps lifted: a partial count
+ * is not a repair, it is a new and wrong number, so the count either completes
+ * or fails.
  */
 export async function countLiveMessages(
   context: HistoryContext,
@@ -201,30 +198,28 @@ export async function countLiveMessages(
 ): Promise<number> {
   const now = nowSeconds();
   const query = messageQuery(context.tableName, sessionId);
-  const base = {
-    ...query,
-    ProjectionExpression: '#pk, #sid, #msg.#loc, #v, #ttl',
-    ExpressionAttributeNames: {
-      ...query.ExpressionAttributeNames,
-      '#sid': 'sessionId',
-      '#msg': 'message',
-      '#loc': 'location',
-      '#v': 'v',
-      '#ttl': 'ttl',
-    },
-  };
   let total = 0;
-  let startKey: Record<string, NativeAttributeValue> | undefined;
-  do {
-    const page = await withDynamoDBRetry(
-      (request) => context.client.query({ ...base, ExclusiveStartKey: startKey }, request),
-      retryFor(context, signal),
-    );
-    for (const raw of page.Items ?? []) {
-      const row = requireCountableRow(raw, sessionId);
-      if (!isExpiredRow(row, now)) total += 1;
-    }
-    startKey = page.LastEvaluatedKey;
-  } while (startKey);
+  for await (const raw of paginateQuery({
+    retry: retryFor(context, signal),
+    signal,
+    client: context.client,
+    params: {
+      ...query,
+      ProjectionExpression: '#pk, #sid, #msg.#loc, #v, #ttl',
+      ExpressionAttributeNames: {
+        ...query.ExpressionAttributeNames,
+        '#sid': 'sessionId',
+        '#msg': 'message',
+        '#loc': 'location',
+        '#v': 'v',
+        '#ttl': 'ttl',
+      },
+    },
+    maxItems: Number.POSITIVE_INFINITY,
+    maxIterations: Number.POSITIVE_INFINITY,
+  })) {
+    const row = parseCountableRow(raw, sessionId);
+    if (!isExpiredRow(row, now)) total += 1;
+  }
   return total;
 }

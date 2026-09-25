@@ -35,7 +35,7 @@ returned array; the rest of the session is returned. A caller that would
 rather the whole read fail passes `onCorruptMessage: 'throw'`, which
 rethrows the underlying error instead. The policy governs only what
 `decodeMessage` classifies as permanent payload loss; everything else —
-a row `requireMessageItem` refuses because it is not this adapter's own
+a row `parseSessionMessageRow` refuses because it is not this adapter's own
 (`src/history/internal/message-read.ts`), a format-version refusal, a
 scope violation, or any infrastructure failure — propagates regardless of
 the policy, because none of those is the message's own loss the policy

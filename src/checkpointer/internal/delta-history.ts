@@ -17,7 +17,7 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
@@ -113,9 +113,10 @@ function cursorFor(
  * `from.signal` cancels every hop, not just the first. The chain is unbounded
  * in principle — a delta channel rebuilds from the nearest ancestor that stored
  * a value — and each hop is a `getTuple`, which can cost an S3 download, so a
- * walk that could not be stopped part-way was the one read in this package that
- * ignored the cancel it was given. A cancel is read before the request is sent,
- * so the hop the signal fires on is the last read the call makes.
+ * walk that could not be stopped part-way would be the one read in this
+ * package that ignores a cancel it is given. A cancel is read before each
+ * request is sent, so the hop the signal fires on is the last read the call
+ * makes.
  */
 async function walkAncestors(
   context: CheckpointerContext,
@@ -259,7 +260,7 @@ export async function probeAncestor(
       ),
     retryFor(context, config.signal),
   );
-  const row = result.Item as DocItem | undefined;
+  const row = result.Item as AttributeMap | undefined;
   return {
     threadId,
     checkpointId,

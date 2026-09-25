@@ -13,7 +13,7 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { StoredMessage } from '@langchain/core/messages';
 
 import { codecDepsOf, encodePayload, type PayloadDescriptor } from '../../shared/codec/codec';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import {
   ADAPTER_TAGS,
   KEY_SEPARATOR,
@@ -26,7 +26,7 @@ import type { SessionId } from './parse';
 import type { HistoryContext } from './setup';
 
 /**
- * Item-kind tag distinguishing this adapter's sort keys from another
+ * Row-kind tag distinguishing this adapter's sort keys from another
  * adapter's on a table shared via `DynamoDBFactory.createAll()` — matches the
  * pattern the checkpointer module already uses for its own META#/PAYLOAD#/
  * WRITE# keys. Without it, `SESSION_SORT_KEY` alone was a bare, common-word
@@ -135,13 +135,13 @@ export function messageSortKeyPrefix(): string {
   return MESSAGE_PREFIX;
 }
 
-/** Options for {@link sessionItemsQuery}. */
-export interface SessionItemsQueryOptions {
+/** Options for {@link sessionRowsQuery}. */
+export interface SessionRowsQueryOptions {
   consistent?: boolean;
 }
 
 /**
- * Query input selecting every item in a session's partition.
+ * Query input selecting every row in a session's partition.
  *
  * Accepts: `options.consistent` — for a read whose answer a write depends on.
  *
@@ -151,10 +151,10 @@ export interface SessionItemsQueryOptions {
  *
  * Throws: nothing.
  */
-export function sessionItemsQuery(
+export function sessionRowsQuery(
   tableName: string,
   sessionId: SessionId,
-  options: SessionItemsQueryOptions = {},
+  options: SessionRowsQueryOptions = {},
 ): QueryCommandInput {
   const params: QueryCommandInput = {
     TableName: tableName,
@@ -167,7 +167,7 @@ export function sessionItemsQuery(
 }
 
 /** Options for {@link messageQuery}. */
-export interface MessageQueryOptions extends SessionItemsQueryOptions {
+export interface MessageQueryOptions extends SessionRowsQueryOptions {
   /** Walk the messages newest-first; the caller restores chronological order. */
   descending?: boolean;
   /** Cap the rows DynamoDB evaluates per page. */
@@ -218,8 +218,8 @@ export function messageQuery(
   return params;
 }
 
-/** A single stored chat message item (one per message, ordered by its ULID). */
-export interface ChatMessageItem {
+/** A single stored chat message row (one per message, ordered by its ULID). */
+export interface MessageRow {
   PK: string;
   SK: string;
   /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
@@ -240,7 +240,7 @@ export interface MessageRowSource {
 }
 
 /**
- * Encode a single stored message into its DynamoDB item.
+ * Encode a single stored message into its DynamoDB row.
  *
  * Accepts: `source.sessionId` — the session the message belongs to.
  * `source.messageId` — the message's own id, which orders it and names its
@@ -260,11 +260,11 @@ export interface MessageRowSource {
  * Encoding precedes the transaction, so a message that cannot be stored never
  * half-writes a turn.
  */
-export async function buildMessageItem(
+export async function buildMessageRow(
   context: HistoryContext,
   source: MessageRowSource,
   signal?: AbortSignal,
-): Promise<ChatMessageItem> {
+): Promise<MessageRow> {
   const { sessionId, messageId, message, ttlTimestamp } = source;
   const pk = sessionPartition(sessionId);
   const sk = messageSortKey(messageId);
@@ -273,7 +273,7 @@ export async function buildMessageItem(
     objectId: messageId,
     row: { pk, sk },
   });
-  const item: ChatMessageItem = {
+  const item: MessageRow = {
     PK: pk,
     SK: sk,
     v: ROW_FORMAT_VERSION,
@@ -285,7 +285,7 @@ export async function buildMessageItem(
 }
 
 /**
- * Narrow a raw row to a {@link ChatMessageItem}.
+ * Narrow a raw row to a {@link MessageRow}.
  *
  * Accepts: `raw` — any row read from a session's partition under the message
  * sort-key prefix, which on a shared table another writer can produce too.
@@ -294,9 +294,9 @@ export async function buildMessageItem(
  * one carrying no `sessionId`, no `message` descriptor, or a `sessionId` that
  * disagrees with the partition it was found in. The test is on the attributes
  * a message must have, not on a cast: this is the one boundary where a row may
- * not have been written by this adapter, and the read used to trust the key it
- * was found at. A `message` of `null` is refused here, as
- * `narrowMetaItem` refuses a `metadata` of `null`.
+ * not have been written by this adapter, so the key it was found at is not
+ * trusted on its own. A `message` of `null` is refused here, as
+ * `parseMetaRow` refuses a `metadata` of `null`.
  *
  * Throws: nothing; a row a newer release wrote is the caller's to refuse,
  * before the shape is judged against attribute types that release may no
@@ -305,10 +305,10 @@ export async function buildMessageItem(
  * Guarantees: a row's attributes are bound to the partition it lives in, so a
  * row planted under one session cannot claim to belong to another.
  */
-export function narrowMessageItem(raw: DocItem): ChatMessageItem | undefined {
+export function parseMessageRow(raw: AttributeMap): MessageRow | undefined {
   const shaped =
     typeof raw.sessionId === 'string' && typeof raw.message === 'object' && raw.message !== null;
   if (!shaped) return undefined;
-  const item = raw as ChatMessageItem;
+  const item = raw as MessageRow;
   return item.PK === sessionPartition(item.sessionId) ? item : undefined;
 }

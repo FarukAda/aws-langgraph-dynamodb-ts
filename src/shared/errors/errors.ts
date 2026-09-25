@@ -1,3 +1,19 @@
+/**
+ * Hides what each of this library's errors carries, for the codes that have
+ * a factory here.
+ *
+ * A failure site with a factory below names it for its code and the facts it
+ * has. The message wording, which facts go into `context` or `details`,
+ * copying a list a caller reads from a `catch` long after the throw,
+ * redacting quoted cause text, and a stack that starts at the caller rather
+ * than inside the factory are decided here once per code, on the one error
+ * class (record 19). `FORMAT_UNSUPPORTED`, `PAYLOAD_CORRUPT`,
+ * `COMPRESSION_LIMIT`, `S3_OFFLOAD_FAILED` and `ANCESTOR_EXPIRED` are raised
+ * with `new DynamoDBLangGraphError` at their own call sites instead, and
+ * every AWS-classified code is wrapped once, by `wrapForeignError` in the
+ * error boundary, not per code here.
+ */
+
 import type { WriteRequest } from '../dynamodb/client';
 import { redactedMessage } from '../logging/secret-patterns';
 import {
@@ -264,8 +280,9 @@ export function batchWriteAllIncompleteError(
  * errors is redacted before it is embedded.
  *
  * Throws: nothing; building an error may not fail. Reading `.message` off a
- * thrown non-`Error` crashed here, inside the `catch` that was reporting the
- * rollback.
+ * thrown `null` or `undefined` would throw here, inside the `catch` reporting
+ * the rollback — which is why `toError` normalises both `cause` and
+ * `rollbackError` before anything reads off them.
  */
 export function compensationFailedError(
   cause: Error,

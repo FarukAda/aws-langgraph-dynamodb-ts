@@ -8,6 +8,6 @@
 
 > **LogArgument** = `string` \| `number` \| `boolean` \| `null` \| `object`
 
-Defined in: [shared/logging/logger.ts:2](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L2)
+Defined in: [shared/logging/logger.ts:12](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L12)
 
 A value safe to pass as a structured log argument.

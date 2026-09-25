@@ -126,7 +126,7 @@ async function sortKeysIn(partitionKey: string): Promise<string[]> {
   return (page.Items ?? []).map((row) => row.SK as string);
 }
 
-describe('deleteThread deletes exactly the rows it observed (D2)', () => {
+describe('deleteThread deletes exactly the rows it observed', () => {
   /**
    * THE SEAM GATE. `partition-delete.ts`'s flush detects the refusal and its
    * pass owns the set of refused units, so both halves can
@@ -247,7 +247,7 @@ describe('deleteThread deletes exactly the rows it observed (D2)', () => {
   });
 });
 
-describe('clear deletes exactly the rows it observed (D3)', () => {
+describe('clear deletes exactly the rows it observed', () => {
   /**
    * The session row is the one fixed-key row a history partition has, so an
    * append landing during the call rewrites the very row the read observed.

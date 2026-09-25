@@ -1,3 +1,13 @@
+/**
+ * Hides what a secret looks like.
+ *
+ * Which key names mark their value as a secret, which credential formats are
+ * recognised in free text, how a match is replaced while the field's name is
+ * kept, and how a caught value's message is redacted before another error
+ * quotes it are decided here. The redacting logger and every error that
+ * quotes its cause share these rules, so a new credential shape is one edit.
+ */
+
 import { toError } from '../errors/base-error';
 import { truncateRelayedText } from './truncate';
 
@@ -10,7 +20,8 @@ export const REDACTED = '[REDACTED]';
  * ends with it. Suffix matching is what catches `secretAccessKey`, `x-api-key`,
  * `client_secret` and `AUTH_TOKEN`; requiring the pattern to be a suffix, not a
  * substring, is what spares `maxTokens`, `total_tokens`, `tokenizer` and
- * `secretary`, which the old substring rule redacted.
+ * `secretary` — a bare substring match would redact all four for merely
+ * containing `token` or `secret`.
  */
 export const DEFAULT_SECRET_KEY_PATTERNS: readonly string[] = [
   'accesskey',

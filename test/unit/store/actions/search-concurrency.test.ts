@@ -3,7 +3,7 @@ import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { overlapOffloader } from '../../../shared/helpers/offload-overlap';
@@ -22,7 +22,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
   };
 }
 
-describe('searchItems offloaded reads (CODEC-14)', () => {
+describe('searchItems offloaded reads', () => {
   it('decodes offloaded candidates up to 8 at a time and keeps every match', async () => {
     const { client, mock } = createStrictDocumentMock();
     const { offloader, maxInFlight } = overlapOffloader();
@@ -30,7 +30,7 @@ describe('searchItems offloaded reads (CODEC-14)', () => {
     const records = [];
     for (let i = 0; i < 6; i++) {
       records.push(
-        await buildStoreItem(
+        await buildStoreRow(
           ctx,
           { namespace: ['users', 'u1'], key: `k${i}` },
           { i },

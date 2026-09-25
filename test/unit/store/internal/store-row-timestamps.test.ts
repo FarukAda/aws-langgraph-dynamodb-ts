@@ -1,15 +1,15 @@
 import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
 import { getItem } from '../../../../src/store/internal/get-item';
 import { parseStoreAddress } from '../../../../src/store/internal/parse';
 import {
-  buildStoreItem,
-  narrowStoreRecord,
-  narrowWholeRecord,
+  buildStoreRow,
+  parseStoreRow,
+  parseWholeStoreRow,
 } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
@@ -30,14 +30,18 @@ function context(client: StoreContext['client']): StoreContext {
 const AT = '2026-01-01T00:00:00.000Z';
 
 /** A store row as this package writes it, minus the attributes `missing` names. */
-async function rowWithout(ctx: StoreContext, key: string, ...missing: string[]): Promise<DocItem> {
-  const record = await buildStoreItem(
+async function rowWithout(
+  ctx: StoreContext,
+  key: string,
+  ...missing: string[]
+): Promise<AttributeMap> {
+  const record = await buildStoreRow(
     ctx,
     { namespace: ['users', 'u1'], key },
     { kind: 'note' },
     { createdAt: AT, updatedAt: AT },
   );
-  const row: DocItem = {};
+  const row: AttributeMap = {};
   for (const [name, value] of Object.entries(record)) {
     if (!missing.includes(name)) row[name] = value;
   }
@@ -51,11 +55,11 @@ async function rowWithout(ctx: StoreContext, key: string, ...missing: string[]):
  * `toISOString`. The row is narrowed away instead, where every other row this
  * adapter cannot speak for already is.
  */
-describe('narrowWholeRecord (L-05b)', () => {
+describe('parseWholeStoreRow', () => {
   it('narrows a row carrying both timestamps', async () => {
     const record = await rowWithout(context({} as never), 'good');
 
-    expect(narrowWholeRecord(record)).toBeDefined();
+    expect(parseWholeStoreRow(record)).toBeDefined();
   });
 
   it.each([['createdAt'], ['updatedAt'], ['createdAt', 'updatedAt']])(
@@ -63,14 +67,14 @@ describe('narrowWholeRecord (L-05b)', () => {
     async (...missing: string[]) => {
       const record = await rowWithout(context({} as never), 'bad', ...missing);
 
-      expect(narrowWholeRecord(record)).toBeUndefined();
+      expect(parseWholeStoreRow(record)).toBeUndefined();
     },
   );
 
   it('refuses a timestamp that is present but not a string', async () => {
     const record = await rowWithout(context({} as never), 'bad');
 
-    expect(narrowWholeRecord({ ...record, updatedAt: 1_700_000_000 })).toBeUndefined();
+    expect(parseWholeStoreRow({ ...record, updatedAt: 1_700_000_000 })).toBeUndefined();
   });
 
   /**
@@ -86,12 +90,12 @@ describe('narrowWholeRecord (L-05b)', () => {
       key: 'profile',
     };
 
-    expect(narrowStoreRecord(projected)).toBeDefined();
-    expect(narrowWholeRecord(projected)).toBeUndefined();
+    expect(parseStoreRow(projected)).toBeDefined();
+    expect(parseWholeStoreRow(projected)).toBeUndefined();
   });
 });
 
-describe('a store listing over a mix of good and bad rows (L-05b)', () => {
+describe('a store listing over a mix of good and bad rows', () => {
   it('returns the items whose rows carry timestamps and skips the one that does not', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);

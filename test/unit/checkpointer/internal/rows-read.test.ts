@@ -1,10 +1,10 @@
 import type { Checkpoint, CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
 import {
-  type CheckpointWriteItem,
+  type CheckpointWriteRow,
   dropSupersededWrites,
-  narrowHead,
-  narrowMetaItem,
+  parseHeadRow,
+  parseMetaRow,
   readCheckpoint,
   readMetadata,
   toPendingWrites,
@@ -38,12 +38,12 @@ const checkpoint: Checkpoint = {
 const metadata: CheckpointMetadata = { source: 'loop', step: 3, parents: {} };
 
 describe('rows: read', () => {
-  it('round-trips a checkpoint written by buildCheckpointItems', async () => {
+  it('round-trips a checkpoint written by buildCheckpointRows', async () => {
     const { payload } = await checkpointItems(context(), 't', '', checkpoint, metadata);
     expect(await readCheckpoint(context(), payload, 't')).toEqual(checkpoint);
   });
 
-  it('round-trips metadata written by buildCheckpointItems', async () => {
+  it('round-trips metadata written by buildCheckpointRows', async () => {
     const { meta } = await checkpointItems(context(), 't', '', checkpoint, metadata);
     expect(await readMetadata(context(), meta, 't')).toEqual(metadata);
   });
@@ -69,14 +69,14 @@ describe('rows: read', () => {
   });
 });
 
-describe('dropSupersededWrites (C3)', () => {
+describe('dropSupersededWrites', () => {
   const row = (
     index: number,
     channel: string,
     writeGroup: string,
     taskId = 'task-1',
     occurrence = 0,
-  ): CheckpointWriteItem => ({
+  ): CheckpointWriteRow => ({
     PK: 'CHKPT#t',
     SK: `WRITE##c1#${taskId}#${String(index + 8).padStart(10, '0')}#${channel}`,
     taskId,
@@ -141,7 +141,7 @@ describe('dropSupersededWrites (C3)', () => {
     expect(dropSupersededWrites(items)).toHaveLength(3);
   });
 
-  it('keeps a retry-added occurrence that never collided with an earlier row (F1)', () => {
+  it('keeps a retry-added occurrence that never collided with an earlier row', () => {
     // Call 1 wrote `messages` once (occurrence 0, index 0). Call 2 — a retry
     // that legitimately emitted `messages` twice — re-hit index 0 (guard
     // rejected, no row) and committed a brand-new row at index 1, occurrence 1.
@@ -151,7 +151,7 @@ describe('dropSupersededWrites (C3)', () => {
     expect(dropSupersededWrites(items).map((item) => item.writeGroup)).toEqual(['g1', 'g2']);
   });
 
-  it('still drops a later call re-emitting a channel at a shifted index (C3)', () => {
+  it('still drops a later call re-emitting a channel at a shifted index', () => {
     // Same channel, same occurrence, two different calls: the later one is a
     // superseding duplicate and must go.
     const items = [row(0, 'B', 'g2', 'task-1', 0), row(1, 'B', 'g1', 'task-1', 0)];
@@ -185,7 +185,7 @@ describe('dropSupersededWrites (C3)', () => {
   });
 });
 
-describe('toPendingWrites offloaded reads (CODEC-14)', () => {
+describe('toPendingWrites offloaded reads', () => {
   it('decodes offloaded pending writes up to 8 at a time, preserving order', async () => {
     const { offloader, maxInFlight } = overlapOffloader();
     const ctx = { ...context(), offloader: offloader as never };
@@ -210,7 +210,7 @@ describe('toPendingWrites offloaded reads (CODEC-14)', () => {
   });
 });
 
-describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', () => {
+describe('parseMetaRow refuses a row from a newer format version', () => {
   const meta = {
     PK: 'CHKPT#t',
     SK: 'META##c1',
@@ -221,8 +221,8 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
   };
 
   it('reads a row without a version, and one at the supported version', () => {
-    expect(narrowMetaItem(meta as never)).toBeDefined();
-    expect(narrowMetaItem({ ...meta, v: 1 })).toBeDefined();
+    expect(parseMetaRow(meta as never)).toBeDefined();
+    expect(parseMetaRow({ ...meta, v: 1 })).toBeDefined();
   });
 
   /**
@@ -231,7 +231,7 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
    * truncated history. It fails loudly instead.
    */
   it('throws FORMAT_UNSUPPORTED rather than skipping a newer row', () => {
-    expect(() => narrowMetaItem({ ...meta, v: 99 })).toThrow(/format version 99/);
+    expect(() => parseMetaRow({ ...meta, v: 99 })).toThrow(/format version 99/);
   });
 
   /**
@@ -242,7 +242,7 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
    * of the one error that names the remedy.
    */
   it('reports a newer row whose shape this release would otherwise refuse', () => {
-    expect(() => narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 99 })).toThrow(
+    expect(() => parseMetaRow({ PK: 'X', SK: 'META##c1', v: 99 })).toThrow(
       expect.objectContaining({
         code: ErrorCode.FORMAT_UNSUPPORTED,
         context: { field: 'v' },
@@ -252,8 +252,8 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
 
   /** A row at a version this release reads keeps the skip these narrows exist for. */
   it('still skips a foreign row at a version it reads', () => {
-    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1', v: 1 })).toBeUndefined();
-    expect(narrowMetaItem({ PK: 'X', SK: 'META##c1' })).toBeUndefined();
+    expect(parseMetaRow({ PK: 'X', SK: 'META##c1', v: 1 })).toBeUndefined();
+    expect(parseMetaRow({ PK: 'X', SK: 'META##c1' })).toBeUndefined();
   });
 });
 
@@ -262,9 +262,9 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
  * the thread the assembled tuple reports. Unbound, a writer confined to its own
  * partition could put `threadId: 'tenantB'` on a row in its own partition and
  * have `list()` hand back tenant B's offloaded payload — the cross-tenant read
- * `narrowStoreRecord` already refuses for store items (SEC-03).
+ * `parseStoreRow` already refuses for store items.
  */
-describe('narrowMetaItem binds a row to the partition it lives in (SEC-03)', () => {
+describe('parseMetaRow binds a row to the partition it lives in', () => {
   const row = (over: Record<string, unknown>) => ({
     PK: 'CHKPT#tenantA',
     SK: 'META#ns#c1',
@@ -276,14 +276,14 @@ describe('narrowMetaItem binds a row to the partition it lives in (SEC-03)', () 
   });
 
   it('accepts a row whose identifiers agree with the key it was found at', () => {
-    expect(narrowMetaItem(row({}) as never)).toBeDefined();
+    expect(parseMetaRow(row({}) as never)).toBeDefined();
   });
 
   it('rejects a row claiming a thread, namespace or checkpoint that is not its own', () => {
-    expect(narrowMetaItem(row({ threadId: 'tenantB' }) as never)).toBeUndefined();
-    expect(narrowMetaItem(row({ checkpointNs: 'other' }) as never)).toBeUndefined();
-    expect(narrowMetaItem(row({ checkpointId: 'c2' }) as never)).toBeUndefined();
-    expect(narrowMetaItem(row({ threadId: 42 }) as never)).toBeUndefined();
+    expect(parseMetaRow(row({ threadId: 'tenantB' }) as never)).toBeUndefined();
+    expect(parseMetaRow(row({ checkpointNs: 'other' }) as never)).toBeUndefined();
+    expect(parseMetaRow(row({ checkpointId: 'c2' }) as never)).toBeUndefined();
+    expect(parseMetaRow(row({ threadId: 42 }) as never)).toBeUndefined();
   });
 
   /**
@@ -293,7 +293,7 @@ describe('narrowMetaItem binds a row to the partition it lives in (SEC-03)', () 
    * compares may not mean there what it means here.
    */
   it('reports a mismatched row a newer format wrote rather than skipping it', () => {
-    expect(() => narrowMetaItem(row({ threadId: 'tenantB', v: 99 }) as never)).toThrow(
+    expect(() => parseMetaRow(row({ threadId: 'tenantB', v: 99 }) as never)).toThrow(
       expect.objectContaining({
         code: ErrorCode.FORMAT_UNSUPPORTED,
         context: { field: 'v' },
@@ -303,16 +303,16 @@ describe('narrowMetaItem binds a row to the partition it lives in (SEC-03)', () 
 
   /** At a version this release reads, a mismatched row is still skipped. */
   it('still skips a mismatched row stamped with a version it reads', () => {
-    expect(narrowMetaItem(row({ threadId: 'tenantB', v: 1 }) as never)).toBeUndefined();
+    expect(parseMetaRow(row({ threadId: 'tenantB', v: 1 }) as never)).toBeUndefined();
   });
 });
 
 /**
- * `narrowMetaItem` guards the one boundary where a row in this adapter's key
+ * `parseMetaRow` guards the one boundary where a row in this adapter's key
  * space may not have been written by it. A `metadata` of `null` passed the
  * `!== undefined` test and then raised a raw `TypeError` in the decoder.
  */
-describe('narrowMetaItem rejects a row whose descriptor is not one', () => {
+describe('parseMetaRow rejects a row whose descriptor is not one', () => {
   const base = {
     PK: 'CHKPT#t',
     SK: 'META##c',
@@ -327,15 +327,15 @@ describe('narrowMetaItem rejects a row whose descriptor is not one', () => {
     ['a string', 'INLINE'],
     ['a number', 7],
   ])('skips a row whose metadata is %s', (_name, metadata) => {
-    expect(narrowMetaItem({ ...base, metadata })).toBeUndefined();
+    expect(parseMetaRow({ ...base, metadata })).toBeUndefined();
   });
 
   it('accepts a row carrying a descriptor object', () => {
-    expect(narrowMetaItem({ ...base, metadata: { location: 'INLINE' } })).toBeDefined();
+    expect(parseMetaRow({ ...base, metadata: { location: 'INLINE' } })).toBeDefined();
   });
 });
 
-describe('narrowHead', () => {
+describe('parseHeadRow', () => {
   const ctx = (warn = jest.fn()) =>
     ({ logger: { info() {}, warn, error() {}, debug() {} } }) as never;
   const head = {
@@ -348,13 +348,13 @@ describe('narrowHead', () => {
   };
 
   it('returns the item for a real head row', () => {
-    expect(narrowHead(ctx(), head)?.checkpointId).toBe('c1');
+    expect(parseHeadRow(ctx(), head)?.checkpointId).toBe('c1');
   });
 
   /** An absent row is an ordinary answer, not something to warn about. */
   it('answers undefined silently when the read returned nothing', () => {
     const warn = jest.fn();
-    expect(narrowHead(ctx(warn), undefined)).toBeUndefined();
+    expect(parseHeadRow(ctx(warn), undefined)).toBeUndefined();
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -364,7 +364,7 @@ describe('narrowHead', () => {
    */
   it('skips a foreign row at the head and reports its sort key', () => {
     const warn = jest.fn();
-    expect(narrowHead(ctx(warn), { PK: 'CHKPT#t', SK: 'META##zzz' })).toBeUndefined();
+    expect(parseHeadRow(ctx(warn), { PK: 'CHKPT#t', SK: 'META##zzz' })).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a checkpoint meta item'), {
       sortKey: 'META##zzz',
     });

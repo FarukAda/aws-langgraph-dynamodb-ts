@@ -7,7 +7,7 @@ import { reconcileVectorIndex } from '../../../../src/store/actions/reconcile-ve
 import { searchItems } from '../../../../src/store/actions/search';
 import { getItem } from '../../../../src/store/internal/get-item';
 import { parseListOperation, parseStoreAddress } from '../../../../src/store/internal/parse';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -29,7 +29,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
 }
 
 async function rows(ctx: StoreContext) {
-  const live = await buildStoreItem(
+  const live = await buildStoreRow(
     ctx,
     { namespace: ['users', 'u1'], key: 'live' },
     { text: 'live' },
@@ -39,7 +39,7 @@ async function rows(ctx: StoreContext) {
       ttlTimestamp: NOW + 60,
     },
   );
-  const expired = await buildStoreItem(
+  const expired = await buildStoreRow(
     ctx,
     { namespace: ['users', 'u2'], key: 'gone' },
     { text: 'gone' },
@@ -52,7 +52,7 @@ async function rows(ctx: StoreContext) {
   return { live, expired };
 }
 
-describe('expired rows are filtered on every store read path (STORE-04)', () => {
+describe('expired rows are filtered on every store read path', () => {
   it('get returns null for a row past its ttl', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);

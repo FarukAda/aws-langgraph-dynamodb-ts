@@ -1,3 +1,16 @@
+/**
+ * Hides which decode failures cost one message and which fail the read.
+ *
+ * A stored message is fetched, deserialized and rebuilt in three stages, and
+ * the stage a failure comes from decides its fate: only a loss no reader could
+ * ever recover is confined to that message and handed to `onCorruptMessage`
+ * (record 12); a transport fault, an out-of-scope key, a newer payload or a
+ * serializer's refusal fails the read under either policy. A caller gets a
+ * conversation that is whole or, under `'skip'`, missing a lost turn
+ * reported at `error` — never one silently truncated without a trace —
+ * however many downloads run at once.
+ */
+
 import {
   type BaseMessage,
   type StoredMessage,
@@ -16,7 +29,7 @@ import { truncateForLog } from '../../shared/logging/truncate';
 import type { CancelOptions } from '../../shared/options';
 import { readWindow } from '../internal/message-read';
 import { parseGetMessagesRequest, type SessionId } from '../internal/parse';
-import type { ChatMessageItem } from '../internal/rows';
+import type { MessageRow } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';
 import type { MessageWindow } from '../types';
 
@@ -60,7 +73,7 @@ function corruptOrRethrow(error: Error): Decoded {
  */
 async function decodeMessage(
   context: HistoryContext,
-  item: ChatMessageItem,
+  item: MessageRow,
   sessionId: SessionId,
   signal: AbortSignal | undefined,
 ): Promise<Decoded> {
@@ -131,7 +144,7 @@ export async function getMessages(
   options: MessageWindow & CancelOptions = {},
 ): Promise<BaseMessage[]> {
   const request = parseGetMessagesRequest(sessionId, options);
-  const items: ChatMessageItem[] = await readWindow(
+  const items: MessageRow[] = await readWindow(
     context,
     request.sessionId,
     request.window,

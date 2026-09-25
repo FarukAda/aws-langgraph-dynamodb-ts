@@ -52,7 +52,7 @@ function memoryFor(sessionId: string): InMemoryChatMessageHistory {
   return memory;
 }
 
-describe('DynamoDBChatMessageHistory under RunnableWithMessageHistory matches the in-memory history (TEST-06)', () => {
+describe('DynamoDBChatMessageHistory under RunnableWithMessageHistory matches the in-memory history', () => {
   it('produces the same replies and stored transcripts across two sessions and three turns', async () => {
     const ours = chain((sessionId) => history.forSession(sessionId));
     const theirs = chain(memoryFor);

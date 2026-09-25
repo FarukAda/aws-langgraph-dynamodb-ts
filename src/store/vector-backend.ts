@@ -1,3 +1,13 @@
+/**
+ * Hides which vector index the store talks to.
+ *
+ * The store sees only `VectorBackend` — upsert, query, delete and an optional
+ * listing — with what it promises and requires stated per method, so any
+ * index that keeps those terms plugs in without the store changing. The table
+ * stays the truth: a backend may lag it and may score by distance, and every
+ * match is re-read before a caller sees it.
+ */
+
 /** A vector-similarity match returned by an external {@link VectorBackend}. */
 export interface VectorMatch {
   namespace: string[];

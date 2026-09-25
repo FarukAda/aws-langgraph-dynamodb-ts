@@ -1,3 +1,13 @@
+/**
+ * Hides whether a stored payload's bytes are gzipped.
+ *
+ * When gzip is attempted, when its output is not worth keeping, and how a read
+ * refuses a gzip bomb or a stream that is not gzip are decided here. A caller
+ * carries only the flag this module returns, recorded beside the bytes, so
+ * compression is never guessed from the bytes and the thresholds can change
+ * without touching the codec that stores them.
+ */
+
 import { promisify } from 'node:util';
 import { gunzip, gzip } from 'node:zlib';
 

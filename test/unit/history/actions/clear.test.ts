@@ -31,7 +31,7 @@ const inlineMessage = {
 };
 
 describe('clearSession', () => {
-  it('leaves a row that is not a chat-history row in place, and warns (C1, I7)', async () => {
+  it('leaves a row that is not a chat-history row in place, and warns', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({
       Items: [
@@ -47,7 +47,7 @@ describe('clearSession', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects an invalid session id instead of reaching DynamoDB (M12)', async () => {
+  it('rejects an invalid session id instead of reaching DynamoDB', async () => {
     const { client, mock } = createStrictDocumentMock();
     await expect(clearSession(context(client), '')).rejects.toThrow(/sessionId/);
     await expect(clearSession(context(client), 'a#b')).rejects.toThrow(/reserved "#" separator/);

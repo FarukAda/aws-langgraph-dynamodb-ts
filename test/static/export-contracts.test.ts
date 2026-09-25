@@ -39,7 +39,7 @@ describe('contractGapsIn', () => {
  * throws. Stating it is what forces the cells to be decided rather than
  * discovered by a caller.
  */
-describe('every exported function states its contract (DOCS-08)', () => {
+describe('every exported function states its contract', () => {
   it('leaves no exported function without Accepts, Returns and Throws', () => {
     expect(contractGaps()).toEqual([]);
   });

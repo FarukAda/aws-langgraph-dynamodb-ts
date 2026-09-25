@@ -1,13 +1,13 @@
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putWithRevisionSwap } from '../../../../src/store/internal/item-write';
-import type { ExistingRecordMeta, StoreItemRecord } from '../../../../src/store/internal/rows';
+import type { ExistingRowMeta, StoreItemRow } from '../../../../src/store/internal/rows';
 
 /** The request a plain put takes, and the item shape a transaction wraps. */
 interface WriteInput {
   TableName: string;
-  Item: DocItem;
+  Item: AttributeMap;
   ConditionExpression?: string;
   ExpressionAttributeNames?: Record<string, string>;
   ExpressionAttributeValues?: Record<string, string>;
@@ -43,7 +43,7 @@ const inline = () => ({
   bytes: new Uint8Array([1, 2, 3]),
 });
 
-const record = (value: StoreItemRecord['value']): StoreItemRecord => ({
+const record = (value: StoreItemRow['value']): StoreItemRow => ({
   PK: 'STORE#n',
   SK: 'k',
   namespace: ['n'],
@@ -55,7 +55,7 @@ const record = (value: StoreItemRecord['value']): StoreItemRecord => ({
 });
 
 /** The guard rejection as a one-item transaction reports it. */
-const cancelledGuard = (item?: DocItem) =>
+const cancelledGuard = (item?: AttributeMap) =>
   Object.assign(new Error('cancelled'), {
     name: 'TransactionCanceledException',
     CancellationReasons: [{ Code: 'ConditionalCheckFailed', ...(item ? { Item: item } : {}) }],
@@ -69,7 +69,7 @@ const conditionalFailure = () =>
  * A client double recording both write shapes, turning the first `failures` of
  * them away with whichever rejection that shape really carries.
  */
-function recorder(options: { failures: number; reReads?: ExistingRecordMeta[] }) {
+function recorder(options: { failures: number; reReads?: ExistingRowMeta[] }) {
   const emitted: Emitted[] = [];
   const reReads = options.reReads ?? [];
   const send = (entry: Emitted): Record<string, never> => {
@@ -104,7 +104,7 @@ function recorder(options: { failures: number; reReads?: ExistingRecordMeta[] })
   return { context, emitted };
 }
 
-const pinnedToR0: ExistingRecordMeta = { exists: true, revision: 'r0', value: offloaded('old') };
+const pinnedToR0: ExistingRowMeta = { exists: true, revision: 'r0', value: offloaded('old') };
 
 describe('an offloaded put goes out under a request token', () => {
   it('sends one transaction item carrying the guard fragments the plain put carried', async () => {
@@ -201,9 +201,9 @@ describe('an inline put is left exactly as it was', () => {
  */
 function racedByADelete() {
   const applied = new Set<string>();
-  let row: DocItem | undefined;
+  let row: AttributeMap | undefined;
   let requests = 0;
-  const send = (item: DocItem, token?: string): Record<string, never> => {
+  const send = (item: AttributeMap, token?: string): Record<string, never> => {
     requests += 1;
     if (token !== undefined && applied.has(token)) return {};
     row = item;

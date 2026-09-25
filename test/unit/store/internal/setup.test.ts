@@ -1,5 +1,5 @@
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
-import { MAX_TOTAL_ITEMS_IN_MEMORY } from '../../../../src/shared/dynamodb/paginate';
+import { MAX_TOTAL_ROWS_IN_MEMORY } from '../../../../src/shared/dynamodb/paginate';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { DEFAULT_MAX_SEARCH_CANDIDATES, setUpStore } from '../../../../src/store/internal/setup';
 import { fakeClientMethods, fakeMiddlewareStack } from '../../../shared/helpers/ddb-mock';
@@ -14,7 +14,7 @@ describe('setUpStore', () => {
     );
   });
 
-  it('rejects an invalid tableName and non-positive caps at construction (CORE-05)', () => {
+  it('rejects an invalid tableName and non-positive caps at construction', () => {
     const client = { send: jest.fn() } as never;
     expect(() => setUpStore({ tableName: 'bad name', client })).toThrow(/tableName/);
     expect(() => setUpStore({ tableName: 'store', client, maxScanItems: 0 })).toThrow(
@@ -61,7 +61,7 @@ describe('setUpStore', () => {
     expect(setup.context.maxSearchCandidates).toBe(50);
   });
 
-  it('rejects a vectorBackend configured without an index (I2)', () => {
+  it('rejects a vectorBackend configured without an index', () => {
     // With `index` unset, every put computed no embedding and instructed the
     // backend to *delete* the item's vector, and search() silently fell
     // through to an unranked scan-order listing with no .score field — a
@@ -117,7 +117,7 @@ describe('setUpStore', () => {
 
   it('defaults maxScanItems to the shared in-memory cap, but accepts an override', () => {
     const defaulted = setUpStore({ tableName: 'store', client: fakeClientMethods() });
-    expect(defaulted.context.maxScanItems).toBe(MAX_TOTAL_ITEMS_IN_MEMORY);
+    expect(defaulted.context.maxScanItems).toBe(MAX_TOTAL_ROWS_IN_MEMORY);
 
     const overridden = setUpStore({
       tableName: 'store',
@@ -128,7 +128,7 @@ describe('setUpStore', () => {
   });
 });
 
-describe('collaborator shape (DDB-09)', () => {
+describe('collaborator shape', () => {
   it('refuses a raw DynamoDBClient where a DynamoDBDocument is required', () => {
     const raw = { send: () => undefined };
     expect(() => setUpStore({ tableName: 'store', client: raw as never })).toThrow(
@@ -191,7 +191,7 @@ describe('collaborator shape (DDB-09)', () => {
   });
 });
 
-describe('index configuration validation (F6)', () => {
+describe('index configuration validation', () => {
   const base = {
     tableName: 'store',
     clientConfig: { region: 'us-east-1' },
@@ -260,7 +260,7 @@ describe('index configuration validation (F6)', () => {
   });
 });
 
-describe('S3 region inheritance (CODEC-15)', () => {
+describe('S3 region inheritance', () => {
   it('builds the S3 client in the DynamoDB region when s3.clientConfig names none', async () => {
     let seen: { region?: unknown } | undefined;
     const ddb = {
@@ -293,7 +293,7 @@ describe('S3 region inheritance (CODEC-15)', () => {
   });
 });
 
-describe('retry policy (DDB-03)', () => {
+describe('retry policy', () => {
   it('resolves the retry policy onto the context, defaulting to five attempts', () => {
     const client = fakeClientMethods() as never;
     expect(setUpStore({ tableName: 't123', client }).context.retry?.maxAttempts).toBe(5);

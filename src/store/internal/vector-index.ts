@@ -41,10 +41,10 @@ import {
 import {
   itemRowKey,
   namespaceMatchesPrefix,
-  narrowWholeRecord,
+  parseWholeStoreRow,
   readStoreItem,
   scopedQuery,
-  type StoreItemRecord,
+  type StoreItemRow,
 } from './rows';
 import { assertVectorDims, embedValue, embedValues } from './semantic-search';
 import type { StoreContext } from './setup';
@@ -118,16 +118,14 @@ export async function syncItemVector(
     if (embedding) await backend.upsert(address.namespace, address.key, embedding);
     else await backend.delete(address.namespace, address.key);
   } catch (error) {
-    /**
-     * The name, not the message: a backend's error text is not an identifier.
-     * Bounded all the same — the name is the backend's own and nothing this
-     * package ran checked its length, and `message` is bounded where
-     * `redactedMessage` relays it, so relaying the name whole would split what
-     * is one value. The literal does not name a method, because both
-     * `store.put` and `store.delete` reach here and reporting a failed delete
-     * as a failed put sends an operator to the wrong call site; `operation`
-     * carries which one.
-     */
+    // The name, not the message: a backend's error text is not an identifier.
+    // Bounded all the same — the name is the backend's own and nothing this
+    // package ran checked its length, and `message` is bounded where
+    // `redactedMessage` relays it, so relaying the name whole would split what
+    // is one value. The literal does not name a method, because both
+    // `store.put` and `store.delete` reach here and reporting a failed delete
+    // as a failed put sends an operator to the wrong call site; `operation`
+    // carries which one.
     context.logger.warn('store vector-index sync failed; reconcileVectorIndex will repair', {
       namespace: address.namespace,
       key: address.key,
@@ -146,8 +144,8 @@ export async function syncItemVector(
  * hold a row *now*", which a racing put that recreated it and a
  * compare-and-swap that left it alone both answer the same way, and which costs
  * a point read of this library's own table rather than anything the backend has
- * to offer. The reconciler already asks it before pruning a vector, so the
- * delete path is no longer the less careful of the two.
+ * to offer. The reconciler asks the same question before pruning a vector, so
+ * the delete path and the reconciler are equally careful.
  *
  * A read that itself fails answers "not confirmed" and keeps the vector: a
  * stale vector for a deleted item, which `reconcileVectorIndex` removes, rather
@@ -196,7 +194,7 @@ function refIdentity(namespace: string[], key: string): string {
 /** Decode the buffered rows with the same bounded concurrency the search path uses. */
 async function drainPending(
   context: StoreContext,
-  pending: StoreItemRecord[],
+  pending: StoreItemRow[],
   live: LiveItem[],
   signal: AbortSignal | undefined,
 ): Promise<void> {
@@ -245,7 +243,7 @@ export async function collectReconcileTargets(
 ): Promise<ReconcileTarget[]> {
   const now = nowSeconds();
   const live: LiveItem[] = [];
-  const pending: StoreItemRecord[] = [];
+  const pending: StoreItemRow[] = [];
   const batchLimit = context.readConcurrency ?? DEFAULT_READ_CONCURRENCY;
   const source = paginateQuery({
     retry: retryFor(context, signal),
@@ -255,7 +253,7 @@ export async function collectReconcileTargets(
     maxItems: context.maxScanItems,
   });
   for await (const raw of source) {
-    const record = narrowWholeRecord(raw);
+    const record = parseWholeStoreRow(raw);
     if (!record) {
       context.logger.warn('reconcileVectorIndex: skipped a row that is not a store item', {
         sortKey: truncateForLog(raw.SK as string),
@@ -364,18 +362,16 @@ export async function pruneOrphans(
     return 0;
   }
   const candidates = selectOrphans(await backend.listKeys(prefix), live);
-  /**
-   * Every item the snapshot actually saw, embedded or not. A candidate in here
-   * is prunable on the evidence already gathered — its item exists but yields
-   * no embedding (its indexable text became empty), so its vector really is
-   * stale. Only a candidate the snapshot never saw at all is ambiguous.
-   */
+  // Every item the snapshot actually saw, embedded or not. A candidate in here
+  // is prunable on the evidence already gathered — its item exists but yields
+  // no embedding (its indexable text became empty), so its vector really is
+  // stale. Only a candidate the snapshot never saw at all is ambiguous.
   const observed = new Set(live.map((target) => refIdentity(target.namespace, target.key)));
   let pruned = 0;
   for (const ref of candidates) {
     const seen = observed.has(refIdentity(ref.namespace, ref.key));
     if (!seen && !(await confirmedGone(context, ref))) {
-      /** The ref is a consumer backend's answer, bounded by nothing this package ran. */
+      // The ref is a consumer backend's answer, bounded by nothing this package ran.
       context.logger.info('reconcileVectorIndex: kept a vector whose item reappeared', {
         namespace: truncateLabelsForLog(ref.namespace),
         key: truncateForLog(ref.key),
@@ -599,7 +595,7 @@ export async function searchViaBackend(
     }
     if (results.length >= need || matches.length < topK) break;
     if (topK >= context.maxSearchCandidates) {
-      /** The backend still holds matches, but the filter left the page short at the cap: the same answer the in-DB ranker gives, not a silently short page. */
+      // The backend still holds matches, but the filter left the page short at the cap: the same answer the in-DB ranker gives, not a silently short page.
       throw validationError(
         `Semantic search collected ${results.length} of ${need} matches within maxSearchCandidates ` +
           `(${context.maxSearchCandidates}); narrow the filter or raise maxSearchCandidates`,

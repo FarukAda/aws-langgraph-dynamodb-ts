@@ -1,4 +1,14 @@
 /**
+ * Hides how many calls run at once, and which failure a fan-out reports.
+ *
+ * A caller maps over rows, shards or payloads and gets results in input order.
+ * The worker pool, the floor that turns a bad limit into sequential work
+ * rather than none, and the rule that the first rejection wins and stops new
+ * work are decided here, as is the default of eight in flight, so tuning it
+ * touches no reader.
+ */
+
+/**
  * Offloaded payloads decoded at once by one read (`getTuple` pending writes,
  * `search` candidates, `getMessages`). Each offloaded row costs one S3 GET, so
  * a serial loop scaled latency linearly with the row count; eight in flight
@@ -29,7 +39,8 @@ export const DEFAULT_READ_CONCURRENCY = 8;
  * error is the one thrown — a later failure never displaces it. Whether one
  * has happened is tracked by a flag rather than by testing the value, because
  * a rejection whose value is `undefined` is indistinguishable from no rejection
- * at all: it used to be swallowed, and its slot in the results stayed a hole.
+ * at all: tested by value, it would be swallowed, and its slot in the results
+ * would stay a hole.
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],
@@ -56,14 +67,12 @@ export async function mapWithConcurrency<T, R>(
   };
   const workers = Math.min(limit >= 1 ? Math.floor(limit) : 1, Math.max(items.length, 1));
   await Promise.all(Array.from({ length: workers }, worker));
-  /**
-   * `failure` is stored `Error | undefined` only because that is as far as a
-   * `catch` binding's value can be named without `unknown`, which is banned
-   * in src; the JSDoc above states the real contract — whatever `fn` rejected
-   * with, unchanged, and that can be `undefined` itself. The assertion below
-   * changes nothing at runtime; it only lets `only-throw-error` see the type
-   * this throw already had before that rule existed.
-   */
+  // `failure` is stored `Error | undefined` only because that is as far as a
+  // `catch` binding's value can be named without `unknown`, which is banned
+  // in src; the JSDoc above states the real contract — whatever `fn` rejected
+  // with, unchanged, and that can be `undefined` itself. The assertion below
+  // changes nothing at runtime; it only lets `only-throw-error` see the type
+  // this throw already had before that rule existed.
   if (failed) throw failure as Error;
   return results;
 }

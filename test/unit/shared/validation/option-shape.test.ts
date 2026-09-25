@@ -3,7 +3,7 @@ import {
   allKeysOf,
   assertObjectShape,
   assertShape,
-  checkedShape,
+  parseShape,
   isObjectShape,
 } from '../../../../src/shared/validation/option-shape';
 import { assertClientChoice } from '../../../../src/shared/validation/options';
@@ -74,14 +74,14 @@ describe('isObjectShape', () => {
   });
 });
 
-describe('checkedShape', () => {
+describe('parseShape', () => {
   it('returns the value unchanged when every key is known', () => {
     const value = { alpha: 1 };
-    expect(checkedShape(value, SAMPLE_KEYS, 'sample')).toBe(value);
+    expect(parseShape(value, SAMPLE_KEYS, 'sample')).toBe(value);
   });
 
   it('throws for an unknown key, same as assertShape', () => {
-    expect(() => checkedShape({ alpah: 1 }, SAMPLE_KEYS, 'sample')).toThrow(
+    expect(() => parseShape({ alpah: 1 }, SAMPLE_KEYS, 'sample')).toThrow(
       expect.objectContaining({ context: { field: 'sample.alpah' } }),
     );
   });

@@ -8,7 +8,7 @@
 
 > **AdapterWindow** = `object`
 
-Defined in: [history/session-adapter.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L15)
+Defined in: [history/session-adapter.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L25)
 
 The read window an adapter applies to every `getMessages`.
 
@@ -18,4 +18,4 @@ The read window an adapter applies to every `getMessages`.
 
 > `optional` **limit?**: `number`
 
-Defined in: [history/session-adapter.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L15)
+Defined in: [history/session-adapter.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L25)

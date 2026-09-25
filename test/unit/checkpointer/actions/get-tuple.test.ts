@@ -91,7 +91,7 @@ describe('getCheckpointTuple', () => {
   });
 });
 
-describe('getCheckpointTuple S3 key binding (SEC-03)', () => {
+describe('getCheckpointTuple S3 key binding', () => {
   it("refuses to download a checkpoint payload whose key lies outside the thread's path", async () => {
     const { client, mock } = createStrictDocumentMock();
     const offloader = {
@@ -141,7 +141,7 @@ describe('getCheckpointTuple S3 key binding (SEC-03)', () => {
   });
 });
 
-describe('getCheckpointTuple with a foreign head row (CKPT-08)', () => {
+describe('getCheckpointTuple with a foreign head row', () => {
   it('falls back to the newest real checkpoint instead of reporting an empty thread', async () => {
     const { client, mock } = createStrictDocumentMock();
     const warn = jest.fn();
@@ -166,7 +166,7 @@ describe('getCheckpointTuple with a foreign head row (CKPT-08)', () => {
   });
 });
 
-describe('getCheckpointTuple reads strongly consistently (CKPT-07)', () => {
+describe('getCheckpointTuple reads strongly consistently', () => {
   it('sets ConsistentRead on the payload get and the writes query', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);
@@ -307,10 +307,10 @@ describe('getTuple on a config that names no thread', () => {
 /**
  * The META check alone let a checkpoint back out with a PAYLOAD or a pending
  * write a newer release had written, silently missing whatever that release
- * changed (C-03). These pin the check on both other row kinds and confirm the
+ * changed. These pin the check on both other row kinds and confirm the
  * META check itself is unaffected.
  */
-describe('getCheckpointTuple refuses a PAYLOAD or WRITE row a newer release wrote (C-03)', () => {
+describe('getCheckpointTuple refuses a PAYLOAD or WRITE row a newer release wrote', () => {
   it("rejects a PAYLOAD row above this release's format version, even though its META is readable", async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);

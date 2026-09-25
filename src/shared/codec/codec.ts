@@ -120,7 +120,7 @@ export function codecDepsOf(
   };
 }
 
-function requireOffloader(deps: CodecDeps): S3Offloader {
+function configuredOffloader(deps: CodecDeps): S3Offloader {
   if (!deps.offloader) {
     throw validationError(
       "this row's payload is offloaded to S3 but the adapter has no `s3` configuration; " +
@@ -165,7 +165,7 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   }
   const version = descriptor.schemaVersion ?? DESCRIPTOR_SCHEMA_VERSION;
   if (version > DESCRIPTOR_SCHEMA_VERSION) {
-    /** Declared a number, read off a row, and the comparison coerces a string. */
+    // Declared a number, read off a row, and the comparison coerces a string.
     const written = truncateForLog(String(version));
     throw new DynamoDBLangGraphError(
       `this payload was written in descriptor schema version ${written}; this version of the ` +
@@ -176,7 +176,7 @@ function assertReadableDescriptor(descriptor: PayloadDescriptor): void {
   }
   const locations: string[] = Object.values(PayloadLocation);
   if (!locations.includes(descriptor.location)) {
-    /** The location is whatever the row holds, and the row is what this refuses. */
+    // The location is whatever the row holds, and the row is what this refuses.
     const location = truncateForLog(String(JSON.stringify(descriptor.location)));
     throw validationError(`payload descriptor has an unknown location ${location}`, 'descriptor');
   }
@@ -219,7 +219,7 @@ export async function readPayloadBytes(
   assertReadableDescriptor(descriptor);
   let raw: Uint8Array;
   if (descriptor.location === PayloadLocation.S3) {
-    const offloader = requireOffloader(deps);
+    const offloader = configuredOffloader(deps);
     offloader.assertOwnedKey(descriptor.s3Key, scope);
     raw = await offloader.download(descriptor.s3Key, deps.signal);
   } else {
@@ -454,13 +454,11 @@ export async function encodePayload<T>(
   const { bytes, compressed }: CompressionResult = deps.compression
     ? await compress(raw, deps.compression)
     : { bytes: raw, compressed: false };
-  /**
-   * `writeId` is set here rather than at each call site so both descriptor
-   * kinds and every adapter inherit one identity from one statement. It does
-   * not raise `DESCRIPTOR_SCHEMA_VERSION`: the version is refused by a reader
-   * that is older than it, and this field is additive and ignorable, so
-   * announcing it would cost readability of these rows for nothing.
-   */
+  // `writeId` is set here rather than at each call site so both descriptor
+  // kinds and every adapter inherit one identity from one statement. It does
+  // not raise `DESCRIPTOR_SCHEMA_VERSION`: the version is refused by a reader
+  // that is older than it, and this field is additive and ignorable, so
+  // announcing it would cost readability of these rows for nothing.
   const base = {
     schemaVersion: DESCRIPTOR_SCHEMA_VERSION,
     serdeType,

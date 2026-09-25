@@ -1,3 +1,14 @@
+/**
+ * Hides what it takes for a checkpoint to land exactly once.
+ *
+ * The META and PAYLOAD rows go out as one transaction under a request token
+ * drawn once, and a failure with S3 offload configured is read back before
+ * any upload is released, so a lost acknowledgement reports success and only a
+ * confirmed non-commit cleans up (record 6). Every channel value is stored
+ * whatever `newVersions` says (record 10). A caller gets back the config that
+ * addresses the stored checkpoint and none of this.
+ */
+
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type {
   ChannelVersions,
@@ -18,15 +29,15 @@ import { rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { parsePutRequest } from '../internal/parse';
 import {
-  buildCheckpointItems,
-  type CheckpointMetaItem,
-  type CheckpointPayloadItem,
+  buildCheckpointRows,
+  type CheckpointMetaRow,
+  type CheckpointPayloadRow,
 } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
 
 /**
  * Persist a checkpoint and its metadata as a transactional pair of META and
- * PAYLOAD items, returning the config that addresses the stored checkpoint. The
+ * PAYLOAD rows, returning the config that addresses the stored checkpoint. The
  * incoming `checkpoint_id` (if any) becomes the new checkpoint's parent.
  *
  * **Every channel value the checkpoint carries is stored.** `newVersions` is
@@ -84,49 +95,47 @@ export async function putCheckpoint(
   const request = parsePutRequest(config, checkpoint, metadata);
   const { threadId, checkpointNs, checkpointId } = request.address;
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const { meta, payload } = await buildCheckpointItems(context, request, ttlTimestamp);
+  const { meta, payload } = await buildCheckpointRows(context, request, ttlTimestamp);
   const stored: RunnableConfig = {
     configurable: { thread_id: threadId, checkpoint_ns: checkpointNs, checkpoint_id: checkpointId },
   };
   try {
-    /**
-     * One request, one token, re-sent unchanged for every attempt of the
-     * budget — which is what the token is worth here, since a token minted on
-     * a request the retry closure rebuilt would be a fresh one per attempt and
-     * would deduplicate nothing.
-     *
-     * Neither row is guarded, so nothing else can turn a re-send away: a retry
-     * that follows a lost acknowledgement puts both rows back, and one
-     * arriving after a `deleteThread` removed them puts back two live rows
-     * naming two objects that call has already released. Inside the service's
-     * idempotency window the token discards it instead. The pair is atomic, so
-     * what that window covers is the pair: a re-send either re-applies both
-     * rows or neither.
-     *
-     * A condition on either row is not the alternative it looks like. Two
-     * guarded items would make one genuine race cancel with two
-     * `ConditionalCheckFailed` reasons, and `conditionalCheckFailure` reads a
-     * cancellation as a guard rejection only while a single cause remains — so
-     * the race would surface as an unrecognised non-retryable error.
-     *
-     * Because neither row is guarded, the precondition on what a token
-     * guarantees — see {@link transactIdempotently} — never bites on the rows
-     * themselves: no condition here can turn an attempt away, so an attempt
-     * either committed the pair, and its re-send is discarded, or committed
-     * nothing. It does bite on the transaction, which a conflict with a
-     * concurrent writer of the same id can still cancel: a cancellation
-     * completes nothing and is cached as nothing, so the attempt after one is
-     * a fresh evaluation rather than a replay. That is the wanted outcome here
-     * — the pair did not land, so it must still land — and it is why the
-     * token's promise is worded about a write that *committed* rather than one
-     * that was merely sent.
-     *
-     * The deadline that helper carries is what keeps this budget inside the
-     * window the token is honoured for. The token enforces no window itself,
-     * and a re-send arriving after it has closed is simply a new request: both
-     * rows land again, over whatever has replaced them and after whatever
-     * released the objects they name.
-     */
+    // One request, one token, re-sent unchanged for every attempt of the
+    // budget — which is what the token is worth here, since a token minted on
+    // a request the retry closure rebuilt would be a fresh one per attempt and
+    // would deduplicate nothing.
+    //
+    // Neither row is guarded, so nothing else can turn a re-send away: a retry
+    // that follows a lost acknowledgement puts both rows back, and one
+    // arriving after a `deleteThread` removed them puts back two live rows
+    // naming two objects that call has already released. Inside the service's
+    // idempotency window the token discards it instead. The pair is atomic, so
+    // what that window covers is the pair: a re-send either re-applies both
+    // rows or neither.
+    //
+    // A condition on either row is not the alternative it looks like. Two
+    // guarded items would make one genuine race cancel with two
+    // `ConditionalCheckFailed` reasons, and `conditionalCheckFailure` reads a
+    // cancellation as a guard rejection only while a single cause remains — so
+    // the race would surface as an unrecognised non-retryable error.
+    //
+    // Because neither row is guarded, the precondition on what a token
+    // guarantees — see {@link transactIdempotently} — never bites on the rows
+    // themselves: no condition here can turn an attempt away, so an attempt
+    // either committed the pair, and its re-send is discarded, or committed
+    // nothing. It does bite on the transaction, which a conflict with a
+    // concurrent writer of the same id can still cancel: a cancellation
+    // completes nothing and is cached as nothing, so the attempt after one is
+    // a fresh evaluation rather than a replay. That is the wanted outcome here
+    // — the pair did not land, so it must still land — and it is why the
+    // token's promise is worded about a write that *committed* rather than one
+    // that was merely sent.
+    //
+    // The deadline that helper carries is what keeps this budget inside the
+    // window the token is honoured for. The token enforces no window itself,
+    // and a re-send arriving after it has closed is simply a new request: both
+    // rows land again, over whatever has replaced them and after whatever
+    // released the objects they name.
     await transactIdempotently(
       context,
       [
@@ -164,7 +173,7 @@ export async function putCheckpoint(
  * nothing to protect and no read to spend, which {@link verifyRow} answers
  * `'not-landed'` for an absent `expected`.
  */
-function chooseProbe(meta: CheckpointMetaItem, payload: CheckpointPayloadItem): RowProbe {
+function chooseProbe(meta: CheckpointMetaRow, payload: CheckpointPayloadRow): RowProbe {
   const metaKey = offloadedKey(meta.metadata);
   if (metaKey !== undefined) {
     return {
@@ -208,8 +217,8 @@ function chooseProbe(meta: CheckpointMetaItem, payload: CheckpointPayloadItem): 
  */
 export async function verifyCheckpointLanded(
   context: CheckpointerContext,
-  meta: CheckpointMetaItem,
-  payload: CheckpointPayloadItem,
+  meta: CheckpointMetaRow,
+  payload: CheckpointPayloadRow,
 ): Promise<WriteVerdict> {
   const { verdict } = await verifyRow(context, chooseProbe(meta, payload));
   return verdict;

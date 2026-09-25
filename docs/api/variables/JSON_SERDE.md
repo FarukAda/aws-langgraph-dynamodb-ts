@@ -48,6 +48,6 @@ report rather than retry; a `data` that is not bytes at all is a
 not a row's.
 
 Frozen for the reason [ErrorCode](../enumerations/ErrorCode.md) is: one object, shared by every
-adapter in the process that did not pass a `serde` of its own, and now
+adapter in the process that did not pass a `serde` of its own, and
 reachable from the package root. An assignment to `dumpsTyped` by any one
 consumer would silently change how every other one writes.

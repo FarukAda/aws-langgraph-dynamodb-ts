@@ -1,3 +1,13 @@
+/**
+ * Hides which outcomes a caller can tell apart.
+ *
+ * Every error this library raises carries one of these codes, and a caller
+ * branches on the code rather than on a class, a message or an AWS name. What
+ * produces each code is decided elsewhere, so a newly seen AWS failure maps
+ * onto an existing code without touching this list, and the list is frozen so
+ * no consumer sharing it in a process can change what a comparison means.
+ */
+
 /** Stable, branchable classification for every error this library throws. */
 export enum ErrorCode {
   VALIDATION = 'VALIDATION',
@@ -71,19 +81,17 @@ export enum ErrorCode {
   AWS_REQUEST_FAILED = 'AWS_REQUEST_FAILED',
   /**
    * A failure that came neither from this package's own checks nor from AWS:
-   * a `VectorBackend`, an `Embeddings` model, a `serde` or a `SessionBackend`
+   * a `VectorBackend`, an `Embeddings` model, a `serde` or a `MultiSessionHistory`
    * threw something of its own, or this package has a bug. The original is
    * `cause`.
    */
   UNEXPECTED_ERROR = 'UNEXPECTED_ERROR',
 }
 
-/**
- * A TypeScript enum compiles to a plain, writable object, and this one is
- * exported from the package root: every consumer in a process shares the same
- * object. One dependency assigning to a member — a test stub, a patch, a
- * typo — rewrites what `error.code === ErrorCode.X` means for every other
- * consumer at once, and nothing is raised anywhere; the branch simply stops
- * matching. Freezing turns that into a refusal at the assignment.
- */
+// A TypeScript enum compiles to a plain, writable object, and this one is
+// exported from the package root: every consumer in a process shares the same
+// object. One dependency assigning to a member — a test stub, a patch, a
+// typo — rewrites what `error.code === ErrorCode.X` means for every other
+// consumer at once, and nothing is raised anywhere; the branch simply stops
+// matching. Freezing turns that into a refusal at the assignment.
 Object.freeze(ErrorCode);

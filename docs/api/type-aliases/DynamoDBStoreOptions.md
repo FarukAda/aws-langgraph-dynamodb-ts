@@ -8,7 +8,7 @@
 
 > **DynamoDBStoreOptions** = [`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md) & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
 
-Defined in: [store/types.ts:11](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L11)
+Defined in: [store/types.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L25)
 
 Options for [DynamoDBStore](../classes/DynamoDBStore.md).
 
@@ -33,7 +33,7 @@ against DynamoDB's 400 KB item limit; see that option's note.
 Cap on rows read into memory by one search, namespace listing or
 reconcile before `RESULT_TRUNCATED`. Reaching it is an error, not a
 truncation: a partial answer is never returned as a complete one.
-Defaults to `MAX_TOTAL_ITEMS_IN_MEMORY`.
+Defaults to `MAX_TOTAL_ROWS_IN_MEMORY`.
 
 ### maxSearchCandidates?
 

@@ -20,7 +20,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import { LIST_SCAN_WARN_THRESHOLD, paginateQuery } from '../../shared/dynamodb/paginate';
 import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import {
@@ -32,12 +32,12 @@ import type { ThreadAddress } from './parse';
 import {
   beginsWithQuery,
   type CheckpointLocation,
-  type CheckpointMetaItem,
-  type CheckpointPayloadItem,
-  type CheckpointWriteItem,
+  type CheckpointMetaRow,
+  type CheckpointPayloadRow,
+  type CheckpointWriteRow,
   metaRowKey,
   metaSortKeyPrefix,
-  narrowHead,
+  parseHeadRow,
   partitionKey,
   payloadRowKey,
   readCheckpoint,
@@ -62,16 +62,16 @@ export interface PendingSendsSource extends ThreadLocation {
  * Rows one page of the newest-first META read evaluates. The read stops at the
  * first live row of ours, so this decides only how many *dead* rows one round
  * trip can step over: at one row per page, a thread whose head has aged out
- * under a `ttl` cost one `Query` per expired row, and DynamoDB's own sweep may
- * lag that `ttl` by up to 48 hours, so the run of dead rows is as long as the
- * thread is busy. This is the hottest read the package performs — every graph
- * step begins with it — so paying a round trip per aged-out row was the wrong
- * side of the trade.
+ * under a `ttl` costs one `Query` per expired row, and DynamoDB's own sweep may
+ * lag that `ttl` by up to 48 hours, so the run of dead rows can be as long as
+ * the thread is busy. This is the hottest read the package performs — every
+ * graph step begins with it — so a round trip per aged-out row is the wrong
+ * side of the trade to pay on every step.
  *
  * The trade runs the other way when nothing at the head has expired, which is
  * every thread that sets no `ttl` at all. DynamoDB applies `Limit` before the
- * filter and bills for what it evaluated, so such a read now pays for up to
- * this many META rows and keeps exactly one. A META row measures roughly 500
+ * filter and bills for what it evaluated, so such a read pays for up to this
+ * many META rows and keeps exactly one. A META row measures roughly 500
  * bytes for a typical checkpoint, which puts a page at ~26 KB: about seven
  * strongly consistent read units where a single row costs one, and a fortieth
  * of the 1 MB a `Query` may return, so the page size rather than the response
@@ -110,9 +110,9 @@ export async function fetchTargetMeta(
   context: CheckpointerContext,
   address: ThreadAddress,
   signal?: AbortSignal,
-): Promise<CheckpointMetaItem | undefined> {
+): Promise<CheckpointMetaRow | undefined> {
   const { threadId, checkpointNs, checkpointId } = address;
-  /** Expired rows are absent to every reader, however long DynamoDB's sweep lags. */
+  // Expired rows are absent to every reader, however long DynamoDB's sweep lags.
   const now = nowSeconds();
   if (checkpointId !== undefined) {
     const result = await withDynamoDBRetry(
@@ -127,7 +127,7 @@ export async function fetchTargetMeta(
         ),
       retryFor(context, signal),
     );
-    const meta = narrowHead(context, result.Item as DocItem | undefined);
+    const meta = parseHeadRow(context, result.Item as AttributeMap | undefined);
     return meta && !isExpiredRow(meta, now) ? meta : undefined;
   }
   const params = beginsWithQuery(
@@ -139,18 +139,16 @@ export async function fetchTargetMeta(
       consistent: true,
     },
   );
-  /**
-   * Both caps stay off, each for its own reason. `maxItems` counts the rows
-   * yielded past the server-side filter, and a finite value there would add
-   * the probe {@link paginateQuery} runs to tell a reached cap apart from an
-   * exhausted read — more requests, on the read the page size above exists to
-   * make cheaper. `maxIterations` is the runaway guard, but a finite value
-   * would turn a namespace whose rows have all aged out into a thrown
-   * `RESULT_TRUNCATED` where this function documents `undefined`, failing
-   * every graph step on exactly the thread shape the page size is here to
-   * serve. The page size is what bounds the walk instead: it divides the
-   * requests a dead head costs by {@link LATEST_META_PAGE_SIZE}.
-   */
+  // Both caps stay off, each for its own reason. `maxItems` counts the rows
+  // yielded past the server-side filter, and a finite value there would add
+  // the probe `paginateQuery` runs to tell a reached cap apart from an
+  // exhausted read — more requests, on the read the page size above exists to
+  // make cheaper. `maxIterations` is the runaway guard, but a finite value
+  // would turn a namespace whose rows have all aged out into a thrown
+  // `RESULT_TRUNCATED` where this function documents `undefined`, failing
+  // every graph step on exactly the thread shape the page size is here to
+  // serve. The page size is what bounds the walk instead: it divides the
+  // requests a dead head costs by `LATEST_META_PAGE_SIZE`.
   const rows = paginateQuery({
     retry: retryFor(context, signal),
     signal,
@@ -160,7 +158,7 @@ export async function fetchTargetMeta(
     maxIterations: Number.POSITIVE_INFINITY,
   });
   for await (const raw of rows) {
-    const meta = narrowHead(context, raw);
+    const meta = parseHeadRow(context, raw);
     if (meta && !isExpiredRow(meta, now)) return meta;
   }
   return undefined;
@@ -183,7 +181,7 @@ export async function fetchPayload(
   context: CheckpointerContext,
   at: CheckpointLocation,
   read: ReadOptions = {},
-): Promise<CheckpointPayloadItem | undefined> {
+): Promise<CheckpointPayloadRow | undefined> {
   const result = await withDynamoDBRetry(
     (request) =>
       context.client.get(
@@ -196,12 +194,10 @@ export async function fetchPayload(
       ),
     retryFor(context, read.signal),
   );
-  const item = result.Item as CheckpointPayloadItem | undefined;
-  /**
-   * A payload of ours written by a newer release fails loudly, as its META row
-   * would: decoding it under today's rules is how a checkpoint comes back with
-   * state silently missing.
-   */
+  const item = result.Item as CheckpointPayloadRow | undefined;
+  // A payload of ours written by a newer release fails loudly, as its META row
+  // would: decoding it under today's rules is how a checkpoint comes back with
+  // state silently missing.
   if (item !== undefined) assertReadableRow(item, 'checkpoint payload');
   return item;
 }
@@ -236,13 +232,11 @@ export async function fetchPendingWrites(
     writeSortKeyPrefix(at.checkpointNs, at.checkpointId),
     { ascending: true, consistent: read.consistent ?? true },
   );
-  /**
-   * Unbounded: the read must be complete to be correct, and a Send fan-out
-   * retried with a changed write order leaves superseded rows behind that
-   * count toward any cap. Past the warning threshold the read still succeeds,
-   * but an operator is told the checkpoint is unusually heavy.
-   */
-  const items: CheckpointWriteItem[] = [];
+  // Unbounded: the read must be complete to be correct, and a Send fan-out
+  // retried with a changed write order leaves superseded rows behind that
+  // count toward any cap. Past the warning threshold the read still succeeds,
+  // but an operator is told the checkpoint is unusually heavy.
+  const items: CheckpointWriteRow[] = [];
   for await (const item of paginateQuery({
     retry: retryFor(context, read.signal),
     signal: read.signal,
@@ -251,13 +245,11 @@ export async function fetchPendingWrites(
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
-    /**
-     * Checked before `dropSupersededWrites` reads `writeGroup`: that dedup runs
-     * on every row regardless of format, and a newer format may give the
-     * attribute a different meaning.
-     */
+    // Checked before `dropSupersededWrites` reads `writeGroup`: that dedup runs
+    // on every row regardless of format, and a newer format may give the
+    // attribute a different meaning.
     assertReadableRow(item, 'pending write');
-    items.push(item as CheckpointWriteItem);
+    items.push(item as CheckpointWriteRow);
   }
   if (items.length >= LIST_SCAN_WARN_THRESHOLD) {
     context.logger.warn(
@@ -308,7 +300,7 @@ function configFor(threadId: string, checkpointNs: string, checkpointId: string)
 export async function assembleTuple(
   context: CheckpointerContext,
   thread: ThreadLocation,
-  meta: CheckpointMetaItem,
+  meta: CheckpointMetaRow,
   options: AssembleOptions,
 ): Promise<CheckpointTuple | undefined> {
   const read = { signal: options.signal, consistent: options.consistent };

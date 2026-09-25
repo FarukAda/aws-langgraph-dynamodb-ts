@@ -14,7 +14,7 @@ import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { searchItems } from '../../../src/store/actions/search';
 import {
-  buildStoreItem,
+  buildStoreRow,
   partitionKey as storePartition,
   sortKey,
   storePartitionPrefix,
@@ -32,7 +32,7 @@ import { simulatedScan } from '../../shared/helpers/simulated-scan';
  * and composed sort keys could collide byte-for-byte. Adapter tags make the
  * three key spaces disjoint by construction.
  */
-describe('cross-adapter partition-key disjointness (C1, C2)', () => {
+describe('cross-adapter partition-key disjointness', () => {
   const shared = 'conv-1';
 
   it('gives one identifier three distinct partitions, one per adapter', () => {
@@ -123,7 +123,7 @@ describe('a cross-partition scan reads only its own adapter key space', () => {
   it('keeps store.search([]) away from a foreign row a newer release wrote', async () => {
     const { client, mock } = createStrictDocumentMock();
     const context = storeContext(client);
-    const mine = await buildStoreItem(
+    const mine = await buildStoreRow(
       context,
       { namespace: ['users', 'u1'], key: 'k0' },
       { kind: 'note' },
@@ -170,13 +170,13 @@ describe('a cross-partition scan reads only its own adapter key space', () => {
     const { client, mock } = createStrictDocumentMock();
     const context = storeContext(client);
     const rows = await Promise.all([
-      buildStoreItem(
+      buildStoreRow(
         context,
         { namespace: ['users', 'u1'], key: 'k0' },
         { n: 1 },
         { createdAt: 'c', updatedAt: 'u' },
       ),
-      buildStoreItem(
+      buildStoreRow(
         context,
         { namespace: ['agents'], key: 'k1' },
         { n: 2 },
@@ -219,7 +219,7 @@ describe('the forward-version refusal still fires inside the key space', () => {
   it('reports a store row a newer release wrote in the store key space', async () => {
     const { client, mock } = createStrictDocumentMock();
     const context = storeContext(client);
-    const mine = await buildStoreItem(
+    const mine = await buildStoreRow(
       context,
       { namespace: ['users', 'u1'], key: 'k0' },
       { kind: 'note' },

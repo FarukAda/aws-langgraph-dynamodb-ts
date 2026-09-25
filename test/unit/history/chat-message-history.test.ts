@@ -164,7 +164,7 @@ describe('DynamoDBChatMessageHistory', () => {
   });
 });
 
-describe('cancellation via { signal } (CORE-04)', () => {
+describe('cancellation via { signal }', () => {
   it('rejects every long-running method before any DynamoDB call', async () => {
     const { client, mock } = createStrictDocumentMock();
     const controller = new AbortController();
@@ -208,7 +208,7 @@ describe('cancellation via { signal } (CORE-04)', () => {
   });
 });
 
-describe('options shape (M-08)', () => {
+describe('options shape', () => {
   const bogus = { bogus: true } as never;
   const rejectsUnknownKey = (promise: Promise<unknown>) =>
     expect(promise).rejects.toMatchObject({
@@ -379,7 +379,7 @@ describe('forSession checks its arguments when it is called', () => {
   });
 });
 
-describe('bounded reads (HIST-06)', () => {
+describe('bounded reads', () => {
   it('getMessages passes the window through and forSession binds a limit to the adapter', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [] });

@@ -6,7 +6,7 @@ import {
 import { marshall } from '@aws-sdk/util-dynamodb';
 
 import { type PayloadDescriptor, PayloadLocation } from '../../../../src/shared/codec/codec';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { writeIdGuard } from '../../../../src/shared/dynamodb/idempotent-write';
 import {
   DELETE_CONCURRENCY,
@@ -42,7 +42,7 @@ const fakeOffloader = (): { deleteBatch: jest.Mock; ownsKey: () => boolean } => 
 });
 
 /** The rejection a lost condition answers with, carrying the row that won. */
-function refusal(row?: DocItem): Error {
+function refusal(row?: AttributeMap): Error {
   return Object.assign(new Error('The conditional request failed'), {
     name: 'ConditionalCheckFailedException',
     Item: row === undefined ? undefined : marshall(row),

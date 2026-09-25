@@ -33,7 +33,7 @@ describe('reconcileMessageCount', () => {
     mock.on(GetCommand).resolves({ Item: { messageCount: 99 } });
     /**
      * Expired-but-unswept rows are invisible to getMessages, so counting them
-     * would "repair" the count to a number the read path never returns (HIST-08).
+     * would "repair" the count to a number the read path never returns.
      */
     const now = Math.floor(FROZEN_NOW_MS / 1000);
     mock
@@ -108,7 +108,7 @@ describe('reconcileMessageCount', () => {
   });
 });
 
-describe('reconcileMessageCount is safe on a live session (HIST-09)', () => {
+describe('reconcileMessageCount is safe on a live session', () => {
   const rejected = () =>
     Object.assign(new Error('cond failed'), { name: 'ConditionalCheckFailedException' });
 

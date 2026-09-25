@@ -1,3 +1,17 @@
+/**
+ * Hides the store's own option and result shapes, composed from building
+ * blocks declared elsewhere.
+ *
+ * `DynamoDBStoreOptions`, `SearchOptions`, `ListNamespacesOptions` and
+ * `VectorReconcileResult` are declared here. `DynamoDBStoreOptions` composes
+ * `BaseAdapterOptions` and `CodecOptions`, and `SearchOptions` composes
+ * `CancelOptions` — all three declared once in the shared options module, not
+ * copied here — plus `VectorBackend` and `VectorScoreDirection`, declared
+ * once in `vector-backend.ts`. Which keys each bag accepts, and the defaults
+ * filled in, are decided by the store's setup and parsers, so a caller can
+ * type what it builds without learning how it is checked.
+ */
+
 import type {
   IndexConfig,
   SearchOperation,
@@ -40,7 +54,7 @@ export type DynamoDBStoreOptions = BaseAdapterOptions &
      * Cap on rows read into memory by one search, namespace listing or
      * reconcile before `RESULT_TRUNCATED`. Reaching it is an error, not a
      * truncation: a partial answer is never returned as a complete one.
-     * Defaults to `MAX_TOTAL_ITEMS_IN_MEMORY`.
+     * Defaults to `MAX_TOTAL_ROWS_IN_MEMORY`.
      */
     maxScanItems?: number;
     /**

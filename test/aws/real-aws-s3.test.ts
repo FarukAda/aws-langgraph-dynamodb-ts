@@ -175,7 +175,7 @@ describe('S3 offload against real AWS', () => {
     // Exactly one object survives: the winner's. The loser's guard rejection
     // returns the winner's row (ALL_OLD, a different writeGroup), which proves
     // the loser's own upload is unreferenced, so it is cleaned up rather than
-    // left as an orphan (CKPT-09). Before that fix both objects remained.
+    // left as an orphan. Before that fix both objects remained.
     const after = await offloadedObjectCount(s3);
     expect(after - before).toBe(1);
 
@@ -248,7 +248,7 @@ describe('S3 offload against real AWS', () => {
     }
   });
 
-  it('keeps a checkpoint readable when its put transaction commits but every response is lost (CKPT-01)', async () => {
+  it('keeps a checkpoint readable when its put transaction commits but every response is lost', async () => {
     // Every TransactWriteItems response is dropped, so the library exhausts its
     // retry budget while the rows are live. Since the put carries a request
     // token, only the first attempt commits: the rest reach DynamoDB and are

@@ -18,13 +18,13 @@ import type { Logger } from '../logging/logger';
 import { truncateForLog } from '../logging/truncate';
 import { isAbortError } from './abort';
 import { BATCH_WRITE_MAX } from './batch-write';
-import type { DynamoDBDocumentLike, DocItem } from './client';
+import type { DynamoDBDocumentLike, AttributeMap } from './client';
 import {
   type RevisionGuard,
   WRITE_ID_ATTRIBUTE,
   writeIdGuard,
   isConditionalCheckFailed,
-  rejectedItem,
+  rejectedRow,
 } from './idempotent-write';
 import { paginateQuery } from './paginate';
 import { withDynamoDBRetry, type RetryOptions } from './retry';
@@ -39,8 +39,8 @@ import { rowKeyOf } from './table-schema';
  * than a caller option: this is a maintenance path, and it has no other knob.
  *
  * Its own literal at the same value as `DEFAULT_READ_CONCURRENCY`
- * (`src/shared/concurrency.ts`), not an alias of it — aliasing two limits has
- * already meant that retuning one silently moved the other (see
+ * (`src/shared/concurrency.ts`), not an alias of it — aliasing two limits
+ * would move one whenever the other is retuned (see
  * `LIST_SCAN_WARN_THRESHOLD` (`src/shared/dynamodb/paginate.ts`)).
  */
 export const DELETE_CONCURRENCY = 8;
@@ -72,7 +72,7 @@ export interface NamedDescriptor {
  *
  * Throws: nothing.
  */
-export function namedDescriptor(row: DocItem, attribute: string): NamedDescriptor | undefined {
+export function namedDescriptor(row: AttributeMap, attribute: string): NamedDescriptor | undefined {
   const descriptor = row[attribute] as PayloadDescriptor | null | undefined;
   if (descriptor === null || descriptor === undefined) return undefined;
   return { attribute, descriptor };
@@ -102,7 +102,7 @@ export interface PartitionDeleteOptions {
    * attribute, and each read off the row with {@link namedDescriptor} so that
    * an attribute holding `null` yields no entry rather than an unusable one.
    */
-  descriptorsOf: (row: DocItem) => NamedDescriptor[];
+  descriptorsOf: (row: AttributeMap) => NamedDescriptor[];
   /**
    * Top-level attribute carrying a row's per-write id, for the row kinds that
    * have one. Preferred over a descriptor's own id where it exists: it needs no
@@ -114,13 +114,13 @@ export interface PartitionDeleteOptions {
    * deleted one by one, so a refusal on an earlier one has to suppress the
    * rest; an adapter whose rows form no unit supplies nothing.
    */
-  unitOf?: (row: DocItem) => string;
+  unitOf?: (row: AttributeMap) => string;
   /**
    * The row kind bounding a flush. Rows arrive kind by kind, so flushing when
    * the kind changes is what settles a refusal before the rows it must suppress
    * are issued.
    */
-  kindOf?: (row: DocItem) => string;
+  kindOf?: (row: AttributeMap) => string;
   /** The partition's own leading S3 key parts; objects outside their path are never deleted. */
   scope: readonly string[];
 }
@@ -150,7 +150,7 @@ interface PassState {
  */
 function pinFor(
   idAttribute: string | undefined,
-  row: DocItem,
+  row: AttributeMap,
   named: readonly NamedDescriptor[],
 ): RevisionGuard | undefined {
   if (idAttribute !== undefined) {
@@ -165,7 +165,7 @@ function pinFor(
 }
 
 /** The row as a buffered delete: its key, its pin, its objects and its unit. */
-function pendingDelete(options: PartitionDeleteOptions, row: DocItem): PendingDelete {
+function pendingDelete(options: PartitionDeleteOptions, row: AttributeMap): PendingDelete {
   const named = options.descriptorsOf(row);
   return {
     key: rowKeyOf(row),
@@ -176,7 +176,11 @@ function pendingDelete(options: PartitionDeleteOptions, row: DocItem): PendingDe
 }
 
 /** Whether an earlier kind's refusal already settled this row's unit. */
-function unitRefused(options: PartitionDeleteOptions, row: DocItem, state: PassState): boolean {
+function unitRefused(
+  options: PartitionDeleteOptions,
+  row: AttributeMap,
+  state: PassState,
+): boolean {
   const unit = options.unitOf?.(row);
   return unit !== undefined && state.units.has(unit);
 }
@@ -197,13 +201,11 @@ async function flushBuffer(options: PartitionDeleteOptions, state: PassState): P
   const tally = await flushPendingDeletes(options, state.buffer.splice(0));
   state.deleted += tally.deleted;
   state.skipped += tally.refused;
-  /**
-   * Refusals are deliberately out of this total. They are not rows the pass
-   * failed to delete; they are rows it was never entitled to delete, already
-   * counted as `skipped` and reported on their own line. Counting them here
-   * would make the error read `1/3 row(s) succeeded, 1 row(s) failed` and leave
-   * the reader to guess at the third.
-   */
+  // Refusals are deliberately out of this total. They are not rows the pass
+  // failed to delete; they are rows it was never entitled to delete, already
+  // counted as `skipped` and reported on their own line. Counting them here
+  // would make the error read `1/3 row(s) succeeded, 1 row(s) failed` and leave
+  // the reader to guess at the third.
   state.attempted += tally.deleted + tally.failures.length;
   for (const unit of tally.refusedUnits) state.units.add(unit);
   if (tally.failures.length === 0) return;
@@ -295,7 +297,7 @@ export async function deletePartitionRows(options: PartitionDeleteOptions): Prom
 
 /** One row a pass has read and means to delete. */
 export interface PendingDelete {
-  key: DocItem;
+  key: AttributeMap;
   /** The pin the read's observation supports; absent for a row that carried no id. */
   guard?: RevisionGuard;
   /** The objects this row names, released only if the row is confirmed gone. */
@@ -378,7 +380,7 @@ async function settleRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally)
   } catch (error) {
     const rejection = error as Error;
     if (!isConditionalCheckFailed(rejection)) throw rejection;
-    if (rejectedItem(rejection) !== undefined) {
+    if (rejectedRow(rejection) !== undefined) {
       recordRefusal(deps, row, tally);
       return;
     }
@@ -396,10 +398,11 @@ async function settleRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally)
  * is a decode, and it fails on an `Item` that arrives already unmarshalled —
  * which the stock document client does not produce, but a client wrapped
  * through the documented injection seam can. Reporting a refusal is a call into
- * the caller's own `Logger`, which is consumer code. Neither used to reach
- * `tally.failures`, and an empty `failures` is exactly what the pass reads as
- * "nothing went wrong": one such throw abandoned the rest of the buffer and the
- * pass still resolved, reporting a thread deleted that was mostly still there.
+ * the caller's own `Logger`, which is consumer code. Recorded only in that one
+ * branch, neither would reach `tally.failures`, and an empty `failures` is
+ * exactly what the pass reads as "nothing went wrong": one such throw would
+ * abandon the rest of the buffer and the pass would still resolve, reporting a
+ * thread deleted that was mostly still there.
  */
 async function deleteRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally): Promise<void> {
   try {
@@ -453,14 +456,12 @@ export async function flushPendingDeletes(
   try {
     await mapWithConcurrency(rows, DELETE_CONCURRENCY, (row) => deleteRow(deps, row, tally));
   } catch {
-    /**
-     * The only thing that reaches here is {@link deleteRow}'s own rethrow, and
-     * it records every failure it rethrows — the delete's rejection, the decode
-     * of a rejection's attached row, and the caller's logger alike. So what is
-     * dropped here is a second reference to something already in
-     * `tally.failures`, never the only record of it, and the throw's remaining
-     * job was to stop further rows from being started.
-     */
+    // The only thing that reaches here is {@link deleteRow}'s own rethrow, and
+    // it records every failure it rethrows — the delete's rejection, the decode
+    // of a rejection's attached row, and the caller's logger alike. So what is
+    // dropped here is a second reference to something already in
+    // `tally.failures`, never the only record of it, and the throw's remaining
+    // job was to stop further rows from being started.
   }
   if (deps.offloader) {
     await cleanUpS3Orphans(deps.offloader, {

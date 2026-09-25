@@ -2,13 +2,14 @@
 
 ***
 
-[AWS LangGraph DynamoDB TypeScript](../README.md) / SessionBackend
+[AWS LangGraph DynamoDB TypeScript](../README.md) / MultiSessionHistory
 
-# Interface: SessionBackend
+# Interface: MultiSessionHistory
 
-Defined in: [history/session-adapter.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L21)
+Defined in: [history/session-adapter.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L34)
 
-The session-scoped operations a single-session adapter delegates to.
+A history holding many sessions, addressed by session id: what a
+single-session adapter wraps. `DynamoDBChatMessageHistory` is one.
 
 ## Methods
 
@@ -16,7 +17,7 @@ The session-scoped operations a single-session adapter delegates to.
 
 > **addMessages**(`sessionId`, `messages`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L23)
+Defined in: [history/session-adapter.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L36)
 
 #### Parameters
 
@@ -38,7 +39,7 @@ Defined in: [history/session-adapter.ts:23](https://github.com/FarukAda/aws-lang
 
 > **clear**(`sessionId`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L24)
+Defined in: [history/session-adapter.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L37)
 
 #### Parameters
 
@@ -56,7 +57,7 @@ Defined in: [history/session-adapter.ts:24](https://github.com/FarukAda/aws-lang
 
 > **getMessages**(`sessionId`, `window?`): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/session-adapter.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L22)
+Defined in: [history/session-adapter.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L35)
 
 #### Parameters
 

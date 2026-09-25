@@ -6,7 +6,7 @@
 
 # Interface: VectorRef
 
-Defined in: [store/vector-backend.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L21)
+Defined in: [store/vector-backend.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L31)
 
 A stored vector's location, returned by [VectorBackend.listKeys](VectorBackend.md#listkeys).
 
@@ -16,7 +16,7 @@ A stored vector's location, returned by [VectorBackend.listKeys](VectorBackend.m
 
 > **key**: `string`
 
-Defined in: [store/vector-backend.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L23)
+Defined in: [store/vector-backend.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L33)
 
 ***
 
@@ -24,4 +24,4 @@ Defined in: [store/vector-backend.ts:23](https://github.com/FarukAda/aws-langgra
 
 > **namespace**: `string`[]
 
-Defined in: [store/vector-backend.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L22)
+Defined in: [store/vector-backend.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L32)

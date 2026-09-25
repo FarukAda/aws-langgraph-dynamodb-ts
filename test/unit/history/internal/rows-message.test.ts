@@ -1,7 +1,7 @@
 import type { StoredMessage } from '@langchain/core/messages';
 
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { buildMessageItem, narrowMessageItem } from '../../../../src/history/internal/rows';
+import { buildMessageRow, parseMessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { decodePayload, PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -24,7 +24,7 @@ const SESSION_ID = parseSessionId('s1');
 
 describe('history rows: message', () => {
   it('builds a message item with PK/SK and round-trips the message', async () => {
-    const item = await buildMessageItem(context(), {
+    const item = await buildMessageRow(context(), {
       sessionId: SESSION_ID,
       messageId: '01HZX',
       message: stored,
@@ -37,7 +37,7 @@ describe('history rows: message', () => {
   });
 
   it('stamps a ttl when provided', async () => {
-    const item = await buildMessageItem(context(), {
+    const item = await buildMessageRow(context(), {
       sessionId: SESSION_ID,
       messageId: '01HZX',
       message: stored,
@@ -58,7 +58,7 @@ describe('history rows: message', () => {
       upload,
     };
     const ulid = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';
-    const item = await buildMessageItem(
+    const item = await buildMessageRow(
       { ...context(), offloader: offloader as never },
       { sessionId: SESSION_ID, messageId: ulid, message: stored },
     );
@@ -78,7 +78,7 @@ describe('history rows: message', () => {
  * necessarily. The narrow is what stands between a hand-written or foreign row
  * and a decode that trusts the key it was found at.
  */
-describe('narrowMessageItem', () => {
+describe('parseMessageRow', () => {
   const message = { location: PayloadLocation.INLINE, serdeType: 'json', compressed: false };
   const row = (extra: Record<string, unknown>) => ({
     PK: 'HIST#s1',
@@ -87,12 +87,12 @@ describe('narrowMessageItem', () => {
   });
 
   it('accepts a row this package wrote', async () => {
-    const item = await buildMessageItem(context(), {
+    const item = await buildMessageRow(context(), {
       sessionId: SESSION_ID,
       messageId: '01HZX',
       message: stored,
     });
-    expect(narrowMessageItem(item)).toBe(item);
+    expect(parseMessageRow(item)).toBe(item);
   });
 
   it.each([
@@ -103,6 +103,6 @@ describe('narrowMessageItem', () => {
     ['a message attribute that is not an object', row({ sessionId: 's1', message: 'x' })],
     ['a sessionId disagreeing with its partition', row({ sessionId: 'other', message })],
   ])('refuses a row with %s', (_name, raw) => {
-    expect(narrowMessageItem(raw)).toBeUndefined();
+    expect(parseMessageRow(raw)).toBeUndefined();
   });
 });

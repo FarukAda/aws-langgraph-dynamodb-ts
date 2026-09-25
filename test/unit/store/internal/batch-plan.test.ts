@@ -1,7 +1,7 @@
 import { runBatch } from '../../../../src/store/internal/batch-plan';
 import { parseOperation, type ParsedOperation } from '../../../../src/store/internal/parse';
 
-describe('runBatch preserves the order the caller wrote (STORE-09)', () => {
+describe('runBatch preserves the order the caller wrote', () => {
   const ns = ['a'];
   const put = (key: string, value: number) =>
     parseOperation({ namespace: ns, key, value: { value } });

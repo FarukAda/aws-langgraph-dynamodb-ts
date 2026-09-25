@@ -1,4 +1,16 @@
-import type { DocItem } from '../../shared/dynamodb/client';
+/**
+ * Hides which rows a clear may delete.
+ *
+ * A clear removes only what the partition read observed and this adapter
+ * wrote, each row pinned to the write id it was read with, and reaches a
+ * message's offloaded payload through the attribute that holds it. A caller
+ * asks for a session to go and never decides that a foreign row, or one a
+ * concurrent append rewrote, is left in place and reported rather than
+ * deleted; the paging, the per-row deletes and the S3 cleanup are the shared
+ * partition delete's.
+ */
+
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import { WRITE_ID_ATTRIBUTE } from '../../shared/dynamodb/idempotent-write';
 import {
   deletePartitionRows,
@@ -7,7 +19,7 @@ import {
 } from '../../shared/dynamodb/partition-delete';
 import { retryFor } from '../../shared/dynamodb/retry';
 import { parseSessionId } from '../internal/parse';
-import { isHistorySortKey, sessionItemsQuery } from '../internal/rows';
+import { isHistorySortKey, sessionRowsQuery } from '../internal/rows';
 import type { HistoryContext } from '../internal/setup';
 
 /**
@@ -16,7 +28,7 @@ import type { HistoryContext } from '../internal/setup';
  * name. The session row carries no payload and is pinned top-level instead, and
  * a row holding `null` there carries none either — `namedDescriptor` decides.
  */
-function descriptorsOf(row: DocItem): NamedDescriptor[] {
+function descriptorsOf(row: AttributeMap): NamedDescriptor[] {
   const entry = namedDescriptor(row, 'message');
   return entry === undefined ? [] : [entry];
 }
@@ -67,7 +79,7 @@ export async function clearSession(
   await deletePartitionRows({
     client: context.client,
     tableName: context.tableName,
-    params: sessionItemsQuery(context.tableName, session, { consistent: true }),
+    params: sessionRowsQuery(context.tableName, session, { consistent: true }),
     logger: context.logger,
     retry: retryFor(context, options.signal),
     signal: options.signal,

@@ -1,5 +1,5 @@
 /**
- * Hides the SESSION row: the one module that reads or writes what it carries.
+ * Hides the SESSION row: what it carries and how each field changes.
  *
  * A session's metadata — `messageCount`, `title`, `createdAt`, `updatedAt`,
  * `ttl`, the `writeId` of the last append, and the recency-index keys — lives
@@ -8,15 +8,18 @@
  * adds to it in the same transaction that writes the messages, a rolled-back
  * append subtracts exactly what it added (and never from a later incarnation of
  * the session), a repair recomputes it under a compare-and-swap, and a listing
- * reads it back only from a row this release can summarise.
+ * reads it back only from a row this release can summarise. The recency-index
+ * keys are the one field this module does not write alone: `sessionIndexTarget`
+ * below tells `src/backfill/backfill.ts` which row is a SESSION row, and
+ * backfill writes the keys onto it directly, for a row that predates the index.
  */
 
-import type { NativeAttributeValue, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
+import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 import type { StoredMessage } from '@langchain/core/messages';
 
 import { nowSeconds } from '../../shared/clock';
 import { conditionFailedAt } from '../../shared/dynamodb/cancellation';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap, TransactAction } from '../../shared/dynamodb/client';
 import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   transactIdempotently,
@@ -44,19 +47,20 @@ import { historyPartitionPrefix, SESSION_SORT_KEY, sessionPartition, sessionRowK
 import type { HistoryContext } from './setup';
 
 /**
- * True when a TransactWriteItems cancellation was caused by a
- * ConditionalCheckFailed reason. Named distinctly from
+ * True when the transaction's first item — the SESSION row update or delete,
+ * since both callers below send a single-item transaction — failed its
+ * ConditionExpression. Named distinctly from
  * shared/dynamodb/idempotent-write.ts's isConditionalCheckFailed, which
- * checks a different thing entirely (a raw PutItem exception name, not a
- * transaction cancellation reason) — this function had that same name
- * until now, a real trap for whoever read one assuming it was the other.
+ * classifies a rejection (a PutItem exception or a cancelled transaction's
+ * reasons alike) without asking which item caused it — sharing that name
+ * would be a real trap for whoever read one assuming it was the other.
  */
 function isCancelledByCondition(error: Error): boolean {
   return conditionFailedAt(error, 0);
 }
 
 /**
- * Subtract a previously-added count from the session, leaving it consistent.
+ * Subtract a count this append already added from the session, leaving it consistent.
  * Guarded so a concurrently-deleted SESSION row is never resurrected as a
  * permanent, ttl-less junk row: if the row is already gone there is nothing
  * to revert, so that specific condition failure is swallowed rather than
@@ -223,9 +227,6 @@ export async function revertSessionCreation(
   }
 }
 
-/** One member of a {@link TransactWriteCommandInput} `TransactItems` list. */
-export type HistoryTransactItem = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
-
 /** Fields driving the per-session metadata update inside the append transaction. */
 export interface SessionUpdateFields {
   sessionId: string;
@@ -275,10 +276,7 @@ export interface SessionUpdateFields {
  * Throws: nothing. The condition it carries is evaluated by DynamoDB, and a
  * failed condition surfaces from the transaction, not from here.
  */
-export function buildSessionUpdateItem(
-  tableName: string,
-  fields: SessionUpdateFields,
-): HistoryTransactItem {
+export function buildSessionUpdate(tableName: string, fields: SessionUpdateFields): TransactAction {
   const index = indexKeys(
     'SESS',
     fields.sessionId,
@@ -305,31 +303,25 @@ export function buildSessionUpdateItem(
     ':gpk': index.gsi1pk,
     ':gsk': index.gsi1sk,
   };
-  /**
-   * The row's format version is rewritten on every update, not only on
-   * creation: an append by this version leaves a row this version wrote, and a
-   * reader must be told that rather than infer it from which attributes happen
-   * to be present.
-   */
+  // The row's format version is rewritten on every update, not only on
+  // creation: an append by this version leaves a row this version wrote, and a
+  // reader must be told that rather than infer it from which attributes happen
+  // to be present.
   const sets = [
     '#u = :u',
     '#c = if_not_exists(#c, :c)',
     '#sid = if_not_exists(#sid, :sid)',
-    /**
-     * An unconditional `SET`, deliberately unlike the three `if_not_exists`
-     * clauses around it. This is not a once-only field: its whole content is
-     * that it moves. Written in their style it would stamp the id when the
-     * session was created and never again, and a delete pinning on the id it
-     * observed would be present, well formed, and always pass — which is the
-     * failure it exists to prevent.
-     */
+    // An unconditional `SET`, deliberately unlike the three `if_not_exists`
+    // clauses around it. This is not a once-only field: its whole content is
+    // that it moves. Written in their style it would stamp the id when the
+    // session was created and never again, and a delete pinning on the id it
+    // observed would be present, well formed, and always pass — which is the
+    // failure it exists to prevent.
     '#wid = :wid',
     '#v = :v',
-    /**
-     * The session row is listed by recency across partitions, so it carries the
-     * index keys — rewritten on every append, which is what keeps "most
-     * recently updated first" true without an in-memory sort.
-     */
+    // The session row is listed by recency across partitions, so it carries the
+    // index keys — rewritten on every append, which is what keeps "most
+    // recently updated first" true without an in-memory sort.
     '#gpk = :gpk',
     '#gsk = :gsk',
   ];
@@ -344,15 +336,13 @@ export function buildSessionUpdateItem(
     values[':ttl'] = fields.ttlTimestamp;
     if (fields.forceTtlRefresh) {
       sets.push('#ttl = :ttl');
-      /**
-       * Guards the force-overwrite so a concurrent caller's already-healed,
-       * equal-or-later anchor can never be regressed backward by this one.
-       * `<=` (not `<`): two concurrent healers of the same stale anchor
-       * typically compute the identical target timestamp, and `<=` lets
-       * the second one succeed by re-applying the same value instead of
-       * failing the condition and paying a full transaction retry for a
-       * write that was never actually a regression.
-       */
+      // Guards the force-overwrite so a concurrent caller's already-healed,
+      // equal-or-later anchor can never be regressed backward by this one.
+      // `<=` (not `<`): two concurrent healers of the same stale anchor
+      // typically compute the identical target timestamp, and `<=` lets
+      // the second one succeed by re-applying the same value instead of
+      // failing the condition and paying a full transaction retry for a
+      // write that was never actually a regression.
       conditionExpression = 'attribute_not_exists(#ttl) OR #ttl <= :ttl';
     } else {
       sets.push('#ttl = if_not_exists(#ttl, :ttl)');
@@ -465,7 +455,7 @@ export interface TtlAnchorResult {
  * anchor an earlier append committed is always seen. Two appends that start
  * together on a session that has none each propose their own candidate; the
  * append transaction's own condition is what settles which persists, so this
- * read never has to be the arbiter (see {@link buildSessionUpdateItem}).
+ * read never has to be the arbiter (see {@link buildSessionUpdate}).
  */
 export async function resolveTtlAnchor(
   context: HistoryContext,
@@ -560,8 +550,8 @@ export function deriveTitle(messages: StoredMessage[]): string | undefined {
   return `${codePoints.slice(0, MAX_TITLE_LENGTH - 1).join('')}…`;
 }
 
-/** The per-session metadata item, updated atomically as messages are appended. */
-interface ChatSessionItem {
+/** The per-session metadata row, updated atomically as messages are appended. */
+interface SessionRow {
   PK: string;
   SK: string;
   /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
@@ -700,7 +690,7 @@ export async function repairMessageCount(
  * anything past the ±8.64e12 seconds a `Date` spans are all numbers whose
  * `toISOString` throws `RangeError` — which failed the whole listing.
  */
-function hasReadableTtl(ttl: DocItem[string]): boolean {
+function hasReadableTtl(ttl: AttributeMap[string]): boolean {
   if (ttl === undefined) return true;
   return typeof ttl === 'number' && Number.isFinite(new Date(ttl * 1000).getTime());
 }
@@ -716,7 +706,7 @@ function hasReadableTtl(ttl: DocItem[string]): boolean {
  * `RangeError`. A row this release cannot speak for is dropped the way a
  * foreign row is, never at the cost of the rest of the page.
  */
-function isSummarisable(raw: DocItem): boolean {
+function isSummarisable(raw: AttributeMap): boolean {
   return (
     typeof raw.messageCount === 'number' &&
     typeof raw.createdAt === 'string' &&
@@ -731,7 +721,7 @@ function isSummarisable(raw: DocItem): boolean {
  * undefined for a foreign, malformed or expired row.
  *
  * The `sessionId` is bound to the partition the row was found in, as
- * `narrowMetaItem`, `narrowStoreRecord` and `narrowMessageItem` bind theirs.
+ * `parseMetaRow`, `parseStoreRow` and `parseMessageRow` bind theirs.
  * Both reads that reach here select rows by something other than the partition
  * — a table scan filtered on the sort key, and a recency-index query — so
  * without the binding a row planted anywhere in the table under this adapter's
@@ -752,8 +742,11 @@ function isSummarisable(raw: DocItem): boolean {
  * names it may no longer use, and the answer does not depend on the reading
  * machine's clock.
  */
-export function summariseSession(raw: DocItem, atSeconds: number): SessionMetadata | undefined {
-  const item = raw as ChatSessionItem;
+export function summariseSession(
+  raw: AttributeMap,
+  atSeconds: number,
+): SessionMetadata | undefined {
+  const item = raw as SessionRow;
   assertReadableRow(item, 'session');
   if (item.SK !== SESSION_SORT_KEY || typeof item.sessionId !== 'string') return undefined;
   if (item.PK !== sessionPartition(item.sessionId)) return undefined;
@@ -779,7 +772,7 @@ export function summariseSession(raw: DocItem, atSeconds: number): SessionMetada
  *
  * Throws: nothing.
  */
-export function sessionIndexTarget(row: DocItem): IndexTarget | undefined {
+export function sessionIndexTarget(row: AttributeMap): IndexTarget | undefined {
   const pk = typeof row.PK === 'string' ? row.PK : '';
   const sk = typeof row.SK === 'string' ? row.SK : '';
   if (!pk.startsWith(historyPartitionPrefix())) return undefined;

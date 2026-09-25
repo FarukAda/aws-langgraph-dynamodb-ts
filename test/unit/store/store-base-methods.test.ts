@@ -121,7 +121,7 @@ const REFUSED: [string, Call, string][] = [
   ],
 ];
 
-describe('DynamoDBStore get/put/delete/listNamespaces/search refuse input in this package (H-09)', () => {
+describe('DynamoDBStore get/put/delete/listNamespaces/search refuse input in this package', () => {
   it.each(REFUSED)('refuses %s, naming the field, before any request', async (_, call, field) => {
     const { store, mock } = storeWithMock();
     await expect(call(store)).rejects.toMatchObject({

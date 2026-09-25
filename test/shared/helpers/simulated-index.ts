@@ -1,6 +1,6 @@
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import type { DocItem } from '../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../src/shared/dynamodb/client';
 
 /**
  * Is `key` below `bound` in the order DynamoDB applies to a string sort key —
@@ -27,7 +27,7 @@ function belowBound(key: string, bound: string): boolean {
  * both in the server's own byte order.
  */
 export function simulatedIndex(
-  shards: Record<string, DocItem[]>,
+  shards: Record<string, AttributeMap[]>,
   cuts: number | Record<string, number>,
 ) {
   return (input: QueryCommandInput) => {
@@ -53,7 +53,7 @@ export function simulatedIndex(
  * One session row of the index, on `partition`, whose sort key is second
  * `second` of a fixed minute: a larger number is a newer row.
  */
-export function indexRow(partition: string, second: number, id = `s${second}`): DocItem {
+export function indexRow(partition: string, second: number, id = `s${second}`): AttributeMap {
   const at = `2026-01-01T00:00:${String(second).padStart(2, '0')}.000Z`;
   return {
     PK: `SESS#${id}`,
@@ -68,6 +68,6 @@ export function indexRow(partition: string, second: number, id = `s${second}`): 
 }
 
 /** Rows on `partition` for each second in `seconds`, which must be given newest first. */
-export function indexRows(partition: string, seconds: number[]): DocItem[] {
+export function indexRows(partition: string, seconds: number[]): AttributeMap[] {
   return seconds.map((second) => indexRow(partition, second));
 }

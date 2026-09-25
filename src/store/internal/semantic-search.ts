@@ -228,8 +228,8 @@ type JsonObject = { [key: string]: JsonValue };
  * value JSON cannot represent (`undefined`, a function, a symbol) and it
  * *throws* for one it refuses (a circular structure, a `BigInt`). Both mean the
  * same thing here — there is no text to index — and neither may escape: the
- * first used to put a literal `undefined` into a `string[]` and crash the
- * caller's `text.length` filter, and the second used to surface a raw
+ * first would put a literal `undefined` into a `string[]` and crash the
+ * caller's `text.length` filter, and the second would surface a raw
  * `TypeError` from inside the embedding step. A value JSON refuses outright is
  * still refused, by the codec, at the write that follows, which names the
  * offending field.

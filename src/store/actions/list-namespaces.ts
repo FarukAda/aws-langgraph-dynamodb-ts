@@ -1,10 +1,20 @@
+/**
+ * Hides how the distinct namespaces are found and held in one order.
+ *
+ * A listing reads every live row it can reach — one partition when its first
+ * prefix condition opens with concrete labels, the whole table otherwise —
+ * keeps the namespaces every condition matches, truncates and deduplicates
+ * them, and sorts them by one pinned collation with its ties settled. A caller
+ * paging by `offset` gets the same order on every call and every host.
+ */
+
 import type { MatchCondition } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
 import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
 import { isExpiredRow, KEY_SEPARATOR, withoutExpired } from '../../shared/dynamodb/table-schema';
 import type { ParsedList } from '../internal/parse';
-import { narrowStoreRecord, projectKeys, scopedQuery, storeScan } from '../internal/rows';
+import { parseStoreRow, projectKeys, scopedQuery, storeScan } from '../internal/rows';
 import type { StoreContext } from '../internal/setup';
 
 const WILDCARD = '*';
@@ -135,7 +145,7 @@ function compareNamespaces(a: string[], b: string[]): number {
   const left = a.join(KEY_SEPARATOR);
   const right = b.join(KEY_SEPARATOR);
   const collated = NAMESPACE_COLLATOR.compare(left, right);
-  /** `Number(left > right)` keeps the comparator total: 0 for a pair that really is equal. */
+  // `Number(left > right)` keeps the comparator total: 0 for a pair that really is equal.
   return collated !== 0 ? collated : left < right ? -1 : Number(left > right);
 }
 
@@ -163,18 +173,16 @@ function compareNamespaces(a: string[], b: string[]): number {
  * `limit` of 0 is answered ahead of the read rather than by slicing one.
  */
 export async function listNamespaces(context: StoreContext, op: ParsedList): Promise<string[][]> {
-  /**
-   * A zero page is answered before the read. This listing is the one that can
-   * never stop early — every live row must be seen before the namespaces can
-   * be sorted and sliced — so scanning the whole table to slice nothing out of
-   * it is the entire cost for none of the answer.
-   */
+  // A zero page is answered before the read. This listing is the one that can
+  // never stop early — every live row must be seen before the namespaces can
+  // be sorted and sliced — so scanning the whole table to slice nothing out of
+  // it is the entire cost for none of the answer.
   if (op.limit === 0) return [];
   const now = nowSeconds();
   const seen = new Set<string>();
   const namespaces: string[][] = [];
   for await (const raw of namespaceSource(context, op, now)) {
-    const record = narrowStoreRecord(raw);
+    const record = parseStoreRow(raw);
     if (!record || isExpiredRow(record, now)) continue;
     const namespace = record.namespace;
     if (

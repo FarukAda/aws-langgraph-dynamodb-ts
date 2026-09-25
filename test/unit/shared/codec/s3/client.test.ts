@@ -46,7 +46,7 @@ describe('createDefaultS3Client', () => {
   });
 });
 
-describe('loadS3Sdk without the optional peer (CODEC-05)', () => {
+describe('loadS3Sdk without the optional peer', () => {
   /** The dynamic import runs after isolateModules returns, so unmock only once the test is done. */
   afterEach(() => jest.dontMock('@aws-sdk/client-s3'));
 

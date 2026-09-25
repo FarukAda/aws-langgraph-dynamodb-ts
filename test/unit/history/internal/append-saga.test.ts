@@ -7,7 +7,7 @@ import {
 
 import { appendChunks } from '../../../../src/history/internal/append';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import type { ChatMessageItem } from '../../../../src/history/internal/rows';
+import type { MessageRow } from '../../../../src/history/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { retryExhaustedError } from '../../../../src/shared/errors/errors';
@@ -15,7 +15,7 @@ import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createUlidFactory } from '../../../../src/shared/ulid';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
-function inlineItem(sk: string): ChatMessageItem {
+function inlineItem(sk: string): MessageRow {
   return {
     PK: 's1',
     SK: sk,
@@ -29,7 +29,7 @@ function inlineItem(sk: string): ChatMessageItem {
   };
 }
 
-function s3Item(sk: string, s3Key: string): ChatMessageItem {
+function s3Item(sk: string, s3Key: string): MessageRow {
   return {
     PK: 's1',
     SK: sk,
@@ -85,7 +85,7 @@ describe('appendChunks', () => {
     expect(deletes.map((r) => r.DeleteRequest?.Key?.SK)).toEqual(['MSG#1', 'MSG#2']);
     // This call created the session, so the rollback removes the whole row
     // rather than only decrementing it — otherwise `title`/`createdAt`, both
-    // written via if_not_exists, would survive as a ghost session (C4).
+    // written via if_not_exists, would survive as a ghost session.
     const revertCall = mock.commandCalls(TransactWriteCommand)[2].args[0].input;
     const revertDelete = revertCall.TransactItems?.[0]?.Delete;
     expect(revertDelete?.ConditionExpression).toBe('#count = :total AND #c = :now');
@@ -161,7 +161,7 @@ describe('appendChunks', () => {
     // leaving messageCount silently overstated by 30 with zero compensating
     // write) and not 0.
     expect(revertUpdate?.ExpressionAttributeValues?.[':neg']).toBe(-25);
-    // ...and only against the incarnation this call appended to (HIST-03).
+    // ...and only against the incarnation this call appended to.
     expect(revertUpdate?.ConditionExpression).toBe('attribute_exists(PK) AND #c <= :now');
     expect(revertUpdate?.ExpressionAttributeValues?.[':now']).toBe('u');
   });
@@ -332,7 +332,7 @@ describe('appendChunks', () => {
   });
 });
 
-describe('appendChunks: ambiguous chunk failure (HIST-09)', () => {
+describe('appendChunks: ambiguous chunk failure', () => {
   // The transaction is retried up to MESSAGE_APPEND_RETRY_MAX_ATTEMPTS times
   // with real backoff and appendChunks exposes no rng seam, so the exhausted
   // outcome is injected directly: withRetry rethrows a `RETRY_EXHAUSTED` error

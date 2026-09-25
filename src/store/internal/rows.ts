@@ -21,7 +21,7 @@ import {
   encodePayload,
   type PayloadDescriptor,
 } from '../../shared/codec/codec';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import {
   backfilledAt,
   DEFAULT_INDEX_SHARDS,
@@ -77,7 +77,7 @@ export function storePartitionPrefix(): string {
  *
  * Returns: the partition key. The function is deliberately **total**: it maps
  * any array to a string rather than refusing a malformed one, because
- * `narrowStoreRecord` calls it on rows read from a shared table to test whether
+ * `parseStoreRow` calls it on rows read from a shared table to test whether
  * a row's own attributes agree with the key it was found at. A corrupt or
  * foreign row must be skipped there, not turned into a failed search.
  *
@@ -199,7 +199,7 @@ export function scopedQuery(tableName: string, prefix: string[]): QueryCommandIn
  * shared table that happens to carry a `namespace` attribute, and since a row
  * stamped with a format version above this release is *reported* rather than
  * skipped, one foreign row was enough to fail `search([])` and
- * `listNamespaces()` outright. Nothing legitimate is lost: `narrowStoreRecord`
+ * `listNamespaces()` outright. Nothing legitimate is lost: `parseStoreRow`
  * already requires `PK` to equal `partitionKey(namespace)`, which carries the
  * same tag, so every row the tag excludes was dropped after the read anyway.
  *
@@ -221,14 +221,14 @@ export function storeScan(tableName: string): ScanCommandInput {
 }
 
 /**
- * Restrict a Query/Scan to the attributes `narrowStoreRecord` needs, leaving the
+ * Restrict a Query/Scan to the attributes `parseStoreRow` needs, leaving the
  * payload behind: a namespace listing never reads a value.
  *
  * Accepts: any Query or Scan input; its own attribute names are preserved and
  * the projection's are added.
  *
  * Returns: the same input, projected onto the row's identity and its format
- * version `v`. The version is what lets `narrowStoreRecord` refuse a row a
+ * version `v`. The version is what lets `parseStoreRow` refuse a row a
  * newer release wrote; without it every projected row reads as version 0. A
  * row read this way can be narrowed but not decoded — {@link readStoreItem}
  * needs the whole row.
@@ -252,7 +252,7 @@ export function projectKeys<T extends QueryCommandInput | ScanCommandInput>(para
 }
 
 /** The previous row's createdAt, payload descriptor and revision. */
-export interface ExistingRecordMeta {
+export interface ExistingRowMeta {
   exists: boolean;
   createdAt?: string;
   value?: DescriptorRef;
@@ -281,10 +281,7 @@ export interface ExistingRecordMeta {
  * Guarantees: strongly consistent — a put must supersede the row that is really
  * there, not one a replica still shows.
  */
-export async function readExisting(
-  context: StoreContext,
-  key: RowKey,
-): Promise<ExistingRecordMeta> {
+export async function readExisting(context: StoreContext, key: RowKey): Promise<ExistingRowMeta> {
   const existing = await withDynamoDBRetry(
     (request) =>
       context.client.get(
@@ -305,11 +302,11 @@ export async function readExisting(
       ),
     context.retry,
   );
-  return existingFrom(existing.Item as DocItem | undefined);
+  return existingFrom(existing.Item as AttributeMap | undefined);
 }
 
 /**
- * Project a raw row onto {@link ExistingRecordMeta}.
+ * Project a raw row onto {@link ExistingRowMeta}.
  *
  * Accepts: `item` — a read result, or the row a conditional-check rejection
  * carried with it; `undefined` means there is no row.
@@ -319,7 +316,7 @@ export async function readExisting(
  *
  * Throws: nothing.
  */
-export function existingFrom(item: DocItem | undefined): ExistingRecordMeta {
+export function existingFrom(item: AttributeMap | undefined): ExistingRowMeta {
   return {
     exists: item !== undefined,
     createdAt: item?.createdAt as string | undefined,
@@ -329,7 +326,7 @@ export function existingFrom(item: DocItem | undefined): ExistingRecordMeta {
 }
 
 /** The DynamoDB item backing a single stored value. */
-export interface StoreItemRecord {
+export interface StoreItemRow {
   PK: string;
   SK: string;
   /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
@@ -364,7 +361,7 @@ export interface StoreItemRecord {
 }
 
 /**
- * Narrow a raw scanned row to a {@link StoreItemRecord}, or `undefined` for a
+ * Narrow a raw scanned row to a {@link StoreItemRow}, or `undefined` for a
  * foreign row on a shared table (no `namespace`) — and for a row whose
  * `namespace`/`key` attributes disagree with the DynamoDB key it was found at.
  * The attributes name the S3 path the row may reference, so they must be bound
@@ -385,15 +382,13 @@ export interface StoreItemRecord {
  * attribute names it may no longer use. Skipping it would hide an item that
  * exists.
  */
-export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
-  /**
-   * The version first. A later format may compose the row's key from
-   * attributes this one does not know, so testing the shape first reads such a
-   * row as foreign and hides an item that is there.
-   */
+export function parseStoreRow(raw: AttributeMap): StoreItemRow | undefined {
+  // The version first. A later format may compose the row's key from
+  // attributes this one does not know, so testing the shape first reads such a
+  // row as foreign and hides an item that is there.
   assertReadableRow(raw, 'store item');
   if (!Array.isArray(raw.namespace) || typeof raw.key !== 'string') return undefined;
-  const record = raw as StoreItemRecord;
+  const record = raw as StoreItemRow;
   const consistent =
     record.PK === partitionKey(record.namespace) &&
     record.SK === sortKey(record.namespace, record.key);
@@ -407,30 +402,30 @@ export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
  * handed back under a declared `Date`, which surfaces as a `RangeError` in the
  * caller's own code, far from the row that caused it.
  *
- * It is a separate narrow rather than a stricter {@link narrowStoreRecord}
+ * It is a separate narrow rather than a stricter {@link parseStoreRow}
  * because a namespace listing deliberately reads rows without their timestamps
  * (see `projectKeys`): requiring one there would hide every namespace in the
  * table.
  *
  * Accepts: `raw` — any whole row, as read by `get`, a search or a reconcile.
  *
- * Returns: the record, or undefined for a row {@link narrowStoreRecord}
+ * Returns: the record, or undefined for a row {@link parseStoreRow}
  * refuses and for one whose `createdAt` or `updatedAt` is not the string this
  * package writes there. A row this adapter cannot describe is skipped where a
  * foreign one already is, so one of them never costs a listing the rest of its
  * rows.
  *
- * Throws: as {@link narrowStoreRecord}.
+ * Throws: as {@link parseStoreRow}.
  */
-export function narrowWholeRecord(raw: DocItem): StoreItemRecord | undefined {
-  const record = narrowStoreRecord(raw);
+export function parseWholeStoreRow(raw: AttributeMap): StoreItemRow | undefined {
+  const record = parseStoreRow(raw);
   if (record === undefined) return undefined;
   const stamped = typeof record.createdAt === 'string' && typeof record.updatedAt === 'string';
   return stamped ? record : undefined;
 }
 
 /** Fields controlling a stored item's timestamps, embeddings, ttl and revision token. */
-export interface BuildItemOptions {
+export interface BuildRowOptions {
   createdAt: string;
   updatedAt: string;
   embeddings?: number[][];
@@ -463,12 +458,12 @@ export interface BuildItemOptions {
  * uploaded. Encoding happens before any write, so a value that cannot be stored
  * never half-writes a row.
  */
-export async function buildStoreItem(
+export async function buildStoreRow(
   context: StoreContext,
   address: { namespace: string[]; key: string },
   value: Record<string, JsonValue>,
-  options: BuildItemOptions,
-): Promise<StoreItemRecord> {
+  options: BuildRowOptions,
+): Promise<StoreItemRow> {
   const { namespace, key } = address;
   const pk = partitionKey(namespace);
   const sk = sortKey(namespace, key);
@@ -478,14 +473,14 @@ export async function buildStoreItem(
     objectId: rev,
     row: { pk, sk },
   });
-  /** Store items are listed across partitions by a rootless search, so they are indexed. */
+  // Store items are listed across partitions by a rootless search, so they are indexed.
   const index = indexKeys(
     'STORE',
     sk,
     options.updatedAt,
     context.indexShards ?? DEFAULT_INDEX_SHARDS,
   );
-  const record: StoreItemRecord = {
+  const record: StoreItemRow = {
     PK: pk,
     SK: sk,
     v: ROW_FORMAT_VERSION,
@@ -507,7 +502,7 @@ export async function buildStoreItem(
  *
  * Accepts: `record` — a whole row, never a projection: the value and the
  * timestamps are read from it, and `projectKeys` rows exist only to establish
- * identity for a namespace listing. {@link narrowWholeRecord} is what proves a
+ * identity for a namespace listing. {@link parseWholeStoreRow} is what proves a
  * raw row is one of those, timestamps included. `signal` — cancels the
  * download an offloaded value costs.
  *
@@ -521,7 +516,7 @@ export async function buildStoreItem(
  */
 export async function readStoreItem(
   context: StoreContext,
-  record: StoreItemRecord,
+  record: StoreItemRow,
   signal?: AbortSignal,
 ): Promise<Item> {
   const value = await decodePayload<Record<string, JsonValue>>(
@@ -549,7 +544,7 @@ export async function readStoreItem(
  *
  * Throws: nothing.
  */
-export function storeIndexTarget(row: DocItem): IndexTarget | undefined {
+export function storeIndexTarget(row: AttributeMap): IndexTarget | undefined {
   const pk = typeof row.PK === 'string' ? row.PK : '';
   const sk = typeof row.SK === 'string' ? row.SK : '';
   if (!pk.startsWith(storePartitionPrefix())) return undefined;

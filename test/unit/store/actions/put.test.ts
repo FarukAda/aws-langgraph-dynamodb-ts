@@ -6,7 +6,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putItem } from '../../../../src/store/actions/put';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import {
   answerDeleteReads,
@@ -184,7 +184,7 @@ describe('putItem', () => {
     expect(keys[0]).toMatch(/^users\/u1\/profile\//);
   });
 
-  // Integration-level: prove persistRecord wires verifyWriteLanded's landed/not-landed/unverified verdict correctly into the delete/rethrow decision (its own branches are unit-tested in item-write-verify.test.ts).
+  // Integration-level: prove persistRow wires verifyWriteLanded's landed/not-landed/unverified verdict correctly into the delete/rethrow decision (its own branches are unit-tested in item-write-verify.test.ts).
   it('does not delete the new S3 object, and succeeds, when an ambiguous retry-exhaustion write actually landed', async () => {
     const { client, mock } = createStrictDocumentMock();
     let rev: string | undefined;
@@ -285,7 +285,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     const offloader = trackingOffloader({ buildKey: binKey });
     const ctx = context(client, { offloader: offloader as never });
-    const first = await buildStoreItem(
+    const first = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'profile' },
       op({}).value as never,
@@ -315,7 +315,7 @@ describe('putItem', () => {
     const { client, mock } = createStrictDocumentMock();
     const offloader = trackingOffloader({ buildKey: binKey });
     const ctx = context(client, { offloader: offloader as never });
-    const first = await buildStoreItem(
+    const first = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'profile' },
       op({}).value as never,
@@ -360,7 +360,7 @@ describe('putItem', () => {
    * reported: a response can be lost and the object it named with it, which is
    * how the removed object used to be leaked. The row is read exactly once.
    */
-  it('cleans up the offloaded object the pre-read observed (STORE-08)', async () => {
+  it('cleans up the offloaded object the pre-read observed', async () => {
     const { client, mock } = createStrictDocumentMock();
     answerDeleteReads(
       mock,

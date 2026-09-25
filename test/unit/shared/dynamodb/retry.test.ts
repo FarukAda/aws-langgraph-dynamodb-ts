@@ -136,7 +136,7 @@ describe('withRetry isRetryable predicate', () => {
   });
 });
 
-describe('withRetry onRetry hook (DDB-10)', () => {
+describe('withRetry onRetry hook', () => {
   it('reports each retry with the attempt, the delay about to be slept and the error', async () => {
     const onRetry = jest.fn();
     const failing = Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
@@ -156,7 +156,7 @@ describe('withRetry onRetry hook (DDB-10)', () => {
   });
 });
 
-describe('withRetry abort normalisation (DDB-05)', () => {
+describe('withRetry abort normalisation', () => {
   const throttled = (): Error =>
     Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
 

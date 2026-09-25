@@ -73,7 +73,7 @@ const checkpointIdOf = (snapshot: {
   config: { configurable?: Record<string, unknown> };
 }): unknown => snapshot.config.configurable?.checkpoint_id;
 
-describe('a compiled LangGraph graph over DynamoDBSaver (TEST-01, CKPT-13)', () => {
+describe('a compiled LangGraph graph over DynamoDBSaver', () => {
   it('pauses at interrupt(), exposes it through getState, and resumes with Command', async () => {
     const graph = approvalGraph(saver);
     const config = thread('interrupt-1');

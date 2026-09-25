@@ -47,7 +47,9 @@ function isPublicMethod(member: ts.MethodDeclaration): boolean {
  * written): no `validate*`, checked or not; a `checked` `parse*` — exported,
  * or a public method — must declare a return type that is not `void`; a
  * `checked` `assert*` must declare `void`, `Promise<void>` or an `asserts`
- * predicate. `undefined` when `name`/`returns` obey the convention.
+ * predicate. `undefined` when `name`/`returns` obey the convention. No
+ * function, checked or not, is named `narrow*`, `require*`, `check*` or
+ * `checked*` either: those were four more names for the same two shapes.
  */
 function verbViolation(
   name: string,
@@ -58,6 +60,10 @@ function verbViolation(
   const returnsNothing = returns === 'void' || returns === 'Promise<void>';
   if (/^validate[A-Z]/.test(name)) {
     return `${at} — validate* is retired: a parse* returns the checked value, an assert* returns nothing`;
+  }
+  const retired = /^(narrow|require|checked|check)(?=[A-Z])/.exec(name);
+  if (retired !== null) {
+    return `${at} — ${retired[1]}* is retired: a function returning the checked value is a parse*, one returning nothing an assert*`;
   }
   if (checked && /^parse[A-Z]/.test(name) && (returns === undefined || returnsNothing)) {
     return `${at} — a parse* function returns the value it checked, as a more precise type`;
@@ -80,7 +86,9 @@ function verbViolation(
  * exported `assert*` function or `const`, or a public `assert*` method,
  * declares `void`, `Promise<void>` or an `asserts` predicate. An unexported
  * function or `const`, and a `private`/`protected` method, are not
- * constrained beyond the `validate*` ban.
+ * constrained beyond the `validate*` ban. No function, checked or not, is
+ * named `narrow*`, `require*`, `check*` or `checked*` either: those were four
+ * more names for the same two shapes.
  */
 export function namingViolations(file: string, source: string): string[] {
   const sourceFile = ts.createSourceFile('probe.ts', source, ts.ScriptTarget.Latest, true);

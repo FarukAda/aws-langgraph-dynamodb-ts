@@ -15,7 +15,7 @@ import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 const throttled = Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
 const retry = { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 };
 
-describe('context.retry reaches every DynamoDB call (DDB-03)', () => {
+describe('context.retry reaches every DynamoDB call', () => {
   it('checkpointer getTuple stops after the configured attempts', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).rejects(throttled);

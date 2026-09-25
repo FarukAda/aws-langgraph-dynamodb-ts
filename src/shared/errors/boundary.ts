@@ -128,7 +128,7 @@ function classifiableCause(error: Error): Error {
  * A failure from below this library, as one of its errors.
  *
  * Accepts: `cause` — whatever a `catch` bound: an AWS SDK error, a transport
- * error, or what a `VectorBackend`, `Embeddings`, `serde` or `SessionBackend`
+ * error, or what a `VectorBackend`, `Embeddings`, `serde` or `MultiSessionHistory`
  * threw. `operation` — the public method it surfaced through.
  *
  * Returns: an error whose code is {@link classifyAwsError}'s answer for

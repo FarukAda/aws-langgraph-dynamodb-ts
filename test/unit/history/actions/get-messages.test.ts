@@ -3,7 +3,7 @@ import { AIMessage, HumanMessage, mapChatMessagesToStoredMessages } from '@langc
 
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { buildMessageItem } from '../../../../src/history/internal/rows';
+import { buildMessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
@@ -62,7 +62,7 @@ describe('getMessages', () => {
     expect(await getMessages(context(client), 'sess-x')).toEqual([]);
   });
 
-  it('returns the readable messages and reports the corrupt one (I6)', async () => {
+  it('returns the readable messages and reports the corrupt one', async () => {
     // One undecodable item used to throw out of the whole function, so a
     // single bad row made an entire session permanently unreadable — with no
     // API to remove just that row.
@@ -71,17 +71,17 @@ describe('getMessages', () => {
       new HumanMessage('hi'),
       new AIMessage('hello'),
     ]);
-    const good = await buildMessageItem(context(client), {
+    const good = await buildMessageRow(context(client), {
       sessionId: SESSION_ID,
       messageId: '01A',
       message: human,
     });
-    const alsoGood = await buildMessageItem(context(client), {
+    const alsoGood = await buildMessageRow(context(client), {
       sessionId: SESSION_ID,
       messageId: '01C',
       message: ai,
     });
-    const corrupt = await buildMessageItem(context(client), {
+    const corrupt = await buildMessageRow(context(client), {
       sessionId: SESSION_ID,
       messageId: '01B',
       message: human,
@@ -113,7 +113,7 @@ describe('getMessages', () => {
   it('bounds the sort key it reports for a corrupt item', async () => {
     const { client, mock } = createStrictDocumentMock();
     const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
-    const corrupt = await buildMessageItem(context(client), {
+    const corrupt = await buildMessageRow(context(client), {
       sessionId: SESSION_ID,
       messageId: '01B',
       message: human,
@@ -134,10 +134,10 @@ describe('getMessages', () => {
     );
   });
 
-  it('throws on a corrupt item when onCorruptMessage is "throw" (I6)', async () => {
+  it('throws on a corrupt item when onCorruptMessage is "throw"', async () => {
     const { client, mock } = createStrictDocumentMock();
     const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
-    const corrupt = await buildMessageItem(context(client), {
+    const corrupt = await buildMessageRow(context(client), {
       sessionId: SESSION_ID,
       messageId: '01B',
       message: human,
@@ -154,13 +154,13 @@ describe('getMessages', () => {
     ).rejects.toThrow();
   });
 
-  describe('failure classification under the skip policy (HIST-01, HIST-04, CODEC-03)', () => {
+  describe('failure classification under the skip policy', () => {
     async function offloadedHuman(client: HistoryContext['client']) {
       const writer = context(client, {
         offloader: offloaderStub(() => Promise.resolve(new Uint8Array())) as never,
       });
       const [human] = mapChatMessagesToStoredMessages([new HumanMessage('offloaded')]);
-      return buildMessageItem(writer, { sessionId: SESSION_ID, messageId: '01A', message: human });
+      return buildMessageRow(writer, { sessionId: SESSION_ID, messageId: '01A', message: human });
     }
 
     it("rethrows a transient S3 failure under 'skip' instead of silently dropping the message", async () => {
@@ -202,7 +202,7 @@ describe('getMessages', () => {
         logger: { ...SILENT_LOGGER, error },
       });
       const [ai] = mapChatMessagesToStoredMessages([new AIMessage('inline')]);
-      const inline = await buildMessageItem(context(client), {
+      const inline = await buildMessageRow(context(client), {
         sessionId: SESSION_ID,
         messageId: '01B',
         message: ai,
@@ -233,8 +233,8 @@ describe('getMessages', () => {
       ]);
       const ctx = context(client);
       const items = [
-        await buildMessageItem(ctx, { sessionId: SESSION_ID, messageId: '01A', message: human }),
-        await buildMessageItem(ctx, {
+        await buildMessageRow(ctx, { sessionId: SESSION_ID, messageId: '01A', message: human }),
+        await buildMessageRow(ctx, {
           sessionId: SESSION_ID,
           messageId: '01B',
           message: {
@@ -248,7 +248,7 @@ describe('getMessages', () => {
             },
           },
         }),
-        await buildMessageItem(ctx, { sessionId: SESSION_ID, messageId: '01C', message: ai }),
+        await buildMessageRow(ctx, { sessionId: SESSION_ID, messageId: '01C', message: ai }),
       ];
       mock.on(QueryCommand).resolves({ Items: items });
       const messages = await getMessages({ ...ctx, logger: { ...SILENT_LOGGER, error } }, 's1');
@@ -268,7 +268,7 @@ describe('getMessages', () => {
         new HumanMessage('x'.repeat(4096)),
         new AIMessage('ok'),
       ]);
-      const compressed = await buildMessageItem(writer, {
+      const compressed = await buildMessageRow(writer, {
         sessionId: SESSION_ID,
         messageId: '01A',
         message: big,
@@ -276,7 +276,7 @@ describe('getMessages', () => {
       expect(compressed.message.compressed).toBe(true);
       const items = [
         compressed,
-        await buildMessageItem(writer, { sessionId: SESSION_ID, messageId: '01B', message: small }),
+        await buildMessageRow(writer, { sessionId: SESSION_ID, messageId: '01B', message: small }),
       ];
       mock.on(QueryCommand).resolves({ Items: items });
       const reader = context(client, {
@@ -292,7 +292,7 @@ describe('getMessages', () => {
     });
   });
 
-  it('rejects an invalid session id instead of reaching DynamoDB (M12)', async () => {
+  it('rejects an invalid session id instead of reaching DynamoDB', async () => {
     const { client, mock } = createStrictDocumentMock();
     await expect(getMessages(context(client), '')).rejects.toThrow(/sessionId/);
     await expect(getMessages(context(client), 'a#b')).rejects.toThrow(/reserved "#" separator/);
@@ -306,12 +306,12 @@ describe('getMessages', () => {
       new AIMessage('hello'),
     ]);
     const items = [
-      await buildMessageItem(context(client), {
+      await buildMessageRow(context(client), {
         sessionId: SESSION_ID,
         messageId: '01A',
         message: human,
       }),
-      await buildMessageItem(context(client), {
+      await buildMessageRow(context(client), {
         sessionId: SESSION_ID,
         messageId: '01B',
         message: ai,
@@ -326,7 +326,7 @@ describe('getMessages', () => {
     expect(input.ScanIndexForward).toBe(true);
     expect(input.ExpressionAttributeValues).toEqual({ ':pk': 'HIST#s1', ':skp': 'HISTORY#MSG#' });
     // Read-your-writes for RunnableWithMessageHistory: the turn just appended
-    // must be visible to the very next getMessages (HIST-02).
+    // must be visible to the very next getMessages.
     expect(input.ConsistentRead).toBe(true);
   });
 
@@ -337,12 +337,12 @@ describe('getMessages', () => {
       new AIMessage('gone'),
     ]);
     const items = [
-      await buildMessageItem(context(client), {
+      await buildMessageRow(context(client), {
         sessionId: SESSION_ID,
         messageId: '01A',
         message: live,
       }),
-      await buildMessageItem(context(client), {
+      await buildMessageRow(context(client), {
         sessionId: SESSION_ID,
         messageId: '01B',
         message: gone,
@@ -364,7 +364,7 @@ describe('getMessages', () => {
     for (let i = 0; i < pageCount; i++) {
       const items = await Promise.all(
         Array.from({ length: pageSize }, (_, j) =>
-          buildMessageItem(context(client), {
+          buildMessageRow(context(client), {
             sessionId: SESSION_ID,
             messageId: `01${i}${j}`,
             message: human,
@@ -381,7 +381,7 @@ describe('getMessages', () => {
   });
 });
 
-describe('options shape (M-08)', () => {
+describe('options shape', () => {
   it('refuses a key this package does not read, naming it under options', async () => {
     const { client } = createStrictDocumentMock();
     await expect(
@@ -397,7 +397,7 @@ describe('options shape (M-08)', () => {
   });
 });
 
-describe('S3 key binding (SEC-03)', () => {
+describe('S3 key binding', () => {
   const binding = () => ({
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => buildS3Key('p/', parts, objectId),
@@ -412,7 +412,7 @@ describe('S3 key binding (SEC-03)', () => {
     offloader: ReturnType<typeof binding>,
   ) {
     const [human] = mapChatMessagesToStoredMessages([new HumanMessage('offloaded')]);
-    const item = await buildMessageItem(context(client, { offloader: offloader as never }), {
+    const item = await buildMessageRow(context(client, { offloader: offloader as never }), {
       sessionId: SESSION_ID,
       messageId: '01A',
       message: human,

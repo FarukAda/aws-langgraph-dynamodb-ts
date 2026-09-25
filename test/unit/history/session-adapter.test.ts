@@ -35,7 +35,7 @@ describe('DynamoDBSessionChatMessageHistory', () => {
   });
 });
 
-describe('bound read window (HIST-06)', () => {
+describe('bound read window', () => {
   it('passes the window it was created with to every read', async () => {
     const b = backend();
     await new DynamoDBSessionChatMessageHistory(b, 's', { limit: 20 }).getMessages();

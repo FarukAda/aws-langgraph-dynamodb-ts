@@ -1,3 +1,14 @@
+/**
+ * Hides when a listing reads, and when it stops.
+ *
+ * A `limit` of `0` is answered before any request is built, a config that
+ * pins one checkpoint in a known namespace is a single direct read rather than
+ * a range, and every other listing streams tuples until the caller stops
+ * pulling or `limit` is reached. The read is deliberately unbounded and
+ * eventually consistent; past a threshold an operator is warned instead of the
+ * caller being refused. Where the rows come from is `listing`'s concern.
+ */
+
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CheckpointListOptions, CheckpointTuple } from '@langchain/langgraph-checkpoint';
 
@@ -6,7 +17,7 @@ import { LIST_SCAN_WARN_THRESHOLD } from '../../shared/dynamodb/paginate';
 import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import {
   metaRows,
-  narrowOrWarn,
+  parseListedRow,
   passesKeyFilters,
   passesMetadataFilter,
 } from '../internal/listing';
@@ -18,7 +29,7 @@ import {
   type ThreadId,
 } from '../internal/parse';
 import { assembleTuple, fetchTargetMeta } from '../internal/read';
-import type { CheckpointMetaItem } from '../internal/rows';
+import type { CheckpointMetaRow } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
 
 /**
@@ -29,7 +40,7 @@ import type { CheckpointerContext } from '../internal/setup';
  */
 async function tupleFor(
   context: CheckpointerContext,
-  meta: CheckpointMetaItem,
+  meta: CheckpointMetaRow,
   scope: ListScope,
 ): Promise<CheckpointTuple | undefined> {
   if (!passesKeyFilters(meta, scope)) return undefined;
@@ -163,7 +174,7 @@ export async function* listCheckpoints(
         { threadId: scope.threadId, checkpointNs: scope.checkpointNs, scanned },
       );
     }
-    const meta = narrowOrWarn(context, raw);
+    const meta = parseListedRow(context, raw);
     if (!meta || isExpiredRow(meta, now)) continue;
     const tuple = await tupleFor(context, meta, scope);
     if (!tuple) continue;

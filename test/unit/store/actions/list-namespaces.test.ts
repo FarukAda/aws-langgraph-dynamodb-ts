@@ -21,7 +21,7 @@ function context(client: StoreContext['client']): StoreContext {
   };
 }
 
-/** A store row whose attributes agree with the DynamoDB key it lives at (SEC-03). */
+/** A store row whose attributes agree with the DynamoDB key it lives at. */
 const row = (namespace: string[], key = 'k') => ({
   PK: partitionKey(namespace),
   SK: sortKey(namespace, key),

@@ -5,7 +5,7 @@ import { getCheckpointTuple } from '../../../../../src/checkpointer/actions/get-
 import type { CheckpointerContext } from '../../../../../src/checkpointer/internal/setup';
 import { getMessages } from '../../../../../src/history/actions/get-messages';
 import { parseSessionId } from '../../../../../src/history/internal/parse';
-import { buildMessageItem } from '../../../../../src/history/internal/rows';
+import { buildMessageRow } from '../../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../../src/history/internal/setup';
 import { PayloadLocation } from '../../../../../src/shared/codec/codec';
 import { JSON_SERDE } from '../../../../../src/shared/codec/json-serde';
@@ -68,7 +68,7 @@ async function readHistory(offloader: ReturnType<typeof scopedOffloader>): Promi
     offloader: offloader as never,
   };
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('offloaded')]);
-  const item = await buildMessageItem(
+  const item = await buildMessageRow(
     { ...context, offloader: undefined },
     { sessionId: parseSessionId('s1'), messageId: '01A', message: human },
   );
@@ -168,7 +168,7 @@ async function answerOf(
   }
 }
 
-describe('an out-of-scope s3Key is a refusal, not payload loss (M-03)', () => {
+describe('an out-of-scope s3Key is a refusal, not payload loss', () => {
   it.each(ADAPTERS)('%s raises rather than reading past the row', async (_name, read) => {
     expect(await answerOf(read)).toEqual({
       code: ErrorCode.VALIDATION,

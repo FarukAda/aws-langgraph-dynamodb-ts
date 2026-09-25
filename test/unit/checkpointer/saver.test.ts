@@ -83,7 +83,7 @@ describe('DynamoDBSaver', () => {
   });
 
   /**
-   * H-10: `list` is a generator, so nothing runs until the first pull —
+   * `list` is a generator, so nothing runs until the first pull —
    * asserting on the call itself would pass vacuously.
    */
   it('refuses a non-string checkpoint_id in `before`', async () => {
@@ -321,7 +321,7 @@ describe('DynamoDBSaver', () => {
   });
 });
 
-describe('cancellation via RunnableConfig.signal (CORE-04)', () => {
+describe('cancellation via RunnableConfig.signal', () => {
   const aborted = (): AbortSignal => {
     const controller = new AbortController();
     controller.abort();

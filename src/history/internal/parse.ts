@@ -1,3 +1,14 @@
+/**
+ * Hides the rules chat-history input must meet before anything reads it.
+ *
+ * A session id, an append's messages, a read window and the listing options
+ * are each parsed once into a type only this module can build (record 21), so
+ * an action that holds one never checks it again. Which messages may be
+ * stored is decided by the read side's own rebuild, so write and read agree
+ * by construction, and which instants a `before` may name follows from the
+ * range a message id can express.
+ */
+
 import {
   type BaseMessage,
   mapChatMessagesToStoredMessages,
@@ -176,13 +187,14 @@ export function parseMessages(messages: BaseMessage[]): StorableMessages {
  *
  * `null` is refused, naming `before`, rather than read as "up to now". A
  * `Date` is duck-typed, since one from another realm is still a date.
- * `before: null` used to reach `null.getTime`, a property access the
- * boundary branded `UNEXPECTED_ERROR` instead of naming the caller's mistake;
+ * Unchecked, `before: null` would reach `null.getTime`, a property access the
+ * boundary brands `UNEXPECTED_ERROR` instead of naming the caller's mistake;
  * an invalid `Date` would otherwise derive a NaN sort key that matches nothing
- * and read as an empty conversation. A pre-epoch `Date` was worse than either:
- * the bound built from it sorted above every real id, so the window came back
- * holding the entire conversation the caller had asked to exclude. Past the
- * range the bound wrapped to the lowest prefix and the window came back empty.
+ * and read as an empty conversation. A pre-epoch `Date` would be worse than
+ * either: the bound built from it sorts above every real id, so the window
+ * would come back holding the entire conversation the caller asked to exclude.
+ * Past the range the bound would wrap to the lowest prefix and the window would
+ * come back empty.
  */
 function windowBound(before: Date): Date {
   const hasGetTime = before !== null && typeof before.getTime === 'function';

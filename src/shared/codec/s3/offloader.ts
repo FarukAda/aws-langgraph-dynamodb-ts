@@ -91,26 +91,22 @@ export class S3Offloader {
     this.sse = config.serverSideEncryption ?? DEFAULT_S3_SSE;
     this.sseKmsKeyId = config.sseKmsKeyId;
     this.maxDownloadBytes = config.maxDownloadBytes ?? DEFAULT_MAX_S3_DOWNLOAD_BYTES;
-    /**
-     * Warm the optional peer's import so a missing `@aws-sdk/client-s3`
-     * surfaces on the very first S3 operation, typed, rather than on the first
-     * oversize payload days later. The rejection is handled here; whichever
-     * operation runs first re-raises it through its own `loadS3Sdk()` call.
-     */
+    // Warm the optional peer's import so a missing `@aws-sdk/client-s3`
+    // surfaces on the very first S3 operation, typed, rather than on the first
+    // oversize payload days later. The rejection is handled here; whichever
+    // operation runs first re-raises it through its own `loadS3Sdk()` call.
     void loadS3Sdk().catch(() => undefined);
   }
 
   private getClient(): Promise<S3Client> {
     if (!this.clientPromise) {
       const cfg: S3ClientConfigLike = this.config.clientConfig ?? {};
-      /**
-       * The hook is typed structurally for consumers; the runtime modules use
-       * the real SDK client. It hands over a constructor, not a configuration,
-       * so a caller who supplies one has not opted out of the bound: the same
-       * default handler {@link createDefaultS3Client} applies reaches it, for
-       * the reason recorded there. `cfg` still spreads last, so a caller who
-       * does want to replace it puts a `requestHandler` in `clientConfig`.
-       */
+      // The hook is typed structurally for consumers; the runtime modules use
+      // the real SDK client. It hands over a constructor, not a configuration,
+      // so a caller who supplies one has not opted out of the bound: the same
+      // default handler {@link createDefaultS3Client} applies reaches it, for
+      // the reason recorded there. `cfg` still spreads last, so a caller who
+      // does want to replace it puts a `requestHandler` in `clientConfig`.
       this.clientPromise = (
         this.config.createS3Client
           ? Promise.resolve(
@@ -124,10 +120,8 @@ export class S3Offloader {
       ).then(
         (client) => {
           this.resolvedClient = client;
-          /**
-           * `destroy()` may have run during this construction, when there was
-           * no client yet to release. Release it now instead of leaking it.
-           */
+          // `destroy()` may have run during this construction, when there was
+          // no client yet to release. Release it now instead of leaking it.
           if (this.destroyed) client.destroy();
           return client;
         },
@@ -799,11 +793,9 @@ export async function cleanUpS3Orphans(
     try {
       const failed = await offloader.deleteBatch(orphans);
       if (failed.length === 0) return;
-      /**
-       * Absorbed here and not by the `catch` below, which would read a broken
-       * logger as a failed delete: the delete succeeded, and only part of it
-       * could be reported.
-       */
+      // Absorbed here and not by the `catch` below, which would read a broken
+      // logger as a failed delete: the delete succeeded, and only part of it
+      // could be reported.
       absorbLoggerFailure(() =>
         release.logger.warn(
           `Some orphaned S3 objects could not be deleted after ${release.operation}; a lifecycle rule from ensureS3LifecycleRule() would sweep them, otherwise clean up manually`,
@@ -818,14 +810,12 @@ export async function cleanUpS3Orphans(
       delay = nextBackoffDelay(delay);
     }
   }
-  /**
-   * The error's *name*, never its message: an underlying failure can carry a
-   * credential fragment in its text, and this package promises that its logs
-   * hold identifiers and counts only. Bounded all the same — a name is an
-   * identifier this package did not length-check, and `message` is bounded
-   * where `redactedMessage` relays it, so bounding one and relaying the other
-   * whole would split what is one value.
-   */
+  // The error's *name*, never its message: an underlying failure can carry a
+  // credential fragment in its text, and this package promises that its logs
+  // hold identifiers and counts only. Bounded all the same — a name is an
+  // identifier this package did not length-check, and `message` is bounded
+  // where `redactedMessage` relays it, so bounding one and relaying the other
+  // whole would split what is one value.
   absorbLoggerFailure(() =>
     release.logger.warn(
       `Failed to clean up orphaned S3 objects after ${release.operation}; a lifecycle rule from ensureS3LifecycleRule() would sweep them, otherwise clean up manually`,

@@ -1,3 +1,14 @@
+/**
+ * Hides the history's implementation from the types a caller names.
+ *
+ * Every option and result of the multi-session history's reads, writes and
+ * listings is declared here, with no run-time code, so a caller can type
+ * what it builds without importing an action, a parser or a row module. The
+ * parsed forms the actions work from belong to the parser and the row
+ * shapes to the modules that own them, so either can change without moving
+ * a published type.
+ */
+
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
 import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';

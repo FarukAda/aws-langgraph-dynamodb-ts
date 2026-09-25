@@ -103,13 +103,11 @@ export function assertClientChoice(
       'client',
     );
   }
-  /**
-   * The shape only, never the keys, and on purpose: they are the AWS SDK's
-   * `DynamoDBClientConfig`, which gains keys between SDK releases, and an
-   * application may install a newer SDK than the one this package was
-   * compiled against, so a key list compiled in here would refuse valid
-   * configuration. The SDK reads each key itself.
-   */
+  // The shape only, never the keys, and on purpose: they are the AWS SDK's
+  // `DynamoDBClientConfig`, which gains keys between SDK releases, and an
+  // application may install a newer SDK than the one this package was
+  // compiled against, so a key list compiled in here would refuse valid
+  // configuration. The SDK reads each key itself.
   if (options.clientConfig !== undefined) assertObjectShape(options.clientConfig, 'clientConfig');
 }
 
@@ -254,18 +252,16 @@ export function assertCompression(config: CompressionConfig): void {
     assertInteger(config.level, 'compression.level', { min: 0, max: 9 });
   }
   if (config.minSizeBytes !== undefined) {
-    /**
-     * Bounded by MAX_PAYLOAD_BUFFER_BYTES, not by MAX_INLINE_PAYLOAD_BYTES as
-     * `s3.thresholdBytes` is, because the two differ in kind. `encodePayload`
-     * compresses first and only then decides inline versus offload, on the
-     * compressed size — so `minSizeBytes` above the inline limit, paired with
-     * `s3`, is a meaningful configuration: compress only what will be offloaded
-     * anyway. A `thresholdBytes` above the inline limit is not: a payload
-     * between the two is too large to store inline and too small to offload,
-     * so its write fails. `minSizeBytes` only decides whether gzip runs; the
-     * only value it can never act on is one larger than any payload this
-     * package can read back.
-     */
+    // Bounded by MAX_PAYLOAD_BUFFER_BYTES, not by MAX_INLINE_PAYLOAD_BYTES as
+    // `s3.thresholdBytes` is, because the two differ in kind. `encodePayload`
+    // compresses first and only then decides inline versus offload, on the
+    // compressed size — so `minSizeBytes` above the inline limit, paired with
+    // `s3`, is a meaningful configuration: compress only what will be offloaded
+    // anyway. A `thresholdBytes` above the inline limit is not: a payload
+    // between the two is too large to store inline and too small to offload,
+    // so its write fails. `minSizeBytes` only decides whether gzip runs; the
+    // only value it can never act on is one larger than any payload this
+    // package can read back.
     assertInteger(config.minSizeBytes, 'compression.minSizeBytes', {
       min: 0,
       max: MAX_PAYLOAD_BUFFER_BYTES,
@@ -325,12 +321,10 @@ function assertS3Encryption(config: S3OffloadConfig): void {
 export function assertS3(config: S3OffloadConfig): void {
   assertShape(config, S3_KEYS, 's3');
   assertNonEmptyString(config.bucketName, 's3.bucketName');
-  /**
-   * The shape only, never the keys: they are the AWS SDK's `S3ClientConfig`,
-   * which gains keys between SDK releases, and an application may install a
-   * newer SDK than the one this package was compiled against, so a key list
-   * compiled in here would refuse valid configuration.
-   */
+  // The shape only, never the keys: they are the AWS SDK's `S3ClientConfig`,
+  // which gains keys between SDK releases, and an application may install a
+  // newer SDK than the one this package was compiled against, so a key list
+  // compiled in here would refuse valid configuration.
   if (config.clientConfig !== undefined) assertObjectShape(config.clientConfig, 's3.clientConfig');
   if (config.thresholdBytes !== undefined) {
     assertInteger(config.thresholdBytes, 's3.thresholdBytes', {
@@ -346,10 +340,8 @@ export function assertS3(config: S3OffloadConfig): void {
     });
   }
   assertS3Encryption(config);
-  /**
-   * Called to build the S3 client at the first offload, where a value that is
-   * not a function threw a bare `TypeError`.
-   */
+  // Called to build the S3 client at the first offload, where a value that is
+  // not a function threw a bare `TypeError`.
   if (config.createS3Client !== undefined && typeof config.createS3Client !== 'function') {
     throw validationError('s3.createS3Client must be a function', 's3.createS3Client');
   }

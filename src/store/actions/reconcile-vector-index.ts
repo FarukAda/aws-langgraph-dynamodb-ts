@@ -1,3 +1,13 @@
+/**
+ * Hides what a reconcile refuses before it touches the backend.
+ *
+ * A repair is scoped to one partition's items, so its prefix must be a
+ * non-empty namespace, and without an `index` and a `vectorBackend` there is
+ * nothing to repair; both are refused here, before any read. How the backend
+ * is then made to agree with the table belongs to the vector index, so the
+ * store's method knows neither half.
+ */
+
 import { validationError } from '../../shared/errors/errors';
 import { parseNamespace } from '../internal/parse';
 import type { StoreContext } from '../internal/setup';

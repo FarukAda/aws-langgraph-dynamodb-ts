@@ -1,7 +1,7 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
-import { writeRegularItems } from '../../../../src/checkpointer/internal/pending-writes';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
+import { writeRegularRows } from '../../../../src/checkpointer/internal/pending-writes';
+import type { CheckpointWriteRow } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -23,7 +23,7 @@ function context(client: CheckpointerContext['client'], offloader = true): Check
   return offloader ? { ...base, offloader: {} as never } : base;
 }
 
-function item(writeGroup: string, s3Key = `k/${writeGroup}`): CheckpointWriteItem {
+function item(writeGroup: string, s3Key = `k/${writeGroup}`): CheckpointWriteRow {
   return {
     PK: 'CHKPT#t',
     SK: 'WRITE##c1#task#0000000008#ch',
@@ -55,11 +55,11 @@ function timeout(): Error {
   return Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
 }
 
-describe('writeRegularItems', () => {
+describe('writeRegularRows', () => {
   it('reports no dead uploads and no error when every put succeeds', async () => {
     const { client, mock } = createStrictDocumentMock();
     resolveRowWrites(mock);
-    await expect(writeRegularItems(context(client), [item('G1')])).resolves.toEqual({
+    await expect(writeRegularRows(context(client), [item('G1')])).resolves.toEqual({
       deadUploads: [],
     });
     expect(committedRows(mock)).toEqual([item('G1')]);
@@ -69,7 +69,7 @@ describe('writeRegularItems', () => {
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(mock, timeout());
     mock.on(GetCommand).resolves({ Item: { writeGroup: 'G1', value: item('G1').value } });
-    const outcome = await writeRegularItems(context(client), [item('G1')]);
+    const outcome = await writeRegularRows(context(client), [item('G1')]);
     expect(outcome).toEqual({ deadUploads: [] });
     expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);
   });
@@ -78,7 +78,7 @@ describe('writeRegularItems', () => {
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(mock, timeout());
     mock.on(GetCommand).resolves({});
-    const outcome = await writeRegularItems(context(client), [item('G1')]);
+    const outcome = await writeRegularRows(context(client), [item('G1')]);
     expect(outcome.deadUploads).toEqual([item('G1')]);
     expect(outcome.error).toMatchObject({
       name: 'DynamoDBLangGraphError',
@@ -90,7 +90,7 @@ describe('writeRegularItems', () => {
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(mock, timeout());
     mock.on(GetCommand).resolves({ Item: { writeGroup: 'OTHER' } });
-    const outcome = await writeRegularItems(context(client), [item('G1')]);
+    const outcome = await writeRegularRows(context(client), [item('G1')]);
     expect(outcome.deadUploads).toEqual([item('G1')]);
   });
 
@@ -100,7 +100,7 @@ describe('writeRegularItems', () => {
     mock
       .on(GetCommand)
       .rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
-    const outcome = await writeRegularItems(context(client), [item('G1')]);
+    const outcome = await writeRegularRows(context(client), [item('G1')]);
     expect(outcome.deadUploads).toEqual([]);
     expect(outcome.error).toMatchObject({
       name: 'DynamoDBLangGraphError',
@@ -111,7 +111,7 @@ describe('writeRegularItems', () => {
   it('skips the verification read and marks the upload dead when no offloader is configured', async () => {
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(mock, Object.assign(new Error('bad'), { name: 'ValidationException' }));
-    const outcome = await writeRegularItems(context(client, false), [item('G1')]);
+    const outcome = await writeRegularRows(context(client, false), [item('G1')]);
     expect(outcome.deadUploads).toHaveLength(1);
     expect(outcome.error).toMatchObject({ name: 'ValidationException' });
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
@@ -120,25 +120,22 @@ describe('writeRegularItems', () => {
   it('keeps the first error when several writes fail', async () => {
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(mock, Object.assign(new Error('bad'), { name: 'ValidationException' }));
-    const outcome = await writeRegularItems(context(client, false), [
-      item('G1'),
-      item('G1', 'k/2'),
-    ]);
+    const outcome = await writeRegularRows(context(client, false), [item('G1'), item('G1', 'k/2')]);
     expect(outcome.deadUploads).toHaveLength(2);
     expect(outcome.error).toMatchObject({ name: 'ValidationException' });
   });
 
-  it('marks a guard-rejected write dead when the returned row belongs to another call (CKPT-09)', async () => {
+  it('marks a guard-rejected write dead when the returned row belongs to another call', async () => {
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(mock, ccf({ channel: { S: 'ch' }, writeGroup: { S: 'OTHER' } }));
-    const outcome = await writeRegularItems(context(client), [item('G1')]);
+    const outcome = await writeRegularRows(context(client), [item('G1')]);
     expect(outcome).toEqual({ deadUploads: [item('G1')] });
   });
 
   it('never marks a guard-rejected write dead when the returned row is its own (lost-response re-hit)', async () => {
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(mock, ccf({ channel: { S: 'ch' }, writeGroup: { S: 'G1' } }));
-    await expect(writeRegularItems(context(client), [item('G1')])).resolves.toEqual({
+    await expect(writeRegularRows(context(client), [item('G1')])).resolves.toEqual({
       deadUploads: [],
     });
   });
@@ -146,7 +143,7 @@ describe('writeRegularItems', () => {
   it('never marks a guard-rejected write dead when the rejection carries no attributes', async () => {
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(mock, ccf());
-    await expect(writeRegularItems(context(client), [item('G1')])).resolves.toEqual({
+    await expect(writeRegularRows(context(client), [item('G1')])).resolves.toEqual({
       deadUploads: [],
     });
   });
@@ -164,7 +161,7 @@ describe('writeRegularItems', () => {
     controller.abort();
     rejectRowWrites(mock, timeout());
     mock.on(GetCommand).resolves({ Item: { writeGroup: 'OTHER' } });
-    const outcome = await writeRegularItems(context(client), [item('G1')], controller.signal);
+    const outcome = await writeRegularRows(context(client), [item('G1')], controller.signal);
     expect(outcome.error).toMatchObject({ name: 'DynamoDBLangGraphError', code: 'ABORTED' });
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
     expect(outcome.deadUploads).toEqual([item('G1')]);

@@ -6,7 +6,7 @@
 
 # Interface: ListSessionsOptions
 
-Defined in: [history/types.ts:58](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L58)
+Defined in: [history/types.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L69)
 
 Options for `listSessions`: the page, the scan caps, and cancellation.
 
@@ -20,7 +20,7 @@ Options for `listSessions`: the page, the scan caps, and cancellation.
 
 > `optional` **cursor?**: `string`
 
-Defined in: [history/types.ts:75](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L75)
+Defined in: [history/types.ts:86](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L86)
 
 Opaque cursor from a previous page. Requires a configured `indexName` —
 without the index there is no position to resume from, and passing one is
@@ -32,7 +32,7 @@ refused rather than answered with the first page again.
 
 > `optional` **limit?**: `number`
 
-Defined in: [history/types.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L69)
+Defined in: [history/types.ts:80](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L80)
 
 How many sessions to return, newest-updated first; an integer from 0 to
 `MAX_PAGE_LIMIT` (10,000).
@@ -49,7 +49,7 @@ empty page on either path and reads neither.
 
 > `optional` **maxItems?**: `number`
 
-Defined in: [history/types.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L79)
+Defined in: [history/types.ts:90](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L90)
 
 Cap on rows read into memory before `RESULT_TRUNCATED` (default 10 000). Scan path only.
 
@@ -59,7 +59,7 @@ Cap on rows read into memory before `RESULT_TRUNCATED` (default 10 000). Scan pa
 
 > `optional` **maxIterations?**: `number`
 
-Defined in: [history/types.ts:77](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L77)
+Defined in: [history/types.ts:88](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/types.ts#L88)
 
 Cap on scan pages before `RESULT_TRUNCATED` (default 1000). Scan path only.
 
@@ -69,7 +69,7 @@ Cap on scan pages before `RESULT_TRUNCATED` (default 1000). Scan path only.
 
 > `optional` **signal?**: `AbortSignal`
 
-Defined in: [shared/options.ts:84](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L84)
+Defined in: [shared/options.ts:94](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L94)
 
 Aborting it rejects the call with an `ABORTED` error at the next wait.
 

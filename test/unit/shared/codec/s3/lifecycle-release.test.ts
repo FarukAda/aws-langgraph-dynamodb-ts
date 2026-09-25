@@ -73,7 +73,7 @@ describe('buildMarkerRuleId', () => {
   });
 });
 
-describe('the noncurrent-version grace on the ttl rule (CODEC-09)', () => {
+describe('the noncurrent-version grace on the ttl rule', () => {
   it('keeps a released version for the grace, which is not the ttl', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});

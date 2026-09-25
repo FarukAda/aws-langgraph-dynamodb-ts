@@ -13,14 +13,14 @@ import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import { mapWithConcurrency } from '../concurrency';
 import { validationError, resultTruncatedError } from '../errors/errors';
 import { type PageLimit, parseLimit } from '../validation/primitives';
-import type { DocItem, DynamoDBDocumentLike } from './client';
+import type { AttributeMap, DynamoDBDocumentLike } from './client';
 import { MAX_LOOP_ITERATIONS } from './paginate';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
 import { compareSortKeys } from './table-schema';
 
 /** One page of a recency listing, and where the next one resumes. */
 export interface IndexPage {
-  items: DocItem[];
+  items: AttributeMap[];
   /** Absent when the page is the last one. */
   nextCursor?: string;
 }
@@ -83,11 +83,12 @@ function isDry(reader: ShardReader): boolean {
  * `MAX_LOOP_ITERATIONS` pages, throws `RESULT_TRUNCATED` without issuing a
  * query — so a shard that answers with empty pages forever ends the listing
  * there. A second cap here could only ever fire after that one, which makes it
- * a branch no test could reach. What did once spin was a `mapWithConcurrency`
- * that started zero workers for a non-integer `concurrency`: the call returned
- * having read nothing, so no shard advanced and no page count grew. The fix
- * belongs there, in the floor that now cannot yield zero workers, and not in a
- * cap papering over a collaborator that silently did nothing.
+ * a branch no test could reach: {@link mapWithConcurrency}'s own floor (in
+ * `shared/concurrency.ts`) never starts zero workers, even for a
+ * non-integer or zero `concurrency`, so a pass here always advances at least
+ * one dry shard or reads nothing because none is dry. A collaborator that
+ * could silently spin without reading anything belongs fixed at that floor,
+ * not papered over by a cap here.
  */
 async function refillDryShards(
   options: IndexQueryOptions,
@@ -111,7 +112,7 @@ async function refillDryShards(
  * part company at an astral id. `''` is a safe starting bound because a
  * DynamoDB key attribute is never the empty string, so no row can lose to it.
  */
-function takeNewest(readers: ShardReader[]): DocItem | undefined {
+function takeNewest(readers: ShardReader[]): AttributeMap | undefined {
   let newest: ShardReader | undefined;
   let newestKey = '';
   for (const reader of readers) {
@@ -176,18 +177,16 @@ export async function queryRecencyIndex(options: IndexQueryOptions): Promise<Ind
   const readers = indexPartitions(options.tag, options.shards).map((partition) =>
     shardReader(partition),
   );
-  const items: DocItem[] = [];
+  const items: AttributeMap[] = [];
   while (items.length < options.limit) {
     await refillDryShards(options, readers, before, options.limit - items.length);
     const row = takeNewest(readers);
     if (row === undefined) break;
     items.push(row);
   }
-  /**
-   * Rows remain when a shard still buffers a row or has not reported its end.
-   * Either way the loop stopped on a full page, so the page is non-empty and
-   * its last row is the right place to resume.
-   */
+  // Rows remain when a shard still buffers a row or has not reported its end.
+  // Either way the loop stopped on a full page, so the page is non-empty and
+  // its last row is the right place to resume.
   const remain = readers.some((reader) => reader.buffer.length > 0 || !reader.exhausted);
   return {
     items,
@@ -217,7 +216,7 @@ const STREAM_PAGE_SIZE: PageLimit = parseLimit(100, 0);
  */
 export async function* iterateRecencyIndex(
   options: Omit<IndexQueryOptions, 'limit' | 'cursor'>,
-): AsyncGenerator<DocItem> {
+): AsyncGenerator<AttributeMap> {
   let cursor: string | undefined;
   do {
     const page = await queryRecencyIndex({ ...options, limit: STREAM_PAGE_SIZE, cursor });
@@ -248,7 +247,7 @@ export const BACKFILLED_AT = '1970-01-01T00:00:00.000Z';
  *
  * Throws: nothing.
  */
-export function backfilledAt(recorded: DocItem[string]): string {
+export function backfilledAt(recorded: AttributeMap[string]): string {
   return typeof recorded === 'string' ? recorded : BACKFILLED_AT;
 }
 
@@ -380,9 +379,9 @@ export interface ShardReader {
    * page yet, oldest first, so the newest is the last element and leaves with
    * `pop()`. Never more than one page.
    */
-  buffer: DocItem[];
+  buffer: AttributeMap[];
   /** Where the shard's next page starts; absent before its first page. */
-  startKey: DocItem | undefined;
+  startKey: AttributeMap | undefined;
   /** True once DynamoDB reported no data past the last page read. */
   exhausted: boolean;
   /** DynamoDB pages read from this shard so far. */
@@ -433,8 +432,8 @@ function shardQuery(
  *
  * `Limit` bounds the items a `Query` *evaluates*, and a page also stops at
  * 1 MB, so a shard of large rows answers with fewer than `limit` items and a
- * `LastEvaluatedKey`. Taking that short page as the whole shard is what made a
- * listing drop rows and report itself complete (C-01). The key is kept here
+ * `LastEvaluatedKey`. Taking that short page as the whole shard would drop
+ * rows and report the listing complete. The key is kept here
  * instead, and the listing reads the next page once the shard's buffer is empty
  * and its page still needs a row. One page at a time is what bounds a listing's
  * memory to at most one DynamoDB page per shard, besides the page it is
@@ -466,7 +465,7 @@ export async function readShardPage(
     { ...options.retry, signal: options.signal },
   );
   reader.pages += 1;
-  reader.buffer = ((result.Items ?? []) as DocItem[]).slice().reverse();
-  reader.startKey = result.LastEvaluatedKey as DocItem | undefined;
+  reader.buffer = ((result.Items ?? []) as AttributeMap[]).slice().reverse();
+  reader.startKey = result.LastEvaluatedKey as AttributeMap | undefined;
   reader.exhausted = reader.startKey === undefined;
 }

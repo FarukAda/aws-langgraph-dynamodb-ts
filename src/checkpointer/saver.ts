@@ -1,3 +1,16 @@
+/**
+ * Hides the checkpointer's collaborators behind LangGraph's saver contract.
+ *
+ * `DynamoDBSaver` is the `BaseCheckpointSaver` a graph is handed: it resolves
+ * its client, offloader, logger and retry policy once and delegates each
+ * read and write to one action, save `getDeltaChannelHistory`, whose walk
+ * lives in `internal/delta-history` instead. Each asynchronous method is
+ * also the error boundary, so a raw AWS SDK error never reaches a caller
+ * unclassified (record 13); `destroy` releases what the saver owns and is
+ * the one synchronous exception. Actions can be split, merged or reordered
+ * without the public surface moving.
+ */
+
 import type { RunnableConfig } from '@langchain/core/runnables';
 import {
   BaseCheckpointSaver,
@@ -14,7 +27,7 @@ import type { AdapterShell } from '../shared/adapter';
 import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { assertCancelOptions } from '../shared/validation/collaborators';
-import { checkedShape } from '../shared/validation/option-shape';
+import { parseShape } from '../shared/validation/option-shape';
 import { deleteThread as deleteThreadAction } from './actions/delete-thread';
 import { getCheckpointTuple } from './actions/get-tuple';
 import { listCheckpoints } from './actions/list';
@@ -26,10 +39,9 @@ import { SAVER_KEYS, type CheckpointerContext, setUpCheckpointer } from './inter
 import type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './types';
 
 /**
- * DynamoDB-backed LangGraph checkpoint saver. A thin orchestrator: it resolves
- * its collaborators once and delegates every operation to a focused action.
- * Every public method is the library's error boundary — a raw AWS SDK error
- * escaping an action is wrapped with the code the classifier assigns.
+ * DynamoDB-backed LangGraph checkpoint saver. Every public method rejects only
+ * with this library's error, whose `code` says what failed — an AWS failure
+ * included.
  */
 export class DynamoDBSaver extends BaseCheckpointSaver {
   private readonly context: CheckpointerContext;
@@ -50,7 +62,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * at module scope and in a Lambda's init phase.
    */
   constructor(options: DynamoDBSaverOptions) {
-    super(checkedShape(options, SAVER_KEYS, 'options').serde);
+    super(parseShape(options, SAVER_KEYS, 'options').serde);
     const setup = setUpCheckpointer(options, this.serde);
     this.context = setup.context;
     this.shell = setup.shell;
@@ -138,8 +150,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * `thread_id`. `config.configurable.checkpoint_id` — becomes the new
    * checkpoint's parent. `config.signal` — aborts the write. `checkpoint` —
    * every channel value it carries is stored. `newVersions` — accepted to
-   * satisfy `BaseCheckpointSaver.put` and deliberately ignored; see
-   * `putCheckpoint` for why narrowing by it lost state on a fork.
+   * satisfy `BaseCheckpointSaver.put` and deliberately ignored: LangGraph passes
+   * it empty for a fork and for an empty update, so narrowing by it would store
+   * nothing for either (decision record 10).
    *
    * Returns: the config addressing the stored checkpoint, which is what the
    * caller passes back to continue the thread.
@@ -250,7 +263,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * Overrides the inherited walk, which stops silently at an ancestor it cannot
    * read and lets the consumer restart the channel from empty. A TTL computed
    * per put puts that within reach here, so an ancestor a channel still needs
-   * that has expired is reported instead of dropped; see `deltaChannelHistory`.
+   * that has expired is reported instead of dropped.
    *
    * Accepts: `options` — must be an object naming exactly `config` and
    * `channels`, the shape `BaseCheckpointSaver`'s own signature declares.
@@ -302,11 +315,8 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * — that one is theirs to close.
    *
    * Throws: whatever a resource's own `destroy` raises — but only after every
-   * other one has been released, so a client that fails to close can no longer
-   * strand the one behind it (see `releaseOwned`). It used to: an S3
-   * client whose sockets were already gone threw first, and the DynamoDB client
-   * this adapter built leaked for the life of the process. The clause read
-   * "nothing this adapter raises", which a caller reads as nothing at all.
+   * other one has been released, so a client that fails to close never strands
+   * the one behind it.
    */
   destroy(): void {
     this.shell.release();

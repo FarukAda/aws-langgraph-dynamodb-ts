@@ -1,7 +1,7 @@
 import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 import { assembleTuple } from '../../../../src/checkpointer/internal/read';
-import type { CheckpointMetaItem } from '../../../../src/checkpointer/internal/rows';
+import type { CheckpointMetaRow } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
@@ -33,7 +33,7 @@ const checkpoint = {
   versions_seen: {},
 };
 
-const meta = (over: Partial<CheckpointMetaItem> = {}): CheckpointMetaItem =>
+const meta = (over: Partial<CheckpointMetaRow> = {}): CheckpointMetaRow =>
   ({
     PK: 'CHKPT#t',
     SK: 'META##c1',
@@ -42,7 +42,7 @@ const meta = (over: Partial<CheckpointMetaItem> = {}): CheckpointMetaItem =>
     checkpointId: 'c1',
     metadata: inline({ source: 'loop' }),
     ...over,
-  }) as CheckpointMetaItem;
+  }) as CheckpointMetaRow;
 
 function withRows(
   items: { payload?: Record<string, unknown>; writes?: Record<string, unknown>[] } = {},

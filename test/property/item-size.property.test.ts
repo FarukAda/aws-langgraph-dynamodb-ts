@@ -1,11 +1,7 @@
 import fc from 'fast-check';
 
-import { estimateItemBytes } from '../../src/history/internal/append';
-import {
-  type ChatMessageItem,
-  messageSortKey,
-  sessionPartition,
-} from '../../src/history/internal/rows';
+import { estimateRowBytes } from '../../src/history/internal/append';
+import { type MessageRow, messageSortKey, sessionPartition } from '../../src/history/internal/rows';
 import { PayloadLocation, type PayloadDescriptor } from '../../src/shared/codec/codec';
 
 type Attribute =
@@ -80,7 +76,7 @@ const item = fc
     message: descriptor,
     ttl: fc.option(fc.nat(), { nil: undefined }),
   })
-  .map(({ sessionId, ulid, message, ttl }): ChatMessageItem => ({
+  .map(({ sessionId, ulid, message, ttl }): MessageRow => ({
     PK: sessionPartition(sessionId),
     SK: messageSortKey(ulid),
     sessionId,
@@ -88,11 +84,11 @@ const item = fc
     ...(ttl === undefined ? {} : { ttl }),
   }));
 
-describe('estimateItemBytes (property)', () => {
+describe('estimateRowBytes (property)', () => {
   it('never undershoots the DynamoDB item size, for unicode ids and inline or offloaded payloads', () => {
     fc.assert(
       fc.property(item, (value) => {
-        expect(estimateItemBytes(value)).toBeGreaterThanOrEqual(itemSize(value as never));
+        expect(estimateRowBytes(value)).toBeGreaterThanOrEqual(itemSize(value as never));
       }),
       { numRuns: 300 },
     );

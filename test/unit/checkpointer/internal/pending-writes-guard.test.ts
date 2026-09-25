@@ -2,11 +2,11 @@ import {
   rejectionProvesForeignRow,
   reportGuardRejection,
 } from '../../../../src/checkpointer/internal/pending-writes';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
+import type { CheckpointWriteRow } from '../../../../src/checkpointer/internal/rows';
 import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/logging/truncate';
 
 describe('rejectionProvesForeignRow', () => {
-  const item = { writeGroup: 'G1' } as CheckpointWriteItem;
+  const item = { writeGroup: 'G1' } as CheckpointWriteRow;
 
   it('is true when the rejected row carries a different writeGroup', () => {
     const error = Object.assign(new Error('c'), { Item: { writeGroup: { S: 'OTHER' } } });
@@ -24,7 +24,7 @@ describe('rejectionProvesForeignRow', () => {
 });
 
 describe('reportGuardRejection', () => {
-  const row = { SK: 'WRITE##c1#task-1#0000000000#ch', channel: 'ch' } as CheckpointWriteItem;
+  const row = { SK: 'WRITE##c1#task-1#0000000000#ch', channel: 'ch' } as CheckpointWriteRow;
   const logger = () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() });
 
   /** The expected outcome of a retry: the row is already this write's. */

@@ -89,15 +89,13 @@ export function redactSecrets(
 ): Redactable {
   assertStringArray(patterns, 'patterns');
   assertRegExpArray(valuePatterns, 'valuePatterns');
-  /**
-   * `walking` detects a cycle; `done` memoises a finished node. Both are
-   * needed and they answer different questions. A guard that only removed a
-   * node when its subtree finished is correct for cycles but re-walks every
-   * node reachable by more than one path, so a graph that merely *shares*
-   * structure — not even a cycle — costs exponential time: a few dozen shared
-   * objects in a sub-kilobyte argument blocked the event loop for minutes, and
-   * this is a public export reachable from caller code.
-   */
+  // `walking` detects a cycle; `done` memoises a finished node. Both are
+  // needed and they answer different questions. A guard that only removed a
+  // node when its subtree finished is correct for cycles but re-walks every
+  // node reachable by more than one path, so a graph that merely *shares*
+  // structure — not even a cycle — costs exponential time: without `done`, a
+  // few dozen shared objects in a sub-kilobyte argument would block the event
+  // loop for minutes, and this is a public export reachable from caller code.
   const walking = new WeakSet<object>();
   const done = new WeakMap<object, Redactable>();
   const walk = (current: Redactable): Redactable => {
@@ -117,14 +115,12 @@ export function redactSecrets(
   try {
     return walk(value as Redactable);
   } catch {
-    /**
-     * Every failure of the walk yields the marker: a `RangeError` from nesting
-     * deeper than the stack holds, and equally a getter of the caller's own
-     * that throws. Telling the two apart served no caller. The value is being
-     * prepared for a log line, and the log line is typically written from a
-     * `catch`, so a throw here does not report the hostile value — it replaces
-     * the failure that was being reported with a `TypeError` about a getter.
-     */
+    // Every failure of the walk yields the marker: a `RangeError` from nesting
+    // deeper than the stack holds, and equally a getter of the caller's own
+    // that throws. Telling the two apart served no caller. The value is being
+    // prepared for a log line, and the log line is typically written from a
+    // `catch`, so a throw here does not report the hostile value — it replaces
+    // the failure that was being reported with a `TypeError` about a getter.
     return UNREDACTABLE;
   }
 }
@@ -191,7 +187,7 @@ function assertRedactionOptions(options: RedactLoggerOptions): void {
  * interpolate a secret into it — and every other argument is redacted before
  * it reaches `inner`. Past the wrap call nothing escapes a log call: an
  * argument whose redaction fails is replaced by a fixed marker, and a failure
- * of `inner` itself is absorbed (`absorbLoggerFailure`), because the
+ * of `inner` itself is absorbed, because the
  * operation that wrote the line was only observing itself and is commonly
  * reporting some other failure already.
  */

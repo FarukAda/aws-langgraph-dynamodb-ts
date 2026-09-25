@@ -1,3 +1,13 @@
+/**
+ * Hides that a caller's logger is foreign code that may throw.
+ *
+ * A caller supplies no logger or one of their own, and internal code receives
+ * a logger that is silent by default and whose four levels never throw. No
+ * `catch` block or retry hook therefore treats a log call as a failure path
+ * of its own, and where a throw is absorbed, and what becomes of the line it
+ * was writing, can change here without touching any call site.
+ */
+
 /** A value safe to pass as a structured log argument. */
 export type LogArgument = string | number | boolean | null | object;
 
@@ -7,9 +17,10 @@ export type LogArgument = string | number | boolean | null | object;
  * adapter for a structured logger (pino, winston) can merge them into one
  * record; the message is a fixed string and never carries a value.
  *
- * It is the one piece of foreign code every adapter of this package calls, and
- * it is called almost entirely from `catch` blocks — see
- * `absorbLoggerFailure` for what that costs and where it is paid.
+ * It is the one piece of foreign code every adapter of this package calls,
+ * almost always from a `catch` block, so an adapter wraps it: anything one of
+ * its methods throws is absorbed at the log call and never replaces the error
+ * being reported.
  */
 export interface Logger {
   info(message: string, ...args: LogArgument[]): void;
@@ -56,7 +67,7 @@ export function absorbLoggerFailure(emit: () => void): void {
   try {
     emit();
   } catch {
-    /** Nowhere left to say it: the reporting channel is the broken part. */
+    // Nowhere left to say it: the reporting channel is the broken part.
   }
 }
 

@@ -244,7 +244,7 @@ describe('S3Offloader', () => {
     expect(() => offloader.destroy()).not.toThrow();
   });
 
-  it('destroys a client that finishes constructing after destroy() was called (M2)', async () => {
+  it('destroys a client that finishes constructing after destroy() was called', async () => {
     // destroy() during the real `await import(...)` gap used to be a no-op:
     // resolvedClient was still undefined, so the client that arrived moments
     // later was never released and leaked for the process's lifetime.
@@ -328,7 +328,7 @@ describe('S3Offloader', () => {
   });
 });
 
-describe('optional peer preload (CODEC-05)', () => {
+describe('optional peer preload', () => {
   it('starts loading @aws-sdk/client-s3 at construction so a missing peer surfaces early', () => {
     loadS3SdkMock.mockClear();
     new S3Offloader({ bucketName: 'b' }).destroy();
@@ -364,7 +364,7 @@ describe('optional peer preload (CODEC-05)', () => {
   });
 });
 
-describe('download cap (CODEC-17)', () => {
+describe('download cap', () => {
   it('passes the configured maxDownloadBytes to every download', async () => {
     const client = new S3Client({ region: 'us-east-1' });
     const offloader = new S3Offloader({
@@ -383,7 +383,7 @@ describe('download cap (CODEC-17)', () => {
   });
 });
 
-describe('row-sourced key binding (SEC-03)', () => {
+describe('row-sourced key binding', () => {
   it('ownsKey/assertOwnedKey bind a key to the prefix and the scope parts', () => {
     const { offloader } = makeOffloader();
     const own = offloader.buildKey(['t', 'ns', 'c', 'checkpoint'], '01J9ZQ5X3N8VQ4M6C2T7R0K1HD');

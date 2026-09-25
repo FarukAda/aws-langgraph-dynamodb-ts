@@ -153,7 +153,7 @@ function loseAcknowledgement(base: DynamoDBClient, hook: () => Promise<void>): v
   });
 }
 
-describe('compare-and-swap exhaustion falls back to an unconditional write (TEST-02)', () => {
+describe('compare-and-swap exhaustion falls back to an unconditional write', () => {
   it('store.put overwrites after OVERWRITE_CAS_MAX_ATTEMPTS rejections, warns, and keeps the row consistent', async () => {
     const logger = recordingLogger();
     const { client, base } = faultyClient([]);
@@ -225,7 +225,7 @@ describe('compare-and-swap exhaustion falls back to an unconditional write (TEST
   });
 });
 
-describe('an injected client that keeps the SDK retries multiplies the attempt budget (TEST-13)', () => {
+describe('an injected client that keeps the SDK retries multiplies the attempt budget', () => {
   it('counts library × SDK attempts for a throttled GetItem and warns at construction', async () => {
     const SDK_ATTEMPTS = 3;
     const LIBRARY_ATTEMPTS = 2;

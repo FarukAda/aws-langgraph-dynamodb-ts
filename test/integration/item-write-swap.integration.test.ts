@@ -13,10 +13,10 @@ import { type PayloadDescriptor, PayloadLocation } from '../../src/shared/codec/
 import { SILENT_LOGGER } from '../../src/shared/logging/logger';
 import { putWithRevisionSwap } from '../../src/store/internal/item-write';
 import {
-  type ExistingRecordMeta,
+  type ExistingRowMeta,
   partitionKey,
   sortKey,
-  type StoreItemRecord,
+  type StoreItemRow,
 } from '../../src/store/internal/rows';
 import { createTable, DDB_LOCAL_CONFIG, deleteTable } from './helpers/ddb-local';
 import { afterResponse } from './helpers/fault-injection';
@@ -36,7 +36,7 @@ afterAll(async () => {
   admin.destroy();
 });
 
-describe('overwrite compare-and-swap (F5)', () => {
+describe('overwrite compare-and-swap', () => {
   it('admits only one of two writers holding the same observed revision', async () => {
     const pk = 'STORE#swap';
     const sk = 'k';
@@ -103,9 +103,9 @@ describe('overwrite compare-and-swap (F5)', () => {
       compressed: false,
       s3Key,
     });
-    const s3KeyOf = (meta: ExistingRecordMeta): string | undefined =>
+    const s3KeyOf = (meta: ExistingRowMeta): string | undefined =>
       meta.value?.location === PayloadLocation.S3 ? meta.value.s3Key : undefined;
-    const record = (rev: string): StoreItemRecord => ({
+    const record = (rev: string): StoreItemRow => ({
       PK: pk,
       SK: sk,
       namespace: ['swap-cas'],
@@ -130,7 +130,7 @@ describe('overwrite compare-and-swap (F5)', () => {
         rev: 'r0',
       },
     });
-    const existing: ExistingRecordMeta = {
+    const existing: ExistingRowMeta = {
       exists: true,
       revision: 'r0',
       value: seed,

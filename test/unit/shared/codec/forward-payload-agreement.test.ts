@@ -5,7 +5,7 @@ import { getCheckpointTuple } from '../../../../src/checkpointer/actions/get-tup
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { getMessages } from '../../../../src/history/actions/get-messages';
 import { parseSessionId } from '../../../../src/history/internal/parse';
-import { buildMessageItem } from '../../../../src/history/internal/rows';
+import { buildMessageRow } from '../../../../src/history/internal/rows';
 import type { HistoryContext } from '../../../../src/history/internal/setup';
 import {
   DESCRIPTOR_SCHEMA_VERSION,
@@ -59,7 +59,7 @@ async function readHistory(): Promise<unknown> {
     onCorruptMessage: 'skip',
   };
   const [human] = mapChatMessagesToStoredMessages([new HumanMessage('a turn')]);
-  const item = await buildMessageItem(context, {
+  const item = await buildMessageRow(context, {
     sessionId: parseSessionId('s1'),
     messageId: '01A',
     message: human,
@@ -182,7 +182,7 @@ describe('a payload a newer release wrote is an unsupported format, not payload 
       onCorruptMessage: 'skip',
     };
     const [human] = mapChatMessagesToStoredMessages([new HumanMessage('a turn')]);
-    const item = await buildMessageItem(context, {
+    const item = await buildMessageRow(context, {
       sessionId: parseSessionId('s1'),
       messageId: '01A',
       message: human,

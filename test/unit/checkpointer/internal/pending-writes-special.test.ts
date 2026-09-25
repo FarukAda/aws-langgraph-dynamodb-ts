@@ -1,8 +1,8 @@
 import {
-  writeSpecialItem,
+  writeSpecialRow,
   readSpecialRow,
 } from '../../../../src/checkpointer/internal/pending-writes';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
+import type { CheckpointWriteRow } from '../../../../src/checkpointer/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../../../src/shared/dynamodb/idempotent-write';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -16,7 +16,7 @@ const descriptor = (s3Key: string) => ({
   s3Key,
 });
 
-const item = (): CheckpointWriteItem => ({
+const item = (): CheckpointWriteRow => ({
   PK: 'CHKPT#t',
   SK: 'WRITE##c1#task#0000000007#__error__',
   taskId: 'task',
@@ -72,7 +72,7 @@ describe('readSpecialRow', () => {
   });
 });
 
-describe('writeSpecialItem', () => {
+describe('writeSpecialRow', () => {
   it('commits against the observed writeGroup and reports what it superseded', async () => {
     const inputs: Record<string, unknown>[] = [];
     const context = {
@@ -88,7 +88,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(outcome).toEqual({ committed: true, superseded: descriptor('old') });
     expect(inputs[0].ConditionExpression).toBe('#rev = :rev');
@@ -116,7 +116,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(puts).toBe(2);
     expect(outcome.superseded).toEqual(descriptor('theirs'));
@@ -149,7 +149,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(puts).toBe(1);
     expect(outcome).toEqual({ committed: true, superseded: descriptor('old') });
@@ -168,7 +168,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(outcome.committed).toBe(false);
     expect(outcome.error?.message).toBe('boom');
@@ -176,8 +176,8 @@ describe('writeSpecialItem', () => {
 
   /**
    * The failed read establishes nothing about the row, which a racer may hold
-   * with this item's key, so the upload is reported kept, like every outcome
-   * nothing confirmed (C-02b).
+   * with this item's key, so the upload is reported kept: an outcome that
+   * confirms nothing always keeps the upload.
    */
   it('never rejects, and keeps the upload without attempting a put, when the first read fails', async () => {
     let puts = 0;
@@ -196,7 +196,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(outcome).toEqual({ committed: true, error: new Error('read failed') });
     expect(puts).toBe(0);
@@ -206,7 +206,7 @@ describe('writeSpecialItem', () => {
     const get = jest.fn();
     const client = { get, put: async () => Promise.reject(new Error('boom')) };
     const context = { tableName: 'c', logger: SILENT_LOGGER, client };
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
     expect(outcome).toEqual({ committed: false, error: new Error('boom') });
     expect(get).not.toHaveBeenCalled();
   });
@@ -233,7 +233,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(puts).toBe(OVERWRITE_CAS_MAX_ATTEMPTS + 1);
     expect(outcome).toEqual({ committed: true, superseded: descriptor('theirs') });
@@ -261,7 +261,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(gets).toBe(0);
     expect(inputs).toHaveLength(1);
@@ -292,7 +292,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(outcome).toEqual({ committed: true, superseded: descriptor('old') });
   });
@@ -312,7 +312,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(outcome.committed).toBe(true);
     expect(outcome.superseded).toBeUndefined();
@@ -334,7 +334,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(outcome.committed).toBe(true);
     expect(outcome.superseded).toBeUndefined();
@@ -362,7 +362,7 @@ describe('writeSpecialItem', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item());
+    const outcome = await writeSpecialRow(context as never, item());
 
     expect(puts).toBe(OVERWRITE_CAS_MAX_ATTEMPTS + 1);
     expect(outcome).toEqual({ committed: true, superseded: descriptor('theirs') });

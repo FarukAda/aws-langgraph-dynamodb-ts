@@ -125,7 +125,7 @@ describe('decodePayload without an offloader', () => {
   });
 });
 
-describe('encodePayload inline size pre-flight (CKPT-03, CODEC-06, HIST-05)', () => {
+describe('encodePayload inline size pre-flight', () => {
   const big = { blob: 'x'.repeat(400 * 1024) };
   const nearlyBig = { blob: 'x'.repeat(380 * 1024) };
 
@@ -215,7 +215,7 @@ describe('isPermanentPayloadLoss', () => {
   });
 });
 
-describe('isPermanentPayloadLoss on descriptor rejections (SEC-03, CODEC-16, M-03)', () => {
+describe('isPermanentPayloadLoss on descriptor rejections', () => {
   it('treats an unreadable descriptor as permanent and other validation, s3Key included, as not', () => {
     expect(isPermanentPayloadLoss(validationError('not a descriptor', 'descriptor'))).toBe(true);
     expect(isPermanentPayloadLoss(validationError('bad option', 's3'))).toBe(false);

@@ -1,14 +1,14 @@
-import { writeSpecialItem } from '../../../../src/checkpointer/internal/pending-writes';
-import type { CheckpointWriteItem } from '../../../../src/checkpointer/internal/rows';
+import { writeSpecialRow } from '../../../../src/checkpointer/internal/pending-writes';
+import type { CheckpointWriteRow } from '../../../../src/checkpointer/internal/rows';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
-import type { DocItem } from '../../../../src/shared/dynamodb/client';
+import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { OVERWRITE_CAS_MAX_ATTEMPTS } from '../../../../src/shared/dynamodb/idempotent-write';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 
 /** The request a plain put takes, and the item shape a transaction wraps. */
 interface WriteInput {
   TableName: string;
-  Item: DocItem;
+  Item: AttributeMap;
   ConditionExpression?: string;
   ExpressionAttributeNames?: Record<string, string>;
   ExpressionAttributeValues?: Record<string, string>;
@@ -44,7 +44,7 @@ const inline = () => ({
   bytes: new Uint8Array([7, 8, 9]),
 });
 
-const item = (value: CheckpointWriteItem['value']): CheckpointWriteItem => ({
+const item = (value: CheckpointWriteRow['value']): CheckpointWriteRow => ({
   PK: 'CHKPT#t',
   SK: 'WRITE##c1#task#0000000007#__error__',
   taskId: 'task',
@@ -56,13 +56,13 @@ const item = (value: CheckpointWriteItem['value']): CheckpointWriteItem => ({
 });
 
 /** The row a read observes, holding `group` as its guard attribute. */
-const heldBy = (group: string, s3Key: string): DocItem => ({
+const heldBy = (group: string, s3Key: string): AttributeMap => ({
   value: offloaded(s3Key),
   writeGroup: group,
 });
 
 /** The compare-and-swap rejection as a one-item transaction reports it. */
-const cancelledGuard = (row?: DocItem) =>
+const cancelledGuard = (row?: AttributeMap) =>
   Object.assign(new Error('cancelled'), {
     name: 'TransactionCanceledException',
     CancellationReasons: [{ Code: 'ConditionalCheckFailed', ...(row ? { Item: row } : {}) }],
@@ -77,7 +77,7 @@ const conditionalFailure = () =>
  * turning the first `failures` writes away with whichever rejection that shape
  * really carries.
  */
-function recorder(options: { failures: number; reads?: DocItem[]; offloader?: boolean }) {
+function recorder(options: { failures: number; reads?: AttributeMap[]; offloader?: boolean }) {
   const emitted: Emitted[] = [];
   const reads = [...(options.reads ?? [])];
   let gets = 0;
@@ -114,7 +114,7 @@ describe('an offloaded special write goes out under a request token', () => {
     const { context, emitted } = recorder({ failures: 0, reads: [heldBy('g1', 'old')] });
     const row = item(offloaded('new'));
 
-    const outcome = await writeSpecialItem(context as never, row);
+    const outcome = await writeSpecialRow(context as never, row);
 
     expect(outcome).toEqual({ committed: true, superseded: offloaded('old') });
     expect(emitted.map((entry) => entry.kind)).toEqual(['transact']);
@@ -136,7 +136,7 @@ describe('an offloaded special write goes out under a request token', () => {
       reads: [heldBy('g1', 'old'), heldBy('g9', 'theirs')],
     });
 
-    const outcome = await writeSpecialItem(context as never, item(offloaded('new')));
+    const outcome = await writeSpecialRow(context as never, item(offloaded('new')));
 
     expect(outcome).toEqual({ committed: true, superseded: offloaded('theirs') });
     expect(emitted.map((entry) => entry.kind)).toEqual(['transact', 'transact']);
@@ -152,7 +152,7 @@ describe('an offloaded special write goes out under a request token', () => {
       reads: [heldBy('g1', 'old'), heldBy('c1', 't1'), heldBy('c2', 't2'), heldBy('c3', 't3')],
     });
 
-    const outcome = await writeSpecialItem(context as never, item(offloaded('new')));
+    const outcome = await writeSpecialRow(context as never, item(offloaded('new')));
 
     expect(outcome).toEqual({ committed: true, superseded: offloaded('t3') });
     expect(emitted).toHaveLength(OVERWRITE_CAS_MAX_ATTEMPTS + 1);
@@ -168,7 +168,7 @@ describe('an inline special write is left exactly as it was', () => {
     const { context, emitted } = recorder({ failures: 0, reads: [heldBy('g1', 'old')] });
     const row = item(inline());
 
-    await writeSpecialItem(context as never, row);
+    await writeSpecialRow(context as never, row);
 
     expect(emitted.map((entry) => entry.kind)).toEqual(['put']);
     expect(emitted[0].token).toBeUndefined();
@@ -197,7 +197,7 @@ describe('an inline special write is left exactly as it was', () => {
     });
     const row = item(inline());
 
-    await writeSpecialItem(context as never, row);
+    await writeSpecialRow(context as never, row);
 
     expect(emitted).toHaveLength(OVERWRITE_CAS_MAX_ATTEMPTS + 1);
     expect(emitted[3].kind).toBe('put');
@@ -246,7 +246,7 @@ describe('an inline special write is left exactly as it was', () => {
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item(inline()));
+    const outcome = await writeSpecialRow(context as never, item(inline()));
 
     expect(outcome).toEqual({ committed: true, superseded: offloaded('racer') });
     expect(gets).toBe(1);
@@ -259,7 +259,7 @@ describe('the write without an offloader stays out of the change', () => {
     const { context, emitted, gets } = recorder({ failures: 0, offloader: false });
     const row = item(offloaded('new'));
 
-    const outcome = await writeSpecialItem(context as never, row);
+    const outcome = await writeSpecialRow(context as never, row);
 
     expect(outcome).toEqual({ committed: true });
     expect(emitted.map((entry) => entry.kind)).toEqual(['put']);
@@ -308,7 +308,7 @@ describe('a compare-and-swap rejection arriving as a cancelled transaction', () 
       },
     };
 
-    const outcome = await writeSpecialItem(context as never, item(offloaded('new')));
+    const outcome = await writeSpecialRow(context as never, item(offloaded('new')));
 
     expect(outcome).toEqual({ committed: true, superseded: offloaded('racer') });
     expect(gets).toBe(1);
@@ -330,9 +330,9 @@ describe('a compare-and-swap rejection arriving as a cancelled transaction', () 
  */
 function racedByADelete() {
   const applied = new Set<string>();
-  let row: DocItem | undefined;
+  let row: AttributeMap | undefined;
   let requests = 0;
-  const send = (written: DocItem, token?: string): Record<string, never> => {
+  const send = (written: AttributeMap, token?: string): Record<string, never> => {
     requests += 1;
     if (token !== undefined && applied.has(token)) return {};
     row = written;
@@ -360,7 +360,7 @@ describe('a lost acknowledgement whose retry re-lands', () => {
   it('leaves the row a concurrent delete removed deleted, when the payload was offloaded', async () => {
     const table = racedByADelete();
 
-    const outcome = await writeSpecialItem(table.context as never, item(offloaded('new')));
+    const outcome = await writeSpecialRow(table.context as never, item(offloaded('new')));
 
     expect(outcome.committed).toBe(true);
     expect(table.requests()).toBe(2);
@@ -370,7 +370,7 @@ describe('a lost acknowledgement whose retry re-lands', () => {
   it('still resurrects an inline row, which is the outcome that has not changed', async () => {
     const table = racedByADelete();
 
-    await writeSpecialItem(table.context as never, item(inline()));
+    await writeSpecialRow(table.context as never, item(inline()));
 
     expect(table.requests()).toBe(2);
     expect(table.survives()).toBe(true);

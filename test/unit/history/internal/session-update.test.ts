@@ -1,8 +1,8 @@
-import { buildSessionUpdateItem } from '../../../../src/history/internal/session';
+import { buildSessionUpdate } from '../../../../src/history/internal/session';
 
-describe('buildSessionUpdateItem', () => {
+describe('buildSessionUpdate', () => {
   it('builds a transact Update that adds the count and sets timestamps + sessionId once', () => {
-    const { Update } = buildSessionUpdateItem('history', {
+    const { Update } = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 2,
       now: 'u',
@@ -45,7 +45,7 @@ describe('buildSessionUpdateItem', () => {
    * it there — a pin that is present, well formed, and always passes.
    */
   it('sets the write id unconditionally, never via if_not_exists', () => {
-    const { Update } = buildSessionUpdateItem('history', {
+    const { Update } = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
@@ -58,7 +58,7 @@ describe('buildSessionUpdateItem', () => {
   });
 
   it('appends a title clause when a title is given', () => {
-    const { Update } = buildSessionUpdateItem('history', {
+    const { Update } = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
@@ -71,7 +71,7 @@ describe('buildSessionUpdateItem', () => {
   });
 
   it('omits the title clause when no title is given', () => {
-    const { Update } = buildSessionUpdateItem('history', {
+    const { Update } = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
@@ -81,7 +81,7 @@ describe('buildSessionUpdateItem', () => {
   });
 
   it('sets the creation-anchored ttl via if_not_exists when a timestamp is given', () => {
-    const { Update } = buildSessionUpdateItem('history', {
+    const { Update } = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
@@ -94,7 +94,7 @@ describe('buildSessionUpdateItem', () => {
   });
 
   it('omits the ttl clause when no timestamp is given', () => {
-    const { Update } = buildSessionUpdateItem('history', {
+    const { Update } = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
@@ -106,7 +106,7 @@ describe('buildSessionUpdateItem', () => {
   });
 
   it('force-overwrites the ttl anchor instead of if_not_exists when forceTtlRefresh is set', () => {
-    const item = buildSessionUpdateItem('history', {
+    const item = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
@@ -119,7 +119,7 @@ describe('buildSessionUpdateItem', () => {
   });
 
   it('adds a monotonic ConditionExpression only when forceTtlRefresh is set', () => {
-    const forced = buildSessionUpdateItem('history', {
+    const forced = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
@@ -129,7 +129,7 @@ describe('buildSessionUpdateItem', () => {
     });
     expect(forced.Update?.ConditionExpression).toBe('attribute_not_exists(#ttl) OR #ttl <= :ttl');
 
-    const notForced = buildSessionUpdateItem('history', {
+    const notForced = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
@@ -138,7 +138,7 @@ describe('buildSessionUpdateItem', () => {
     });
     expect(notForced.Update?.ConditionExpression).toBeUndefined();
 
-    const noTtl = buildSessionUpdateItem('history', {
+    const noTtl = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',
@@ -148,7 +148,7 @@ describe('buildSessionUpdateItem', () => {
   });
 
   it('still uses if_not_exists for the ttl anchor when forceTtlRefresh is not set', () => {
-    const item = buildSessionUpdateItem('history', {
+    const item = buildSessionUpdate('history', {
       sessionId: 's1',
       count: 1,
       now: 'u',

@@ -33,7 +33,7 @@ describe('parseNamespace', () => {
     );
   });
 
-  it('throws when an element contains a control character (M7)', () => {
+  it('throws when an element contains a control character', () => {
     expect(() => parseNamespace(['users', 'a\u001b[31m'])).toThrow(/control characters/);
   });
 
@@ -83,12 +83,12 @@ describe('parseStoreAddress key rules', () => {
     );
   });
 
-  it('throws when the key contains a control character (M7)', () => {
+  it('throws when the key contains a control character', () => {
     expect(() => parseStoreAddress(['ns'], 'b\u0000c')).toThrow(/control characters/);
   });
 });
 
-describe('parseStoreAddress (STORE-14)', () => {
+describe('parseStoreAddress', () => {
   it('bounds each segment at 256 bytes', () => {
     expect(() => parseStoreAddress(['users', 'u1'], 'k'.repeat(256))).not.toThrow();
     expect(() => parseStoreAddress(['users', 'u1'], 'k'.repeat(257))).toThrow(

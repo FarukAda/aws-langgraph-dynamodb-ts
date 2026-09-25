@@ -2,8 +2,8 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 
 import { verifyCheckpointLanded } from '../../../../src/checkpointer/actions/put';
 import type {
-  CheckpointMetaItem,
-  CheckpointPayloadItem,
+  CheckpointMetaRow,
+  CheckpointPayloadRow,
 } from '../../../../src/checkpointer/internal/rows';
 import type { CheckpointerContext } from '../../../../src/checkpointer/internal/setup';
 import { type PayloadDescriptor, PayloadLocation } from '../../../../src/shared/codec/codec';
@@ -38,7 +38,7 @@ function ref(s3Key?: string) {
 }
 
 function rows(metadata: PayloadDescriptor, checkpoint: PayloadDescriptor) {
-  const meta: CheckpointMetaItem = {
+  const meta: CheckpointMetaRow = {
     PK: 'CHKPT#t',
     SK: 'META##c1',
     threadId: 't',
@@ -46,7 +46,7 @@ function rows(metadata: PayloadDescriptor, checkpoint: PayloadDescriptor) {
     checkpointId: 'c1',
     metadata,
   };
-  const payload: CheckpointPayloadItem = { PK: 'CHKPT#t', SK: 'PAYLOAD##c1', checkpoint };
+  const payload: CheckpointPayloadRow = { PK: 'CHKPT#t', SK: 'PAYLOAD##c1', checkpoint };
   return { meta, payload };
 }
 

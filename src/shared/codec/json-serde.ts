@@ -53,7 +53,7 @@ import { truncateForLog } from '../logging/truncate';
  * not a row's.
  *
  * Frozen for the reason {@link ErrorCode} is: one object, shared by every
- * adapter in the process that did not pass a `serde` of its own, and now
+ * adapter in the process that did not pass a `serde` of its own, and
  * reachable from the package root. An assignment to `dumpsTyped` by any one
  * consumer would silently change how every other one writes.
  */
@@ -63,15 +63,13 @@ export const JSON_SERDE: SerializerProtocol = {
     try {
       text = JSON.stringify(value);
     } catch (error) {
-      /**
-       * The refusal travels as `cause`, never as text. V8 writes the path it
-       * walked into the message it throws for a circular structure, quoting
-       * the caller's own property names and constructor names — and this
-       * package does not compose a public `err.message` out of a caller's
-       * identifiers, which an application may print, log or return in a
-       * response. `redactedMessage` removes credential shapes, not names, so
-       * it never covered this. A caller who wants the path reads `cause`.
-       */
+      // The refusal travels as `cause`, never as text. V8 writes the path it
+      // walked into the message it throws for a circular structure, quoting
+      // the caller's own property names and constructor names — and this
+      // package does not compose a public `err.message` out of a caller's
+      // identifiers, which an application may print, log or return in a
+      // response. `redactedMessage` removes credential shapes, not names, so
+      // it never covered this. A caller who wants the path reads `cause`.
       throw validationError(
         'value cannot be serialized as JSON — a circular structure, or a value JSON has no ' +
           'encoding for such as a BigInt; the refusal itself is attached as `cause`',
@@ -86,37 +84,33 @@ export const JSON_SERDE: SerializerProtocol = {
         'value',
       );
     }
-    /**
-     * `dumpsTyped` stays `async` because the two throws above must reach a
-     * caller as a rejection even when it is called without `await` (a bare
-     * `.catch()`), which a plain synchronous throw would not do. Returning
-     * `Promise.resolve(...)` here — rather than the bare tuple — is what
-     * satisfies `require-await`: the rule accepts a `return` of a thenable
-     * value in place of an explicit `await`, and needs no `await` to do it.
-     */
+    // `dumpsTyped` stays `async` because the two throws above must reach a
+    // caller as a rejection even when it is called without `await` (a bare
+    // `.catch()`), which a plain synchronous throw would not do. Returning
+    // `Promise.resolve(...)` here — rather than the bare tuple — is what
+    // satisfies `require-await`: the rule accepts a `return` of a thenable
+    // value in place of an explicit `await`, and needs no `await` to do it.
     return Promise.resolve([JSON_SERDE_TYPE, new TextEncoder().encode(text)]);
   },
   async loadsTyped(type, data) {
-    /**
-     * The declared form is honoured, and honoured first. Ignoring it left this
-     * serializer answering for forms it has no grammar for: a row stamped
-     * `bytes` by the checkpointer's default — what that serializer writes for a
-     * raw `Uint8Array` — parsed here as JSON and returned a *different value*
-     * whenever those bytes happened to be valid JSON, and returned this
-     * serializer's own `PAYLOAD_CORRUPT` when they were not. The second reading
-     * is the one that cost data: the codec passes an already-branded refusal
-     * through untouched, so `bytesHoldDeclaredForm` never ran, the row was
-     * filed as permanent loss, and history's default `onCorruptMessage: 'skip'`
-     * dropped the message. The same row read through the checkpointer's own
-     * default was reported as a refusal instead, so which serde an adapter
-     * carried decided whether a turn survived the read.
-     *
-     * A form this serializer cannot rebuild a value from is a statement about
-     * this reader, not about the payload, so it names `serde` — the same brand
-     * the codec puts on `JsonPlusSerializer`'s `Unknown serialization type`,
-     * which is what makes the two agree. The type is quoted from the row, so it
-     * is bounded, for the reason `truncateForLog` states.
-     */
+    // The declared form is honoured, and honoured first. Ignoring it left this
+    // serializer answering for forms it has no grammar for: a row stamped
+    // `bytes` by the checkpointer's default — what that serializer writes for a
+    // raw `Uint8Array` — parsed here as JSON and returned a *different value*
+    // whenever those bytes happened to be valid JSON, and returned this
+    // serializer's own `PAYLOAD_CORRUPT` when they were not. The second reading
+    // is the one that cost data: the codec passes an already-branded refusal
+    // through untouched, so `bytesHoldDeclaredForm` never ran, the row was
+    // filed as permanent loss, and history's default `onCorruptMessage: 'skip'`
+    // dropped the message. The same row read through the checkpointer's own
+    // default was reported as a refusal instead, so which serde an adapter
+    // carried decided whether a turn survived the read.
+    //
+    // A form this serializer cannot rebuild a value from is a statement about
+    // this reader, not about the payload, so it names `serde` — the same brand
+    // the codec puts on `JsonPlusSerializer`'s `Unknown serialization type`,
+    // which is what makes the two agree. The type is quoted from the row, so it
+    // is bounded, for the reason `truncateForLog` states.
     if (type !== JSON_SERDE_TYPE) {
       throw validationError(
         `this serializer reads only the \`${JSON_SERDE_TYPE}\` form it writes, and this payload ` +
@@ -126,16 +120,14 @@ export const JSON_SERDE: SerializerProtocol = {
       );
     }
     let text: string;
-    /**
-     * The decode is inside a guard of its own because it fails for a different
-     * reason than the parse does, and now says so. UTF-8 decoding is lenient —
-     * a malformed byte becomes U+FFFD rather than an error — so the only way
-     * `TextDecoder` refuses is a `data` that is not bytes at all, which is the
-     * caller's mistake and not a corrupt row. Before this export that value
-     * could only come from the codec, which hands it a `Uint8Array`; a direct
-     * caller got a bare `TypeError` from Node naming an argument called
-     * "list".
-     */
+    // The decode is inside a guard of its own because it fails for a different
+    // reason than the parse does, and names it separately. UTF-8 decoding is
+    // lenient — a malformed byte becomes U+FFFD rather than an error — so the
+    // only way `TextDecoder` refuses is a `data` that is not bytes at all,
+    // which is the caller's mistake and not a corrupt row. The codec always
+    // passes a `Uint8Array`; a direct caller passing anything else would
+    // otherwise get a bare `TypeError` from Node naming an argument called
+    // "list".
     try {
       text = typeof data === 'string' ? data : new TextDecoder().decode(data);
     } catch (error) {
@@ -146,7 +138,7 @@ export const JSON_SERDE: SerializerProtocol = {
       );
     }
     try {
-      /** Same reasoning as `dumpsTyped`'s final return: see its comment. */
+      // Same reasoning as `dumpsTyped`'s final return: see its comment.
       return Promise.resolve(JSON.parse(text));
     } catch (error) {
       throw new DynamoDBLangGraphError(

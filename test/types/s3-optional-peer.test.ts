@@ -3,7 +3,7 @@ import { expectTypeOf } from 'expect-type';
 
 import type { S3ClientConfigLike, S3ClientLike, S3OffloadConfig } from '../../src/index';
 
-describe('S3 offload types stand on their own (PKG-05)', () => {
+describe('S3 offload types stand on their own', () => {
   it('accepts every S3ClientConfig shape and an S3Client from the hook', () => {
     const typed: S3ClientConfig = { region: 'eu-west-1' };
     const configs: S3OffloadConfig[] = [

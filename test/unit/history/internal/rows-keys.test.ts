@@ -9,7 +9,7 @@ import {
 import { partitionKey as storePartition } from '../../../../src/store/internal/rows';
 
 describe('history keys', () => {
-  it('tags the partition key with the chat-history adapter prefix (C1, C2)', () => {
+  it('tags the partition key with the chat-history adapter prefix', () => {
     expect(sessionPartition('s1')).toBe('HIST#s1');
   });
 

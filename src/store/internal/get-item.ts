@@ -1,3 +1,13 @@
+/**
+ * Hides what a single read counts as absent, and how it outlives an overwrite.
+ *
+ * A get reads its row strongly consistently and answers `null` alike for a
+ * missing row, an expired one and a row this adapter does not own. When the
+ * object an offloaded row names is deleted between the row read and the
+ * download, one re-read settles whether the item was replaced, removed or
+ * truly lost. A caller gets an item or `null` and never sees the race.
+ */
+
 import type { Item } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';
@@ -11,11 +21,11 @@ import { isExpiredRow } from '../../shared/dynamodb/table-schema';
 import type { StoreAddress } from './parse';
 import {
   itemRowKey,
-  narrowWholeRecord,
+  parseWholeStoreRow,
   partitionKey,
   readStoreItem,
   sortKey,
-  type StoreItemRecord,
+  type StoreItemRow,
 } from './rows';
 import type { StoreContext } from './setup';
 
@@ -33,7 +43,7 @@ async function readRow(
   namespace: string[],
   key: string,
   signal?: AbortSignal,
-): Promise<StoreItemRecord | undefined> {
+): Promise<StoreItemRow | undefined> {
   const result = await withDynamoDBRetry(
     (request) =>
       context.client.get(
@@ -47,7 +57,7 @@ async function readRow(
     retryFor(context, signal),
   );
   if (!result.Item) return undefined;
-  const record = narrowWholeRecord(result.Item);
+  const record = parseWholeStoreRow(result.Item);
   if (!record) {
     context.logger.warn('store.get: ignored a row that is not a store item', {
       partitionKey: partitionKey(namespace),
@@ -55,7 +65,7 @@ async function readRow(
     });
     return undefined;
   }
-  /** A row past its ttl is absent to every reader, however long DynamoDB's sweep lags. */
+  // A row past its ttl is absent to every reader, however long DynamoDB's sweep lags.
   return isExpiredRow(record, nowSeconds()) ? undefined : record;
 }
 
@@ -70,7 +80,7 @@ async function readRow(
  * the coded error that names the descriptor — not with a property read that
  * would replace the download's own failure with a bare `TypeError`.
  */
-function sameObject(read: StoreItemRecord, reread: StoreItemRecord): boolean {
+function sameObject(read: StoreItemRow, reread: StoreItemRow): boolean {
   const fresh: DescriptorRef | undefined = reread.value;
   if (!fresh) return false;
   return (

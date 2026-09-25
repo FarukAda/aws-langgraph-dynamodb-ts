@@ -27,9 +27,9 @@ import { ErrorCode } from '../../shared/errors/error-code';
 import { compensationFailedError } from '../../shared/errors/errors';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
 import type { SessionId, StorableMessages } from './parse';
-import { buildMessageItem, type ChatMessageItem } from './rows';
+import { buildMessageRow, type MessageRow } from './rows';
 import {
-  buildSessionUpdateItem,
+  buildSessionUpdate,
   deriveTitle,
   revertSessionCount,
   revertSessionCreation,
@@ -58,7 +58,7 @@ interface AppendFields {
 /** An append cut into chunks, with the fields every chunk's SESSION update stamps. */
 export interface ChunkedAppend {
   readonly sessionId: SessionId;
-  readonly chunks: ChatMessageItem[][];
+  readonly chunks: MessageRow[][];
   readonly fields: AppendFields;
   readonly signal?: AbortSignal;
 }
@@ -83,7 +83,7 @@ const MAX_MESSAGES_PER_TRANSACTION = 99;
 /**
  * Aggregate byte budget per transaction. Held ~500 KB below DynamoDB's 4 MB
  * `TransactWriteItems` ceiling so the conservative per-item estimate (see
- * `ITEM_OVERHEAD_BYTES`) cannot push a chunk over the real limit at commit time.
+ * `ROW_OVERHEAD_BYTES`) cannot push a chunk over the real limit at commit time.
  */
 const MAX_TRANSACTION_BYTES = 3_500_000;
 
@@ -91,23 +91,24 @@ const MAX_TRANSACTION_BYTES = 3_500_000;
  * Encode every message, cleaning up after itself if one fails partway.
  *
  * Offloaded messages upload sequentially here, *before* the append saga's
- * compensation machinery is ever reached, so a failure on message N used to
- * strand messages 1..N-1's already-uploaded S3 objects with no cleanup path —
- * the one gap in this subsystem's otherwise complete no-orphan guarantee.
+ * compensation machinery is ever reached, so without the cleanup here a failure
+ * on message N would strand messages 1..N-1's already-uploaded S3 objects with
+ * nothing to delete them — the one gap in this subsystem's otherwise complete
+ * no-orphan guarantee.
  * Nothing will ever reference those objects, so they are safe to delete
  * unconditionally on the way out.
  */
-async function buildItems(
+async function buildMessageRows(
   context: HistoryContext,
   request: AppendRequest,
-): Promise<ChatMessageItem[]> {
+): Promise<MessageRow[]> {
   const { sessionId, signal } = request;
   const ttlTimestamp = request.anchor?.ttlTimestamp;
-  const items: ChatMessageItem[] = [];
+  const items: MessageRow[] = [];
   try {
     for (const message of request.messages) {
       items.push(
-        await buildMessageItem(
+        await buildMessageRow(
           context,
           { sessionId, messageId: context.ulid(), message, ttlTimestamp },
           signal,
@@ -144,7 +145,7 @@ export async function appendMessages(
   context: HistoryContext,
   request: AppendRequest,
 ): Promise<void> {
-  const items = await buildItems(context, request);
+  const items = await buildMessageRows(context, request);
   const chunks = chunkBySize(items, MAX_MESSAGES_PER_TRANSACTION, MAX_TRANSACTION_BYTES);
   await appendChunks(context, {
     sessionId: request.sessionId,
@@ -164,8 +165,8 @@ export async function appendMessages(
  *
  * The caller's `Logger` is consumer code, and both lines here are written from
  * inside a rollback: the first is {@link compensate}'s opening statement, the
- * second sits in the `catch` that builds `COMPENSATION_FAILED`. A
- * throw out of either used to take the rollback with it — the first skipping
+ * second sits in the `catch` that builds `COMPENSATION_FAILED`. Unguarded, a
+ * throw out of either would take the rollback with it — the first skipping
  * the S3 cleanup, every committed chunk's deletes, the count revert and the
  * rethrow in one go; the second replacing the one error whose job is to say
  * that `messageCount` drifted.
@@ -192,7 +193,7 @@ function reportStep(
  * {@link compensate} calls it once per commit status, never for the whole
  * batch, so a committed chunk's objects arrive only once its rows are gone.
  */
-async function cleanBatchS3(context: HistoryContext, chunks: ChatMessageItem[][]): Promise<void> {
+async function cleanBatchS3(context: HistoryContext, chunks: MessageRow[][]): Promise<void> {
   if (!context.offloader) return;
   const descriptors = chunks.flat().map((item) => item.message);
   await cleanUpS3Orphans(context.offloader, {
@@ -230,13 +231,11 @@ async function rollbackCommitted(
       { retry: context.retry },
     );
   } catch (error) {
-    /**
-     * `batchWriteAll` raises `BATCH_WRITE_INCOMPLETE` for every failure but a
-     * cancel, and this call passes no signal, so the cancel cannot arise here
-     * — asserted rather than narrowed, since the false branch is unreachable
-     * and this project enforces 100% branch coverage. A signal reaching this
-     * call would have to narrow instead.
-     */
+    // `batchWriteAll` raises `BATCH_WRITE_INCOMPLETE` for every failure but a
+    // cancel, and this call passes no signal, so the cancel cannot arise here
+    // — asserted rather than narrowed, since the false branch is unreachable
+    // and this project enforces 100% branch coverage. A signal reaching this
+    // call would have to narrow instead.
     const deleted = (error as DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE>).details
       .succeededCount;
     await revertSessionCount(context, sessionId, deleted, now);
@@ -277,10 +276,10 @@ async function rollbackCommitted(
  * preference to leaving a live row pointing at a deleted object.
  *
  * Neither of its two log lines can stop it: both go through
- * {@link reportStep}. A throw from the first used to skip the S3 cleanup, the
- * rollback, the count revert and the rethrow all at once, leaving every
- * committed chunk in the table with `messageCount` still counting it, and
- * handing the caller the logger's own error in place of the failure that
+ * {@link reportStep}. Otherwise a throw from the first would skip the S3
+ * cleanup, the rollback, the count revert and the rethrow all at once, leaving
+ * every committed chunk in the table with `messageCount` still counting it,
+ * and handing the caller the logger's own error in place of the failure that
  * started this. Announcing the rollback is not the rollback.
  */
 export async function compensate(
@@ -298,10 +297,8 @@ export async function compensate(
       { sessionId, committedChunks: committed.length },
     );
   }
-  /**
-   * The never-attempted suffix never had a DynamoDB row, so it is safe to
-   * clean now; an uncertain failed chunk is skipped because its rows may live.
-   */
+  // The never-attempted suffix never had a DynamoDB row, so it is safe to
+  // clean now; an uncertain failed chunk is skipped because its rows may live.
   const firstDead = committed.length + (uncertain ? 1 : 0);
   await cleanBatchS3(context, chunks.slice(firstDead));
   try {
@@ -313,10 +310,10 @@ export async function compensate(
       'history.addMessages rollback failed; messageCount may have drifted',
       { sessionId, committedChunks: committed.length },
     );
-    /** Skip S3 cleanup here: rollback may have failed, so committed rows might still reference these objects. */
+    // Skip S3 cleanup here: rollback may have failed, so committed rows might still reference these objects.
     throw compensationFailedError(trigger, toError(rollbackError as Error));
   }
-  /** Only now that committed rows are confirmed deleted is it safe to delete their S3 objects. */
+  // Only now that committed rows are confirmed deleted is it safe to delete their S3 objects.
   await cleanBatchS3(context, chunks.slice(0, committed.length));
   throw trigger;
 }
@@ -337,7 +334,7 @@ function isAmbiguous(error: Error): boolean {
  */
 async function verifyChunkLanded(
   context: HistoryContext,
-  chunk: ChatMessageItem[],
+  chunk: MessageRow[],
 ): Promise<WriteVerdict> {
   const { verdict } = await verifyRow(context, {
     key: rowKeyOf(chunk[0]),
@@ -352,7 +349,7 @@ async function verifyChunkLanded(
 async function commitChunk(
   context: HistoryContext,
   append: ChunkedAppend,
-  chunk: ChatMessageItem[],
+  chunk: MessageRow[],
 ): Promise<Error | undefined> {
   try {
     await writeMessageChunk(
@@ -367,7 +364,7 @@ async function commitChunk(
   }
 }
 
-function asCommitted(chunk: ChatMessageItem[]): CommittedChunk {
+function asCommitted(chunk: MessageRow[]): CommittedChunk {
   return { keys: chunk.map((item) => rowKeyOf(item)), count: chunk.length };
 }
 
@@ -474,14 +471,14 @@ function isTtlConditionLoss(error: Error): boolean {
  */
 async function attempt(
   context: HistoryContext,
-  items: ChatMessageItem[],
+  items: MessageRow[],
   fields: SessionUpdateFields,
   retry: ChunkRetryOptions,
 ): Promise<void> {
   await transactIdempotently(
     context,
     [
-      buildSessionUpdateItem(context.tableName, fields),
+      buildSessionUpdate(context.tableName, fields),
       ...items.map((item) => ({ Put: { TableName: context.tableName, Item: item } })),
     ],
     { signal: retry.signal, rng: retry.rng, minAttempts: MESSAGE_APPEND_RETRY_MAX_ATTEMPTS },
@@ -527,16 +524,14 @@ async function attempt(
  */
 export async function writeMessageChunk(
   context: HistoryContext,
-  items: ChatMessageItem[],
+  items: MessageRow[],
   fields: Omit<SessionUpdateFields, 'writeId'>,
   retry: ChunkRetryOptions = {},
 ): Promise<void> {
-  /**
-   * The index shard comes from the adapter's context, not from the caller's
-   * fields, and the write id is drawn here — once per chunk, beside it. Drawn
-   * here rather than inside the builder, every attempt of this chunk carries
-   * one id, and no caller can supply or reuse one.
-   */
+  // The index shard comes from the adapter's context, not from the caller's
+  // fields, and the write id is drawn here — once per chunk, beside it. Drawn
+  // here rather than inside the builder, every attempt of this chunk carries
+  // one id, and no caller can supply or reuse one.
   const withIndex = { ...fields, indexShards: context.indexShards, writeId: context.ulid() };
   try {
     await attempt(context, items, withIndex, retry);
@@ -556,7 +551,7 @@ export async function writeMessageChunk(
  * estimate stays at or above the real marshalled item size and chunks never
  * overshoot the transaction byte limit.
  */
-const ITEM_OVERHEAD_BYTES = 256;
+const ROW_OVERHEAD_BYTES = 256;
 
 /**
  * Byte length of a string as DynamoDB stores it. `String.length` counts UTF-16
@@ -576,9 +571,9 @@ function descriptorBytes(descriptor: PayloadDescriptor): number {
 }
 
 /**
- * Conservatively estimate a message item's stored size.
+ * Conservatively estimate a message row's stored size.
  *
- * Accepts: any message item, inline or offloaded — an offloaded one measures
+ * Accepts: any message row, inline or offloaded — an offloaded one measures
  * its S3 key, since that is what the row actually carries.
  *
  * Returns: an estimate at or above the real marshalled size. Erring high is the
@@ -587,13 +582,13 @@ function descriptorBytes(descriptor: PayloadDescriptor): number {
  *
  * Throws: nothing.
  */
-export function estimateItemBytes(item: ChatMessageItem): number {
+export function estimateRowBytes(item: MessageRow): number {
   return (
     utf8Bytes(item.PK) +
     utf8Bytes(item.SK) +
     utf8Bytes(item.sessionId) +
     descriptorBytes(item.message) +
-    ITEM_OVERHEAD_BYTES
+    ROW_OVERHEAD_BYTES
   );
 }
 
@@ -624,15 +619,15 @@ function shouldFlush(
  * caller wrote them in, which is the order their ULIDs already encode.
  */
 export function chunkBySize(
-  items: ChatMessageItem[],
+  items: MessageRow[],
   maxItems: number,
   maxBytes: number,
-): ChatMessageItem[][] {
-  const chunks: ChatMessageItem[][] = [];
-  let current: ChatMessageItem[] = [];
+): MessageRow[][] {
+  const chunks: MessageRow[][] = [];
+  let current: MessageRow[] = [];
   let currentBytes = 0;
   for (const item of items) {
-    const size = estimateItemBytes(item);
+    const size = estimateRowBytes(item);
     if (shouldFlush({ count: current.length, bytes: currentBytes }, size, { maxItems, maxBytes })) {
       chunks.push(current);
       current = [];

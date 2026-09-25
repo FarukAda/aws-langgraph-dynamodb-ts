@@ -15,7 +15,6 @@
 import { randomUUID } from 'node:crypto';
 
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
-import type { TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 
 import { nowMs } from '../clock';
@@ -23,7 +22,7 @@ import { type PayloadDescriptor, PayloadLocation, type DescriptorRef } from '../
 import { classifyAwsError } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
 import { conditionalCheckFailure } from './cancellation';
-import type { DynamoDBDocumentLike, DocItem } from './client';
+import type { DynamoDBDocumentLike, AttributeMap, TransactAction } from './client';
 import { MAX_WRITE_LIFETIME_MS, withDynamoDBRetry, retryFor } from './retry';
 import type { RetryOptions } from './retry';
 import { PARTITION_KEY_ATTRIBUTE, type RowKey } from './table-schema';
@@ -76,9 +75,6 @@ export interface RowWriteOptions {
 export function referencesS3Object(descriptor: DescriptorRef): boolean {
   return descriptor.location === PayloadLocation.S3;
 }
-
-/** One action of a `TransactWriteItems`, as the document client takes it. */
-type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
 
 /**
  * Commit `actions` as one
@@ -219,12 +215,12 @@ export async function transactIdempotently(
  * `TransactionCanceledException` whose single reason is `ConditionalCheckFailed`
  * rather than as a `ConditionalCheckFailedException`; both answer
  * `isConditionalCheckFailed` and both carry the rejected row to
- * `rejectedItem`, so a caller reads them the same way. A spent budget
+ * `rejectedRow`, so a caller reads them the same way. A spent budget
  * throws `RETRY_EXHAUSTED` as any other call does.
  */
 export async function putIdempotently(
   deps: RowWriteDeps,
-  item: DocItem,
+  item: AttributeMap,
   guard?: RevisionGuard,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -265,7 +261,7 @@ export async function putIdempotently(
  */
 export async function deleteIdempotently(
   deps: RowWriteDeps,
-  key: DocItem,
+  key: AttributeMap,
   guard?: RevisionGuard,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -293,11 +289,11 @@ export async function deleteIdempotently(
  *
  * Throws: the guard's rejection — a rejection that `isConditionalCheckFailed`
  * answers true for, with the row that turned the write away readable through
- * `rejectedItem`; whatever the write throws once its retries are spent.
+ * `rejectedRow`; whatever the write throws once its retries are spent.
  */
 export async function commitRow(
   deps: RowWriteDeps,
-  row: DocItem,
+  row: AttributeMap,
   payload: DescriptorRef,
   options: RowWriteOptions = {},
 ): Promise<void> {
@@ -330,7 +326,7 @@ export interface ObservedRow {
 /**
  * Condition fragments to spread into a `PutCommand` input. Every guard asks
  * DynamoDB to attach the existing row to a rejection, so a compare-and-swap
- * that loses can re-pin from the exception (see {@link rejectedItem}) instead
+ * that loses can re-pin from the exception (see {@link rejectedRow}) instead
  * of spending a second strongly-consistent read.
  */
 export interface RevisionGuard {
@@ -513,10 +509,10 @@ export function isConditionalCheckFailed(error: Error): boolean {
  * Throws: whatever `unmarshall` rejects for an item that is not in
  * AttributeValue form.
  */
-export function rejectedItem(error: Error): DocItem | undefined {
+export function rejectedRow(error: Error): AttributeMap | undefined {
   const attached = (error as { Item?: Record<string, AttributeValue> }).Item;
   const raw = attached ?? conditionalCheckFailure(error)?.Item;
-  return raw === undefined ? undefined : (unmarshall(raw) as DocItem);
+  return raw === undefined ? undefined : (unmarshall(raw) as AttributeMap);
 }
 
 /**
@@ -575,7 +571,7 @@ export interface RowProbe extends RowRead {
 export interface VerifiedWrite {
   verdict: WriteVerdict;
   /** The row as read. Absent when nothing was read, or no row exists. */
-  row?: DocItem;
+  row?: AttributeMap;
 }
 
 /**
@@ -603,7 +599,7 @@ export function offloadedKey(descriptor: PayloadDescriptor | undefined): string 
  *
  * Throws: nothing.
  */
-export function identityOf(probe: RowProbe, row: DocItem | undefined): string | undefined {
+export function identityOf(probe: RowProbe, row: AttributeMap | undefined): string | undefined {
   const stored = row?.[probe.attribute];
   if (probe.kind === 'attribute') return stored as string | undefined;
   return offloadedKey(stored as PayloadDescriptor | undefined);
@@ -620,7 +616,7 @@ export function identityOf(probe: RowProbe, row: DocItem | undefined): string | 
  *
  * Throws: nothing.
  */
-export function verdictFor(probe: RowProbe, row: DocItem | undefined): WriteVerdict {
+export function verdictFor(probe: RowProbe, row: AttributeMap | undefined): WriteVerdict {
   return identityOf(probe, row) === probe.expected ? 'landed' : 'not-landed';
 }
 
@@ -663,7 +659,10 @@ function projectionOf(read: RowRead): { expression: string; names: Record<string
  * Guarantees: strongly consistent — a read that may lag is no evidence at all
  * about a write that may have landed.
  */
-export async function readRow(deps: RowWriteDeps, read: RowRead): Promise<DocItem | undefined> {
+export async function readRow(
+  deps: RowWriteDeps,
+  read: RowRead,
+): Promise<AttributeMap | undefined> {
   const { expression, names } = projectionOf(read);
   const result = await withDynamoDBRetry(
     (request) =>
@@ -679,7 +678,7 @@ export async function readRow(deps: RowWriteDeps, read: RowRead): Promise<DocIte
       ),
     deps.retry,
   );
-  return result.Item as DocItem | undefined;
+  return result.Item as AttributeMap | undefined;
 }
 
 /**
@@ -713,7 +712,7 @@ export async function verifyRow(deps: RowWriteDeps, probe: RowProbe): Promise<Ve
 }
 
 /**
- * Whether a row is confirmed absent right now — used to resolve an ambiguous
+ * Whether a row is confirmed absent right now — what resolves an ambiguous
  * retry-exhausted *delete*, where the delete may well have landed server-side
  * and only its acknowledgement was lost. Only the partition key is projected:
  * existence is the whole question.

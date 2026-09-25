@@ -1,11 +1,21 @@
+/**
+ * Hides the order a put happens in.
+ *
+ * A put reads the row it replaces for its `createdAt`, embeds once — a vector
+ * per extracted path onto the row, or one vector for the `vectorBackend`,
+ * never both — writes the row, and only then syncs the backend, best-effort.
+ * A `null` value takes the delete path instead. A caller hands over an item;
+ * that the table commits first and the vector copy follows is decided here.
+ */
+
 import { randomUUID } from 'node:crypto';
 
 import { nowIso } from '../../shared/clock';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import type { JsonValue } from '../internal/filter';
-import { deleteStoreItem, persistRecord } from '../internal/item-write';
+import { deleteStoreItem, persistRow } from '../internal/item-write';
 import type { ParsedDelete, ParsedPut } from '../internal/parse';
-import { buildStoreItem, itemRowKey, readExisting } from '../internal/rows';
+import { buildStoreRow, itemRowKey, readExisting } from '../internal/rows';
 import { embedPassages } from '../internal/semantic-search';
 import type { StoreContext } from '../internal/setup';
 import { itemVector, syncItemVector } from '../internal/vector-index';
@@ -57,21 +67,19 @@ export async function putItem(context: StoreContext, op: ParsedPut | ParsedDelet
   const value = op.value;
   const timestamp = nowIso();
   const existing = await readExisting(context, itemRowKey(op.address));
-  /**
-   * The two indexing modes are exclusive, so only one of them embeds: the row
-   * carries a vector per extracted path, while a configured backend takes one
-   * vector per item because that is what its `upsert` contract addresses.
-   */
+  // The two indexing modes are exclusive, so only one of them embeds: the row
+  // carries a vector per extracted path, while a configured backend takes one
+  // vector per item because that is what its `upsert` contract addresses.
   const embedding = await itemVector(context, op);
   const embeddings = context.vectorBackend ? undefined : await resolvePassages(context, op, value);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const record = await buildStoreItem(context, { namespace, key }, value, {
+  const record = await buildStoreRow(context, { namespace, key }, value, {
     createdAt: existing.createdAt ?? timestamp,
     updatedAt: timestamp,
     embeddings,
     ttlTimestamp,
     rev: randomUUID(),
   });
-  await persistRecord(context, record, existing);
+  await persistRow(context, record, existing);
   await syncItemVector(context, op.address, embedding);
 }

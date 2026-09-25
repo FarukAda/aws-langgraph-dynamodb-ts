@@ -97,7 +97,7 @@ describe('redactSecrets', () => {
   });
 });
 
-describe('redactSecrets value patterns (I1)', () => {
+describe('redactSecrets value patterns', () => {
   it('redacts a secret embedded in an error message, not just in a structured field', () => {
     const wrapped = new Error('creds AKIAIOSFODNN7EXAMPLE rejected');
     const error = Object.assign(new Error(`Operation failed: ${wrapped.message}`), {
@@ -142,7 +142,7 @@ describe('redactSecrets value patterns (I1)', () => {
   });
 });
 
-describe('redactSecrets non-plain values (M1)', () => {
+describe('redactSecrets non-plain values', () => {
   it('preserves Date and RegExp instead of collapsing them to an empty object', () => {
     const date = new Date('2026-08-29T00:00:00.000Z');
     const out = redactSecrets({ date, re: /ab+c/gi }) as unknown as {
@@ -207,7 +207,7 @@ describe('redactLogger', () => {
     expect(inner.info).toHaveBeenCalledWith('x', { pin: '[REDACTED]', label: 'ok' });
   });
 
-  it('honors extra value patterns supplied via options (I1)', () => {
+  it('honors extra value patterns supplied via options', () => {
     const inner = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     redactLogger(inner, { extraValuePatterns: [/CORP-\d{4}/g] }).info('x', {
       note: 'ticket CORP-1234',
@@ -216,7 +216,7 @@ describe('redactLogger', () => {
   });
 });
 
-describe('credential-value redaction (F2)', () => {
+describe('credential-value redaction', () => {
   it('redacts a JSON-quoted pair, which the bare-keyword pattern missed entirely', () => {
     expect(redactSecrets('{"password":"hunter2"}')).toBe('{"password":[REDACTED]}');
   });
@@ -332,7 +332,7 @@ describe('scalar values end at a real delimiter (F2 follow-up)', () => {
   });
 });
 
-describe('redactSecrets accepts typed inputs without casts (CORE-11)', () => {
+describe('redactSecrets accepts typed inputs without casts', () => {
   it('takes an Error carrying own data and a Record directly', () => {
     const error = Object.assign(new Error('x'), { apiKey: 'k' });
     expect((redactSecrets(error) as { apiKey?: string }).apiKey).toBe('[REDACTED]');
@@ -341,7 +341,7 @@ describe('redactSecrets accepts typed inputs without casts (CORE-11)', () => {
   });
 });
 
-describe('redactSecrets visits a shared node once (SEC-04)', () => {
+describe('redactSecrets visits a shared node once', () => {
   /**
    * A guard that only removes a node when its subtree finishes is correct for
    * cycles and re-walks every node reachable by more than one path. On a graph

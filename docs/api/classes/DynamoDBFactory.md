@@ -6,7 +6,7 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory/factory.ts:107](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L107)
+Defined in: [factory/factory.ts:116](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L116)
 
 Convenience constructors for the adapters.
 
@@ -29,7 +29,7 @@ field names (`options.<key>`, `tableName`, …) for anything inside one.
 
 > **new DynamoDBFactory**(`base?`): `DynamoDBFactory`
 
-Defined in: [factory/factory.ts:126](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L126)
+Defined in: [factory/factory.ts:135](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L135)
 
 Accepts: `base` — the defaults every adapter inherits. Checked here, where
 the caller wrote them: an unknown key would otherwise be ignored, and a
@@ -64,17 +64,16 @@ itself, since a per-adapter value may still replace it.
 
 > **createAll**\<`O`\>(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
-Defined in: [factory/factory.ts:250](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L250)
+Defined in: [factory/factory.ts:261](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L261)
 
 Build the adapters whose sections are given, all on one shared client.
 
 Accepts: `options` — a section per adapter, laid over the factory's shared
 defaults; omitting one, or giving it as `undefined`, skips that adapter,
 and `{}` builds none. A key that is not a section name is refused rather
-than ignored: a misspelt one silently built nothing and handed back three
-`undefined`s. Each section is that adapter's options, so one that is not
-an object — `null` included, which used to build nothing and hand back
-`null` — is refused before any client is built.
+than ignored, so a misspelt one cannot silently build nothing. Each section
+is that adapter's options, so one that is not an object, `null` included,
+is refused before any client is built.
 
 Returns: the adapters, typed by the sections asked for, and one `destroy`
 that releases all of them and the shared client. A client the factory was
@@ -113,7 +112,7 @@ others.
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:219](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L219)
+Defined in: [factory/factory.ts:231](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L231)
 
 A chat history on its own client.
 
@@ -139,7 +138,7 @@ Throws: as [createSaver](#createsaver).
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:191](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L191)
+Defined in: [factory/factory.ts:203](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L203)
 
 A saver on its own client.
 
@@ -152,8 +151,9 @@ Returns: the saver, which owns the client it built and releases it on
 
 Throws: `VALIDATION` for any invalid option, naming it as the saver's
 constructor does — `options` for a value that is not an object, checked
-before the defaults are laid under it: `null` crashed reading `client`
-off it, and a string was spread into its characters.
+before the defaults are laid under it: reading `.client` off a `null`
+value would throw here, and spreading a string would iterate its
+characters instead of refusing it.
 
 #### Parameters
 
@@ -171,7 +171,7 @@ off it, and a string was spread into its characters.
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:205](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L205)
+Defined in: [factory/factory.ts:217](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L217)
 
 A store on its own client.
 

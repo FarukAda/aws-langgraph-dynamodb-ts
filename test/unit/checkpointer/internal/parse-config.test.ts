@@ -70,7 +70,7 @@ describe('parseThreadConfig', () => {
   });
 });
 
-describe('parseThreadConfig falsy checkpoint_id (CKPT-06)', () => {
+describe('parseThreadConfig falsy checkpoint_id', () => {
   it('treats null and the empty string as "latest" like the reference savers', () => {
     expect(
       parseThreadConfig({ configurable: { thread_id: 't', checkpoint_id: null as never } }).address

@@ -8,7 +8,7 @@ import {
   truncateForLog,
 } from '../../../../src/shared/logging/truncate';
 import { parseNamespace } from '../../../../src/store/internal/parse';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import {
   collectReconcileTargets,
@@ -135,7 +135,7 @@ describe('pruneOrphans', () => {
     expect(backend.listKeys).toHaveBeenCalledWith(['n']);
   });
 
-  it('re-checks a candidate against DynamoDB before pruning it (M11)', async () => {
+  it('re-checks a candidate against DynamoDB before pruning it', async () => {
     // The live-set snapshot and this prune read are not one point in time, so
     // a key written between them looks orphaned. Deleting its vector on that
     // basis silently drops a just-written live item out of semantic search.
@@ -200,7 +200,7 @@ describe('collectReconcileTargets', () => {
       embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { text: 'hello' },
@@ -226,13 +226,13 @@ describe('collectReconcileTargets', () => {
       index: { dims: 1, embeddings: embeddings as never, fields: ['text'] },
     });
     const meta = { createdAt: 'c', updatedAt: 'u' };
-    const a = await buildStoreItem(
+    const a = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { text: 'ab' },
       meta,
     );
-    const b = await buildStoreItem(
+    const b = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'b' },
       { text: 'abcd' },
@@ -260,7 +260,7 @@ describe('collectReconcileTargets', () => {
       embedDocuments: jest.fn((texts: string[]) => texts.map(() => [0.5])),
     };
     const ctx = context(client, { index: { dims: 1, embeddings: embeddings as never } });
-    const match = await buildStoreItem(
+    const match = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { text: 'hi' },
@@ -276,7 +276,7 @@ describe('collectReconcileTargets', () => {
     expect(targets.map((t) => t.namespace)).toEqual([['users', 'u1']]);
   });
 
-  it('skips and warns on a foreign row instead of casting it (F8)', async () => {
+  it('skips and warns on a foreign row instead of casting it', async () => {
     const { client, mock } = createStrictDocumentMock();
     const warn = jest.fn();
     const ctx = context(client, { logger: { ...SILENT_LOGGER, warn } });

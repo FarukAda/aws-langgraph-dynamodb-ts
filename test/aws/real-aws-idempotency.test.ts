@@ -10,7 +10,7 @@ import {
 } from '../../src/shared/dynamodb/cancellation';
 import {
   isConditionalCheckFailed,
-  rejectedItem,
+  rejectedRow,
   revisionGuard,
   putIdempotently,
 } from '../../src/shared/dynamodb/idempotent-write';
@@ -188,7 +188,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
    * so a row attached to a cancellation reason arrives in DynamoDB's own
    * attribute-value shape, nested maps and lists included — and byte-identical
    * to what the same client leaves on a `PutCommand` rejection. That identity
-   * is why `rejectedItem` needs exactly one unmarshall path with two places to
+   * is why `rejectedRow` needs exactly one unmarshall path with two places to
    * look, rather than two decoders that can drift apart.
    *
    * It asserts the shape rather than merely that a row came back: a test that
@@ -219,7 +219,7 @@ describe('the idempotency contract this design rests on, against real AWS', () =
       nested: { M: { n: { N: '1' } } },
     });
     // The library's single decoder turns that back into the row a re-pin needs.
-    expect(rejectedItem(cancelled)).toEqual(row);
+    expect(rejectedRow(cancelled)).toEqual(row);
 
     const refusedPut = await rejection(
       doc.put({ TableName: tableName, Item: { PK: 'l4', SK: 'row', note: 'new' }, ...guard }),

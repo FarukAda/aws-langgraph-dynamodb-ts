@@ -71,7 +71,7 @@ async function expectConsistent(allowedOrphans: number): Promise<void> {
   expect(orphans.length).toBeLessThanOrEqual(allowedOrphans);
 }
 
-describe('write races against DynamoDB Local with S3 in the loop (TEST-02)', () => {
+describe('write races against DynamoDB Local with S3 in the loop', () => {
   it('two puts of the same checkpoint id both settle; the survivor is readable and no live object is lost', async () => {
     const config = threadConfig('put-put');
     await Promise.all([

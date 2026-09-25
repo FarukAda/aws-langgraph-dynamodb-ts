@@ -1,3 +1,14 @@
+/**
+ * Hides how one `putWrites` call's rows are known to be one call's.
+ *
+ * Every call draws a write group from a strictly monotonic ULID factory, and
+ * that one id serves three ends: the object id each offloaded write is uploaded
+ * under (record 4), the owner a guard rejection is compared against to tell a
+ * rival call from this call's own retry, and the order the read side uses to
+ * pick the earliest call that wrote a channel. A caller passes writes and a
+ * task id and never sees the group.
+ */
+
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 
@@ -5,7 +16,7 @@ import { createUlidFactory } from '../../shared/ulid';
 import { calculateTtlTimestamp } from '../../shared/validation/ttl';
 import { parsePutWritesRequest } from '../internal/parse';
 import { commitPendingWrites } from '../internal/pending-writes';
-import { buildWriteItems } from '../internal/rows';
+import { buildWriteRows } from '../internal/rows';
 import type { CheckpointerContext } from '../internal/setup';
 
 /**
@@ -23,7 +34,7 @@ import type { CheckpointerContext } from '../internal/setup';
 const nextWriteGroup = createUlidFactory();
 
 /**
- * Persist a task's intermediate writes for a checkpoint, one item per write.
+ * Persist a task's intermediate writes for a checkpoint, one row per write.
  *
  * Accepts: `config` — must name a `checkpoint_id`, since writes always attach
  * to a checkpoint. `writes` — one task's, in order; their channels are
@@ -64,7 +75,7 @@ export async function putWrites(
   const request = parsePutWritesRequest(config, writes, taskId);
   if (request.writes.length === 0) return;
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;
-  const items = await buildWriteItems(context, request, nextWriteGroup(), ttlTimestamp);
+  const items = await buildWriteRows(context, request, nextWriteGroup(), ttlTimestamp);
   await commitPendingWrites(context, {
     threadId: request.address.threadId,
     items,

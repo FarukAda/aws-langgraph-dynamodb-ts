@@ -4,7 +4,7 @@ import { JSON_SERDE } from '../../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { searchItems } from '../../../../src/store/actions/search';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 import { parsedSearch } from '../../../shared/helpers/parsed-inputs';
@@ -24,19 +24,19 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
 
 async function records(ctx: StoreContext) {
   return [
-    await buildStoreItem(
+    await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { kind: 'note', score: 1 },
       { createdAt: 'c', updatedAt: 'u', embeddings: [[1, 0]] },
     ),
-    await buildStoreItem(
+    await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'b' },
       { kind: 'note', score: 9 },
       { createdAt: 'c', updatedAt: 'u', embeddings: [[0, 1]] },
     ),
-    await buildStoreItem(
+    await buildStoreRow(
       ctx,
       { namespace: ['orgs', 'o1'], key: 'c' },
       { kind: 'doc', score: 5 },
@@ -102,13 +102,13 @@ describe('searchItems', () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
-    const withVec = await buildStoreItem(
+    const withVec = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'b' },
       { score: 9 },
       { createdAt: 'c', updatedAt: 'u', embeddings: [[0, 1]] },
     );
-    const noVec = await buildStoreItem(
+    const noVec = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'x' },
       { score: 1 },
@@ -151,13 +151,13 @@ describe('searchItems', () => {
   it('delegates ranking to a vector backend and hydrates the matches', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
-    const recA = await buildStoreItem(
+    const recA = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },
       { createdAt: 'c', updatedAt: 'u' },
     );
-    const recB = await buildStoreItem(
+    const recB = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'b' },
       { score: 9 },
@@ -202,7 +202,7 @@ describe('searchItems', () => {
   it('skips a vector backend match outside the requested namespace prefix', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
-    const recA = await buildStoreItem(
+    const recA = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },
@@ -231,7 +231,7 @@ describe('searchItems', () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const ctx = context(client, { index: { dims: 2, embeddings: embeddings as never } });
-    const recA = await buildStoreItem(
+    const recA = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'a' },
       { status: 'active' },
@@ -240,7 +240,7 @@ describe('searchItems', () => {
         updatedAt: 'u',
       },
     );
-    const recB = await buildStoreItem(
+    const recB = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'b' },
       { status: 'inactive' },
@@ -309,13 +309,13 @@ describe('searchItems', () => {
   it('returns real items when paginating well within maxSearchCandidates (regression: the guard must not affect ordinary pagination)', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
-    const recA = await buildStoreItem(
+    const recA = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'a' },
       { score: 1 },
       { createdAt: 'c', updatedAt: 'u' },
     );
-    const recB = await buildStoreItem(
+    const recB = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'b' },
       { score: 9 },

@@ -5,8 +5,9 @@
  * it either built, and so must destroy, or was handed, and so must not; an S3
  * offloader when it offloads; a logger; a retry policy; the recency index's
  * settings — releases them the same way, and provisions the same lifecycle
- * rule from its ttl. Whether an adapter owns its client is known here and
- * nowhere else.
+ * rule from its ttl. Whether an adapter owns its client is decided in
+ * `dynamodb/client.ts`; this module only reads that decision, to release a
+ * client it built and leave an injected one alone.
  */
 
 import type { CompressionConfig } from './codec/compression';

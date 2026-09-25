@@ -19,7 +19,7 @@ import {
   isConditionalCheckFailed,
   isRowAbsent,
   OVERWRITE_CAS_MAX_ATTEMPTS,
-  rejectedItem,
+  rejectedRow,
   revisionGuard,
   verifyRow,
   type WriteVerdict,
@@ -30,12 +30,12 @@ import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
 import type { StoreAddress } from './parse';
 import {
-  type ExistingRecordMeta,
+  type ExistingRowMeta,
   existingFrom,
   itemRowKey,
   readExisting,
   REVISION_ATTRIBUTE,
-  type StoreItemRecord,
+  type StoreItemRow,
 } from './rows';
 import type { StoreContext } from './setup';
 import { dropVectorWhenGone } from './vector-index';
@@ -48,12 +48,12 @@ import { dropVectorWhenGone } from './vector-index';
  * cancellation carrying **no** row means the row was deleted between the
  * observation and this attempt, so there is nothing left to remove. A spent
  * retry budget is *ambiguous* — the delete may have landed with only its
- * acknowledgement lost — and is resolved the way `persistRecord` resolves its
+ * acknowledgement lost — and is resolved the way `persistRow` resolves its
  * own: with a strongly-consistent read, treating a confirmed absence as a
- * delete that landed. Under a request token that read has less to settle than
- * it used to, because every attempt inside one budget re-sends the identical
- * request and a replay is answered from the idempotency cache rather than
- * re-applied; only the last attempt's outcome is in question.
+ * delete that landed. Under a request token that read has little to settle,
+ * because every attempt inside one budget re-sends the identical request and a
+ * replay is answered from the idempotency cache rather than re-applied; only
+ * the last attempt's outcome is in question.
  *
  * `isRowAbsent` reports a read that itself failed as `false` — "not confirmed",
  * never "still there" — so an unknown outcome rethrows and releases nothing.
@@ -62,10 +62,10 @@ async function repinOrResolve(
   context: StoreContext,
   key: RowKey,
   error: Error,
-): Promise<ExistingRecordMeta | undefined> {
+): Promise<ExistingRowMeta | undefined> {
   if (isConditionalCheckFailed(error)) {
-    /** Raw `AttributeValue`s: `rejectedItem` unmarshalls, `existingFrom` does not. */
-    const rejected = rejectedItem(error);
+    // Raw `AttributeValue`s: `rejectedRow` unmarshalls, `existingFrom` does not.
+    const rejected = rejectedRow(error);
     return rejected === undefined ? undefined : existingFrom(rejected);
   }
   if (isRetryExhausted(error) && (await isRowAbsent(context, key))) return undefined;
@@ -105,8 +105,8 @@ async function repinOrResolve(
 async function removeObservedRow(
   context: StoreContext,
   key: RowKey,
-  existing: ExistingRecordMeta,
-): Promise<ExistingRecordMeta | undefined> {
+  existing: ExistingRowMeta,
+): Promise<ExistingRowMeta | undefined> {
   let observed = existing;
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
     try {
@@ -153,7 +153,7 @@ async function removeObservedRow(
  *   above the S3 cleanup, so no round trip with its own retries sits inside the
  *   window — one strongly-consistent projected read asks whether the key holds
  *   a row now, and a row that is there keeps its vector and logs one `info`.
- *   That covers both interleavings that used to erase a live item's vector: a
+ *   That covers both interleavings that would otherwise erase a live item's vector: a
  *   put recreating the row this call removed, and the compare-and-swap above
  *   resolving with the row untouched. What is left is a put committing between
  *   that read and the backend call, two adjacent statements apart. Closing it
@@ -196,9 +196,9 @@ async function removeObservedRow(
  *
  * Guarantees: the object released is the **last observation's**, on every path
  * that releases at all — the pre-read's when nothing re-pinned, the rejected
- * row's when something did. It is never read back from the response, so the
- * object a delete whose acknowledgement was lost removed is no longer leaked by
- * construction. Nothing is released while the outcome is unknown: only a
+ * row's when something did. It is never read back from the response, so by
+ * construction the object of a delete whose acknowledgement was lost is not
+ * leaked. Nothing is released while the outcome is unknown: only a
  * confirmed absence or a confirmed delete licenses it. And the backend's
  * `delete` is never reached without a confirmation immediately before it, on
  * every path including the one whose key never had a row: one rule with no
@@ -271,7 +271,7 @@ async function cleanUp(
  * the error, and an `'unverified'` read deletes nothing and rethrows — leaking
  * one object at worst rather than stranding a live row pointing at a deleted
  * one. The verification compares the per-call `rev`, so an inline record is
- * verified too: a lost acknowledgement of an inline overwrite used to be
+ * verified too: otherwise a lost acknowledgement of an inline overwrite would be
  * reported as a failure while the previous offloaded object was never cleaned.
  *
  * Neither release reads the row again first. The record's object is uploaded
@@ -296,10 +296,10 @@ async function cleanUp(
  * deleted object is unreadable data, so every ambiguous case leaks instead of
  * deletes.
  */
-export async function persistRecord(
+export async function persistRow(
   context: StoreContext,
-  record: StoreItemRecord,
-  existing: ExistingRecordMeta,
+  record: StoreItemRow,
+  existing: ExistingRowMeta,
 ): Promise<void> {
   let superseded = existing;
   try {
@@ -375,8 +375,8 @@ export async function persistRecord(
  */
 async function put(
   context: StoreContext,
-  record: StoreItemRecord,
-  observed?: ExistingRecordMeta,
+  record: StoreItemRow,
+  observed?: ExistingRowMeta,
 ): Promise<void> {
   const guard = observed ? revisionGuard(REVISION_ATTRIBUTE, observed) : undefined;
   await commitRow(context, record, record.value, { guard });
@@ -427,9 +427,9 @@ async function put(
  */
 export async function putWithRevisionSwap(
   context: StoreContext,
-  record: StoreItemRecord,
-  existing: ExistingRecordMeta,
-): Promise<ExistingRecordMeta> {
+  record: StoreItemRow,
+  existing: ExistingRowMeta,
+): Promise<ExistingRowMeta> {
   let observed = existing;
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
     const attempted = observed;
@@ -439,11 +439,11 @@ export async function putWithRevisionSwap(
     } catch (error) {
       const rejection = error as Error;
       if (!isConditionalCheckFailed(rejection)) throw rejection;
-      /** The rejection carries the row that turned it away; the read is spent only when it does not. */
-      const rejected = rejectedItem(rejection);
+      // The rejection carries the row that turned it away; the read is spent only when it does not.
+      const rejected = rejectedRow(rejection);
       observed = rejected ? existingFrom(rejected) : await readExisting(context, rowKeyOf(record));
       if (record.rev !== undefined && observed.revision === record.rev) return attempted;
-      /** A row that vanished between attempts (a concurrent delete) makes this a fresh creation. */
+      // A row that vanished between attempts (a concurrent delete) makes this a fresh creation.
       record.createdAt = observed.exists
         ? (observed.createdAt ?? record.createdAt)
         : record.updatedAt;

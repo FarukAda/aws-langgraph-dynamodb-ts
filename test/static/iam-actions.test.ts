@@ -43,7 +43,7 @@ describe('documentedActions', () => {
   });
 });
 
-describe('the README IAM section (SEC-01, SEC-02)', () => {
+describe('the README IAM section', () => {
   it('grants exactly the DynamoDB and S3 actions the code uses', () => {
     expect(documentedActions(readReadme())).toEqual(usedActions());
   });

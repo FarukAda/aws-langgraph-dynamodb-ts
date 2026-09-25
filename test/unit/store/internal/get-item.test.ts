@@ -8,7 +8,7 @@ import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { getItem } from '../../../../src/store/internal/get-item';
 import { parseStoreAddress } from '../../../../src/store/internal/parse';
-import { buildStoreItem } from '../../../../src/store/internal/rows';
+import { buildStoreRow } from '../../../../src/store/internal/rows';
 import type { StoreContext } from '../../../../src/store/internal/setup';
 import { createStrictDocumentMock } from '../../../shared/helpers/ddb-mock';
 
@@ -33,7 +33,7 @@ describe('getItem', () => {
     ).toBeNull();
   });
 
-  it('returns null and warns for a row that is not a store item (C2, I7)', async () => {
+  it('returns null and warns for a row that is not a store item', async () => {
     // A WRITE row from the checkpointer carries a `value` PayloadDescriptor in
     // the identical shape a store item uses, so an unchecked cast used to
     // decode it successfully and hand another thread's pending write back as
@@ -56,7 +56,7 @@ describe('getItem', () => {
 
   it('returns the decoded item with namespace, key, value, and dates', async () => {
     const { client, mock } = createStrictDocumentMock();
-    const record = await buildStoreItem(
+    const record = await buildStoreRow(
       context(client),
       { namespace: ['users', 'u1'], key: 'profile' },
       { name: 'Faruk' },
@@ -78,7 +78,7 @@ describe('getItem', () => {
   });
 });
 
-describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
+describe('getItem racing a concurrent overwrite', () => {
   const timestamps = {
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-02T00:00:00.000Z',
@@ -110,7 +110,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
   }
 
   /** The S3 key a built record's value descriptor points at. */
-  function keyOf(record: Awaited<ReturnType<typeof buildStoreItem>>): string {
+  function keyOf(record: Awaited<ReturnType<typeof buildStoreRow>>): string {
     return (record.value as { s3Key: string }).s3Key;
   }
 
@@ -127,13 +127,13 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
     Promise.resolve(new TextEncoder().encode(JSON.stringify({ name: 'fresh' })));
 
   async function records(ctx: StoreContext) {
-    const old = await buildStoreItem(
+    const old = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'p' },
       { name: 'old' },
       { ...timestamps, rev: 'A' },
     );
-    const replaced = await buildStoreItem(
+    const replaced = await buildStoreRow(
       ctx,
       { namespace: ['users', 'u1'], key: 'p' },
       { name: 'new' },
@@ -225,7 +225,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
   });
 });
 
-describe('getItem S3 key binding (SEC-03)', () => {
+describe('getItem S3 key binding', () => {
   it("refuses to download a value whose key lies outside the item's own namespace/key path", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({

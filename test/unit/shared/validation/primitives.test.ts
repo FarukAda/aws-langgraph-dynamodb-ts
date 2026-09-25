@@ -43,7 +43,7 @@ describe('assertNonEmptyString', () => {
     expectValidationError(() => assertNonEmptyString('', 'threadId'), 'threadId');
   });
 
-  it('rejects a whitespace-only string (SEC-10)', () => {
+  it('rejects a whitespace-only string', () => {
     expectValidationError(() => assertNonEmptyString('   ', 'threadId'), 'threadId');
   });
 
