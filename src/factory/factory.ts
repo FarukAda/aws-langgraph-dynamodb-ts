@@ -265,7 +265,7 @@ export class DynamoDBFactory {
     const resolved = resolveDynamoDBClient(this.base);
     const shared = { ...this.sharedDefaults(), s3: this.sharedS3(), client: resolved.client };
     const built: Destroyable[] = [];
-    /** Record an adapter the moment it exists, so a later failure can still tear it down. */
+    // Record an adapter the moment it exists, so a later failure can still tear it down.
     const track = <T extends Destroyable>(adapter: T): T => {
       built.push(adapter);
       return adapter;

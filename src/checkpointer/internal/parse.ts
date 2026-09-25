@@ -470,10 +470,8 @@ export function parseListScope(config: RunnableConfig, options?: CheckpointListO
     assertShape(options, SAVER_LIST_KEYS, 'options');
     if (options.filter !== undefined) assertObjectShape(options.filter, 'filter');
   }
-  /**
-   * Zero floor: `list` is an iterator a caller drains, so a zero page ends it
-   * immediately and visibly. Only a conversation window refuses zero.
-   */
+  // Zero floor: `list` is an iterator a caller drains, so a zero page ends it
+  // immediately and visibly. Only a conversation window refuses zero.
   const limit = options?.limit === undefined ? undefined : parseLimit(options.limit, 0);
   return {
     threadId,

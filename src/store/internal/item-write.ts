@@ -64,7 +64,7 @@ async function repinOrResolve(
   error: Error,
 ): Promise<ExistingRowMeta | undefined> {
   if (isConditionalCheckFailed(error)) {
-    /** Raw `AttributeValue`s: `rejectedRow` unmarshalls, `existingFrom` does not. */
+    // Raw `AttributeValue`s: `rejectedRow` unmarshalls, `existingFrom` does not.
     const rejected = rejectedRow(error);
     return rejected === undefined ? undefined : existingFrom(rejected);
   }
@@ -439,7 +439,7 @@ export async function putWithRevisionSwap(
     } catch (error) {
       const rejection = error as Error;
       if (!isConditionalCheckFailed(rejection)) throw rejection;
-      /** The rejection carries the row that turned it away; the read is spent only when it does not. */
+      // The rejection carries the row that turned it away; the read is spent only when it does not.
       const rejected = rejectedRow(rejection);
       observed = rejected ? existingFrom(rejected) : await readExisting(context, rowKeyOf(record));
       if (record.rev !== undefined && observed.revision === record.rev) return attempted;

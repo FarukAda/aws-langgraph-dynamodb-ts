@@ -397,26 +397,22 @@ export async function reportBucketVersioning(
   logger: Logger,
 ): Promise<void> {
   const { GetBucketVersioningCommand } = await loadS3Sdk();
-  /**
-   * `s3.bucketName` is checked for being a non-empty string and never for
-   * length, so it reaches these three lines as whatever the caller's options
-   * carried. It is quoted here as the identifier it is, cut at the log cap:
-   * the line's job is to say which bucket to go and look at, and the bucket
-   * holds the rest.
-   */
+  // `s3.bucketName` is checked for being a non-empty string and never for
+  // length, so it reaches these three lines as whatever the caller's options
+  // carried. It is quoted here as the identifier it is, cut at the log cap:
+  // the line's job is to say which bucket to go and look at, and the bucket
+  // holds the rest.
   const named = truncateForLog(bucket);
   let status: string | undefined;
   try {
     status = (await client.send(new GetBucketVersioningCommand({ Bucket: bucket }))).Status;
   } catch (error) {
-    /**
-     * The error's name, never its message, which can carry credential text —
-     * and read off a shape rather than an Error, because a client seam can
-     * reject with anything at all and this function promises not to throw. Cut
-     * like the bucket beside it: a name is a string the SDK or a client seam
-     * produced, `message` is already bounded where `redactedMessage` relays
-     * it, and the two are one value.
-     */
+    // The error's name, never its message, which can carry credential text —
+    // and read off a shape rather than an Error, because a client seam can
+    // reject with anything at all and this function promises not to throw. Cut
+    // like the bucket beside it: a name is a string the SDK or a client seam
+    // produced, `message` is already bounded where `redactedMessage` relays
+    // it, and the two are one value.
     const reason = truncateForLog((error as { name?: string } | null)?.name ?? 'unknown');
     logger.warn(
       'ensureS3LifecycleRule: could not read the offload bucket versioning state, so whether a released payload is recoverable is unknown; the lifecycle rules were written, and the role needs s3:GetBucketVersioning',

@@ -231,13 +231,11 @@ async function rollbackCommitted(
       { retry: context.retry },
     );
   } catch (error) {
-    /**
-     * `batchWriteAll` raises `BATCH_WRITE_INCOMPLETE` for every failure but a
-     * cancel, and this call passes no signal, so the cancel cannot arise here
-     * — asserted rather than narrowed, since the false branch is unreachable
-     * and this project enforces 100% branch coverage. A signal reaching this
-     * call would have to narrow instead.
-     */
+    // `batchWriteAll` raises `BATCH_WRITE_INCOMPLETE` for every failure but a
+    // cancel, and this call passes no signal, so the cancel cannot arise here
+    // — asserted rather than narrowed, since the false branch is unreachable
+    // and this project enforces 100% branch coverage. A signal reaching this
+    // call would have to narrow instead.
     const deleted = (error as DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE>).details
       .succeededCount;
     await revertSessionCount(context, sessionId, deleted, now);
@@ -299,10 +297,8 @@ export async function compensate(
       { sessionId, committedChunks: committed.length },
     );
   }
-  /**
-   * The never-attempted suffix never had a DynamoDB row, so it is safe to
-   * clean now; an uncertain failed chunk is skipped because its rows may live.
-   */
+  // The never-attempted suffix never had a DynamoDB row, so it is safe to
+  // clean now; an uncertain failed chunk is skipped because its rows may live.
   const firstDead = committed.length + (uncertain ? 1 : 0);
   await cleanBatchS3(context, chunks.slice(firstDead));
   try {
@@ -532,12 +528,10 @@ export async function writeMessageChunk(
   fields: Omit<SessionUpdateFields, 'writeId'>,
   retry: ChunkRetryOptions = {},
 ): Promise<void> {
-  /**
-   * The index shard comes from the adapter's context, not from the caller's
-   * fields, and the write id is drawn here — once per chunk, beside it. Drawn
-   * here rather than inside the builder, every attempt of this chunk carries
-   * one id, and no caller can supply or reuse one.
-   */
+  // The index shard comes from the adapter's context, not from the caller's
+  // fields, and the write id is drawn here — once per chunk, beside it. Drawn
+  // here rather than inside the builder, every attempt of this chunk carries
+  // one id, and no caller can supply or reuse one.
   const withIndex = { ...fields, indexShards: context.indexShards, writeId: context.ulid() };
   try {
     await attempt(context, items, withIndex, retry);

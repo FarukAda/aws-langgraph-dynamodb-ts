@@ -362,12 +362,10 @@ export async function pruneOrphans(
     return 0;
   }
   const candidates = selectOrphans(await backend.listKeys(prefix), live);
-  /**
-   * Every item the snapshot actually saw, embedded or not. A candidate in here
-   * is prunable on the evidence already gathered — its item exists but yields
-   * no embedding (its indexable text became empty), so its vector really is
-   * stale. Only a candidate the snapshot never saw at all is ambiguous.
-   */
+  // Every item the snapshot actually saw, embedded or not. A candidate in here
+  // is prunable on the evidence already gathered — its item exists but yields
+  // no embedding (its indexable text became empty), so its vector really is
+  // stale. Only a candidate the snapshot never saw at all is ambiguous.
   const observed = new Set(live.map((target) => refIdentity(target.namespace, target.key)));
   let pruned = 0;
   for (const ref of candidates) {

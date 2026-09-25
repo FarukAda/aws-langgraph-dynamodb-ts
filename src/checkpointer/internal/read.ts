@@ -112,7 +112,7 @@ export async function fetchTargetMeta(
   signal?: AbortSignal,
 ): Promise<CheckpointMetaRow | undefined> {
   const { threadId, checkpointNs, checkpointId } = address;
-  /** Expired rows are absent to every reader, however long DynamoDB's sweep lags. */
+  // Expired rows are absent to every reader, however long DynamoDB's sweep lags.
   const now = nowSeconds();
   if (checkpointId !== undefined) {
     const result = await withDynamoDBRetry(
@@ -139,18 +139,16 @@ export async function fetchTargetMeta(
       consistent: true,
     },
   );
-  /**
-   * Both caps stay off, each for its own reason. `maxItems` counts the rows
-   * yielded past the server-side filter, and a finite value there would add
-   * the probe {@link paginateQuery} runs to tell a reached cap apart from an
-   * exhausted read — more requests, on the read the page size above exists to
-   * make cheaper. `maxIterations` is the runaway guard, but a finite value
-   * would turn a namespace whose rows have all aged out into a thrown
-   * `RESULT_TRUNCATED` where this function documents `undefined`, failing
-   * every graph step on exactly the thread shape the page size is here to
-   * serve. The page size is what bounds the walk instead: it divides the
-   * requests a dead head costs by {@link LATEST_META_PAGE_SIZE}.
-   */
+  // Both caps stay off, each for its own reason. `maxItems` counts the rows
+  // yielded past the server-side filter, and a finite value there would add
+  // the probe {@link paginateQuery} runs to tell a reached cap apart from an
+  // exhausted read — more requests, on the read the page size above exists to
+  // make cheaper. `maxIterations` is the runaway guard, but a finite value
+  // would turn a namespace whose rows have all aged out into a thrown
+  // `RESULT_TRUNCATED` where this function documents `undefined`, failing
+  // every graph step on exactly the thread shape the page size is here to
+  // serve. The page size is what bounds the walk instead: it divides the
+  // requests a dead head costs by {@link LATEST_META_PAGE_SIZE}.
   const rows = paginateQuery({
     retry: retryFor(context, signal),
     signal,
@@ -234,12 +232,10 @@ export async function fetchPendingWrites(
     writeSortKeyPrefix(at.checkpointNs, at.checkpointId),
     { ascending: true, consistent: read.consistent ?? true },
   );
-  /**
-   * Unbounded: the read must be complete to be correct, and a Send fan-out
-   * retried with a changed write order leaves superseded rows behind that
-   * count toward any cap. Past the warning threshold the read still succeeds,
-   * but an operator is told the checkpoint is unusually heavy.
-   */
+  // Unbounded: the read must be complete to be correct, and a Send fan-out
+  // retried with a changed write order leaves superseded rows behind that
+  // count toward any cap. Past the warning threshold the read still succeeds,
+  // but an operator is told the checkpoint is unusually heavy.
   const items: CheckpointWriteRow[] = [];
   for await (const item of paginateQuery({
     retry: retryFor(context, read.signal),

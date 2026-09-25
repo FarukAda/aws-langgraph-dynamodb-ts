@@ -206,11 +206,9 @@ export async function withRetry<T>(
 
   assertNotAborted(options.signal);
 
-  /**
-   * Built once and handed to every attempt. The SDK reads it and keeps
-   * nothing, so one object costs one allocation per operation instead of one
-   * per attempt, and a re-send cannot differ from the send before it.
-   */
+  // Built once and handed to every attempt. The SDK reads it and keeps
+  // nothing, so one object costs one allocation per operation instead of one
+  // per attempt, and a re-send cannot differ from the send before it.
   const request: SdkRequestOptions = { abortSignal: options.signal };
   let lastError: Error = new Error('Retry failed without error');
   let attempts = 0;
@@ -459,12 +457,10 @@ export function resolveRetryPolicy(
   );
   return {
     ...resolved,
-    /**
-     * The name, never the message — and bounded: the transient failure came
-     * from the SDK, the transport or a caller's own collaborator, and nothing
-     * this package ran checked how long its name is. This line fires once per
-     * retry, so an unbounded one is paid for per attempt.
-     */
+    // The name, never the message — and bounded: the transient failure came
+    // from the SDK, the transport or a caller's own collaborator, and nothing
+    // this package ran checked how long its name is. This line fires once per
+    // retry, so an unbounded one is paid for per attempt.
     onRetry: ({ attempt, delayMs, error }) =>
       logger.debug('retrying after a transient error', {
         attempt,
@@ -518,10 +514,8 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     return Promise.reject(abortErrorFrom(signal));
   }
   return new Promise((resolve, reject) => {
-    /**
-     * One holder for both flags, declared before `onAbort` reads the timer:
-     * the timer is assigned only once armed, after the listener is attached.
-     */
+    // One holder for both flags, declared before `onAbort` reads the timer:
+    // the timer is assigned only once armed, after the listener is attached.
     const wait: { settled: boolean; timer?: ReturnType<typeof setTimeout> } = { settled: false };
     const onAbort = (): void => {
       if (wait.settled) return;

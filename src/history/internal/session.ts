@@ -299,12 +299,10 @@ export function buildSessionUpdate(tableName: string, fields: SessionUpdateField
     ':gpk': index.gsi1pk,
     ':gsk': index.gsi1sk,
   };
-  /**
-   * The row's format version is rewritten on every update, not only on
-   * creation: an append by this version leaves a row this version wrote, and a
-   * reader must be told that rather than infer it from which attributes happen
-   * to be present.
-   */
+  // The row's format version is rewritten on every update, not only on
+  // creation: an append by this version leaves a row this version wrote, and a
+  // reader must be told that rather than infer it from which attributes happen
+  // to be present.
   const sets = [
     '#u = :u',
     '#c = if_not_exists(#c, :c)',

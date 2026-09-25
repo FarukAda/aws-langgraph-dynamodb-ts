@@ -114,11 +114,9 @@ export async function readWindow(
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
-    /**
-     * A message newer than this version reads, and a row that is not one of
-     * this adapter's at all, both fail loudly rather than vanishing from the
-     * window.
-     */
+    // A message newer than this version reads, and a row that is not one of
+    // this adapter's at all, both fail loudly rather than vanishing from the
+    // window.
     const item = parseSessionMessageRow(context, sessionId, raw);
     if (isExpiredRow(item, now)) continue;
     items.push(item);

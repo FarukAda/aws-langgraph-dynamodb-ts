@@ -561,12 +561,10 @@ export async function buildCheckpointRows(
     objectId,
     row: { pk, sk: payloadSortKey(checkpointNs, checkpointId) },
   });
-  /**
-   * The checkpoint's object is already uploaded by the time the metadata is
-   * encoded, so a metadata payload the serde refuses — or cannot represent —
-   * would otherwise strand it: the transaction that would have named it never
-   * goes out. See {@link releaseUploads} for why deleting it needs no check.
-   */
+  // The checkpoint's object is already uploaded by the time the metadata is
+  // encoded, so a metadata payload the serde refuses — or cannot represent —
+  // would otherwise strand it: the transaction that would have named it never
+  // goes out. See {@link releaseUploads} for why deleting it needs no check.
   let metadataDescriptor: PayloadDescriptor;
   try {
     metadataDescriptor = await encodePayload(request.metadata, deps, {
@@ -578,14 +576,12 @@ export async function buildCheckpointRows(
     await releaseUploads(context, [checkpointDescriptor], 'put.encode');
     throw error;
   }
-  /**
-   * The META row takes part in the recency index, so that a `saver.list`
-   * without a `thread_id` can stream checkpoints across threads from the index,
-   * newest first, instead of scanning the table, when `indexName` is set. The
-   * PAYLOAD and WRITE rows do not: nothing lists them across partitions, and
-   * indexing them would pay an extra write for an access pattern that does not
-   * exist.
-   */
+  // The META row takes part in the recency index, so that a `saver.list`
+  // without a `thread_id` can stream checkpoints across threads from the index,
+  // newest first, instead of scanning the table, when `indexName` is set. The
+  // PAYLOAD and WRITE rows do not: nothing lists them across partitions, and
+  // indexing them would pay an extra write for an access pattern that does not
+  // exist.
   const index = indexKeys(
     'CHKPT',
     checkpointId,
@@ -651,11 +647,9 @@ export async function buildWriteRows(
   // {@link releaseUploads} for why they are safe to delete unconditionally.
   try {
     for (const { channel, value, index, occurrence } of resolveWriteIndices(request.writes)) {
-      /**
-       * `channel` is part of the key as well as the index: two channels can
-       * share an index (each channel's first occurrence is 0), so without it
-       * their uploads would collide on one S3 object within a single call.
-       */
+      // `channel` is part of the key as well as the index: two channels can
+      // share an index (each channel's first occurrence is 0), so without it
+      // their uploads would collide on one S3 object within a single call.
       const sk = writeSortKey({ checkpointNs, checkpointId, taskId, index, channel });
       const descriptor = await encodePayload(value, deps, {
         keyParts: [threadId, checkpointNs, checkpointId, taskId, `write-${index}`, channel],
@@ -669,13 +663,11 @@ export async function buildWriteRows(
         taskId,
         index,
         channel,
-        /**
-         * Shared by every row this call writes. Positions shift when a retried
-         * task's write mix changes, so a channel an earlier call already
-         * committed can land at a second index and be replayed twice; the group
-         * is what lets the read side tell that apart from a channel a single
-         * call legitimately wrote more than once.
-         */
+        // Shared by every row this call writes. Positions shift when a retried
+        // task's write mix changes, so a channel an earlier call already
+        // committed can land at a second index and be replayed twice; the group
+        // is what lets the read side tell that apart from a channel a single
+        // call legitimately wrote more than once.
         writeGroup,
         occurrence,
         value: descriptor,
@@ -945,17 +937,15 @@ export function resolveWriteIndices(writes: PendingWrite[]): ResolvedWrite[] {
 export function dropSupersededWrites(items: CheckpointWriteRow[]): CheckpointWriteRow[] {
   const identity = (item: CheckpointWriteRow): string =>
     JSON.stringify([item.taskId, item.channel, item.occurrence ?? 0]);
-  /**
-   * The call a row belongs to, as something orderable. A row written before
-   * `writeGroup` existed carries none and is older than every row that does —
-   * the empty string sorts before any ULID.
-   *
-   * Keeping the raw `undefined` reversed first-write-wins across an upgrade: a
-   * `Map` cannot tell a key whose value is absent from one whose value *is*
-   * `undefined`, so the guard that checks "nothing recorded yet" fired again on
-   * the pre-upgrade row's own entry and let the next, newer row overwrite it.
-   * Normalising at the edge removes the ambiguity instead of testing for it.
-   */
+  // The call a row belongs to, as something orderable. A row written before
+  // `writeGroup` existed carries none and is older than every row that does —
+  // the empty string sorts before any ULID.
+  //
+  // Keeping the raw `undefined` reversed first-write-wins across an upgrade: a
+  // `Map` cannot tell a key whose value is absent from one whose value *is*
+  // `undefined`, so the guard that checks "nothing recorded yet" fired again on
+  // the pre-upgrade row's own entry and let the next, newer row overwrite it.
+  // Normalising at the edge removes the ambiguity instead of testing for it.
   const groupOf = (item: CheckpointWriteRow): string => item.writeGroup ?? '';
   const earliestGroup = new Map<string, string>();
   for (const item of items) {

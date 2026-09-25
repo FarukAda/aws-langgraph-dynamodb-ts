@@ -183,11 +183,9 @@ export async function queryRecencyIndex(options: IndexQueryOptions): Promise<Ind
     if (row === undefined) break;
     items.push(row);
   }
-  /**
-   * Rows remain when a shard still buffers a row or has not reported its end.
-   * Either way the loop stopped on a full page, so the page is non-empty and
-   * its last row is the right place to resume.
-   */
+  // Rows remain when a shard still buffers a row or has not reported its end.
+  // Either way the loop stopped on a full page, so the page is non-empty and
+  // its last row is the right place to resume.
   const remain = readers.some((reader) => reader.buffer.length > 0 || !reader.exhausted);
   return {
     items,

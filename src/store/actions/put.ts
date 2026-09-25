@@ -67,11 +67,9 @@ export async function putItem(context: StoreContext, op: ParsedPut | ParsedDelet
   const value = op.value;
   const timestamp = nowIso();
   const existing = await readExisting(context, itemRowKey(op.address));
-  /**
-   * The two indexing modes are exclusive, so only one of them embeds: the row
-   * carries a vector per extracted path, while a configured backend takes one
-   * vector per item because that is what its `upsert` contract addresses.
-   */
+  // The two indexing modes are exclusive, so only one of them embeds: the row
+  // carries a vector per extracted path, while a configured backend takes one
+  // vector per item because that is what its `upsert` contract addresses.
   const embedding = await itemVector(context, op);
   const embeddings = context.vectorBackend ? undefined : await resolvePassages(context, op, value);
   const ttlTimestamp = context.ttl ? calculateTtlTimestamp(context.ttl) : undefined;

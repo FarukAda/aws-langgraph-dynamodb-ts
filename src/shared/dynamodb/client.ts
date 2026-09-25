@@ -110,21 +110,19 @@ export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDy
     return { ddbClient: undefined, client: options.client, ownsClient: false };
   }
   const createClient = options.createClient ?? ((config) => new DynamoDBClient(config));
-  /**
-   * `throwOnRequestTimeout` is what makes the request timeout a bound: without
-   * it the handler only logs a warning when the timeout is breached.
-   * `socketTimeout` is here because `requestTimeout` stops applying the moment
-   * response *headers* arrive — the handler resolves there and clears its
-   * timers — so it says nothing about a response body that then stalls
-   * mid-stream, and an idle timer does. No `connectionTimeout` is passed,
-   * deliberately — its timer starts when the request is created and is
-   * cleared only when the agent *assigns* a socket, so the time a request
-   * spends queued behind `maxSockets` counts against it. At the thousand-wide
-   * fan-out this package documents, any value short enough to be useful
-   * destroys healthy writes that this library then retries, and any value
-   * long enough to be safe bounds nothing the request timeout does not
-   * already bound.
-   */
+  // `throwOnRequestTimeout` is what makes the request timeout a bound: without
+  // it the handler only logs a warning when the timeout is breached.
+  // `socketTimeout` is here because `requestTimeout` stops applying the moment
+  // response *headers* arrive — the handler resolves there and clears its
+  // timers — so it says nothing about a response body that then stalls
+  // mid-stream, and an idle timer does. No `connectionTimeout` is passed,
+  // deliberately — its timer starts when the request is created and is
+  // cleared only when the agent *assigns* a socket, so the time a request
+  // spends queued behind `maxSockets` counts against it. At the thousand-wide
+  // fan-out this package documents, any value short enough to be useful
+  // destroys healthy writes that this library then retries, and any value
+  // long enough to be safe bounds nothing the request timeout does not
+  // already bound.
   const ddbClient = createClient({
     maxAttempts: 1,
     requestHandler: {

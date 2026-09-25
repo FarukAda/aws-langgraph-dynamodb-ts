@@ -473,7 +473,7 @@ export async function buildStoreRow(
     objectId: rev,
     row: { pk, sk },
   });
-  /** Store items are listed across partitions by a rootless search, so they are indexed. */
+  // Store items are listed across partitions by a rootless search, so they are indexed.
   const index = indexKeys(
     'STORE',
     sk,
