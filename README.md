@@ -1161,7 +1161,7 @@ const sessionAfter = history.forSession('session-1');
 
 **Checkpoints.** This package has no tested way to copy them, so it offers none. Two strategies need no copy: let the threads that already exist finish on the old saver while new threads start on `DynamoDBSaver`, compiling the graph once per saver and choosing between them by `thread_id`; or start fresh, which is what a `MemorySaver` deployment does at every restart anyway.
 
-**Store items.** Any `BaseStore` can be copied through the public store API. The copy re-embeds every item it writes with the target's `index`, and each copied item's `createdAt` and `updatedAt` are the time of the copy:
+**Store items.** A `BaseStore` can be copied through the public store API. When the target has an `index`, the copy embeds every item it writes with the target's `index` fields, whatever the source indexed it with — an item put there with `index: false` is embedded here — and each copied item's `createdAt` and `updatedAt` are the time of the copy:
 
 ```typescript
 import type { BaseStore, PutOperation } from '@langchain/langgraph-checkpoint';
@@ -1171,28 +1171,24 @@ declare const source: BaseStore; // the store you are leaving
 declare const target: DynamoDBStore;
 
 const PAGE = 100;
-const sameNamespace = (a: string[], b: string[]) =>
-  a.length === b.length && a.every((label, i) => label === b[i]);
+const copied = new Set<string>();
 
-for (let namespaceOffset = 0; ; namespaceOffset += PAGE) {
-  const namespaces = await source.listNamespaces({ limit: PAGE, offset: namespaceOffset });
-  for (const namespace of namespaces) {
-    for (let offset = 0; ; offset += PAGE) {
-      const items = await source.search(namespace, { limit: PAGE, offset });
-      // search matches a prefix, so a page also holds items of deeper namespaces;
-      // each item is copied once, from the listing entry of its own namespace.
-      const puts: PutOperation[] = items
-        .filter((item) => sameNamespace(item.namespace, namespace))
-        .map((item) => ({ namespace: item.namespace, key: item.key, value: item.value }));
-      await target.batch(puts);
-      if (items.length < PAGE) break;
-    }
+for (let offset = 0; ; offset += PAGE) {
+  // The empty prefix matches every namespace, so one paged walk reaches every item.
+  const items = await source.search([], { limit: PAGE, offset });
+  const puts: PutOperation[] = [];
+  for (const item of items) {
+    const id = JSON.stringify([item.namespace, item.key]); // a safety net: each item is written once
+    if (copied.has(id)) continue;
+    copied.add(id);
+    puts.push({ namespace: item.namespace, key: item.key, value: item.value });
   }
-  if (namespaces.length < PAGE) break;
+  await target.batch(puts);
+  if (items.length < PAGE) break;
 }
 ```
 
-Both listings are paged because `BaseStore`'s own `search` and `listNamespaces` answer ten items and a hundred namespaces when no `limit` is given, and offset paging is only stable while nothing writes to the source, so run the copy with the source idle. The items are written with `batch` rather than `put`: `put()` alone applies upstream's rules of no `.` in a namespace label and no `"langgraph"` root, while a graph writes through `batch()`, which accepts both, so a namespace such as `['memories', 'jane.doe@example.com']` that a graph wrote copies too. An item this package's identifier rules refuse — a label or key holding `#`, say — fails its whole batch with a `VALIDATION` error naming the field, before any of that batch is written; the batches before it are already in the table, and running the copy again rewrites them.
+The walk is paged because `BaseStore`'s own `search` answers ten items when no `limit` is given, and it pages over the whole store rather than over `listNamespaces()` because `InMemoryStore` keys a namespace by its labels joined with `:` and lists it by splitting on `:` again, so `['user:42', 'memories']` is listed as `['user', '42', 'memories']` — a per-namespace walk would miss that item. `InMemoryStore` answers `search([])` with every item once, in an order that stays fixed while nothing writes to it — namespaces in the order each was first written, and items within one in the order they were first written — so offset paging is stable only with the source idle: run the copy then. That is the one source this recipe has been checked against. Another backend's `search([])` may order or cap differently — a `DynamoDBStore` source, for one, scans the table for it and refuses with `RESULT_TRUNCATED` a page whose `offset + limit` passes its `maxScanItems` ([Plain (metadata) search](#plain-metadata-search)) — so check how yours pages before relying on this. The items are written with `batch` rather than `put`: `put()` alone applies upstream's rules of no `.` in a namespace label and no `"langgraph"` root, while a graph writes through `batch()`, which accepts both, so a namespace such as `['memories', 'jane.doe@example.com']` that a graph wrote copies too. An item whose address this package refuses — a label or key holding `#`, say — fails its batch with a `VALIDATION` error naming the field before any of that batch is written; a value it cannot store, or embeddings whose length disagrees with `index.dims`, can fail the batch after other operations in it have run. Either way the batches before it are already in the table, and running the copy again rewrites them.
 
 ### Migrating from earlier versions
 
