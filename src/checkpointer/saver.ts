@@ -2,12 +2,13 @@
  * Hides the checkpointer's collaborators behind LangGraph's saver contract.
  *
  * `DynamoDBSaver` is the `BaseCheckpointSaver` a graph is handed: it resolves
- * its client, offloader, logger and retry policy once and delegates each read
- * and write to one action. Each asynchronous method is also the error
- * boundary, so a raw AWS SDK error never reaches a caller unclassified
- * (record 13); `destroy` releases what the saver owns and is the one
- * synchronous exception. Actions can be split, merged or reordered without
- * the public surface moving.
+ * its client, offloader, logger and retry policy once and delegates each
+ * read and write to one action, save `getDeltaChannelHistory`, whose walk
+ * lives in `internal/delta-history` instead. Each asynchronous method is
+ * also the error boundary, so a raw AWS SDK error never reaches a caller
+ * unclassified (record 13); `destroy` releases what the saver owns and is
+ * the one synchronous exception. Actions can be split, merged or reordered
+ * without the public surface moving.
  */
 
 import type { RunnableConfig } from '@langchain/core/runnables';

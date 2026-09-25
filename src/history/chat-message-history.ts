@@ -4,11 +4,11 @@
  * The public class holds only what it resolved from its options and routes
  * each read and write to the action that implements it, through
  * `guardPublic`. Each asynchronous method is the error boundary, so no error
- * but the library's own reaches a caller (record 13); `destroy` releases what
- * the adapter owns and is the one synchronous exception. Where an action
+ * but the library's own reaches a caller (record 13); the synchronous
+ * `destroy` and `forSession` are the exceptions — the latter is also the
+ * one route from it to LangChain's single-session history. Where an action
  * lives, how it reads or writes, and which client or offloader it uses can
- * change without touching this surface; `forSession` is the one route from it
- * to LangChain's single-session history.
+ * change without touching this surface.
  */
 
 import type { BaseMessage } from '@langchain/core/messages';
