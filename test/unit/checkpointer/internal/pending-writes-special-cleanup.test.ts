@@ -227,7 +227,7 @@ async function builtItem(value: unknown, writeGroup: string): Promise<Checkpoint
 const keyOf = (built: CheckpointWriteItem): string => (built.value as { s3Key: string }).s3Key;
 
 /**
- * The timeline of C-02b, with every call uploading under its own writeGroup:
+ * The timeline below shows every call uploading under its own writeGroup:
  *
  * 1. No row exists when this call reads it, so its put is pinned to "no row".
  * 2. Every attempt at that put times out, so the retry budget is spent.
@@ -258,7 +258,7 @@ async function raceOnSpecialRow(racerValue: object | null) {
   return { error, deleted, own: keyOf(own) };
 }
 
-describe("writeSpecialItemsWithCleanup never releases a racer's committed object (C-02b)", () => {
+describe("writeSpecialItemsWithCleanup never releases a racer's committed object", () => {
   it.each([
     ['the same value', { error: 'boom' }],
     ['another value', { error: 'another' }],

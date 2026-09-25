@@ -69,7 +69,7 @@ const deletedBy = (offloader: ReturnType<typeof trackingOffloader>): string[] =>
   offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
 
 /**
- * The timeline of C-02a, with every put uploading under its own `rev`:
+ * The timeline below shows every put uploading under its own `rev`:
  *
  * 1. This call reads row E and uploads its value under its own `rev`.
  * 2. Every attempt at its put times out, so the retry budget is spent.
@@ -80,7 +80,7 @@ const deletedBy = (offloader: ReturnType<typeof trackingOffloader>): string[] =>
  *
  * The invariant is that the racer's committed object is never released.
  */
-describe("store.put never releases a racer's committed object when its own write fails ambiguously (C-02a)", () => {
+describe("store.put never releases a racer's committed object when its own write fails ambiguously", () => {
   it.each([
     ['the same value', OP.value],
     ['another value', { name: 'someone else' }],

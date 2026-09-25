@@ -51,7 +51,7 @@ async function rowWithout(ctx: StoreContext, key: string, ...missing: string[]):
  * `toISOString`. The row is narrowed away instead, where every other row this
  * adapter cannot speak for already is.
  */
-describe('parseWholeStoreRow (L-05b)', () => {
+describe('parseWholeStoreRow', () => {
   it('narrows a row carrying both timestamps', async () => {
     const record = await rowWithout(context({} as never), 'good');
 
@@ -91,7 +91,7 @@ describe('parseWholeStoreRow (L-05b)', () => {
   });
 });
 
-describe('a store listing over a mix of good and bad rows (L-05b)', () => {
+describe('a store listing over a mix of good and bad rows', () => {
   it('returns the items whose rows carry timestamps and skips the one that does not', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);

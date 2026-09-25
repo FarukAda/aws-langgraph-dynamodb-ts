@@ -130,6 +130,15 @@ describe('planReferencesIn', () => {
     ]);
   });
 
+  it('flags a finding id with a lowercase letter suffix, parenthesised and bare', () => {
+    const source = ['// the timeline of (C-02b) explains it', '// see bare L-05b too'].join('\n');
+    expect(planReferencesIn(source, 'a.ts').map((hit) => hit.text)).toEqual([
+      '(C-02b)',
+      'C-02b',
+      'L-05b',
+    ]);
+  });
+
   it('does not flag legitimate BatchWriteItem retry-round prose', () => {
     const source = [
       '// Round 1: 5 items in, 3 persist (a,b,c), 2 (d,e) come back unprocessed.',

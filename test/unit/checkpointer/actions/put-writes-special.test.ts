@@ -71,7 +71,7 @@ describe('putWrites special (negative-index) writes', () => {
     // Promise.all before this regular write's own failed-upload cleanup ran.
     // The special write's own upload is kept: its put was never attempted, but
     // the failed read establishes nothing about the row, which a racer that
-    // wrote the same value may already hold under that very key (C-02b). The
+    // wrote the same value may already hold under that very key. The
     // regular write's own post-failure verification read must succeed (row
     // absent) for its upload to count as confirmed dead, so only the special
     // row's read is failed.

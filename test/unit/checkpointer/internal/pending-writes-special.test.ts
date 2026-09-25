@@ -176,8 +176,8 @@ describe('writeSpecialItem', () => {
 
   /**
    * The failed read establishes nothing about the row, which a racer may hold
-   * with this item's key, so the upload is reported kept, like every outcome
-   * nothing confirmed (C-02b).
+   * with this item's key, so the upload is reported kept: an outcome that
+   * confirms nothing always keeps the upload.
    */
   it('never rejects, and keeps the upload without attempting a put, when the first read fails', async () => {
     let puts = 0;

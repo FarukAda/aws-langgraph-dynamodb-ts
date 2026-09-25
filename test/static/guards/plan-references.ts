@@ -71,12 +71,13 @@ const UNTRACKED_PLANNING_FILE =
   /live-validation(?:-delete)?\.md|design-offload-durability|\.superpowers\b/;
 
 /**
- * One id a review or audit gave a finding — `SEC-03`, `C-01`, or the short
- * `M7`/`I4` form — never a claim id of `docs/evidence` (`E-14`), a divergence
- * id of the README (`V-26`) or a standard's name (`UTF-16`, `CWE-117`,
- * `SHA-256`), which all resolve.
+ * One id a review or audit gave a finding — `SEC-03`, `C-01`, the short
+ * `M7`/`I4` form, or any of those with one lowercase letter appended for a
+ * sub-finding (`C-02b`) — never a claim id of `docs/evidence` (`E-14`), a
+ * divergence id of the README (`V-26`) or a standard's name (`UTF-16`,
+ * `CWE-117`, `SHA-256`), which all resolve.
  */
-const FINDING_ID = String.raw`(?!(?:E|V|UTF|CWE|SHA|RFC|ISO)-\d)(?:[A-Z]{1,6}-\d{1,3}|[A-Z]\d{1,2})`;
+const FINDING_ID = String.raw`(?!(?:E|V|UTF|CWE|SHA|RFC|ISO)-\d)(?:[A-Z]{1,6}-\d{1,3}[a-z]?|[A-Z]\d{1,2}[a-z]?)`;
 
 /**
  * Finding ids in parentheses, alone or as a comma-separated list — `(SEC-03)`,
@@ -86,9 +87,13 @@ const FINDING_ID = String.raw`(?!(?:E|V|UTF|CWE|SHA|RFC|ISO)-\d)(?:[A-Z]{1,6}-\d
  */
 const AUDIT_ID_LIST = new RegExp(String.raw`\(${FINDING_ID}(?:,\s*${FINDING_ID})*\)`);
 
-/** A finding id with one of the audit's own prefixes, wherever it stands. */
+/**
+ * A finding id with one of the audit's own prefixes, wherever it stands, with
+ * an optional single lowercase letter suffix for a sub-finding (`C-02b`).
+ * `FNV-1a` never matches: `FNV` is not one of these prefixes.
+ */
 const AUDIT_ID_PREFIXED =
-  /\b(?:SEC|HIST|DDB|CORE|CODEC|STORE|CKPT|TEST|PKG|DOCS|REL|C|H|M|L)-\d{2}\b/;
+  /\b(?:SEC|HIST|DDB|CORE|CODEC|STORE|CKPT|TEST|PKG|DOCS|REL|C|H|M|L)-\d{2}[a-z]?\b/;
 
 /**
  * Known limits, left unwidened on purpose:
