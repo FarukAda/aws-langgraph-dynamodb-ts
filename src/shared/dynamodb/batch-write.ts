@@ -116,9 +116,9 @@ export interface DrainOptions {
 
 /**
  * The backoff window between rounds: the adapter's configured policy, never
- * module constants. Reading the constants here meant a caller raising
- * `baseDelayMs` still got 100 ms on this one path, so the documented "one
- * policy governs every wait" held everywhere except the drain.
+ * module constants — reading the constants here instead would leave a caller
+ * who raises `baseDelayMs` still waiting the module's default 100 ms on this
+ * one path, breaking the documented "one policy governs every wait".
  */
 function drainBackoff(retry?: RetryOptions): { base: number; max: number } {
   return {

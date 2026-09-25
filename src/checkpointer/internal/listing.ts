@@ -112,8 +112,8 @@ export function listScan(context: CheckpointerContext, scope: ListScope): ScanCo
  * "Older" is {@link compareSortKeys}, because on the query path the same bound
  * is already a `BETWEEN` on the composed sort key, which DynamoDB evaluates in
  * UTF-8 byte order. JavaScript's `<` orders UTF-16 code units instead, and at
- * an astral id the two disagree — which turned the redundant pass into a
- * second, different filter that dropped rows the query had rightly returned.
+ * an astral id the two disagree, so `<` here would turn the redundant pass
+ * into a second, different filter that drops rows the query rightly returned.
  * Every id in one namespace shares its sort key's prefix, so comparing the id
  * is comparing the sort key.
  *

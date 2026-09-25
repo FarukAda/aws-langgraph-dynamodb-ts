@@ -88,8 +88,8 @@ export const MAX_LOGGED_LABELS = 8;
  * (`src/shared/dynamodb/table-schema.ts`) and `MAX_S3_KEY_BYTES`
  * (`src/shared/codec/s3/config.ts`) rather than an alias of either, for the
  * reason `LIST_SCAN_WARN_THRESHOLD` (`src/shared/dynamodb/paginate.ts`)
- * records: aliasing two caps has already meant that retuning one silently
- * moved the other, and these three answer unrelated questions.
+ * records: aliasing two caps would move one whenever the other is retuned,
+ * and these three answer unrelated questions.
  */
 export const MAX_RELAYED_MESSAGE_CHARS = 1024;
 

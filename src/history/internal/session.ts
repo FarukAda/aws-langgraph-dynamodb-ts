@@ -1,5 +1,5 @@
 /**
- * Hides the SESSION row: the one module that reads or writes what it carries.
+ * Hides the SESSION row: what it carries and how each field changes.
  *
  * A session's metadata — `messageCount`, `title`, `createdAt`, `updatedAt`,
  * `ttl`, the `writeId` of the last append, and the recency-index keys — lives
@@ -8,7 +8,10 @@
  * adds to it in the same transaction that writes the messages, a rolled-back
  * append subtracts exactly what it added (and never from a later incarnation of
  * the session), a repair recomputes it under a compare-and-swap, and a listing
- * reads it back only from a row this release can summarise.
+ * reads it back only from a row this release can summarise. The recency-index
+ * keys are the one field this module does not write alone: `sessionIndexTarget`
+ * below tells `src/backfill/backfill.ts` which row is a SESSION row, and
+ * backfill writes the keys onto it directly, for a row that predates the index.
  */
 
 import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
@@ -44,12 +47,13 @@ import { historyPartitionPrefix, SESSION_SORT_KEY, sessionPartition, sessionRowK
 import type { HistoryContext } from './setup';
 
 /**
- * True when a TransactWriteItems cancellation was caused by a
- * ConditionalCheckFailed reason. Named distinctly from
+ * True when the transaction's first item — the SESSION row update or delete,
+ * since both callers below send a single-item transaction — failed its
+ * ConditionExpression. Named distinctly from
  * shared/dynamodb/idempotent-write.ts's isConditionalCheckFailed, which
- * checks a different thing entirely (a raw PutItem exception name, not a
- * transaction cancellation reason) — sharing that name would be a real trap
- * for whoever read one assuming it was the other.
+ * classifies a rejection (a PutItem exception or a cancelled transaction's
+ * reasons alike) without asking which item caused it — sharing that name
+ * would be a real trap for whoever read one assuming it was the other.
  */
 function isCancelledByCondition(error: Error): boolean {
   return conditionFailedAt(error, 0);

@@ -20,7 +20,8 @@ export const REDACTED = '[REDACTED]';
  * ends with it. Suffix matching is what catches `secretAccessKey`, `x-api-key`,
  * `client_secret` and `AUTH_TOKEN`; requiring the pattern to be a suffix, not a
  * substring, is what spares `maxTokens`, `total_tokens`, `tokenizer` and
- * `secretary`, which the old substring rule redacted.
+ * `secretary` — a bare substring match would redact all four for merely
+ * containing `token` or `secret`.
  */
 export const DEFAULT_SECRET_KEY_PATTERNS: readonly string[] = [
   'accesskey',

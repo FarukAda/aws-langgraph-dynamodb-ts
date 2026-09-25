@@ -1,9 +1,9 @@
 /**
  * Hides that a Query or a Scan is many pages.
  *
- * A read receives items one at a time and never sees a page boundary. How many
- * items and pages it may collect before it refuses with `RESULT_TRUNCATED`
- * rather than truncating silently, how a read that stopped exactly at its item
+ * A read receives rows one at a time and never sees a page boundary. How many
+ * rows and pages it may collect before it refuses with `RESULT_TRUNCATED`
+ * rather than truncating silently, how a read that stopped exactly at its row
  * cap probes whether anything remained, and where cancellation is checked
  * between pages are decided here, the same way for a Query and a Scan.
  */
@@ -23,17 +23,17 @@ export const MAX_TOTAL_ROWS_IN_MEMORY = 10000;
 
 /**
  * Raw rows a single `listCheckpoints` call may pull before it warns. The read
- * itself is deliberately unbounded — capping it counted raw rows rather than
- * filter-matched ones, which turned a caller asking for a handful of rare
- * matches over a large thread into a hard error instead of the true answer.
- * The warning restores the operational signal without restoring the wrong
- * error.
+ * itself is deliberately unbounded: capping it would count raw rows rather
+ * than filter-matched ones, so a caller asking for a handful of rare matches
+ * over a large thread would get a hard error instead of the true answer. The
+ * warning gives the operational signal without that wrong error.
  *
  * Its own literal, deliberately: this is the point at which a scan is worth
  * telling an operator about, which is independent of
- * {@link MAX_TOTAL_ROWS_IN_MEMORY}'s hard collection cap. Aliasing the two
- * meant retuning the memory cap silently moved the warning as well, and it
- * left the pair reported as a duplicate export.
+ * {@link MAX_TOTAL_ROWS_IN_MEMORY}'s hard collection cap. Aliasing the two —
+ * so one reused the other's literal — would let retuning the memory cap
+ * silently move the warning threshold too, for constants that answer
+ * unrelated questions.
  */
 export const LIST_SCAN_WARN_THRESHOLD = 10000;
 

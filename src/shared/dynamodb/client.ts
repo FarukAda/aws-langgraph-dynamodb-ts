@@ -1,10 +1,10 @@
 /**
  * Hides the DynamoDB client: the part of the DocumentClient this package calls,
- * the item shapes that part speaks, and how a client this package builds bounds
+ * the row shapes that part speaks, and how a client this package builds bounds
  * each request.
  *
  * The structural type is what lets a caller inject any DocumentClient-shaped
- * object, and it is public; the item shapes travel through every module that
+ * object, and it is public; the row shapes travel through every module that
  * reads or writes a row; the construction is the one place a request timeout
  * and a socket timeout are set, and the one place that knows whether the
  * adapter owns the client it holds.

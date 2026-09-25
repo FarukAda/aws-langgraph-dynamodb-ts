@@ -83,11 +83,12 @@ function isDry(reader: ShardReader): boolean {
  * `MAX_LOOP_ITERATIONS` pages, throws `RESULT_TRUNCATED` without issuing a
  * query — so a shard that answers with empty pages forever ends the listing
  * there. A second cap here could only ever fire after that one, which makes it
- * a branch no test could reach. What did once spin was a `mapWithConcurrency`
- * that started zero workers for a non-integer `concurrency`: the call returned
- * having read nothing, so no shard advanced and no page count grew. The fix
- * belongs there, in the floor that now cannot yield zero workers, and not in a
- * cap papering over a collaborator that silently did nothing.
+ * a branch no test could reach: {@link mapWithConcurrency}'s own floor (in
+ * `shared/concurrency.ts`) never starts zero workers, even for a
+ * non-integer or zero `concurrency`, so a pass here always advances at least
+ * one dry shard or reads nothing because none is dry. A collaborator that
+ * could silently spin without reading anything belongs fixed at that floor,
+ * not papered over by a cap here.
  */
 async function refillDryShards(
   options: IndexQueryOptions,

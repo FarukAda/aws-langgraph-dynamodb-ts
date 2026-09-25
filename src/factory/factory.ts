@@ -152,15 +152,17 @@ export class DynamoDBFactory {
    * (`offloaderConfigFor`), but the adapters {@link createAll} builds are given
    * the one shared `client` instead — and a `clientConfig` beside a `client` is
    * refused, because for the DynamoDB client it would be silently ignored. So
-   * the region has to be carried here, on the config that still needs it. A
-   * bucket reachable only through that region otherwise failed with an opaque
-   * `PermanentRedirect` on the first offload, while the identical configuration
-   * through `createStore` worked.
+   * the region has to be carried here, on the config that still needs it:
+   * without it, a bucket reachable only through that region fails with an
+   * opaque `PermanentRedirect` on the first offload, unlike the identical
+   * configuration through `createStore`, which resolves its own region
+   * directly.
    *
    * A base `s3`, or its `clientConfig`, that is not an object is handed on
-   * unchanged, for each adapter to refuse by its own name. Reading a region off
-   * a `null` one crashed here, and filling a region into a malformed
-   * `clientConfig` turned it into an object the adapter then accepted.
+   * unchanged, for each adapter to refuse by its own name: reading `.region`
+   * off a `null` one would throw here instead, and writing a region into a
+   * malformed `clientConfig` would turn it into an object shape an adapter
+   * then accepts instead of refusing.
    */
   private sharedS3(): S3OffloadConfig | undefined {
     const s3 = this.base.s3;
@@ -194,8 +196,9 @@ export class DynamoDBFactory {
    *
    * Throws: `VALIDATION` for any invalid option, naming it as the saver's
    * constructor does — `options` for a value that is not an object, checked
-   * before the defaults are laid under it: `null` crashed reading `client`
-   * off it, and a string was spread into its characters.
+   * before the defaults are laid under it: reading `.client` off a `null`
+   * value would throw here, and spreading a string would iterate its
+   * characters instead of refusing them.
    */
   createSaver(options: DynamoDBSaverOptions): DynamoDBSaver {
     assertObjectShape(options, 'options');

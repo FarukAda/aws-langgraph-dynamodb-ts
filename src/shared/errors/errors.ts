@@ -280,8 +280,9 @@ export function batchWriteAllIncompleteError(
  * errors is redacted before it is embedded.
  *
  * Throws: nothing; building an error may not fail. Reading `.message` off a
- * thrown non-`Error` crashed here, inside the `catch` that was reporting the
- * rollback.
+ * thrown non-`Error` would throw here, inside the `catch` reporting the
+ * rollback — which is why `toError` normalises both `cause` and
+ * `rollbackError` before anything reads off them.
  */
 export function compensationFailedError(
   cause: Error,

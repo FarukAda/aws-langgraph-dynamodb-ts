@@ -62,16 +62,16 @@ export interface PendingSendsSource extends ThreadLocation {
  * Rows one page of the newest-first META read evaluates. The read stops at the
  * first live row of ours, so this decides only how many *dead* rows one round
  * trip can step over: at one row per page, a thread whose head has aged out
- * under a `ttl` cost one `Query` per expired row, and DynamoDB's own sweep may
- * lag that `ttl` by up to 48 hours, so the run of dead rows is as long as the
- * thread is busy. This is the hottest read the package performs — every graph
- * step begins with it — so paying a round trip per aged-out row was the wrong
- * side of the trade.
+ * under a `ttl` costs one `Query` per expired row, and DynamoDB's own sweep may
+ * lag that `ttl` by up to 48 hours, so the run of dead rows can be as long as
+ * the thread is busy. This is the hottest read the package performs — every
+ * graph step begins with it — so a round trip per aged-out row is the wrong
+ * side of the trade to pay on every step.
  *
  * The trade runs the other way when nothing at the head has expired, which is
  * every thread that sets no `ttl` at all. DynamoDB applies `Limit` before the
- * filter and bills for what it evaluated, so such a read now pays for up to
- * this many META rows and keeps exactly one. A META row measures roughly 500
+ * filter and bills for what it evaluated, so such a read pays for up to this
+ * many META rows and keeps exactly one. A META row measures roughly 500
  * bytes for a typical checkpoint, which puts a page at ~26 KB: about seven
  * strongly consistent read units where a single row costs one, and a fortieth
  * of the 1 MB a `Query` may return, so the page size rather than the response

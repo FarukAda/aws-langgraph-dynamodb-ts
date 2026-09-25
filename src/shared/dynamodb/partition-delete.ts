@@ -39,8 +39,8 @@ import { rowKeyOf } from './table-schema';
  * than a caller option: this is a maintenance path, and it has no other knob.
  *
  * Its own literal at the same value as `DEFAULT_READ_CONCURRENCY`
- * (`src/shared/concurrency.ts`), not an alias of it — aliasing two limits has
- * already meant that retuning one silently moved the other (see
+ * (`src/shared/concurrency.ts`), not an alias of it — aliasing two limits
+ * would move one whenever the other is retuned (see
  * `LIST_SCAN_WARN_THRESHOLD` (`src/shared/dynamodb/paginate.ts`)).
  */
 export const DELETE_CONCURRENCY = 8;

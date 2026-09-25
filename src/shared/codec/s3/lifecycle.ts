@@ -310,10 +310,10 @@ export function markerRule(id: string, prefix: string, existing?: LifecycleRule)
  * `s3.keyPrefix` checked for shape and never for length.
  *
  * Guarantees: the scope is read wherever the rule names it, through the same
- * {@link scopeOf} the floor uses. Reading only `Filter.Prefix` let a rule in
- * the older schema through, and the rewrite then replaced its scope with this
- * one's — so the objects that rule governed silently lost their expiration,
- * and a bucket-wide rule was narrowed to this prefix.
+ * {@link scopeOf} the floor uses. Reading only `Filter.Prefix` would let a
+ * rule in the older schema through, and the rewrite would then replace its
+ * scope with this one's — so the objects that rule governs would silently
+ * lose their expiration, and a bucket-wide rule would narrow to this prefix.
  */
 export function assertNoIdCollision(
   rule: LifecycleRule | undefined,

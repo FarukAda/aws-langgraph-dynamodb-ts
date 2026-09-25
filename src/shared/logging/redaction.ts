@@ -89,15 +89,13 @@ export function redactSecrets(
 ): Redactable {
   assertStringArray(patterns, 'patterns');
   assertRegExpArray(valuePatterns, 'valuePatterns');
-  /**
-   * `walking` detects a cycle; `done` memoises a finished node. Both are
-   * needed and they answer different questions. A guard that only removed a
-   * node when its subtree finished is correct for cycles but re-walks every
-   * node reachable by more than one path, so a graph that merely *shares*
-   * structure — not even a cycle — costs exponential time: a few dozen shared
-   * objects in a sub-kilobyte argument blocked the event loop for minutes, and
-   * this is a public export reachable from caller code.
-   */
+  // `walking` detects a cycle; `done` memoises a finished node. Both are
+  // needed and they answer different questions. A guard that only removed a
+  // node when its subtree finished is correct for cycles but re-walks every
+  // node reachable by more than one path, so a graph that merely *shares*
+  // structure — not even a cycle — costs exponential time: without `done`, a
+  // few dozen shared objects in a sub-kilobyte argument would block the event
+  // loop for minutes, and this is a public export reachable from caller code.
   const walking = new WeakSet<object>();
   const done = new WeakMap<object, Redactable>();
   const walk = (current: Redactable): Redactable => {

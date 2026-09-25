@@ -5,7 +5,10 @@
  * HTTP status and its retryable trait, and from a cancelled transaction's
  * reasons — the full-jitter backoff schedule, the attempt budget and the
  * deadline that can cut it short, and the policy an adapter resolves from its
- * options at construction are one decision, used by every DynamoDB and S3 call.
+ * options at construction are one decision. Every DynamoDB call goes through
+ * it, and so does an S3 object upload and download; the bucket lifecycle calls
+ * (`maxAttempts: 1` on the S3 client) and orphan release, which retries on its
+ * own loop, do not.
  */
 
 import { nowMs } from '../clock';
@@ -41,8 +44,8 @@ export const TOKEN_IDEMPOTENCY_WINDOW_MS = 600_000;
  * still in flight when the budget ends, clock skew between this client's own
  * clock and DynamoDB's timer, and SDK-internal queueing, so a write that
  * retries to the end still finishes well inside the window its token is
- * honoured for. Its own literal rather than a division of the window: aliasing
- * two caps has already meant that retuning one silently moved the other (see
+ * honoured for. Its own literal rather than a division of the window:
+ * aliasing them would move one whenever the other is retuned (see
  * `LIST_SCAN_WARN_THRESHOLD` (`src/shared/dynamodb/paginate.ts`)).
  */
 export const MAX_WRITE_LIFETIME_MS = 300_000;
