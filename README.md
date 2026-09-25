@@ -26,12 +26,12 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 
 | | |
 | --- | --- |
-| **What it is** | **`DynamoDBSaver`** — checkpoint + pending-writes persistence (`extends BaseCheckpointSaver`); **`DynamoDBStore`** — long-term memory with optional semantic search (`extends BaseStore`); **`DynamoDBChatMessageHistory`** — multi-session chat history, with a single-session adapter (`forSession`) for `RunnableWithMessageHistory`; **`DynamoDBFactory`** — convenience constructors, including `createAll` (one shared client + a `destroy()`). One table can back all three: see [Table schema](#table-schema). |
-| **Maturity** | `1.0.0-rc.3` at the time of writing — a release candidate of `1.0` (the npm badge above shows the current version). From `1.0` every `1.x` release reads every row a `1.0` release wrote; see [Versioning and support](#versioning-and-support) for what else is promised and who maintains it. |
-| **What it costs** | Nothing for the package. You pay AWS for DynamoDB request units and storage, for S3 requests and storage when payloads offload, and your embeddings provider (and `VectorBackend`, if you use one) for what the store sends it. [What each operation costs](#what-each-operation-costs) gives the requests per call. |
-| **The limits that bite** | DynamoDB's 400 KB item: without `s3`, a serialized payload over 392 KB is refused before the write. `thread_id` and `sessionId` at most 1024 bytes of UTF-8, every other key segment at most 256 bytes, and no `#` in any identifier. The in-DynamoDB semantic ranker refuses a search with more than 1000 candidates under its prefix by default (`maxSearchCandidates`, ceiling 100 000). [Full table](#limits). |
-| **When it breaks** | One error class, `DynamoDBLangGraphError`, carrying a `code` from the 20 `ErrorCode` members, a structured `context`, and the AWS error as `cause`. [Error handling](#error-handling) is the section to read first. |
-| **When *not* to use it** | A vector corpus far beyond the in-DynamoDB ranker's ceiling with no external `VectorBackend` to delegate to; sustained writes to a single `thread_id` or `sessionId` above what one DynamoDB partition absorbs ([hot partitions](#production-notes)); existing checkpoints from another saver that must come along — the package ships no importer; or chat turns written to one session by several processes that must stay strictly ordered, since order across processes follows their wall clocks ([chat history semantics](#features)). |
+| **What it is** | Three LangGraph/LangChain adapters — a checkpoint saver, a memory store and a chat message history — plus a factory, over one DynamoDB table. [Architecture](#architecture) lists them; [Table schema](#table-schema) shows the layout. |
+| **Maturity** | Release candidates of `1.0` come before `1.0.0`; the npm badge above shows the current version. [Versioning and support](#versioning-and-support) says what each release promises and who maintains it. |
+| **What it costs** | Nothing for the package: you pay for DynamoDB, for S3 when payloads offload, and for your embeddings provider and `VectorBackend` if you use them. [What each operation costs](#what-each-operation-costs) gives the requests per call. |
+| **The limits that bite** | Without `s3`, a payload over 392 KB is refused; `thread_id` and `sessionId` are at most 1024 bytes, other key segments at most 256 bytes, and no identifier may contain `#`. In-DynamoDB semantic search refuses more than 1000 candidates by default (`maxSearchCandidates`, ceiling 100 000); [full table](#limits). |
+| **When it breaks** | One error class, `DynamoDBLangGraphError`, with a `code` from the 20 `ErrorCode` members, a structured `context` and the AWS error as `cause`. [Error handling](#error-handling) is the section to read first. |
+| **When *not* to use it** | A large vector corpus with no external `VectorBackend`, writes to one `thread_id` or `sessionId` beyond one partition's throughput ([hot partitions](#production-notes)), or checkpoints to import from another saver, for which the package has no importer. Chat turns written to one session by several processes are ordered by their wall clocks ([chat history semantics](#features)). |
 
 ## Table of Contents
 
@@ -107,7 +107,17 @@ graph LR
     Store -. "similarity search" .-> Backend["VectorBackend, optional"]
 ```
 
-Every payload — a checkpoint, its metadata, a pending write, a store value, a chat message — takes the same path on the way in: it is serialized by the adapter's `serde`, refused if that yields zero bytes, gzipped when `compression` is enabled and the bytes reach `minSizeBytes` (and kept gzipped only when that saves at least 10%), and then either kept inline or, with `s3` configured and the stored bytes at or above `thresholdBytes`, uploaded with `If-None-Match: *` under a key made of the row's identifiers and the id of the write, carrying the row's key as S3 metadata. The row stores a descriptor saying which. Reads reverse it: an offloaded key must lie under the row's own path before it is downloaded, the download is capped at `s3.maxDownloadBytes` and the gunzip at `compression.maxDecompressedBytes` (50 MiB each by default), and the configured `serde` decodes the bytes.
+Four classes do the work:
+
+- **`DynamoDBSaver`** — checkpoint + pending-writes persistence (`extends BaseCheckpointSaver`).
+- **`DynamoDBStore`** — long-term memory with optional semantic search (`extends BaseStore`).
+- **`DynamoDBChatMessageHistory`** — multi-session chat history, with a single-session adapter (`forSession`) for `RunnableWithMessageHistory`.
+- **`DynamoDBFactory`** — convenience constructors, including `createAll` (one shared client + a `destroy()`).
+
+Every payload — a checkpoint, its metadata, a pending write, a store value, a chat message — goes through the same codec.
+
+- **On the way in**, the adapter's `serde` serializes it, and zero bytes are refused. With `compression` enabled, bytes of at least `minSizeBytes` are gzipped, and kept gzipped only when that saves at least 10%. With `s3` configured, stored bytes at or above `thresholdBytes` are uploaded with `If-None-Match: *`, under a key made of the row's identifiers and the write's id, with the row's key as S3 metadata. The row keeps a descriptor saying where the payload is.
+- **On the way out**, an offloaded key must lie under the row's own path before it is downloaded. The download is capped at `s3.maxDownloadBytes` and the gunzip at `compression.maxDecompressedBytes`, 50 MiB each by default. The configured `serde` then decodes the bytes.
 
 **Checkpoint write — `saver.put`:**
 
@@ -115,22 +125,22 @@ Every payload — a checkpoint, its metadata, a pending write, a store value, a 
 2. The checkpoint, then its metadata, are encoded as above; the saver's `serde` defaults to LangGraph's `JsonPlusSerializer`. If the metadata cannot be encoded, the checkpoint's upload is released at once.
 3. Without `s3`, a payload over 392 KB is refused with a `VALIDATION` error naming `payload` before any write.
 4. One `TransactWriteItems` writes the `META` row (the metadata descriptor, the parent checkpoint id, the recency-index keys) and the `PAYLOAD` row (the checkpoint descriptor), both stamped with the `ttl` when one is configured. It carries a client request token drawn once, so every retry re-sends the identical request and a retry after a lost acknowledgement is not applied twice.
-5. If the transaction fails with `s3` configured, a consistent `GetItem` of the row carrying an offloaded descriptor decides the outcome: the transaction committed after all (success), did not commit (this call's uploads are deleted, the error is thrown), or cannot be told (nothing is deleted, the error is thrown).
+5. If the transaction fails with `s3` configured and a payload was offloaded, a consistent `GetItem` of the row carrying the offloaded descriptor decides the outcome: the transaction committed after all (success), did not commit (this call's uploads are deleted, the error is thrown), or cannot be told (nothing is deleted, the error is thrown). With nothing offloaded there is nothing to protect: no read is spent and the error is thrown as it came.
 
 **Checkpoint read — `saver.getTuple`:**
 
 1. A config naming no thread answers `undefined`. Otherwise the `META` row is a consistent `GetItem` when `checkpoint_id` is given, or a consistent newest-first `Query` of the namespace's `META#` rows, 50 per page, keeping the first live one.
 2. A consistent `GetItem` reads the `PAYLOAD` row; when it is not there the answer is `undefined`.
 3. The checkpoint and the metadata are decoded while a consistent `Query` reads every pending `WRITE` row of the checkpoint, uncapped; superseded writes are dropped and the rest decoded `readConcurrency` at a time (8 by default).
-4. A row whose format version `v` is newer than this release reads fails with `FORMAT_UNSUPPORTED`, and rows past their `ttl` are skipped, however long DynamoDB's sweep lags.
+4. A row whose format version `v` is newer than this release understands fails with `FORMAT_UNSUPPORTED`. A `META` row past its `ttl` is treated as absent, however long DynamoDB's sweep lags.
 
 **Store — `store.put` and `store.search`:**
 
 1. `put` reads the row it replaces with a consistent `GetItem` for its `createdAt`, revision and descriptor.
 2. It embeds with `embedDocuments`: one vector per configured field onto the row, or — with a `vectorBackend` — one vector over the joined fields for the backend instead, never both. `index: false` embeds nothing.
 3. It encodes the value (plain-JSON `JSON_SERDE` by default) under this put's own revision id and writes the row: a `PutItem`, or with `s3` a compare-and-swap on the revision it read — a one-item `TransactWriteItems` with a request token when the payload was offloaded. A failed write is read back before this put's upload is released.
-4. Once the row is committed it releases the object the old row named, then upserts the vector to the `vectorBackend` best-effort: a backend failure is logged at `warn`, not thrown, and `reconcileVectorIndex` repairs it.
-5. `search` with a `query` and a `vectorBackend` embeds the query, asks the backend for the top matches and reads each canonical item from DynamoDB. Otherwise it runs an eventually consistent `Query` of the `STORE#<namespace[0]>` partition (a `Scan` only for the empty prefix `[]`), decodes rows `readConcurrency` at a time and applies `filter` in process — stopping as soon as the page is full when there is nothing to rank, and otherwise refusing more than `maxSearchCandidates` rows before any decode, then ranking every candidate by cosine similarity to the embedded query.
+4. Once the row is committed it releases the object the old row named, then syncs the `vectorBackend` best-effort: it upserts the new vector, or deletes the item's vector when the put has nothing to embed (`index: false`, or no indexable text). A backend failure is logged at `warn`, not thrown, and `reconcileVectorIndex` repairs it.
+5. `search` with a `query` and a `vectorBackend` embeds the query, asks the backend for the top `offset + limit` matches, reads each canonical item from DynamoDB and applies `filter`, doubling the number it asks for until the page is full. It is capped too: a page with `offset + limit` over `maxSearchCandidates`, or one the filter still leaves short at that cap, is refused with a `VALIDATION` error. Otherwise it runs an eventually consistent `Query` of the `STORE#<namespace[0]>` partition (a `Scan` only for the empty prefix `[]`), decodes rows `readConcurrency` at a time and applies `filter` in process — stopping as soon as the page is full when there is nothing to rank, and otherwise refusing more than `maxSearchCandidates` rows before any decode, then ranking every candidate by cosine similarity to the embedded query.
 
 **Chat history — `history.addMessages` and `history.getMessages`:**
 
