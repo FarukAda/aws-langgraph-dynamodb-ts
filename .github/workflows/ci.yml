@@ -243,6 +243,12 @@ jobs:
       - name: Maintenance script tests (node --test)
         run: npm run test:scripts
 
+      # Every ts/typescript sample in README, CONTRIBUTING and CHANGELOG is
+      # compiled against src/. A name in the docs is not a signature: a call
+      # written the old way used to pass every other check.
+      - name: Documentation samples type-check (check:docs)
+        run: npm run check:docs
+
       - name: Workflow syntax (actionlint)
         run: docker run --rm -v "${PWD}:/repo" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color # v1.7.12
 

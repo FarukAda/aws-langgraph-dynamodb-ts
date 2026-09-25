@@ -75,6 +75,9 @@ The build is CommonJS and works from both module systems:
 
 ```typescript
 import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts'; // ESM or TypeScript
+```
+
+```js
 const { DynamoDBSaver } = require('@farukada/aws-langgraph-dynamodb-ts'); // CommonJS
 ```
 
@@ -138,6 +141,8 @@ Two further guards back that up, for a table holding hand-written rows or rows w
 ### Checkpointer
 
 ```typescript
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { END, MessagesAnnotation, START, StateGraph } from '@langchain/langgraph';
 import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts';
 
 const checkpointer = new DynamoDBSaver({
@@ -145,13 +150,19 @@ const checkpointer = new DynamoDBSaver({
   clientConfig: { region: 'eu-west-1' },
 });
 
-const graph = workflow.compile({ checkpointer });
+const graph = new StateGraph(MessagesAnnotation)
+  .addNode('reply', (state) => ({
+    messages: [new AIMessage(`Messages in this thread so far: ${state.messages.length}`)],
+  }))
+  .addEdge(START, 'reply')
+  .addEdge('reply', END)
+  .compile({ checkpointer });
 
 const config = { configurable: { thread_id: 'user-42' } };
-await graph.invoke({ messages: [/* ... */] }, config);
+await graph.invoke({ messages: [new HumanMessage('Hello')] }, config);
 
 // Resume later (even in a new process) — state is loaded from DynamoDB.
-const resumed = await graph.invoke({ messages: [/* ... */] }, config);
+const resumed = await graph.invoke({ messages: [new HumanMessage('Still there?')] }, config);
 
 checkpointer.destroy(); // releases the client this instance created
 ```
@@ -397,7 +408,7 @@ Four tools repair or provision state and are meant for deployment scripts and op
 Logging is **per-instance and silent by default** — the library never writes to your console uninvited. Pass any object matching the `Logger` interface — all four of `info`, `warn`, `error` and `debug` are required, and a logger missing one is refused at construction, naming it (`logger.debug`):
 
 ```typescript
-import { redactLogger, type Logger } from '@farukada/aws-langgraph-dynamodb-ts';
+import { DynamoDBStore, redactLogger, type Logger } from '@farukada/aws-langgraph-dynamodb-ts';
 
 const logger: Logger = {
   info: (m, ...a) => console.info(m, ...a),
@@ -417,6 +428,7 @@ const store = new DynamoDBStore({ tableName: 'langgraph', logger: redactLogger(l
 
 **Using pino or winston.** `Logger` methods take a message and then structured arguments — at most one plain object per call. winston and `console` accept that shape directly. pino treats a leading string as a format string and drops trailing objects, so merge the arguments into its first parameter:
 
+<!-- sample:skip pino is not a dependency of this package -->
 ```typescript
 import pino from 'pino';
 import type { LogArgument, Logger } from '@farukada/aws-langgraph-dynamodb-ts';
@@ -479,6 +491,7 @@ One table backs all three adapters. Create it with **AWS CDK** or **Terraform**.
 <details>
 <summary><strong>AWS CDK (TypeScript)</strong></summary>
 
+<!-- sample:skip aws-cdk-lib is not a dependency of this package -->
 ```typescript
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 
