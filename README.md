@@ -1251,7 +1251,7 @@ unaffected.
 
 ## API reference
 
-The full generated reference is [`docs/api`](docs/api/README.md), regenerated from the `src` doc comments by `npm run docs` and checked for drift in CI. The tables below list every public method, with its signature shortened to parameter names and an optional parameter marked `?`, and link to its entry there, which states what it accepts, returns, throws and guarantees. Every method that returns a promise rejects only with a `DynamoDBLangGraphError` ([Error handling](#error-handling)), and [What each operation costs](#what-each-operation-costs) gives the requests behind each call. No constructor issues a request.
+The full generated reference is [`docs/api`](docs/api/README.md), regenerated from the `src` doc comments by `npm run docs` and checked for drift in CI. The tables below list every method this package declares, with its signature shortened to parameter names and an optional parameter marked `?`, and link to its entry there, which states what it accepts, returns, throws and guarantees. A method a class inherits without overriding keeps LangGraph's or LangChain's own behaviour and is documented in their packages, not repeated here — notably `DynamoDBSaver`'s `get` and `getNextVersion`, and `DynamoDBStore`'s `start`. Every method that returns a promise rejects only with a `DynamoDBLangGraphError` ([Error handling](#error-handling)), and [What each operation costs](#what-each-operation-costs) gives the requests behind each call. No constructor issues a request.
 
 ### DynamoDBSaver
 
@@ -1310,6 +1310,7 @@ A LangChain `BaseListChatMessageHistory` bound to one session and an optional re
 
 | Method | Returns | Description |
 | --- | --- | --- |
+| [`new DynamoDBSessionChatMessageHistory(backend, sessionId, window?)`](docs/api/classes/DynamoDBSessionChatMessageHistory.md#constructor) | `DynamoDBSessionChatMessageHistory` | Validates `backend`, `sessionId` and `window`. Normally built through [`forSession`](docs/api/classes/DynamoDBChatMessageHistory.md#forsession), the supported route. |
 | [`getMessages()`](docs/api/classes/DynamoDBSessionChatMessageHistory.md#getmessages) | `Promise<BaseMessage[]>` | The session's messages, bounded by the window, which is what keeps a long session from growing the prompt without limit. |
 | [`addMessages(messages)`](docs/api/classes/DynamoDBSessionChatMessageHistory.md#addmessages) | `Promise<void>` | Appends messages. The window bounds what is read, never what is written. |
 | [`addMessage(message)`](docs/api/classes/DynamoDBSessionChatMessageHistory.md#addmessage) | `Promise<void>` | Appends one message. |
@@ -1321,7 +1322,7 @@ Builds the adapters over one set of defaults. [Class page](docs/api/classes/Dyna
 
 | Method | Returns | Description |
 | --- | --- | --- |
-| [`new DynamoDBFactory(base?)`](docs/api/classes/DynamoDBFactory.md#constructor) | `DynamoDBFactory` | Validates the defaults every adapter inherits, and opens nothing. |
+| [`new DynamoDBFactory(base?)`](docs/api/classes/DynamoDBFactory.md#constructor) | `DynamoDBFactory` | Checks `base`'s own keys, the client choice and `logger`; each adapter validates the rest of `base` for itself when it is built. Opens nothing. |
 | [`createSaver(options)`](docs/api/classes/DynamoDBFactory.md#createsaver) | `DynamoDBSaver` | A saver with `options` laid over the defaults; a per-adapter value wins. |
 | [`createStore(options)`](docs/api/classes/DynamoDBFactory.md#createstore) | `DynamoDBStore` | A store, likewise. |
 | [`createChatMessageHistory(options)`](docs/api/classes/DynamoDBFactory.md#createchatmessagehistory) | `DynamoDBChatMessageHistory` | A chat history, likewise. |
@@ -1951,6 +1952,7 @@ npm run lint
 npm run build       # removes dist/ first, so no output outlives its source
 npm run test:scripts        # node --test suites for the maintenance scripts
 npm run test:package-smoke  # pack, install and import the tarball (needs network)
+npm run test:consumer-types # type-check a consumer pinned to an older AWS SDK against the tarball (needs network)
 ```
 
 The surface tier runs the public API against a large table of malformed inputs and compares the result — one line per case — to a committed baseline, so any change to what the package accepts or rejects shows up as a reviewed diff. It runs against the built package, so build first:
