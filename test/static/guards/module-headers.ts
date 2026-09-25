@@ -3,13 +3,13 @@ export const MIN_HEADER_LENGTH = 160;
 
 /**
  * Why `source` does not open with a module header, or `undefined` when it
- * does (coding guidelines, rule 3; decision record 22). A header is a `/**`
- * block that is the first thing in the file; its first paragraph opens with
- * `Hides ` — or, only when `isEntryPoint` is true, its second, so the package
- * entry point alone can name the package first — its paragraphs, joined,
- * total at least {@link MIN_HEADER_LENGTH} characters of prose once the
- * comment's own opening, closing and per-line ` * ` markers are stripped,
- * and a blank line follows the block.
+ * does (coding guidelines, rule 3: "state, for every module, the one decision
+ * it hides"). A header is a `/**` block that is the first thing in the file;
+ * its first paragraph opens with `Hides ` — or, only when `isEntryPoint` is
+ * true, its second, so the package entry point alone can name the package
+ * first — its paragraphs, joined, total at least {@link MIN_HEADER_LENGTH}
+ * characters of prose once the comment's own opening, closing and per-line
+ * ` * ` markers are stripped, and a blank line follows the block.
  */
 export function moduleHeaderProblem(source: string, isEntryPoint = false): string | undefined {
   const text = source.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
