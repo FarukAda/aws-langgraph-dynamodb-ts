@@ -31,7 +31,7 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 | **What it costs** | Nothing for the package: you pay for DynamoDB, for S3 when payloads offload, and for your embeddings provider and `VectorBackend` if you use them. [What each operation costs](#what-each-operation-costs) gives the requests per call. |
 | **The limits that bite** | Without `s3`, a payload over 392 KB is refused; `thread_id` and `sessionId` are at most 1024 bytes, other key segments at most 256 bytes, and no identifier may contain `#`. In-DynamoDB semantic search refuses more than 1000 candidates by default (`maxSearchCandidates`, ceiling 100 000); [full table](#limits). |
 | **When it breaks** | One error class, `DynamoDBLangGraphError`, with a `code` from the 20 `ErrorCode` members, a structured `context` and the AWS error as `cause`. [Error handling](#error-handling) is the section to read first. |
-| **When *not* to use it** | A large vector corpus with no external `VectorBackend`, writes to one `thread_id` or `sessionId` beyond one partition's throughput ([hot partitions](#production-notes)), or checkpoints to import from another saver, for which the package has no importer. Chat turns written to one session by several processes are ordered by their wall clocks ([chat history semantics](#chat-history-semantics)). |
+| **When *not* to use it** | A large vector corpus with no external `VectorBackend`, writes to one `thread_id` or `sessionId` beyond one partition's throughput ([known limitations](#known-limitations)), or checkpoints to import from another saver, for which the package has [no importer](#migrating-from-another-checkpointer-or-store). Chat turns written to one session by several processes are ordered by their wall clocks ([chat history semantics](#chat-history-semantics)). |
 
 ## Table of Contents
 
@@ -65,8 +65,8 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 - [Logging](#logging)
 - [Tracing and metrics](#tracing-and-metrics)
 - [Advanced features](#advanced-features)
-- [Production notes](#production-notes)
-- [Migrating from earlier versions](#migrating-from-earlier-versions)
+- [Known limitations](#known-limitations)
+- [Migrating](#migrating)
 - [Infrastructure setup](#infrastructure-setup)
 - [Table schema](#table-schema)
 - [IAM permissions](#iam-permissions)
@@ -632,59 +632,6 @@ saver.destroy();
 
 A `cursor` requires `indexName` and is refused without it. Without `indexName`, `listSessions` is a table scan that cannot be paged: `{ limit: 50 }` returns the newest fifty, and omitting `limit` returns every session. That unpaged scan is still capped: past `maxItems` rows (default 10 000) or `maxIterations` pages (default 1000) it fails with `RESULT_TRUNCATED` rather than returning a partial list. Stop when `nextCursor` is absent, not when a page looks short — expired rows are dropped after the read. These listings cross tenants ([Multi-tenant deployments](#multi-tenant-deployments)), and `backfillRecencyIndex()` must run before `indexName` is set on a table that already holds rows ([Maintenance operations](#maintenance-operations)); the index definition is in [Infrastructure setup](#infrastructure-setup).
 
-## Table schema
-
-Every adapter uses the **same simple key schema**: a string partition key `PK`, a string sort key `SK`, and an optional Number `ttl` attribute for expiry. **A single table can back all three adapters**, or you can use a separate table per adapter — your choice via the `tableName` option.
-
-| Attribute | Type | Role |
-| --- | --- | --- |
-| `PK` | String (HASH) | partition key |
-| `SK` | String (RANGE) | sort key |
-| `ttl` | Number | (optional) Unix-epoch-seconds expiry; enable DynamoDB TTL on this attribute |
-| `gsi1pk` | String | (optional) recency-index partition key; written to the rows that listings cross partitions for — checkpointer `META`, store items, history `SESSION` |
-| `gsi1sk` | String | (optional) recency-index sort key, `<updatedAt>#<id>` |
-
-Those two index attributes are always written; they cost nothing until the table
-carries a global secondary index on them and an adapter is told its name with
-`indexName`. Without it every listing behaves exactly as before, so upgrading
-changes nothing until you create the index — see
-[Infrastructure setup](#infrastructure-setup) for the definition and
-[Maintenance operations](#maintenance-operations) for the backfill that must run
-first.
-
-Payloads live under one reserved attribute per row kind (`checkpoint`, `metadata`, `value`, `message`) as a **payload descriptor**: `{ schemaVersion: 1, location: 'INLINE' | 'S3', serdeType, compressed, bytes | s3Key }`. This shape is a compatibility contract: unknown fields are ignored, a missing `schemaVersion` reads as 1, and a higher `schemaVersion` or an unknown `location` is refused with a `VALIDATION` error (field `descriptor`) rather than misread. Offloaded S3 keys are `<keyPrefix><the row's identifiers, each base64url-encoded>/<write id>.bin` (for a history message, whose own ULID is the write id, the identifiers above it are its session) — the row above the id, so an object belongs to exactly one row, and below it the id of the write that uploaded it, so two writes never share an object, even when they store the same bytes. The identifier segments are trivially reversible — treat S3 keys and `S3_OFFLOAD_FAILED` error context as identifier-bearing in your log-redaction policy.
-
-**What the default serializers do with a value JavaScript can hold and JSON cannot.** The checkpointer defaults to LangGraph's `JsonPlusSerializer`; the store and history adapters default to this package's plain-JSON `JSON_SERDE`, which is exported, so a checkpointer can be given it too (see [Trust boundary](#trust-boundary) for why you might). They are two different serializers and they disagree, in both directions, and nothing is recorded anywhere to say a value was substituted — so the table below belongs in the decision of whether to pass a `serde` of your own. Each row was measured, not inferred from the implementations.
-
-| A value JavaScript can hold | `JSON_SERDE` (store, history) | `JsonPlusSerializer` (checkpointer) |
-| --- | --- | --- |
-| `Map`, `Set` | stored as `{}`; every entry is gone | round-trips as a real `Map`/`Set` |
-| `Uint8Array` | an index-keyed object, `{"0":1,"1":2}` | round-trips as a `Uint8Array` |
-| `Date` | an ISO string | an ISO string — **neither** default round-trips one |
-| `NaN`, `Infinity` | `null` | `null` |
-| `-0` | `0` | `0` |
-| `undefined` as an object's value | the key is dropped | the key survives, still holding `undefined` |
-| `undefined` as an array element | `null` | `undefined` |
-| a function or symbol *inside* an object or array | dropped from the object, `null` in an array | dropped from the object, `null` in an array |
-| a `BigInt` anywhere in the value | refused at the write: `VALIDATION` naming `value` | the **whole payload** becomes the string `"[unable to serialize, circular reference is too complex to analyze]"` |
-| a circular reference | refused at the write: `VALIDATION` naming `value` | the object is kept, with `"[Circular]"` written at the cycle |
-| a value that *is* `undefined` | refused at the write | a 27-byte marker; reads back as `undefined` |
-| a value that *is* a function or a symbol | refused at the write | zero bytes, refused by this package before the write |
-
-Two rows deserve reading twice. The `BigInt` row is the worst outcome either default produces: one `BigInt` in one nested field of a checkpoint reads back as that placeholder string **instead of your entire state**, not instead of the field that held it, under a message naming a cause it does not have. And the `Map`/`Set`/`Uint8Array` rows are why moving an adapter from one default to the other is not free in either direction: plain JSON loses them, and the checkpointer default restores them by instantiating the class a stored record names.
-
-What no serializer may do is produce **no bytes at all**: zero bytes is not a document in any format, and every later read of such a row fails to parse it, so it is refused at the write with a `VALIDATION` error naming `value`, before anything is stored and before any object is uploaded. The refusal binds whichever `serde` is configured, so a `serde` of your own may not encode any value it accepts to zero bytes; an encoding that legitimately produces an empty buffer needs a byte of framing of its own.
-
-How each adapter lays out keys (informational — you don't manage this):
-
-- **Checkpointer** — `PK = CHKPT#<thread_id>`; `SK` = `META#<ns>#<checkpoint_id>` (metadata), `PAYLOAD#<ns>#<checkpoint_id>` (checkpoint), `WRITE#<ns>#<checkpoint_id>#<task>#<idx>#<channel>` (pending writes).
-- **Store** — `PK = STORE#<namespace[0]>` (the scope root); `SK = <namespace[1..]>#<key>`. This makes a scoped prefix search a native `Query` (`PK = root AND begins_with(SK, …)`); only a rootless "search everything" falls back to a `Scan`.
-- **Chat history** — `PK = HIST#<sessionId>`; one item per message at `SK = HISTORY#MSG#<ULID>` (ordered, append-only) plus one `SK = HISTORY#SESSION` metadata item.
-
-**Why the key spaces cannot collide.** Each adapter tags its partition key with its own prefix, and those three tags differ in their very first character, so no `CHKPT#…` can ever equal a `STORE#…` or `HIST#…` — whatever identifiers you pass. That matters because reusing one id across adapters (a "conversation id" used as both a `thread_id` and a `sessionId`) is an entirely ordinary design: without the tags it put unrelated adapters' rows in one partition, where `deleteThread()`/`history.clear()` would delete each other's data and identically-composed sort keys could silently overwrite one another.
-
-Two further guards back that up, for a table holding hand-written rows or rows written before an upgrade: `deleteThread()`/`clear()` delete only rows whose sort key belongs to the calling adapter and log anything they leave in place, and every read tests a row against the attributes its kind must carry before decoding it, rather than trusting the key it was found at: the checkpointer's `META#` rows, the store's items and the chat history's session and message rows are each bound to the key they were found at as well, and a checkpoint's payload and pending-write rows are refused by the descriptor guard, which is the attribute a narrow would have tested. What a read does with a row that fails differs by read: the checkpointer's `getTuple` and `list` skip it and say so at `warn`, as does `store.reconcileVectorIndex`; `store.get` answers `null` and warns; `store.search` and `history.listSessions` drop it silently, because those two walk a whole prefix or table and one line per foreign row would fill a log rather than inform anyone; and a chat-history message read **reports** it whatever `onCorruptMessage` is set to — a conversation that quietly skips a row it cannot account for is the one outcome worse than a failed read. `history.reconcileMessageCount` refuses the same row for the same reason: a repaired count that disagreed with the read would describe a session nobody can open. Every one of those reads checks the row's own format version **before** its shape, so none of that applies to a row a newer release wrote: attribute names are this release's names rather than a later one's, and a row whose `v` is ahead of this reader is reported as `FORMAT_UNSUPPORTED` (field `v`) instead of being skipped as foreign because its attributes are no longer recognised. An offloaded payload's `s3Key` is bound the same way: before it is downloaded or deleted it must lie under the adapter's `keyPrefix` *and* the S3 path the row's own identifiers produce (`enc(thread_id)/…`, `enc(namespace…)/enc(key)`, `enc(sessionId)/…`), and a store row's `namespace`/`key` must agree with the partition and sort key it was found at — so a row planted in one partition can never make the library read or delete another tenant's object. A read of such a row fails with a `VALIDATION` error (field `s3Key`) on all three adapters — chat history included, whatever `onCorruptMessage` is set to, because a key outside the row's own path is a configuration or tenancy fault to report rather than a payload to write off — and a delete skips the object with a warning.
-
 ## Configuration reference
 
 All adapters share a common base. Provide **either** a prebuilt `client` (which the adapter will not own/close) **or** `clientConfig` (the adapter builds and owns the client).
@@ -1139,6 +1086,165 @@ The store follows the reference semantics, and every observable difference is li
 
 Checkpointer read-your-writes (`getTuple`) and every `store.get` use `ConsistentRead`, so a value written and immediately read back is never served a stale replica. Bulk reads (`list`, `listNamespaces`, `listSessions`) stay eventually consistent for lower cost.
 
+## Known limitations
+
+Each item below is a deliberate limit, not a known defect, and each links to the section with the detail. [What can still go wrong](#what-can-still-go-wrong) lists the narrower cases in which a row and its S3 payload can disagree.
+
+### From DynamoDB and S3
+
+- **400 KB items.** A DynamoDB item holds at most 400 KB, so without `s3` a payload over 392 KB is refused with a `VALIDATION` error before the write; with `s3`, a payload at or above `thresholdBytes` (default 350 KB) is offloaded. The store's inline vectors share the item and are not weighed against the threshold. ([Limits](#limits), [S3 offloading](#s3-offloading))
+- **One partition's throughput.** A thread's rows share `CHKPT#<thread_id>`, a session's `HIST#<sessionId>` and a store scope's `STORE#<namespace[0]>`, so the writes to one identifier are bounded by what one DynamoDB partition sustains. ([Production notes](#production-notes))
+- **TTL deletion lags.** DynamoDB deletes an expired row typically within 48 hours, and S3 lifecycle expiry counts whole days. Every read hides an expired row in the meantime; the storage is reclaimed later. ([TTL expiry](#ttl-expiry), [S3 lifecycle rules](#s3-lifecycle-rules))
+- **Cross-thread and cross-session listings scan the table.** `saver.list()` without a `thread_id` and `history.listSessions()` are `Scan`s until the recency index is created, backfilled with `backfillRecencyIndex()` and named with `indexName`; `store.search([])` and `store.listNamespaces()` without a prefix root stay `Scan`s. Each of them returns every tenant's rows. ([Production notes](#production-notes), [Maintenance operations](#maintenance-operations))
+- **Bulk reads are eventually consistent.** `list`, `store.search`, `listNamespaces` and `listSessions` can miss a write that has just returned; `getTuple` and `store.get` are consistent reads. ([Strong consistency](#strong-consistency))
+- **A request token deduplicates for ten minutes only.** DynamoDB honours a client request token for ten minutes, and a tokened write stops starting new attempts 300 s in so that its retries stay inside that window; a re-send after it is a new request and is applied. ([Write idempotency](#write-idempotency))
+
+### From this package
+
+- **In-DynamoDB semantic search ranks a bounded candidate set.** Ranking runs in process over at most `maxSearchCandidates` rows (default 1000, ceiling 100 000), and a prefix holding more is refused with a `VALIDATION` error, so a large corpus needs a `vectorBackend`. ([Semantic search](#semantic-search))
+- **`vectorBackend` sync is best-effort.** A backend failure after a committed put or delete is logged at `warn`, not thrown, and `store.reconcileVectorIndex()` repairs the drift. ([Vector index consistency](#vector-index-consistency))
+- **`deleteThread()` and `clear()` are single-pass.** They delete what one read of the partition saw, so a write that starts during the pass survives it: run them on an idle thread or session, and run them again to clear what a pass left. ([What a partition delete promises](#what-a-partition-delete-promises))
+- **`store.get`, `store.put` and `store.delete` take no `AbortSignal`,** because upstream's `BaseStore` gives those three no parameter for one. ([Cancellation](#cancellation))
+- **`store.delete()` can resolve with the item still there** when three of its attempts in a row are each turned away by a write that landed since the read that attempt pinned on, which exhausts its compare-and-swap; it logs one `warn`, and a re-run once the key is idle removes the item. ([V-29](#differences-from-the-reference-implementations))
+- **Chat order across processes follows the writers' clocks.** Within one adapter instance message ids are strictly monotonic; across processes they are ordered by wall clock at millisecond precision, so a lagging clock can sort a later turn before an earlier one. ([Chat history semantics](#chat-history-semantics))
+- **A large append is visible part-way.** An `addMessages` batch over 99 messages or 3.5 MB is committed in chunks, so a concurrent reader can see the first chunks before the append settles. ([Chat history semantics](#chat-history-semantics))
+- **Neither default serializer round-trips a `Date`,** and `JSON_SERDE`, the store's and chat history's default, loses the entries of a `Map` or `Set` and stores a `Uint8Array` as an index-keyed object. ([Table schema](#table-schema))
+- **The checkpointer's default serializer builds classes named by the row.** `JsonPlusSerializer` reconstructs allow-listed LangChain classes from stored records, so write access to the table is trusted access; `serde: JSON_SERDE` removes that, at the cost of the fidelity above. ([Trust boundary](#trust-boundary))
+- **Identifiers follow this package's key rules.** No `#` and no control character; at most 1024 bytes for `thread_id` and `sessionId` and 256 bytes for every other segment; and `store.put()` also applies upstream's rules of no `.` in a namespace label and no `"langgraph"` root. An id another saver accepts can be refused here with a `VALIDATION` error. ([Production notes](#production-notes), [Limits](#limits))
+- **`getDeltaChannelHistory()` tracks an upstream beta API,** so a change there can reach a minor release of this package. ([Not covered](#not-covered))
+- **A `listSessions` cursor needs `indexName`.** Without the recency index the listing is an unpaged scan, capped by `maxItems` and `maxIterations`. ([Listing sessions, threads and namespaces](#listing-sessions-threads-and-namespaces))
+- **`isDynamoDBLangGraphError` takes an `Error`,** so a caught `unknown` is cast before the check, as the samples do. ([Error handling](#error-handling))
+- **A release candidate, maintained by one person.** Release candidates of `1.0` come before `1.0.0`, and response times are best effort. ([Versioning and support](#versioning-and-support))
+
+## Migrating
+
+Two moves are covered here: onto this package from another saver or store, and from an earlier release of this package.
+
+### Migrating from another checkpointer or store
+
+There is **no importer**. Nothing in this package reads data written by `MemorySaver`, `InMemoryStore`, `InMemoryChatMessageHistory`, or a Postgres, SQLite or other saver, and the rows it writes are in its own format ([Table schema](#table-schema)). Moving is a code change, plus a decision about the data you already hold.
+
+**The code change is the constructor.** What consumes the saver and the store — `compile({ checkpointer, store })`, `getState`, a node reading the store — stays as it is.
+
+| Before | After |
+| --- | --- |
+| `new MemorySaver()` | `new DynamoDBSaver({ tableName, clientConfig })` |
+| `new InMemoryStore({ index })` | `new DynamoDBStore({ tableName, clientConfig, index })`, with the same `IndexConfig`: `dims`, `embeddings`, `fields` |
+| `new InMemoryChatMessageHistory()` | `history.forSession(sessionId)` on a `DynamoDBChatMessageHistory` ([RunnableWithMessageHistory](#runnablewithmessagehistory)) |
+
+```typescript
+import { InMemoryChatMessageHistory } from '@langchain/core/chat_history';
+import { END, MessagesAnnotation, START, StateGraph } from '@langchain/langgraph';
+import { InMemoryStore, MemorySaver } from '@langchain/langgraph-checkpoint';
+import { DynamoDBSaver, DynamoDBStore } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const graph = new StateGraph(MessagesAnnotation)
+  .addNode('model', async (state) => ({ messages: [await model.invoke(state.messages)] }))
+  .addEdge(START, 'model')
+  .addEdge('model', END);
+const index = { dims: 1024, embeddings, fields: ['text'] }; // dims: what your embeddings return
+
+// Before: everything lives in the process and is gone when it exits.
+const before = graph.compile({ checkpointer: new MemorySaver(), store: new InMemoryStore({ index }) });
+const sessionBefore = new InMemoryChatMessageHistory();
+
+// After: the same graph, persisted in one DynamoDB table.
+const table = { tableName: 'langgraph', clientConfig: { region: 'eu-west-1' } };
+const after = graph.compile({
+  checkpointer: new DynamoDBSaver(table),
+  store: new DynamoDBStore({ ...table, index }),
+});
+const sessionAfter = history.forSession('session-1');
+```
+
+**Behaviour that differs.** Every observable difference from `MemorySaver` and `InMemoryStore` is a row of [Differences from the reference implementations](#differences-from-the-reference-implementations); read it before switching. The ones a caller meets first are the identifier rules — an id valid elsewhere may be refused here with a `VALIDATION` error — `store.put()` refusing a `null` value, where the reference treats it as a delete, and `$gt`/`$gte`/`$lt`/`$lte` comparing like types only.
+
+**Checkpoints.** This package has no tested way to copy them, so it offers none. Two strategies need no copy: let the threads that already exist finish on the old saver while new threads start on `DynamoDBSaver`, compiling the graph once per saver and choosing between them by `thread_id`; or start fresh, which is what a `MemorySaver` deployment does at every restart anyway.
+
+**Store items.** Any `BaseStore` can be copied through the public store API. The copy re-embeds every item it writes with the target's `index`, and each copied item's `createdAt` and `updatedAt` are the time of the copy:
+
+```typescript
+import type { BaseStore, PutOperation } from '@langchain/langgraph-checkpoint';
+import type { DynamoDBStore } from '@farukada/aws-langgraph-dynamodb-ts';
+
+declare const source: BaseStore; // the store you are leaving
+declare const target: DynamoDBStore;
+
+const PAGE = 100;
+const sameNamespace = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((label, i) => label === b[i]);
+
+for (let namespaceOffset = 0; ; namespaceOffset += PAGE) {
+  const namespaces = await source.listNamespaces({ limit: PAGE, offset: namespaceOffset });
+  for (const namespace of namespaces) {
+    for (let offset = 0; ; offset += PAGE) {
+      const items = await source.search(namespace, { limit: PAGE, offset });
+      // search matches a prefix, so a page also holds items of deeper namespaces;
+      // each item is copied once, from the listing entry of its own namespace.
+      const puts: PutOperation[] = items
+        .filter((item) => sameNamespace(item.namespace, namespace))
+        .map((item) => ({ namespace: item.namespace, key: item.key, value: item.value }));
+      await target.batch(puts);
+      if (items.length < PAGE) break;
+    }
+  }
+  if (namespaces.length < PAGE) break;
+}
+```
+
+Both listings are paged because `BaseStore`'s own `search` and `listNamespaces` answer ten items and a hundred namespaces when no `limit` is given, and offset paging is only stable while nothing writes to the source, so run the copy with the source idle. The items are written with `batch` rather than `put`: `put()` alone applies upstream's rules of no `.` in a namespace label and no `"langgraph"` root, while a graph writes through `batch()`, which accepts both, so a namespace such as `['memories', 'jane.doe@example.com']` that a graph wrote copies too. An item this package's identifier rules refuse — a label or key holding `#`, say — fails its whole batch with a `VALIDATION` error naming the field, before any of that batch is written; the batches before it are already in the table, and running the copy again rewrites them.
+
+### Migrating from earlier versions
+
+**0.7.x → 0.8.0**: **every adapter's partition key is now adapter-tagged** —
+`PK = <thread_id>` → `CHKPT#<thread_id>`, `PK = <namespace[0]>` →
+`STORE#<namespace[0]>`, `PK = <sessionId>` → `HIST#<sessionId>` — and the
+checkpointer's pending-write sort key gains a trailing channel segment
+(`WRITE#<ns>#<id>#<task>#<idx>` → `…#<idx>#<channel>`).
+
+This closes two real defects on a table shared via `createAll()`. Reusing one
+identifier across adapters — a "conversation id" used as both a `thread_id`
+and a `sessionId`, an entirely ordinary choice — put unrelated adapters' rows
+in a single partition, where `deleteThread()` silently deleted the chat
+history (and vice versa), and identically-composed sort keys let one adapter
+overwrite another's item or hand its payload back on read. The channel segment
+separately stops a retried task whose write mix changed from silently losing a
+write; a per-call write group, also stored on each row, keeps such a retry from
+replaying a channel twice. See the CHANGELOG for the full mechanism.
+
+**Data written by 0.7.x is not found after upgrading**, for all three
+adapters. Back up and recreate the table before upgrading.
+
+Three behaviour changes are also worth checking before you upgrade:
+constructing a `DynamoDBStore` with a `vectorBackend` but no `index` now
+throws instead of silently returning unranked results; `getMessages` skips and
+logs an undecodable message instead of failing the whole read (pass
+`onCorruptMessage: 'throw'` to keep the old behaviour); and the store's
+`$gt`/`$gte`/`$lt`/`$lte` filters no longer coerce across types, so a stored
+`'10'` no longer matches `{ $gt: 5 }`.
+
+**0.6.x → 0.7.0**: chat-history's sort keys now carry a `HISTORY#` item-kind
+tag — `SK = SESSION` → `SK = HISTORY#SESSION`, `SK = MSG#<ULID>` →
+`SK = HISTORY#MSG#<ULID>`. This closes a real key collision on a table
+shared via `createAll()`: an unprefixed `SESSION` sort key was reachable by
+an ordinary store call (`store.put([sessionId], 'SESSION', …)`), silently
+corrupting both adapters' items. Existing chat history data written before
+this change will not be found by `getMessages`/`listSessions`/`clear` after
+upgrading — back up and migrate (or recreate) any table with real
+chat-history data before upgrading. Checkpointer and store keys are
+unaffected.
+
+**0.2.x → 0.3.0** is a complete, ground-up rewrite. The public API is similar, but the table schema, on-disk layout, and several options changed, so existing data is **not compatible** — create a new table.
+
+- **Table schema is now `PK`/`SK` strings** (one table for all adapters) instead of per-adapter custom key names. The key attribute names changed, so CDK/Terraform definitions need updating.
+- **Store keys** are `PK = namespace[0]`, `SK = namespace[1..]#key` (was `PK = full namespace`, `SK = key`).
+- **Chat history is one item per message** (`SK = MSG#<ULID>`) plus a `SESSION` metadata item, replacing the single per-session item.
+- **Single `tableName` option** per adapter (was `checkpointsTableName`/`writesTableName`, etc.).
+- **One `ttl` option** — `{ days }` or `{ seconds }` — replaces `ttlDays`/`ttlSeconds`.
+- **S3 config option renamed** `s3OffloadConfig` → `s3`.
+- **Per-instance `logger` option** replaces the global `setGlobalLogger` singleton; default logging is now silent.
+- **Unified error model** — every error is a `DynamoDBLangGraphError`, distinguished by its `ErrorCode`.
+
 ## Infrastructure setup
 
 One table backs all three adapters. Create it with **AWS CDK** or **Terraform**.
@@ -1148,24 +1254,32 @@ One table backs all three adapters. Create it with **AWS CDK** or **Terraform**.
 
 <!-- sample:skip aws-cdk-lib is not a dependency of this package -->
 ```typescript
+import { Stack, type StackProps } from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import type { Construct } from 'constructs';
 
-new dynamodb.Table(this, 'LangGraph', {
-  tableName: 'langgraph',
-  partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
-  sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
-  billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-  timeToLiveAttribute: 'ttl', // optional; only needed if you use the `ttl` option
-});
+export class LangGraphTableStack extends Stack {
+  constructor(scope: Construct, id: string, props?: StackProps) {
+    super(scope, id, props);
 
-// Optional: the recency index. Add it, run backfillRecencyIndex(), then set
-// `indexName: 'gsi1'` on the adapters. Without it every listing still works.
-table.addGlobalSecondaryIndex({
-  indexName: 'gsi1',
-  partitionKey: { name: 'gsi1pk', type: dynamodb.AttributeType.STRING },
-  sortKey: { name: 'gsi1sk', type: dynamodb.AttributeType.STRING },
-  projectionType: dynamodb.ProjectionType.ALL,
-});
+    const table = new dynamodb.Table(this, 'LangGraph', {
+      tableName: 'langgraph',
+      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl', // optional; only needed if you use the `ttl` option
+    });
+
+    // Optional: the recency index. Add it, run backfillRecencyIndex(), then set
+    // `indexName: 'gsi1'` on the adapters. Without it every listing still works.
+    table.addGlobalSecondaryIndex({
+      indexName: 'gsi1',
+      partitionKey: { name: 'gsi1pk', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'gsi1sk', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+  }
+}
 ```
 
 </details>
@@ -1180,18 +1294,32 @@ resource "aws_dynamodb_table" "langgraph" {
   hash_key     = "PK"
   range_key    = "SK"
 
-  attribute { name = "PK" type = "S" }
-  attribute { name = "SK" type = "S" }
+  attribute {
+    name = "PK"
+    type = "S"
+  }
 
-  ttl {
+  attribute {
+    name = "SK"
+    type = "S"
+  }
+
+  ttl { # optional; only needed if you use the `ttl` option
     attribute_name = "ttl"
     enabled        = true
   }
 
   # Optional: the recency index. Add it, run backfillRecencyIndex(), then set
   # `indexName = "gsi1"` on the adapters. Without it every listing still works.
-  attribute { name = "gsi1pk" type = "S" }
-  attribute { name = "gsi1sk" type = "S" }
+  attribute {
+    name = "gsi1pk"
+    type = "S"
+  }
+
+  attribute {
+    name = "gsi1sk"
+    type = "S"
+  }
 
   global_secondary_index {
     name            = "gsi1"
@@ -1301,6 +1429,59 @@ version of every object in the bucket, so enabling it is a decision for whoever 
 Suspending it is the worse of the two states, and the `warn` says so separately: a write then takes
 the null version, a second write replaces it outright, and versions written while versioning was on
 keep costing storage.
+
+## Table schema
+
+Every adapter uses the **same simple key schema**: a string partition key `PK`, a string sort key `SK`, and an optional Number `ttl` attribute for expiry. **A single table can back all three adapters**, or you can use a separate table per adapter — your choice via the `tableName` option.
+
+| Attribute | Type | Role |
+| --- | --- | --- |
+| `PK` | String (HASH) | partition key |
+| `SK` | String (RANGE) | sort key |
+| `ttl` | Number | (optional) Unix-epoch-seconds expiry; enable DynamoDB TTL on this attribute |
+| `gsi1pk` | String | (optional) recency-index partition key; written to the rows that listings cross partitions for — checkpointer `META`, store items, history `SESSION` |
+| `gsi1sk` | String | (optional) recency-index sort key, `<updatedAt>#<id>` |
+
+Those two index attributes are always written; they cost nothing until the table
+carries a global secondary index on them and an adapter is told its name with
+`indexName`. Without it every listing behaves exactly as before, so upgrading
+changes nothing until you create the index — see
+[Infrastructure setup](#infrastructure-setup) for the definition and
+[Maintenance operations](#maintenance-operations) for the backfill that must run
+first.
+
+Payloads live under one reserved attribute per row kind (`checkpoint`, `metadata`, `value`, `message`) as a **payload descriptor**: `{ schemaVersion: 1, location: 'INLINE' | 'S3', serdeType, compressed, bytes | s3Key }`. This shape is a compatibility contract: unknown fields are ignored, a missing `schemaVersion` reads as 1, and a higher `schemaVersion` or an unknown `location` is refused with a `VALIDATION` error (field `descriptor`) rather than misread. Offloaded S3 keys are `<keyPrefix><the row's identifiers, each base64url-encoded>/<write id>.bin` (for a history message, whose own ULID is the write id, the identifiers above it are its session) — the row above the id, so an object belongs to exactly one row, and below it the id of the write that uploaded it, so two writes never share an object, even when they store the same bytes. The identifier segments are trivially reversible — treat S3 keys and `S3_OFFLOAD_FAILED` error context as identifier-bearing in your log-redaction policy.
+
+**What the default serializers do with a value JavaScript can hold and JSON cannot.** The checkpointer defaults to LangGraph's `JsonPlusSerializer`; the store and history adapters default to this package's plain-JSON `JSON_SERDE`, which is exported, so a checkpointer can be given it too (see [Trust boundary](#trust-boundary) for why you might). They are two different serializers and they disagree, in both directions, and nothing is recorded anywhere to say a value was substituted — so the table below belongs in the decision of whether to pass a `serde` of your own. Each row was measured, not inferred from the implementations.
+
+| A value JavaScript can hold | `JSON_SERDE` (store, history) | `JsonPlusSerializer` (checkpointer) |
+| --- | --- | --- |
+| `Map`, `Set` | stored as `{}`; every entry is gone | round-trips as a real `Map`/`Set` |
+| `Uint8Array` | an index-keyed object, `{"0":1,"1":2}` | round-trips as a `Uint8Array` |
+| `Date` | an ISO string | an ISO string — **neither** default round-trips one |
+| `NaN`, `Infinity` | `null` | `null` |
+| `-0` | `0` | `0` |
+| `undefined` as an object's value | the key is dropped | the key survives, still holding `undefined` |
+| `undefined` as an array element | `null` | `undefined` |
+| a function or symbol *inside* an object or array | dropped from the object, `null` in an array | dropped from the object, `null` in an array |
+| a `BigInt` anywhere in the value | refused at the write: `VALIDATION` naming `value` | the **whole payload** becomes the string `"[unable to serialize, circular reference is too complex to analyze]"` |
+| a circular reference | refused at the write: `VALIDATION` naming `value` | the object is kept, with `"[Circular]"` written at the cycle |
+| a value that *is* `undefined` | refused at the write | a 27-byte marker; reads back as `undefined` |
+| a value that *is* a function or a symbol | refused at the write | zero bytes, refused by this package before the write |
+
+Two rows deserve reading twice. The `BigInt` row is the worst outcome either default produces: one `BigInt` in one nested field of a checkpoint reads back as that placeholder string **instead of your entire state**, not instead of the field that held it, under a message naming a cause it does not have. And the `Map`/`Set`/`Uint8Array` rows are why moving an adapter from one default to the other is not free in either direction: plain JSON loses them, and the checkpointer default restores them by instantiating the class a stored record names.
+
+What no serializer may do is produce **no bytes at all**: zero bytes is not a document in any format, and every later read of such a row fails to parse it, so it is refused at the write with a `VALIDATION` error naming `value`, before anything is stored and before any object is uploaded. The refusal binds whichever `serde` is configured, so a `serde` of your own may not encode any value it accepts to zero bytes; an encoding that legitimately produces an empty buffer needs a byte of framing of its own.
+
+How each adapter lays out keys (informational — you don't manage this):
+
+- **Checkpointer** — `PK = CHKPT#<thread_id>`; `SK` = `META#<ns>#<checkpoint_id>` (metadata), `PAYLOAD#<ns>#<checkpoint_id>` (checkpoint), `WRITE#<ns>#<checkpoint_id>#<task>#<idx>#<channel>` (pending writes).
+- **Store** — `PK = STORE#<namespace[0]>` (the scope root); `SK = <namespace[1..]>#<key>`. This makes a scoped prefix search a native `Query` (`PK = root AND begins_with(SK, …)`); only a rootless "search everything" falls back to a `Scan`.
+- **Chat history** — `PK = HIST#<sessionId>`; one item per message at `SK = HISTORY#MSG#<ULID>` (ordered, append-only) plus one `SK = HISTORY#SESSION` metadata item.
+
+**Why the key spaces cannot collide.** Each adapter tags its partition key with its own prefix, and those three tags differ in their very first character, so no `CHKPT#…` can ever equal a `STORE#…` or `HIST#…` — whatever identifiers you pass. That matters because reusing one id across adapters (a "conversation id" used as both a `thread_id` and a `sessionId`) is an entirely ordinary design: without the tags it put unrelated adapters' rows in one partition, where `deleteThread()`/`history.clear()` would delete each other's data and identically-composed sort keys could silently overwrite one another.
+
+Two further guards back that up, for a table holding hand-written rows or rows written before an upgrade: `deleteThread()`/`clear()` delete only rows whose sort key belongs to the calling adapter and log anything they leave in place, and every read tests a row against the attributes its kind must carry before decoding it, rather than trusting the key it was found at: the checkpointer's `META#` rows, the store's items and the chat history's session and message rows are each bound to the key they were found at as well, and a checkpoint's payload and pending-write rows are refused by the descriptor guard, which is the attribute a narrow would have tested. What a read does with a row that fails differs by read: the checkpointer's `getTuple` and `list` skip it and say so at `warn`, as does `store.reconcileVectorIndex`; `store.get` answers `null` and warns; `store.search` and `history.listSessions` drop it silently, because those two walk a whole prefix or table and one line per foreign row would fill a log rather than inform anyone; and a chat-history message read **reports** it whatever `onCorruptMessage` is set to — a conversation that quietly skips a row it cannot account for is the one outcome worse than a failed read. `history.reconcileMessageCount` refuses the same row for the same reason: a repaired count that disagreed with the read would describe a session nobody can open. Every one of those reads checks the row's own format version **before** its shape, so none of that applies to a row a newer release wrote: attribute names are this release's names rather than a later one's, and a row whose `v` is ahead of this reader is reported as `FORMAT_UNSUPPORTED` (field `v`) instead of being skipped as foreign because its attributes are no longer recognised. An offloaded payload's `s3Key` is bound the same way: before it is downloaded or deleted it must lie under the adapter's `keyPrefix` *and* the S3 path the row's own identifiers produce (`enc(thread_id)/…`, `enc(namespace…)/enc(key)`, `enc(sessionId)/…`), and a store row's `namespace`/`key` must agree with the partition and sort key it was found at — so a row planted in one partition can never make the library read or delete another tenant's object. A read of such a row fails with a `VALIDATION` error (field `s3Key`) on all three adapters — chat history included, whatever `onCorruptMessage` is set to, because a key outside the row's own path is a configuration or tenancy fault to report rather than a payload to write off — and a delete skips the object with a warning.
 
 ## IAM permissions
 
@@ -1418,56 +1599,153 @@ Four measured facts bound what that means:
 - What it stores is the JSON projection recorded in [Table schema](#table-schema): no `Map`, no `Set`, no `Uint8Array`, and a `BigInt` or a cycle refused at the write instead of substituted.
 - **It applies to every row it reads, including rows the other serializer wrote**, and almost nothing on the row distinguishes them: both defaults record `serdeType: "json"` for every value but a raw `Uint8Array`, which only `JsonPlusSerializer` writes and which it stamps `"bytes"`. A `HumanMessage` or a `Map` written under `JsonPlusSerializer` reads back as its `lc` record, a plain object, not as the class; a payload that *is* a raw `Uint8Array` is refused outright, as the `serde` `VALIDATION`, because `JSON_SERDE` reads only the `json` form it writes. Choose it for a new deployment, or migrate by rewriting the rows; do not switch it under a live thread and expect the old rows to read as they did.
 
-## Migrating from earlier versions
+## Operations
 
-**0.7.x → 0.8.0**: **every adapter's partition key is now adapter-tagged** —
-`PK = <thread_id>` → `CHKPT#<thread_id>`, `PK = <namespace[0]>` →
-`STORE#<namespace[0]>`, `PK = <sessionId>` → `HIST#<sessionId>` — and the
-checkpointer's pending-write sort key gains a trailing channel segment
-(`WRITE#<ns>#<id>#<task>#<idx>` → `…#<idx>#<channel>`).
+### Limits
 
-This closes two real defects on a table shared via `createAll()`. Reusing one
-identifier across adapters — a "conversation id" used as both a `thread_id`
-and a `sessionId`, an entirely ordinary choice — put unrelated adapters' rows
-in a single partition, where `deleteThread()` silently deleted the chat
-history (and vice versa), and identically-composed sort keys let one adapter
-overwrite another's item or hand its payload back on read. The channel segment
-separately stops a retried task whose write mix changed from silently losing a
-write; a per-call write group, also stored on each row, keeps such a retry from
-replaying a channel twice. See the CHANGELOG for the full mechanism.
+*Value* is the limit in force: for an option, its default. *Ceiling* is the largest value that option accepts; a larger one is refused at construction with a `VALIDATION` error naming the option. *Fixed* marks a limit no option changes.
 
-**Data written by 0.7.x is not found after upgrading**, for all three
-adapters. Back up and recreate the table before upgrading.
+| Limit | Value | Ceiling | Where it bites |
+| --- | --- | --- | --- |
+| Page size (`limit` on `saver.list`, `store.search`, `store.listNamespaces`, `history.getMessages`, `history.listSessions`) | none — each method's own default | 10 000 | `VALIDATION` naming `limit`, **at the call** rather than at construction. `limit: 0` asks for an empty result and is answered without a read; a negative one is refused. The exception is `history.getMessages` and the `forSession` window, which refuse `0` too — an empty conversation window is what a chain reads as the whole session |
+| DynamoDB item size | 400 KB | fixed | a payload over `thresholdBytes` (default 350 KB, ceiling 392 KB) must offload to S3; without `s3` a serialized payload over 392 KB is refused with a `VALIDATION` error before the write |
+| Partition identifiers (`thread_id`, `sessionId`) | 1024 bytes UTF-8 | fixed | `VALIDATION` |
+| Sort-key segments (`checkpoint_ns`, `checkpoint_id`, `taskId`, channel, store namespace element, store `key`) | 256 bytes each, 1024 bytes composed | fixed | `VALIDATION` |
+| S3 object key | 1024 bytes | fixed | identifiers are base64url-encoded into it, so long ids reach it first |
+| `ttl` | none (no expiry) | 5 years | `VALIDATION` at construction |
+| Chat-history append transaction | 99 messages or 3.5 MB per chunk | fixed | larger batches are split into chunks with caller-observed atomicity |
+| Append-rollback delete batches | 25 rows per `BatchWriteItem`, `UnprocessedItems` re-driven up to 10 times | fixed | `BATCH_WRITE_INCOMPLETE`, counted in chunks. Rolling back a failed multi-chunk `history.addMessages` is the only path left that deletes in batches |
+| Partition delete | 25 rows buffered at a time, 8 requests in flight, one conditional `DeleteItem` per row | fixed | `BATCH_WRITE_INCOMPLETE`, counted in rows. `BatchWriteItem` cannot carry the condition each row is pinned with, so `deleteThread()`/`clear()` trade ~25× the requests for the pin |
+| Rows one store read holds in memory (`maxScanItems`) | 10 000 | 1 000 000 | `RESULT_TRUNCATED` |
+| Rows held in memory by `listSessions({ maxItems })` | 10 000 | none; `Infinity` asks for no cap | `RESULT_TRUNCATED` |
+| Pages walked by `listSessions({ maxIterations })` | 1000 | none; `Infinity` asks for no cap | `RESULT_TRUNCATED` |
+| In-DB semantic candidates (`maxSearchCandidates`) | 1000 | 100 000 | `VALIDATION` |
+| Decompressed payload (`compression.maxDecompressedBytes`) and buffered S3 object (`s3.maxDownloadBytes`) | 50 MiB each | 512 MiB each | `COMPRESSION_LIMIT` / `S3_OFFLOAD_FAILED` |
+| Smallest payload compressed (`compression.minSizeBytes`) | 1 KB | 512 MiB | a smaller payload is stored uncompressed; not an error |
+| Retries per DynamoDB call (`retry.maxAttempts`) | 5 (about 1.5 s of sleep, about 51.5 s of wall time); message appends 18 (about 61 s of sleep, about 4 minutes) | 100 | `RETRY_EXHAUSTED` |
+| Backoff delay (`retry.baseDelayMs`, `retry.maxDelayMs`) | 100 ms base, 5 s cap | 60 s each | latency, not an error |
+| Offloaded payloads decoded concurrently by one read, and recency-index shards queried at once by one listing (`readConcurrency`) | 8 | 128 | latency and memory, not an error |
+| Index shards per adapter (`indexShards`) | 8 | 1024 | an indexed listing issues at least one `Query` per shard, `readConcurrency` at a time; `backfillRecencyIndex` takes the same ceiling and must be given the same value |
 
-Three behaviour changes are also worth checking before you upgrade:
-constructing a `DynamoDBStore` with a `vectorBackend` but no `index` now
-throws instead of silently returning unranked results; `getMessages` skips and
-logs an undecodable message instead of failing the whole read (pass
-`onCorruptMessage: 'throw'` to keep the old behaviour); and the store's
-`$gt`/`$gte`/`$lt`/`$lte` filters no longer coerce across types, so a stored
-`'10'` no longer matches `{ $gt: 5 }`.
+### What each operation costs
 
-**0.6.x → 0.7.0**: chat-history's sort keys now carry a `HISTORY#` item-kind
-tag — `SK = SESSION` → `SK = HISTORY#SESSION`, `SK = MSG#<ULID>` →
-`SK = HISTORY#MSG#<ULID>`. This closes a real key collision on a table
-shared via `createAll()`: an unprefixed `SESSION` sort key was reachable by
-an ordinary store call (`store.put([sessionId], 'SESSION', …)`), silently
-corrupting both adapters' items. Existing chat history data written before
-this change will not be found by `getMessages`/`listSessions`/`clear` after
-upgrading — back up and migrate (or recreate) any table with real
-chat-history data before upgrading. Checkpointer and store keys are
-unaffected.
+Requests per call, before retries. "Consistent" reads are `ConsistentRead: true` (twice the read units of an eventually consistent read); S3 requests apply only to offloaded payloads.
 
-**0.2.x → 0.3.0** is a complete, ground-up rewrite. The public API is similar, but the table schema, on-disk layout, and several options changed, so existing data is **not compatible** — create a new table.
+| Operation | DynamoDB | S3 |
+| --- | --- | --- |
+| `saver.getTuple` | 1 consistent `GetItem` (by id) or `Query` (newest) for the META row — one more `Query` per 50 expired or foreign rows at the head of the namespace, which a `ttl` can leave behind during DynamoDB's sweep lag, since the newest-first read evaluates 50 rows per page and keeps the first live one —, 1 consistent `GetItem` for the payload, 1 consistent `Query` for the pending writes; a pre-v4 checkpoint adds a `Query` of its parent's writes | 1 `GET` per offloaded payload, 8 at a time |
+| `saver.put` | 1 `TransactWriteItems` (META + PAYLOAD); after a failed transaction with `s3`, 1 consistent `GetItem` of the row carrying an offloaded descriptor, when something was offloaded | 1 `PUT` per offloaded payload; after a failure that read shows did not commit, 1 `DeleteObjects` of those uploads |
+| `saver.putWrites` | 1 `PutItem` per write, all in parallel — a one-item `TransactWriteItems` instead, at twice the write units, for a write whose payload was offloaded — guarded except for a special write without `s3`; with `s3` each special write adds 1 consistent `GetItem` and up to 3 compare-and-swap attempts, then 1 unguarded `PutItem` if all 3 are rejected; with `s3`, each failed `PutItem` adds 1 consistent `GetItem` to learn whether it landed, except a regular write's conditional rejection and a special write's rejection that returned the row | 1 `PUT` per offloaded write, `DELETE` of a superseded special write |
+| `saver.list` | 1 eventually consistent `Query` per page; without a `thread_id` a `Scan`, or — with `indexName` — per page of 100 rows 1 `Query` per index shard, `readConcurrency` at a time, and 1 more for a shard each time it has no row buffered while the page still needs one, even if the page then takes none of that query's rows, holding the 100 rows plus at most one DynamoDB page (1 MB) per shard; per yielded tuple 1 `GetItem` and 1 `Query` for its writes | `GET` per offloaded payload and metadata |
+| `saver.deleteThread`, `history.clear` | 1 consistent `Query` per page, then 1 `DeleteItem` per row — one request each, because `BatchWriteItem` silently ignores the condition every row is pinned with — at most 8 in flight, issued in batches of 25 | 1 `DeleteObjects` per 1000 keys |
+| `store.get` | 1 consistent `GetItem` | 1 `GET` |
+| `store.put` | 1 consistent `GetItem` (previous descriptor and revision), 1 `PutItem` (with `s3` guarded: up to 3 attempts under contention, each re-reading from the rejection, then 1 unguarded if all 3 are rejected), sent instead as a one-item `TransactWriteItems` at twice the write units when the payload was offloaded, 1 consistent `GetItem` after a write that fails, to learn whether it landed, plus the `vectorBackend` upsert | 1 `PUT`, then `DELETE` of the superseded object |
+| `store.delete` | 1 consistent `GetItem` (the revision to pin on and the descriptor to release); with a row there, 1 `TransactWriteItems` removing it under that pin, up to 3 attempts under contention, each re-pinning from the rejection and none of them deleting if all 3 are rejected; **no write at all when there is no row**; 1 consistent `GetItem` after a write whose budget is spent, to learn whether it landed; and, **only when a `vectorBackend` is configured**, 1 more consistent `GetItem` projecting `PK` alone to confirm the key really holds no row, on every path including the one that had none to begin with, followed by the `vectorBackend` delete when it does not | `DELETE` of the released object |
+| `store.search` | 1 eventually consistent `Query` per page (`Scan` for `[]`), reading rows in batches of 8 until the page is full; a `query` adds one embedding call | 1 `GET` per offloaded candidate |
+| `store.listNamespaces` | `Query` (`Scan` without a prefix root) per page, projected to each item's key and format version | none |
+| `history.addMessages` | 1 consistent `GetItem` of the session row when `ttl` is set, then 1 `TransactWriteItems` per chunk (up to 99 messages plus the session update); a rollback costs 1 `BatchWriteItem` per 25 rows plus a session update | 1 `PUT` per offloaded message |
+| `history.getMessages` | 1 consistent `Query` per page (newest-first with a page cap under `limit`) | 1 `GET` per offloaded message, 8 at a time |
+| `history.listSessions` | 1 `Scan` per page, or — with `indexName` — 1 `Query` per index shard (8 by default), `readConcurrency` at a time, and 1 more for a shard each time it has no row buffered while the page still needs one, even if the page then takes none of that query's rows, holding the page (up to `limit` rows, and `limit` is capped at 10,000) plus at most one DynamoDB page (1 MB) per shard; pageable by cursor | none |
+| `history.reconcileMessageCount` | 1 consistent `GetItem` of the stored count, 1 eventually consistent `Query` per page returning only each message's `v` and `ttl`, 1 guarded `UpdateItem`; all three again, up to 3 attempts in all, when the stored count changes while it counts | none |
+| `store.reconcileVectorIndex` | 1 `Query` per page, embedding calls in batches, backend upserts and deletes | `GET` per offloaded item |
 
-- **Table schema is now `PK`/`SK` strings** (one table for all adapters) instead of per-adapter custom key names. The key attribute names changed, so CDK/Terraform definitions need updating.
-- **Store keys** are `PK = namespace[0]`, `SK = namespace[1..]#key` (was `PK = full namespace`, `SK = key`).
-- **Chat history is one item per message** (`SK = MSG#<ULID>`) plus a `SESSION` metadata item, replacing the single per-session item.
-- **Single `tableName` option** per adapter (was `checkpointsTableName`/`writesTableName`, etc.).
-- **One `ttl` option** — `{ days }` or `{ seconds }` — replaces `ttlDays`/`ttlSeconds`.
-- **S3 config option renamed** `s3OffloadConfig` → `s3`.
-- **Per-instance `logger` option** replaces the global `setGlobalLogger` singleton; default logging is now silent.
-- **Unified error model** — every error is a `DynamoDBLangGraphError`, distinguished by its `ErrorCode`.
+### Monitoring
+
+Alert on the two `error` events (a corrupt message row, a failed append rollback) and on the five `warn` events that name an orphan or an exhausted compare-and-swap (see [Logging](#logging)); count `RETRY_EXHAUSTED` and the AWS codes (`THROTTLED`, `SERVICE_UNAVAILABLE`, `ACCESS_DENIED`, …) by `context.operation` and `context.httpStatusCode`. For AWS Support you want the `requestId` of the last failure, and it is on the **cause**: ``RETRY_EXHAUSTED`.context` carries `attempts` and nothing else, the last error is its `cause`, and the id is that error's own `$metadata.requestId`. The `debug` retry line names the attempt, the delay and the error's name — no `requestId`. An AWS failure a public method wrapped is the one that carries it in its own context (`error.context.requestId`), copied off the SDK error it wraps. Watch the table's `ThrottledRequests` and `ConsumedWriteCapacityUnits` per partition key prefix — the [hot-partition](#production-notes) note explains which identifier concentrates load.
+
+### Production notes
+
+- **Sharing one table** across all three adapters is supported — adapter-tagged partition keys make the key spaces provably disjoint (see [Table schema](#table-schema)), and table-wide reads filter to their own items. Checkpointer, chat-history, and *scoped* store reads are all partition-scoped (`Query`/`GetItem`).
+- **Scoped reads are `Query`s.** `store.search`/`store.listNamespaces` with a concrete namespace prefix and `history.getMessages` are native `Query`s. Only a rootless `store.search([])` / unprefixed `listNamespaces`, `history.listSessions` and a `saver.list()` called without a `thread_id` (which, like the reference savers, lists every thread in the table) fall back to `Scan` (cost scales with table size, and the result spans every tenant); with `indexName` the last two read the recency index instead, whose result still spans every tenant — keep those rare or use a dedicated table. `listSessions` accepts an optional `{ maxIterations }` override for tables where non-session rows dominate the scan.
+- **One S3 GET per offloaded payload per read.** Every offloaded row a read touches (`getTuple` pending writes, a plain `search()` applying its filter, `getMessages`) costs one S3 GET, and the returned bytes are decoded in memory. Reads decode up to 8 offloaded payloads at a time rather than one after another, but the request count is still linear in the offloaded row count — keep `thresholdBytes` high and compression on so that few payloads offload, and prefer a `vectorBackend` over the in-DB ranker for large semantic corpora.
+- **Hot partitions.** The store's partition key is `STORE#<namespace[0]>` and chat history's is `HIST#<sessionId>` — the adapter tag is constant, so throughput still concentrates on the identifier you choose. A single partition tops out around ~1000 WCU / 3000 RCU, so avoid funneling very high write throughput through one tenant/session id; spread load across scope roots (e.g. include a tenant id as `namespace[0]`).
+- **Identifier rules.** Every caller-supplied identifier (thread_id, checkpoint_ns, checkpoint_id, taskId, sessionId, store namespace elements and keys, pending-write channels) is validated before it reaches DynamoDB: it must be a non-blank, well-formed string (no unpaired surrogate) with no control characters and no reserved `#`, at most 1024 bytes of UTF-8 for the partition identifiers (`thread_id`, `sessionId`) and 256 bytes for every sort-key segment (an empty `checkpoint_ns` is legal, it is the root namespace). The same rules hold for every label of a `search` namespace prefix and of a `listNamespaces` prefix or suffix (where `'*'` still matches any label), and for `list()`'s `before` checkpoint id. Upstream's two further namespace rules — no `.` in a label, and a root other than `"langgraph"` — are applied by `store.put()` alone, exactly as `BaseStore.put` applies them: `get`, `delete`, `search`, `listNamespaces` and every `batch()` operation, which is how LangGraph reaches a store inside a graph, accept both, so a namespace such as `['memories', 'jane.doe@example.com']` that a graph writes through `batch()` can be read, searched, listed and deleted. Composed keys are checked too: a store namespace + key, or a checkpointer pending-write key, may not exceed DynamoDB's 1024-byte sort-key cap, and an offloaded S3 object key may not exceed S3's 1024 bytes. A violation is a `VALIDATION` error whose `context.field` names the offending value, thrown before any request is sent. Identifiers are stored and compared **as given**: this package does not normalise them, and it does not refuse Unicode format characters. `U+200B`, the zero-width non-joiner and joiner `U+200C` / `U+200D`, `U+FEFF`, the right-to-left override `U+202E` and the separators `U+2028` / `U+2029` are all accepted, and two identifiers differing only in Unicode composition — `café` written with `U+00E9` against `e` + `U+0301` — address two different rows. Both are deliberate. None of them can collide: DynamoDB compares strings by their UTF-8 bytes, the well-formedness rule above already makes that mapping injective, and an identifier that reaches an S3 key is base64url-encoded on the way, so the character never appears in a key at all. And refusing them would refuse ordinary text rather than hostile text — `U+200C` and `U+200D` carry meaning in Persian, Hindi and the Indic scripts, and `U+200D` is what joins the code points of a multi-person emoji. Normalising would be worse than refusing: it would fold two forms onto one key, so a row written before an upgrade would stop being found after it. What such a character *can* do is make two distinct identifiers render alike in a log line, a terminal or a dashboard; terminal escapes and line breaks, which are an injection rather than a rendering, are refused by the control-character rule above. If you want a normal form or a narrower alphabet, apply it to your own identifiers before you pass them.
+- **Very large vector corpora** outgrow the in-DB ranker (`maxSearchCandidates`). Configure a `vectorBackend` (OpenSearch, pgvector, …) — the library keeps DynamoDB as the source of truth and only delegates similarity ranking.
+- **TTL deletion timing** is governed by DynamoDB (typically within 48 h of expiry) and S3 lifecycle expiry is day-granular — the library writes the correct expiry timestamp (and filters expired chat messages on read) but does not guarantee instant deletion. The matching S3 lifecycle rule is not written automatically: it is installed only when you call `ensureS3LifecycleRule()`. That rule expires objects `ceil(ttl in days) + 2` days after creation — the two-day margin covers DynamoDB's sweep lag so an object never disappears before its row — and it expires **noncurrent** versions after the longer of one day and whatever `NoncurrentDays` already governs these keys, so a versioned bucket keeps a recovery window for a released payload without this library ever shortening a retention you chose (on such buckets the library's best-effort deletes only add delete markers). A **second** rule reclaims those delete markers once the last noncurrent version under a key has expired; without it every release leaves a marker that never goes away. [Both shapes are given verbatim](#s3-lifecycle-rules), for a deployment that manages its own lifecycle. `ensureS3LifecycleRule()` is a read-modify-write of the bucket's whole lifecycle configuration: call it sequentially across adapters and deployers, never concurrently.
+
+### Maintenance operations
+
+Four tools repair or provision state and are meant for deployment scripts and operators, not request paths:
+
+- **`ensureS3LifecycleRule()`** (all three adapters) — installs the S3 lifecycle expiration rule that matches the configured `ttl` under the adapter's key prefix, idempotently. It **throws** when the bucket's lifecycle configuration cannot be read or written (`AccessDenied`, `NoSuchBucket`, throttling) — that part swallows nothing — so call it once at deployment time, from a role that holds the two lifecycle actions, and treat a failure as a deployment failure. One thing it does not raise: the bucket-versioning probe that runs **after** the rules are written is best-effort and reports at `warn` (see [Logging](#logging)), because a role that provisioned rules yesterday without `s3:GetBucketVersioning` must not start failing today. A bucket with no lifecycle configuration at all is not an error either; the rules are written onto an empty set. It is a no-op when `s3` or `ttl` is not configured.
+- **`store.reconcileVectorIndex(namespacePrefix)`** — re-pushes every live item's embedding to the configured `vectorBackend` and, when the backend implements `listKeys`, prunes vectors whose item is gone; returns `{ upserted, pruned }`. Run it when the namespace is idle; it reads every row under the prefix (bounded by `maxScanItems`).
+- **`backfillRecencyIndex({ tableName, client, … })`** — gives rows written before the recency index their `gsi1pk`/`gsi1sk`. **Run it before setting `indexName` on any adapter**: a row without the keys is not in the index, so enabling the index first makes every pre-existing session, item and checkpoint vanish from the listings that read it — the rows are still there, and every other read still returns them, but a listing would not. Resumable by passing back the `nextCursor` it returns as `cursor`, re-runnable, and safe against a live table: every write is conditional on the row still being there **and** having no keys yet. That first half is not decoration — `UpdateItem` upserts, so a condition naming only the index attribute is satisfied by a key holding nothing at all, and a row deleted between the scan that found it and the update that backfilled it used to come back, as a stub of `PK`, `SK` and the two index keys and therefore *inside* the index, where a thread-less `saver.list()` logged one `warn` for it on every listing thereafter and `history.listSessions()` dropped it silently, one row short of the `limit` its page had asked for. `indexShards` must match what the adapters use. Every option is checked before the first read, with `VALIDATION` naming it: an unknown key, a `tableName` DynamoDB would refuse, a `client` without `scan` and `update`, an `indexShards` outside 1–1024, a `pageSize` or `maxPages` that is not an integer of at least 1, a `dryRun` that is not a boolean, a `retry` whose numbers break the adapters' bounds or whose hooks are not functions, a `signal` that is not an `AbortSignal`, and a `cursor` the tool did not issue. `signal` cancels the run; so does `retry.signal` when no top-level `signal` is given, and when both are given the top-level one wins. A refused write is not a failure and does not stop the run. Both halves of the condition refuse exactly the rows this run has nothing to do for — one that already carries keys a live adapter gave it, one that is no longer there — so the row is counted in the `skipped` of the `BackfillResult` and the walk carries on; on a table with adapters writing to it, which is the only kind a backfill is ever run against, the already-indexed refusal is the normal case rather than an edge one. Any *other* AWS SDK error it does not retry reaches the caller with the code the classifier assigns and the SDK error as `cause`, and the run ends there with its result discarded — re-run it, and the scan's own filter skips whatever the stopped run had already indexed.
+- **`history.reconcileMessageCount(sessionId)`** — recounts a session's live messages and rewrites the stored `messageCount`; returns the count. Run it after a `COMPENSATION_FAILED` error or the `rollback failed` log event, when the session is idle; it throws `CONDITION_CONFLICT` if an append lands through every one of its three attempts, and for a session that does not exist rather than creating one. It also refuses, with a `VALIDATION` error naming `message`, a session whose message key space holds a row this adapter did not write — the same row `getMessages` refuses — because a count written back for a session no read can open repairs nothing. It reads each row's identity, format version and ttl only; no message payload is transferred.
+
+### What can still go wrong
+
+A row in DynamoDB and its payload in S3 are two writes with no transaction across them, and the durability of that pair is layered: a compare-and-swap and a request token prevent the losses they can, S3 versioning contains what slips through, and the sweep below finds it. No layer is total. This is the list of what is left, so that none of it is met as a surprise. None of these is a known defect — each is a deliberate limit, with what backstops it.
+
+- **A write that outlives the token window.** DynamoDB honours a token for ten minutes and a tokened write stops starting attempts at 300 s, so reaching the window takes an injected client with no request timeout of its own, or a clock that jumps backwards. Past it a re-send is a new request and is applied, which can put a row back naming an object something else released. On a versioned bucket the payload is still there for the grace window, so the row is restorable and the sweep below finds it.
+- **A strand older than the grace window.** Once S3 has reclaimed the noncurrent version and then the delete marker, there is no marker to list and no backlink to read. The sweep is blind to it by construction; the table-scan recipe below is the only way to find one.
+- **An inline write can still re-land.** An inline `store.put` or `putWrites` whose acknowledgement is lost can put back a row a concurrent delete removed, because inline writes carry no token on purpose. The row simply comes back: it names no S3 object, so no read fails. An offloaded write in the same interleaving lets the delete stand — the two differ by where `s3.thresholdBytes` falls, and a caller who wants them uniform sets it low.
+- **Versioning off, or suspended.** The containment layer is then absent and the guarantee is the prevention layer's alone, bounded by those ten minutes. `ensureS3LifecycleRule()` warns and carries on; nothing enforces it, and nothing tells a caller at read time.
+- **Transaction conflicts on a contended row are ordinary, not pathological.** On an offloaded write path a `TransactionCanceledException` whose reason is `TransactionConflict` replaces what would have been a clean win-or-lose, at the rates under *What a token costs* above. The retry budget absorbs them — at the widest race measured, 60 logical writes produced 60 clean outcomes and no exhaustion — so the residual is cost, not correctness. Exhaustion stays possible in principle under contention heavier than that.
+- **A new retryable error on the inline paths.** Because an inline write stays a `PutItem` while an offloaded write to the same row is a transaction, an inline write can now meet a bare `TransactionConflictException`, which it could not before this release: 18% of the inline side's attempts under ten-against-ten contention on one row. It is retryable by name, so it costs requests rather than correctness — but it is a behaviour change on a path that is otherwise untouched, and it is the price of deciding by payload rather than by adapter.
+- **The store's unconditional fallback is still unconditional.** When `store.put`'s compare-and-swap budget is spent it overwrites with no guard at all and logs a `warn`. A token stops that put's own retries re-landing it *when the payload was offloaded*, and nothing does when it was inline; nothing at all stops it overwriting what a racer committed in the meantime, and the object it then releases is whatever its last observation named. Unchanged behaviour, listed here so that "the overwrite race is closed" is not read as "the store put has no unguarded write left".
+- **`deleteThread()` and `clear()` are still single-pass.** A write that starts after the partition read lands and survives the pass; only the re-landing of a write that committed *before* the read is prevented, and only where that write carries a token.
+- **Leaks are unchanged.** Every orphan case listed under *S3 offloading* — an exhausted compare-and-swap, a best-effort delete that genuinely fails, a write that cannot be verified — still leaves an object behind, and `ensureS3LifecycleRule()` is still what reclaims it.
+- **Some rows written before this release carry no per-write id.** A partition delete pins each row on the id the read observed of it, and a row carrying none is deleted unconditionally, exactly as every row was before. It affects the rows whose id arrived in this release — a checkpoint's `META` and `PAYLOAD` rows, a history message row and the history `SESSION` row — and not pending-write rows, which have carried `writeGroup` since `0.8.0`. It drains rather than needing a migration: a row gets an id the next time it is written, and a table started on this release has none.
+- **A partition delete can split a checkpoint from its pending writes.** The two are written by different calls under different ids, so a refusal on one side leaves the other deletable: pending writes can outlive their checkpoint. The reverse — a checkpoint that loses its acknowledged `putWrites` output — is closed, because a refused checkpoint row makes the pass skip the rest of that checkpoint's rows. Closing the open direction would need the refusal known before any of the unit's deletes went out, and no ordering gives that: deleting pending writes first only swaps which direction closes. Orphaned pending writes are unreachable while their `META` row is gone — every read path starts there — with one exception: a surviving pre-v4 checkpoint whose `parentCheckpointId` names them still reads their `TASKS`-channel entries back as its own pending sends. They become reachable again if a later `saver.put` writes that checkpoint id, which serves them as that checkpoint's completed task results. What is left is reported — every row the pass leaves in place is logged at `warn` with its sort key, **one line per row and not one per checkpoint**, so a wide unit costs as many lines as it has rows — and a second call clears it.
+- **A partition delete can leave a payload row whose metadata row is gone.** This is the third shape, and the split above does not describe it: a racing `saver.put` cannot cause it, because both rows go out in one transaction and nothing else writes a payload row. A delete that **fails** rather than being refused ends the pass with the metadata row already removed, and DynamoDB's own TTL sweep produces the same shape transiently while it works through a thread. Both predate this release and both are a **leak, not data loss** — every read path starts from the metadata row, so nothing serves the orphan — and both clear on a re-run.
+- **`store.delete` can resolve without deleting.** Three writers landing at the item between a re-pin and its attempt exhaust the compare-and-swap; the item stays, nothing is released — correctly, a live row names it — and the call reports success with one `warn`.
+- **`store.delete` cannot be cancelled, and its pre-read is not bounded by the write lifetime.** The call takes no `AbortSignal`, and the deadline covers only the writes that carry a token, so the pre-read keeps the full configured retry budget on top of the three bounded transactions: about three and a half minutes at the defaults, hours at the ceilings `retry` accepts, with nothing able to interrupt it.
+- **A vector can still be dropped for a live item.** The window is two statements wide — a put that commits between the confirmation read and the backend call — and `store.reconcileVectorIndex()` is the repair, as *Vector index consistency* above describes.
+
+Two of the things this list rests on are **new and deliberate** rather than left over, and they are the two most worth reading twice: what a token does and does not promise (*What a token guarantees, and what it does not*), and the 300 s cut on a write's retry budget ([Retries and backoff](#retries-and-backoff)).
+
+### Finding rows whose payload was released
+
+On a versioned bucket a released payload is not erased: it becomes a noncurrent version behind a delete marker, and it stays there for the grace window the [lifecycle rules](#s3-lifecycle-rules) set. That window is the only cheap opportunity to find a **stranded row** — one that is still live and still names an object whose payload has been released — because the object side lists exactly the releases, and every offloaded object carries its row's key as S3 user metadata (`dynamodb-pk-b64`, `dynamodb-sk-b64`).
+
+The sweep that does this lives at `scripts/find-stranded-payloads.mjs` **in the repository**. It is deliberately not in the npm tarball and there is no `bin` for it: its command line would otherwise become a `1.x` compatibility promise for a tool an operator runs a handful of times. Clone the repository (or copy the one file) to run it:
+
+```bash
+node scripts/find-stranded-payloads.mjs \
+  --bucket my-bucket --table my-table --region eu-west-1 \
+  --prefix langgraph-checkpoints/ --grace-days 1
+```
+
+`--prefix` defaults to `langgraph-checkpoints/` and `--grace-days` to `1`, the grace `ensureS3LifecycleRule()` writes; pass the larger number when the bucket carries a longer `NoncurrentDays` floor, so the hours-remaining figure is not pessimistic. The script prints the settings it swept with, so a report pasted into an incident channel says what it ran against. It **exits 0 whenever the sweep completed**, found something or not, and non-zero only when the sweep itself failed — so anything you wire it into should alert on the report, not on the exit code.
+
+**Permissions are the operator's, not the library's.** The sweep needs `s3:ListBucketVersions` and `s3:GetObjectVersion` on the bucket and `dynamodb:GetItem` on the table. The first two are actions this library never calls, which is why they are absent from the policy under [IAM permissions](#iam-permissions): grant them to whoever runs the sweep, not to the role your application runs as.
+
+**When to run it.** On demand: after an incident, or when `S3_OFFLOAD_FAILED` or a `NoSuchKey` read failure starts alarming. Not hourly — not for what it costs in money, which is about a cent (below), but for the requests it puts on a live table and bucket. It costs per release, not per query, and the numbers below are per sweep.
+
+**What it reads, in order.** `ListObjectVersions` under the prefix, paginated; for each released key, `HeadObject` on the **surviving payload version** to read the backlink; then a strongly consistent `GetItem` on the decoded key. A key counts as released only when its **current** version is a delete marker: one written again after a release carries its marker further down its history, its payload is current and readable, and it costs the sweep no request at all. It reports a row that is live and still names that key. A row that is gone is the ordinary release — on the happy path that is every marker — and a row that now names a different object was superseded, not stranded; neither is reported. Each finding prints the DynamoDB key, the object key, the payload version's id, the delete marker's id and timestamp, and the hours of grace remaining.
+
+An object whose backlink cannot be read, and a row DynamoDB will not hand back, are each printed as one `UNREADABLE` line naming the object key and the reason, and the sweep carries on: one 404, one object written by something else, and one throttled read must not cost you the rest of the report.
+
+**What it costs.** Per sweep, with `V` versions and `M` delete markers under the prefix:
+
+| | requests |
+| --- | --- |
+| listing | `ceil((V + M) / 1000)` — `ListObjectVersions` returns at most 1000 entries per page, counting versions and markers together |
+| per marker | 1 `HeadObject` + 1 `GetItem` |
+| total | `ceil((V + M) / 1000) + 2M` |
+
+With the marker-reclaim rule on the bucket, `M` is the releases still inside the grace window — roughly one to two days of release volume — and `V` is the live payload count plus the same. A deployment releasing 10 000 payloads a day with 100 000 live offloaded objects therefore has `V = 120 000` (100 000 live plus 20 000 not-yet-expired noncurrent) and `M = 20 000`, so one sweep costs `ceil(140 000 / 1000) + 2 x 20 000` = **40 140 requests**, dominated by the per-marker pair. At on-demand prices that is **one to two cents**, not a few dollars: 20 000 `HeadObject` at $0.0004 per 1 000 is $0.008, 140 `ListObjectVersions` at $0.005 per 1 000 is $0.0007, and 20 000 strongly-consistent `GetItem` on small items is 20 000 read request units, about $0.0025. So money is not the reason to run this on demand rather than hourly. The reason is the 40 000 requests themselves, against a live table and bucket, most of them strongly-consistent reads on rows a running graph is using.
+
+**Without the marker-reclaim rule, `M` is total lifetime release volume** and the figure above has no upper bound: every release leaves a marker that is never reclaimed, so the sweep's cost grows for the life of the bucket. Two deployments do not get that rule from this library:
+
+- **`s3` configured without a `ttl`.** `ensureS3LifecycleRule()` is a no-op in that shape, so a versioned bucket accumulates a delete marker per release forever.
+- **Anyone who never calls `ensureS3LifecycleRule()` at all.**
+
+Both must write the two rules themselves; [their shapes are above](#s3-lifecycle-rules), verbatim.
+
+The cost grows with that listing; the memory does not. `ListObjectVersions` answers in ascending key order, so every entry for one object key arrives together and the sweep joins a key the moment a later one appears — it holds one key at a time, never the listing. That is what lets it finish on the bucket described above, which is the one you are most likely to sweep after an incident. It also checks that order rather than assuming it: a key listed after a later key has already been joined fails the sweep with a non-zero exit instead of reporting a join it cannot stand behind.
+
+**What it cannot find.** A strand whose grace window has already expired. S3 reclaims the noncurrent version first and then the delete marker, so there is neither a marker to list nor a backlink to read, and the sweep is blind to it by construction. Finding those needs the opposite direction — a full table `Scan`, keeping every row that carries an offloaded descriptor, then one `HeadObject` per descriptor to see whether the object is still there — which costs a read of the whole table and stays a recipe rather than a script. While the marker is still present but its last version has gone, the sweep counts the key separately as having no surviving payload version, which is the last warning you get. Read that count as an upper bound on expired grace windows rather than a list of them: a bare delete marker is also what a `DeleteObject` on a key that never existed leaves, and what any foreign delete under the prefix leaves.
+
+**What to do with a finding.** The script repairs nothing, and it should not: the right remedy depends on why the row is there. Either **restore the payload** — `DeleteObjectVersion` on the *delete marker's* version id, which makes the payload current again, and which only works while the hours remaining are positive — or **accept the delete** — `DeleteItem` on the DynamoDB key. For a checkpointer `WRITE` row that survived a `deleteThread()`, deleting the row is right; for a store item recreated after its object was released, it is not.
+
+### Lambda and other short-lived runtimes
+
+Construct the adapters once at module scope (or one `DynamoDBFactory.createAll()`), reuse them across invocations, and pass a `client` you own if the function also uses DynamoDB elsewhere; `destroy()` is only needed when a process wants to release sockets before exit. Size the function timeout against the worst-case retry budgets above: a heavily contended chat append spends about a minute sleeping and can take about four with its attempts, and `retry.maxAttempts` / `retry.maxDelayMs` trade that ceiling against resilience to throttling. Every long-running method takes an `AbortSignal`, so a timeout can cancel cleanly (see [Cancellation](#cancellation)).
+
+### Multi-tenancy
+
+See [Multi-tenant deployments](#multi-tenant-deployments) under IAM permissions for the identifier convention, the table-scan operations that are cross-tenant by construction, and the `dynamodb:LeadingKeys` policy.
 
 ## Versioning and compatibility
 
@@ -1566,154 +1844,6 @@ Also not covered: the wording of error messages and log lines, the order of rows
 | V-30 | Namespaces are ordered by a collation pinned to the `en` locale, not by the host's | the reference sorts with bare `localeCompare`, which means "in the host's default locale", and locales disagree — `'ä'` sorts before `'z'` in German and after it in Swedish. `listNamespaces` pages by `offset`, an index into that sorted listing which the caller holds between two calls, so two hosts answering the same paged listing cut it in two different places and the caller misses one namespace and sees another twice. Parity with the reference was only ever parity on the same host, because the reference's own order varies too; pinning keeps it on every host whose locale agrees and makes the order deterministic on the rest. `en` is pinned because ICU applies no tailoring to it, and it is the one locale a Node built with small ICU still carries |
 
 V-7 was withdrawn in 1.0.0-rc.2: it recorded `store.batch()` answering a put or a delete operation with `undefined` where the reference `InMemoryStore` answers `null`, kept for being "cosmetic" — a reason neither of the two this table allows a row for, the reference being the defect or this package's storage and key rules requiring the difference. That made the row describe a defect rather than a choice, so `batch()` was changed to answer `null` for both, matching the reference, and the row was deleted. The number stays unused.
-
-## Production notes
-
-- **Sharing one table** across all three adapters is supported — adapter-tagged partition keys make the key spaces provably disjoint (see [Table schema](#table-schema)), and table-wide reads filter to their own items. Checkpointer, chat-history, and *scoped* store reads are all partition-scoped (`Query`/`GetItem`).
-- **Scoped reads are `Query`s.** `store.search`/`store.listNamespaces` with a concrete namespace prefix and `history.getMessages` are native `Query`s. Only a rootless `store.search([])` / unprefixed `listNamespaces`, `history.listSessions` and a `saver.list()` called without a `thread_id` (which, like the reference savers, lists every thread in the table) fall back to `Scan` (cost scales with table size, and the result spans every tenant); with `indexName` the last two read the recency index instead, whose result still spans every tenant — keep those rare or use a dedicated table. `listSessions` accepts an optional `{ maxIterations }` override for tables where non-session rows dominate the scan.
-- **One S3 GET per offloaded payload per read.** Every offloaded row a read touches (`getTuple` pending writes, a plain `search()` applying its filter, `getMessages`) costs one S3 GET, and the returned bytes are decoded in memory. Reads decode up to 8 offloaded payloads at a time rather than one after another, but the request count is still linear in the offloaded row count — keep `thresholdBytes` high and compression on so that few payloads offload, and prefer a `vectorBackend` over the in-DB ranker for large semantic corpora.
-- **Hot partitions.** The store's partition key is `STORE#<namespace[0]>` and chat history's is `HIST#<sessionId>` — the adapter tag is constant, so throughput still concentrates on the identifier you choose. A single partition tops out around ~1000 WCU / 3000 RCU, so avoid funneling very high write throughput through one tenant/session id; spread load across scope roots (e.g. include a tenant id as `namespace[0]`).
-- **Identifier rules.** Every caller-supplied identifier (thread_id, checkpoint_ns, checkpoint_id, taskId, sessionId, store namespace elements and keys, pending-write channels) is validated before it reaches DynamoDB: it must be a non-blank, well-formed string (no unpaired surrogate) with no control characters and no reserved `#`, at most 1024 bytes of UTF-8 for the partition identifiers (`thread_id`, `sessionId`) and 256 bytes for every sort-key segment (an empty `checkpoint_ns` is legal, it is the root namespace). The same rules hold for every label of a `search` namespace prefix and of a `listNamespaces` prefix or suffix (where `'*'` still matches any label), and for `list()`'s `before` checkpoint id. Upstream's two further namespace rules — no `.` in a label, and a root other than `"langgraph"` — are applied by `store.put()` alone, exactly as `BaseStore.put` applies them: `get`, `delete`, `search`, `listNamespaces` and every `batch()` operation, which is how LangGraph reaches a store inside a graph, accept both, so a namespace such as `['memories', 'jane.doe@example.com']` that a graph writes through `batch()` can be read, searched, listed and deleted. Composed keys are checked too: a store namespace + key, or a checkpointer pending-write key, may not exceed DynamoDB's 1024-byte sort-key cap, and an offloaded S3 object key may not exceed S3's 1024 bytes. A violation is a `VALIDATION` error whose `context.field` names the offending value, thrown before any request is sent. Identifiers are stored and compared **as given**: this package does not normalise them, and it does not refuse Unicode format characters. `U+200B`, the zero-width non-joiner and joiner `U+200C` / `U+200D`, `U+FEFF`, the right-to-left override `U+202E` and the separators `U+2028` / `U+2029` are all accepted, and two identifiers differing only in Unicode composition — `café` written with `U+00E9` against `e` + `U+0301` — address two different rows. Both are deliberate. None of them can collide: DynamoDB compares strings by their UTF-8 bytes, the well-formedness rule above already makes that mapping injective, and an identifier that reaches an S3 key is base64url-encoded on the way, so the character never appears in a key at all. And refusing them would refuse ordinary text rather than hostile text — `U+200C` and `U+200D` carry meaning in Persian, Hindi and the Indic scripts, and `U+200D` is what joins the code points of a multi-person emoji. Normalising would be worse than refusing: it would fold two forms onto one key, so a row written before an upgrade would stop being found after it. What such a character *can* do is make two distinct identifiers render alike in a log line, a terminal or a dashboard; terminal escapes and line breaks, which are an injection rather than a rendering, are refused by the control-character rule above. If you want a normal form or a narrower alphabet, apply it to your own identifiers before you pass them.
-- **Very large vector corpora** outgrow the in-DB ranker (`maxSearchCandidates`). Configure a `vectorBackend` (OpenSearch, pgvector, …) — the library keeps DynamoDB as the source of truth and only delegates similarity ranking.
-- **TTL deletion timing** is governed by DynamoDB (typically within 48 h of expiry) and S3 lifecycle expiry is day-granular — the library writes the correct expiry timestamp (and filters expired chat messages on read) but does not guarantee instant deletion. The matching S3 lifecycle rule is not written automatically: it is installed only when you call `ensureS3LifecycleRule()`. That rule expires objects `ceil(ttl in days) + 2` days after creation — the two-day margin covers DynamoDB's sweep lag so an object never disappears before its row — and it expires **noncurrent** versions after the longer of one day and whatever `NoncurrentDays` already governs these keys, so a versioned bucket keeps a recovery window for a released payload without this library ever shortening a retention you chose (on such buckets the library's best-effort deletes only add delete markers). A **second** rule reclaims those delete markers once the last noncurrent version under a key has expired; without it every release leaves a marker that never goes away. [Both shapes are given verbatim](#s3-lifecycle-rules), for a deployment that manages its own lifecycle. `ensureS3LifecycleRule()` is a read-modify-write of the bucket's whole lifecycle configuration: call it sequentially across adapters and deployers, never concurrently.
-
-## Operations
-
-### Limits
-
-*Value* is the limit in force: for an option, its default. *Ceiling* is the largest value that option accepts; a larger one is refused at construction with a `VALIDATION` error naming the option. *Fixed* marks a limit no option changes.
-
-| Limit | Value | Ceiling | Where it bites |
-| --- | --- | --- | --- |
-| Page size (`limit` on `saver.list`, `store.search`, `store.listNamespaces`, `history.getMessages`, `history.listSessions`) | none — each method's own default | 10 000 | `VALIDATION` naming `limit`, **at the call** rather than at construction. `limit: 0` asks for an empty result and is answered without a read; a negative one is refused. The exception is `history.getMessages` and the `forSession` window, which refuse `0` too — an empty conversation window is what a chain reads as the whole session |
-| DynamoDB item size | 400 KB | fixed | a payload over `thresholdBytes` (default 350 KB, ceiling 392 KB) must offload to S3; without `s3` a serialized payload over 392 KB is refused with a `VALIDATION` error before the write |
-| Partition identifiers (`thread_id`, `sessionId`) | 1024 bytes UTF-8 | fixed | `VALIDATION` |
-| Sort-key segments (`checkpoint_ns`, `checkpoint_id`, `taskId`, channel, store namespace element, store `key`) | 256 bytes each, 1024 bytes composed | fixed | `VALIDATION` |
-| S3 object key | 1024 bytes | fixed | identifiers are base64url-encoded into it, so long ids reach it first |
-| `ttl` | none (no expiry) | 5 years | `VALIDATION` at construction |
-| Chat-history append transaction | 99 messages or 3.5 MB per chunk | fixed | larger batches are split into chunks with caller-observed atomicity |
-| Append-rollback delete batches | 25 rows per `BatchWriteItem`, `UnprocessedItems` re-driven up to 10 times | fixed | `BATCH_WRITE_INCOMPLETE`, counted in chunks. Rolling back a failed multi-chunk `history.addMessages` is the only path left that deletes in batches |
-| Partition delete | 25 rows buffered at a time, 8 requests in flight, one conditional `DeleteItem` per row | fixed | `BATCH_WRITE_INCOMPLETE`, counted in rows. `BatchWriteItem` cannot carry the condition each row is pinned with, so `deleteThread()`/`clear()` trade ~25× the requests for the pin |
-| Rows one store read holds in memory (`maxScanItems`) | 10 000 | 1 000 000 | `RESULT_TRUNCATED` |
-| Rows held in memory by `listSessions({ maxItems })` | 10 000 | none; `Infinity` asks for no cap | `RESULT_TRUNCATED` |
-| Pages walked by `listSessions({ maxIterations })` | 1000 | none; `Infinity` asks for no cap | `RESULT_TRUNCATED` |
-| In-DB semantic candidates (`maxSearchCandidates`) | 1000 | 100 000 | `VALIDATION` |
-| Decompressed payload (`compression.maxDecompressedBytes`) and buffered S3 object (`s3.maxDownloadBytes`) | 50 MiB each | 512 MiB each | `COMPRESSION_LIMIT` / `S3_OFFLOAD_FAILED` |
-| Smallest payload compressed (`compression.minSizeBytes`) | 1 KB | 512 MiB | a smaller payload is stored uncompressed; not an error |
-| Retries per DynamoDB call (`retry.maxAttempts`) | 5 (about 1.5 s of sleep, about 51.5 s of wall time); message appends 18 (about 61 s of sleep, about 4 minutes) | 100 | `RETRY_EXHAUSTED` |
-| Backoff delay (`retry.baseDelayMs`, `retry.maxDelayMs`) | 100 ms base, 5 s cap | 60 s each | latency, not an error |
-| Offloaded payloads decoded concurrently by one read, and recency-index shards queried at once by one listing (`readConcurrency`) | 8 | 128 | latency and memory, not an error |
-| Index shards per adapter (`indexShards`) | 8 | 1024 | an indexed listing issues at least one `Query` per shard, `readConcurrency` at a time; `backfillRecencyIndex` takes the same ceiling and must be given the same value |
-
-### What each operation costs
-
-Requests per call, before retries. "Consistent" reads are `ConsistentRead: true` (twice the read units of an eventually consistent read); S3 requests apply only to offloaded payloads.
-
-| Operation | DynamoDB | S3 |
-| --- | --- | --- |
-| `saver.getTuple` | 1 consistent `GetItem` (by id) or `Query` (newest) for the META row — one more `Query` per 50 expired or foreign rows at the head of the namespace, which a `ttl` can leave behind during DynamoDB's sweep lag, since the newest-first read evaluates 50 rows per page and keeps the first live one —, 1 consistent `GetItem` for the payload, 1 consistent `Query` for the pending writes; a pre-v4 checkpoint adds a `Query` of its parent's writes | 1 `GET` per offloaded payload, 8 at a time |
-| `saver.put` | 1 `TransactWriteItems` (META + PAYLOAD); after a failed transaction with `s3`, 1 consistent `GetItem` of the row carrying an offloaded descriptor, when something was offloaded | 1 `PUT` per offloaded payload; after a failure that read shows did not commit, 1 `DeleteObjects` of those uploads |
-| `saver.putWrites` | 1 `PutItem` per write, all in parallel — a one-item `TransactWriteItems` instead, at twice the write units, for a write whose payload was offloaded — guarded except for a special write without `s3`; with `s3` each special write adds 1 consistent `GetItem` and up to 3 compare-and-swap attempts, then 1 unguarded `PutItem` if all 3 are rejected; with `s3`, each failed `PutItem` adds 1 consistent `GetItem` to learn whether it landed, except a regular write's conditional rejection and a special write's rejection that returned the row | 1 `PUT` per offloaded write, `DELETE` of a superseded special write |
-| `saver.list` | 1 eventually consistent `Query` per page; without a `thread_id` a `Scan`, or — with `indexName` — per page of 100 rows 1 `Query` per index shard, `readConcurrency` at a time, and 1 more for a shard each time it has no row buffered while the page still needs one, even if the page then takes none of that query's rows, holding the 100 rows plus at most one DynamoDB page (1 MB) per shard; per yielded tuple 1 `GetItem` and 1 `Query` for its writes | `GET` per offloaded payload and metadata |
-| `saver.deleteThread`, `history.clear` | 1 consistent `Query` per page, then 1 `DeleteItem` per row — one request each, because `BatchWriteItem` silently ignores the condition every row is pinned with — at most 8 in flight, issued in batches of 25 | 1 `DeleteObjects` per 1000 keys |
-| `store.get` | 1 consistent `GetItem` | 1 `GET` |
-| `store.put` | 1 consistent `GetItem` (previous descriptor and revision), 1 `PutItem` (with `s3` guarded: up to 3 attempts under contention, each re-reading from the rejection, then 1 unguarded if all 3 are rejected), sent instead as a one-item `TransactWriteItems` at twice the write units when the payload was offloaded, 1 consistent `GetItem` after a write that fails, to learn whether it landed, plus the `vectorBackend` upsert | 1 `PUT`, then `DELETE` of the superseded object |
-| `store.delete` | 1 consistent `GetItem` (the revision to pin on and the descriptor to release); with a row there, 1 `TransactWriteItems` removing it under that pin, up to 3 attempts under contention, each re-pinning from the rejection and none of them deleting if all 3 are rejected; **no write at all when there is no row**; 1 consistent `GetItem` after a write whose budget is spent, to learn whether it landed; and, **only when a `vectorBackend` is configured**, 1 more consistent `GetItem` projecting `PK` alone to confirm the key really holds no row, on every path including the one that had none to begin with, followed by the `vectorBackend` delete when it does not | `DELETE` of the released object |
-| `store.search` | 1 eventually consistent `Query` per page (`Scan` for `[]`), reading rows in batches of 8 until the page is full; a `query` adds one embedding call | 1 `GET` per offloaded candidate |
-| `store.listNamespaces` | `Query` (`Scan` without a prefix root) per page, projected to each item's key and format version | none |
-| `history.addMessages` | 1 consistent `GetItem` of the session row when `ttl` is set, then 1 `TransactWriteItems` per chunk (up to 99 messages plus the session update); a rollback costs 1 `BatchWriteItem` per 25 rows plus a session update | 1 `PUT` per offloaded message |
-| `history.getMessages` | 1 consistent `Query` per page (newest-first with a page cap under `limit`) | 1 `GET` per offloaded message, 8 at a time |
-| `history.listSessions` | 1 `Scan` per page, or — with `indexName` — 1 `Query` per index shard (8 by default), `readConcurrency` at a time, and 1 more for a shard each time it has no row buffered while the page still needs one, even if the page then takes none of that query's rows, holding the page (up to `limit` rows, and `limit` is capped at 10,000) plus at most one DynamoDB page (1 MB) per shard; pageable by cursor | none |
-| `history.reconcileMessageCount` | 1 consistent `GetItem` of the stored count, 1 eventually consistent `Query` per page returning only each message's `v` and `ttl`, 1 guarded `UpdateItem`; all three again, up to 3 attempts in all, when the stored count changes while it counts | none |
-| `store.reconcileVectorIndex` | 1 `Query` per page, embedding calls in batches, backend upserts and deletes | `GET` per offloaded item |
-
-### Monitoring
-
-Alert on the two `error` events (a corrupt message row, a failed append rollback) and on the five `warn` events that name an orphan or an exhausted compare-and-swap (see [Logging](#logging)); count `RETRY_EXHAUSTED` and the AWS codes (`THROTTLED`, `SERVICE_UNAVAILABLE`, `ACCESS_DENIED`, …) by `context.operation` and `context.httpStatusCode`. For AWS Support you want the `requestId` of the last failure, and it is on the **cause**: ``RETRY_EXHAUSTED`.context` carries `attempts` and nothing else, the last error is its `cause`, and the id is that error's own `$metadata.requestId`. The `debug` retry line names the attempt, the delay and the error's name — no `requestId`. An AWS failure a public method wrapped is the one that carries it in its own context (`error.context.requestId`), copied off the SDK error it wraps. Watch the table's `ThrottledRequests` and `ConsumedWriteCapacityUnits` per partition key prefix — the [hot-partition](#production-notes) note explains which identifier concentrates load.
-
-### What can still go wrong
-
-A row in DynamoDB and its payload in S3 are two writes with no transaction across them, and the durability of that pair is layered: a compare-and-swap and a request token prevent the losses they can, S3 versioning contains what slips through, and the sweep below finds it. No layer is total. This is the list of what is left, so that none of it is met as a surprise. None of these is a known defect — each is a deliberate limit, with what backstops it.
-
-- **A write that outlives the token window.** DynamoDB honours a token for ten minutes and a tokened write stops starting attempts at 300 s, so reaching the window takes an injected client with no request timeout of its own, or a clock that jumps backwards. Past it a re-send is a new request and is applied, which can put a row back naming an object something else released. On a versioned bucket the payload is still there for the grace window, so the row is restorable and the sweep below finds it.
-- **A strand older than the grace window.** Once S3 has reclaimed the noncurrent version and then the delete marker, there is no marker to list and no backlink to read. The sweep is blind to it by construction; the table-scan recipe below is the only way to find one.
-- **An inline write can still re-land.** An inline `store.put` or `putWrites` whose acknowledgement is lost can put back a row a concurrent delete removed, because inline writes carry no token on purpose. The row simply comes back: it names no S3 object, so no read fails. An offloaded write in the same interleaving lets the delete stand — the two differ by where `s3.thresholdBytes` falls, and a caller who wants them uniform sets it low.
-- **Versioning off, or suspended.** The containment layer is then absent and the guarantee is the prevention layer's alone, bounded by those ten minutes. `ensureS3LifecycleRule()` warns and carries on; nothing enforces it, and nothing tells a caller at read time.
-- **Transaction conflicts on a contended row are ordinary, not pathological.** On an offloaded write path a `TransactionCanceledException` whose reason is `TransactionConflict` replaces what would have been a clean win-or-lose, at the rates under *What a token costs* above. The retry budget absorbs them — at the widest race measured, 60 logical writes produced 60 clean outcomes and no exhaustion — so the residual is cost, not correctness. Exhaustion stays possible in principle under contention heavier than that.
-- **A new retryable error on the inline paths.** Because an inline write stays a `PutItem` while an offloaded write to the same row is a transaction, an inline write can now meet a bare `TransactionConflictException`, which it could not before this release: 18% of the inline side's attempts under ten-against-ten contention on one row. It is retryable by name, so it costs requests rather than correctness — but it is a behaviour change on a path that is otherwise untouched, and it is the price of deciding by payload rather than by adapter.
-- **The store's unconditional fallback is still unconditional.** When `store.put`'s compare-and-swap budget is spent it overwrites with no guard at all and logs a `warn`. A token stops that put's own retries re-landing it *when the payload was offloaded*, and nothing does when it was inline; nothing at all stops it overwriting what a racer committed in the meantime, and the object it then releases is whatever its last observation named. Unchanged behaviour, listed here so that "the overwrite race is closed" is not read as "the store put has no unguarded write left".
-- **`deleteThread()` and `clear()` are still single-pass.** A write that starts after the partition read lands and survives the pass; only the re-landing of a write that committed *before* the read is prevented, and only where that write carries a token.
-- **Leaks are unchanged.** Every orphan case listed under *S3 offloading* — an exhausted compare-and-swap, a best-effort delete that genuinely fails, a write that cannot be verified — still leaves an object behind, and `ensureS3LifecycleRule()` is still what reclaims it.
-- **Some rows written before this release carry no per-write id.** A partition delete pins each row on the id the read observed of it, and a row carrying none is deleted unconditionally, exactly as every row was before. It affects the rows whose id arrived in this release — a checkpoint's `META` and `PAYLOAD` rows, a history message row and the history `SESSION` row — and not pending-write rows, which have carried `writeGroup` since `0.8.0`. It drains rather than needing a migration: a row gets an id the next time it is written, and a table started on this release has none.
-- **A partition delete can split a checkpoint from its pending writes.** The two are written by different calls under different ids, so a refusal on one side leaves the other deletable: pending writes can outlive their checkpoint. The reverse — a checkpoint that loses its acknowledged `putWrites` output — is closed, because a refused checkpoint row makes the pass skip the rest of that checkpoint's rows. Closing the open direction would need the refusal known before any of the unit's deletes went out, and no ordering gives that: deleting pending writes first only swaps which direction closes. Orphaned pending writes are unreachable while their `META` row is gone — every read path starts there — with one exception: a surviving pre-v4 checkpoint whose `parentCheckpointId` names them still reads their `TASKS`-channel entries back as its own pending sends. They become reachable again if a later `saver.put` writes that checkpoint id, which serves them as that checkpoint's completed task results. What is left is reported — every row the pass leaves in place is logged at `warn` with its sort key, **one line per row and not one per checkpoint**, so a wide unit costs as many lines as it has rows — and a second call clears it.
-- **A partition delete can leave a payload row whose metadata row is gone.** This is the third shape, and the split above does not describe it: a racing `saver.put` cannot cause it, because both rows go out in one transaction and nothing else writes a payload row. A delete that **fails** rather than being refused ends the pass with the metadata row already removed, and DynamoDB's own TTL sweep produces the same shape transiently while it works through a thread. Both predate this release and both are a **leak, not data loss** — every read path starts from the metadata row, so nothing serves the orphan — and both clear on a re-run.
-- **`store.delete` can resolve without deleting.** Three writers landing at the item between a re-pin and its attempt exhaust the compare-and-swap; the item stays, nothing is released — correctly, a live row names it — and the call reports success with one `warn`.
-- **`store.delete` cannot be cancelled, and its pre-read is not bounded by the write lifetime.** The call takes no `AbortSignal`, and the deadline covers only the writes that carry a token, so the pre-read keeps the full configured retry budget on top of the three bounded transactions: about three and a half minutes at the defaults, hours at the ceilings `retry` accepts, with nothing able to interrupt it.
-- **A vector can still be dropped for a live item.** The window is two statements wide — a put that commits between the confirmation read and the backend call — and `store.reconcileVectorIndex()` is the repair, as *Vector index consistency* above describes.
-
-Two of the things this list rests on are **new and deliberate** rather than left over, and they are the two most worth reading twice: what a token does and does not promise (*What a token guarantees, and what it does not*), and the 300 s cut on a write's retry budget ([Retries and backoff](#retries-and-backoff)).
-
-### Finding rows whose payload was released
-
-On a versioned bucket a released payload is not erased: it becomes a noncurrent version behind a delete marker, and it stays there for the grace window the [lifecycle rules](#s3-lifecycle-rules) set. That window is the only cheap opportunity to find a **stranded row** — one that is still live and still names an object whose payload has been released — because the object side lists exactly the releases, and every offloaded object carries its row's key as S3 user metadata (`dynamodb-pk-b64`, `dynamodb-sk-b64`).
-
-The sweep that does this lives at `scripts/find-stranded-payloads.mjs` **in the repository**. It is deliberately not in the npm tarball and there is no `bin` for it: its command line would otherwise become a `1.x` compatibility promise for a tool an operator runs a handful of times. Clone the repository (or copy the one file) to run it:
-
-```bash
-node scripts/find-stranded-payloads.mjs \
-  --bucket my-bucket --table my-table --region eu-west-1 \
-  --prefix langgraph-checkpoints/ --grace-days 1
-```
-
-`--prefix` defaults to `langgraph-checkpoints/` and `--grace-days` to `1`, the grace `ensureS3LifecycleRule()` writes; pass the larger number when the bucket carries a longer `NoncurrentDays` floor, so the hours-remaining figure is not pessimistic. The script prints the settings it swept with, so a report pasted into an incident channel says what it ran against. It **exits 0 whenever the sweep completed**, found something or not, and non-zero only when the sweep itself failed — so anything you wire it into should alert on the report, not on the exit code.
-
-**Permissions are the operator's, not the library's.** The sweep needs `s3:ListBucketVersions` and `s3:GetObjectVersion` on the bucket and `dynamodb:GetItem` on the table. The first two are actions this library never calls, which is why they are absent from the policy under [IAM permissions](#iam-permissions): grant them to whoever runs the sweep, not to the role your application runs as.
-
-**When to run it.** On demand: after an incident, or when `S3_OFFLOAD_FAILED` or a `NoSuchKey` read failure starts alarming. Not hourly — not for what it costs in money, which is about a cent (below), but for the requests it puts on a live table and bucket. It costs per release, not per query, and the numbers below are per sweep.
-
-**What it reads, in order.** `ListObjectVersions` under the prefix, paginated; for each released key, `HeadObject` on the **surviving payload version** to read the backlink; then a strongly consistent `GetItem` on the decoded key. A key counts as released only when its **current** version is a delete marker: one written again after a release carries its marker further down its history, its payload is current and readable, and it costs the sweep no request at all. It reports a row that is live and still names that key. A row that is gone is the ordinary release — on the happy path that is every marker — and a row that now names a different object was superseded, not stranded; neither is reported. Each finding prints the DynamoDB key, the object key, the payload version's id, the delete marker's id and timestamp, and the hours of grace remaining.
-
-An object whose backlink cannot be read, and a row DynamoDB will not hand back, are each printed as one `UNREADABLE` line naming the object key and the reason, and the sweep carries on: one 404, one object written by something else, and one throttled read must not cost you the rest of the report.
-
-**What it costs.** Per sweep, with `V` versions and `M` delete markers under the prefix:
-
-| | requests |
-| --- | --- |
-| listing | `ceil((V + M) / 1000)` — `ListObjectVersions` returns at most 1000 entries per page, counting versions and markers together |
-| per marker | 1 `HeadObject` + 1 `GetItem` |
-| total | `ceil((V + M) / 1000) + 2M` |
-
-With the marker-reclaim rule on the bucket, `M` is the releases still inside the grace window — roughly one to two days of release volume — and `V` is the live payload count plus the same. A deployment releasing 10 000 payloads a day with 100 000 live offloaded objects therefore has `V = 120 000` (100 000 live plus 20 000 not-yet-expired noncurrent) and `M = 20 000`, so one sweep costs `ceil(140 000 / 1000) + 2 x 20 000` = **40 140 requests**, dominated by the per-marker pair. At on-demand prices that is **one to two cents**, not a few dollars: 20 000 `HeadObject` at $0.0004 per 1 000 is $0.008, 140 `ListObjectVersions` at $0.005 per 1 000 is $0.0007, and 20 000 strongly-consistent `GetItem` on small items is 20 000 read request units, about $0.0025. So money is not the reason to run this on demand rather than hourly. The reason is the 40 000 requests themselves, against a live table and bucket, most of them strongly-consistent reads on rows a running graph is using.
-
-**Without the marker-reclaim rule, `M` is total lifetime release volume** and the figure above has no upper bound: every release leaves a marker that is never reclaimed, so the sweep's cost grows for the life of the bucket. Two deployments do not get that rule from this library:
-
-- **`s3` configured without a `ttl`.** `ensureS3LifecycleRule()` is a no-op in that shape, so a versioned bucket accumulates a delete marker per release forever.
-- **Anyone who never calls `ensureS3LifecycleRule()` at all.**
-
-Both must write the two rules themselves; [their shapes are above](#s3-lifecycle-rules), verbatim.
-
-The cost grows with that listing; the memory does not. `ListObjectVersions` answers in ascending key order, so every entry for one object key arrives together and the sweep joins a key the moment a later one appears — it holds one key at a time, never the listing. That is what lets it finish on the bucket described above, which is the one you are most likely to sweep after an incident. It also checks that order rather than assuming it: a key listed after a later key has already been joined fails the sweep with a non-zero exit instead of reporting a join it cannot stand behind.
-
-**What it cannot find.** A strand whose grace window has already expired. S3 reclaims the noncurrent version first and then the delete marker, so there is neither a marker to list nor a backlink to read, and the sweep is blind to it by construction. Finding those needs the opposite direction — a full table `Scan`, keeping every row that carries an offloaded descriptor, then one `HeadObject` per descriptor to see whether the object is still there — which costs a read of the whole table and stays a recipe rather than a script. While the marker is still present but its last version has gone, the sweep counts the key separately as having no surviving payload version, which is the last warning you get. Read that count as an upper bound on expired grace windows rather than a list of them: a bare delete marker is also what a `DeleteObject` on a key that never existed leaves, and what any foreign delete under the prefix leaves.
-
-**What to do with a finding.** The script repairs nothing, and it should not: the right remedy depends on why the row is there. Either **restore the payload** — `DeleteObjectVersion` on the *delete marker's* version id, which makes the payload current again, and which only works while the hours remaining are positive — or **accept the delete** — `DeleteItem` on the DynamoDB key. For a checkpointer `WRITE` row that survived a `deleteThread()`, deleting the row is right; for a store item recreated after its object was released, it is not.
-
-### Lambda and other short-lived runtimes
-
-Construct the adapters once at module scope (or one `DynamoDBFactory.createAll()`), reuse them across invocations, and pass a `client` you own if the function also uses DynamoDB elsewhere; `destroy()` is only needed when a process wants to release sockets before exit. Size the function timeout against the worst-case retry budgets above: a heavily contended chat append spends about a minute sleeping and can take about four with its attempts, and `retry.maxAttempts` / `retry.maxDelayMs` trade that ceiling against resilience to throttling. Every long-running method takes an `AbortSignal`, so a timeout can cancel cleanly (see [Cancellation](#cancellation)).
-
-### Multi-tenancy
-
-See [Multi-tenant deployments](#multi-tenant-deployments) under IAM permissions for the identifier convention, the table-scan operations that are cross-tenant by construction, and the `dynamodb:LeadingKeys` policy.
-
-### Maintenance operations
-
-Four tools repair or provision state and are meant for deployment scripts and operators, not request paths:
-
-- **`ensureS3LifecycleRule()`** (all three adapters) — installs the S3 lifecycle expiration rule that matches the configured `ttl` under the adapter's key prefix, idempotently. It **throws** when the bucket's lifecycle configuration cannot be read or written (`AccessDenied`, `NoSuchBucket`, throttling) — that part swallows nothing — so call it once at deployment time, from a role that holds the two lifecycle actions, and treat a failure as a deployment failure. One thing it does not raise: the bucket-versioning probe that runs **after** the rules are written is best-effort and reports at `warn` (see [Logging](#logging)), because a role that provisioned rules yesterday without `s3:GetBucketVersioning` must not start failing today. A bucket with no lifecycle configuration at all is not an error either; the rules are written onto an empty set. It is a no-op when `s3` or `ttl` is not configured.
-- **`store.reconcileVectorIndex(namespacePrefix)`** — re-pushes every live item's embedding to the configured `vectorBackend` and, when the backend implements `listKeys`, prunes vectors whose item is gone; returns `{ upserted, pruned }`. Run it when the namespace is idle; it reads every row under the prefix (bounded by `maxScanItems`).
-- **`backfillRecencyIndex({ tableName, client, … })`** — gives rows written before the recency index their `gsi1pk`/`gsi1sk`. **Run it before setting `indexName` on any adapter**: a row without the keys is not in the index, so enabling the index first makes every pre-existing session, item and checkpoint vanish from the listings that read it — the rows are still there, and every other read still returns them, but a listing would not. Resumable by passing back the `nextCursor` it returns as `cursor`, re-runnable, and safe against a live table: every write is conditional on the row still being there **and** having no keys yet. That first half is not decoration — `UpdateItem` upserts, so a condition naming only the index attribute is satisfied by a key holding nothing at all, and a row deleted between the scan that found it and the update that backfilled it used to come back, as a stub of `PK`, `SK` and the two index keys and therefore *inside* the index, where a thread-less `saver.list()` logged one `warn` for it on every listing thereafter and `history.listSessions()` dropped it silently, one row short of the `limit` its page had asked for. `indexShards` must match what the adapters use. Every option is checked before the first read, with `VALIDATION` naming it: an unknown key, a `tableName` DynamoDB would refuse, a `client` without `scan` and `update`, an `indexShards` outside 1–1024, a `pageSize` or `maxPages` that is not an integer of at least 1, a `dryRun` that is not a boolean, a `retry` whose numbers break the adapters' bounds or whose hooks are not functions, a `signal` that is not an `AbortSignal`, and a `cursor` the tool did not issue. `signal` cancels the run; so does `retry.signal` when no top-level `signal` is given, and when both are given the top-level one wins. A refused write is not a failure and does not stop the run. Both halves of the condition refuse exactly the rows this run has nothing to do for — one that already carries keys a live adapter gave it, one that is no longer there — so the row is counted in the `skipped` of the `BackfillResult` and the walk carries on; on a table with adapters writing to it, which is the only kind a backfill is ever run against, the already-indexed refusal is the normal case rather than an edge one. Any *other* AWS SDK error it does not retry reaches the caller with the code the classifier assigns and the SDK error as `cause`, and the run ends there with its result discarded — re-run it, and the scan's own filter skips whatever the stopped run had already indexed.
-- **`history.reconcileMessageCount(sessionId)`** — recounts a session's live messages and rewrites the stored `messageCount`; returns the count. Run it after a `COMPENSATION_FAILED` error or the `rollback failed` log event, when the session is idle; it throws `CONDITION_CONFLICT` if an append lands through every one of its three attempts, and for a session that does not exist rather than creating one. It also refuses, with a `VALIDATION` error naming `message`, a session whose message key space holds a row this adapter did not write — the same row `getMessages` refuses — because a count written back for a session no read can open repairs nothing. It reads each row's identity, format version and ttl only; no message payload is transferred.
 
 ## Testing
 
