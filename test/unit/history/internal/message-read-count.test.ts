@@ -160,6 +160,9 @@ describe('countLiveMessages', () => {
     expect(mock.commandCalls(QueryCommand)).toHaveLength(MAX_LOOP_ITERATIONS + 1);
   });
 
+  // Bounded to 3 pages: if abort handling ever regressed, an unbounded fake
+  // paired with the uncapped loop would resolve or reject the wrong way
+  // rather than hang, so this test can never spin forever on its own.
   it('stops at the page boundary after the signal fires, sending no further query', async () => {
     const { client, mock } = createStrictDocumentMock();
     const controller = new AbortController();
@@ -167,7 +170,8 @@ describe('countLiveMessages', () => {
     mock.on(QueryCommand).callsFake(() => {
       call += 1;
       if (call === 1) controller.abort();
-      return { Items: [message('01A')], LastEvaluatedKey: { PK: 'HIST#s1', SK: `p${call}` } };
+      const more = call < 3 ? { LastEvaluatedKey: { PK: 'HIST#s1', SK: `p${call}` } } : {};
+      return { Items: [message('01A')], ...more };
     });
     await expect(
       countLiveMessages(context(client), SESSION_ID, controller.signal),

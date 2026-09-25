@@ -140,7 +140,25 @@ export function vectorBackendCalls(text: string): number[] {
   });
 }
 
-/** Lines of `text` that resume a read: an object property named `ExclusiveStartKey`. */
+/** Whether `node` assigns a property access named `ExclusiveStartKey`, e.g. `input.ExclusiveStartKey = k`. */
+function assignsPropertyNamed(node: ts.Node, name: string): boolean {
+  return (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+    ts.isPropertyAccessExpression(node.left) &&
+    node.left.name.text === name
+  );
+}
+
+/**
+ * Lines of `text` that resume a read: an object property named
+ * `ExclusiveStartKey`, or an assignment to a property access of that name.
+ * A computed access (`input['ExclusiveStartKey'] = k`) is not matched.
+ */
 export function pageResumes(text: string): number[] {
-  return linesWhere(text, (node) => assignedName(node) === 'ExclusiveStartKey');
+  return linesWhere(
+    text,
+    (node) =>
+      assignedName(node) === 'ExclusiveStartKey' || assignsPropertyNamed(node, 'ExclusiveStartKey'),
+  );
 }

@@ -63,6 +63,10 @@ describe('pageResumes', () => {
     expect(pageResumes(source)).toEqual([1, 2]);
   });
 
+  it('finds a request resumed by assigning the property directly', () => {
+    expect(pageResumes('input.ExclusiveStartKey = k;')).toEqual([1]);
+  });
+
   it('leaves reading the next key off a response, and declaring the field, alone', () => {
     const source = 'const next = page.LastEvaluatedKey;\ntype T = { ExclusiveStartKey?: K };';
     expect(pageResumes(source)).toEqual([]);
