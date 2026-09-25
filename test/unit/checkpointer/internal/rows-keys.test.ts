@@ -18,7 +18,7 @@ import {
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
 
 describe('checkpointer keys', () => {
-  it('tags the partition key with the checkpointer adapter prefix (C1, C2)', () => {
+  it('tags the partition key with the checkpointer adapter prefix', () => {
     expect(partitionKey('thread-1')).toBe('CHKPT#thread-1');
   });
 
@@ -46,7 +46,7 @@ describe('checkpointer keys', () => {
     expect(writeSortKeyPrefix('', 'ckpt-1')).toBe('WRITE##ckpt-1#');
   });
 
-  it('keeps two channels sharing an index in separate rows (C3)', () => {
+  it('keeps two channels sharing an index in separate rows', () => {
     expect(
       writeSortKey({
         checkpointNs: '',
@@ -82,7 +82,7 @@ describe('checkpointer keys', () => {
     ).toThrow(/encodable/);
   });
 
-  it('rejects a write index outside the encodable range (M8)', () => {
+  it('rejects a write index outside the encodable range', () => {
     expect(() =>
       writeSortKey({ checkpointNs: '', checkpointId: 'c', taskId: 't', index: -9, channel: 'ch' }),
     ).toThrow(/encodable/);
@@ -129,7 +129,7 @@ describe('checkpointer keys', () => {
   });
 });
 
-describe('the composed WRITE sort key (SEC-10)', () => {
+describe('the composed WRITE sort key', () => {
   it('is measured, not refused, by the key builder: the parser refuses it before anything is encoded', () => {
     const segment = 'x'.repeat(256);
     expect(() =>

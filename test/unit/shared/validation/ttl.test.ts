@@ -45,7 +45,7 @@ describe('resolveTtlSeconds shape', () => {
     expectValidationError(() => resolveTtlSeconds({ seconds: 60, foo: 1 } as never), 'ttl.foo');
   });
 
-  it('rejects an object carrying both days and seconds instead of preferring one (CORE-14)', () => {
+  it('rejects an object carrying both days and seconds instead of preferring one', () => {
     expect(() => resolveTtlSeconds({ days: 1, seconds: 60 })).toThrow(
       /either ttl.days or ttl.seconds, not both/,
     );
@@ -94,7 +94,7 @@ describe('calculateTtlTimestamp', () => {
   });
 });
 
-describe('lifecycleExpirationDays (CODEC-08)', () => {
+describe('lifecycleExpirationDays', () => {
   /**
    * The guarantee: the object outlives its row. S3 expires at the first
    * midnight UTC at least `Days` after creation; DynamoDB may keep an expired

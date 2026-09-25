@@ -62,7 +62,7 @@ describe('buildS3Key row identity', () => {
   });
 });
 
-describe('buildS3Key length cap (CODEC-11)', () => {
+describe('buildS3Key length cap', () => {
   /** 600 raw bytes base64url-encode to 800 characters; one part fits, two overflow. */
   const part = 'x'.repeat(600);
 
@@ -96,7 +96,7 @@ describe('buildLifecycleRuleId', () => {
   });
 });
 
-describe('buildLifecycleRuleId trailing slashes (SEC-17)', () => {
+describe('buildLifecycleRuleId trailing slashes', () => {
   it('strips every trailing slash without a quadratic regex, however many there are', () => {
     expect(buildLifecycleRuleId('langgraph/checkpointer///')).toBe(
       'langgraph-ttl-langgraph-checkpointer',

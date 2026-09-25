@@ -14,7 +14,7 @@ describe('deriveTitle', () => {
     expect(deriveTitle([ai('hi'), human('What is DynamoDB?')])).toBe('What is DynamoDB?');
   });
 
-  it('truncates long content with an ellipsis, within the documented maximum (A2)', () => {
+  it('truncates long content with an ellipsis, within the documented maximum', () => {
     const long = 'a'.repeat(100);
     const title = deriveTitle([human(long)]);
     // Was 81: the ellipsis was appended *after* slicing to the maximum,
@@ -23,7 +23,7 @@ describe('deriveTitle', () => {
     expect(title?.endsWith('…')).toBe(true);
   });
 
-  it('never splits a surrogate pair when truncating (M14)', () => {
+  it('never splits a surrogate pair when truncating', () => {
     // A cut landing mid-emoji left a lone high surrogate: a mangled character
     // that no longer round-trips through UTF-8.
     // 79 filler characters put the emoji's two UTF-16 units astride the
@@ -47,7 +47,7 @@ describe('deriveTitle', () => {
     expect(deriveTitle([])).toBeUndefined();
   });
 
-  describe('content-block arrays (HIST-10)', () => {
+  describe('content-block arrays', () => {
     const blocks = (content: unknown[]): StoredMessage =>
       ({ type: 'human', data: { content } }) as never;
 

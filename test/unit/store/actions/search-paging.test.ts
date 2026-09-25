@@ -52,7 +52,7 @@ async function rows(
   return out;
 }
 
-describe('plain search pages stop at offset + limit (STORE-02)', () => {
+describe('plain search pages stop at offset + limit', () => {
   it('decodes only the requested page and never trips maxScanItems for a page that fits', async () => {
     const { client, mock } = createStrictDocumentMock();
     const { serde, loads } = countingSerde();
@@ -87,7 +87,7 @@ describe('plain search pages stop at offset + limit (STORE-02)', () => {
   });
 });
 
-describe('semantic search fails fast at the candidate cap (STORE-09)', () => {
+describe('semantic search fails fast at the candidate cap', () => {
   it('rejects before decoding a row or embedding the query when the namespace exceeds maxSearchCandidates', async () => {
     const { client, mock } = createStrictDocumentMock();
     const { serde, loads } = countingSerde();
@@ -109,7 +109,7 @@ describe('semantic search fails fast at the candidate cap (STORE-09)', () => {
   });
 });
 
-describe('backend refill hitting the cap (STORE-05)', () => {
+describe('backend refill hitting the cap', () => {
   it('throws like the in-DB ranker instead of silently under-returning', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx0 = context(client);
@@ -159,7 +159,7 @@ describe('backend refill hitting the cap (STORE-05)', () => {
   });
 });
 
-describe('listNamespaces projects only the key attributes (STORE-02)', () => {
+describe('listNamespaces projects only the key attributes', () => {
   it('asks for PK, SK, namespace, key and the format version, not the payload', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({ Items: [] });
@@ -209,7 +209,7 @@ describe('empty namespace on both paths', () => {
  * namespace before it can slice one off. The empty result was never in doubt —
  * what is asserted here is the request that is no longer paid for.
  */
-describe('a page of zero costs no read (STORE-02)', () => {
+describe('a page of zero costs no read', () => {
   it('answers search with nothing without a Query, a Scan or an embedding', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx0 = context(client);

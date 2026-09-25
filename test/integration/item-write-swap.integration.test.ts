@@ -36,7 +36,7 @@ afterAll(async () => {
   admin.destroy();
 });
 
-describe('overwrite compare-and-swap (F5)', () => {
+describe('overwrite compare-and-swap', () => {
   it('admits only one of two writers holding the same observed revision', async () => {
     const pk = 'STORE#swap';
     const sk = 'k';

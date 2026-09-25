@@ -7,7 +7,7 @@ const serde = {
 };
 
 describe('setUpCheckpointer', () => {
-  it('rejects an invalid tableName and an ambiguous client configuration at construction (CORE-05)', () => {
+  it('rejects an invalid tableName and an ambiguous client configuration at construction', () => {
     expect(() =>
       setUpCheckpointer({ tableName: 'bad name', client: { send: jest.fn() } as never }, serde),
     ).toThrow(/tableName/);
@@ -90,7 +90,7 @@ describe('setUpCheckpointer', () => {
   });
 });
 
-describe('collaborator shape (DDB-09)', () => {
+describe('collaborator shape', () => {
   it('refuses an injected client missing a method this package calls', () => {
     expect(() =>
       setUpCheckpointer({ tableName: 'ckpt', client: { send: jest.fn() } as never }, serde),
@@ -128,7 +128,7 @@ describe('collaborator shape (DDB-09)', () => {
   });
 });
 
-describe('S3 region inheritance (CODEC-15)', () => {
+describe('S3 region inheritance', () => {
   it('builds the S3 client in the DynamoDB region when s3.clientConfig names none', async () => {
     let seen: { region?: unknown } | undefined;
     const ddb = {
@@ -164,7 +164,7 @@ describe('S3 region inheritance (CODEC-15)', () => {
   });
 });
 
-describe('SDK retry stacking warning (DDB-01)', () => {
+describe('SDK retry stacking warning', () => {
   it('warns at construction when an injected client keeps the SDK retries', async () => {
     const warn = jest.fn();
     const client = {
@@ -206,7 +206,7 @@ describe('SDK retry stacking warning (DDB-01)', () => {
   });
 });
 
-describe('retry policy (DDB-03)', () => {
+describe('retry policy', () => {
   it('resolves the retry policy onto the context, defaulting to five attempts', () => {
     const client = fakeClientMethods() as never;
     expect(setUpCheckpointer({ tableName: 't123', client }, serde).context.retry?.maxAttempts).toBe(

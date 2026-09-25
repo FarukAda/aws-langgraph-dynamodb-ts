@@ -360,7 +360,7 @@ describe('putItem', () => {
    * reported: a response can be lost and the object it named with it, which is
    * how the removed object used to be leaked. The row is read exactly once.
    */
-  it('cleans up the offloaded object the pre-read observed (STORE-08)', async () => {
+  it('cleans up the offloaded object the pre-read observed', async () => {
     const { client, mock } = createStrictDocumentMock();
     answerDeleteReads(
       mock,

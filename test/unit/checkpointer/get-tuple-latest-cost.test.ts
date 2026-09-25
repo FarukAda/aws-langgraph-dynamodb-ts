@@ -83,7 +83,7 @@ async function seedThread(
   return { saver: new DynamoDBSaver({ tableName: 'ckpt', client, serde }), metaQueries };
 }
 
-describe('the latest-checkpoint read pages past expired head rows (M-07)', () => {
+describe('the latest-checkpoint read pages past expired head rows', () => {
   it('spends one Query on a thread whose 25 newest META rows have expired', async () => {
     const { saver, metaQueries } = await seedThread(25);
     const tuple = await saver.getTuple({ configurable: { thread_id: 't' } });

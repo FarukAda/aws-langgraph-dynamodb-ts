@@ -73,7 +73,7 @@ describe('isConditionalCheckFailed', () => {
   });
 });
 
-describe('revisionGuard returns the rejected row (DDB-07)', () => {
+describe('revisionGuard returns the rejected row', () => {
   it('asks DynamoDB to attach the existing item to every rejection', () => {
     for (const observed of [
       { exists: false },
@@ -85,7 +85,7 @@ describe('revisionGuard returns the rejected row (DDB-07)', () => {
   });
 });
 
-describe('rejectedItem (DDB-07)', () => {
+describe('rejectedItem', () => {
   it('unmarshalls the raw AttributeValue item a rejection carries', () => {
     const error = Object.assign(new Error('rejected'), {
       name: 'ConditionalCheckFailedException',
@@ -121,7 +121,7 @@ describe('rejectedItem (DDB-07)', () => {
   });
 });
 
-describe('isConditionalCheckFailed reads a cancelled transaction (T3)', () => {
+describe('isConditionalCheckFailed reads a cancelled transaction', () => {
   it('matches a cancellation whose one reason is a conditional check failure', () => {
     expect(isConditionalCheckFailed(cancelled([{ Code: 'ConditionalCheckFailed' }]))).toBe(true);
   });
@@ -147,7 +147,7 @@ describe('isConditionalCheckFailed reads a cancelled transaction (T3)', () => {
   });
 });
 
-describe('rejectedItem reads a cancelled transaction (T3)', () => {
+describe('rejectedItem reads a cancelled transaction', () => {
   it('unmarshalls the raw row attached to the rejected item', () => {
     const error = cancelled([
       { Code: 'None' },
@@ -161,7 +161,7 @@ describe('rejectedItem reads a cancelled transaction (T3)', () => {
   });
 });
 
-describe('a cancelled guard rejection is classified as one always was (T3)', () => {
+describe('a cancelled guard rejection is classified as one always was', () => {
   it('recognises the rejection and still refuses to retry it', () => {
     const error = cancelled([{ Code: 'ConditionalCheckFailed' }]);
     expect(isConditionalCheckFailed(error)).toBe(true);

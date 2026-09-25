@@ -33,7 +33,7 @@ describe('matchesFilter', () => {
   });
 });
 
-describe('matchesFilter and the prototype chain (SEC-16)', () => {
+describe('matchesFilter and the prototype chain', () => {
   it('treats an inherited name as absent, exactly like any other missing key', () => {
     /** A missing key equals an undefined filter value; an inherited method must not stand in for it. */
     expect(matchesFilter({}, { missing: undefined as never })).toBe(true);

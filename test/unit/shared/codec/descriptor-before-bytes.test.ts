@@ -67,7 +67,7 @@ async function brandOf(work: Promise<unknown>): Promise<{ code?: string; field?:
  * bare `TypeError`, which the public boundary can only classify as
  * `UNEXPECTED_ERROR`, naming no field of the caller's mistake.
  */
-describe('decodePayload reads the bytes before the serde type (L-01)', () => {
+describe('decodePayload reads the bytes before the serde type', () => {
   const deps = (): CodecDeps => ({ serde: JSON_SERDE });
 
   it.each([
@@ -99,7 +99,7 @@ describe('decodePayload reads the bytes before the serde type (L-01)', () => {
  * store go through `decodePayload`, and two adapters must not answer one row
  * shape differently — the classifier `getMessages` applies is shared.
  */
-describe('every read path answers one malformed descriptor the same way (L-01)', () => {
+describe('every read path answers one malformed descriptor the same way', () => {
   const nullDescriptor = null as never;
 
   function checkpointerContext(): CheckpointerContext {

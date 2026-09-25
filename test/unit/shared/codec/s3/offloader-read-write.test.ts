@@ -177,7 +177,7 @@ describe('downloadObject', () => {
   });
 });
 
-describe('S3 retry classification (CODEC-02)', () => {
+describe('S3 retry classification', () => {
   const client = () => new S3Client({ region: 'us-east-1' });
   const params = { bucket: 'b', key: 'k', data: new Uint8Array([1]) };
 
@@ -228,7 +228,7 @@ describe('S3 retry classification (CODEC-02)', () => {
   });
 });
 
-describe('download size cap (CODEC-17, SEC-05)', () => {
+describe('download size cap', () => {
   const client = () => new S3Client({ region: 'us-east-1' });
 
   it('refuses an object whose ContentLength exceeds the cap without reading the body', async () => {

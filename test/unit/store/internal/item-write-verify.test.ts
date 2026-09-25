@@ -22,7 +22,7 @@ function context(client: StoreContext['client']): StoreContext {
 
 const record = { PK: 'p', SK: 's', rev: 'r1' };
 
-describe('verifyWriteLanded (STORE-13)', () => {
+describe('verifyWriteLanded', () => {
   /**
    * Only the `rev` is read. An offloaded record's key ends in its own `rev`, so
    * the row that holds a different one never names this write's object, and a
@@ -66,7 +66,7 @@ describe('verifyWriteLanded (STORE-13)', () => {
   });
 });
 
-describe('isRowAbsent (I4, STORE-07)', () => {
+describe('isRowAbsent', () => {
   it('returns true when the row is genuinely gone, projecting only the partition key', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});

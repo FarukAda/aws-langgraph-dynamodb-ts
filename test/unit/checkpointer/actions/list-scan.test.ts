@@ -129,7 +129,7 @@ describe('listCheckpoints without a thread_id scans every thread (validation sui
   });
 });
 
-describe('list() without a thread_id uses the recency index when the table has one (CKPT-13)', () => {
+describe('list() without a thread_id uses the recency index when the table has one', () => {
   const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
 
   /**

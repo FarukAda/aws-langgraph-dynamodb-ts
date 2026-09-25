@@ -171,7 +171,7 @@ describe('putCheckpoint', () => {
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
-  it('rejects an over-limit checkpoint with a typed error before any write when s3 is not configured (CKPT-03)', async () => {
+  it('rejects an over-limit checkpoint with a typed error before any write when s3 is not configured', async () => {
     const { client, mock } = createStrictDocumentMock();
     const huge: Checkpoint = { ...checkpoint, channel_values: { blob: 'x'.repeat(400 * 1024) } };
     await expect(

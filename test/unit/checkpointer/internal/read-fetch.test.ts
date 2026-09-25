@@ -118,7 +118,7 @@ describe('fetchPendingWrites', () => {
   });
 });
 
-describe('fetchPayload refuses a row a newer release wrote (C-03)', () => {
+describe('fetchPayload refuses a row a newer release wrote', () => {
   const payloadItem = (v?: number) => ({
     SK: 'PAYLOAD##c1',
     ...(v === undefined ? {} : { v }),
@@ -162,7 +162,7 @@ describe('fetchPayload refuses a row a newer release wrote (C-03)', () => {
   });
 });
 
-describe('fetchPendingWrites refuses a row a newer release wrote (C-03)', () => {
+describe('fetchPendingWrites refuses a row a newer release wrote', () => {
   const writeItem = (channel: string, v?: number) => ({
     PK: 'CHKPT#t',
     SK: `WRITE##c1#task-1#0000000000#${channel}`,
@@ -203,7 +203,7 @@ describe('fetchPendingWrites refuses a row a newer release wrote (C-03)', () => 
   });
 });
 
-describe('fetchTargetMeta head row narrowing (CKPT-08)', () => {
+describe('fetchTargetMeta head row narrowing', () => {
   const validMeta = {
     PK: 'CHKPT#t',
     SK: 'META##c1',
@@ -259,7 +259,7 @@ describe('fetchTargetMeta head row narrowing (CKPT-08)', () => {
   });
 });
 
-describe('fetchPendingWrites on a very large fan-out (CKPT-04)', () => {
+describe('fetchPendingWrites on a very large fan-out', () => {
   it('reads past the in-memory cap and warns instead of failing', async () => {
     const { client, mock } = createStrictDocumentMock();
     const total = LIST_SCAN_WARN_THRESHOLD + 1;
@@ -300,7 +300,7 @@ describe('fetchPendingWrites on a very large fan-out (CKPT-04)', () => {
   });
 });
 
-describe('fetchTargetMeta skips expired head rows (CKPT-10)', () => {
+describe('fetchTargetMeta skips expired head rows', () => {
   const NOW = Math.floor(FROZEN_NOW_MS / 1000);
   const metaRow = (id: string, ttl: number) => ({
     PK: 'CHKPT#t',

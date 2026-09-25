@@ -156,10 +156,10 @@ describe('queryRecencyIndex', () => {
 
 /**
  * DynamoDB ends a `Query` page at 1 MB of evaluated data whatever `Limit` says,
- * and reports the rest with a `LastEvaluatedKey` (C-01). The simulated index
+ * and reports the rest with a `LastEvaluatedKey`. The simulated index
  * cuts every page at a few rows to stand in for that boundary.
  */
-describe('a recency listing across the 1 MB page boundary (C-01)', () => {
+describe('a recency listing across the 1 MB page boundary', () => {
   const sixInOneShard = { 'SESS#0': indexRows('SESS#0', [6, 5, 4, 3, 2, 1]), 'SESS#1': [] };
 
   it('lists every row of a shard whose rows span several pages, and issues no cursor', async () => {
@@ -284,9 +284,9 @@ function partitionsQueried(mock: StrictMock['mock']): string[] {
 
 /**
  * One listing queried every shard at once, up to the 1024 `indexShards`
- * allows (H-08). The fan-out is `readConcurrency`, measured rather than assumed.
+ * allows. The fan-out is `readConcurrency`, measured rather than assumed.
  */
-describe('a recency listing bounds its fan-out (H-08)', () => {
+describe('a recency listing bounds its fan-out', () => {
   it('queries at most `concurrency` shards at once, and every shard', async () => {
     const { client, mock } = createStrictDocumentMock();
     const peak = peakInFlight(mock);

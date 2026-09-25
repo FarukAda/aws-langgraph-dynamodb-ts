@@ -71,6 +71,26 @@ const UNTRACKED_PLANNING_FILE =
   /live-validation(?:-delete)?\.md|design-offload-durability|\.superpowers\b/;
 
 /**
+ * One id a review or audit gave a finding — `SEC-03`, `C-01`, or the short
+ * `M7`/`I4` form — never a claim id of `docs/evidence` (`E-14`), a divergence
+ * id of the README (`V-26`) or a standard's name (`UTF-16`, `CWE-117`,
+ * `SHA-256`), which all resolve.
+ */
+const FINDING_ID = String.raw`(?!(?:E|V|UTF|CWE|SHA|RFC|ISO)-\d)(?:[A-Z]{1,6}-\d{1,3}|[A-Z]\d{1,2})`;
+
+/**
+ * Finding ids in parentheses, alone or as a comma-separated list — `(SEC-03)`,
+ * `(C1, I7)` — the form they took at the end of a test title or a sentence.
+ * The reviews that minted them are not in the repository, so a reader cannot
+ * resolve one: say what the test pins instead.
+ */
+const AUDIT_ID_LIST = new RegExp(String.raw`\(${FINDING_ID}(?:,\s*${FINDING_ID})*\)`);
+
+/** A finding id with one of the audit's own prefixes, wherever it stands. */
+const AUDIT_ID_PREFIXED =
+  /\b(?:SEC|HIST|DDB|CORE|CODEC|STORE|CKPT|TEST|PKG|DOCS|REL|C|H|M|L)-\d{2}\b/;
+
+/**
  * Known limits, left unwidened on purpose:
  *
  * - A reordered "round N fix" is not caught. No plan has ever produced that
@@ -92,6 +112,8 @@ const ALWAYS_CHECKED = [
   NUMBERED_TASK,
   SECTION_SIGN,
   UNTRACKED_PLANNING_FILE,
+  AUDIT_ID_LIST,
+  AUDIT_ID_PREFIXED,
 ];
 
 /**

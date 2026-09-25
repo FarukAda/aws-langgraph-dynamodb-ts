@@ -228,7 +228,7 @@ describe('createAll teardown is total', () => {
   });
 });
 
-describe('shared adapter defaults (CORE-17)', () => {
+describe('shared adapter defaults', () => {
   const s3 = () => ({
     bucketName: 'shared',
     createS3Client: () => new S3Client({ region: 'us-east-1' }),
@@ -365,7 +365,7 @@ describe('shared adapter defaults (CORE-17)', () => {
   });
 });
 
-describe('partial createAll and cleanup on failure (CORE-17)', () => {
+describe('partial createAll and cleanup on failure', () => {
   it('builds only the requested adapters', () => {
     const { client } = createStrictDocumentMock();
     const factory = new DynamoDBFactory({ client });

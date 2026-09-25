@@ -35,17 +35,17 @@ describe('parseSessionId', () => {
     expectValidationError(() => parseSessionId(null));
   });
 
-  it('rejects the reserved separator (M12)', () => {
+  it('rejects the reserved separator', () => {
     expectValidationError(() => parseSessionId('a#b'));
   });
 
-  it('bounds the session id at 1024 bytes and rejects a whitespace-only one (SEC-10)', () => {
+  it('bounds the session id at 1024 bytes and rejects a whitespace-only one', () => {
     expect(() => parseSessionId('s'.repeat(1024))).not.toThrow();
     expectValidationError(() => parseSessionId('s'.repeat(1025)));
     expectValidationError(() => parseSessionId('  '));
   });
 
-  it('rejects control characters (M7)', () => {
+  it('rejects control characters', () => {
     expectValidationError(() => parseSessionId('s\u001b[31m'));
   });
 });
@@ -125,7 +125,7 @@ describe('parseMessages (serialization)', () => {
   });
 });
 
-describe('parseStoredMessages (HIST-04)', () => {
+describe('parseStoredMessages', () => {
   const stored = (type: string, data: Record<string, string | undefined>): StoredMessage =>
     ({ type, data: { content: 'c', ...data } }) as StoredMessage;
 
@@ -223,7 +223,7 @@ describe('parseStoredMessages (HIST-04)', () => {
   });
 });
 
-describe('parseMessageWindow (HIST-06)', () => {
+describe('parseMessageWindow', () => {
   it('accepts an empty window, a positive integer limit and a valid Date', () => {
     expect(() => parseMessageWindow({})).not.toThrow();
     expect(() => parseMessageWindow({ limit: 1, before: new Date(0) })).not.toThrow();

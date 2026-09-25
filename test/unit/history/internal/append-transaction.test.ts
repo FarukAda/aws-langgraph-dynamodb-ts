@@ -355,7 +355,7 @@ describe('writeMessageChunk', () => {
   });
 });
 
-describe('append retry floor under a caller retry policy (DDB-03)', () => {
+describe('append retry floor under a caller retry policy', () => {
   it('never drops below its own floor when the adapter policy asks for fewer attempts', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(transactionConflict());

@@ -2,7 +2,7 @@ import { abortErrorFrom, isAbortError } from '../../../../src/shared/dynamodb/ab
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { abortError, validationError } from '../../../../src/shared/errors/errors';
 
-describe('abortErrorFrom (DDB-05)', () => {
+describe('abortErrorFrom', () => {
   it('wraps the DOMException a bare abort() produces as the cause of a library ABORTED error', () => {
     const controller = new AbortController();
     controller.abort();

@@ -38,7 +38,7 @@ const wrapped = (operation: string, cause: Error) => ({
   cause,
 });
 
-describe('public error boundary (CORE-01)', () => {
+describe('public error boundary', () => {
   it('DynamoDBSaver wraps a raw SDK error from put and passes a VALIDATION error through', async () => {
     const { client, mock } = createStrictDocumentMock();
     const cause = sdkError();

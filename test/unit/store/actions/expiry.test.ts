@@ -52,7 +52,7 @@ async function rows(ctx: StoreContext) {
   return { live, expired };
 }
 
-describe('expired rows are filtered on every store read path (STORE-04)', () => {
+describe('expired rows are filtered on every store read path', () => {
   it('get returns null for a row past its ttl', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);

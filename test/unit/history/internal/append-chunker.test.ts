@@ -66,7 +66,7 @@ describe('chunkBySize', () => {
   });
 });
 
-describe('estimateItemBytes UTF-8 accounting (M13)', () => {
+describe('estimateItemBytes UTF-8 accounting', () => {
   it('counts a non-ASCII session id in UTF-8 bytes, not UTF-16 code units', () => {
     // The doc comment promises an estimate at or above the real marshalled
     // size. A 100-character Hiragana id is 300 UTF-8 bytes but only 100 UTF-16

@@ -134,7 +134,7 @@ describe('paginatePages', () => {
   });
 });
 
-describe('paginatePages abort normalisation (DDB-05)', () => {
+describe('paginatePages abort normalisation', () => {
   it('throws the library ABORTED error with the raw reason as cause when already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
@@ -148,7 +148,7 @@ describe('paginatePages abort normalisation (DDB-05)', () => {
   });
 });
 
-describe('paginatePages cap on a page with a trailing key (DDB-06)', () => {
+describe('paginatePages cap on a page with a trailing key', () => {
   type Page = { items: object[]; lastKey?: object };
   const pagesFrom = (pages: Page[]) => {
     let next = 0;

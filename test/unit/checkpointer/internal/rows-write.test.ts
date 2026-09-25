@@ -145,7 +145,7 @@ describe('buildWriteItems', () => {
     expect(items).toHaveLength(2);
     // Positional index, as the reference saver computes it, so writes replay
     // in the order the task emitted them; the channel segment is what keeps
-    // an unrelated channel from displacing another on a retry (C3).
+    // an unrelated channel from displacing another on a retry.
     expect(items[0].SK).toBe('WRITE##ckpt-1#task-7#0000000008#messages');
     expect(items[0].channel).toBe('messages');
     expect(items[1].SK).toBe('WRITE##ckpt-1#task-7#0000000009#counter');
@@ -242,7 +242,7 @@ describe('resolveWriteIndices', () => {
     ).toEqual([{ channel: '__error__', value: 'second', index: -1, occurrence: 0 }]);
   });
 
-  it('indexes regular writes by their position in the caller array (C3)', () => {
+  it('indexes regular writes by their position in the caller array', () => {
     // Position, not occurrence: this is what makes stored writes replay in the
     // order the task emitted them.
     expect(
@@ -258,7 +258,7 @@ describe('resolveWriteIndices', () => {
     ]);
   });
 
-  it('does not recompute an index from the position of a collapsed array (C3)', () => {
+  it('does not recompute an index from the position of a collapsed array', () => {
     // Two ERROR writes collapse to one. The surviving regular write must keep
     // the index the *caller's* array gave it (2), not the position it happens
     // to occupy after the collapse (1) — the divergence from the reference

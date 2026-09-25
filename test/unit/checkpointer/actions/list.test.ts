@@ -42,7 +42,7 @@ async function collect(gen: AsyncGenerator<CheckpointTuple>): Promise<Checkpoint
 }
 
 describe('listCheckpoints', () => {
-  it('skips a META-prefixed row that is not a checkpoint meta item, and warns (C2, I7)', async () => {
+  it('skips a META-prefixed row that is not a checkpoint meta item, and warns', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({
       Items: [{ PK: 'CHKPT#t', SK: 'META##x', value: { location: 'INLINE' } }],
@@ -93,7 +93,7 @@ describe('listCheckpoints', () => {
     });
   }
 
-  it('does not cap a filtered list on the raw rows it scanned (M4)', async () => {
+  it('does not cap a filtered list on the raw rows it scanned', async () => {
     // The page cap counts raw rows pulled, not filter-matched ones, so a
     // caller asking for a handful of rare matches over a large thread used to
     // get a hard `RESULT_TRUNCATED` instead of the true answer.
@@ -189,7 +189,7 @@ describe('listCheckpoints', () => {
   });
 });
 
-describe('list scan visibility (F7)', () => {
+describe('list scan visibility', () => {
   it('warns once when a single list pulls a very large number of raw rows', async () => {
     const { client, mock } = createStrictDocumentMock();
     const rows = Array.from({ length: LIST_SCAN_WARN_THRESHOLD + 5 }, (_, i) => ({
@@ -212,7 +212,7 @@ describe('list scan visibility (F7)', () => {
   });
 });
 
-describe('list passes its limit to DynamoDB (DDB-13)', () => {
+describe('list passes its limit to DynamoDB', () => {
   const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
 
   it('sets the page Limit when no metadata filter is given, and leaves it off when one is', async () => {
@@ -266,11 +266,11 @@ describe('list passes its limit to DynamoDB (DDB-13)', () => {
 });
 
 /**
- * `list` assembles tuples through the same `assembleTuple` as `getTuple` (C-03):
+ * `list` assembles tuples through the same `assembleTuple` as `getTuple`:
  * a PAYLOAD row a newer release wrote must fail the scan path too, not only the
  * addressed read.
  */
-describe('listCheckpoints refuses a PAYLOAD row a newer release wrote (C-03)', () => {
+describe('listCheckpoints refuses a PAYLOAD row a newer release wrote', () => {
   it('rejects a PAYLOAD row above the supported format version', async () => {
     const { client, mock } = createStrictDocumentMock();
     const ctx = context(client);

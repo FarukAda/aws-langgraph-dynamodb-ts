@@ -42,7 +42,7 @@ describe('addMessages', () => {
     expect(items[2].Put?.Item?.SK).toBe('HISTORY#MSG#U1');
   });
 
-  it('cleans up already-uploaded S3 objects when a later message fails to encode (I5)', async () => {
+  it('cleans up already-uploaded S3 objects when a later message fails to encode', async () => {
     // buildItems uploads sequentially with no try/catch, ahead of the append
     // saga's compensation machinery — so a failure on message N left messages
     // 1..N-1's objects with no cleanup path at all, despite the rest of this
@@ -71,7 +71,7 @@ describe('addMessages', () => {
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
-  it('rethrows an encode failure untouched when no offloader is configured (I5)', async () => {
+  it('rethrows an encode failure untouched when no offloader is configured', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
     const serde = {
@@ -86,7 +86,7 @@ describe('addMessages', () => {
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
-  it('rejects a message the read side could never rebuild before touching DynamoDB (HIST-04)', async () => {
+  it('rejects a message the read side could never rebuild before touching DynamoDB', async () => {
     const { client, mock } = createStrictDocumentMock();
     await expect(
       addMessages(context(client), 's1', [new HumanMessage('a'), new RemoveMessage({ id: 'x' })]),

@@ -154,7 +154,7 @@ describe('DynamoDBStore', () => {
   });
 });
 
-describe('cancellation via { signal } (CORE-04)', () => {
+describe('cancellation via { signal }', () => {
   it('rejects search and reconcileVectorIndex before any DynamoDB call', async () => {
     const { client, mock } = createStrictDocumentMock();
     const controller = new AbortController();
@@ -178,7 +178,7 @@ describe('cancellation via { signal } (CORE-04)', () => {
   });
 });
 
-describe('BaseStore lifecycle (CORE-22)', () => {
+describe('BaseStore lifecycle', () => {
   it('stop() releases an owned client exactly once and leaves an injected one alone', () => {
     const destroy = jest.fn();
     const fake = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
@@ -196,7 +196,7 @@ describe('BaseStore lifecycle (CORE-22)', () => {
   });
 });
 
-describe('options shape (M-08)', () => {
+describe('options shape', () => {
   /**
    * The `= {}` default parameter only fires for `undefined`, not `null`, so a
    * caller passing `null` used to reach the destructure before `guardPublic`
@@ -266,7 +266,7 @@ describe('options shape (M-08)', () => {
   });
 });
 
-describe('collaborator shape (DDB-09)', () => {
+describe('collaborator shape', () => {
   it('refuses a raw DynamoDBClient where a DynamoDBDocument is required', () => {
     const raw = { send: () => undefined };
     expect(() => new DynamoDBStore({ tableName: 'tbl', client: raw as never })).toThrow(

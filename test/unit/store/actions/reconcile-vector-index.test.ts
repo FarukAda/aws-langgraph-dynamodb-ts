@@ -77,7 +77,7 @@ describe('reconcileVectorIndex', () => {
     );
     mock.on(QueryCommand).resolves({ Items: [recordA, recordB] });
     // The prune re-check confirms the orphan really has no canonical item
-    // before its vector is deleted (M11).
+    // before its vector is deleted.
     mock.on(GetCommand).resolves({});
 
     const result = await reconcileVectorIndex(ctx, ['users', 'u1']);

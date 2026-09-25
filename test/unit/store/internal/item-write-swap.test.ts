@@ -210,7 +210,7 @@ describe('putWithRevisionSwap', () => {
   });
 });
 
-describe('putWithRevisionSwap with the rejected row on the exception (DDB-07)', () => {
+describe('putWithRevisionSwap with the rejected row on the exception', () => {
   /**
    * An inline record, because the row attached to the exception itself — rather
    * than to a cancellation reason — is the shape a plain put's rejection
@@ -278,7 +278,7 @@ describe('putWithRevisionSwap with the rejected row on the exception (DDB-07)', 
   });
 });
 
-describe('createdAt after a delete/put race (STORE-13)', () => {
+describe('createdAt after a delete/put race', () => {
   it("takes the put timestamp when the re-read finds the row gone, not the deleted row's createdAt", async () => {
     const { context, inputs } = harness({ failures: 1, reReads: [{ exists: false }] });
     await putWithRevisionSwap(context as never, record(), { exists: true, revision: 'stale' });

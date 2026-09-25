@@ -50,7 +50,7 @@ function context(client: StoreContext['client']): StoreContext {
 
 afterEach(() => cleanUpMock.mockClear());
 
-describe('store put/delete bind row-sourced S3 keys to the item (SEC-03)', () => {
+describe('store put/delete bind row-sourced S3 keys to the item', () => {
   it('cleans up the superseded object of an overwrite under the namespace/key scope', async () => {
     const { client, mock } = createStrictDocumentMock();
     /** `readExisting` sees the previous value; the read after the commit sees this put's inline one. */

@@ -87,7 +87,7 @@ const VALUE_EXPORTS = [
   'redactSecrets',
 ] as const;
 
-describe('public value exports (CORE-12, TEST-10)', () => {
+describe('public value exports', () => {
   it('are exactly the documented set, at runtime and in the types', () => {
     expect(Object.keys(api).sort()).toEqual([...VALUE_EXPORTS].sort());
     expectTypeOf<keyof typeof api>().toEqualTypeOf<(typeof VALUE_EXPORTS)[number]>();
@@ -104,7 +104,7 @@ describe('public value exports (CORE-12, TEST-10)', () => {
   });
 });
 
-describe('public type exports (CORE-12, TEST-10)', () => {
+describe('public type exports', () => {
   it('each resolve to a real type (the import list above is the lock)', () => {
     expectTypeOf<AdapterSection<DynamoDBSaverOptions>>().not.toHaveProperty('client');
     expectTypeOf<AdapterWindow>().toEqualTypeOf<{ limit?: number }>();
@@ -174,7 +174,7 @@ describe('public type exports (CORE-12, TEST-10)', () => {
   });
 });
 
-describe('adapter signatures (TEST-10)', () => {
+describe('adapter signatures', () => {
   it('the checkpointer implements BaseCheckpointSaver and takes a cancellable deleteThread', () => {
     expectTypeOf<DynamoDBSaver>().toMatchTypeOf<BaseCheckpointSaver>();
     expectTypeOf<DynamoDBSaver['deleteThread']>().parameters.toEqualTypeOf<

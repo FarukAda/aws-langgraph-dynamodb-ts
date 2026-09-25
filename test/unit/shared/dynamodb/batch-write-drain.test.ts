@@ -87,7 +87,7 @@ describe('drainUnprocessedWrites', () => {
   });
 });
 
-describe('the drain obeys the configured retry policy (CORE-04)', () => {
+describe('the drain obeys the configured retry policy', () => {
   /**
    * The wall clock is frozen for determinism, so the wait is asserted at the
    * timer rather than measured. `rng: () => 1` takes the top of the jitter

@@ -30,7 +30,7 @@ const yieldTimes = async (ticks: number): Promise<void> => {
   for (let i = 0; i < ticks; i++) await new Promise((resolve) => setImmediate(resolve));
 };
 
-describe('DynamoDBStore.batch dispatches independent operations concurrently (STORE-06)', () => {
+describe('DynamoDBStore.batch dispatches independent operations concurrently', () => {
   it('runs reads concurrently, up to 8 at a time, and keeps results in operation order', async () => {
     const { client, mock } = createStrictDocumentMock();
     const maxInFlight = overlappingGet(mock);

@@ -12,7 +12,7 @@ const manifest = JSON.parse(
   readFileSync(resolve(SRC_ROOT, '..', 'package.json'), 'utf8'),
 ) as PackageManifest;
 
-describe('package exports map (PKG-18)', () => {
+describe('package exports map', () => {
   it('keeps the root entry with types, import, require and default conditions', () => {
     expect(manifest.exports['.']).toEqual({
       types: './dist/index.d.ts',

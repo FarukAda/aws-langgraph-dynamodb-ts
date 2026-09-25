@@ -228,7 +228,7 @@ describe('ensureLifecycleRule', () => {
   );
 });
 
-describe('ensureLifecycleRule prefix guard (SEC-04, CODEC-07)', () => {
+describe('ensureLifecycleRule prefix guard', () => {
   it.each(['', '/', 'app'])('refuses prefix %j before touching S3', async (prefix) => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
     s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
@@ -242,7 +242,7 @@ describe('ensureLifecycleRule prefix guard (SEC-04, CODEC-07)', () => {
   });
 });
 
-describe('ensureLifecycleRule rule shape (CODEC-12)', () => {
+describe('ensureLifecycleRule rule shape', () => {
   it('forwards TransitionDefaultMinimumObjectSize instead of resetting it', async () => {
     s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
       Rules: [],

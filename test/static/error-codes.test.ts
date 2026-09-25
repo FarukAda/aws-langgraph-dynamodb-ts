@@ -16,7 +16,7 @@ describe('ErrorCode enum', () => {
   });
 });
 
-describe('guard internals (TEST-12)', () => {
+describe('guard internals', () => {
   it('lists enum members from the AST, ignoring other declarations in the file', () => {
     expect(
       enumMembersOf(

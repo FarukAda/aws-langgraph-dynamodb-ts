@@ -128,7 +128,7 @@ describe('writeRegularItems', () => {
     expect(outcome.error).toMatchObject({ name: 'ValidationException' });
   });
 
-  it('marks a guard-rejected write dead when the returned row belongs to another call (CKPT-09)', async () => {
+  it('marks a guard-rejected write dead when the returned row belongs to another call', async () => {
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(mock, ccf({ channel: { S: 'ch' }, writeGroup: { S: 'OTHER' } }));
     const outcome = await writeRegularItems(context(client), [item('G1')]);

@@ -85,7 +85,7 @@ describe('addMessages caller-observed atomicity under partial transaction failur
         const items = input.TransactItems ?? [];
         /**
          * The compensating transaction is either the conditional delete of a
-         * session this call created (C4) or the count decrement it falls back
+         * session this call created or the count decrement it falls back
          * to. Both carry a ClientRequestToken and both must survive a lost
          * response, so match either shape.
          */

@@ -62,7 +62,7 @@ describe('rankInMemory', () => {
   });
 });
 
-describe('rankInMemory scores an item by its best passage (STORE-10)', () => {
+describe('rankInMemory scores an item by its best passage', () => {
   function multi(key: string, embeddings: number[][]): RankCandidate {
     return {
       item: {

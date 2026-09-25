@@ -50,8 +50,33 @@ describe('planReferencesIn', () => {
     expect(planReferencesIn('const controller = new AbortController();', 'a.ts')).toEqual([]);
   });
 
-  it("does not flag this repository's audit finding ids", () => {
-    const source = ['// (H-10)', '// DDB-09', '// CORE-22'].join('\n');
+  it('flags an audit finding id, in parentheses alone or in a list, or prefixed anywhere', () => {
+    const source = [
+      '// (H-10)',
+      '// DDB-09',
+      '// CORE-22',
+      "it('refuses it (C1, I7)', () => {})",
+      ' * per shard (audit H-08), so',
+    ].join('\n');
+    expect(planReferencesIn(source, 'a.ts').map((hit) => hit.text)).toEqual([
+      '(H-10)',
+      'H-10',
+      'DDB-09',
+      'CORE-22',
+      '(C1, I7)',
+      'H-08',
+    ]);
+  });
+
+  it('leaves evidence claim ids, divergence ids, standards and id-shaped data alone', () => {
+    const source = [
+      '// (E-14) and (E-16, E-17)',
+      '// V-26',
+      '// UTF-16 (UTF-8)',
+      '// CWE-117 (SHA-256)',
+      "const createdAt = 'T-1';",
+      "const writeId = 'WRITE-1';",
+    ].join('\n');
     expect(planReferencesIn(source, 'a.ts')).toEqual([]);
   });
 

@@ -94,7 +94,7 @@ describe('matchesStoreFilter', () => {
     expect(matchesStoreFilter(value, { role: {}, score: { $gte: 4 } })).toBe(false);
   });
 
-  it('never lets a stored NaN satisfy a range operator (F3)', () => {
+  it('never lets a stored NaN satisfy a range operator', () => {
     const stored = { score: NaN };
     expect(matchesStoreFilter(stored, { score: { $lt: 5 } })).toBe(false);
     expect(matchesStoreFilter(stored, { score: { $lte: 5 } })).toBe(false);
@@ -102,14 +102,14 @@ describe('matchesStoreFilter', () => {
     expect(matchesStoreFilter(stored, { score: { $gte: 5 } })).toBe(false);
   });
 
-  it('never lets a NaN on the filter side match either (F3)', () => {
+  it('never lets a NaN on the filter side match either', () => {
     expect(matchesStoreFilter({ score: 5 }, { score: { $lt: NaN } })).toBe(false);
     expect(matchesStoreFilter({ score: 5 }, { score: { $lte: NaN } })).toBe(false);
     expect(matchesStoreFilter({ score: 5 }, { score: { $gt: NaN } })).toBe(false);
     expect(matchesStoreFilter({ score: 5 }, { score: { $gte: NaN } })).toBe(false);
   });
 
-  it('still treats NaN as equal to NaN, where equality is well defined (F3)', () => {
+  it('still treats NaN as equal to NaN, where equality is well defined', () => {
     // isDeepStrictEqual uses SameValue for primitives, so NaN equals NaN.
     // Ordering is undefined for NaN; equality is not. The two must not be conflated.
     expect(matchesStoreFilter({ score: NaN }, { score: { $eq: NaN } })).toBe(true);
@@ -128,7 +128,7 @@ describe('matchesStoreFilter', () => {
   });
 });
 
-describe('range comparators are type-strict (M9, A4)', () => {
+describe('range comparators are type-strict', () => {
   it('does not coerce a numeric-looking string into a number comparison', () => {
     // Native `>` coerces, so a stored '10' satisfied { $gt: 5 } — inclusion
     // that depends on JS coercion rather than on the stored type.
@@ -158,7 +158,7 @@ describe('range comparators are type-strict (M9, A4)', () => {
     expect(matchesStoreFilter({}, { missing: { $gt: 1 } })).toBe(false);
   });
 
-  it('ignores an inherited member when the filter names one (A4)', () => {
+  it('ignores an inherited member when the filter names one', () => {
     // value['toString'] resolves up the prototype chain, so a filter naming an
     // absent field could compare against a function rather than "no value".
     expect(matchesStoreFilter({}, { toString: 'x' })).toBe(false);

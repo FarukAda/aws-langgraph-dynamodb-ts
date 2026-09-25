@@ -69,7 +69,7 @@ describe('rows: read', () => {
   });
 });
 
-describe('dropSupersededWrites (C3)', () => {
+describe('dropSupersededWrites', () => {
   const row = (
     index: number,
     channel: string,
@@ -141,7 +141,7 @@ describe('dropSupersededWrites (C3)', () => {
     expect(dropSupersededWrites(items)).toHaveLength(3);
   });
 
-  it('keeps a retry-added occurrence that never collided with an earlier row (F1)', () => {
+  it('keeps a retry-added occurrence that never collided with an earlier row', () => {
     // Call 1 wrote `messages` once (occurrence 0, index 0). Call 2 — a retry
     // that legitimately emitted `messages` twice — re-hit index 0 (guard
     // rejected, no row) and committed a brand-new row at index 1, occurrence 1.
@@ -151,7 +151,7 @@ describe('dropSupersededWrites (C3)', () => {
     expect(dropSupersededWrites(items).map((item) => item.writeGroup)).toEqual(['g1', 'g2']);
   });
 
-  it('still drops a later call re-emitting a channel at a shifted index (C3)', () => {
+  it('still drops a later call re-emitting a channel at a shifted index', () => {
     // Same channel, same occurrence, two different calls: the later one is a
     // superseding duplicate and must go.
     const items = [row(0, 'B', 'g2', 'task-1', 0), row(1, 'B', 'g1', 'task-1', 0)];
@@ -185,7 +185,7 @@ describe('dropSupersededWrites (C3)', () => {
   });
 });
 
-describe('toPendingWrites offloaded reads (CODEC-14)', () => {
+describe('toPendingWrites offloaded reads', () => {
   it('decodes offloaded pending writes up to 8 at a time, preserving order', async () => {
     const { offloader, maxInFlight } = overlapOffloader();
     const ctx = { ...context(), offloader: offloader as never };
@@ -210,7 +210,7 @@ describe('toPendingWrites offloaded reads (CODEC-14)', () => {
   });
 });
 
-describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', () => {
+describe('narrowMetaItem refuses a row from a newer format version', () => {
   const meta = {
     PK: 'CHKPT#t',
     SK: 'META##c1',
@@ -262,9 +262,9 @@ describe('narrowMetaItem refuses a row from a newer format version (CKPT-12)', (
  * the thread the assembled tuple reports. Unbound, a writer confined to its own
  * partition could put `threadId: 'tenantB'` on a row in its own partition and
  * have `list()` hand back tenant B's offloaded payload — the cross-tenant read
- * `narrowStoreRecord` already refuses for store items (SEC-03).
+ * `narrowStoreRecord` already refuses for store items.
  */
-describe('narrowMetaItem binds a row to the partition it lives in (SEC-03)', () => {
+describe('narrowMetaItem binds a row to the partition it lives in', () => {
   const row = (over: Record<string, unknown>) => ({
     PK: 'CHKPT#tenantA',
     SK: 'META#ns#c1',

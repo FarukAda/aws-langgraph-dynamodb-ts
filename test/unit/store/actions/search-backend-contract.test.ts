@@ -22,11 +22,11 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
   };
 }
 
-describe('searchItems vectorBackend contract (I3, A3)', () => {
+describe('searchItems vectorBackend contract', () => {
   /**
    * Every match costs a canonical read, so a page of them must not be a page of
    * round-trips: the in-DynamoDB path already decodes with the same bounded
-   * concurrency (CODEC-14).
+   * concurrency.
    */
   it('reads the matched items concurrently, not one round-trip at a time', async () => {
     const { client, mock } = createStrictDocumentMock();
@@ -69,7 +69,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     expect(maxInFlight).toBeGreaterThan(1);
   });
 
-  it('warns when a backend returns scores that are not non-increasing (I3)', async () => {
+  it('warns when a backend returns scores that are not non-increasing', async () => {
     // The upstream SearchItem.score contract is "higher = better match", and
     // match.score is forwarded verbatim. A backend surfacing a raw *distance*
     // (S3 Vectors, FAISS L2) still returns nearest-first, so the order looks
@@ -119,7 +119,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     expect(vectorBackend.query).not.toHaveBeenCalled();
   });
 
-  it('does not warn for a correctly ordered backend (I3)', async () => {
+  it('does not warn for a correctly ordered backend', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
     const recA = await buildStoreItem(
@@ -147,7 +147,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('skips a backend match whose namespace is not a valid store namespace (A3)', async () => {
+  it('skips a backend match whose namespace is not a valid store namespace', async () => {
     // getItem validates, so a backend returning a namespace element containing
     // the reserved separator turned an entire search into a `VALIDATION` error
     // instead of dropping the one unusable match.
@@ -183,7 +183,7 @@ describe('searchItems vectorBackend contract (I3, A3)', () => {
   });
 });
 
-describe('vectorScoreDirection (F4)', () => {
+describe('vectorScoreDirection', () => {
   it('does not warn about ascending scores when the backend is declared distance-scored', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };

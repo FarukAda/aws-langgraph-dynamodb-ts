@@ -82,7 +82,7 @@ describe('the limits each module owns', () => {
     expect(LIST_SCAN_WARN_THRESHOLD).toBe(10000);
   });
 
-  it('pins the ceilings bounding every previously-unbounded numeric option (H-08, M-08)', () => {
+  it('pins the ceilings bounding every previously-unbounded numeric option', () => {
     expect(MAX_INDEX_SHARDS).toBe(1024);
     expect(MAX_READ_CONCURRENCY).toBe(128);
     expect(MAX_RETRY_DELAY_MS).toBe(60_000);

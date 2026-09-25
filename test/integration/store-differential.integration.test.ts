@@ -118,7 +118,7 @@ afterAll(async () => {
   admin.destroy();
 });
 
-describe('DynamoDBStore matches InMemoryStore (TEST-06)', () => {
+describe('DynamoDBStore matches InMemoryStore', () => {
   it('returns the same items from get', async () => {
     for (const fixture of FIXTURES) {
       const [ours, theirs] = await Promise.all([

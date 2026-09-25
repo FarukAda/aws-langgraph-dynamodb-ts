@@ -10,7 +10,7 @@ import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../../src/share
 const enc = (value: string): string => Buffer.from(value, 'utf8').toString('base64url');
 const ID = '01J9ZQ5X3N8VQ4M6C2T7R0K1HD';
 
-describe('s3KeyScope / isKeyInScope (SEC-03)', () => {
+describe('s3KeyScope / isKeyInScope', () => {
   it('names the path every key built from the parts shares', () => {
     expect(s3KeyScope('p/', ['t', 'ns'])).toBe(`p/${enc('t')}/${enc('ns')}`);
     expect(s3KeyScope('p/', [])).toBe('p/');

@@ -433,8 +433,8 @@ function shardQuery(
  *
  * `Limit` bounds the items a `Query` *evaluates*, and a page also stops at
  * 1 MB, so a shard of large rows answers with fewer than `limit` items and a
- * `LastEvaluatedKey`. Taking that short page as the whole shard is what made a
- * listing drop rows and report itself complete (C-01). The key is kept here
+ * `LastEvaluatedKey`. Taking that short page as the whole shard would drop
+ * rows and report the listing complete. The key is kept here
  * instead, and the listing reads the next page once the shard's buffer is empty
  * and its page still needs a row. One page at a time is what bounds a listing's
  * memory to at most one DynamoDB page per shard, besides the page it is

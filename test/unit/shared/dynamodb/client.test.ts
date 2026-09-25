@@ -200,7 +200,7 @@ describe('the request-handler bound on a client this library builds', () => {
   });
 });
 
-describe('warnOnStackedRetries (DDB-01)', () => {
+describe('warnOnStackedRetries', () => {
   const fakeLogger = () => ({
     debug: jest.fn(),
     info: jest.fn(),

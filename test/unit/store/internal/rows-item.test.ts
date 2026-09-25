@@ -107,7 +107,7 @@ describe('store rows: item', () => {
   });
 });
 
-describe('narrowStoreRecord key consistency (SEC-03)', () => {
+describe('narrowStoreRecord key consistency', () => {
   const value = {
     location: PayloadLocation.INLINE,
     serdeType: 'json',
@@ -141,7 +141,7 @@ describe('narrowStoreRecord key consistency (SEC-03)', () => {
   });
 });
 
-describe('narrowStoreRecord refuses a row from a newer format version (STORE-11)', () => {
+describe('narrowStoreRecord refuses a row from a newer format version', () => {
   const row = {
     PK: 'STORE#n',
     SK: 'k',

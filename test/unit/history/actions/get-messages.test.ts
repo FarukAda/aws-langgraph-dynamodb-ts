@@ -62,7 +62,7 @@ describe('getMessages', () => {
     expect(await getMessages(context(client), 'sess-x')).toEqual([]);
   });
 
-  it('returns the readable messages and reports the corrupt one (I6)', async () => {
+  it('returns the readable messages and reports the corrupt one', async () => {
     // One undecodable item used to throw out of the whole function, so a
     // single bad row made an entire session permanently unreadable — with no
     // API to remove just that row.
@@ -134,7 +134,7 @@ describe('getMessages', () => {
     );
   });
 
-  it('throws on a corrupt item when onCorruptMessage is "throw" (I6)', async () => {
+  it('throws on a corrupt item when onCorruptMessage is "throw"', async () => {
     const { client, mock } = createStrictDocumentMock();
     const [human] = mapChatMessagesToStoredMessages([new HumanMessage('hi')]);
     const corrupt = await buildMessageItem(context(client), {
@@ -154,7 +154,7 @@ describe('getMessages', () => {
     ).rejects.toThrow();
   });
 
-  describe('failure classification under the skip policy (HIST-01, HIST-04, CODEC-03)', () => {
+  describe('failure classification under the skip policy', () => {
     async function offloadedHuman(client: HistoryContext['client']) {
       const writer = context(client, {
         offloader: offloaderStub(() => Promise.resolve(new Uint8Array())) as never,
@@ -292,7 +292,7 @@ describe('getMessages', () => {
     });
   });
 
-  it('rejects an invalid session id instead of reaching DynamoDB (M12)', async () => {
+  it('rejects an invalid session id instead of reaching DynamoDB', async () => {
     const { client, mock } = createStrictDocumentMock();
     await expect(getMessages(context(client), '')).rejects.toThrow(/sessionId/);
     await expect(getMessages(context(client), 'a#b')).rejects.toThrow(/reserved "#" separator/);
@@ -326,7 +326,7 @@ describe('getMessages', () => {
     expect(input.ScanIndexForward).toBe(true);
     expect(input.ExpressionAttributeValues).toEqual({ ':pk': 'HIST#s1', ':skp': 'HISTORY#MSG#' });
     // Read-your-writes for RunnableWithMessageHistory: the turn just appended
-    // must be visible to the very next getMessages (HIST-02).
+    // must be visible to the very next getMessages.
     expect(input.ConsistentRead).toBe(true);
   });
 
@@ -381,7 +381,7 @@ describe('getMessages', () => {
   });
 });
 
-describe('options shape (M-08)', () => {
+describe('options shape', () => {
   it('refuses a key this package does not read, naming it under options', async () => {
     const { client } = createStrictDocumentMock();
     await expect(
@@ -397,7 +397,7 @@ describe('options shape (M-08)', () => {
   });
 });
 
-describe('S3 key binding (SEC-03)', () => {
+describe('S3 key binding', () => {
   const binding = () => ({
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => buildS3Key('p/', parts, objectId),

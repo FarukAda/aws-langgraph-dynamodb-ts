@@ -50,7 +50,7 @@ async function items(
   );
 }
 
-describe('getMessages window (HIST-06)', () => {
+describe('getMessages window', () => {
   it('returns the newest `limit` messages in chronological order, reading the tail newest-first', async () => {
     const { client, mock } = createStrictDocumentMock();
     const all = await items(client, 4);

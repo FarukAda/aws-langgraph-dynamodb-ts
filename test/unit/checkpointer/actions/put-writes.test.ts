@@ -307,7 +307,7 @@ describe('putWrites', () => {
     // Attempt 1 commits; every re-issue times out at the transport, so the
     // budget is spent on `RETRY_EXHAUSTED` while the WRITE row is live. The
     // re-read finds this call's own writeGroup, so the write counts as
-    // committed: no error, no cleanup (CKPT-02).
+    // committed: no error, no cleanup.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).callsFake(() => {
       const rows = committedRows(mock);
@@ -330,7 +330,7 @@ describe('putWrites', () => {
 
   it("cleans up a guard-rejected write's own upload when the live row belongs to another call", async () => {
     // First-write-wins is a success, not an error, but this call's upload is
-    // now unreferenced and must not leak (CKPT-09).
+    // now unreferenced and must not leak.
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(
       mock,

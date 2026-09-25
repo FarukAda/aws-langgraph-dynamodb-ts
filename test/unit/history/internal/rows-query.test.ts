@@ -31,7 +31,7 @@ describe('messageQuery', () => {
   });
 });
 
-describe('messageQuery window options (HIST-06)', () => {
+describe('messageQuery window options', () => {
   it('reads newest-first with a page cap when descending and limit are set', () => {
     const input = messageQuery('history', SESSION_ID, { descending: true, limit: 5 });
     expect(input.ScanIndexForward).toBe(false);

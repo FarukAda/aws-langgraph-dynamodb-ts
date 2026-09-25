@@ -132,7 +132,7 @@ describe('cleanUpS3Orphans', () => {
   });
 });
 
-describe('cleanUpS3Orphans row scope (SEC-03)', () => {
+describe('cleanUpS3Orphans row scope', () => {
   it("skips and warns for a key outside the row's scope, deleting only the owned keys", async () => {
     const offloader = {
       deleteBatch: jest.fn().mockResolvedValue([]),

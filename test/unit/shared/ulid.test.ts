@@ -102,7 +102,7 @@ describe('createUlidFactory', () => {
   });
 });
 
-describe('secureRng (DDB-12)', () => {
+describe('secureRng', () => {
   it('draws from crypto.randomBytes through a refilled pool and stays within [0, 1)', () => {
     randomBytesMock.mockClear();
     const rng = secureRng();
@@ -134,7 +134,7 @@ describe('secureRng (DDB-12)', () => {
   });
 });
 
-describe('ulidTimePrefix (HIST-06)', () => {
+describe('ulidTimePrefix', () => {
   it('is the 10 time characters every ULID of that millisecond starts with, ordered by time', () => {
     const t = 1_700_000_000_000;
     const prefix = ulidTimePrefix(t);

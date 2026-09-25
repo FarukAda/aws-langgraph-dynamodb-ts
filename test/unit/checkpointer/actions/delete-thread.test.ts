@@ -145,12 +145,12 @@ describe('deleteThread', () => {
     }
   });
 
-  it('rejects a thread id carrying the reserved separator, like every other action (M5)', async () => {
+  it('rejects a thread id carrying the reserved separator, like every other action', async () => {
     const { client } = createStrictDocumentMock();
     await expect(deleteThread(context(client), 'a#b')).rejects.toThrow(/reserved "#" separator/);
   });
 
-  it('leaves a row that is not a checkpointer row in place, and warns (C1, I7)', async () => {
+  it('leaves a row that is not a checkpointer row in place, and warns', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({
       Items: [
@@ -167,7 +167,7 @@ describe('deleteThread', () => {
     expect(warn).toHaveBeenCalledTimes(2);
   });
 
-  it('reports cumulative deletes when a later flush fails (M5)', async () => {
+  it('reports cumulative deletes when a later flush fails', async () => {
     const { client, mock } = createStrictDocumentMock();
     // 30 rows: the first flush of 25 rows succeeds, the flush of the remaining 5 fails.
     mock.on(QueryCommand).resolves({
@@ -225,7 +225,7 @@ describe('deleteThread', () => {
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
-  it('logs how many rows it deleted (I7)', async () => {
+  it('logs how many rows it deleted', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(QueryCommand).resolves({ Items: [{ PK: 'CHKPT#t', SK: 'META##c1' }] });
     mock.on(DeleteCommand).resolves({});
@@ -238,7 +238,7 @@ describe('deleteThread', () => {
   });
 });
 
-describe('deleteThread S3 key binding (SEC-03)', () => {
+describe('deleteThread S3 key binding', () => {
   it("never deletes an offloaded object outside the thread's own path, and warns", async () => {
     const { client, mock } = createStrictDocumentMock();
     const own = buildS3Key('p/', ['t', '', 'c1', 'checkpoint'], '01J9ZQ5X3N8VQ4M6C2T7R0K1HD');

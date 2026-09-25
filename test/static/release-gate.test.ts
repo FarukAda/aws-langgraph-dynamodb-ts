@@ -17,7 +17,7 @@ import {
  * or a required name that no longer exists, fails here instead of silently
  * weakening the gate.
  */
-describe('the release gate requires every CI check (REL-02)', () => {
+describe('the release gate requires every CI check', () => {
   it('requires exactly the checks the CI workflow produces', () => {
     expect([...requiredCheckNames()].sort()).toEqual([...ciCheckNames()].sort());
   });

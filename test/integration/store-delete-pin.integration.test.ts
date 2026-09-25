@@ -157,7 +157,7 @@ function faultyStore(
 const lostResponse = (): Error =>
   Object.assign(new Error('simulated lost response'), { name: 'ETIMEDOUT' });
 
-describe('a delete whose acknowledgement is lost (D1)', () => {
+describe('a delete whose acknowledgement is lost', () => {
   /**
    * Red without the request token: the retry re-evaluates its condition, finds
    * the revision the racer stamped, re-pins onto it and erases the row that

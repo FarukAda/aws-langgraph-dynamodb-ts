@@ -210,7 +210,7 @@ describe('assertVectorDims', () => {
   });
 });
 
-describe('extractTexts keeps the paths apart (STORE-10)', () => {
+describe('extractTexts keeps the paths apart', () => {
   const doc = {
     title: 'a title',
     chapters: [{ content: 'first chapter' }, { content: 'second chapter' }],

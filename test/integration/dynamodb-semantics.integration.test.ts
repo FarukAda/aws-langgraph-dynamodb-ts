@@ -23,7 +23,7 @@ async function failureOf(call: Promise<object>): Promise<Error | undefined> {
   );
 }
 
-describe('DynamoDB semantics the unit mocks assume (TEST-05)', () => {
+describe('DynamoDB semantics the unit mocks assume', () => {
   it('attaches the rejecting row to ConditionalCheckFailedException as raw AttributeValues', async () => {
     await client.put({
       TableName: tableName,

@@ -28,7 +28,7 @@ afterAll(async () => {
  * DynamoDB ends a Query page at 1 MB of evaluated data, whatever `Limit` says.
  * Five checkpoints carrying about 300 KB of inline metadata each cannot fit one
  * page, so a listing that does not follow `LastEvaluatedKey` returns three or
- * four of them and stops as though that were all (C-01).
+ * four of them and stops as though that were all.
  */
 it('lists every checkpoint when one index shard spans several 1 MB pages', async () => {
   const blob = 'x'.repeat(300_000);

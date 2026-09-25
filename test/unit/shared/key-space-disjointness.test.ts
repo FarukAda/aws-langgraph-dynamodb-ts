@@ -32,7 +32,7 @@ import { simulatedScan } from '../../shared/helpers/simulated-scan';
  * and composed sort keys could collide byte-for-byte. Adapter tags make the
  * three key spaces disjoint by construction.
  */
-describe('cross-adapter partition-key disjointness (C1, C2)', () => {
+describe('cross-adapter partition-key disjointness', () => {
   const shared = 'conv-1';
 
   it('gives one identifier three distinct partitions, one per adapter', () => {

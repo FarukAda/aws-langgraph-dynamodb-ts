@@ -81,7 +81,7 @@ describe('listSessions', () => {
     });
   });
 
-  it('orders by ordinal comparison on the ISO timestamp, not locale rules (M15)', async () => {
+  it('orders by ordinal comparison on the ISO timestamp, not locale rules', async () => {
     const { client, mock } = createStrictDocumentMock();
     // Scanned in a mixed order so the comparator is exercised in both
     // directions, not just ascending input.
@@ -99,7 +99,7 @@ describe('listSessions', () => {
     ]);
   });
 
-  it('keeps both sessions when their timestamps tie (M15)', async () => {
+  it('keeps both sessions when their timestamps tie', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({
       Items: [session('a', '2026-01-01T00:00:00.000Z'), session('b', '2026-01-01T00:00:00.000Z')],
@@ -110,7 +110,7 @@ describe('listSessions', () => {
     ]);
   });
 
-  it('omits a session whose ttl has already passed, matching getMessages (A1)', async () => {
+  it('omits a session whose ttl has already passed, matching getMessages', async () => {
     // getMessages filters expired messages on read because DynamoDB's own TTL
     // sweep lags up to 48h; listSessions did not, so an expired session kept
     // appearing in listings after its messages had vanished from reads.
@@ -123,7 +123,7 @@ describe('listSessions', () => {
     ]);
   });
 
-  it('keeps a session whose ttl is still in the future (A1)', async () => {
+  it('keeps a session whose ttl is still in the future', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({
       Items: [session('live', '2026-01-01', { ttl: 4102444800 })],
@@ -217,7 +217,7 @@ describe('listSessions', () => {
   });
 });
 
-describe('options shape (M-08)', () => {
+describe('options shape', () => {
   it('refuses a key this package does not read, naming it under options', async () => {
     const { client } = createStrictDocumentMock();
     await expect(
@@ -268,7 +268,7 @@ describe('options shape (M-08)', () => {
   });
 });
 
-describe('SessionMetadata.expiresAt (HIST-18)', () => {
+describe('SessionMetadata.expiresAt', () => {
   it('exposes the stored ttl as an ISO instant and omits it when no ttl is stored', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(ScanCommand).resolves({
@@ -280,7 +280,7 @@ describe('SessionMetadata.expiresAt (HIST-18)', () => {
   });
 });
 
-describe('listSessions uses the recency index when the table has one (HIST-10)', () => {
+describe('listSessions uses the recency index when the table has one', () => {
   function indexed(client: Parameters<typeof context>[0]) {
     return { ...context(client), indexName: 'gsi1', indexShards: 2 } as never;
   }

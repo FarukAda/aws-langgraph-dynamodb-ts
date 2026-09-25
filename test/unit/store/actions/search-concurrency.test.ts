@@ -22,7 +22,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
   };
 }
 
-describe('searchItems offloaded reads (CODEC-14)', () => {
+describe('searchItems offloaded reads', () => {
   it('decodes offloaded candidates up to 8 at a time and keeps every match', async () => {
     const { client, mock } = createStrictDocumentMock();
     const { offloader, maxInFlight } = overlapOffloader();

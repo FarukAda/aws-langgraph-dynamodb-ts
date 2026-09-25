@@ -16,7 +16,7 @@ function row(writeGroup: string | undefined, value: string): CheckpointWriteItem
   } as CheckpointWriteItem;
 }
 
-describe('dropSupersededWrites across an upgrade (CKPT-11)', () => {
+describe('dropSupersededWrites across an upgrade', () => {
   /**
    * A row written before `writeGroup` existed carries none, and it is older
    * than every row that does. Keeping the raw `undefined` reversed

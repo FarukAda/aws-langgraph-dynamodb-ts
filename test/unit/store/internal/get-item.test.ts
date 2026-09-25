@@ -33,7 +33,7 @@ describe('getItem', () => {
     ).toBeNull();
   });
 
-  it('returns null and warns for a row that is not a store item (C2, I7)', async () => {
+  it('returns null and warns for a row that is not a store item', async () => {
     // A WRITE row from the checkpointer carries a `value` PayloadDescriptor in
     // the identical shape a store item uses, so an unchecked cast used to
     // decode it successfully and hand another thread's pending write back as
@@ -78,7 +78,7 @@ describe('getItem', () => {
   });
 });
 
-describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
+describe('getItem racing a concurrent overwrite', () => {
   const timestamps = {
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-02T00:00:00.000Z',
@@ -225,7 +225,7 @@ describe('getItem racing a concurrent overwrite (CODEC-03)', () => {
   });
 });
 
-describe('getItem S3 key binding (SEC-03)', () => {
+describe('getItem S3 key binding', () => {
   it("refuses to download a value whose key lies outside the item's own namespace/key path", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({

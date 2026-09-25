@@ -224,7 +224,7 @@ describe('DynamoDBChatMessageHistory end-to-end against real DynamoDB', () => {
   });
 });
 
-describe('hot-row append contention (TEST-03)', () => {
+describe('hot-row append contention', () => {
   it('keeps every message and an exact count under 30 concurrent appends to one session', async () => {
     /**
      * The 18-attempt append budget exists because real DynamoDB raised

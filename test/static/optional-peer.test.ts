@@ -25,7 +25,7 @@ describe('mayImportOptionalPeer', () => {
 });
 
 describe('the actual source tree', () => {
-  it('keeps the optional S3 peer out of every module whose declarations ship publicly (PKG-05)', () => {
+  it('keeps the optional S3 peer out of every module whose declarations ship publicly', () => {
     const offenders = listSourceFiles()
       .filter((path) => importsOptionalPeer(readFileSync(path, 'utf8')))
       .filter((path) => !mayImportOptionalPeer(path));

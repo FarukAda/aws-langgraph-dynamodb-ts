@@ -76,7 +76,7 @@ describe('public API types', () => {
   });
 });
 
-describe('types behind public signatures are exported (CORE-11)', () => {
+describe('types behind public signatures are exported', () => {
   it('names the history option bags and the adapter backend', () => {
     expectTypeOf<GetMessagesOptions>().toEqualTypeOf<MessageWindow & CancelOptions>();
     expectTypeOf<ListSessionsOptions['maxItems']>().toEqualTypeOf<number | undefined>();
@@ -98,7 +98,7 @@ describe('types behind public signatures are exported (CORE-11)', () => {
   });
 });
 
-describe('factory shared defaults and partial createAll (CORE-17)', () => {
+describe('factory shared defaults and partial createAll', () => {
   it('carries shared ttl, compression, s3 and retry on the factory base options', () => {
     expectTypeOf<FactoryBaseOptions['ttl']>().toEqualTypeOf<TtlOption | undefined>();
     expectTypeOf<FactoryBaseOptions>().toHaveProperty('compression');

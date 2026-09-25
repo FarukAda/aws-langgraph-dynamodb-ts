@@ -26,7 +26,7 @@ function conditionalCheckFailed(): Error {
  * guard cannot tell a genuine retry from an unrelated write, so the new
  * channel was silently dropped while the shared one was persisted twice.
  */
-describe('putWrites channel-keyed write rows (C3)', () => {
+describe('putWrites channel-keyed write rows', () => {
   /** A client where a repeat PutCommand on a committed sort key fails the guard. */
   function firstWriteWinsMock(): {
     client: CheckpointerContext['client'];
@@ -43,7 +43,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
     return { client, committed, mock };
   }
 
-  it('does not lose a new channel that lands on an index an earlier call used (C3)', async () => {
+  it('does not lose a new channel that lands on an index an earlier call used', async () => {
     // A retried task with a changed write mix: chanB now takes the array
     // position chanA held, so the positional index made chanB's Put collide
     // with chanA's committed row. The guard rejection was read as a benign
@@ -70,7 +70,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
     ]);
   });
 
-  it('still treats a genuine retry of the same write set as a duplicate (C3)', async () => {
+  it('still treats a genuine retry of the same write set as a duplicate', async () => {
     const { client, committed } = firstWriteWinsMock();
     const config = { configurable: { thread_id: 't', checkpoint_id: 'c1' } };
     const writes: [string, string][] = [
@@ -84,7 +84,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
     expect(committed.size).toBe(2);
   });
 
-  it('gives a channel repeated within one call successive rows in order (C3)', async () => {
+  it('gives a channel repeated within one call successive rows in order', async () => {
     const { client, committed, mock } = firstWriteWinsMock();
     await putWrites(
       context(client),
@@ -106,7 +106,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
     ).toEqual([0, 1]);
   });
 
-  it('stamps successive calls with strictly increasing write groups (C3)', async () => {
+  it('stamps successive calls with strictly increasing write groups', async () => {
     // dropSupersededWrites picks the *smallest* group for a (task, channel) to
     // find the earliest committed call, so the stamp must be time-ordered — a
     // random UUID would nonce correctly but leave that choice arbitrary.
@@ -122,7 +122,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
     expect(groups[0] < groups[1]).toBe(true);
   });
 
-  it('asks DynamoDB for the rejecting row so a rejection can be diagnosed (C3, I7)', async () => {
+  it('asks DynamoDB for the rejecting row so a rejection can be diagnosed', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).resolves({});
     await putWrites(
@@ -136,7 +136,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
     );
   });
 
-  it('logs a same-channel rejection at debug, as the duplicate it is (I7)', async () => {
+  it('logs a same-channel rejection at debug, as the duplicate it is', async () => {
     const { client, mock } = createStrictDocumentMock();
     // ALL_OLD attaches the existing item in raw AttributeValue form; the
     // document client does not unmarshall an error payload (verified against
@@ -156,7 +156,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('logs a rejection by an unexpected channel at warn (I7)', async () => {
+  it('logs a rejection by an unexpected channel at warn', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock
       .on(PutCommand)
@@ -174,7 +174,7 @@ describe('putWrites channel-keyed write rows (C3)', () => {
     );
   });
 
-  it('falls back to the duplicate reading when no attributes are returned (I7)', async () => {
+  it('falls back to the duplicate reading when no attributes are returned', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(PutCommand).rejects(conditionalCheckFailed());
     const debug = jest.fn();

@@ -176,7 +176,7 @@ describe('encodePayload / decodePayload', () => {
   });
 });
 
-describe('row-sourced key binding (SEC-03)', () => {
+describe('row-sourced key binding', () => {
   const scoped = (prefix: string) => ({
     shouldOffload: () => true,
     buildKey: (parts: readonly string[], objectId: string) => buildS3Key(prefix, parts, objectId),
@@ -212,7 +212,7 @@ describe('row-sourced key binding (SEC-03)', () => {
   });
 });
 
-describe('persisted descriptor shape (CODEC-16)', () => {
+describe('persisted descriptor shape', () => {
   it('stamps every descriptor with schemaVersion 1', async () => {
     const descriptor = await encodePayload(
       { a: 1 },

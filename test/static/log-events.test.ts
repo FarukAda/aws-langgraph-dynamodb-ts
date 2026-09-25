@@ -41,7 +41,7 @@ describe('undocumentedEvents', () => {
   });
 });
 
-describe('the README Logging section (CORE-08, DOCS-06)', () => {
+describe('the README Logging section', () => {
   it('documents every info, warn and error event the code emits', () => {
     const events = logEvents();
     expect(events.length).toBeGreaterThan(10);
@@ -49,7 +49,7 @@ describe('the README Logging section (CORE-08, DOCS-06)', () => {
   });
 });
 
-describe('the README Logging section names the right fields (DOCS-07)', () => {
+describe('the README Logging section names the right fields', () => {
   it('documents exactly the fields each event attaches', () => {
     expect(misdocumentedFields(readmeLoggingSection(), logEvents())).toEqual([]);
   });
@@ -69,7 +69,7 @@ describe('the README Logging section names the right fields (DOCS-07)', () => {
   });
 });
 
-describe('the README Logging section names the right level (DOCS-07)', () => {
+describe('the README Logging section names the right level', () => {
   it('documents the level each event is emitted at', () => {
     expect(mislevelledEvents(readmeLoggingSection(), logEvents())).toEqual([]);
   });

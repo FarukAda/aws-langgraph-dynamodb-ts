@@ -22,7 +22,7 @@ const STRUCTURAL_MEMBERS = allKeysOf<DynamoDBDocumentLike>({
   update: 'update',
 });
 
-describe('the injected DocumentClient is typed by shape (H-05)', () => {
+describe('the injected DocumentClient is typed by shape', () => {
   /**
    * Two lists in two files meaning the same thing is the drift this guard
    * exists for. A method added to one alone gives a client the compiler

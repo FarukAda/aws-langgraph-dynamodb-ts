@@ -8,7 +8,7 @@ import { MAX_LOGGED_VALUE_CHARS, truncateForLog } from '../../../../src/shared/l
 
 const fakeLogger = () => ({ debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() });
 
-describe('resolveRetryPolicy (DDB-03, DDB-10)', () => {
+describe('resolveRetryPolicy', () => {
   it('applies the documented defaults when no policy is given', () => {
     const resolved = resolveRetryPolicy(undefined, fakeLogger());
     expect(resolved).toMatchObject({ maxAttempts: 5, baseDelayMs: 100, maxDelayMs: 5000 });
@@ -51,7 +51,7 @@ describe('resolveRetryPolicy (DDB-03, DDB-10)', () => {
  * ten-minute window itself, because that constant is the bound the writes
  * actually carry.
  */
-describe('resolveRetryPolicy warns when a policy outlives the write deadline (DDB-03)', () => {
+describe('resolveRetryPolicy warns when a policy outlives the write deadline', () => {
   it('stays silent for the defaults, which is what keeps the warning worth reading', () => {
     const logger = fakeLogger();
     resolveRetryPolicy(undefined, logger);

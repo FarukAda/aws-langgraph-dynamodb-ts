@@ -168,7 +168,7 @@ async function answerOf(
   }
 }
 
-describe('an out-of-scope s3Key is a refusal, not payload loss (M-03)', () => {
+describe('an out-of-scope s3Key is a refusal, not payload loss', () => {
   it.each(ADAPTERS)('%s raises rather than reading past the row', async (_name, read) => {
     expect(await answerOf(read)).toEqual({
       code: ErrorCode.VALIDATION,

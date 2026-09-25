@@ -27,7 +27,7 @@ function context(
 
 const SESSION_ID = parseSessionId('s1');
 
-describe('offloaded reads run concurrently (CODEC-14)', () => {
+describe('offloaded reads run concurrently', () => {
   it('decodes offloaded messages up to 8 at a time, preserving order', async () => {
     const { client, mock } = createStrictDocumentMock();
     const { offloader, maxInFlight } = overlapOffloader();

@@ -27,7 +27,7 @@ function expectRedactionRefusal(run: () => void, field: string): void {
   }
 }
 
-describe('redactSecrets key matching (CORE-03, CORE-13)', () => {
+describe('redactSecrets key matching', () => {
   it('redacts snake_case, kebab-case and upper-case credential names', () => {
     const out = redactSecrets({
       api_key: 'plain-looking-value',
@@ -78,7 +78,7 @@ describe('redactSecrets key matching (CORE-03, CORE-13)', () => {
   });
 });
 
-describe('redactSecrets error handling (CORE-02, CORE-20)', () => {
+describe('redactSecrets error handling', () => {
   it('rebuilds a bare Error whose cause carries a secret instead of passing it by reference', () => {
     const error = new Error('outer', { cause: { password: 'hunter2', region: 'eu' } });
     const out = redactSecrets({ err: error }) as unknown as {
@@ -303,7 +303,7 @@ describe('redactText applies a pattern globally whether or not it says so', () =
   });
 });
 
-describe('redactLogger never throws into the caller (CORE-10)', () => {
+describe('redactLogger never throws into the caller', () => {
   it('substitutes a marker for an argument whose redaction fails', () => {
     const inner = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const hostile = {
@@ -316,7 +316,7 @@ describe('redactLogger never throws into the caller (CORE-10)', () => {
   });
 });
 
-describe('error messages that embed an upstream message (CORE-23)', () => {
+describe('error messages that embed an upstream message', () => {
   it('redacts a credential inside the cause message of a RETRY_EXHAUSTED error', async () => {
     const cause = Object.assign(new Error('connect failed: password=hunter2 host=db'), {
       name: 'ECONNRESET',
@@ -354,7 +354,7 @@ describe('error messages that embed an upstream message (CORE-23)', () => {
  * `err.message` — the field an application is most likely to print, log or
  * return with no redacting logger anywhere in the path.
  */
-describe('the S3 offload never copies an SDK message verbatim (CORE-23)', () => {
+describe('the S3 offload never copies an SDK message verbatim', () => {
   const s3Mock = mockClient(S3Client);
   const signingFailure = (): Error =>
     new Error(

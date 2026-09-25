@@ -23,7 +23,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
   };
 }
 
-describe('searchItems embedding dimensions (STORE-11)', () => {
+describe('searchItems embedding dimensions', () => {
   it('warns once when stored embeddings do not match the query vector dimension', async () => {
     const { client, mock } = createStrictDocumentMock();
     const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };

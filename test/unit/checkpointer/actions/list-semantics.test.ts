@@ -48,7 +48,7 @@ describe('list() page size', () => {
   });
 });
 
-describe('list() semantics and cost (CKPT-05, CKPT-07)', () => {
+describe('list() semantics and cost', () => {
   const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
   type Built = Awaited<ReturnType<typeof checkpointItems>>;
 
@@ -257,7 +257,7 @@ describe('list() addressed by checkpoint_id: edge cases', () => {
   });
 });
 
-describe('list() skips expired checkpoints (CKPT-10)', () => {
+describe('list() skips expired checkpoints', () => {
   const meta: CheckpointMetadata = { source: 'loop', step: 1, parents: {} };
 
   it('omits a META row past its ttl and asks DynamoDB to filter them too', async () => {

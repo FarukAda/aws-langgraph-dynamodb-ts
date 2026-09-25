@@ -26,7 +26,7 @@ describe('revertSessionCount', () => {
     expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(0);
   });
 
-  it('only decrements the incarnation this call appended to (HIST-03)', async () => {
+  it('only decrements the incarnation this call appended to', async () => {
     // A session clear()-ed and re-created by another caller between this
     // call's commit and its rollback carries a later createdAt; decrementing
     // it would corrupt the new incarnation's count, and its rows were never
@@ -143,7 +143,7 @@ describe('revertSessionCreation', () => {
     ).rejects.toThrow('boom');
   });
 
-  it('strips the title it contributed when the row cannot be deleted (C4)', async () => {
+  it('strips the title it contributed when the row cannot be deleted', async () => {
     // A concurrent append added messages to the brand-new session, so deleting
     // the row would destroy that caller's data. The count is decremented
     // instead — and the title, still holding text from the rolled-back

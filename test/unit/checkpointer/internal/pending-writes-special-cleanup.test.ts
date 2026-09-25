@@ -356,7 +356,7 @@ describe('writeSpecialItemsWithCleanup releases a superseded object without read
   });
 });
 
-describe('writeSpecialItemsWithCleanup S3 key binding (SEC-03)', () => {
+describe('writeSpecialItemsWithCleanup S3 key binding', () => {
   it("never deletes a superseded object outside the thread's own path", async () => {
     const client: ClientStub = {
       get: () =>
