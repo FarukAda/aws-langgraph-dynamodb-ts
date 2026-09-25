@@ -11,7 +11,11 @@
  */
 
 import { DynamoDBClient, type DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocument, type NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
+import {
+  DynamoDBDocument,
+  type NativeAttributeValue,
+  type TransactWriteCommandInput,
+} from '@aws-sdk/lib-dynamodb';
 
 import type { Logger } from '../logging/logger';
 
@@ -209,6 +213,9 @@ interface DeleteWriteRequest {
 
 /** A single BatchWriteItem write request. */
 export type WriteRequest = PutWriteRequest | DeleteWriteRequest;
+
+/** One action of a `TransactWriteItems` request, as the document client takes it. */
+export type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
 
 /**
  * The DocumentClient surface this library uses, named by shape rather than by

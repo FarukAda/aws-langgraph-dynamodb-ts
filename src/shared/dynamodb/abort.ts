@@ -3,33 +3,26 @@ import { ErrorCode } from '../errors/error-code';
 import { abortError } from '../errors/errors';
 
 /**
- * True when the abort reason already is this library's own `ABORTED` error (a
- * string or DOMException is not).
- */
-function isLibraryAbort(
-  reason: Error | undefined,
-): reason is DynamoDBLangGraphError<ErrorCode.ABORTED> {
-  return hasErrorCode(reason as Error, ErrorCode.ABORTED);
-}
-
-/**
  * Whether `error` is a cancellation rather than a failure.
  *
  * Accepts: `error` — any error, from any layer, and equally any other value a
- * `throw` can produce, since a `catch` is where this is called.
+ * `throw` can produce, since a `catch` is where this is called; `undefined`
+ * too, the `reason` a signal aborted without one can carry.
  *
  * Returns: whether it carries this library's brand and `code: 'ABORTED'`,
- * which is the contract every cancellable method documents and the only
- * thing a caller branches on. An unbranded object that merely carries
- * `code: 'ABORTED'` is not an abort — the same brand-and-code test
- * {@link isLibraryAbort} makes, because an error a wrapper caught that only
- * looks like an abort must still be rebranded rather than re-thrown as it is.
+ * which is the contract every cancellable method documents and the only thing
+ * a caller branches on, narrowed so it can be handed on as the abort it is.
+ * An unbranded object that merely carries `code: 'ABORTED'` is not an abort,
+ * because an error a wrapper caught that only looks like an abort must still
+ * be rebranded rather than re-thrown as it is.
  *
  * Throws: **nothing**, for any value. A value that cannot carry a property is
  * not a cancellation, which is the answer an uncoded `Error` gets too.
  */
-export function isAbortError(error: Error): boolean {
-  return hasErrorCode(error, ErrorCode.ABORTED);
+export function isAbortError(
+  error: Error | undefined,
+): error is DynamoDBLangGraphError<ErrorCode.ABORTED> {
+  return error !== undefined && hasErrorCode(error, ErrorCode.ABORTED);
 }
 
 /**
@@ -51,6 +44,6 @@ export function isAbortError(error: Error): boolean {
  */
 export function abortErrorFrom(signal: AbortSignal): DynamoDBLangGraphError<ErrorCode.ABORTED> {
   const reason = signal.reason as Error | undefined;
-  if (isLibraryAbort(reason)) return reason;
+  if (isAbortError(reason)) return reason;
   return abortError('Operation aborted', reason === undefined ? undefined : toError(reason));
 }

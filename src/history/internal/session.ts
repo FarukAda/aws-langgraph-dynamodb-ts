@@ -11,12 +11,12 @@
  * reads it back only from a row this release can summarise.
  */
 
-import type { NativeAttributeValue, TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
+import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 import type { StoredMessage } from '@langchain/core/messages';
 
 import { nowSeconds } from '../../shared/clock';
 import { conditionFailedAt } from '../../shared/dynamodb/cancellation';
-import type { DocItem } from '../../shared/dynamodb/client';
+import type { DocItem, TransactAction } from '../../shared/dynamodb/client';
 import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   transactIdempotently,
@@ -223,9 +223,6 @@ export async function revertSessionCreation(
   }
 }
 
-/** One member of a {@link TransactWriteCommandInput} `TransactItems` list. */
-export type HistoryTransactItem = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
-
 /** Fields driving the per-session metadata update inside the append transaction. */
 export interface SessionUpdateFields {
   sessionId: string;
@@ -278,7 +275,7 @@ export interface SessionUpdateFields {
 export function buildSessionUpdateItem(
   tableName: string,
   fields: SessionUpdateFields,
-): HistoryTransactItem {
+): TransactAction {
   const index = indexKeys(
     'SESS',
     fields.sessionId,

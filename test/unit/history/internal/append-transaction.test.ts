@@ -2,12 +2,12 @@ import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { writeMessageChunk } from '../../../../src/history/internal/append';
 import type { ChatMessageItem } from '../../../../src/history/internal/rows';
-import type { HistoryTransactItem } from '../../../../src/history/internal/session';
 import {
   type HistoryContext,
   MESSAGE_APPEND_RETRY_MAX_ATTEMPTS,
 } from '../../../../src/history/internal/setup';
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import type { TransactAction } from '../../../../src/shared/dynamodb/client';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { createUlidFactory } from '../../../../src/shared/ulid';
@@ -54,7 +54,7 @@ function context(client: unknown, extra?: Partial<HistoryContext>) {
 }
 
 /** The id the session update of one transaction carries for the SESSION row. */
-function sessionWriteId(call: { input: { TransactItems?: HistoryTransactItem[] } }): unknown {
+function sessionWriteId(call: { input: { TransactItems?: TransactAction[] } }): unknown {
   return call.input.TransactItems?.[0].Update?.ExpressionAttributeValues?.[':wid'];
 }
 
@@ -65,7 +65,7 @@ function sessionWriteId(call: { input: { TransactItems?: HistoryTransactItem[] }
  * append and still leaves the row holding its first, which is the whole
  * difference between a pin that works and one that always passes.
  */
-function applySets(row: Record<string, unknown>, item?: HistoryTransactItem) {
+function applySets(row: Record<string, unknown>, item?: TransactAction) {
   const update = item?.Update;
   const names = update?.ExpressionAttributeNames ?? {};
   const values = update?.ExpressionAttributeValues ?? {};

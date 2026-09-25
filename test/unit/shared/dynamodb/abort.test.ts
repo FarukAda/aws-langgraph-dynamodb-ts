@@ -49,4 +49,8 @@ describe('isAbortError', () => {
     // code looks like a cancel and is not one.
     expect(isAbortError(Object.assign(new Error('x'), { code: ErrorCode.ABORTED }))).toBe(false);
   });
+
+  it('answers false for an absent reason, which a signal aborted without one can carry', () => {
+    expect(isAbortError(undefined)).toBe(false);
+  });
 });

@@ -15,7 +15,6 @@
 import { randomUUID } from 'node:crypto';
 
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
-import type { TransactWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 
 import { nowMs } from '../clock';
@@ -23,7 +22,7 @@ import { type PayloadDescriptor, PayloadLocation, type DescriptorRef } from '../
 import { classifyAwsError } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
 import { conditionalCheckFailure } from './cancellation';
-import type { DynamoDBDocumentLike, DocItem } from './client';
+import type { DynamoDBDocumentLike, DocItem, TransactAction } from './client';
 import { MAX_WRITE_LIFETIME_MS, withDynamoDBRetry, retryFor } from './retry';
 import type { RetryOptions } from './retry';
 import { PARTITION_KEY_ATTRIBUTE, type RowKey } from './table-schema';
@@ -76,9 +75,6 @@ export interface RowWriteOptions {
 export function referencesS3Object(descriptor: DescriptorRef): boolean {
   return descriptor.location === PayloadLocation.S3;
 }
-
-/** One action of a `TransactWriteItems`, as the document client takes it. */
-type TransactAction = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
 
 /**
  * Commit `actions` as one
