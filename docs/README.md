@@ -13,8 +13,13 @@ Start with the [README](../README.md), which covers installation,
 configuration and day-to-day use. The [quick start](../README.md#quick-start)
 installs the package and runs a minimal agent against a table you already
 have, and the [usage examples](../README.md#usage-examples) walk through the
-checkpointer, the store, chat history and the factory; [error handling](../README.md#error-handling) documents the
-`DynamoDBLangGraphError` shape and every `ErrorCode`; and
+checkpointer, the store, chat history and the factory. The
+[configuration reference](../README.md#configuration-reference) lists every
+option with its default and ceiling; [error handling](../README.md#error-handling) documents the
+`DynamoDBLangGraphError` shape and every `ErrorCode`;
+[known limitations](../README.md#known-limitations) collects what DynamoDB, S3
+and this package cannot do; the [API reference](../README.md#api-reference)
+lists every public method with its signature; and
 [operations](../README.md#operations) covers limits, per-call costs,
 monitoring and what can still go wrong in production.
 
@@ -32,9 +37,10 @@ The adapters:
 - [DynamoDBStore](api/classes/DynamoDBStore.md) — the long-term memory store,
   with semantic search when an embeddings model is configured
 - [DynamoDBChatMessageHistory](api/classes/DynamoDBChatMessageHistory.md) —
-  single-session chat message history
+  chat message history for every session, each method taking a `sessionId`
 - [DynamoDBSessionChatMessageHistory](api/classes/DynamoDBSessionChatMessageHistory.md) —
-  multi-session chat message history
+  the single-session LangChain adapter `forSession` returns, for
+  `RunnableWithMessageHistory`
 - [DynamoDBFactory](api/classes/DynamoDBFactory.md) — builds any combination
   of the three adapters, sharing one client
 - [DynamoDBLangGraphError](api/classes/DynamoDBLangGraphError.md) — the one
@@ -43,8 +49,15 @@ The adapters:
 Also worth knowing about: [ErrorCode](api/enumerations/ErrorCode.md) (every
 code an adapter can raise), [backfillRecencyIndex](api/functions/backfillRecencyIndex.md)
 (the maintenance operation that adds the recency index to rows written before
-it was enabled), and [JSON_SERDE](api/variables/JSON_SERDE.md) (the default
-serializer every adapter uses unless one is passed explicitly).
+it was enabled), [JSON_SERDE](api/variables/JSON_SERDE.md) (the plain JSON
+serializer the store and chat history use by default, and which a saver can
+be given in place of LangGraph's `JsonPlusSerializer`),
+[isDynamoDBLangGraphError](api/functions/isDynamoDBLangGraphError.md) (whether
+a caught value is one of this package's errors), and
+[redactLogger](api/functions/redactLogger.md) and
+[redactSecrets](api/functions/redactSecrets.md) (redaction for a logger and
+for a single value). The README's [API reference](../README.md#api-reference)
+summarises every method in one table per class.
 
 ## Why it is built this way
 
@@ -84,8 +97,8 @@ change.
 - CI's "Regenerate docs/api and fail on drift" step re-runs `npm run docs` and
   fails if the committed `docs/api` differs, so the API reference above
   cannot go stale.
-- Three static guards read the README directly and fail if it disagrees with
-  the code: `test/static/error-codes.test.ts` (every `ErrorCode` member is
+- Static guards read the README directly and fail if it disagrees with the
+  code, among them `test/static/error-codes.test.ts` (every `ErrorCode` member is
   documented), `test/static/log-events.test.ts` (every logged event is
   documented with the right level and fields), and
   `test/static/iam-actions.test.ts` (the IAM actions the README lists match

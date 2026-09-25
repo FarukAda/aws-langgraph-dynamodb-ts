@@ -67,14 +67,22 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 - [Advanced features](#advanced-features)
 - [Known limitations](#known-limitations)
 - [Migrating](#migrating)
+- [API reference](#api-reference)
+  - [DynamoDBSaver](#dynamodbsaver)
+  - [DynamoDBStore](#dynamodbstore)
+  - [DynamoDBChatMessageHistory](#dynamodbchatmessagehistory)
+  - [DynamoDBSessionChatMessageHistory](#dynamodbsessionchatmessagehistory)
+  - [DynamoDBFactory](#dynamodbfactory)
+  - [Functions and values](#functions-and-values)
 - [Infrastructure setup](#infrastructure-setup)
 - [Table schema](#table-schema)
 - [IAM permissions](#iam-permissions)
 - [Operations](#operations)
 - [Versioning and compatibility](#versioning-and-compatibility)
 - [Testing](#testing)
+- [Project structure](#project-structure)
 - [Design decisions and evidence](#design-decisions-and-evidence)
-- [Support and policies](#support-and-policies)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## Key features
@@ -1241,6 +1249,98 @@ unaffected.
 - **Per-instance `logger` option** replaces the global `setGlobalLogger` singleton; default logging is now silent.
 - **Unified error model** — every error is a `DynamoDBLangGraphError`, distinguished by its `ErrorCode`.
 
+## API reference
+
+The full generated reference is [`docs/api`](docs/api/README.md), regenerated from the `src` doc comments by `npm run docs` and checked for drift in CI. The tables below list every public method, with its signature shortened to parameter names and an optional parameter marked `?`, and link to its entry there, which states what it accepts, returns, throws and guarantees. Every method that returns a promise rejects only with a `DynamoDBLangGraphError` ([Error handling](#error-handling)), and [What each operation costs](#what-each-operation-costs) gives the requests behind each call. No constructor issues a request.
+
+### DynamoDBSaver
+
+A LangGraph `BaseCheckpointSaver`. [Class page](docs/api/classes/DynamoDBSaver.md).
+
+| Method | Returns | Description |
+| --- | --- | --- |
+| [`new DynamoDBSaver(options)`](docs/api/classes/DynamoDBSaver.md#constructor) | `DynamoDBSaver` | Validates `options`, and builds its own client unless given a `client`. |
+| [`getTuple(config)`](docs/api/classes/DynamoDBSaver.md#gettuple) | `Promise<CheckpointTuple \| undefined>` | The checkpoint `config` names, or the newest in its namespace when it names none; strongly consistent. `undefined` for an unknown thread or checkpoint. |
+| [`list(config, options?)`](docs/api/classes/DynamoDBSaver.md#list) | `AsyncGenerator<CheckpointTuple>` | Checkpoints newest first, narrowed by `before`, `filter` and `limit`. Without a `thread_id` it scans the table, or reads the recency index when `indexName` is set. A `VALIDATION` error surfaces from the first `.next()`. |
+| [`put(config, checkpoint, metadata, newVersions?)`](docs/api/classes/DynamoDBSaver.md#put) | `Promise<RunnableConfig>` | Stores a checkpoint and its metadata in one transaction and returns the config addressing it. `newVersions` is accepted and ignored: every channel value is stored. |
+| [`putWrites(config, writes, taskId)`](docs/api/classes/DynamoDBSaver.md#putwrites) | `Promise<void>` | Stores a task's pending writes, one row each, first-write-wins; the special channels (`__interrupt__`, `__resume__`, `__error__`, `__scheduled__`) overwrite. |
+| [`deleteThread(threadId, options?)`](docs/api/classes/DynamoDBSaver.md#deletethread) | `Promise<void>` | Deletes every checkpoint, payload and pending write of a thread in one pass, so call it when the thread is quiescent. `BATCH_WRITE_INCOMPLETE` when a row's delete fails. |
+| [`getDeltaChannelHistory(options)`](docs/api/classes/DynamoDBSaver.md#getdeltachannelhistory) | `Promise<Record<string, DeltaChannelHistory>>` | Walks a checkpoint's ancestors for the delta channels named; `ANCESTOR_EXPIRED` when an ancestor a channel still needs has expired. |
+| [`ensureS3LifecycleRule()`](docs/api/classes/DynamoDBSaver.md#ensures3lifecyclerule) | `Promise<void>` | Installs the S3 lifecycle rule matching `ttl`, and does nothing without both `s3` and `ttl`. Needs bucket-level permissions, so call it once at deployment ([S3 lifecycle rules](#s3-lifecycle-rules)). |
+| [`destroy()`](docs/api/classes/DynamoDBSaver.md#destroy) | `void` | Releases the clients the saver built. Idempotent, and never closes an injected `client`. |
+
+### DynamoDBStore
+
+A LangGraph `BaseStore`. [Class page](docs/api/classes/DynamoDBStore.md).
+
+| Method | Returns | Description |
+| --- | --- | --- |
+| [`new DynamoDBStore(options)`](docs/api/classes/DynamoDBStore.md#constructor) | `DynamoDBStore` | Validates `options`, `index` and `vectorBackend` included, and builds its own client unless given a `client`. |
+| [`get(namespace, key)`](docs/api/classes/DynamoDBStore.md#get) | `Promise<Item \| null>` | One item, or `null` for one that does not exist or has expired. Takes no signal, since upstream's `BaseStore.get` declares none. |
+| [`put(namespace, key, value, index?)`](docs/api/classes/DynamoDBStore.md#put) | `Promise<void>` | Stores or replaces an item, embedding its indexed fields when an `index` is configured. Refuses a `null` value, a label holding `.` and a `"langgraph"` root. |
+| [`delete(namespace, key)`](docs/api/classes/DynamoDBStore.md#delete) | `Promise<void>` | Removes an item; deleting one that is not there is not an error. The row is read before it is removed. |
+| [`search(namespacePrefix, options?)`](docs/api/classes/DynamoDBStore.md#search) | `Promise<SearchItem[]>` | Items under a prefix, narrowed by `filter`, and ranked by `query` when an `index` is configured. In-DynamoDB ranking refuses more than `maxSearchCandidates` candidates. Takes a `signal`. |
+| [`listNamespaces(options?)`](docs/api/classes/DynamoDBStore.md#listnamespaces) | `Promise<string[][]>` | Distinct namespaces, sorted, narrowed by `prefix`, `suffix` and `maxDepth` and paged by `limit` and `offset`. Reads one partition when the prefix opens with concrete labels and the whole table otherwise; `RESULT_TRUNCATED` past `maxScanItems`. |
+| [`batch(operations)`](docs/api/classes/DynamoDBStore.md#batch) | `Promise<OperationResults<Op>>` | Runs operations in the order written, concurrently where they address different items. Every operation is validated before any runs. |
+| [`reconcileVectorIndex(namespacePrefix, options?)`](docs/api/classes/DynamoDBStore.md#reconcilevectorindex) | `Promise<VectorReconcileResult>` | Repairs the `vectorBackend` from the items under a prefix, and never writes DynamoDB ([Vector index consistency](#vector-index-consistency)). |
+| [`ensureS3LifecycleRule()`](docs/api/classes/DynamoDBStore.md#ensures3lifecyclerule) | `Promise<void>` | As on the saver. |
+| [`destroy()`](docs/api/classes/DynamoDBStore.md#destroy) | `void` | As on the saver. |
+| [`stop()`](docs/api/classes/DynamoDBStore.md#stop) | `void` | LangGraph's lifecycle hook, and the same call as `destroy()`. |
+
+### DynamoDBChatMessageHistory
+
+Every session through one adapter: each method takes the `sessionId`. [Class page](docs/api/classes/DynamoDBChatMessageHistory.md).
+
+| Method | Returns | Description |
+| --- | --- | --- |
+| [`new DynamoDBChatMessageHistory(options)`](docs/api/classes/DynamoDBChatMessageHistory.md#constructor) | `DynamoDBChatMessageHistory` | Validates `options`, and builds its own client unless given a `client`. |
+| [`getMessages(sessionId, options?)`](docs/api/classes/DynamoDBChatMessageHistory.md#getmessages) | `Promise<BaseMessage[]>` | A session's messages, oldest first, optionally only the newest `limit` or those appended `before` an instant; strongly consistent. |
+| [`addMessages(sessionId, messages, options?)`](docs/api/classes/DynamoDBChatMessageHistory.md#addmessages) | `Promise<void>` | Appends messages all or nothing, one transaction per chunk of up to 99, and is safe under concurrent appends. `COMPENSATION_FAILED` when a later chunk fails and the rollback fails too. |
+| [`addMessage(sessionId, message, options?)`](docs/api/classes/DynamoDBChatMessageHistory.md#addmessage) | `Promise<void>` | Appends one message. |
+| [`clear(sessionId, options?)`](docs/api/classes/DynamoDBChatMessageHistory.md#clear) | `Promise<void>` | Deletes a session's messages, metadata and offloaded objects in one pass, so call it when the session is quiescent. |
+| [`listSessions(options?)`](docs/api/classes/DynamoDBChatMessageHistory.md#listsessions) | `Promise<SessionPage>` | Session summaries, most recently updated first. Pages by `cursor` through the recency index when `indexName` is set; otherwise a table scan across every tenant, bounded by `maxItems` and `maxIterations`, with no cursor. |
+| [`reconcileMessageCount(sessionId, options?)`](docs/api/classes/DynamoDBChatMessageHistory.md#reconcilemessagecount) | `Promise<number>` | Recounts a session's messages and repairs its `messageCount`. |
+| [`forSession(sessionId, window?)`](docs/api/classes/DynamoDBChatMessageHistory.md#forsession) | `DynamoDBSessionChatMessageHistory` | A LangChain single-session adapter bound to one session, for `RunnableWithMessageHistory`. |
+| [`ensureS3LifecycleRule()`](docs/api/classes/DynamoDBChatMessageHistory.md#ensures3lifecyclerule) | `Promise<void>` | As on the saver. |
+| [`destroy()`](docs/api/classes/DynamoDBChatMessageHistory.md#destroy) | `void` | As on the saver. |
+
+### DynamoDBSessionChatMessageHistory
+
+A LangChain `BaseListChatMessageHistory` bound to one session and an optional read window. Build it with `history.forSession(sessionId, window?)` ([RunnableWithMessageHistory](#runnablewithmessagehistory)). [Class page](docs/api/classes/DynamoDBSessionChatMessageHistory.md).
+
+| Method | Returns | Description |
+| --- | --- | --- |
+| [`getMessages()`](docs/api/classes/DynamoDBSessionChatMessageHistory.md#getmessages) | `Promise<BaseMessage[]>` | The session's messages, bounded by the window, which is what keeps a long session from growing the prompt without limit. |
+| [`addMessages(messages)`](docs/api/classes/DynamoDBSessionChatMessageHistory.md#addmessages) | `Promise<void>` | Appends messages. The window bounds what is read, never what is written. |
+| [`addMessage(message)`](docs/api/classes/DynamoDBSessionChatMessageHistory.md#addmessage) | `Promise<void>` | Appends one message. |
+| [`clear()`](docs/api/classes/DynamoDBSessionChatMessageHistory.md#clear) | `Promise<void>` | Deletes the whole session, not only the window. |
+
+### DynamoDBFactory
+
+Builds the adapters over one set of defaults. [Class page](docs/api/classes/DynamoDBFactory.md).
+
+| Method | Returns | Description |
+| --- | --- | --- |
+| [`new DynamoDBFactory(base?)`](docs/api/classes/DynamoDBFactory.md#constructor) | `DynamoDBFactory` | Validates the defaults every adapter inherits, and opens nothing. |
+| [`createSaver(options)`](docs/api/classes/DynamoDBFactory.md#createsaver) | `DynamoDBSaver` | A saver with `options` laid over the defaults; a per-adapter value wins. |
+| [`createStore(options)`](docs/api/classes/DynamoDBFactory.md#createstore) | `DynamoDBStore` | A store, likewise. |
+| [`createChatMessageHistory(options)`](docs/api/classes/DynamoDBFactory.md#createchatmessagehistory) | `DynamoDBChatMessageHistory` | A chat history, likewise. |
+| [`createAll(options)`](docs/api/classes/DynamoDBFactory.md#createall) | `CreatedAdapters<O>` | The adapters whose sections are given, on one shared DynamoDB client, and one `destroy` that releases them all ([One client for all three adapters](#one-client-for-all-three-adapters)). |
+
+### Functions and values
+
+| Export | Signature | Description |
+| --- | --- | --- |
+| [`backfillRecencyIndex`](docs/api/functions/backfillRecencyIndex.md) | `(options) => Promise<BackfillResult>` | Gives rows written before the recency index its keys; run it before setting `indexName`. It scans the table, in bounded slices with `maxPages` and `cursor` ([Maintenance operations](#maintenance-operations)). |
+| [`isDynamoDBLangGraphError`](docs/api/functions/isDynamoDBLangGraphError.md) | `(value) => value is AnyDynamoDBLangGraphError` | Whether a caught value is this package's error. Recognised by a brand rather than `instanceof`, so it holds across realms and across two copies of the package; never throws. |
+| [`redactLogger`](docs/api/functions/redactLogger.md) | `(inner, options?) => Logger` | Wraps a logger so every argument after the message is redacted before it reaches `inner` ([Logging](#logging)). |
+| [`redactSecrets`](docs/api/functions/redactSecrets.md) | `(value, patterns?, valuePatterns?) => Redactable` | A redacted clone of one value; the input is never mutated. |
+| [`JSON_SERDE`](docs/api/variables/JSON_SERDE.md) | `SerializerProtocol` | The plain JSON serializer the store and chat history use by default, which a saver can be given in place of LangGraph's `JsonPlusSerializer` ([Trust boundary](#trust-boundary)). |
+| [`ErrorCode`](docs/api/enumerations/ErrorCode.md) | `enum` | The 20 codes a `DynamoDBLangGraphError` can carry. |
+| [`DynamoDBLangGraphError`](docs/api/classes/DynamoDBLangGraphError.md) | `class` | The one error class, with `code`, `context`, `details` and the native `cause`. |
+
+**Exported types.** Every option, result and collaborator type — `DynamoDBSaverOptions`, `SearchOptions`, `SessionPage`, `VectorBackend`, `Logger`, `RetryOptions` and the rest — is listed in [the reference index](docs/api/README.md). The package's exports map admits no deep import, so what the package root exports is the whole surface.
+
 ## Infrastructure setup
 
 One table backs all three adapters. Create it with **AWS CDK** or **Terraform**.
@@ -1849,6 +1949,8 @@ npm run test:static # the static guards alone
 npm run typecheck
 npm run lint
 npm run build       # removes dist/ first, so no output outlives its source
+npm run test:scripts        # node --test suites for the maintenance scripts
+npm run test:package-smoke  # pack, install and import the tarball (needs network)
 ```
 
 The surface tier runs the public API against a large table of malformed inputs and compares the result — one line per case — to a committed baseline, so any change to what the package accepts or rejects shows up as a reviewed diff. It runs against the built package, so build first:
@@ -1865,7 +1967,8 @@ Integration and contract tiers run against DynamoDB Local (Docker) and are kept 
 
 ```bash
 npm run test:integration:up     # docker compose up -d (DynamoDB Local)
-npm run test:integration        # integration flows + LangGraph/LangChain contract conformance
+npm run test:integration        # integration flows and the adapter contract suites
+npm run test:conformance        # LangChain's checkpointer validation suite and a compiled LangGraph graph
 npm run test:integration:down
 ```
 
@@ -1875,13 +1978,22 @@ The real-AWS tier runs the same adapters against real DynamoDB, S3 and Bedrock. 
 npm run test:aws                # needs AWS credentials and AWS_REGION; refuses to run without a region
 ```
 
-The `examples/live-*.mjs` scripts are demos against real AWS, not a test tier: `live-checkpointer.mjs` runs a LangGraph agent across two saver instances and deletes its table afterwards; `live-agent.mjs`, `live-persist.mjs` and `live-store.mjs` leave their table in place so you can inspect the rows in the console. They need `AWS_REGION` (each stops and says so when it is unset) and read `LANGGRAPH_DEMO_TABLE` (default `langgraph-saver-demo` / `langgraph-store-demo`), and `live-agent.mjs` needs a Bedrock model enabled in that region.
+The `examples/live-*.mjs` scripts are demos against real AWS, not a test tier. [`examples/README.md`](examples/README.md) says what each one does, which services it calls, which leave a table behind and how to delete it.
+
+### Documentation checks
+
+```bash
+npm run check:docs   # type-check every TypeScript sample in README.md, CONTRIBUTING.md and CHANGELOG.md against src
+npm run check:links  # resolve every relative link and #anchor across the hand-written documents
+```
+
+`check:docs` compiles each `ts` and `typescript` block as an ES module with bundler resolution, so a documented call whose signature changed fails the build instead of the reader; a block that cannot compile carries a `<!-- sample:skip … -->` marker with its reason, and the number of skips is asserted. `check:links` is offline: it fetches no URL, and checks that every linked file exists and every `#anchor` matches a heading by GitHub's rule, which is what a renamed heading or a moved file breaks. CI runs both, and a separate job regenerates [`docs/api`](docs/api/README.md) with `npm run docs` and fails when the committed copy differs.
 
 ### What the suite does and does not prove
 
 | Tier | Runs | Proves |
 | --- | --- | --- |
-| Unit, static guards, type locks, property tests (`npm test`) | every push and PR, three OSes × Node 22, 24 and 26 | every code path (100 % coverage), the repository rules (JSDoc-only comments, no `any`/`unknown`/`instanceof`, no re-exports, no import cycles, no dead error codes, every public async method behind the error boundary, no planning references or raw control characters in committed code), the exact public export set and adapter signatures, the stated invariants (sort-key order, item-size estimate, write resolution, redaction, backoff) |
+| Unit, static guards, type locks, property tests (`npm test`) | every push and PR, three OSes × Node 22, 24 and 26 | every code path (100 % coverage), the repository rules (`/** */` only for interface documentation and `//` for every other comment, with no block comments and no lint or TypeScript directives, per decision record 23; no `any`/`unknown`/`instanceof`, no re-exports, no import cycles, no dead error codes, every public async method behind the error boundary, no planning references or raw control characters in committed code), the exact public export set and adapter signatures, the stated invariants (sort-key order, item-size estimate, write resolution, redaction, backoff) |
 | Integration (`npm run test:integration`, DynamoDB Local) | every push and PR | end-to-end adapter flows and fault injection; the write races the compare-and-swap exists for, with an in-memory S3 in the loop; the DynamoDB semantics the unit mocks assume; parity with `InMemoryStore` and `InMemoryChatMessageHistory` under `RunnableWithMessageHistory`; a 30-way single-session append storm |
 | Conformance (`npm run test:conformance`, DynamoDB Local) | every push and PR, against the declared floor and the latest `@langchain/langgraph-checkpoint` | a compiled LangGraph graph over the saver (interrupt/resume, subgraph namespaces, forks, history windows, crash-and-resume, `Send` fan-out) and LangChain's official checkpointer validation suite |
 | Package smoke (`npm run test:package-smoke`) | every push and PR | the packed tarball installs and imports without the optional S3 peer, and its declarations type-check without it |
@@ -1889,22 +2001,110 @@ The `examples/live-*.mjs` scripts are demos against real AWS, not a test tier: `
 
 Nothing in the suite provokes real throttling or `ProvisionedThroughputExceededException` (only its classification is tested), receives `UnprocessedItems` from a batch write (DynamoDB Local and on-demand tables never return them), observes DynamoDB's TTL sweep (only the stamped attribute is asserted), uses a versioned bucket, exercises a hot partition, or measures the write capacity the compare-and-swap fallback consumes. An injected `client` that keeps the SDK's own retries multiplies the library's attempt budget; the integration tier pins that count once and every adapter warns about it at construction.
 
+## Project structure
+
+Each module under `src/` opens with a header naming the one decision it hides; the comments below are those headers, shortened.
+
+```text
+src/
+├── index.ts                    # The public surface: re-exports only, so no module's location is part of the API
+├── checkpointer/               # DynamoDBSaver
+│   ├── saver.ts                # The saver behind LangGraph's BaseCheckpointSaver contract
+│   ├── types.ts                # The option shapes a caller types against
+│   ├── actions/                # getTuple, list, put, putWrites and deleteThread, one module each
+│   └── internal/               # Input parsing, the row format, reads, listings, pending writes, delta history, setup
+├── store/                      # DynamoDBStore
+│   ├── store.ts                # Which public methods share one guarded dispatch
+│   ├── vector-backend.ts       # The VectorBackend contract: which vector index the store talks to
+│   ├── types.ts                # The store's option and result shapes
+│   ├── actions/                # put, search, listNamespaces and reconcileVectorIndex
+│   └── internal/               # Operation parsing, the row format, batch ordering, filters, table and semantic search
+├── history/                    # DynamoDBChatMessageHistory
+│   ├── chat-message-history.ts # Chat history as a set of actions behind one error boundary
+│   ├── session-adapter.ts      # DynamoDBSessionChatMessageHistory: one session behind LangChain's interface
+│   ├── types.ts                # The types a caller names
+│   ├── actions/                # addMessages, getMessages, clear, listSessions, reconcileMessageCount
+│   └── internal/               # Input parsing, the key layout, the SESSION row, all-or-nothing appends, reads
+├── factory/                    # DynamoDBFactory: several adapters on one client and one set of defaults
+├── backfill/                   # backfillRecencyIndex: index keys for rows written before the index
+└── shared/                     # What every adapter shares; reached by a caller only through index.ts
+    ├── adapter.ts              # What an adapter owns for its lifetime, and how it lets go of it
+    ├── options.ts              # The options every adapter shares, declared once
+    ├── clock.ts, ulid.ts       # The current time; sortable unique ids
+    ├── concurrency.ts          # How many calls run at once, and which failure a fan-out reports
+    ├── codec/                  # A value to a stored payload and back: JSON form, gzip
+    │   └── s3/                 # S3 offload: the key layout, the lazily loaded client, lifecycle rules
+    ├── dynamodb/               # The client, retries, pagination, batch writes, idempotent writes,
+    │                           # partition deletes, the recency index and the table's row conventions
+    ├── errors/                 # The one error class, the codes, AWS failure classification, the public boundary
+    ├── logging/                # The caller's logger as foreign code, redaction, secret patterns, truncation
+    └── validation/             # The rules every option, primitive, collaborator and ttl must pass
+
+test/
+├── unit/                       # Mirrors src; 100 % coverage over mocked AWS clients
+├── static/                     # The repository rules and the README-reading guards, as tests
+├── types/                      # Compile-time locks on the public API
+├── property/                   # fast-check invariants (sort keys, item size, redaction, backoff, …)
+├── integration/                # End-to-end flows, races and fault injection on DynamoDB Local
+├── contract/                   # Adapter contracts against DynamoDB Local, run with the integration tier
+├── conformance/                # LangChain's checkpointer validation suite and a compiled LangGraph graph
+├── aws/                        # The real-AWS tier (DynamoDB, S3, Bedrock); gates a release
+├── surface/                    # Malformed-input fuzzing of the built package against a committed baseline
+├── package-smoke/              # Packs, installs and imports the tarball; type-checks it as a consumer would
+├── scripts/                    # node --test suites for scripts/
+└── shared/                     # Helpers and fixtures the tiers share
+
+scripts/
+├── check-doc-samples.mjs       # Type-checks every TypeScript sample in the documents a reader copies from
+├── check-doc-links.mjs         # Resolves every relative link and #anchor in the hand-written documents
+├── find-stranded-payloads.mjs  # Reports rows whose offloaded payload was released (not in the tarball)
+├── pack-check.mjs              # The tarball holds exactly dist, the licence, the README and the manifest
+├── peer-floors.mjs             # The lowest version each peer range admits, for the peer-floor CI job
+├── require-green-ci.mjs        # The release gate: every required check present and successful
+├── required-checks.json        # The check names that gate reads
+├── changelog-section.mjs       # One release's CHANGELOG section, for the GitHub Release body
+├── generate-sbom.mjs           # The runtime and build SBOMs a release attaches
+├── run-with-timeout.mjs        # Runs a command and kills its process tree past a timeout
+├── update-surface-baseline.mjs # Regenerates test/surface/baseline.txt
+├── clean.mjs                   # Removes dist/ before a build
+└── is-main.mjs                 # Whether a script is the program being run, whatever path reached it
+
+examples/                       # live-*.mjs demos against real AWS; see examples/README.md
+
+docs/
+├── api/                        # The generated API reference (npm run docs), checked for drift in CI
+├── decisions/                  # Architecture decision records
+├── evidence/                   # Live-AWS probes of behaviour AWS does not document
+├── coding-guidelines.md        # The standard the source is held to
+└── README.md                   # The documentation index
+
+.github/workflows/
+├── ci.yml                      # Every push and PR to main: three OSes × Node 22/24/26, integration, conformance,
+│                               # peer floors, docs drift, package smoke, hygiene, npm audit
+├── codeql.yml                  # Static analysis of the source and the workflows; push, PR and weekly
+├── dependency-review.yml       # Fails a PR that adds a dependency with a high or critical advisory
+├── scorecard.yml               # OpenSSF Scorecard; push to main, branch-protection changes and weekly
+├── integration-live.yml        # The real-AWS tier, on every v* tag and never on a schedule
+└── release.yml                 # Tag-triggered publish with npm provenance and SBOMs, gated on green CI
+```
+
 ## Design decisions and evidence
 
-Two directories worth reading before depending on this, and one guide worth reading before touching the source.
+Two directories worth reading before depending on this, and one guide worth reading before touching the source. [The documentation index](docs/README.md) links all three, the API reference and the examples.
 
-**[`docs/decisions/`](docs/decisions/README.md) — the choices that are expensive to reverse.** Eighteen architecture decision records, each stating the context, the decision and the consequences including the negative ones: why the DynamoDB SDK ships as a dependency while LangChain and S3 are peers, why every adapter shares one table under a structured key, why a large payload offloads to S3 behind a descriptor instead of being written inline, why `MemorySaver` and `InMemoryStore` are treated as the behavioural oracle, why file length and function complexity are not capped, and why the live-AWS tier gates a release rather than running on a schedule. If a constraint you have hit looks arbitrary, this is where the answer is.
+**[`docs/decisions/`](docs/decisions/README.md) — the choices that are expensive to reverse.** Twenty-four architecture decision records, each stating the context, the decision and the consequences including the negative ones: why the DynamoDB SDK ships as a dependency while LangChain and S3 are peers, why every adapter shares one table under a structured key, why a large payload offloads to S3 behind a descriptor instead of being written inline, why `MemorySaver` and `InMemoryStore` are treated as the behavioural oracle, why file length and function complexity are not capped, why the live-AWS tier gates a release rather than running on a schedule, why every failure is one error class classified in one place, and why caller input is parsed once at the boundary into types only a parser can build. If a constraint you have hit looks arbitrary, this is where the answer is.
 
-**[`docs/evidence/`](docs/evidence/README.md) — what DynamoDB and S3 actually do, where AWS does not say.** Seventeen claims established by probing the live services: how the idempotency cache treats a cancelled transaction's replay, that `BatchWriteItem` accepts a condition on a `DeleteRequest` and silently ignores it, what a conditional delete against an already-gone row reports, how a versioned bucket's delete markers and lifecycle rules behave. Each claim is paired with a named live test that fails if the service's answer ever changes, and the file records the date, Region and SDK version each probe ran under — a claim is only as fresh as the last run that checked it.
+**[`docs/evidence/`](docs/evidence/README.md) — what DynamoDB and S3 actually do, where AWS does not say.** Seventeen claims across nine files, established by probing the live services: how the idempotency cache treats a cancelled transaction's replay, that `BatchWriteItem` accepts a condition on a `DeleteRequest` and silently ignores it, what a conditional delete against an already-gone row reports, how a versioned bucket's delete markers and lifecycle rules behave. Each claim is paired with a named live test that fails if the service's answer ever changes, and the file records the date, Region and SDK version each probe ran under — a claim is only as fresh as the last run that checked it.
 
 **[`docs/coding-guidelines.md`](docs/coding-guidelines.md)** is the standard the source is held to, if you are contributing or auditing.
 
-## Support and policies
+## Contributing
 
-- [Versioning and compatibility](#versioning-and-compatibility) — what `1.x` promises for the API, the on-disk layout, error codes and peer ranges.
-- [Security policy](SECURITY.md) — private reporting, response targets, what the library does and does not do.
-- [Support](SUPPORT.md) — where to ask, what to include.
-- [Contributing](CONTRIBUTING.md) — setup, the guards, the test tiers, the toolchain, commits and releases.
+Contributions are welcome; please open an issue to discuss a non-trivial change before submitting a pull request. [CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, the rules the guards enforce, the test tiers, the toolchain, commits and releases, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) sets the expectations for the project's spaces. [SUPPORT.md](SUPPORT.md) says where to ask and what to include.
+
+Found a security issue? Report it privately as [SECURITY.md](SECURITY.md) describes, never in a public issue; it also sets the response targets and says what the library does and does not do.
+
+[Versioning and compatibility](#versioning-and-compatibility) says what `1.x` promises for the API, the on-disk layout, error codes and peer ranges.
 
 ## License
 
