@@ -21,6 +21,26 @@ describe('historyProse', () => {
   it('leaves code and strings alone', () => {
     expect(historyProse("const message = 'the value used to build it';")).toEqual([]);
   });
+
+  it('finds a phrase wrapped across a JSDoc line break, at the line it starts on', () => {
+    const source = ['/**', ' * A cap of 0 used', ' * to yield one item.', ' */'].join('\n');
+    expect(historyProse(source)).toEqual([2]);
+  });
+
+  it('finds a phrase wrapped across adjacent `//` comments, at the line it starts on', () => {
+    const source = ['// A cap of 0 used', '// to yield one item.'].join('\n');
+    expect(historyProse(source)).toEqual([1]);
+  });
+
+  it('does not flag present-tense text that merely wraps across lines', () => {
+    const source = [
+      '/**',
+      ' * A cap of 0 is accepted as a page size, and',
+      ' * resolves without complaint.',
+      ' */',
+    ].join('\n');
+    expect(historyProse(source)).toEqual([]);
+  });
 });
 
 describe('the source tree', () => {
