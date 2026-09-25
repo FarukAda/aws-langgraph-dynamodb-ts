@@ -36,11 +36,12 @@ tree rather than re-lexing the raw text: a plain re-scan has to guess whether
 a backtick opens a template literal or resumes one after a `${}`
 substitution, and a wrong guess swallows everything up to the next backtick —
 including whatever comments sit between — into one bogus token. `src`'s error
-messages are built from such templates throughout, so a raw re-scan silently
-lost sight of most of the file in most modules; reading trivia off the
-already-parsed tree's tokens instead keeps every comment in view. The 51
-blocks that documented nothing became `//` lines with their text unchanged.
-Tests already used both forms and are not checked.
+messages are built from such templates throughout, so a raw re-scan lost
+sight of comments in over a third of the modules; reading each token's
+leading and trailing trivia off the already-parsed tree instead keeps every
+comment in view, wherever on the line it sits. The 51 blocks that documented
+nothing became `//` lines with their text unchanged. Tests already used both
+forms and are not checked.
 
 ## Consequences
 

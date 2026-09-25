@@ -69,6 +69,23 @@ describe('commentViolations', () => {
       { line: 5, rule: 'directive' },
     ]);
   });
+
+  it('refuses a trailing line-comment directive on the same line as code', () => {
+    expect(commentViolations('console.log(1); // eslint-disable-line no-console')).toEqual([
+      { line: 1, rule: 'directive' },
+    ]);
+  });
+
+  it('refuses a trailing block-comment directive on the same line as code', () => {
+    expect(commentViolations('export const z = 1; /* eslint-disable */')).toEqual([
+      { line: 1, rule: 'directive' },
+    ]);
+  });
+
+  it('finds a stray JSDoc block after a template literal with a substitution', () => {
+    const source = 'const a = `x${1}y`;\nfunction f() {\n  g();\n  /** stray */\n}';
+    expect(commentViolations(source)).toEqual([{ line: 4, rule: 'jsdoc-documents-nothing' }]);
+  });
 });
 
 describe('the actual source tree', () => {

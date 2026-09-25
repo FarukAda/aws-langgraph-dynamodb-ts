@@ -1,5 +1,7 @@
 import * as ts from 'typescript';
 
+import { commentRanges } from './comments';
+
 /**
  * Phrases that narrate what this package's code once did. A comment in `src`
  * states why the code is as it is now; the change that made it so is in
@@ -34,26 +36,12 @@ function multiLineCommentLines(text: string): string[] {
 
 /** Every comment in `source`, a run of adjacent `//` comments merged into one, in source order. */
 function commentBlocks(source: string): CommentBlock[] {
-  const scanner = ts.createScanner(
-    ts.ScriptTarget.Latest,
-    false,
-    ts.LanguageVariant.Standard,
-    source,
-  );
-  const tokens: { kind: ts.SyntaxKind; start: number; end: number; text: string }[] = [];
-  for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-    if (
-      token === ts.SyntaxKind.SingleLineCommentTrivia ||
-      token === ts.SyntaxKind.MultiLineCommentTrivia
-    ) {
-      tokens.push({
-        kind: token,
-        start: scanner.getTokenStart(),
-        end: scanner.getTokenEnd(),
-        text: scanner.getTokenText(),
-      });
-    }
-  }
+  const tokens = commentRanges(source).map((range) => ({
+    kind: range.kind,
+    start: range.pos,
+    end: range.end,
+    text: source.slice(range.pos, range.end),
+  }));
 
   const blocks: CommentBlock[] = [];
   for (let index = 0; index < tokens.length;) {

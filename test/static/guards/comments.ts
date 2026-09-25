@@ -86,21 +86,36 @@ function documentingComments(
  * parser already resolved that ambiguity correctly when it built `file`, so
  * reading trivia off its tokens instead of the text keeps every comment in
  * view.
+ *
+ * Both a token's leading trivia and its trailing trivia are read: TypeScript
+ * only calls a same-line comment "leading" when it opens the file, so a
+ * comment straight after code on the same line — `f(); // eslint-disable-line`
+ * — is invisible to `getLeadingCommentRanges` alone at every position but
+ * that one, and a directive written that way would otherwise pass unseen.
  */
 function allComments(file: ts.SourceFile, source: string): ts.CommentRange[] {
   const seen = new Set<number>();
   const ranges: ts.CommentRange[] = [];
-  const visit = (node: ts.Node): void => {
-    for (const range of ts.getLeadingCommentRanges(source, node.getFullStart()) ?? []) {
+  const collect = (found: ts.CommentRange[] | undefined): void => {
+    for (const range of found ?? []) {
       if (!seen.has(range.pos)) {
         seen.add(range.pos);
         ranges.push(range);
       }
     }
+  };
+  const visit = (node: ts.Node): void => {
+    collect(ts.getLeadingCommentRanges(source, node.getFullStart()));
+    collect(ts.getTrailingCommentRanges(source, node.getEnd()));
     for (const child of node.getChildren(file)) visit(child);
   };
   visit(file);
   return ranges.sort((a, b) => a.pos - b.pos);
+}
+
+/** Every comment in `source`, in document order, leading and trailing alike. */
+export function commentRanges(source: string): ts.CommentRange[] {
+  return allComments(ts.createSourceFile('probe.ts', source, ts.ScriptTarget.Latest, true), source);
 }
 
 /**

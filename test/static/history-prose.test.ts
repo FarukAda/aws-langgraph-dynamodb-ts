@@ -41,6 +41,11 @@ describe('historyProse', () => {
     ].join('\n');
     expect(historyProse(source)).toEqual([]);
   });
+
+  it('finds a phrase after a template literal with a substitution', () => {
+    const source = 'const a = `x${1}y`;\n// this used to work differently\nconst b = 2;';
+    expect(historyProse(source)).toEqual([2]);
+  });
 });
 
 describe('the source tree', () => {
