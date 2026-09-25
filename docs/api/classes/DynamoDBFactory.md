@@ -64,7 +64,7 @@ itself, since a per-adapter value may still replace it.
 
 > **createAll**\<`O`\>(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
-Defined in: [factory/factory.ts:258](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L258)
+Defined in: [factory/factory.ts:261](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L261)
 
 Build the adapters whose sections are given, all on one shared client.
 
@@ -112,7 +112,7 @@ others.
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:228](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L228)
+Defined in: [factory/factory.ts:231](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L231)
 
 A chat history on its own client.
 
@@ -138,7 +138,7 @@ Throws: as [createSaver](#createsaver).
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:200](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L200)
+Defined in: [factory/factory.ts:203](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L203)
 
 A saver on its own client.
 
@@ -151,8 +151,9 @@ Returns: the saver, which owns the client it built and releases it on
 
 Throws: `VALIDATION` for any invalid option, naming it as the saver's
 constructor does — `options` for a value that is not an object, checked
-before the defaults are laid under it: `null` crashed reading `client`
-off it, and a string was spread into its characters.
+before the defaults are laid under it: reading `.client` off a `null`
+value would throw here, and spreading a string would iterate its
+characters instead of refusing them.
 
 #### Parameters
 
@@ -170,7 +171,7 @@ off it, and a string was spread into its characters.
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:214](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L214)
+Defined in: [factory/factory.ts:217](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L217)
 
 A store on its own client.
 
