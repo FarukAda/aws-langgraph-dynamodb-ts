@@ -54,6 +54,7 @@ import type {
   S3OffloadConfig,
   S3RegionLike,
   SearchOptions,
+  MultiSessionHistory,
   SessionBackend,
   SessionMetadata,
   SessionPage,
@@ -159,7 +160,8 @@ describe('public type exports', () => {
     expectTypeOf<SearchOptions>().toEqualTypeOf<
       Pick<SearchOperation, 'filter' | 'limit' | 'offset' | 'query'> & CancelOptions
     >();
-    expectTypeOf<SessionBackend>().toHaveProperty('getMessages');
+    expectTypeOf<MultiSessionHistory>().toHaveProperty('getMessages');
+    expectTypeOf<SessionBackend>().toEqualTypeOf<MultiSessionHistory>();
     expectTypeOf<SessionMetadata['expiresAt']>().toEqualTypeOf<string | undefined>();
     expectTypeOf<TtlOption>().toEqualTypeOf<{ days: number } | { seconds: number }>();
     expectTypeOf<VectorBackend>().toHaveProperty('query');

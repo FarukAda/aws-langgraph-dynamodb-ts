@@ -71,7 +71,7 @@ export enum ErrorCode {
   AWS_REQUEST_FAILED = 'AWS_REQUEST_FAILED',
   /**
    * A failure that came neither from this package's own checks nor from AWS:
-   * a `VectorBackend`, an `Embeddings` model, a `serde` or a `SessionBackend`
+   * a `VectorBackend`, an `Embeddings` model, a `serde` or a `MultiSessionHistory`
    * threw something of its own, or this package has a bug. The original is
    * `cause`.
    */

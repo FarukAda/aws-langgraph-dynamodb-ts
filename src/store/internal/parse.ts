@@ -68,7 +68,7 @@ const DEFAULT_LIST_LIMIT = 100;
  * with `for…of`, so a hole in a sparse array is checked as the `undefined` it
  * reads as rather than skipped.
  *
- * These are this backend's own rules, and only those: `#` is this backend's
+ * These are this package's own rules, and only those: `#` is this package's
  * separator, so a `.` costs nothing here, and a listing's `'*'` wildcard
  * satisfies every one of these rules, so it needs no exemption. Upstream
  * `BaseStore.put` refuses a `.` in a label and a `"langgraph"` root too, but

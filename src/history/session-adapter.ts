@@ -17,18 +17,28 @@ export type AdapterWindow = { limit?: number };
 /** Every key {@link AdapterWindow} declares, compiler-checked against its type. */
 const ADAPTER_WINDOW_KEYS = allKeysOf<AdapterWindow>({ limit: 'limit' });
 
-/** The session-scoped operations a single-session adapter delegates to. */
-export interface SessionBackend {
+/**
+ * A history holding many sessions, addressed by session id: what a
+ * single-session adapter wraps. `DynamoDBChatMessageHistory` is one.
+ */
+export interface MultiSessionHistory {
   getMessages(sessionId: string, window?: AdapterWindow): Promise<BaseMessage[]>;
   addMessages(sessionId: string, messages: BaseMessage[]): Promise<void>;
   clear(sessionId: string): Promise<void>;
 }
 
-/** {@link SessionBackend}'s own members, the ones this adapter calls. */
-const SESSION_BACKEND_MEMBERS: readonly string[] = ['getMessages', 'addMessages', 'clear'];
+/**
+ * The earlier name of {@link MultiSessionHistory}, the same type.
+ *
+ * @deprecated Use `MultiSessionHistory`. This alias is removed in the next major release.
+ */
+export type SessionBackend = MultiSessionHistory;
+
+/** {@link MultiSessionHistory}'s own members, the ones this adapter calls. */
+const MULTI_SESSION_HISTORY_MEMBERS: readonly string[] = ['getMessages', 'addMessages', 'clear'];
 
 /**
- * Single-session view over a {@link SessionBackend}, implementing LangChain's
+ * Single-session view over a {@link MultiSessionHistory}, implementing LangChain's
  * `BaseListChatMessageHistory` so it can drive `RunnableWithMessageHistory`.
  * A `window` bounds what every read hands the chain — `{ limit: 50 }` feeds it
  * the newest fifty messages instead of the whole session.
@@ -41,7 +51,7 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
 
   /**
    * Accepts: `backend` — the multi-session adapter this view delegates to,
-   * checked structurally for {@link SessionBackend}'s own members. `sessionId`
+   * checked structurally for {@link MultiSessionHistory}'s own members. `sessionId`
    * — the one session it is bound to, validated the same way every other
    * adapter method validates a session id. `window` — bounds every read it
    * performs; when given, only the `limit` key `AdapterWindow` declares, an
@@ -60,12 +70,12 @@ export class DynamoDBSessionChatMessageHistory extends BaseListChatMessageHistor
    * construction instead of rebranding it as an upstream failure on first use.
    */
   constructor(
-    private readonly backend: SessionBackend,
+    private readonly backend: MultiSessionHistory,
     sessionId: string,
     window?: AdapterWindow,
   ) {
     super();
-    assertMembers(backend, SESSION_BACKEND_MEMBERS, 'backend');
+    assertMembers(backend, MULTI_SESSION_HISTORY_MEMBERS, 'backend');
     this.sessionId = parseSessionId(sessionId);
     if (window !== undefined) assertShape(window, ADAPTER_WINDOW_KEYS, 'window');
     this.window = window === undefined ? undefined : parseMessageWindow(window);

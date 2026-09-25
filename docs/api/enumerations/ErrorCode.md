@@ -207,7 +207,7 @@ quota.
 Defined in: [shared/errors/error-code.ts:78](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L78)
 
 A failure that came neither from this package's own checks nor from AWS:
-a `VectorBackend`, an `Embeddings` model, a `serde` or a `SessionBackend`
+a `VectorBackend`, an `Embeddings` model, a `serde` or a `MultiSessionHistory`
 threw something of its own, or this package has a bug. The original is
 `cause`.
 

@@ -38,6 +38,7 @@
 - [ListSessionsOptions](interfaces/ListSessionsOptions.md)
 - [Logger](interfaces/Logger.md)
 - [MessageWindow](interfaces/MessageWindow.md)
+- [MultiSessionHistory](interfaces/MultiSessionHistory.md)
 - [RedactLoggerOptions](interfaces/RedactLoggerOptions.md)
 - [RetryAttemptInfo](interfaces/RetryAttemptInfo.md)
 - [RetryOptions](interfaces/RetryOptions.md)
@@ -46,7 +47,6 @@
 - [S3ClientOptions](interfaces/S3ClientOptions.md)
 - [S3CommandLike](interfaces/S3CommandLike.md)
 - [S3OffloadConfig](interfaces/S3OffloadConfig.md)
-- [SessionBackend](interfaces/SessionBackend.md)
 - [SessionMetadata](interfaces/SessionMetadata.md)
 - [SessionPage](interfaces/SessionPage.md)
 - [VectorBackend](interfaces/VectorBackend.md)
@@ -73,6 +73,7 @@
 - [S3ClientOption](type-aliases/S3ClientOption.md)
 - [S3RegionLike](type-aliases/S3RegionLike.md)
 - [SearchOptions](type-aliases/SearchOptions.md)
+- [~~SessionBackend~~](type-aliases/SessionBackend.md)
 - [TtlOption](type-aliases/TtlOption.md)
 - [VectorScoreDirection](type-aliases/VectorScoreDirection.md)
 

@@ -15,7 +15,7 @@ export type {
 } from './store/vector-backend';
 export { DynamoDBChatMessageHistory } from './history/chat-message-history';
 export { DynamoDBSessionChatMessageHistory } from './history/session-adapter';
-export type { AdapterWindow, SessionBackend } from './history/session-adapter';
+export type { AdapterWindow, MultiSessionHistory, SessionBackend } from './history/session-adapter';
 export type {
   CorruptMessagePolicy,
   DynamoDBChatMessageHistoryOptions,

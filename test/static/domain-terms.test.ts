@@ -43,6 +43,20 @@ describe('termViolation', () => {
     );
     expect(termViolation('shared/dynamodb/retry.ts', 'recordNode')).toBeUndefined();
   });
+
+  it('keeps backend for the vector backend, and refuses it for anything else outside the store', () => {
+    expect(
+      termViolation('shared/validation/collaborators.ts', 'VECTOR_BACKEND_MEMBERS'),
+    ).toBeUndefined();
+    expect(termViolation('store/internal/vector-index.ts', 'searchViaBackend')).toBeUndefined();
+    expect(termViolation('history/session-adapter.ts', 'SESSION_BACKEND_MEMBERS')).toBe(
+      `history/session-adapter.ts: SESSION_BACKEND_MEMBERS — "backend" is the store's vector backend`,
+    );
+  });
+
+  it('lets a deprecated alias keep the old term until the major that removes it', () => {
+    expect(termViolation('history/session-adapter.ts', 'SessionBackend')).toBeUndefined();
+  });
 });
 
 describe('the source tree', () => {

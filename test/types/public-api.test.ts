@@ -20,7 +20,7 @@ import type {
   MessageWindow,
   Redactable,
   RedactLoggerOptions,
-  SessionBackend,
+  MultiSessionHistory,
   TtlOption,
   VectorBackend,
   VectorMatch,
@@ -82,7 +82,7 @@ describe('types behind public signatures are exported', () => {
     expectTypeOf<ListSessionsOptions['maxItems']>().toEqualTypeOf<number | undefined>();
     expectTypeOf<ListSessionsOptions['maxIterations']>().toEqualTypeOf<number | undefined>();
     expectTypeOf<ListSessionsOptions['signal']>().toEqualTypeOf<AbortSignal | undefined>();
-    expectTypeOf<SessionBackend['getMessages']>().parameters.toEqualTypeOf<
+    expectTypeOf<MultiSessionHistory['getMessages']>().parameters.toEqualTypeOf<
       [string, AdapterWindow?]
     >();
   });

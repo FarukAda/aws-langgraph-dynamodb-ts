@@ -6,9 +6,9 @@
 
 # Class: DynamoDBSessionChatMessageHistory
 
-Defined in: [history/session-adapter.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L36)
+Defined in: [history/session-adapter.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L46)
 
-Single-session view over a [SessionBackend](../interfaces/SessionBackend.md), implementing LangChain's
+Single-session view over a [MultiSessionHistory](../interfaces/MultiSessionHistory.md), implementing LangChain's
 `BaseListChatMessageHistory` so it can drive `RunnableWithMessageHistory`.
 A `window` bounds what every read hands the chain — `{ limit: 50 }` feeds it
 the newest fifty messages instead of the whole session.
@@ -23,10 +23,10 @@ the newest fifty messages instead of the whole session.
 
 > **new DynamoDBSessionChatMessageHistory**(`backend`, `sessionId`, `window?`): `DynamoDBSessionChatMessageHistory`
 
-Defined in: [history/session-adapter.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L62)
+Defined in: [history/session-adapter.ts:72](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L72)
 
 Accepts: `backend` — the multi-session adapter this view delegates to,
-checked structurally for [SessionBackend](../interfaces/SessionBackend.md)'s own members. `sessionId`
+checked structurally for [MultiSessionHistory](../interfaces/MultiSessionHistory.md)'s own members. `sessionId`
 — the one session it is bound to, validated the same way every other
 adapter method validates a session id. `window` — bounds every read it
 performs; when given, only the `limit` key `AdapterWindow` declares, an
@@ -48,7 +48,7 @@ construction instead of rebranding it as an upstream failure on first use.
 
 ##### backend
 
-[`SessionBackend`](../interfaces/SessionBackend.md)
+[`MultiSessionHistory`](../interfaces/MultiSessionHistory.md)
 
 ##### sessionId
 
@@ -72,7 +72,7 @@ construction instead of rebranding it as an upstream failure on first use.
 
 > **lc\_namespace**: `string`[]
 
-Defined in: [history/session-adapter.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L37)
+Defined in: [history/session-adapter.ts:47](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L47)
 
 A path to the module that contains the class, eg. ["langchain", "llms"]
 Usually should be the same as the entrypoint the class is exported from.
@@ -87,7 +87,7 @@ Usually should be the same as the entrypoint the class is exported from.
 
 > **addMessage**(`message`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:103](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L103)
+Defined in: [history/session-adapter.ts:113](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L113)
 
 Append one message to this session.
 
@@ -117,7 +117,7 @@ Throws: as [addMessages](#addmessages).
 
 > **addMessages**(`messages`): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:123](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L123)
+Defined in: [history/session-adapter.ts:133](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L133)
 
 Append messages to this session.
 
@@ -152,7 +152,7 @@ session keeps every message appended to it.
 
 > **clear**(): `Promise`\<`void`\>
 
-Defined in: [history/session-adapter.ts:143](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L143)
+Defined in: [history/session-adapter.ts:153](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L153)
 
 Delete this session's messages, metadata and offloaded objects.
 
@@ -181,7 +181,7 @@ is asking for exactly that.
 
 > **getMessages**(): `Promise`\<`BaseMessage`\<`MessageStructure`\<`MessageToolSet`\>, `MessageType`\>[]\>
 
-Defined in: [history/session-adapter.ts:88](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L88)
+Defined in: [history/session-adapter.ts:98](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/session-adapter.ts#L98)
 
 This session's messages in chronological order.
 
