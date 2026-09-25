@@ -70,27 +70,25 @@ export async function loadS3Sdk(): Promise<S3Sdk> {
  */
 export async function createDefaultS3Client(config: S3ClientConfigLike): Promise<S3Client> {
   const { S3Client: S3ClientCtor } = await loadS3Sdk();
-  /**
-   * One field, where the DynamoDB client gets three, and the asymmetry is
-   * deliberate. `requestTimeout` bounds request creation until response
-   * *headers* arrive, and a `PutObject`'s headers arrive only once the whole
-   * body has been uploaded — so here it would be a bound on upload duration,
-   * over payloads running from the offload threshold to the download cap, and
-   * a legitimate large upload on a slow link would be destroyed for being
-   * slow. `socketTimeout` is an idle timer that any activity in either
-   * direction resets, so it separates a stalled transfer from a slow one.
-   * `throwOnRequestTimeout` is absent because without a request timeout it has
-   * nothing to act on, and `connectionTimeout` because its timer counts the
-   * wait behind the agent's sockets, which this path fans out across.
-   *
-   * What this bounds is a transfer stalled after its socket was assigned, not
-   * the whole attempt: nothing here bounds the time a request spends queued
-   * for a socket, and an idle timer is not a deadline, so a large upload's
-   * total duration stays unbounded. At or above 2 MiB the SDK sends
-   * `Expect: 100-continue` and the handler then waits six seconds for the
-   * continue on a throwaway agent, so the five-second idle timer is what
-   * fires first — the one place the two timers race.
-   */
+  // One field, where the DynamoDB client gets three, and the asymmetry is
+  // deliberate. `requestTimeout` bounds request creation until response
+  // *headers* arrive, and a `PutObject`'s headers arrive only once the whole
+  // body has been uploaded — so here it would be a bound on upload duration,
+  // over payloads running from the offload threshold to the download cap, and
+  // a legitimate large upload on a slow link would be destroyed for being
+  // slow. `socketTimeout` is an idle timer that any activity in either
+  // direction resets, so it separates a stalled transfer from a slow one.
+  // `throwOnRequestTimeout` is absent because without a request timeout it has
+  // nothing to act on, and `connectionTimeout` because its timer counts the
+  // wait behind the agent's sockets, which this path fans out across.
+  //
+  // What this bounds is a transfer stalled after its socket was assigned, not
+  // the whole attempt: nothing here bounds the time a request spends queued
+  // for a socket, and an idle timer is not a deadline, so a large upload's
+  // total duration stays unbounded. At or above 2 MiB the SDK sends
+  // `Expect: 100-continue` and the handler then waits six seconds for the
+  // continue on a throwaway agent, so the five-second idle timer is what
+  // fires first — the one place the two timers race.
   return new S3ClientCtor({
     maxAttempts: 1,
     requestHandler: { socketTimeout: DEFAULT_SOCKET_TIMEOUT_MS },

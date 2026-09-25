@@ -57,7 +57,7 @@ export function absorbLoggerFailure(emit: () => void): void {
   try {
     emit();
   } catch {
-    /** Nowhere left to say it: the reporting channel is the broken part. */
+    // Nowhere left to say it: the reporting channel is the broken part.
   }
 }
 

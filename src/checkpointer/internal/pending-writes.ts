@@ -303,12 +303,10 @@ export async function writeSpecialItem(
     );
     return await overwriteUnconditionally(context, item, attempt.observed, signal);
   } catch (error) {
-    /**
-     * The attempts settle every put they issue, so what reaches here is the
-     * initial read, before any put, or the warning. Neither is a verdict read
-     * from the row, and this call releases its own upload only on one, so it is
-     * reported the way every unverified outcome is: kept, for the lifecycle rule.
-     */
+    // The attempts settle every put they issue, so what reaches here is the
+    // initial read, before any put, or the warning. Neither is a verdict read
+    // from the row, and this call releases its own upload only on one, so it is
+    // reported the way every unverified outcome is: kept, for the lifecycle rule.
     return { committed: true, error: error as Error };
   }
 }

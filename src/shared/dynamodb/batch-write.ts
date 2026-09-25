@@ -84,14 +84,12 @@ export async function batchWriteAll(
       succeededCount += chunk.length;
     } catch (error) {
       const failure = error as Error;
-      /**
-       * Anything but an incomplete batch is the drain's other documented
-       * throw, a cancel, and it leaves the loop at once. Reading the brand and
-       * code rather than the class is the same realm-safe test the rest of
-       * this package makes, and it is what keeps a count this function cannot
-       * know out of the total: adding an absent `succeededCount` made it
-       * `NaN`.
-       */
+      // Anything but an incomplete batch is the drain's other documented
+      // throw, a cancel, and it leaves the loop at once. Reading the brand and
+      // code rather than the class is the same realm-safe test the rest of
+      // this package makes, and it is what keeps a count this function cannot
+      // know out of the total: adding an absent `succeededCount` made it
+      // `NaN`.
       if (!hasErrorCode(failure, ErrorCode.BATCH_WRITE_INCOMPLETE)) throw failure;
       failedChunks.push(failure);
       succeededCount += failure.details.succeededCount;

@@ -95,12 +95,10 @@ async function allByScan(
     const session = summariseSession(raw, atSeconds);
     if (session) sessions.push(session);
   }
-  /**
-   * Ordinal, not `localeCompare`: these are ISO-8601 timestamps, whose byte
-   * order already is their chronological order. Locale-aware collation applies
-   * rules (case folding, punctuation weighting) that have no meaning here and
-   * are not guaranteed to agree with it in every locale.
-   */
+  // Ordinal, not `localeCompare`: these are ISO-8601 timestamps, whose byte
+  // order already is their chronological order. Locale-aware collation applies
+  // rules (case folding, punctuation weighting) that have no meaning here and
+  // are not guaranteed to agree with it in every locale.
   sessions.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
   return { sessions: request.limit === undefined ? sessions : sessions.slice(0, request.limit) };
 }

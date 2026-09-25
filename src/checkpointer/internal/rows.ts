@@ -450,12 +450,10 @@ export function beginsWithQuery(
     },
     ScanIndexForward: options.ascending ?? false,
   };
-  /**
-   * DynamoDB requires `Limit` to be at least 1 and rejects anything lower with
-   * a raw `ValidationException`. A caller asking for nothing is answered
-   * before a request is built (see `listCheckpoints`), so a non-positive value
-   * reaching here means no page size was intended.
-   */
+  // DynamoDB requires `Limit` to be at least 1 and rejects anything lower with
+  // a raw `ValidationException`. A caller asking for nothing is answered
+  // before a request is built (see `listCheckpoints`), so a non-positive value
+  // reaching here means no page size was intended.
   if (options.limit !== undefined && options.limit >= 1) params.Limit = options.limit;
   if (options.consistent) params.ConsistentRead = true;
   return params;
@@ -647,12 +645,10 @@ export async function buildWriteItems(
   const deps = codecDepsOf(context, request.signal);
   const pk = partitionKey(threadId);
   const items: CheckpointWriteItem[] = [];
-  /**
-   * The writes upload one after another, so a payload refused at write N would
-   * otherwise strand writes 1..N-1's objects: this call returns no items and
-   * therefore writes no rows, leaving nothing that names them. See
-   * {@link releaseUploads} for why they are safe to delete unconditionally.
-   */
+  // The writes upload one after another, so a payload refused at write N would
+  // otherwise strand writes 1..N-1's objects: this call returns no items and
+  // therefore writes no rows, leaving nothing that names them. See
+  // {@link releaseUploads} for why they are safe to delete unconditionally.
   try {
     for (const { channel, value, index, occurrence } of resolveWriteIndices(request.writes)) {
       /**
@@ -725,12 +721,10 @@ export async function buildWriteItems(
  * for a row this release can read.
  */
 export function narrowMetaItem(raw: DocItem): CheckpointMetaItem | undefined {
-  /**
-   * The version first. A row a newer version wrote is not a foreign row to
-   * skip, and this release's names for its attributes are not that release's,
-   * so testing the shape first decides a row is foreign whenever a later
-   * format renamed what this one reads.
-   */
+  // The version first. A row a newer version wrote is not a foreign row to
+  // skip, and this release's names for its attributes are not that release's,
+  // so testing the shape first decides a row is foreign whenever a later
+  // format renamed what this one reads.
   assertReadableRow(raw, 'checkpoint');
   const isCheckpoint =
     typeof raw.threadId === 'string' &&
@@ -908,7 +902,7 @@ export function resolveWriteIndices(writes: PendingWrite[]): ResolvedWrite[] {
   writes.forEach(([channel, value], positional) => {
     if (Object.hasOwn(WRITES_IDX_MAP, channel)) {
       const index = WRITES_IDX_MAP[channel];
-      /** Last write wins per special channel, so a call holds exactly one. */
+      // Last write wins per special channel, so a call holds exactly one.
       bySpecialIndex.set(index, { channel, value, index, occurrence: 0 });
       return;
     }

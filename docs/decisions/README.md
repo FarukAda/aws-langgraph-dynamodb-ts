@@ -37,3 +37,4 @@ the numbering, and that no number is used twice.
 | [20](0020-make-the-layer-direction-a-build-gate.md) | Make the layer direction a build gate | Accepted |
 | [21](0021-parse-caller-input-once-into-types-only-a-parser-can-build.md) | Parse caller input once into types only a parser can build | Accepted |
 | [22](0022-give-each-row-format-denormalised-copy-and-write-protocol-one-owner.md) | Give each row format, denormalised copy and write protocol one owning module | Accepted |
+| [23](0023-write-interface-docs-as-jsdoc-and-other-comments-as-line-comments.md) | Write interface documentation as JSDoc and every other comment as a line comment | Accepted |

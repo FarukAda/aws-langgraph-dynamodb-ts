@@ -117,14 +117,12 @@ export function redactSecrets(
   try {
     return walk(value as Redactable);
   } catch {
-    /**
-     * Every failure of the walk yields the marker: a `RangeError` from nesting
-     * deeper than the stack holds, and equally a getter of the caller's own
-     * that throws. Telling the two apart served no caller. The value is being
-     * prepared for a log line, and the log line is typically written from a
-     * `catch`, so a throw here does not report the hostile value — it replaces
-     * the failure that was being reported with a `TypeError` about a getter.
-     */
+    // Every failure of the walk yields the marker: a `RangeError` from nesting
+    // deeper than the stack holds, and equally a getter of the caller's own
+    // that throws. Telling the two apart served no caller. The value is being
+    // prepared for a log line, and the log line is typically written from a
+    // `catch`, so a throw here does not report the hostile value — it replaces
+    // the failure that was being reported with a `TypeError` about a getter.
     return UNREDACTABLE;
   }
 }

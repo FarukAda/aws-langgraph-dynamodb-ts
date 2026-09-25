@@ -5,7 +5,7 @@ import type { ParsedOperation, StoreAddress } from './parse';
 type Touch =
   | { readonly kind: 'write'; readonly item: string }
   | { readonly kind: 'get'; readonly item: string }
-  /** A search or a namespace listing observes every item, so it is scoped to none. */
+  // A search or a namespace listing observes every item, so it is scoped to none.
   | { readonly kind: 'broad' };
 
 /** The items a run of mutually independent operations has already claimed. */

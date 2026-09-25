@@ -38,14 +38,12 @@ export async function searchItems(
   signal?: AbortSignal,
 ): Promise<SearchItem[]> {
   const { offset, limit } = search;
-  /**
-   * A zero page is answered here, ahead of all three paths below, because each
-   * of them pays for it: `collectCandidates` pulls the first row out of the
-   * paginator before it tests its `offset + limit` bound, so even a page that
-   * needs nothing costs one Query or Scan, and the two ranked paths embed the
-   * query as well. Slicing the result to nothing afterwards hid the cost
-   * rather than avoiding it.
-   */
+  // A zero page is answered here, ahead of all three paths below, because each
+  // of them pays for it: `collectCandidates` pulls the first row out of the
+  // paginator before it tests its `offset + limit` bound, so even a page that
+  // needs nothing costs one Query or Scan, and the two ranked paths embed the
+  // query as well. Slicing the result to nothing afterwards hid the cost
+  // rather than avoiding it.
   if (limit === 0) return [];
   if (search.query && hasVectorBackend(context)) {
     const ranked = await searchViaBackend(context, search, signal);

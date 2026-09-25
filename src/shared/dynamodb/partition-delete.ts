@@ -197,13 +197,11 @@ async function flushBuffer(options: PartitionDeleteOptions, state: PassState): P
   const tally = await flushPendingDeletes(options, state.buffer.splice(0));
   state.deleted += tally.deleted;
   state.skipped += tally.refused;
-  /**
-   * Refusals are deliberately out of this total. They are not rows the pass
-   * failed to delete; they are rows it was never entitled to delete, already
-   * counted as `skipped` and reported on their own line. Counting them here
-   * would make the error read `1/3 row(s) succeeded, 1 row(s) failed` and leave
-   * the reader to guess at the third.
-   */
+  // Refusals are deliberately out of this total. They are not rows the pass
+  // failed to delete; they are rows it was never entitled to delete, already
+  // counted as `skipped` and reported on their own line. Counting them here
+  // would make the error read `1/3 row(s) succeeded, 1 row(s) failed` and leave
+  // the reader to guess at the third.
   state.attempted += tally.deleted + tally.failures.length;
   for (const unit of tally.refusedUnits) state.units.add(unit);
   if (tally.failures.length === 0) return;
@@ -454,14 +452,12 @@ export async function flushPendingDeletes(
   try {
     await mapWithConcurrency(rows, DELETE_CONCURRENCY, (row) => deleteRow(deps, row, tally));
   } catch {
-    /**
-     * The only thing that reaches here is {@link deleteRow}'s own rethrow, and
-     * it records every failure it rethrows — the delete's rejection, the decode
-     * of a rejection's attached row, and the caller's logger alike. So what is
-     * dropped here is a second reference to something already in
-     * `tally.failures`, never the only record of it, and the throw's remaining
-     * job was to stop further rows from being started.
-     */
+    // The only thing that reaches here is {@link deleteRow}'s own rethrow, and
+    // it records every failure it rethrows — the delete's rejection, the decode
+    // of a rejection's attached row, and the caller's logger alike. So what is
+    // dropped here is a second reference to something already in
+    // `tally.failures`, never the only record of it, and the throw's remaining
+    // job was to stop further rows from being started.
   }
   if (deps.offloader) {
     await cleanUpS3Orphans(deps.offloader, {

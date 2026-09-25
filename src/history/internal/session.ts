@@ -315,21 +315,17 @@ export function buildSessionUpdateItem(
     '#u = :u',
     '#c = if_not_exists(#c, :c)',
     '#sid = if_not_exists(#sid, :sid)',
-    /**
-     * An unconditional `SET`, deliberately unlike the three `if_not_exists`
-     * clauses around it. This is not a once-only field: its whole content is
-     * that it moves. Written in their style it would stamp the id when the
-     * session was created and never again, and a delete pinning on the id it
-     * observed would be present, well formed, and always pass — which is the
-     * failure it exists to prevent.
-     */
+    // An unconditional `SET`, deliberately unlike the three `if_not_exists`
+    // clauses around it. This is not a once-only field: its whole content is
+    // that it moves. Written in their style it would stamp the id when the
+    // session was created and never again, and a delete pinning on the id it
+    // observed would be present, well formed, and always pass — which is the
+    // failure it exists to prevent.
     '#wid = :wid',
     '#v = :v',
-    /**
-     * The session row is listed by recency across partitions, so it carries the
-     * index keys — rewritten on every append, which is what keeps "most
-     * recently updated first" true without an in-memory sort.
-     */
+    // The session row is listed by recency across partitions, so it carries the
+    // index keys — rewritten on every append, which is what keeps "most
+    // recently updated first" true without an in-memory sort.
     '#gpk = :gpk',
     '#gsk = :gsk',
   ];
@@ -344,15 +340,13 @@ export function buildSessionUpdateItem(
     values[':ttl'] = fields.ttlTimestamp;
     if (fields.forceTtlRefresh) {
       sets.push('#ttl = :ttl');
-      /**
-       * Guards the force-overwrite so a concurrent caller's already-healed,
-       * equal-or-later anchor can never be regressed backward by this one.
-       * `<=` (not `<`): two concurrent healers of the same stale anchor
-       * typically compute the identical target timestamp, and `<=` lets
-       * the second one succeed by re-applying the same value instead of
-       * failing the condition and paying a full transaction retry for a
-       * write that was never actually a regression.
-       */
+      // Guards the force-overwrite so a concurrent caller's already-healed,
+      // equal-or-later anchor can never be regressed backward by this one.
+      // `<=` (not `<`): two concurrent healers of the same stale anchor
+      // typically compute the identical target timestamp, and `<=` lets
+      // the second one succeed by re-applying the same value instead of
+      // failing the condition and paying a full transaction retry for a
+      // write that was never actually a regression.
       conditionExpression = 'attribute_not_exists(#ttl) OR #ttl <= :ttl';
     } else {
       sets.push('#ttl = if_not_exists(#ttl, :ttl)');

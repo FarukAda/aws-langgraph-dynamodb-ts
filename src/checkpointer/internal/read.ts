@@ -197,11 +197,9 @@ export async function fetchPayload(
     retryFor(context, read.signal),
   );
   const item = result.Item as CheckpointPayloadItem | undefined;
-  /**
-   * A payload of ours written by a newer release fails loudly, as its META row
-   * would: decoding it under today's rules is how a checkpoint comes back with
-   * state silently missing.
-   */
+  // A payload of ours written by a newer release fails loudly, as its META row
+  // would: decoding it under today's rules is how a checkpoint comes back with
+  // state silently missing.
   if (item !== undefined) assertReadableRow(item, 'checkpoint payload');
   return item;
 }
@@ -251,11 +249,9 @@ export async function fetchPendingWrites(
     maxItems: Number.POSITIVE_INFINITY,
     maxIterations: Number.POSITIVE_INFINITY,
   })) {
-    /**
-     * Checked before `dropSupersededWrites` reads `writeGroup`: that dedup runs
-     * on every row regardless of format, and a newer format may give the
-     * attribute a different meaning.
-     */
+    // Checked before `dropSupersededWrites` reads `writeGroup`: that dedup runs
+    // on every row regardless of format, and a newer format may give the
+    // attribute a different meaning.
     assertReadableRow(item, 'pending write');
     items.push(item as CheckpointWriteItem);
   }

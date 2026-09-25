@@ -78,12 +78,10 @@ export enum ErrorCode {
   UNEXPECTED_ERROR = 'UNEXPECTED_ERROR',
 }
 
-/**
- * A TypeScript enum compiles to a plain, writable object, and this one is
- * exported from the package root: every consumer in a process shares the same
- * object. One dependency assigning to a member — a test stub, a patch, a
- * typo — rewrites what `error.code === ErrorCode.X` means for every other
- * consumer at once, and nothing is raised anywhere; the branch simply stops
- * matching. Freezing turns that into a refusal at the assignment.
- */
+// A TypeScript enum compiles to a plain, writable object, and this one is
+// exported from the package root: every consumer in a process shares the same
+// object. One dependency assigning to a member — a test stub, a patch, a
+// typo — rewrites what `error.code === ErrorCode.X` means for every other
+// consumer at once, and nothing is raised anywhere; the branch simply stops
+// matching. Freezing turns that into a refusal at the assignment.
 Object.freeze(ErrorCode);

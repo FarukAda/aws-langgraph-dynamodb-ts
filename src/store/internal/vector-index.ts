@@ -118,16 +118,14 @@ export async function syncItemVector(
     if (embedding) await backend.upsert(address.namespace, address.key, embedding);
     else await backend.delete(address.namespace, address.key);
   } catch (error) {
-    /**
-     * The name, not the message: a backend's error text is not an identifier.
-     * Bounded all the same — the name is the backend's own and nothing this
-     * package ran checked its length, and `message` is bounded where
-     * `redactedMessage` relays it, so relaying the name whole would split what
-     * is one value. The literal does not name a method, because both
-     * `store.put` and `store.delete` reach here and reporting a failed delete
-     * as a failed put sends an operator to the wrong call site; `operation`
-     * carries which one.
-     */
+    // The name, not the message: a backend's error text is not an identifier.
+    // Bounded all the same — the name is the backend's own and nothing this
+    // package ran checked its length, and `message` is bounded where
+    // `redactedMessage` relays it, so relaying the name whole would split what
+    // is one value. The literal does not name a method, because both
+    // `store.put` and `store.delete` reach here and reporting a failed delete
+    // as a failed put sends an operator to the wrong call site; `operation`
+    // carries which one.
     context.logger.warn('store vector-index sync failed; reconcileVectorIndex will repair', {
       namespace: address.namespace,
       key: address.key,
@@ -375,7 +373,7 @@ export async function pruneOrphans(
   for (const ref of candidates) {
     const seen = observed.has(refIdentity(ref.namespace, ref.key));
     if (!seen && !(await confirmedGone(context, ref))) {
-      /** The ref is a consumer backend's answer, bounded by nothing this package ran. */
+      // The ref is a consumer backend's answer, bounded by nothing this package ran.
       context.logger.info('reconcileVectorIndex: kept a vector whose item reappeared', {
         namespace: truncateLabelsForLog(ref.namespace),
         key: truncateForLog(ref.key),
@@ -599,7 +597,7 @@ export async function searchViaBackend(
     }
     if (results.length >= need || matches.length < topK) break;
     if (topK >= context.maxSearchCandidates) {
-      /** The backend still holds matches, but the filter left the page short at the cap: the same answer the in-DB ranker gives, not a silently short page. */
+      // The backend still holds matches, but the filter left the page short at the cap: the same answer the in-DB ranker gives, not a silently short page.
       throw validationError(
         `Semantic search collected ${results.length} of ${need} matches within maxSearchCandidates ` +
           `(${context.maxSearchCandidates}); narrow the filter or raise maxSearchCandidates`,

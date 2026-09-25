@@ -67,13 +67,11 @@ function release(logger: Logger, close: () => void): void {
   try {
     close();
   } catch (error) {
-    /**
-     * The name, never the message — and bounded, because a name is a string an
-     * adapter's own `close` threw and nothing this package ran checked its
-     * length. `message` is bounded at `redactedMessage`, and relaying the two
-     * halves of "what the failure was" under different rules is the split that
-     * rule exists to remove.
-     */
+    // The name, never the message — and bounded, because a name is a string an
+    // adapter's own `close` threw and nothing this package ran checked its
+    // length. `message` is bounded at `redactedMessage`, and relaying the two
+    // halves of "what the failure was" under different rules is the split that
+    // rule exists to remove.
     logger.warn('factory.destroy: an adapter did not release its resources', {
       reason: truncateForLog(failureLabel(error as Error)),
     });

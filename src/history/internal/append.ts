@@ -314,10 +314,10 @@ export async function compensate(
       'history.addMessages rollback failed; messageCount may have drifted',
       { sessionId, committedChunks: committed.length },
     );
-    /** Skip S3 cleanup here: rollback may have failed, so committed rows might still reference these objects. */
+    // Skip S3 cleanup here: rollback may have failed, so committed rows might still reference these objects.
     throw compensationFailedError(trigger, toError(rollbackError as Error));
   }
-  /** Only now that committed rows are confirmed deleted is it safe to delete their S3 objects. */
+  // Only now that committed rows are confirmed deleted is it safe to delete their S3 objects.
   await cleanBatchS3(context, chunks.slice(0, committed.length));
   throw trigger;
 }

@@ -443,7 +443,7 @@ export async function putWithRevisionSwap(
       const rejected = rejectedItem(rejection);
       observed = rejected ? existingFrom(rejected) : await readExisting(context, rowKeyOf(record));
       if (record.rev !== undefined && observed.revision === record.rev) return attempted;
-      /** A row that vanished between attempts (a concurrent delete) makes this a fresh creation. */
+      // A row that vanished between attempts (a concurrent delete) makes this a fresh creation.
       record.createdAt = observed.exists
         ? (observed.createdAt ?? record.createdAt)
         : record.updatedAt;

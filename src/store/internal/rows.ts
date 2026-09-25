@@ -386,11 +386,9 @@ export interface StoreItemRecord {
  * exists.
  */
 export function narrowStoreRecord(raw: DocItem): StoreItemRecord | undefined {
-  /**
-   * The version first. A later format may compose the row's key from
-   * attributes this one does not know, so testing the shape first reads such a
-   * row as foreign and hides an item that is there.
-   */
+  // The version first. A later format may compose the row's key from
+  // attributes this one does not know, so testing the shape first reads such a
+  // row as foreign and hides an item that is there.
   assertReadableRow(raw, 'store item');
   if (!Array.isArray(raw.namespace) || typeof raw.key !== 'string') return undefined;
   const record = raw as StoreItemRecord;

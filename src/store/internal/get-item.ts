@@ -55,7 +55,7 @@ async function readRow(
     });
     return undefined;
   }
-  /** A row past its ttl is absent to every reader, however long DynamoDB's sweep lags. */
+  // A row past its ttl is absent to every reader, however long DynamoDB's sweep lags.
   return isExpiredRow(record, nowSeconds()) ? undefined : record;
 }
 

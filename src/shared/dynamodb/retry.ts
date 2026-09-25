@@ -219,14 +219,12 @@ export async function withRetry<T>(
     try {
       return await fn(request);
     } catch (error) {
-      /**
-       * Read before the error is classified. A cancelled request rejects with
-       * whatever the transport produced — the SDK's own `AbortError` for one
-       * cut before the response, a socket error for one cut mid-body — and
-       * both would otherwise be classified, retried against a signal that has
-       * already fired, and finally reported as a transport failure. A caller
-       * who cancelled is owed `ABORTED`, not a diagnosis of its own stop.
-       */
+      // Read before the error is classified. A cancelled request rejects with
+      // whatever the transport produced — the SDK's own `AbortError` for one
+      // cut before the response, a socket error for one cut mid-body — and
+      // both would otherwise be classified, retried against a signal that has
+      // already fired, and finally reported as a transport failure. A caller
+      // who cancelled is owed `ABORTED`, not a diagnosis of its own stop.
       assertNotAborted(options.signal);
       lastError = toError(error as Error);
       if (!isRetryable(lastError)) throw lastError;
@@ -450,13 +448,11 @@ export function resolveRetryPolicy(
     baseDelayMs: policy?.baseDelayMs ?? INITIAL_BACKOFF_DELAY_MS,
     maxDelayMs: policy?.maxDelayMs ?? MAX_BACKOFF_DELAY_MS,
   };
-  /**
-   * Measured at the attempts the adapter will really make, not at the ones the
-   * caller wrote. The history append raises a caller's count to its own floor
-   * while keeping the caller's delays, so a policy that only raises
-   * `maxDelayMs` produces a budget far past the deadline and would otherwise
-   * be warned about nowhere. An adapter with no floor passes none.
-   */
+  // Measured at the attempts the adapter will really make, not at the ones the
+  // caller wrote. The history append raises a caller's count to its own floor
+  // while keeping the caller's delays, so a policy that only raises
+  // `maxDelayMs` produces a budget far past the deadline and would otherwise
+  // be warned about nowhere. An adapter with no floor passes none.
   warnIfOutlivesWriteLifetime(
     { ...resolved, maxAttempts: Math.max(resolved.maxAttempts, attemptFloor) },
     logger,

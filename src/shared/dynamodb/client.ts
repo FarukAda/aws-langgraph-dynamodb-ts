@@ -185,7 +185,7 @@ export async function warnOnStackedRetries(
       );
     }
   } catch {
-    /** A client that cannot report its retry setting is left alone. */
+    // A client that cannot report its retry setting is left alone.
   }
 }
 

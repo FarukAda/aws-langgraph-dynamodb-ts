@@ -57,14 +57,12 @@ export async function mapWithConcurrency<T, R>(
   };
   const workers = Math.min(limit >= 1 ? Math.floor(limit) : 1, Math.max(items.length, 1));
   await Promise.all(Array.from({ length: workers }, worker));
-  /**
-   * `failure` is stored `Error | undefined` only because that is as far as a
-   * `catch` binding's value can be named without `unknown`, which is banned
-   * in src; the JSDoc above states the real contract — whatever `fn` rejected
-   * with, unchanged, and that can be `undefined` itself. The assertion below
-   * changes nothing at runtime; it only lets `only-throw-error` see the type
-   * this throw already had before that rule existed.
-   */
+  // `failure` is stored `Error | undefined` only because that is as far as a
+  // `catch` binding's value can be named without `unknown`, which is banned
+  // in src; the JSDoc above states the real contract — whatever `fn` rejected
+  // with, unchanged, and that can be `undefined` itself. The assertion below
+  // changes nothing at runtime; it only lets `only-throw-error` see the type
+  // this throw already had before that rule existed.
   if (failed) throw failure as Error;
   return results;
 }
