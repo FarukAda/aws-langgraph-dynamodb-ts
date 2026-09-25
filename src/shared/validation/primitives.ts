@@ -3,8 +3,10 @@
  *
  * What makes a string an identifier safe inside a key, an integer a page size
  * this package serves, and an array a copy holding only strings is decided
- * once here, and each rule's `parse*` form returns the value as a type only it
- * can build (record 21). Feature parsers compose these rules rather than
+ * once here. Only `parseLimit` returns a branded type of its own —
+ * `PageLimit`, which only it can build (record 21); every other rule's
+ * `parse*` form returns the plain checked value, and a feature parser brands
+ * it into its own type. Feature parsers compose these rules rather than
  * restate them, so tightening one changes every method at once.
  */
 

@@ -4,8 +4,8 @@
  * A query with a `vectorBackend` is answered by the backend; no query, or no
  * `index` to embed one with, is a page read from the table that stops once
  * full; anything else is ranked in memory over at most `maxSearchCandidates`.
- * A page of zero is answered before any of them. A caller gets the same page
- * whichever path ran, scored exactly when a query could be ranked.
+ * A page of zero is answered before any of them. A caller gets the same shape
+ * of page whichever path ran, scored exactly when a query could be ranked.
  */
 
 import type { SearchItem } from '@langchain/langgraph-checkpoint';

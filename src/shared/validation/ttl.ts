@@ -4,8 +4,10 @@
  * A caller gives days or seconds. The one-unit rule, the five-year cap, the
  * epoch second DynamoDB's TTL attribute takes, and the S3 lifecycle days that
  * keep an offloaded object alive past its row's sweep lag are all derived
- * here, so the two spellings of one duration are accepted or rejected alike
- * and no reader converts units itself.
+ * here, so the two spellings of the `ttl` option are accepted or rejected
+ * alike and no reader re-derives one unit from the other itself. A stored
+ * row's own epoch-second `ttl` is converted to milliseconds for `Date` where
+ * that row is read, not here.
  */
 
 import { validationError } from '../errors/errors';

@@ -2,11 +2,15 @@
  * Hides where the current time comes from, and in which unit each reader
  * takes it.
  *
- * Every timestamp, deadline and expiry this package computes reads `Date.now`
- * through here, so a test that freezes it freezes all of them at once, and
- * under a skewed clock they agree with each other rather than disagreeing by a
- * second. That the ISO form sorts chronologically and that the TTL unit is
- * floored seconds are settled here; a caller asks for the unit it needs.
+ * Every timestamp, deadline and expiry this package computes through
+ * `nowIso`, `nowMs` or `nowSeconds` reads `Date.now` through here, so a test
+ * that freezes it freezes all of them at once, and under a skewed clock they
+ * agree with each other rather than disagreeing by a second. Two call sites
+ * take their own default instead of this seam — `calculateTtlTimestamp`'s
+ * `now` parameter and `createUlidFactory`'s `now` parameter, both defaulting
+ * to `Date.now` directly — so freezing this module's clock alone does not
+ * freeze them. That the ISO form sorts chronologically and that the TTL unit
+ * is floored seconds are settled here; a caller asks for the unit it needs.
  */
 
 /**

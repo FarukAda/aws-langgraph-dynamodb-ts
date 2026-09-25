@@ -1,15 +1,15 @@
 /**
- * Hides the store's own option and result shapes from where they are checked.
+ * Hides the store's own option and result shapes, composed from building
+ * blocks declared elsewhere.
  *
- * The constructor's options, `search`'s and `listNamespaces`' option bags,
- * and a reconcile's counts are declared here — the types a store caller
- * composes from `BaseAdapterOptions`, `CodecOptions` and `CancelOptions`
- * (the shared options module) and `VectorBackend`/`VectorScoreDirection`
- * (`vector-backend.ts`) live in those modules instead, so a type shared by
- * every adapter or owned by the vector index is declared once, not copied
- * here. Which keys each bag accepts, and the defaults filled in, are decided
- * by the store's setup and parsers, so a caller can type what it builds
- * without learning how it is checked.
+ * `DynamoDBStoreOptions`, `SearchOptions`, `ListNamespacesOptions` and
+ * `VectorReconcileResult` are declared here. `DynamoDBStoreOptions` composes
+ * `BaseAdapterOptions` and `CodecOptions`, and `SearchOptions` composes
+ * `CancelOptions` — all three declared once in the shared options module, not
+ * copied here — plus `VectorBackend` and `VectorScoreDirection`, declared
+ * once in `vector-backend.ts`. Which keys each bag accepts, and the defaults
+ * filled in, are decided by the store's setup and parsers, so a caller can
+ * type what it builds without learning how it is checked.
  */
 
 import type {

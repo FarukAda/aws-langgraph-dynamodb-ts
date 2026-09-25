@@ -1,11 +1,17 @@
 /**
- * Hides what each of this library's errors carries.
+ * Hides what each of this library's errors carries, for the codes that have
+ * a factory here.
  *
- * A failure site names the factory for its code and the facts it has. The
- * message wording, which facts go into `context` or `details`, copying a list
- * a caller reads from a `catch` long after the throw, redacting quoted cause
- * text, and a stack that starts at the caller rather than inside the factory
- * are decided here once per code, on the one error class (record 19).
+ * A failure site with a factory below names it for its code and the facts it
+ * has. The message wording, which facts go into `context` or `details`,
+ * copying a list a caller reads from a `catch` long after the throw,
+ * redacting quoted cause text, and a stack that starts at the caller rather
+ * than inside the factory are decided here once per code, on the one error
+ * class (record 19). `FORMAT_UNSUPPORTED`, `PAYLOAD_CORRUPT`,
+ * `COMPRESSION_LIMIT`, `S3_OFFLOAD_FAILED` and `ANCESTOR_EXPIRED` are raised
+ * with `new DynamoDBLangGraphError` at their own call sites instead, and
+ * every AWS-classified code is wrapped once, by `wrapForeignError` in the
+ * error boundary, not per code here.
  */
 
 import type { WriteRequest } from '../dynamodb/client';
