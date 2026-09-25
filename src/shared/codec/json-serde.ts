@@ -53,7 +53,7 @@ import { truncateForLog } from '../logging/truncate';
  * not a row's.
  *
  * Frozen for the reason {@link ErrorCode} is: one object, shared by every
- * adapter in the process that did not pass a `serde` of its own, and now
+ * adapter in the process that did not pass a `serde` of its own, and
  * reachable from the package root. An assignment to `dumpsTyped` by any one
  * consumer would silently change how every other one writes.
  */
@@ -128,12 +128,12 @@ export const JSON_SERDE: SerializerProtocol = {
     let text: string;
     /**
      * The decode is inside a guard of its own because it fails for a different
-     * reason than the parse does, and now says so. UTF-8 decoding is lenient —
-     * a malformed byte becomes U+FFFD rather than an error — so the only way
-     * `TextDecoder` refuses is a `data` that is not bytes at all, which is the
-     * caller's mistake and not a corrupt row. Before this export that value
-     * could only come from the codec, which hands it a `Uint8Array`; a direct
-     * caller got a bare `TypeError` from Node naming an argument called
+     * reason than the parse does, and names it separately. UTF-8 decoding is
+     * lenient — a malformed byte becomes U+FFFD rather than an error — so the
+     * only way `TextDecoder` refuses is a `data` that is not bytes at all,
+     * which is the caller's mistake and not a corrupt row. The codec always
+     * passes a `Uint8Array`; a direct caller passing anything else would
+     * otherwise get a bare `TypeError` from Node naming an argument called
      * "list".
      */
     try {
