@@ -146,8 +146,8 @@ export async function syncItemVector(
  * hold a row *now*", which a racing put that recreated it and a
  * compare-and-swap that left it alone both answer the same way, and which costs
  * a point read of this library's own table rather than anything the backend has
- * to offer. The reconciler already asks it before pruning a vector, so the
- * delete path is no longer the less careful of the two.
+ * to offer. The reconciler asks the same question before pruning a vector, so
+ * the delete path and the reconciler are equally careful.
  *
  * A read that itself fails answers "not confirmed" and keeps the vector: a
  * stale vector for a deleted item, which `reconcileVectorIndex` removes, rather

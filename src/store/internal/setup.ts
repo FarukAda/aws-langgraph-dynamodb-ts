@@ -176,10 +176,10 @@ const INDEX_KEYS = allKeysOf<IndexConfig>({
  *
  * The keys are checked first, so `{ dims, embed }` names the misspelt `embed`
  * rather than the `embeddings` it displaced. `null` is refused like any other
- * value that is not an object, where it used to mean no index; only
- * `undefined` does. `fields`, when given, must be an array of strings, the
- * rule a put's own `index` argument follows: a string reached the first put
- * and failed there as an upstream error.
+ * value that is not an object, rather than read as no index; only `undefined`
+ * means no index. `fields`, when given, must be an array of strings, the rule a
+ * put's own `index` argument follows: a string would otherwise reach the first
+ * put and fail there as an upstream error.
  */
 function assertUsableIndex(index: IndexConfig | undefined): void {
   if (index === undefined) return;

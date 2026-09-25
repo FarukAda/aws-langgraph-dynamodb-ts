@@ -32,9 +32,9 @@ logs a `warn` at construction when they would).
 
 Defined in: [factory/types.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/types.ts#L33)
 
-Used to build the client, and read for its `region` when an `s3` config
-names none — including by `createAll`, whose adapters are handed the shared
-client rather than this config.
+The config the client is built from, and read for its `region` when an `s3`
+config names none — including by `createAll`, whose adapters are handed the
+shared client rather than this config.
 
 ***
 

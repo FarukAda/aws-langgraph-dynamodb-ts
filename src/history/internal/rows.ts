@@ -294,8 +294,8 @@ export async function buildMessageItem(
  * one carrying no `sessionId`, no `message` descriptor, or a `sessionId` that
  * disagrees with the partition it was found in. The test is on the attributes
  * a message must have, not on a cast: this is the one boundary where a row may
- * not have been written by this adapter, and the read used to trust the key it
- * was found at. A `message` of `null` is refused here, as
+ * not have been written by this adapter, so the key it was found at is not
+ * trusted on its own. A `message` of `null` is refused here, as
  * `narrowMetaItem` refuses a `metadata` of `null`.
  *
  * Throws: nothing; a row a newer release wrote is the caller's to refuse,

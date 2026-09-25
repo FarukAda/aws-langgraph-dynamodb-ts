@@ -81,9 +81,9 @@ export interface ResolveClientOptions {
  * The DocumentClient an adapter will use, and whether it owns it.
  *
  * Accepts: `client` — an injected DocumentClient, used as-is; `clientConfig` —
- * used to build one when no client is injected; `createClient` — the test seam
- * that builds it. `assertBaseAdapterOptions` rejects an injected client given
- * alongside either of the other two, so only one branch is ever taken.
+ * what one is built from when no client is injected; `createClient` — the test
+ * seam that builds it. `assertBaseAdapterOptions` rejects an injected client
+ * given alongside either of the other two, so only one branch is ever taken.
  *
  * Returns: the document client, the raw client behind it when this call built
  * one, and `ownsClient` — true only then. An injected client is never

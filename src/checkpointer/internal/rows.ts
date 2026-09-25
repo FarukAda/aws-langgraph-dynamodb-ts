@@ -872,9 +872,8 @@ export interface ResolvedWrite {
 
 /**
  * Assign every write in one `putWrites` call its sort-key index, in a single
- * pass — nothing recomputes it downstream, which is what used to let the
- * deduped array's positions disagree with the ones the caller's array
- * produced.
+ * pass — nothing recomputes it downstream, so the deduped array's positions
+ * cannot disagree with the ones the caller's array produced.
  *
  * A regular write's index is its position in the caller's array, exactly as
  * the reference `MemorySaver` computes it: that is what makes stored writes

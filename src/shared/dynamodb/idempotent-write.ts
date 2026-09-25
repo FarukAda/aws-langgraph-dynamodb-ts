@@ -713,7 +713,7 @@ export async function verifyRow(deps: RowWriteDeps, probe: RowProbe): Promise<Ve
 }
 
 /**
- * Whether a row is confirmed absent right now — used to resolve an ambiguous
+ * Whether a row is confirmed absent right now — what resolves an ambiguous
  * retry-exhausted *delete*, where the delete may well have landed server-side
  * and only its acknowledgement was lost. Only the partition key is projected:
  * existence is the whole question.

@@ -50,10 +50,10 @@ import { dropVectorWhenGone } from './vector-index';
  * retry budget is *ambiguous* — the delete may have landed with only its
  * acknowledgement lost — and is resolved the way `persistRecord` resolves its
  * own: with a strongly-consistent read, treating a confirmed absence as a
- * delete that landed. Under a request token that read has less to settle than
- * it used to, because every attempt inside one budget re-sends the identical
- * request and a replay is answered from the idempotency cache rather than
- * re-applied; only the last attempt's outcome is in question.
+ * delete that landed. Under a request token that read has little to settle,
+ * because every attempt inside one budget re-sends the identical request and a
+ * replay is answered from the idempotency cache rather than re-applied; only
+ * the last attempt's outcome is in question.
  *
  * `isRowAbsent` reports a read that itself failed as `false` — "not confirmed",
  * never "still there" — so an unknown outcome rethrows and releases nothing.
@@ -153,7 +153,7 @@ async function removeObservedRow(
  *   above the S3 cleanup, so no round trip with its own retries sits inside the
  *   window — one strongly-consistent projected read asks whether the key holds
  *   a row now, and a row that is there keeps its vector and logs one `info`.
- *   That covers both interleavings that used to erase a live item's vector: a
+ *   That covers both interleavings that would otherwise erase a live item's vector: a
  *   put recreating the row this call removed, and the compare-and-swap above
  *   resolving with the row untouched. What is left is a put committing between
  *   that read and the backend call, two adjacent statements apart. Closing it
@@ -196,9 +196,9 @@ async function removeObservedRow(
  *
  * Guarantees: the object released is the **last observation's**, on every path
  * that releases at all — the pre-read's when nothing re-pinned, the rejected
- * row's when something did. It is never read back from the response, so the
- * object a delete whose acknowledgement was lost removed is no longer leaked by
- * construction. Nothing is released while the outcome is unknown: only a
+ * row's when something did. It is never read back from the response, so by
+ * construction the object of a delete whose acknowledgement was lost is not
+ * leaked. Nothing is released while the outcome is unknown: only a
  * confirmed absence or a confirmed delete licenses it. And the backend's
  * `delete` is never reached without a confirmation immediately before it, on
  * every path including the one whose key never had a row: one rule with no
@@ -271,7 +271,7 @@ async function cleanUp(
  * the error, and an `'unverified'` read deletes nothing and rethrows — leaking
  * one object at worst rather than stranding a live row pointing at a deleted
  * one. The verification compares the per-call `rev`, so an inline record is
- * verified too: a lost acknowledgement of an inline overwrite used to be
+ * verified too: otherwise a lost acknowledgement of an inline overwrite would be
  * reported as a failure while the previous offloaded object was never cleaned.
  *
  * Neither release reads the row again first. The record's object is uploaded

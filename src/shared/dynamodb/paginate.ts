@@ -169,8 +169,8 @@ function assertPositiveCap(value: number, field: string): number {
  * {@link MAX_TOTAL_ITEMS_IN_MEMORY}. `options.maxIterations` — how many page
  * reads may be issued, default {@link MAX_LOOP_ITERATIONS}; the probe below is
  * charged against it too. Both accept `Infinity` to read to true completion
- * (deletes do), and both must otherwise be at least 1 — a cap of 0 used to
- * yield one item before noticing. `options.signal` — checked before every
+ * (deletes do), and both must otherwise be at least 1 — an accepted cap of 0
+ * would yield one item before noticing. `options.signal` — checked before every
  * fetch. `options.retry` is the page reader's own concern.
  *
  * Returns: an async generator over the items, continuing past empty pages.

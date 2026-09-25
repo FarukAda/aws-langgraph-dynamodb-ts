@@ -29,7 +29,8 @@ export const DEFAULT_READ_CONCURRENCY = 8;
  * error is the one thrown — a later failure never displaces it. Whether one
  * has happened is tracked by a flag rather than by testing the value, because
  * a rejection whose value is `undefined` is indistinguishable from no rejection
- * at all: it used to be swallowed, and its slot in the results stayed a hole.
+ * at all: tested by value, it would be swallowed, and its slot in the results
+ * would stay a hole.
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],

@@ -125,7 +125,7 @@ async function allByScan(
  * remain. A page can come back shorter than `limit` while more remain: expired
  * and foreign rows are dropped after the read, and so is a row of this
  * package's own whose `messageCount`, `createdAt`, `updatedAt`, `title` or
- * `ttl` is not the type written there — one unreadable `ttl` used to fail the
+ * `ttl` is not the type written there — otherwise one unreadable `ttl` would fail the
  * whole call, taking every healthy session with it. The cursor is a position in
  * the index rather than a count of what survived filtering. A cursor does not
  * promise more rows: the page after it can come back empty (see

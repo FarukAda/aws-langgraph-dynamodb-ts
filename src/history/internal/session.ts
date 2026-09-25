@@ -48,15 +48,15 @@ import type { HistoryContext } from './setup';
  * ConditionalCheckFailed reason. Named distinctly from
  * shared/dynamodb/idempotent-write.ts's isConditionalCheckFailed, which
  * checks a different thing entirely (a raw PutItem exception name, not a
- * transaction cancellation reason) — this function had that same name
- * until now, a real trap for whoever read one assuming it was the other.
+ * transaction cancellation reason) — sharing that name would be a real trap
+ * for whoever read one assuming it was the other.
  */
 function isCancelledByCondition(error: Error): boolean {
   return conditionFailedAt(error, 0);
 }
 
 /**
- * Subtract a previously-added count from the session, leaving it consistent.
+ * Subtract a count this append already added from the session, leaving it consistent.
  * Guarded so a concurrently-deleted SESSION row is never resurrected as a
  * permanent, ttl-less junk row: if the row is already gone there is nothing
  * to revert, so that specific condition failure is swallowed rather than

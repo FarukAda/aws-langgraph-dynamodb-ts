@@ -23,7 +23,7 @@ import { validationError } from '../errors/errors';
  * What it does *not* do is promise a memory figure: rows are the caller's own
  * data, so ten thousand session summaries are a few megabytes while a hundred
  * items at `MAX_INLINE_PAYLOAD_BYTES` (`src/shared/codec/codec.ts`) are forty.
- * It bounds a typo — the `1e12` that used to resolve — not a working set.
+ * It bounds a typo — a `1e12` that would otherwise resolve — not a working set.
  *
  * What a caller loses at the ceiling is one large page, never the rows: every
  * bounded read has a way to continue — `listSessions` a cursor, `search` an
@@ -168,11 +168,12 @@ export function assertInteger(
  * The value as a page size this package will serve: an integer from `min` to
  * {@link MAX_PAGE_LIMIT}.
  *
- * One rule for every `limit` a public method takes. They used to disagree three
- * ways — no minimum on `saver.list`, so `limit: -1` resolved; `0` refused by the
- * history reads and accepted by the store — and none of them had a ceiling, so
- * `limit: 1e12` resolved on five methods. The same mistake answered differently
- * depending on which method a caller happened to reach for.
+ * One rule for every `limit` a public method takes. Without it they would
+ * disagree three ways — no minimum on `saver.list`, so `limit: -1` would
+ * resolve; `0` refused by the history reads and accepted by the store — and
+ * none would have a ceiling, so `limit: 1e12` would resolve on five methods.
+ * The same mistake would be answered differently depending on which method a
+ * caller happened to reach for.
  *
  * What survives that unification is one message shape, one ceiling and two
  * floors, because zero does not ask for the same thing on every method. A zero

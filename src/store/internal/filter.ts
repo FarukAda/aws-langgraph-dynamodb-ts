@@ -37,8 +37,8 @@ function testOrder(order: number | undefined, test: (order: number) => boolean):
  * Ordered comparison over like-typed values only: numbers compare numerically,
  * strings lexicographically, and a mismatched or unordered pair never matches.
  *
- * Deliberately stricter than both what this used to do and what upstream does.
- * Native `>` coerces, so a stored `'10'` satisfied `{ $gt: 5 }` — inclusion
+ * Deliberately stricter than both native comparison and what upstream does.
+ * Native `>` coerces, so a stored `'10'` would satisfy `{ $gt: 5 }` — inclusion
  * decided by JS coercion rather than by the stored type. Upstream instead
  * reduces both sides with `Number()`, which makes two ISO-8601 date strings
  * `NaN` and every comparison between them false. Comparing like types

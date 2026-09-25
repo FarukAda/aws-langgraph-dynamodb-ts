@@ -26,9 +26,9 @@ export interface FactoryBaseOptions {
    */
   client?: DynamoDBDocumentLike;
   /**
-   * Used to build the client, and read for its `region` when an `s3` config
-   * names none — including by `createAll`, whose adapters are handed the shared
-   * client rather than this config.
+   * The config the client is built from, and read for its `region` when an `s3`
+   * config names none — including by `createAll`, whose adapters are handed the
+   * shared client rather than this config.
    */
   clientConfig?: DynamoDBClientConfig;
   /**

@@ -396,10 +396,11 @@ async function settleRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally)
  * is a decode, and it fails on an `Item` that arrives already unmarshalled —
  * which the stock document client does not produce, but a client wrapped
  * through the documented injection seam can. Reporting a refusal is a call into
- * the caller's own `Logger`, which is consumer code. Neither used to reach
- * `tally.failures`, and an empty `failures` is exactly what the pass reads as
- * "nothing went wrong": one such throw abandoned the rest of the buffer and the
- * pass still resolved, reporting a thread deleted that was mostly still there.
+ * the caller's own `Logger`, which is consumer code. Recorded only in that one
+ * branch, neither would reach `tally.failures`, and an empty `failures` is
+ * exactly what the pass reads as "nothing went wrong": one such throw would
+ * abandon the rest of the buffer and the pass would still resolve, reporting a
+ * thread deleted that was mostly still there.
  */
 async function deleteRow(deps: FlushDeps, row: PendingDelete, tally: FlushTally): Promise<void> {
   try {

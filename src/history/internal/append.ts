@@ -91,9 +91,10 @@ const MAX_TRANSACTION_BYTES = 3_500_000;
  * Encode every message, cleaning up after itself if one fails partway.
  *
  * Offloaded messages upload sequentially here, *before* the append saga's
- * compensation machinery is ever reached, so a failure on message N used to
- * strand messages 1..N-1's already-uploaded S3 objects with no cleanup path —
- * the one gap in this subsystem's otherwise complete no-orphan guarantee.
+ * compensation machinery is ever reached, so without the cleanup here a failure
+ * on message N would strand messages 1..N-1's already-uploaded S3 objects with
+ * nothing to delete them — the one gap in this subsystem's otherwise complete
+ * no-orphan guarantee.
  * Nothing will ever reference those objects, so they are safe to delete
  * unconditionally on the way out.
  */
@@ -164,8 +165,8 @@ export async function appendMessages(
  *
  * The caller's `Logger` is consumer code, and both lines here are written from
  * inside a rollback: the first is {@link compensate}'s opening statement, the
- * second sits in the `catch` that builds `COMPENSATION_FAILED`. A
- * throw out of either used to take the rollback with it — the first skipping
+ * second sits in the `catch` that builds `COMPENSATION_FAILED`. Unguarded, a
+ * throw out of either would take the rollback with it — the first skipping
  * the S3 cleanup, every committed chunk's deletes, the count revert and the
  * rethrow in one go; the second replacing the one error whose job is to say
  * that `messageCount` drifted.
@@ -277,10 +278,10 @@ async function rollbackCommitted(
  * preference to leaving a live row pointing at a deleted object.
  *
  * Neither of its two log lines can stop it: both go through
- * {@link reportStep}. A throw from the first used to skip the S3 cleanup, the
- * rollback, the count revert and the rethrow all at once, leaving every
- * committed chunk in the table with `messageCount` still counting it, and
- * handing the caller the logger's own error in place of the failure that
+ * {@link reportStep}. Otherwise a throw from the first would skip the S3
+ * cleanup, the rollback, the count revert and the rethrow all at once, leaving
+ * every committed chunk in the table with `messageCount` still counting it,
+ * and handing the caller the logger's own error in place of the failure that
  * started this. Announcing the rollback is not the rollback.
  */
 export async function compensate(
