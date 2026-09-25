@@ -1,3 +1,14 @@
+/**
+ * Hides how a cancelled transaction says why it failed.
+ *
+ * A `TransactionCanceledException` carries one raw reason per item, in the
+ * order the items were sent, under codes that are not the exception names the
+ * same failures carry outside a transaction. Which reason is a guard
+ * rejection, which are transient or throttling, and which item failed its
+ * condition are read here and nowhere else, so the retry layer, the error
+ * classifier and the writers that act on a rejection cannot read one apart.
+ */
+
 import type { AttributeValue } from '@aws-sdk/client-dynamodb';
 
 /**

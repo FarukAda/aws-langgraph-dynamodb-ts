@@ -6,7 +6,7 @@
 
 # Interface: BaseAdapterOptions
 
-Defined in: [shared/options.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L14)
+Defined in: [shared/options.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L24)
 
 Options common to every adapter (the unified options shape). An adapter
 either reuses an injected `client` or builds one from `clientConfig`.
@@ -17,7 +17,7 @@ either reuses an injected `client` or builds one from `clientConfig`.
 
 > `optional` **client?**: [`DynamoDBDocumentLike`](../type-aliases/DynamoDBDocumentLike.md)
 
-Defined in: [shared/options.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L18)
+Defined in: [shared/options.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L28)
 
 Pre-built DocumentClient to reuse; when set, the adapter does not own it.
 
@@ -27,7 +27,7 @@ Pre-built DocumentClient to reuse; when set, the adapter does not own it.
 
 > `optional` **clientConfig?**: `DynamoDBClientConfig`
 
-Defined in: [shared/options.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L20)
+Defined in: [shared/options.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L30)
 
 The config a client is built from when `client` is not provided.
 
@@ -37,7 +37,7 @@ The config a client is built from when `client` is not provided.
 
 > `optional` **indexName?**: `string`
 
-Defined in: [shared/options.ts:57](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L57)
+Defined in: [shared/options.ts:67](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L67)
 
 Name of the recency index (a GSI on `gsi1pk`/`gsi1sk`) on this table.
 
@@ -56,7 +56,7 @@ and backfilled before any adapter reads it.
 
 > `optional` **indexShards?**: `number`
 
-Defined in: [shared/options.ts:44](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L44)
+Defined in: [shared/options.ts:54](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L54)
 
 Index partitions per adapter in the recency index (GSI1), default 8.
 
@@ -74,7 +74,7 @@ one partition, which is worse than the table scan it replaces.
 
 > `optional` **logger?**: [`Logger`](Logger.md)
 
-Defined in: [shared/options.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L30)
+Defined in: [shared/options.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L40)
 
 Optional per-instance logger (defaults to a silent logger).
 
@@ -84,7 +84,7 @@ Optional per-instance logger (defaults to a silent logger).
 
 > `optional` **readConcurrency?**: `number`
 
-Defined in: [shared/options.ts:70](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L70)
+Defined in: [shared/options.ts:80](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L80)
 
 How many payloads a single call decodes at once, default 8.
 
@@ -103,7 +103,7 @@ It also bounds how many recency-index shards one listing queries at once.
 
 > `optional` **retry?**: [`RetryPolicy`](RetryPolicy.md)
 
-Defined in: [shared/options.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L32)
+Defined in: [shared/options.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L42)
 
 Retry budget and backoff for every DynamoDB call (see the README "Retries and backoff").
 
@@ -113,7 +113,7 @@ Retry budget and backoff for every DynamoDB call (see the README "Retries and ba
 
 > **tableName**: `string`
 
-Defined in: [shared/options.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L16)
+Defined in: [shared/options.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L26)
 
 DynamoDB table name.
 
@@ -123,6 +123,6 @@ DynamoDB table name.
 
 > `optional` **ttl?**: [`TtlOption`](../type-aliases/TtlOption.md)
 
-Defined in: [shared/options.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L28)
+Defined in: [shared/options.ts:38](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L38)
 
 Optional time-to-live applied to written items.

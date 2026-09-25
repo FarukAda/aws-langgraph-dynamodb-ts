@@ -1,3 +1,13 @@
+/**
+ * Hides what an abort looks like.
+ *
+ * A signal may be aborted with this library's own `ABORTED` error, a
+ * `DOMException`, a string, any other error or nothing at all. Every one of
+ * them reaches a caller as a single `ABORTED` error that is never wrapped
+ * twice, and one test on the library's brand and that code is what tells a
+ * cancellation from a failure, so no call site inspects a reason's shape.
+ */
+
 import { DynamoDBLangGraphError, hasErrorCode, toError } from '../errors/base-error';
 import { ErrorCode } from '../errors/error-code';
 import { abortError } from '../errors/errors';

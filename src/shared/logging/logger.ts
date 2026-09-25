@@ -1,3 +1,13 @@
+/**
+ * Hides that a caller's logger is foreign code that may throw.
+ *
+ * A caller supplies no logger or one of their own, and internal code receives
+ * a logger that is silent by default and whose four levels never throw. No
+ * `catch` block or retry hook therefore treats a log call as a failure path
+ * of its own, and where a throw is absorbed, and what becomes of the line it
+ * was writing, can change here without touching any call site.
+ */
+
 /** A value safe to pass as a structured log argument. */
 export type LogArgument = string | number | boolean | null | object;
 

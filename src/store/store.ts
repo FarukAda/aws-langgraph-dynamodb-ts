@@ -1,3 +1,16 @@
+/**
+ * Hides that each public method is a guarded entry into its own action.
+ *
+ * `get`, `put`, `delete`, `listNamespaces` and `batch` parse their arguments
+ * and hand the parsed operations to the same batch runner and dispatch, so
+ * the five answer and refuse alike. `search` guards the same way but calls
+ * its own action directly, to carry a signal that `batch` cannot;
+ * `reconcileVectorIndex` and `ensureS3LifecycleRule` guard directly too,
+ * since neither is a batchable store operation. Each asynchronous method is
+ * also the error boundary (record 13); `stop` and `destroy` are the
+ * synchronous exceptions, releasing what the store owns through its shell.
+ */
+
 import {
   BaseStore,
   type Item,

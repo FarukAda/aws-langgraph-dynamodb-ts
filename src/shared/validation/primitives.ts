@@ -1,3 +1,13 @@
+/**
+ * Hides the rules every caller-supplied primitive must pass.
+ *
+ * What makes a string an identifier safe inside a key, an integer a page size
+ * this package serves, and an array a copy holding only strings is decided
+ * once here, and each rule's `parse*` form returns the value as a type only it
+ * can build (record 21). Feature parsers compose these rules rather than
+ * restate them, so tightening one changes every method at once.
+ */
+
 import { validationError } from '../errors/errors';
 
 /**

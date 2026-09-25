@@ -6,7 +6,7 @@
 
 # Interface: CompressionConfig
 
-Defined in: [shared/codec/compression.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/compression.ts#L23)
+Defined in: [shared/codec/compression.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/compression.ts#L33)
 
 Configuration for payload compression.
 
@@ -16,7 +16,7 @@ Configuration for payload compression.
 
 > **enabled**: `boolean`
 
-Defined in: [shared/codec/compression.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/compression.ts#L24)
+Defined in: [shared/codec/compression.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/compression.ts#L34)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [shared/codec/compression.ts:24](https://github.com/FarukAda/aws-lan
 
 > `optional` **level?**: `number`
 
-Defined in: [shared/codec/compression.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/compression.ts#L26)
+Defined in: [shared/codec/compression.ts:36](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/compression.ts#L36)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [shared/codec/compression.ts:26](https://github.com/FarukAda/aws-lan
 
 > `optional` **maxDecompressedBytes?**: `number`
 
-Defined in: [shared/codec/compression.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/compression.ts#L27)
+Defined in: [shared/codec/compression.ts:37](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/compression.ts#L37)
 
 ***
 
@@ -40,4 +40,4 @@ Defined in: [shared/codec/compression.ts:27](https://github.com/FarukAda/aws-lan
 
 > `optional` **minSizeBytes?**: `number`
 
-Defined in: [shared/codec/compression.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/compression.ts#L25)
+Defined in: [shared/codec/compression.ts:35](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/compression.ts#L35)

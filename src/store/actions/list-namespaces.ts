@@ -1,3 +1,13 @@
+/**
+ * Hides how the distinct namespaces are found and held in one order.
+ *
+ * A listing reads every live row it can reach — one partition when its first
+ * prefix condition opens with concrete labels, the whole table otherwise —
+ * keeps the namespaces every condition matches, truncates and deduplicates
+ * them, and sorts them by one pinned collation with its ties settled. A caller
+ * paging by `offset` gets the same order on every call and every host.
+ */
+
 import type { MatchCondition } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';

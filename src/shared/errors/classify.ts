@@ -1,3 +1,14 @@
+/**
+ * Hides which AWS failures are the same failure.
+ *
+ * An SDK error arrives as a name, an HTTP status, a Node network `code` or —
+ * for a cancelled transaction — a list of per-item reasons, and several of
+ * those arrivals mean one thing to a caller deciding what to do. Their mapping
+ * to one `ErrorCode`, and the retry layer's default list of transient names,
+ * come from one table here (record 19), so no call site compares an AWS
+ * exception name of its own.
+ */
+
 import {
   conditionalCheckFailure,
   throttledCancellation,
@@ -5,17 +16,6 @@ import {
 } from '../dynamodb/cancellation';
 import type { ErrorContext } from './base-error';
 import { ErrorCode } from './error-code';
-
-/**
- * Hides which AWS failures are the same failure.
- *
- * An SDK error arrives as a name, an HTTP status, a Node network `code`, or —
- * for a cancelled transaction — a list of per-item reasons, and several
- * different arrivals mean one thing to a caller deciding what to do. The
- * mapping from all of them to one {@link ErrorCode} is made here and nowhere
- * else, so the decision is made once, against the sources cited on each name,
- * rather than at each call site against whatever that site happened to see.
- */
 
 /** The fields an AWS SDK v3 error, or a transport error under it, can carry. */
 interface AwsErrorFields {

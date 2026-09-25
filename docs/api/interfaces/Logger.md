@@ -6,7 +6,7 @@
 
 # Interface: Logger
 
-Defined in: [shared/logging/logger.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L15)
+Defined in: [shared/logging/logger.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L25)
 
 Pluggable logging interface — consumers supply their own implementation.
 `args` are structured fields, at most one plain object per call, so an
@@ -24,7 +24,7 @@ being reported.
 
 > **debug**(`message`, ...`args`): `void`
 
-Defined in: [shared/logging/logger.ts:19](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L19)
+Defined in: [shared/logging/logger.ts:29](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L29)
 
 #### Parameters
 
@@ -46,7 +46,7 @@ Defined in: [shared/logging/logger.ts:19](https://github.com/FarukAda/aws-langgr
 
 > **error**(`message`, ...`args`): `void`
 
-Defined in: [shared/logging/logger.ts:18](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L18)
+Defined in: [shared/logging/logger.ts:28](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L28)
 
 #### Parameters
 
@@ -68,7 +68,7 @@ Defined in: [shared/logging/logger.ts:18](https://github.com/FarukAda/aws-langgr
 
 > **info**(`message`, ...`args`): `void`
 
-Defined in: [shared/logging/logger.ts:16](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L16)
+Defined in: [shared/logging/logger.ts:26](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L26)
 
 #### Parameters
 
@@ -90,7 +90,7 @@ Defined in: [shared/logging/logger.ts:16](https://github.com/FarukAda/aws-langgr
 
 > **warn**(`message`, ...`args`): `void`
 
-Defined in: [shared/logging/logger.ts:17](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L17)
+Defined in: [shared/logging/logger.ts:27](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/logging/logger.ts#L27)
 
 #### Parameters
 

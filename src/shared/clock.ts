@@ -1,4 +1,15 @@
 /**
+ * Hides where the current time comes from, and in which unit each reader
+ * takes it.
+ *
+ * Every timestamp, deadline and expiry this package computes reads `Date.now`
+ * through here, so a test that freezes it freezes all of them at once, and
+ * under a skewed clock they agree with each other rather than disagreeing by a
+ * second. That the ISO form sorts chronologically and that the TTL unit is
+ * floored seconds are settled here; a caller asks for the unit it needs.
+ */
+
+/**
  * The current time as an ISO-8601 string.
  *
  * Accepts: nothing; it reads `Date.now`, which the test setup freezes.

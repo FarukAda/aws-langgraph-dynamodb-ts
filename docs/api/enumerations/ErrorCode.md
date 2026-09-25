@@ -6,7 +6,7 @@
 
 # Enumeration: ErrorCode
 
-Defined in: [shared/errors/error-code.ts:2](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L2)
+Defined in: [shared/errors/error-code.ts:12](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L12)
 
 Stable, branchable classification for every error this library throws.
 
@@ -16,7 +16,7 @@ Stable, branchable classification for every error this library throws.
 
 > **ABORTED**: `"ABORTED"`
 
-Defined in: [shared/errors/error-code.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L23)
+Defined in: [shared/errors/error-code.ts:33](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L33)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [shared/errors/error-code.ts:23](https://github.com/FarukAda/aws-lan
 
 > **ACCESS\_DENIED**: `"ACCESS_DENIED"`
 
-Defined in: [shared/errors/error-code.ts:56](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L56)
+Defined in: [shared/errors/error-code.ts:66](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L66)
 
 AWS refused the caller's identity or permissions: `AccessDeniedException`,
 S3's `AccessDenied`, an expired, unrecognised or malformed credential or
@@ -37,7 +37,7 @@ signature. Fix the credentials or the IAM policy; do not retry.
 
 > **ANCESTOR\_EXPIRED**: `"ANCESTOR_EXPIRED"`
 
-Defined in: [shared/errors/error-code.ts:10](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L10)
+Defined in: [shared/errors/error-code.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L20)
 
 A checkpoint a delta channel still needs has expired, so the channel cannot
 be reconstructed and the read refuses rather than returning a shorter value.
@@ -48,7 +48,7 @@ be reconstructed and the read refuses rather than returning a shorter value.
 
 > **AWS\_REJECTED**: `"AWS_REJECTED"`
 
-Defined in: [shared/errors/error-code.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L69)
+Defined in: [shared/errors/error-code.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L79)
 
 AWS rejected the request as malformed: `ValidationException`,
 AWS's `ValidationError` common error, `IdempotentParameterMismatchException`,
@@ -61,7 +61,7 @@ fails the same way.
 
 > **AWS\_REQUEST\_FAILED**: `"AWS_REQUEST_FAILED"`
 
-Defined in: [shared/errors/error-code.ts:71](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L71)
+Defined in: [shared/errors/error-code.ts:81](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L81)
 
 An AWS request failed and no narrower code applies; `context.awsErrorName` names it.
 
@@ -71,7 +71,7 @@ An AWS request failed and no narrower code applies; `context.awsErrorName` names
 
 > **BATCH\_WRITE\_INCOMPLETE**: `"BATCH_WRITE_INCOMPLETE"`
 
-Defined in: [shared/errors/error-code.ts:13](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L13)
+Defined in: [shared/errors/error-code.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L23)
 
 ***
 
@@ -79,7 +79,7 @@ Defined in: [shared/errors/error-code.ts:13](https://github.com/FarukAda/aws-lan
 
 > **COMPENSATION\_FAILED**: `"COMPENSATION_FAILED"`
 
-Defined in: [shared/errors/error-code.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L24)
+Defined in: [shared/errors/error-code.ts:34](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L34)
 
 ***
 
@@ -87,7 +87,7 @@ Defined in: [shared/errors/error-code.ts:24](https://github.com/FarukAda/aws-lan
 
 > **COMPRESSION\_LIMIT**: `"COMPRESSION_LIMIT"`
 
-Defined in: [shared/errors/error-code.ts:14](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L14)
+Defined in: [shared/errors/error-code.ts:24](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L24)
 
 ***
 
@@ -95,7 +95,7 @@ Defined in: [shared/errors/error-code.ts:14](https://github.com/FarukAda/aws-lan
 
 > **CONDITION\_CONFLICT**: `"CONDITION_CONFLICT"`
 
-Defined in: [shared/errors/error-code.ts:11](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L11)
+Defined in: [shared/errors/error-code.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L21)
 
 ***
 
@@ -103,7 +103,7 @@ Defined in: [shared/errors/error-code.ts:11](https://github.com/FarukAda/aws-lan
 
 > **CONTENTION**: `"CONTENTION"`
 
-Defined in: [shared/errors/error-code.ts:49](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L49)
+Defined in: [shared/errors/error-code.ts:59](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L59)
 
 Another request was writing the same item or object at the same moment:
 `TransactionConflictException`, `TransactionInProgressException`,
@@ -117,7 +117,7 @@ capacity would not help.
 
 > **FORMAT\_UNSUPPORTED**: `"FORMAT_UNSUPPORTED"`
 
-Defined in: [shared/errors/error-code.ts:5](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L5)
+Defined in: [shared/errors/error-code.ts:15](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L15)
 
 A row or payload written in a format version newer than this package reads.
 
@@ -127,7 +127,7 @@ A row or payload written in a format version newer than this package reads.
 
 > **NOT\_FOUND**: `"NOT_FOUND"`
 
-Defined in: [shared/errors/error-code.ts:62](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L62)
+Defined in: [shared/errors/error-code.ts:72](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L72)
 
 The table, index, bucket or object is not there: `ResourceNotFoundException`,
 S3's `NoSuchBucket` or `NoSuchKey`. Not an absent item — a read of a key that
@@ -139,7 +139,7 @@ holds nothing returns nothing.
 
 > **PAYLOAD\_CORRUPT**: `"PAYLOAD_CORRUPT"`
 
-Defined in: [shared/errors/error-code.ts:20](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L20)
+Defined in: [shared/errors/error-code.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L30)
 
 A stored payload's bytes do not match the form its row declares: the row
 says gzip and they are not, or they are not the serializer's output. The
@@ -151,7 +151,7 @@ payload can never be read, so it is reported rather than retried.
 
 > **RESULT\_TRUNCATED**: `"RESULT_TRUNCATED"`
 
-Defined in: [shared/errors/error-code.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L22)
+Defined in: [shared/errors/error-code.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L32)
 
 ***
 
@@ -159,7 +159,7 @@ Defined in: [shared/errors/error-code.ts:22](https://github.com/FarukAda/aws-lan
 
 > **RETRY\_EXHAUSTED**: `"RETRY_EXHAUSTED"`
 
-Defined in: [shared/errors/error-code.ts:12](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L12)
+Defined in: [shared/errors/error-code.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L22)
 
 ***
 
@@ -167,7 +167,7 @@ Defined in: [shared/errors/error-code.ts:12](https://github.com/FarukAda/aws-lan
 
 > **S3\_OFFLOAD\_FAILED**: `"S3_OFFLOAD_FAILED"`
 
-Defined in: [shared/errors/error-code.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L21)
+Defined in: [shared/errors/error-code.ts:31](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L31)
 
 ***
 
@@ -175,7 +175,7 @@ Defined in: [shared/errors/error-code.ts:21](https://github.com/FarukAda/aws-lan
 
 > **SERVICE\_UNAVAILABLE**: `"SERVICE_UNAVAILABLE"`
 
-Defined in: [shared/errors/error-code.ts:41](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L41)
+Defined in: [shared/errors/error-code.ts:51](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L51)
 
 AWS or the network failed transiently: `InternalServerError`,
 `InternalFailure`, `ServiceUnavailable`, S3's `InternalError`, a request
@@ -190,7 +190,7 @@ may still have been applied.
 
 > **THROTTLED**: `"THROTTLED"`
 
-Defined in: [shared/errors/error-code.ts:32](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L32)
+Defined in: [shared/errors/error-code.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L42)
 
 AWS throttled the request: `ProvisionedThroughputExceededException`,
 `ThrottlingException`, `RequestLimitExceeded`, S3's `SlowDown`, an HTTP
@@ -204,7 +204,7 @@ quota.
 
 > **UNEXPECTED\_ERROR**: `"UNEXPECTED_ERROR"`
 
-Defined in: [shared/errors/error-code.ts:78](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L78)
+Defined in: [shared/errors/error-code.ts:88](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L88)
 
 A failure that came neither from this package's own checks nor from AWS:
 a `VectorBackend`, an `Embeddings` model, a `serde` or a `MultiSessionHistory`
@@ -217,4 +217,4 @@ threw something of its own, or this package has a bug. The original is
 
 > **VALIDATION**: `"VALIDATION"`
 
-Defined in: [shared/errors/error-code.ts:3](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L3)
+Defined in: [shared/errors/error-code.ts:13](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/error-code.ts#L13)

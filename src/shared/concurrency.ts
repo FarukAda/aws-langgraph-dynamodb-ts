@@ -1,4 +1,14 @@
 /**
+ * Hides how many calls run at once, and which failure a fan-out reports.
+ *
+ * A caller maps over rows, shards or payloads and gets results in input order.
+ * The worker pool, the floor that turns a bad limit into sequential work
+ * rather than none, and the rule that the first rejection wins and stops new
+ * work are decided here, as is the default of eight in flight, so tuning it
+ * touches no reader.
+ */
+
+/**
  * Offloaded payloads decoded at once by one read (`getTuple` pending writes,
  * `search` candidates, `getMessages`). Each offloaded row costs one S3 GET, so
  * a serial loop scaled latency linearly with the row count; eight in flight

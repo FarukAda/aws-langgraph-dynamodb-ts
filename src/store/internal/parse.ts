@@ -1,3 +1,14 @@
+/**
+ * Hides what a well-formed store operation is (record 21).
+ *
+ * Every namespace, key, address, search, listing and batch is checked here,
+ * once, into branded types only these parsers build, and each operation's
+ * kind is decided from its shape here and nowhere else. Which of upstream's
+ * own rules apply — no `.` in a label and no `"langgraph"` root, for `put()`
+ * alone — and every default a caller may leave out are settled here too, so
+ * no later step checks again.
+ */
+
 import type {
   BaseStore,
   ListNamespacesOperation,

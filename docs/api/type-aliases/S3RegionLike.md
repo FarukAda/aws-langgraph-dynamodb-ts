@@ -8,6 +8,6 @@
 
 > **S3RegionLike** = `string` \| (() => `Promise`\<`string`\>)
 
-Defined in: [shared/codec/s3/client-types.ts:2](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L2)
+Defined in: [shared/codec/s3/client-types.ts:12](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L12)
 
 A region as the SDK accepts it: a string or a provider resolving to one.

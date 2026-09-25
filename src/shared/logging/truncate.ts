@@ -1,4 +1,14 @@
 /**
+ * Hides how much of an unchecked string a line may quote.
+ *
+ * A log line or public error message that quotes a string this package did
+ * not length-check passes it through here. The caps for an identifier, for a
+ * relayed cause's prose and for a list of labels, and the mark that states a
+ * cut value's real length, are chosen here, so a call site says what kind of
+ * value it quotes and never how many characters it keeps.
+ */
+
+/**
  * Characters of an unchecked string one log line or one public error message
  * carries, past which it is cut and marked with its real length.
  *

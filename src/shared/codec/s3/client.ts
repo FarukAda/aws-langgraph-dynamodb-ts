@@ -1,3 +1,13 @@
+/**
+ * Hides that the S3 SDK is loaded on first use, and how its client is set up.
+ *
+ * An adapter without offload never imports the optional peer; the first
+ * offload does, once, and a missing install surfaces as `VALIDATION` naming
+ * the remedy (record 1). The client built here makes no retries of its own, so
+ * this package's retry is the only layer (record 14), and its idle timer
+ * bounds a stalled transfer without bounding a slow one.
+ */
+
 import type { S3Client } from '@aws-sdk/client-s3';
 
 import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../dynamodb/client';

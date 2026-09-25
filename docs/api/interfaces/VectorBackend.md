@@ -6,7 +6,7 @@
 
 # Interface: VectorBackend
 
-Defined in: [store/vector-backend.ts:40](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L40)
+Defined in: [store/vector-backend.ts:50](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L50)
 
 Pluggable vector index. When provided to the store, embeddings live here and
 similarity search is delegated to it; DynamoDB still holds the canonical item.
@@ -24,7 +24,7 @@ entry costs a wasted read, never a wrong answer.
 
 > **delete**(`namespace`, `key`): `Promise`\<`void`\>
 
-Defined in: [store/vector-backend.ts:82](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L82)
+Defined in: [store/vector-backend.ts:92](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L92)
 
 Drop one item's vector.
 
@@ -57,7 +57,7 @@ such put.
 
 > `optional` **listKeys**(`namespacePrefix`): `Promise`\<[`VectorRef`](VectorRef.md)[]\>
 
-Defined in: [store/vector-backend.ts:92](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L92)
+Defined in: [store/vector-backend.ts:102](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L102)
 
 Optionally enumerate every stored vector under `namespacePrefix`. Enables
 `reconcileVectorIndex` to prune vectors orphaned by a lost delete. Omit it
@@ -83,7 +83,7 @@ outside the scope for pruning, and the reconcile is what would delete it.
 
 > **query**(`namespacePrefix`, `queryVector`, `topK`): `Promise`\<[`VectorMatch`](VectorMatch.md)[]\>
 
-Defined in: [store/vector-backend.ts:69](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L69)
+Defined in: [store/vector-backend.ts:79](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L79)
 
 Return up to `topK` matches under `namespacePrefix`, best first.
 
@@ -121,7 +121,7 @@ the page.
 
 > **upsert**(`namespace`, `key`, `vector`): `Promise`\<`void`\>
 
-Defined in: [store/vector-backend.ts:55](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L55)
+Defined in: [store/vector-backend.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/vector-backend.ts#L65)
 
 Store one item's vector.
 

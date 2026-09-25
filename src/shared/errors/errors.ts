@@ -1,3 +1,13 @@
+/**
+ * Hides what each of this library's errors carries.
+ *
+ * A failure site names the factory for its code and the facts it has. The
+ * message wording, which facts go into `context` or `details`, copying a list
+ * a caller reads from a `catch` long after the throw, redacting quoted cause
+ * text, and a stack that starts at the caller rather than inside the factory
+ * are decided here once per code, on the one error class (record 19).
+ */
+
 import type { WriteRequest } from '../dynamodb/client';
 import { redactedMessage } from '../logging/secret-patterns';
 import {

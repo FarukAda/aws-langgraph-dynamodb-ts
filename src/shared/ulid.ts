@@ -1,3 +1,13 @@
+/**
+ * Hides how a sortable, unique id is made from the clock and random bytes.
+ *
+ * A caller gets ids whose byte order is their creation order, and a prefix
+ * that bounds every id from a given millisecond, without knowing the alphabet,
+ * the width of the time field or where the randomness comes from. One
+ * generator's ids strictly increase whatever the clock does, and a millisecond
+ * the encoding cannot hold is refused rather than wrapped.
+ */
+
 import { randomBytes } from 'node:crypto';
 
 import { validationError } from './errors/errors';

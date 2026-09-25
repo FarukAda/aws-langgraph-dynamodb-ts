@@ -1,3 +1,13 @@
+/**
+ * Hides what a single read counts as absent, and how it outlives an overwrite.
+ *
+ * A get reads its row strongly consistently and answers `null` alike for a
+ * missing row, an expired one and a row this adapter does not own. When the
+ * object an offloaded row names is deleted between the row read and the
+ * download, one re-read settles whether the item was replaced, removed or
+ * truly lost. A caller gets an item or `null` and never sees the race.
+ */
+
 import type { Item } from '@langchain/langgraph-checkpoint';
 
 import { nowSeconds } from '../../shared/clock';

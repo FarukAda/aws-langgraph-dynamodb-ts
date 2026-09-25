@@ -1,3 +1,13 @@
+/**
+ * Hides how a batch runs concurrently and still in the order it was written.
+ *
+ * Operations on different items, and reads of the same item, share a run and
+ * go in flight together; anything that could observe or overwrite an earlier
+ * operation's effect starts the next run. A caller sees the order it wrote —
+ * a `get` after a `put` of the same item sees it, a `search` sees every write
+ * before it — and how independence is judged can change without the store.
+ */
+
 import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
 import type { ParsedOperation, StoreAddress } from './parse';
 

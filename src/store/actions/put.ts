@@ -1,3 +1,13 @@
+/**
+ * Hides the order a put happens in.
+ *
+ * A put reads the row it replaces for its `createdAt`, embeds once — a vector
+ * per extracted path onto the row, or one vector for the `vectorBackend`,
+ * never both — writes the row, and only then syncs the backend, best-effort.
+ * A `null` value takes the delete path instead. A caller hands over an item;
+ * that the table commits first and the vector copy follows is decided here.
+ */
+
 import { randomUUID } from 'node:crypto';
 
 import { nowIso } from '../../shared/clock';

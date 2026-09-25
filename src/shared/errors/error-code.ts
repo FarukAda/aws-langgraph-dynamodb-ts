@@ -1,3 +1,13 @@
+/**
+ * Hides which outcomes a caller can tell apart.
+ *
+ * Every error this library raises carries one of these codes, and a caller
+ * branches on the code rather than on a class, a message or an AWS name. What
+ * produces each code is decided elsewhere, so a newly seen AWS failure maps
+ * onto an existing code without touching this list, and the list is frozen so
+ * no consumer sharing it in a process can change what a comparison means.
+ */
+
 /** Stable, branchable classification for every error this library throws. */
 export enum ErrorCode {
   VALIDATION = 'VALIDATION',

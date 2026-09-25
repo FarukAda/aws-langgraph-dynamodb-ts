@@ -1,3 +1,13 @@
+/**
+ * Hides what a secret looks like.
+ *
+ * Which key names mark their value as a secret, which credential formats are
+ * recognised in free text, how a match is replaced while the field's name is
+ * kept, and how a caught value's message is redacted before another error
+ * quotes it are decided here. The redacting logger and every error that
+ * quotes its cause share these rules, so a new credential shape is one edit.
+ */
+
 import { toError } from '../errors/base-error';
 import { truncateRelayedText } from './truncate';
 

@@ -1,3 +1,13 @@
+/**
+ * Hides which options every adapter shares.
+ *
+ * The table, the client, the ttl, the logger, the retry policy, the recency
+ * index, the read concurrency, the codec options and per-call cancellation are
+ * declared once here, so the checkpointer, the store and the history accept
+ * the same keys with the same meaning, and an adapter-wide option is added in
+ * one place. This module holds their types only; checking them is elsewhere.
+ */
+
 import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 
 import type { CompressionConfig } from './codec/compression';

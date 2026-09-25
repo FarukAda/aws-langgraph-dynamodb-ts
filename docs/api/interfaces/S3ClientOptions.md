@@ -6,7 +6,7 @@
 
 # Interface: S3ClientOptions
 
-Defined in: [shared/codec/s3/client-types.ts:11](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L11)
+Defined in: [shared/codec/s3/client-types.ts:21](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L21)
 
 The S3 client options this library reads (`region`) or sets (`maxAttempts`),
 open to every other `S3ClientConfig` key.
@@ -21,7 +21,7 @@ open to every other `S3ClientConfig` key.
 
 > `optional` **maxAttempts?**: `number`
 
-Defined in: [shared/codec/s3/client-types.ts:13](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L13)
+Defined in: [shared/codec/s3/client-types.ts:23](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L23)
 
 ***
 
@@ -29,4 +29,4 @@ Defined in: [shared/codec/s3/client-types.ts:13](https://github.com/FarukAda/aws
 
 > `optional` **region?**: [`S3RegionLike`](../type-aliases/S3RegionLike.md)
 
-Defined in: [shared/codec/s3/client-types.ts:12](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L12)
+Defined in: [shared/codec/s3/client-types.ts:22](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/client-types.ts#L22)

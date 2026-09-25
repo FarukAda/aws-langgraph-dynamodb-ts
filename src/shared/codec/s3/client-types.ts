@@ -1,3 +1,13 @@
+/**
+ * Hides the S3 SDK's own types from this package's declarations.
+ *
+ * The S3 client, its config and a command are described by the members this
+ * package touches, so no shipped declaration imports the optional
+ * `@aws-sdk/client-s3` peer and a caller without it installed still compiles
+ * (record 1). A real `S3Client` or `S3ClientConfig` satisfies these shapes as
+ * it is, so a caller who has the SDK passes its own values unchanged.
+ */
+
 /** A region as the SDK accepts it: a string or a provider resolving to one. */
 export type S3RegionLike = string | (() => Promise<string>);
 
