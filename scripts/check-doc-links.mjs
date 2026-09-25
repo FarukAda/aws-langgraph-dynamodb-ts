@@ -31,11 +31,18 @@ export function documentList(root) {
     'CODE_OF_CONDUCT.md',
     'CHANGELOG.md',
     '.github/PULL_REQUEST_TEMPLATE.md',
+    'docs/coding-guidelines.md',
   ];
-  const under = (dir) =>
-    readdirSync(join(root, dir))
+  // A directory that does not exist yet contributes no documents rather than
+  // crashing readdirSync with an ENOENT — MINIMUM_FILES below is the signal
+  // for "too few documents found", not a raw filesystem stack trace.
+  const under = (dir) => {
+    const full = join(root, dir);
+    if (!existsSync(full) || !statSync(full).isDirectory()) return [];
+    return readdirSync(full)
       .filter((name) => name.endsWith('.md'))
       .map((name) => `${dir}/${name}`);
+  };
   return [...fixed, ...under('docs/decisions'), ...under('docs/evidence')];
 }
 
@@ -89,19 +96,39 @@ export function anchorsOf(text) {
   return anchors;
 }
 
-/** Every link target in a document, outside code, with its 1-based line. */
+/** A `[label]: target "title"` definition line, outside code. */
+const DEFINITION = /^ {0,3}\[([^\]]+)\]:\s*<?([^\s>]+)>?/;
+
+/**
+ * Every link target in a document, outside code, with its 1-based line.
+ *
+ * Covers inline `[text](target)`, HTML `href="target"`, and reference-style
+ * `[text][ref]`, collapsed `[ref][]` and shortcut `[ref]` — resolved against
+ * a `[ref]: target` definition line, matched case-insensitively as GitHub
+ * does. A `[ref]` with no definition is plain text, not a link, and a
+ * definition line is not itself counted as a use of its label.
+ */
 export function linksOf(text) {
+  const stripped = withoutCode(text).split('\n');
+  const definitions = new Map();
+  for (const line of stripped) {
+    const definition = DEFINITION.exec(line);
+    if (definition) definitions.set(definition[1].trim().toLowerCase(), definition[2]);
+  }
   const links = [];
-  withoutCode(text)
-    .split('\n')
-    .forEach((line, index) => {
-      for (const [, target] of line.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)) {
-        links.push({ target, line: index + 1 });
-      }
-      for (const [, target] of line.matchAll(/href="([^"]+)"/g)) {
-        links.push({ target, line: index + 1 });
-      }
-    });
+  stripped.forEach((line, index) => {
+    if (DEFINITION.test(line)) return;
+    for (const [, target] of line.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)) {
+      links.push({ target, line: index + 1 });
+    }
+    for (const [, target] of line.matchAll(/href="([^"]+)"/g)) {
+      links.push({ target, line: index + 1 });
+    }
+    for (const [, label1, label2] of line.matchAll(/\[([^\]]+)\](?:\[([^\]]*)\])?(?!\()/g)) {
+      const target = definitions.get((label2 || label1).trim().toLowerCase());
+      if (target !== undefined) links.push({ target, line: index + 1 });
+    }
+  });
   return links;
 }
 
@@ -122,7 +149,11 @@ export function brokenLinks(files, read, isFile, isDirectory) {
   for (const file of files) {
     for (const { target, line } of linksOf(read(file))) {
       if (/^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
-      const [pathPart, anchor] = target.split('#');
+      const [rawPath, anchor] = target.split('#');
+      // A `?query` selects nothing on a filesystem: drop it before resolving
+      // the path, after the `#anchor` split so a query preceding a fragment
+      // does not swallow it.
+      const pathPart = rawPath.split('?')[0];
       const path = pathPart === '' ? file : relative('.', join(dirname(file), decodeURI(pathPart))).split('\\').join('/');
       if (pathPart !== '' && !isFile(path) && !isDirectory(path)) {
         problems.push(`${file}:${line}: ${target} — no such file`);
