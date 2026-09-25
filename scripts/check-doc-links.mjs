@@ -32,6 +32,8 @@ export function documentList(root) {
     'CHANGELOG.md',
     '.github/PULL_REQUEST_TEMPLATE.md',
     'docs/coding-guidelines.md',
+    'docs/README.md',
+    'examples/README.md',
   ];
   // A directory that does not exist yet contributes no documents rather than
   // crashing readdirSync with an ENOENT — MINIMUM_FILES below is the signal
