@@ -3,7 +3,12 @@ import * as ts from 'typescript';
 /** One comment in `src` that breaks the comment rules, by 1-based line. */
 export interface CommentViolation {
   line: number;
-  rule: 'block' | 'directive' | 'jsdoc-documents-nothing' | 'line-comment-on-declaration';
+  rule:
+    | 'block'
+    | 'directive'
+    | 'jsdoc-documents-nothing'
+    | 'jsdoc-inside-body'
+    | 'line-comment-on-declaration';
 }
 
 /** A comment that switches a checker off. */
@@ -122,9 +127,10 @@ export function commentRanges(source: string): ts.CommentRange[] {
  * Every comment in `source` that breaks the rules of decision record 23:
  *
  * - a `/** *\/` block is interface documentation, so it is either the module
- *   header — the file's first comment, with nothing before it — or the leading
- *   comment of a declaration; anywhere else it is an implementation comment
- *   and is written with `//`;
+ *   header — the file's first comment, with nothing before it — or the
+ *   leading comment of a declaration outside every function body; anywhere
+ *   else — including above a local declaration inside a function body — it is
+ *   an implementation comment and is written with `//`;
  * - a declaration outside a function body is documented with JSDoc, never
  *   with `//`, so everything typedoc and an editor show is JSDoc;
  * - a plain `/* *\/` block is refused, and so is a directive comment
@@ -151,6 +157,8 @@ export function commentViolations(source: string): CommentViolation[] {
       violations.push({ line, rule: 'block' });
     } else if (!isHeader && !documenting.all.has(range.pos)) {
       violations.push({ line, rule: 'jsdoc-documents-nothing' });
+    } else if (!isHeader && !documenting.outsideBodies.has(range.pos)) {
+      violations.push({ line, rule: 'jsdoc-inside-body' });
     }
   }
   return violations;

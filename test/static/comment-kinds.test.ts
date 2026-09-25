@@ -22,6 +22,37 @@ describe('commentViolations', () => {
     expect(commentViolations(source)).toEqual([]);
   });
 
+  it('accepts JSDoc on a top-level declaration and on a class member', () => {
+    const source = [
+      '/** A top-level constant. */',
+      'export const a = 1;',
+      '',
+      'class C {',
+      '  /** A class member. */',
+      '  b = 2;',
+      '}',
+    ].join('\n');
+    expect(commentViolations(source)).toEqual([]);
+  });
+
+  it('refuses a JSDoc block that documents a local declaration inside a function body', () => {
+    const source = 'function f() {\n  /** the answer */\n  const x = 42;\n  return x;\n}';
+    expect(commentViolations(source)).toEqual([{ line: 2, rule: 'jsdoc-inside-body' }]);
+  });
+
+  it('refuses a JSDoc block on a nested declaration, several function bodies deep', () => {
+    const source = [
+      'function outer() {',
+      '  return function inner() {',
+      '    /** the answer */',
+      '    const x = 42;',
+      '    return x;',
+      '  };',
+      '}',
+    ].join('\n');
+    expect(commentViolations(source)).toEqual([{ line: 3, rule: 'jsdoc-inside-body' }]);
+  });
+
   it('accepts a line comment inside a function body, above a statement or a local', () => {
     const source = 'function f() {\n  // why\n  g();\n  // and this\n  const x = 1;\n}';
     expect(commentViolations(source)).toEqual([]);

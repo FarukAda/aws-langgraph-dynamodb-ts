@@ -21,8 +21,9 @@ an explanation inside a body with `//`.
 ## Decision
 
 A `/** */` block is interface documentation. It is the module's header — the
-first thing in the file — or it sits directly above a declaration: a
-function, class, interface, type, enum, variable, member or parameter. Any
+first thing in the file — or it sits directly above a declaration outside
+every function body: a function, class, interface, type, enum, variable,
+member or parameter. Any
 other comment is a `//` line of its own; ESLint's `no-inline-comments` keeps
 comments off lines of code. A declaration outside a function body is never
 documented with `//`, so everything typedoc and an editor show is JSDoc. A
