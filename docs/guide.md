@@ -10,6 +10,33 @@ and its S3 payload and the sweep that finds a stranded one, and the on-disk layo
 error/version guarantees behind [Versioning and compatibility](../README.md#versioning-and-compatibility).
 Every fact here is read from the same `src` the README is checked against.
 
+## Contents
+
+- [Infrastructure as code](#infrastructure-as-code)
+- [S3 offloading](#s3-offloading)
+- [S3 lifecycle rules in depth](#s3-lifecycle-rules-in-depth)
+- [Overwrite races and orphaned objects](#overwrite-races-and-orphaned-objects)
+- [Write idempotency](#write-idempotency)
+- [What a token guarantees, and what it does not](#what-a-token-guarantees-and-what-it-does-not)
+- [What a token costs](#what-a-token-costs)
+- [What a partition delete promises](#what-a-partition-delete-promises)
+- [What a partition delete costs](#what-a-partition-delete-costs)
+- [TTL expiry](#ttl-expiry)
+- [Plain (metadata) search](#plain-metadata-search)
+- [Semantic search](#semantic-search)
+- [Vector index consistency](#vector-index-consistency)
+- [Checkpointer semantics](#checkpointer-semantics)
+- [Chat history semantics](#chat-history-semantics)
+- [What each operation costs](#what-each-operation-costs)
+- [Cost in request units: a worked example](#cost-in-request-units-a-worked-example)
+- [Monitoring](#monitoring)
+- [What can still go wrong](#what-can-still-go-wrong)
+- [Finding rows whose payload was released](#finding-rows-whose-payload-was-released)
+- [Lambda and other short-lived runtimes](#lambda-and-other-short-lived-runtimes)
+- [The on-disk layout](#the-on-disk-layout)
+- [Errors, logs and row versions](#errors-logs-and-row-versions)
+- [Differences from the reference implementations](#differences-from-the-reference-implementations)
+
 ## Infrastructure as code
 
 One table backs all three adapters — the [README's Infrastructure setup](../README.md#infrastructure-setup) section creates it with the AWS CLI or against DynamoDB Local. These two definitions are the same table, for a deployment that already provisions with AWS CDK or Terraform.
