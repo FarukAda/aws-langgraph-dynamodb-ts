@@ -71,12 +71,14 @@ function withoutCode(text) {
 
 /** GitHub's anchor for a heading's text. */
 export function slugify(heading) {
-  return heading
-    .trim()
-    .toLowerCase()
-    .replace(/<[^>]+>/g, '')
-    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
-    .replace(/\s/g, '-');
+  // Strip tags until none is left, so a nested one such as `<<b>i>` cannot
+  // leave a tag behind after a single pass.
+  let text = heading.trim().toLowerCase();
+  for (let previous = ''; previous !== text; ) {
+    previous = text;
+    text = text.replace(/<[^>]+>/g, '');
+  }
+  return text.replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
 }
 
 /** Every anchor a document defines, with GitHub's duplicate suffixes. */

@@ -9,6 +9,12 @@ test('slugs a heading the way GitHub does', () => {
   assert.equal(slugify('Migrating from 0.7.x → 0.8.0'), 'migrating-from-07x--080');
 });
 
+test('strips a nested tag, which one pass would leave behind', () => {
+  assert.equal(slugify('A <<b>i> tag'), 'a-i-tag');
+  assert.equal(slugify('A <b><i>x</i></b> tag'), 'a-x-tag');
+  assert.equal(slugify('<sup>1</sup> Note'), '1-note');
+});
+
 test('numbers repeated headings and ignores headings in code', () => {
   const text = ['## Setup', '```bash', '# not a heading', '```', '## Setup'].join('\n');
   assert.deepEqual([...anchorsOf(text)], ['setup', 'setup-1']);
