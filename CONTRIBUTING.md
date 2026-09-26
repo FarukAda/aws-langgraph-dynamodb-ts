@@ -14,6 +14,16 @@ npm run lint && npm run typecheck && npm run typecheck:all && npm test && npm ru
 
 `npm test` runs the unit tier: every test under `test/unit`, the static guards under `test/static`, the type locks under `test/types` and the property tests under `test/property`, with 100 % coverage enforced on branches, functions, lines and statements. It must stay green and at 100 % for every commit.
 
+## Before opening a PR
+
+- `npm run lint`, `npm run typecheck` and `npm run typecheck:all` (the whole program: `src`, `test` and the configs) pass with no output.
+- `npm test` passes at 100 % branch, function, line and statement coverage — a PR that drops it fails CI.
+- `npm run build && npm run pack:check` succeeds; the latter verifies the tarball's listing, `publint` and `@arethetypeswrong/cli`.
+- `npm run check:docs` passes when a `ts`/`typescript` sample in the README, `CONTRIBUTING.md`, `docs/guide.md` or the CHANGELOG changed, and `npm run check:links` when a heading moved or a relative link changed.
+- `npm run docs` is re-run, and the regenerated `docs/api` committed, when public JSDoc changed.
+- New behaviour has a new test, and anything a user can observe gets a `CHANGELOG.md` entry under `[Unreleased]`.
+- `npm run unused` (knip), `npm run depcheck` and `npm run cpd` (jscpd) are clean — CI's hygiene job runs all three, alongside `check:docs` and `check:links`.
+
 ## The rules the guards enforce
 
 The static guards fail the build rather than rely on review:
@@ -42,7 +52,7 @@ The static guards fail the build rather than rely on review:
   - The derived set must include the three adapters, `DynamoDBSessionChatMessageHistory`, `DynamoDBFactory` and `backfillRecencyIndex`, so a derivation that finds nothing fails too (`test/static/guarded-methods.test.ts`, `test/static/public-declarations.test.ts`);
 - no `.ts` file in `src` or `test`, no `.mjs` file in `test` or directly in `scripts` or `examples`, and no hand-edited file — a `.md`, `.json`, `.yml`, `.yaml` or `*.config.ts` file directly in the repository root, except `package-lock.json`, which npm writes, or any file under `.github` but an image, PDF or archive — refers to the planning process — a numbered ruling, a plan task id or numbered plan task, a review-round label, a reference to a plan's brief, a design-decision id in a comment, or an audit finding id — a short letter prefix and a number, alone, in a parenthesised list, or plain in text — because a reader has no way to resolve it; the claim ids of `docs/evidence` (`E-14`) and the README's divergence ids (`V-26`) resolve and are allowed, and the generated `docs/api` is not scanned, since it is rebuilt from the `src` comments (`test/static/plan-references.test.ts`);
 - those same files, and the surface baseline, hold no raw control character — a C0 control other than tab, LF and CR, DEL, a C1 control, an unpaired surrogate, or a byte-order mark anywhere but the first character — because such a character is invisible to readers, diffs and review; write one a test needs as an escape sequence (`test/static/control-characters.test.ts`);
-- every `ts`/`typescript` sample in the README, this file and the CHANGELOG compiles against `src` (`npm run check:docs`); a block that cannot is marked `<!-- sample:skip reason -->`, and the count of skips is checked against `EXPECTED_SKIPS` in `scripts/check-doc-samples.mjs`, so a new skip is a reviewed decision rather than a silent one; and every relative link and `#anchor` across the hand-written documents resolves (`npm run check:links`).
+- every `ts`/`typescript` sample in the README, this file, `docs/guide.md` and the CHANGELOG compiles against `src` (`npm run check:docs`); a block that cannot is marked `<!-- sample:skip reason -->`, and the count of skips is checked against `EXPECTED_SKIPS` in `scripts/check-doc-samples.mjs`, so a new skip is a reviewed decision rather than a silent one; and every relative link and `#anchor` across the hand-written documents resolves (`npm run check:links`).
 
 Write the failing test first, then the code. A change that touches behaviour needs a unit test; a change that touches DynamoDB semantics also needs an integration or conformance test.
 
