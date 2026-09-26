@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0-rc.2] - 2026-09-26
+## [1.0.0-rc.2] - 2026-09-27
 
 Relative to `1.0.0-rc.1`, every adapter now refuses a caller's mistake instead of ignoring it, crashing, answering with a silently empty result, or reporting it as an AWS failure: a refused input raises a `DynamoDBLangGraphError` with `code === ErrorCode.VALIDATION` naming the argument, in every case listed under *Changed (breaking)* below. Every error this package throws is one class, `DynamoDBLangGraphError`, told apart by `code` rather than by a menagerie of subclasses — throttled, unavailable, contended, denied, not found, rejected, and so on — with the two codes that report more than a message carrying it as typed `details`; the retry layer's default retryable names are derived from the same classification table. Caller input is now parsed once, at each public method's boundary, into types only a parser can build, closing a race where mutating an argument object mid-call changed what had already been validated. The public API is otherwise unchanged from `1.0.0-rc.1`: every method signature and exported type is the same, and so is the field each refusal names, except where a change below says otherwise.
 
