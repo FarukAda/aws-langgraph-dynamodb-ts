@@ -1420,7 +1420,7 @@ aws dynamodb update-time-to-live \
   --time-to-live-specification "Enabled=true,AttributeName=ttl"
 ```
 
-The recency index (the last two `attribute-definitions` and the `--global-secondary-indexes` flag) is optional, exactly as in the CDK and Terraform samples above: drop them, run `backfillRecencyIndex()` and add the index later, then set `indexName: 'gsi1'` on the adapters. The GSI's projection must be `ALL` — the recency-index reads listed under [Maintenance operations](#maintenance-operations) read the row straight off the index, not through a follow-up `GetItem`.
+The recency index (the last two `attribute-definitions` and the `--global-secondary-indexes` flag) is optional, exactly as in the CDK and Terraform definitions in the guide: drop them, run `backfillRecencyIndex()` and add the index later, then set `indexName: 'gsi1'` on the adapters. The GSI's projection must be `ALL` — the recency-index reads listed under [Maintenance operations](#maintenance-operations) read the row straight off the index, not through a follow-up `GetItem`.
 
 </details>
 
