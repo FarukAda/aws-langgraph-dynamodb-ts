@@ -23,7 +23,7 @@ Caller input is now parsed once, at each public method's boundary, into types th
 - **The `THROTTLED` error table row no longer implies an adapter's `retry` takes a configurable list of retryable errors.** `retry.retryableErrors` is not a key an adapter accepts — only `backfillRecencyIndex`'s own `retry` has one — and the row now says so, and that its `isRetryable` replaces the whole retry decision rather than only widening the HTTP 429 case, so it can leave a 429 out too.
 - **The metadata-filtering sample named six filter operators where the store accepts eight.** `$in` and `$nin` were missing from the comment and from the sample filter itself.
 - **The usage examples no longer page `listSessions` by a `cursor` without `indexName`.** A cursor requires the recency index and is refused without it, so the old quick starts compiled and still failed the first time a reader ran them; the known limitations section now states the requirement directly.
-- **The CDK and Terraform infrastructure snippets now deploy.** The CDK sample referenced an undeclared table and used `this` outside a construct; the Terraform attribute blocks were not valid HCL.
+- **The CDK and Terraform infrastructure snippets are now valid.** The CDK sample referenced an undeclared table and used `this` outside a construct; the Terraform attribute blocks were not valid HCL.
 - **The architecture decision record count was six short.** The README quoted eighteen records where twenty-four exist.
 - **The testing table's comment rule matched no guard.** It described the repository's rule as JSDoc-only comments; the enforced rule (decision record 23) is `/** */` for interface documentation and a `//` line for everything else, with no plain block comments and no lint or TypeScript directives.
 
@@ -39,6 +39,10 @@ Caller input is now parsed once, at each public method's boundary, into types th
 - **A per-class API reference links every documented method to its generated entry under [`docs/api`](docs/api/README.md), and a project structure section describes the repository's layout.**
 - **`docs/README.md` and `examples/README.md`** index the hand-written docs and the example scripts; every relative link, reference-style link and `#anchor` across the hand-written documents is now checked in CI (`npm run check:links`).
 - **`CONTRIBUTING.md`, the bug report template and the pull request template point at the new checks and sections**: `CONTRIBUTING.md` names both documentation checks and what each CI job runs, and gained a *Reporting bugs* section; the bug report template asks for the module system, the recency index and the session adapter; the pull request template's checklist now includes `check:docs` and `check:links`.
+- **A *Tracing and metrics* section** documents the OpenTelemetry-style span and metric names this package emits, beside the configuration reference.
+- **`package.json`'s `description` and `keywords` name every adapter and feature.** The description named only the checkpoint saver and memory store; it now also names chat message history, semantic search, S3 offload, compression and TTL, and `keywords` gained `checkpoint-saver`, `long-term-memory`, `chat-history`, `semantic-search`, `s3` and `typescript`.
+- **`SUPPORT.md` states the project is independent** — not affiliated with, endorsed by, or sponsored by AWS or LangChain, Inc. — and that a blank issue is fine for a question with no matching template; `.github/ISSUE_TEMPLATE/config.yml` sets `blank_issues_enabled: true` to allow one.
+- **`S3OffloadConfig.thresholdBytes`'s JSDoc now prices the store's inline vectors per configured field, not as one embedding.** The store embeds one vector per `index.fields` path, so `fields: ['title', 'body', 'summary']` at 1024 dims costs roughly 30 KB against the item's threshold, not the ~10 KB the doc previously implied.
 
 ### Internal
 

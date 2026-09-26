@@ -2033,7 +2033,7 @@ This package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### The public API
 
-The public API is everything exported from the package entry point (`dist/index.js` / `dist/index.d.ts`): the five classes `DynamoDBSaver`, `DynamoDBStore`, `DynamoDBChatMessageHistory`, `DynamoDBSessionChatMessageHistory` and `DynamoDBFactory`; the error model (`DynamoDBLangGraphError`, `ErrorCode`, `isDynamoDBLangGraphError`); the operator tool `backfillRecencyIndex`; the logging helpers (`redactLogger`, `redactSecrets`); and every exported type. A test (`test/types/public-surface.test.ts`) enumerates the set and pins the adapter method signatures.
+The public API is everything exported from the package entry point (`dist/index.js` / `dist/index.d.ts`): the five classes `DynamoDBSaver`, `DynamoDBStore`, `DynamoDBChatMessageHistory`, `DynamoDBSessionChatMessageHistory` and `DynamoDBFactory`; the error model (`DynamoDBLangGraphError`, `ErrorCode`, `isDynamoDBLangGraphError`); the operator tool `backfillRecencyIndex`; the logging helpers (`redactLogger`, `redactSecrets`); the `JSON_SERDE` serializer; and every exported type. A test (`test/types/public-surface.test.ts`) enumerates the set and pins the adapter method signatures.
 
 - A **minor** may add exports, add optional options and parameters, add optional fields to returned objects, and widen accepted inputs.
 - A **patch** changes behaviour only to fix a defect against the documented behaviour.
