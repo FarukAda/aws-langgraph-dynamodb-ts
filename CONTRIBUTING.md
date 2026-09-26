@@ -7,11 +7,22 @@ Thank you for helping. This guide is the operational one; the [README](README.md
 ```bash
 git clone https://github.com/FarukAda/aws-langgraph-dynamodb-ts.git
 cd aws-langgraph-dynamodb-ts
-npm ci                 # Node 22, 24 or 26
-npm run lint && npm run typecheck && npm run typecheck:all && npm test
+nvm use                # reads .nvmrc (22)
+npm ci                  # Node 22, 24 or 26
+npm run lint && npm run typecheck && npm run typecheck:all && npm test && npm run check:docs && npm run check:links
 ```
 
 `npm test` runs the unit tier: every test under `test/unit`, the static guards under `test/static`, the type locks under `test/types` and the property tests under `test/property`, with 100 % coverage enforced on branches, functions, lines and statements. It must stay green and at 100 % for every commit.
+
+## Before opening a PR
+
+- `npm run lint`, `npm run typecheck` and `npm run typecheck:all` (the whole program: `src`, `test` and the configs) pass with no output.
+- `npm test` passes at 100 % branch, function, line and statement coverage — a PR that drops it fails CI.
+- `npm run build && npm run pack:check` succeeds; the latter verifies the tarball's listing, `publint` and `@arethetypeswrong/cli`.
+- `npm run check:docs` passes when a `ts`/`typescript` sample in the README, `CONTRIBUTING.md`, `docs/guide.md` or the CHANGELOG changed, and `npm run check:links` when a heading moved or a relative link changed.
+- `npm run docs` is re-run, and the regenerated `docs/api` committed, when public JSDoc changed.
+- New behaviour has a new test, and anything a user can observe gets a `CHANGELOG.md` entry under `[Unreleased]`.
+- `npm run unused` (knip), `npm run depcheck` and `npm run cpd` (jscpd) are clean — CI's hygiene job runs all three, alongside `check:docs` and `check:links`.
 
 ## The rules the guards enforce
 
@@ -35,9 +46,13 @@ The static guards fail the build rather than rely on review:
 - `createClient` / `createS3Client` are `@internal` test seams and stay out of the shipped declarations;
 - the generated API reference names no internal function — a page quotes only names some page documents, or an error field — and no page but the package page opens a paragraph with `Hides`, which would mean a module header had become a public name's documentation (`test/static/public-docs.test.ts`);
 - a comment in `src` says why the code is as it is, not what it once did: `used to`, `until now`, `previously` and `formerly` are refused in `src` comments, because that history is in `CHANGELOG.md` and the commits (`test/static/history-prose.test.ts`);
-- every non-private method of a class `src/index.ts` exports, and every function it exports, that is `async`, declares a return type beginning `Promise`, `PromiseLike`, `AsyncGenerator`, `AsyncIterable` or `AsyncIterableIterator`, or declares no return type at all has a body of exactly one `return guardPublic(…)` or `return guardPublicIterable(…)`, imported from `src/shared/errors/boundary.ts`, so only a library error ever rejects out of a public method or function; a function held in a class field or an exported variable, and a getter declaring such a return type, are held to the same rule. The check reads the return type as written, so one given through a type alias of a promise is not recognised, and it counts an exported variable as a function only when an arrow function or function expression is written in place, so a variable holding a class expression or a call's result, such as a wrapped function, is not checked. The public set is derived from `src/index.ts`, not kept by hand: every value it exports must be re-exported by name from the module that declares it, or declared in `src/index.ts` itself, and a form that cannot be resolved that way — a local `export { X }`, any default export, `export *`, or a name its module re-exports rather than declares — fails the guard instead of being skipped. The derived set must include the three adapters, `DynamoDBSessionChatMessageHistory`, `DynamoDBFactory` and `backfillRecencyIndex`, so a derivation that finds nothing fails too (`test/static/guarded-methods.test.ts`, `test/static/public-declarations.test.ts`);
+- every non-private method of a class `src/index.ts` exports, and every function it exports, that is `async`, declares a return type beginning `Promise`, `PromiseLike`, `AsyncGenerator`, `AsyncIterable` or `AsyncIterableIterator`, or declares no return type at all has a body of exactly one `return guardPublic(…)` or `return guardPublicIterable(…)`, imported from `src/shared/errors/boundary.ts`, so only a library error ever rejects out of a public method or function; a function held in a class field or an exported variable, and a getter declaring such a return type, are held to the same rule.
+  - The check reads the return type as written, so one given through a type alias of a promise is not recognised, and it counts an exported variable as a function only when an arrow function or function expression is written in place, so a variable holding a class expression or a call's result, such as a wrapped function, is not checked.
+  - The public set is derived from `src/index.ts`, not kept by hand: every value it exports must be re-exported by name from the module that declares it, or declared in `src/index.ts` itself, and a form that cannot be resolved that way — a local `export { X }`, any default export, `export *`, or a name its module re-exports rather than declares — fails the guard instead of being skipped.
+  - The derived set must include the three adapters, `DynamoDBSessionChatMessageHistory`, `DynamoDBFactory` and `backfillRecencyIndex`, so a derivation that finds nothing fails too (`test/static/guarded-methods.test.ts`, `test/static/public-declarations.test.ts`);
 - no `.ts` file in `src` or `test`, no `.mjs` file in `test` or directly in `scripts` or `examples`, and no hand-edited file — a `.md`, `.json`, `.yml`, `.yaml` or `*.config.ts` file directly in the repository root, except `package-lock.json`, which npm writes, or any file under `.github` but an image, PDF or archive — refers to the planning process — a numbered ruling, a plan task id or numbered plan task, a review-round label, a reference to a plan's brief, a design-decision id in a comment, or an audit finding id — a short letter prefix and a number, alone, in a parenthesised list, or plain in text — because a reader has no way to resolve it; the claim ids of `docs/evidence` (`E-14`) and the README's divergence ids (`V-26`) resolve and are allowed, and the generated `docs/api` is not scanned, since it is rebuilt from the `src` comments (`test/static/plan-references.test.ts`);
-- those same files, and the surface baseline, hold no raw control character — a C0 control other than tab, LF and CR, DEL, a C1 control, an unpaired surrogate, or a byte-order mark anywhere but the first character — because such a character is invisible to readers, diffs and review; write one a test needs as an escape sequence (`test/static/control-characters.test.ts`).
+- those same files, and the surface baseline, hold no raw control character — a C0 control other than tab, LF and CR, DEL, a C1 control, an unpaired surrogate, or a byte-order mark anywhere but the first character — because such a character is invisible to readers, diffs and review; write one a test needs as an escape sequence (`test/static/control-characters.test.ts`);
+- every `ts`/`typescript` sample in the README, this file, `docs/guide.md` and the CHANGELOG compiles against `src` (`npm run check:docs`); a block that cannot is marked `<!-- sample:skip reason -->`, and the count of skips is checked against `EXPECTED_SKIPS` in `scripts/check-doc-samples.mjs`, so a new skip is a reviewed decision rather than a silent one; and every relative link and `#anchor` across the hand-written documents resolves (`npm run check:links`).
 
 Write the failing test first, then the code. A change that touches behaviour needs a unit test; a change that touches DynamoDB semantics also needs an integration or conformance test.
 
@@ -59,6 +74,28 @@ CI runs the unit, integration, conformance, surface and package-smoke tiers on e
 The real-AWS tier runs on every release tag, in `.github/workflows/integration-live.yml`, with the OIDC role named by the repository variable or secret `AWS_TEST_ROLE_ARN`, scoped to `aws-langgraph-*test-*` tables and buckets, in the region the repository variable or secret `AWS_TEST_REGION` names, and gates publishing: the release workflow waits for its `live-aws integration` check and refuses to publish unless it succeeded; after re-running a failed live run green, re-run the release workflow too ([decision record 18](docs/decisions/0018-run-the-live-aws-tier-on-release-tags-as-a-publish-gate.md)). It is deliberately not scheduled, because one of its suites calls Bedrock. Run it locally against your own credentials with `AWS_REGION=eu-central-1 npm run test:aws`; every suite refuses to start without `AWS_REGION` (or `AWS_DEFAULT_REGION`) rather than guess a region.
 
 A real-AWS test creates its own resources and tears them down in `afterAll` (use `test/aws/helpers/teardown.ts`, which finishes every step before rethrowing). Resource names must match `aws-langgraph-<suite>test-<uuid>` — the test role is scoped to `aws-langgraph-*test-*` and nothing else — and a test must never assume a region, a table or a bucket exists. A Bedrock-backed test probes the model first and skips with a reason when the account has not enabled it.
+
+## What CI runs
+
+`.github/workflows/ci.yml` runs on every push to `main` and every pull request targeting it, as nine jobs:
+
+- **`test (node ${{ matrix.node }} on ${{ matrix.os }})`** — runs the build-facing type check, lint, the build and `npm test` across three operating systems and Node 22, 24 and 26.
+- **`npm audit (high+)`** — fails the build on a high-or-critical advisory anywhere in the installed tree.
+- **`typecheck (full program: src + test + configs)`** — runs `npm run typecheck:all`.
+- **`integration (DynamoDB Local)`** — runs the integration and conformance suites against a DynamoDB Local service container.
+- **`conformance (langgraph ${{ matrix.langgraph }})`** — runs the conformance suite twice more, pinned to the declared peer floor (`1.1.5`) and to `latest`.
+- **`repository hygiene (knip, depcheck, jscpd, actionlint, changelog)`** — runs `npm run unused`, `npm run depcheck`, `npm run cpd`, `npm run test:scripts`, `npm run check:docs`, `npm run check:links` and `actionlint`, and on a pull request fails if `src/` changed without a `CHANGELOG.md` entry.
+- **`peer dependency floors`** — installs every declared peer at the floor of its range and type-checks and tests against it.
+- **`API reference is regenerated`** — runs `npm run docs` and fails if `docs/api` drifts from the committed copy.
+- **`package smoke (npm pack + install + import)`** — builds, runs the surface baseline, `npm run pack:check`, the package smoke test and `npm run test:consumer-types`.
+
+Five more workflows run beside it:
+
+- **`codeql.yml`** runs CodeQL's `security-extended` queries over the TypeScript source and over the workflow files themselves, on push and pull request to `main` and weekly.
+- **`dependency-review.yml`** diffs a pull request's dependency changes against the base branch and fails on a newly introduced high-severity vulnerability.
+- **`scorecard.yml`** runs the OpenSSF Scorecard weekly and on push to `main`, publishing a supply-chain-posture score to the public Scorecard dataset.
+- **`integration-live.yml`** runs only on a pushed release tag (`v*`) — the `live-aws integration` check described above.
+- **`release.yml`** runs on that same tag push, waits for every check named in `scripts/required-checks.json` to succeed on the tagged commit, then verifies, packs and publishes the tarball to npm with provenance from a job that installs no third-party code.
 
 ## Toolchain
 
@@ -86,9 +123,13 @@ Records are numbered sequentially under `docs/decisions/`, and a number is never
 
 Use [Conventional Commits](https://www.conventionalcommits.org/) (`fix(store): ...`, `feat(history): ...`, `docs(readme): ...`, `test(integration): ...`). The body says why, not what: which behaviour was wrong, how a user hit it, why this fix and not another. One concern per commit.
 
-A pull request follows the template: what, why, how, how it was tested, breaking changes. It needs a CHANGELOG entry under `[Unreleased]` for anything a user can observe, a README update when documented behaviour changes, and regenerated `docs/api` (`npm run docs`) when public JSDoc changes.
+A pull request follows the template: what, why, how, how it was tested, breaking changes. It needs a CHANGELOG entry under `[Unreleased]` for anything a user can observe, a README update when documented behaviour changes, regenerated `docs/api` (`npm run docs`) when public JSDoc changes, and `npm run check:docs` passes when a README sample changed.
 
 Review a change in this order: design first, then functionality, complexity, tests, naming, comments, style and consistency, and documentation last — a design objection raised after the naming and style have been debated wastes that debate. Send a large reformatting as its own pull request, never folded into a functional one, so a reviewer can tell what changed from what merely moved. And say what was done well, not only what needs to change.
+
+## Reporting bugs
+
+Open an issue using [the templates](.github/ISSUE_TEMPLATE); a bug report needs the package version, the `@langchain/langgraph`, `@langchain/langgraph-checkpoint` and `@langchain/core` versions, the Node.js version and module system (ESM or CommonJS), which features are configured (S3 offloading, compression, a vector backend, TTL, an injected client, the recency index, a custom `serde`), a minimal reproduction, and the expected and actual behaviour. Include the error's `code` and `context` from a caught `DynamoDBLangGraphError` and any `warn`/`error` log lines, redacting anything you consider sensitive. Security issues go to [`SECURITY.md`](SECURITY.md), never to a public issue.
 
 ## Releases
 

@@ -52,7 +52,7 @@ export interface CompressionResult {
  * `config.level` — zlib level 0–9, default {@link DEFAULT_COMPRESSION_LEVEL}.
  * `config.maxDecompressedBytes` is read on the way back, not here.
  *
- * Returns: `compressed: true` only when gzip beat the input by at least 10%;
+ * Returns: `compressed: true` only when gzip beat the input by more than 10%;
  * otherwise the input bytes and `compressed: false`. The flag is recorded in
  * the payload descriptor, so compression is never inferred from the bytes on
  * read.
