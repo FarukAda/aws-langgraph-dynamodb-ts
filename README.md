@@ -1676,7 +1676,14 @@ Tenancy can be enforced at the IAM layer with `dynamodb:LeadingKeys`, because ev
 }
 ```
 
-For the store the tenant must be the whole first namespace element (`STORE#acme`), since the partition key is exactly `STORE#<namespace[0]>`; the checkpointer and history patterns match any identifier under the tenant prefix. Offloaded S3 objects can be scoped the same way with an object-key condition on `arn:aws:s3:::<bucket>/langgraph-checkpoints/<adapter>/<base64url tenant prefix>*`, or by giving each tenant its own `keyPrefix`.
+For the store the tenant must be the whole first namespace element (`STORE#acme`), since the partition key is exactly `STORE#<namespace[0]>`; the checkpointer and history patterns match any identifier under the tenant prefix.
+
+Offloaded S3 objects are harder to scope by tenant, because each identifier is base64url-encoded **whole** into the object key (`<keyPrefix><enc(part)>/…/<write id>.bin`):
+
+- **Store.** The tenant is a whole namespace element, so its encoding is a whole key segment: `arn:aws:s3:::<bucket>/langgraph-checkpoints/store/<enc(tenant)>/*` (for `acme`, `…/store/YWNtZQ/*`) scopes exactly that tenant's objects.
+- **Checkpointer and chat history.** The tenant is only the start of a `thread_id` or `sessionId`, and base64url encodes three bytes at a time, so the encoding of a prefix is a prefix of the encoded id only when the prefix is a multiple of 3 bytes of UTF-8. `acme/` is 5 bytes and encodes to `YWNtZS8`, while `acme/thread-7` encodes to `YWNtZS90aHJlYWQtNw`: a condition on `YWNtZS8*` matches none of that tenant's objects. A 12-byte prefix such as `acme-tenant/` does work (`YWNtZS10ZW5hbnQv*`).
+
+The simpler control is an adapter per tenant with its own `s3.keyPrefix` (or its own bucket), and an S3 policy scoped to that prefix.
 
 ### Trust boundary
 
