@@ -1533,6 +1533,49 @@ resource "aws_dynamodb_table" "langgraph" {
 
 </details>
 
+<details>
+<summary><strong>AWS CLI</strong></summary>
+
+```bash
+aws dynamodb create-table \
+  --table-name langgraph \
+  --attribute-definitions \
+      AttributeName=PK,AttributeType=S \
+      AttributeName=SK,AttributeType=S \
+      AttributeName=gsi1pk,AttributeType=S \
+      AttributeName=gsi1sk,AttributeType=S \
+  --key-schema \
+      AttributeName=PK,KeyType=HASH \
+      AttributeName=SK,KeyType=RANGE \
+  --billing-mode PAY_PER_REQUEST \
+  --global-secondary-indexes \
+      'IndexName=gsi1,KeySchema=[{AttributeName=gsi1pk,KeyType=HASH},{AttributeName=gsi1sk,KeyType=RANGE}],Projection={ProjectionType=ALL}'
+
+# Optional; only needed if you use the `ttl` option
+aws dynamodb update-time-to-live \
+  --table-name langgraph \
+  --time-to-live-specification "Enabled=true,AttributeName=ttl"
+```
+
+The recency index (the last two `attribute-definitions` and the `--global-secondary-indexes` flag) is optional, exactly as in the CDK and Terraform samples above: drop them, run `backfillRecencyIndex()` and add the index later, then set `indexName: 'gsi1'` on the adapters. The GSI's projection must be `ALL` — the recency-index reads listed under [Maintenance operations](#maintenance-operations) read the row straight off the index, not through a follow-up `GetItem`.
+
+</details>
+
+**DynamoDB Local**, for development without an AWS account: point `clientConfig` at it, with any non-empty region and credentials (the emulator does not check them):
+
+```typescript
+import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts';
+
+const saver = new DynamoDBSaver({
+  tableName: 'langgraph',
+  clientConfig: {
+    endpoint: 'http://localhost:8000',
+    region: 'local',
+    credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
+  },
+});
+```
+
 ### S3 lifecycle rules
 
 `ensureS3LifecycleRule()` writes **two** rules, both scoped to the adapter's `keyPrefix`. They are
