@@ -35,6 +35,7 @@ it identifies the maintainer's, and nothing in a probe can be re-derived from it
 | 1 | 2026-09-17 | `eu-central-1` | `@aws-sdk/client-dynamodb@3.1132.0`, `@aws-sdk/client-s3@3.1132.0` | DynamoDB tables (on-demand) and S3 buckets, one per probe, deleted after |
 | 2 | 2026-09-19 | `eu-central-1` | `@aws-sdk/client-dynamodb@3.1132.0` | One DynamoDB table (on-demand), deleted after |
 | 3 | 2026-09-19 | `eu-central-1` | `@aws-sdk/client-dynamodb@3.1132.0` | One DynamoDB table (on-demand), deleted after |
+| 4 | 2026-09-27 | `eu-west-1` | `@aws-sdk/client-s3@3.1132.0` | S3 buckets, one per suite, deleted after (E-8 and E-12 re-run) |
 
 ## Claims settled
 
@@ -47,7 +48,7 @@ it identifies the maintainer's, and nothing in a probe can be re-derived from it
 | E-5 | Concurrent conditional transactional writers on one row do meet the retryable `TransactionConflict` failure, not only `ConditionalCheckFailed` | [transaction-conflict-contention.md](transaction-conflict-contention.md) | `test/aws/real-aws-idempotency.test.ts` |
 | E-6 | The library's default retry budget absorbs the conflicts | [transaction-conflict-contention.md](transaction-conflict-contention.md) | `test/aws/real-aws-idempotency.test.ts` |
 | E-7 | `PutObject` with `If-None-Match: *` against an existing key is refused | [s3-conditional-create.md](s3-conditional-create.md) | `test/aws/real-aws-s3.test.ts` |
-| E-8 | A conditional `PutObject` that loses a race is refused with `ConditionalRequestConflict`/409 | [s3-conditional-create.md](s3-conditional-create.md) | `test/aws/real-aws-s3.test.ts` |
+| E-8 | Racing conditional creates of one key: exactly one wins, and no loser overwrites it | [s3-conditional-create.md](s3-conditional-create.md) | `test/aws/real-aws-s3.test.ts` |
 | E-9 | `GetBucketVersioning` distinguishes never-versioned, enabled and suspended | [s3-versioning-and-lifecycle.md](s3-versioning-and-lifecycle.md) | `test/aws/real-aws-s3-versioning.test.ts` |
 | E-10 | Deleting a versioned object leaves a delete marker, and the prior version stays readable by id | [s3-versioning-and-lifecycle.md](s3-versioning-and-lifecycle.md) | `test/aws/real-aws-s3-versioning.test.ts` |
 | E-11 | A lifecycle rule cannot share one `Expiration` between `Days` and `ExpiredObjectDeleteMarker` | [s3-versioning-and-lifecycle.md](s3-versioning-and-lifecycle.md) | `test/aws/real-aws-s3-lifecycle.test.ts` |

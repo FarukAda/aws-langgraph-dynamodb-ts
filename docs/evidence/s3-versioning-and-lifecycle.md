@@ -1,6 +1,6 @@
 # S3 versioning and lifecycle shapes, for the containment layer
 
-Run conditions: run 1 in [`README.md`](./README.md). Every probe issued against the
+Run conditions: run 1 (and run 4 for E-12) in [`README.md`](./README.md). Every probe issued against the
 raw SDK against a bucket created for the run and deleted after.
 
 ## E-9: `GetBucketVersioning` distinguishes never-versioned, enabled and suspended
@@ -101,9 +101,20 @@ markers now:  [{"VersionId":"null"}]
 enabled-era version still readable: "the payload"
 ```
 
+Run 4, listing every version of the key after the delete:
+
+```
+null versions now: []
+other versions now: [{"VersionId":"<the enabled-era id>","IsLatest":false}]
+```
+
+Run 1 also read the enabled-era version back by its id, so its `versions now: []`
+can only have counted null versions: the enabled-era version is still in the key's
+version list, no longer the latest.
+
 **What this settles.** Writes made under `Suspended` versioning get the null
 version id, and a second such write **replaces** the first (the earlier null
-version disappears — `versions now: []` — rather than accumulating), and a delete
+version disappears — no null version is left — rather than accumulating), and a delete
 leaves a null-version delete marker, so the payload really is destroyed. An object
 version written **while versioning was enabled** survives suspension untouched and
 stays readable by its version id — the bucket keeps that old version, and its

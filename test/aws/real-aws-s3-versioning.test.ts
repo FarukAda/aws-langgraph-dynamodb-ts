@@ -335,8 +335,13 @@ describe('versioning states, delete markers and suspension against real AWS', ()
     );
     // The second suspended write replaced the first's null version rather
     // than accumulating, and the delete then replaced that with a
-    // null-version delete marker: no current version survives.
-    expect((afterDelete.Versions ?? []).filter((version) => version.Key === key)).toHaveLength(0);
+    // null-version delete marker: no null version survives. The one version
+    // left is the enabled-era one, no longer the latest.
+    const versions = (afterDelete.Versions ?? []).filter((version) => version.Key === key);
+    expect(versions.filter((version) => version.VersionId === 'null')).toHaveLength(0);
+    expect(versions.map((version) => [version.VersionId, version.IsLatest])).toEqual([
+      [enabledEraVersionId, false],
+    ]);
     expect(
       (afterDelete.DeleteMarkers ?? []).filter(
         (marker) => marker.Key === key && marker.VersionId === 'null',

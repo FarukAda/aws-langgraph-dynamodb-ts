@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { CreateTableCommand, DynamoDBClient, waitUntilTableExists } from '@aws-sdk/client-dynamodb';
 import {
   CreateBucketCommand,
+  GetObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -310,43 +311,49 @@ describe('S3 offload against real AWS', () => {
   });
 
   /**
-   * (docs/evidence/s3-conditional-create.md, E-8) — the loser of a
-   * conditional-create race, which is a different rejection from E-7's: E-7
-   * meets an already-settled object, this meets another in-flight create for
-   * the same brand-new key. Built at `maxAttempts: 1` so the SDK's own
-   * retries cannot turn a genuine race into a resolved PUT before it is
-   * counted.
+   * (docs/evidence/s3-conditional-create.md, E-8) — concurrent conditional
+   * creates of one brand-new key, the race E-7's settled-object case does not
+   * reach. The S3 User Guide says the first to finish wins and the rest get
+   * `412`; a `409` is documented for a conditional write racing a *delete*.
+   * Either refusal is safe for this package: `412` reads as "already
+   * stored", `409` is retried. What must hold is that exactly one create wins
+   * and that no loser overwrites it. Built at `maxAttempts: 1` so the SDK's
+   * own retries cannot hide a refusal, and repeated on fresh keys so the race
+   * is actually taken.
    */
-  it('E-8: a conditional PutObject that loses a race is refused with ConditionalRequestConflict/409', async () => {
+  it('E-8: racing conditional creates of one key: exactly one wins and no loser overwrites it', async () => {
     const raw = new S3Client({ ...clientConfig, maxAttempts: 1 });
-    const key = `${KEY_PREFIX}e8-conditional-race`;
-    const attempt = (): Promise<unknown> =>
-      raw.send(
-        new PutObjectCommand({
-          Bucket: bucketName,
-          Key: key,
-          Body: randomUUID(),
-          IfNoneMatch: '*',
-        }),
-      );
+    const ROUNDS = 10;
+    const refusals = new Map<string, number>();
+    try {
+      for (let round = 1; round <= ROUNDS; round += 1) {
+        const key = `${KEY_PREFIX}e8-conditional-race-${round}`;
+        const bodies = Array.from({ length: 5 }, () => randomUUID());
+        const settled = await Promise.allSettled(
+          bodies.map((body) =>
+            raw.send(
+              new PutObjectCommand({ Bucket: bucketName, Key: key, Body: body, IfNoneMatch: '*' }),
+            ),
+          ),
+        );
 
-    const settled = await Promise.allSettled([
-      attempt(),
-      attempt(),
-      attempt(),
-      attempt(),
-      attempt(),
-    ]);
-    raw.destroy();
-
-    const conflicted = settled.filter(
-      (result) =>
-        result.status === 'rejected' &&
-        (result.reason as Error).name === 'ConditionalRequestConflict',
+        const winners = bodies.filter((_, index) => settled[index]?.status === 'fulfilled');
+        expect(winners).toHaveLength(1);
+        for (const result of settled) {
+          if (result.status === 'rejected') {
+            const { name } = result.reason as Error;
+            expect(['PreconditionFailed', 'ConditionalRequestConflict']).toContain(name);
+            refusals.set(name, (refusals.get(name) ?? 0) + 1);
+          }
+        }
+        const stored = await raw.send(new GetObjectCommand({ Bucket: bucketName, Key: key }));
+        expect(await stored.Body?.transformToString()).toBe(winners[0]);
+      }
+    } finally {
+      raw.destroy();
+    }
+    report(
+      `E-8 ${ROUNDS} rounds of 5 racing conditional creates: refusals ${JSON.stringify(Object.fromEntries(refusals))}`,
     );
-    report(`E-8 5 racing conditional creates: ${conflicted.length} saw ConditionalRequestConflict`);
-
-    expect(settled.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
-    expect(conflicted.length).toBeGreaterThan(0);
   });
 });

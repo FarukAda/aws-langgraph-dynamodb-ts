@@ -42,9 +42,10 @@ silently replace what an earlier attempt of itself already stored — the
 guarantee is enforced by S3 on every request, not by this package
 remembering which attempts it has already made.
 `docs/evidence/s3-conditional-create.md` records both the refusal this
-package checks for (E-7) and the literal name a losing writer in a genuine
-race receives (E-8), so the classifier is verified against the service
-rather than only against documentation. The backlink metadata makes an
+package checks for (E-7) and that racing conditional creates of one key leave
+exactly one winner, every loser refused rather than overwriting it (E-8), so
+the guarantee is verified against the service rather than only against
+documentation. The backlink metadata makes an
 orphaned object identifiable without decoding the key.
 
 Negative. Every write that might offload a payload must mint an id even
