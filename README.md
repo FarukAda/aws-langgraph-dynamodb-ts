@@ -1580,12 +1580,17 @@ const saver = new DynamoDBSaver({
 
 `ensureS3LifecycleRule()` writes **two** rules, both scoped to the adapter's `keyPrefix`. They are
 given verbatim here so a deployment that manages its own lifecycle can reproduce them — one that
-configures `s3` without a `ttl` (where the call is a no-op), or one that never calls it at all:
+configures `s3` without a `ttl` (where the call is a no-op), or one that never calls it at all.
+
+The example below is the checkpointer's **default** `keyPrefix` — no adapter writes to the bare
+`langgraph-checkpoints/` base by default; each defaults to its own sub-prefix
+(`langgraph-checkpoints/checkpointer/`, `.../store/`, `.../history/`), or to whatever `s3.keyPrefix`
+you set explicitly:
 
 ```json
 {
-  "ID": "langgraph-ttl-langgraph-checkpoints",
-  "Filter": { "Prefix": "langgraph-checkpoints/" },
+  "ID": "langgraph-ttl-langgraph-checkpoints-checkpointer",
+  "Filter": { "Prefix": "langgraph-checkpoints/checkpointer/" },
   "Status": "Enabled",
   "Expiration": { "Days": 32 },
   "NoncurrentVersionExpiration": { "NoncurrentDays": 1 }
@@ -1594,8 +1599,8 @@ configures `s3` without a `ttl` (where the call is a no-op), or one that never c
 
 ```json
 {
-  "ID": "langgraph-ttl-langgraph-checkpoints-markers",
-  "Filter": { "Prefix": "langgraph-checkpoints/" },
+  "ID": "langgraph-ttl-langgraph-checkpoints-checkpointer-markers",
+  "Filter": { "Prefix": "langgraph-checkpoints/checkpointer/" },
   "Status": "Enabled",
   "Expiration": { "ExpiredObjectDeleteMarker": true }
 }
