@@ -3,8 +3,9 @@
  *
  * "The documentation" is exactly `DOCUMENTS` below, and within those files
  * exactly the ```` ```ts ```` and ```` ```typescript ```` fences. A `js`,
- * `bash`, `json` or `hcl` block is not checked, nothing under `docs/` is, and
- * `examples/*.mjs` is plain JavaScript run against the built package instead.
+ * `bash`, `json` or `hcl` block is not checked; of everything under `docs/`,
+ * only `docs/guide.md` is; and `examples/*.mjs` is plain JavaScript run
+ * against the built package instead.
  *
  * `test/static/readme-snippets.test.ts` compiles one block, the error-handling
  * example, under `strict`. This compiles all of them, against `src/` rather
@@ -35,12 +36,12 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT_DIR = join(ROOT, '.doc-samples');
 
 /** The documents whose samples a reader is expected to be able to run. */
-export const DOCUMENTS = ['README.md', 'CONTRIBUTING.md', 'CHANGELOG.md'];
+export const DOCUMENTS = ['README.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'docs/guide.md'];
 
 /**
  * Blocks legitimately un-compilable, and why:
  * 1. `README.md`, *Logging* — the pino adapter; pino is not a dependency.
- * 2. `README.md`, *Infrastructure setup* — the AWS CDK table; aws-cdk-lib is not one either.
+ * 2. `docs/guide.md`, *Infrastructure as code* — the AWS CDK table; aws-cdk-lib is not one either.
  */
 export const EXPECTED_SKIPS = 2;
 

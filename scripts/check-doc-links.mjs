@@ -21,7 +21,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** A run that reads fewer files than this is broken, not clean. */
 const MINIMUM_FILES = 10;
 
-/** The documents a reader navigates: the root guides, the doc indexes, every record and claim. */
+/** The documents a reader navigates: the root guides, the in-depth guide, the doc indexes, every record and claim. */
 export function documentList(root) {
   const fixed = [
     'README.md',
@@ -32,6 +32,7 @@ export function documentList(root) {
     'CHANGELOG.md',
     '.github/PULL_REQUEST_TEMPLATE.md',
     'docs/coding-guidelines.md',
+    'docs/guide.md',
     'docs/README.md',
     'examples/README.md',
   ];

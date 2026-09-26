@@ -1,11 +1,12 @@
 # Documentation
 
 The [README](../README.md) is the entry point for using the package. This
-directory holds everything that would clutter it: the generated API
-reference, the decision records and live-AWS evidence that explain *why* the
-code is shaped the way it is, and the coding guidelines the codebase follows.
-The [examples](../examples/README.md) directory runs the library against real
-AWS instead of documenting it.
+directory holds everything that would clutter it: [the in-depth guide](guide.md)
+the README's summaries link out to, the generated API reference, the decision
+records and live-AWS evidence that explain *why* the code is shaped the way
+it is, and the coding guidelines the codebase follows. The
+[examples](../examples/README.md) directory runs the library against real AWS
+instead of documenting it.
 
 ## Start here
 
@@ -22,6 +23,18 @@ and this package cannot do; the [API reference](../README.md#api-reference)
 lists every public method with its signature; and
 [operations](../README.md#operations) covers limits, per-call costs,
 monitoring and what can still go wrong in production.
+
+## In-depth guide
+
+[guide.md](guide.md) is where the README's summaries send you for the
+mechanism behind a promise: the compare-and-swap and request-token machinery
+behind S3 offload, what a partition delete promises and what it costs, search
+and vector-index consistency, checkpointer and chat-history semantics, the
+request-unit cost of every call with a worked example, what can still go
+wrong between a DynamoDB row and its S3 payload and the sweep that finds a
+stranded one, and the on-disk layout and error/version guarantees behind
+[Versioning and compatibility](../README.md#versioning-and-compatibility).
+Its samples are compiled against `src` on every CI run, like the README's.
 
 ## API reference
 
@@ -88,9 +101,9 @@ change.
 
 ## How these documents are kept true
 
-- `npm run check:docs` type-checks every TypeScript sample in the README
-  against `src`, so a documented call whose signature changed fails the build
-  instead of a reader.
+- `npm run check:docs` type-checks every TypeScript sample in the README,
+  [the guide](guide.md) and CONTRIBUTING.md against `src`, so a documented
+  call whose signature changed fails the build instead of a reader.
 - `npm run check:links` resolves every relative link and `#anchor` across the
   hand-written documents (this file included), so a moved file or a renamed
   heading is caught before it reaches a reader.
