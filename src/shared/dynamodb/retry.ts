@@ -13,7 +13,11 @@
 
 import { nowMs } from '../clock';
 import { failureLabel, toError } from '../errors/base-error';
-import { DEFAULT_RETRYABLE_ERRORS, TRANSIENT_HTTP_STATUSES } from '../errors/classify';
+import {
+  DEFAULT_RETRYABLE_ERRORS,
+  mayStillBeInFlight,
+  TRANSIENT_HTTP_STATUSES,
+} from '../errors/classify';
 import { retryExhaustedError } from '../errors/errors';
 import type { Logger } from '../logging/logger';
 import { redactedMessage } from '../logging/secret-patterns';
@@ -183,6 +187,14 @@ function resolveRetryOptions(options: RetryOptions): ResolvedRetryOptions {
  * actually reached — not the attempts configured — and the last error as
  * `cause`. Its message quotes the last error **redacted**, because it reaches
  * `err.message`, which an application may print without a redacting logger.
+ * That error also records, for `mayStillLand` to read back
+ * (`retryBudgetMayStillLand`), whether *any* attempt of the budget — not only
+ * the last — left DynamoDB free to apply it later: one that ended on this
+ * side before an answer, one DynamoDB answered `TransactionInProgressException`
+ * to (its own earlier attempt under the same token still being processed), or
+ * one it answered with a server error (see `mayStillBeInFlight`). An attempt
+ * answered some other way settles nothing by itself, whatever attempt beside
+ * it did.
  *
  * A deadline that ends the budget is reported exactly as a spent one, by the
  * same error with the same code: a caller cannot tell the two apart, and
@@ -215,6 +227,11 @@ export async function withRetry<T>(
   const request: SdkRequestOptions = { abortSignal: options.signal };
   let lastError: Error = new Error('Retry failed without error');
   let attempts = 0;
+  // Whether *any* attempt of this budget — not only the last, which `cause`
+  // alone would report — left DynamoDB free to apply it later. Set from every
+  // failed attempt, including one whose failure is not retryable; it is only
+  // ever read back when the budget below is the one that actually throws.
+  let mayStillLand = false;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     attempts = attempt;
     try {
@@ -228,6 +245,7 @@ export async function withRetry<T>(
       // who cancelled is owed `ABORTED`, not a diagnosis of its own stop.
       assertNotAborted(options.signal);
       lastError = toError(error as Error);
+      if (mayStillBeInFlight(lastError)) mayStillLand = true;
       if (!isRetryable(lastError)) throw lastError;
       if (attempt === maxAttempts) break;
       const delayMs = delayForAttempt(attempt, baseDelayMs, maxDelayMs, rng);
@@ -240,6 +258,7 @@ export async function withRetry<T>(
     `Operation failed after ${attempts} attempts: ${redactedMessage(lastError)}`,
     attempts,
     lastError,
+    mayStillLand,
   );
 }
 

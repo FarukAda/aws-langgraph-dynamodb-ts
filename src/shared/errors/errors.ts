@@ -94,11 +94,24 @@ export function conflictError(
 }
 
 /**
+ * Non-enumerable carrier, on a `RETRY_EXHAUSTED` error, of whether *some*
+ * attempt of the spent budget — not only the last, which `cause` alone
+ * reports — left DynamoDB free to apply it later. Read only by
+ * {@link retryBudgetMayStillLand}; never enumerable, so it never reaches a log
+ * or a JSON serialization the way `context` and `details` are meant to.
+ */
+const MAY_STILL_LAND = Symbol('retryExhaustedError.mayStillLand');
+
+/**
  * The error for a retried operation that exhausted its attempt budget.
  *
  * Accepts: `attempts` — how many were made before the budget ran out.
  * `cause` — the last failure, kept so a caller can classify what actually
- * went wrong.
+ * went wrong. `mayStillLand` — whether any attempt of the budget, not only the
+ * last, left DynamoDB free to apply it later; read back by
+ * {@link retryBudgetMayStillLand}. Defaults to false, which is what a caller
+ * outside `withRetry` — one built by an older release, or a test double — gets
+ * for not recording one.
  *
  * Returns: a `RETRY_EXHAUSTED` error, with `context.attempts` when `attempts`
  * was given. It says the attempts are spent, **not** that the operation did
@@ -111,13 +124,35 @@ export function retryExhaustedError(
   message: string,
   attempts?: number,
   cause?: Error,
+  mayStillLand = false,
 ): DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED> {
-  return build(retryExhaustedError, {
+  const error = build(retryExhaustedError, {
     message,
     code: ErrorCode.RETRY_EXHAUSTED,
     context: attempts === undefined ? {} : { attempts },
     cause,
   });
+  Object.defineProperty(error, MAY_STILL_LAND, { value: mayStillLand, enumerable: false });
+  return error;
+}
+
+/**
+ * Whether some attempt of a spent retry budget — recorded by
+ * {@link retryExhaustedError} across every attempt `withRetry` made, not
+ * re-derived from `cause`, which is only the last one — left DynamoDB free to
+ * apply it later.
+ *
+ * Accepts: `error` — any error; only one `retryExhaustedError` built carries
+ * the record.
+ *
+ * Returns: the flag recorded when the error was built; false for any other
+ * error, including a `RETRY_EXHAUSTED` error built without passing one.
+ *
+ * Throws: nothing, for any value.
+ */
+export function retryBudgetMayStillLand(error: Error): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  return (error as object as Record<symbol, boolean>)[MAY_STILL_LAND] === true;
 }
 
 /**

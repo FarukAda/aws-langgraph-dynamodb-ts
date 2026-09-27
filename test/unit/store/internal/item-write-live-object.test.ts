@@ -72,7 +72,9 @@ const deletedBy = (offloader: ReturnType<typeof trackingOffloader>): string[] =>
  * The timeline below shows every put uploading under its own `rev`:
  *
  * 1. This call reads row E and uploads its value under its own `rev`.
- * 2. Every attempt at its put times out, so the retry budget is spent.
+ * 2. Every attempt at its put is throttled — a retryable failure the service
+ *    still answers, definitely, unlike a transport cut — so the retry budget
+ *    is spent with the outcome settled rather than left open.
  * 3. Meanwhile a racer commits a value — the same one, or another — under the
  *    racer's own `rev`, so its row names an object of the racer's own.
  * 4. The verification read finds the racer's `rev`, so this write did not land,
@@ -96,7 +98,16 @@ describe("store.put never releases a racer's committed object when its own write
           ? { Item: { createdAt: 'c', ...earlier } }
           : { Item: racer },
       );
-    rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    // A throttle the service answers (a 4xx), not a transport cut: retryable,
+    // but definite, so DynamoDB is not left free to apply it after the budget
+    // is spent — the row read back is the only evidence of what happened.
+    rejectRowWrites(
+      mock,
+      Object.assign(new Error('throttled'), {
+        name: 'ThrottlingException',
+        $metadata: { httpStatusCode: 400 },
+      }),
+    );
 
     await expect(putItem(context(client, offloader), parsedPut(OP))).rejects.toMatchObject({
       code: ErrorCode.RETRY_EXHAUSTED,

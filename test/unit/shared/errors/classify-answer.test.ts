@@ -1,4 +1,4 @@
-import { endedWithoutAnswer } from '../../../../src/shared/errors/classify';
+import { endedWithoutAnswer, mayStillBeInFlight } from '../../../../src/shared/errors/classify';
 
 const named = (name: string, extra: Record<string, unknown> = {}): Error =>
   Object.assign(new Error(name), { name, ...extra });
@@ -51,5 +51,52 @@ describe('endedWithoutAnswer', () => {
       head = next;
     }
     expect(endedWithoutAnswer(root)).toBe(false);
+  });
+});
+
+describe('mayStillBeInFlight', () => {
+  it.each([
+    ['the SDK request timeout (endedWithoutAnswer)', named('TimeoutError')],
+    [
+      "DynamoDB's own earlier attempt under this token still being processed",
+      named('TransactionInProgressException'),
+    ],
+    [
+      'a server error at the low end of 5xx',
+      named('Unknown', { $metadata: { httpStatusCode: 500 } }),
+    ],
+    [
+      'a server error at the high end of 5xx',
+      named('Unknown', { $metadata: { httpStatusCode: 599 } }),
+    ],
+  ])('is true for %s', (_label, error) => {
+    expect(mayStillBeInFlight(error)).toBe(true);
+  });
+
+  it.each([
+    [
+      'a refusal the service answered',
+      named('ValidationException', { $metadata: { httpStatusCode: 400 } }),
+    ],
+    [
+      'a throttle the service answered',
+      named('ThrottlingException', { $metadata: { httpStatusCode: 400 } }),
+    ],
+    [
+      'a transaction conflict, which is not the same name',
+      named('TransactionConflictException', { $metadata: { httpStatusCode: 400 } }),
+    ],
+    [
+      'a status just below the server-error range',
+      named('Unknown', { $metadata: { httpStatusCode: 499 } }),
+    ],
+    [
+      'a status just above the server-error range',
+      named('Unknown', { $metadata: { httpStatusCode: 600 } }),
+    ],
+    ['an error that says nothing about the transport', new Error('boom')],
+    ['nothing at all', undefined],
+  ])('is false for %s', (_label, error) => {
+    expect(mayStillBeInFlight(error)).toBe(false);
   });
 });

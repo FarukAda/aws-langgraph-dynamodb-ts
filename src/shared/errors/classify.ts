@@ -283,6 +283,45 @@ export function endedWithoutAnswer(error: Error | undefined): boolean {
 }
 
 /**
+ * The name DynamoDB answers with when a `TransactWriteItems` request under a
+ * `ClientRequestToken` still in use finds its own earlier attempt under that
+ * token still being processed.
+ */
+const TRANSACTION_IN_PROGRESS = 'TransactionInProgressException';
+
+/** The lowest and highest HTTP server-error status, inclusive. */
+const SERVER_ERROR_STATUS_MIN = 500;
+const SERVER_ERROR_STATUS_MAX = 599;
+
+/**
+ * Whether one attempt's own failure leaves DynamoDB free to apply it later,
+ * judged from that attempt alone.
+ *
+ * Accepts: anything a `catch` can bind, and `undefined`.
+ *
+ * Returns: true when the attempt {@link endedWithoutAnswer}; when the service
+ * answered that its own earlier attempt under the same `ClientRequestToken`
+ * was still being processed (`TransactionInProgressException`); or when it
+ * answered with a server error, an HTTP 5xx — which AWS documents as leaving a
+ * write's outcome undecided rather than refused (`TransactWriteItems` API
+ * reference, *Errors*: a 500 "may have succeeded or failed", with no later
+ * point documented as settling it). False for a refusal, a throttle, or any
+ * other definite answer.
+ *
+ * Throws: nothing, for any value.
+ */
+export function mayStillBeInFlight(error: Error | undefined): boolean {
+  if (endedWithoutAnswer(error)) return true;
+  if (typeof error !== 'object' || error === null) return false;
+  const fields = error as AwsErrorFields;
+  if (fields.name === TRANSACTION_IN_PROGRESS) return true;
+  const status = statusOf(fields);
+  return (
+    status !== undefined && status >= SERVER_ERROR_STATUS_MIN && status <= SERVER_ERROR_STATUS_MAX
+  );
+}
+
+/**
  * Whether an S3 read failed because the object is gone.
  *
  * Accepts: anything a `catch` can bind.

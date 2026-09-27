@@ -7,6 +7,7 @@ import {
   compensationFailedError,
   conflictError,
   resultTruncatedError,
+  retryBudgetMayStillLand,
   retryExhaustedError,
   validationError,
 } from '../../../../src/shared/errors/errors';
@@ -96,6 +97,31 @@ describe('retryExhaustedError', () => {
 
   it('omits attempts from context when none is given', () => {
     expect(retryExhaustedError('exhausted').context).toEqual({});
+  });
+
+  it('defaults the mayStillLand record to false', () => {
+    expect(retryBudgetMayStillLand(retryExhaustedError('exhausted'))).toBe(false);
+  });
+});
+
+describe('retryBudgetMayStillLand', () => {
+  it('reads back what retryExhaustedError recorded', () => {
+    expect(retryBudgetMayStillLand(retryExhaustedError('exhausted', 3, undefined, true))).toBe(
+      true,
+    );
+    expect(retryBudgetMayStillLand(retryExhaustedError('exhausted', 3, undefined, false))).toBe(
+      false,
+    );
+  });
+
+  it('is false for any error that is not one this factory built', () => {
+    expect(retryBudgetMayStillLand(new Error('plain'))).toBe(false);
+    expect(retryBudgetMayStillLand(validationError('bad'))).toBe(false);
+  });
+
+  it('is false for a value that cannot carry a property', () => {
+    expect(retryBudgetMayStillLand(null as never)).toBe(false);
+    expect(retryBudgetMayStillLand('not an error' as never)).toBe(false);
   });
 });
 

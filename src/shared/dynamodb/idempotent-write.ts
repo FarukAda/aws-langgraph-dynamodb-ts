@@ -20,8 +20,9 @@ import { unmarshall } from '@aws-sdk/util-dynamodb';
 import { nowMs } from '../clock';
 import { type PayloadDescriptor, PayloadLocation, type DescriptorRef } from '../codec/codec';
 import { hasErrorCode } from '../errors/base-error';
-import { classifyAwsError, endedWithoutAnswer } from '../errors/classify';
+import { classifyAwsError, mayStillBeInFlight } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
+import { retryBudgetMayStillLand } from '../errors/errors';
 import { isAbortError } from './abort';
 import { conditionalCheckFailure } from './cancellation';
 import type { DynamoDBDocumentLike, AttributeMap, TransactAction } from './client';
@@ -625,28 +626,32 @@ export function verdictFor(probe: RowProbe, row: AttributeMap | undefined): Writ
 /**
  * Whether a write that failed may still commit after its failure was reported.
  *
- * A write the service answered is finished: a strongly consistent read after
- * that answer sees whatever it did. A write this side cut short is not. A
- * cancel, a request timeout or a dropped connection stops the client waiting,
- * not the service applying a request it had already received. A spent retry
- * budget is judged by its last attempt, the only one that can still be in
- * flight, since every earlier one was followed by a backoff and a further
- * request.
+ * A write the service answered with a definite refusal or a throttle is
+ * finished: a strongly consistent read after that answer sees whatever it
+ * did. A write is not finished while *any* attempt of it left DynamoDB free to
+ * apply it later — not only its last attempt: `TransactWriteItems` is sent
+ * under one `ClientRequestToken` for the whole retry budget, and DynamoDB
+ * answers a re-send that arrives while an earlier attempt under that same
+ * token is still being processed with `TransactionInProgressException` —
+ * itself proof that the earlier attempt reached the service and may still
+ * land — while the very next attempt can be answered normally. A cancel is
+ * the same story from the caller's own side: it stops the client waiting, not
+ * the service applying a request it had already received.
  *
  * Accepts: `failure` — what the write threw.
  *
- * Returns: true for `ABORTED`, and for a failure — or a spent budget's last
- * attempt — that ended before the service answered it (see
- * `endedWithoutAnswer`).
+ * Returns: true for `ABORTED`; for a spent retry budget, the record
+ * `withRetry` kept across every attempt it made
+ * (`retryBudgetMayStillLand`) — not `cause`, which is only the last attempt's
+ * own failure; for any other failure, judged by itself
+ * (`mayStillBeInFlight`).
  *
  * Throws: nothing, for any value.
  */
 export function mayStillLand(failure: Error): boolean {
   if (isAbortError(failure)) return true;
-  const last = hasErrorCode(failure, ErrorCode.RETRY_EXHAUSTED)
-    ? (failure.cause as Error | undefined)
-    : failure;
-  return endedWithoutAnswer(last);
+  if (hasErrorCode(failure, ErrorCode.RETRY_EXHAUSTED)) return retryBudgetMayStillLand(failure);
+  return mayStillBeInFlight(failure);
 }
 
 /**

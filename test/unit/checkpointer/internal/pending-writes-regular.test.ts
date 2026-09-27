@@ -52,7 +52,7 @@ function ccf(rawItem?: Record<string, { S: string }>): Error {
 }
 
 function timeout(): Error {
-  return Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
+  return Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' });
 }
 
 describe('writeRegularRows', () => {
@@ -74,12 +74,16 @@ describe('writeRegularRows', () => {
     expect(mock.commandCalls(GetCommand)[0].args[0].input.ConsistentRead).toBe(true);
   });
 
-  it('marks the upload dead and keeps the error when the row is absent after retry exhaustion', async () => {
+  it('keeps the upload and the error when the row is absent after a genuine transport timeout exhausts the retries', async () => {
+    // A real transport timeout on every attempt: DynamoDB may still apply
+    // whichever attempt it received, so an absent row is unverified rather
+    // than a confirmed non-commit, and the upload is kept for the lifecycle
+    // rule rather than released.
     const { client, mock } = createStrictDocumentMock();
     rejectRowWrites(mock, timeout());
     mock.on(GetCommand).resolves({});
     const outcome = await writeRegularRows(context(client), [item('G1')]);
-    expect(outcome.deadUploads).toEqual([item('G1')]);
+    expect(outcome.deadUploads).toEqual([]);
     expect(outcome.error).toMatchObject({
       name: 'DynamoDBLangGraphError',
       code: ErrorCode.RETRY_EXHAUSTED,

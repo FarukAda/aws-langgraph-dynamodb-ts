@@ -406,13 +406,21 @@ export async function readSpecialRow(
  * `rejectedRow`), so the strongly-consistent read is spent only for a failure
  * that does not: a lost response, or a rejection whose row vanished since.
  *
- * Three answers are possible:
+ * Four answers are possible:
  * - the row holds this item's own `writeGroup`: the write landed, and the
  *   descriptor this attempt pinned is the dead one.
- * - the row holds some other group: the write is confirmed not to be what is
- *   live, so this item's own upload is dead — its key ends in this call's own
- *   group, which the row another writer wrote does not name. `observed` is
- *   returned so a rejected compare-and-swap can re-pin and try again.
+ * - the row holds some other group, and has moved on from what this attempt
+ *   was pinned to: the write is confirmed not to be what is live, so this
+ *   item's own upload is dead — its key ends in this call's own group, which
+ *   that row does not name. `observed` is returned so a rejected
+ *   compare-and-swap can re-pin and try again.
+ * - the row still fits this attempt — absent, or still holding exactly the
+ *   state the attempt was pinned to, or this attempt was never pinned at all
+ *   (the unconditional overwrite) — and the failure may still land (a cancel,
+ *   a timeout, a dropped connection, or DynamoDB answering that an earlier
+ *   attempt under this same token is still being processed): nothing is
+ *   confirmed either way, so this is `'unverified'` rather than `'not-landed'`,
+ *   and the outcome reports a commit and keeps the upload.
  * - the read itself fails: nothing is confirmed, so the outcome still reports a
  *   commit and keeps the originating error. That leaks one S3 object at worst
  *   (reclaimed by `ensureS3LifecycleRule`) where the alternative strands a live
@@ -424,10 +432,7 @@ export async function readSpecialRow(
  * over any row.
  *
  * Returns: the outcome, and the row's observed state when another writer holds
- * it, so a rejected compare-and-swap can re-pin and try again. A row found
- * absent, or still in the pinned state, after a failure that may still land (a
- * cancel, a timeout, a dropped connection) is unverified rather than
- * not-landed.
+ * it, so a rejected compare-and-swap can re-pin and try again.
  *
  * Throws: nothing. It exists to turn a failure into a decision.
  *
