@@ -244,6 +244,44 @@ export function awsDiagnostics(
   return out;
 }
 
+/** The names the SDK gives a request it cut short itself, before any response. */
+const CLIENT_SIDE_CUTS: readonly string[] = ['TimeoutError', 'AbortError'];
+
+/** How far {@link endedWithoutAnswer} walks a cause chain before giving up. */
+const MAX_ANSWER_DEPTH = 8;
+
+/**
+ * Whether a failed request ended on this side, before the service answered it.
+ *
+ * Accepts: anything a `catch` can bind, and `undefined`.
+ *
+ * Returns: true when the failure, or a cause beneath it, is a cut this side
+ * made — the SDK's own `TimeoutError` or `AbortError`, or a Node network error
+ * such as `ECONNRESET` or `ETIMEDOUT` — and no node on the way carries the HTTP
+ * status of a response. The service may still apply a request cut that way
+ * after the caller has stopped waiting for it. False for everything else: a
+ * failure the service answered, and one that says nothing about the transport,
+ * such as a value a caller's own code threw. A cycle in the chain ends the walk.
+ *
+ * Throws: nothing, for any value.
+ */
+export function endedWithoutAnswer(error: Error | undefined): boolean {
+  const seen = new WeakSet<object>();
+  let node: Error | undefined = error;
+  for (let depth = 0; depth < MAX_ANSWER_DEPTH; depth += 1) {
+    if (typeof node !== 'object' || node === null || seen.has(node)) return false;
+    seen.add(node);
+    const fields = node as AwsErrorFields;
+    if (statusOf(fields) !== undefined) return false;
+    if (typeof fields.name === 'string' && CLIENT_SIDE_CUTS.includes(fields.name)) return true;
+    if (typeof fields.code === 'string' && TRANSIENT_NETWORK_ERROR_CODES.includes(fields.code)) {
+      return true;
+    }
+    node = (node as { cause?: Error }).cause;
+  }
+  return false;
+}
+
 /**
  * Whether an S3 read failed because the object is gone.
  *

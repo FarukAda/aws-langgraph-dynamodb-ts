@@ -21,6 +21,7 @@ import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   rejectedRow,
   revisionGuard,
+  settledVerdict,
   verifyRow,
   type WriteVerdict,
 } from '../../shared/dynamodb/idempotent-write';
@@ -270,7 +271,9 @@ async function cleanUp(
  * `'landed'` cleans up the previous object like the success path and swallows
  * the error, and an `'unverified'` read deletes nothing and rethrows — leaking
  * one object at worst rather than stranding a live row pointing at a deleted
- * one. The verification compares the per-call `rev`, so an inline record is
+ * one, and so does a read that finds nothing after a write this side cut
+ * short, which DynamoDB may still apply. The verification compares the
+ * per-call `rev`, so an inline record is
  * verified too: otherwise a lost acknowledgement of an inline overwrite would be
  * reported as a failure while the previous offloaded object was never cleaned.
  *
@@ -312,7 +315,7 @@ export async function persistRow(
       );
     }
   } catch (error) {
-    const verdict = await verifyWriteLanded(context, record);
+    const verdict = settledVerdict(await verifyWriteLanded(context, record), error as Error);
     if (verdict === 'not-landed') await cleanUp(context, record.value, 'store.put');
     if (verdict !== 'landed') throw error;
   }

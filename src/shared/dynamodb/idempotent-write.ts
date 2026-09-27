@@ -19,8 +19,10 @@ import { unmarshall } from '@aws-sdk/util-dynamodb';
 
 import { nowMs } from '../clock';
 import { type PayloadDescriptor, PayloadLocation, type DescriptorRef } from '../codec/codec';
-import { classifyAwsError } from '../errors/classify';
+import { hasErrorCode } from '../errors/base-error';
+import { classifyAwsError, endedWithoutAnswer } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
+import { isAbortError } from './abort';
 import { conditionalCheckFailure } from './cancellation';
 import type { DynamoDBDocumentLike, AttributeMap, TransactAction } from './client';
 import { MAX_WRITE_LIFETIME_MS, withDynamoDBRetry, retryFor } from './retry';
@@ -618,6 +620,51 @@ export function identityOf(probe: RowProbe, row: AttributeMap | undefined): stri
  */
 export function verdictFor(probe: RowProbe, row: AttributeMap | undefined): WriteVerdict {
   return identityOf(probe, row) === probe.expected ? 'landed' : 'not-landed';
+}
+
+/**
+ * Whether a write that failed may still commit after its failure was reported.
+ *
+ * A write the service answered is finished: a strongly consistent read after
+ * that answer sees whatever it did. A write this side cut short is not. A
+ * cancel, a request timeout or a dropped connection stops the client waiting,
+ * not the service applying a request it had already received. A spent retry
+ * budget is judged by its last attempt, the only one that can still be in
+ * flight, since every earlier one was followed by a backoff and a further
+ * request.
+ *
+ * Accepts: `failure` — what the write threw.
+ *
+ * Returns: true for `ABORTED`, and for a failure — or a spent budget's last
+ * attempt — that ended before the service answered it (see
+ * `endedWithoutAnswer`).
+ *
+ * Throws: nothing, for any value.
+ */
+export function mayStillLand(failure: Error): boolean {
+  if (isAbortError(failure)) return true;
+  const last = hasErrorCode(failure, ErrorCode.RETRY_EXHAUSTED)
+    ? (failure.cause as Error | undefined)
+    : failure;
+  return endedWithoutAnswer(last);
+}
+
+/**
+ * The verdict a read-back licenses once the write it judges may still be in flight.
+ *
+ * Accepts: `verdict` — what the read found. `failure` — what the write threw.
+ *
+ * Returns: `'unverified'` in place of `'not-landed'` when the write may still
+ * commit ({@link mayStillLand}): an absent row is exactly what an attempt still
+ * on its way can fill, so the upload it names is not yet dead. Every other
+ * verdict is returned unchanged. A caller whose write is pinned to a state the
+ * row has already left asks this only when the pin still matches, since such a
+ * write can no longer apply.
+ *
+ * Throws: nothing.
+ */
+export function settledVerdict(verdict: WriteVerdict, failure: Error): WriteVerdict {
+  return verdict === 'not-landed' && mayStillLand(failure) ? 'unverified' : verdict;
 }
 
 /**

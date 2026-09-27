@@ -13,6 +13,7 @@
 
 import { type PayloadDescriptor, collectS3Keys } from '../../shared/codec/codec';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
+import { abortErrorFrom } from '../../shared/dynamodb/abort';
 import type { AttributeMap } from '../../shared/dynamodb/client';
 import {
   commitRow,
@@ -23,9 +24,10 @@ import {
   type RevisionGuard,
   revisionGuard,
   type RowProbe,
+  settledVerdict,
   verdictFor,
+  type VerifiedWrite,
   verifyRow,
-  type WriteVerdict,
 } from '../../shared/dynamodb/idempotent-write';
 import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
 import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
@@ -174,6 +176,11 @@ async function attemptCasWrites(
 ): Promise<CasAttemptResult> {
   let observed = initial;
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
+    if (signal?.aborted) {
+      // Nothing of this attempt was sent, and the one before it was answered
+      // with a refusal, so no write of this item is still on its way.
+      return { done: true, outcome: { committed: false, error: abortErrorFrom(signal) } };
+    }
     const attempted = observed;
     try {
       await commitSpecialRow(
@@ -213,11 +220,12 @@ async function overwriteUnconditionally(
   observed: SpecialRowState,
   signal?: AbortSignal,
 ): Promise<SpecialWriteOutcome> {
+  if (signal?.aborted) return { committed: false, error: abortErrorFrom(signal) };
   try {
     await commitSpecialRow(context, item, undefined, signal);
     return { committed: true, superseded: observed.value };
   } catch (error) {
-    return (await verifyAfterFailure(context, item, observed, error as Error)).outcome;
+    return (await verifyAfterFailure(context, item, observed, error as Error, false)).outcome;
   }
 }
 
@@ -412,9 +420,14 @@ export async function readSpecialRow(
  *
  * Accepts: `attempted` — the state this attempt pinned, whose descriptor is the
  * one superseded if the write did land. `error` — the failure being explained.
+ * `pinned` — false for the unconditional overwrite, whose attempt can land
+ * over any row.
  *
  * Returns: the outcome, and the row's observed state when another writer holds
- * it, so a rejected compare-and-swap can re-pin and try again.
+ * it, so a rejected compare-and-swap can re-pin and try again. A row found
+ * absent, or still in the pinned state, after a failure that may still land (a
+ * cancel, a timeout, a dropped connection) is unverified rather than
+ * not-landed.
  *
  * Throws: nothing. It exists to turn a failure into a decision.
  *
@@ -427,15 +440,30 @@ export async function verifyAfterFailure(
   item: CheckpointWriteRow,
   attempted: SpecialRowState,
   error: Error,
+  pinned = true,
 ): Promise<VerifiedFailure> {
   const probe = specialRowProbe(item);
   const rejected = isConditionalCheckFailed(error) ? rejectedRow(error) : undefined;
-  const { verdict, row } = rejected
+  const read = rejected
     ? { verdict: verdictFor(probe, rejected), row: rejected }
     : await verifyRow(context, probe);
+  // A refusal is the service's answer, and a write pinned to a state the row
+  // has since left can no longer apply. Only an attempt that may still arrive
+  // and still fit — unpinned, or pinned to the state the row is in — keeps
+  // this item's upload alive.
+  const verdict =
+    rejected === undefined && (!pinned || stillPinned(attempted, read.row))
+      ? settledVerdict(read.verdict, error)
+      : read.verdict;
   if (verdict === 'landed') return { outcome: { committed: true, superseded: attempted.value } };
   if (verdict === 'unverified') return { outcome: { committed: true, error } };
-  return { outcome: { committed: false, error }, observed: stateOf(row) };
+  return { outcome: { committed: false, error }, observed: stateOf(read.row) };
+}
+
+/** Whether `row` is still in the state an attempt was pinned to, so that attempt could still apply. */
+function stillPinned(attempted: SpecialRowState, row: AttributeMap | undefined): boolean {
+  const current = stateOf(row);
+  return current.exists === attempted.exists && current.revision === attempted.revision;
 }
 
 /**
@@ -609,10 +637,9 @@ async function commitWriteRow(
 async function verifyFailure(
   context: CheckpointerContext,
   item: CheckpointWriteRow,
-): Promise<WriteVerdict> {
-  if (!context.offloader) return 'not-landed';
-  const { verdict } = await verifyRow(context, specialRowProbe(item));
-  return verdict;
+): Promise<VerifiedWrite> {
+  if (!context.offloader) return { verdict: 'not-landed' };
+  return verifyRow(context, specialRowProbe(item));
 }
 
 /**
@@ -647,6 +674,10 @@ export async function writeRegularRows(
   items: CheckpointWriteRow[],
   signal?: AbortSignal,
 ): Promise<RegularWriteOutcome> {
+  if (items.length > 0 && signal?.aborted) {
+    // Nothing has been sent, so no row can name any of these uploads.
+    return { deadUploads: [...items], error: abortErrorFrom(signal) };
+  }
   const results = await Promise.allSettled(
     items.map((item) => commitWriteRow(context, item, signal)),
   );
@@ -660,9 +691,12 @@ export async function writeRegularRows(
       if (rejectionProvesForeignRow(item, reason)) outcome.deadUploads.push(item);
       continue;
     }
-    const verdict = await verifyFailure(context, item);
-    if (verdict === 'landed') continue;
-    if (verdict === 'not-landed') outcome.deadUploads.push(item);
+    const { verdict, row } = await verifyFailure(context, item);
+    // First-write-wins turns this write away once any row holds its key, so
+    // only a row still absent can be taken by an attempt that may still land.
+    const settled = row === undefined ? settledVerdict(verdict, reason) : verdict;
+    if (settled === 'landed') continue;
+    if (settled === 'not-landed') outcome.deadUploads.push(item);
     outcome.error = outcome.error ?? reason;
   }
   return outcome;

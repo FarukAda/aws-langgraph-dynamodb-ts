@@ -1,4 +1,4 @@
-import { GetCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 
 import { writeRegularRows } from '../../../../src/checkpointer/internal/pending-writes';
 import type { CheckpointWriteRow } from '../../../../src/checkpointer/internal/rows';
@@ -158,8 +158,10 @@ describe('writeRegularRows', () => {
   it('cancels the put but not the verification read that follows it', async () => {
     const { client, mock } = createStrictDocumentMock();
     const controller = new AbortController();
-    controller.abort();
-    rejectRowWrites(mock, timeout());
+    mock.on(TransactWriteCommand).callsFake(() => {
+      controller.abort();
+      return Promise.reject(timeout());
+    });
     mock.on(GetCommand).resolves({ Item: { writeGroup: 'OTHER' } });
     const outcome = await writeRegularRows(context(client), [item('G1')], controller.signal);
     expect(outcome.error).toMatchObject({ name: 'DynamoDBLangGraphError', code: 'ABORTED' });
