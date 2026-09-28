@@ -201,8 +201,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * Accepts: `config` — shaped as {@link getTuple} requires, naming a
    * `thread_id` and a `checkpoint_id`, since writes attach to a checkpoint.
    * `config.signal` — aborts the writes. `writes` — an array of
-   * `[channel, value]` arrays, one row each, written in parallel; an empty list
-   * writes nothing. `taskId` — validated as the key segment it becomes.
+   * `[channel, value]` arrays, one row each: a special channel's row is
+   * written alongside the rest, a regular row at most 32 at a time; an empty
+   * list writes nothing. `taskId` — validated as the key segment it becomes.
    *
    * Returns: nothing. Losing a first-write-wins race is a normal outcome, not
    * a failure.

@@ -13,6 +13,7 @@
 
 import { type PayloadDescriptor, collectS3Keys } from '../../shared/codec/codec';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
+import { mapWithConcurrency } from '../../shared/concurrency';
 import { abortErrorFrom } from '../../shared/dynamodb/abort';
 import type { AttributeMap } from '../../shared/dynamodb/client';
 import {
@@ -648,10 +649,24 @@ async function verifyFailure(
 }
 
 /**
- * Write regular rows with a first-write-wins guard. Every write fully settles
- * (`Promise.allSettled`) before this resolves and never rejects; a genuine
- * failure is reported via `error`, not thrown. The fan-out is one call per
- * item whichever shape {@link commitWriteRow} gives that item's write.
+ * Regular pending writes one `putWrites` call keeps in flight. A `Send`
+ * fan-out can name a thousand of them, and the SDK's HTTP agent holds 50
+ * sockets by default: past that, a request waits for a socket, and the
+ * request timeout counts the wait, so a burst times out healthy writes that
+ * the retry layer then re-sends. Thirty-two in flight stays under the socket
+ * pool and still overlaps the round trips.
+ */
+export const REGULAR_WRITE_CONCURRENCY = 32;
+
+/** One regular write's outcome, settled rather than thrown. */
+type SettledWrite = { ok: true } | { ok: false; reason: Error; sent: boolean };
+
+/**
+ * Write regular rows with a first-write-wins guard. Every write fully settles,
+ * at most {@link REGULAR_WRITE_CONCURRENCY} at a time, before this resolves,
+ * and it never rejects; a genuine failure is reported via `error`, not thrown.
+ * The fan-out is one call per item whichever shape {@link commitWriteRow}
+ * gives that item's write.
  *
  * A failure is not proof of a non-commit: `withDynamoDBRetry` re-issues a put
  * whose response was lost, and the re-issues can time out at the transport, so
@@ -665,7 +680,8 @@ async function verifyFailure(
  * `signal` — aborts the puts.
  *
  * Returns: which items are known not to have committed — whose own uploads are
- * therefore dead — and the first genuine failure, if any.
+ * therefore dead — and the first genuine failure, if any; a write the caller's
+ * signal came before is not sent, and its upload is dead.
  *
  * Throws: nothing. Every put settles before this resolves, because the caller
  * runs it beside the special writes under `Promise.all` and its cleanup depends
@@ -679,18 +695,30 @@ export async function writeRegularRows(
   items: CheckpointWriteRow[],
   signal?: AbortSignal,
 ): Promise<RegularWriteOutcome> {
-  if (items.length > 0 && signal?.aborted) {
-    // Nothing has been sent, so no row can name any of these uploads.
-    return { deadUploads: [...items], error: abortErrorFrom(signal) };
-  }
-  const results = await Promise.allSettled(
-    items.map((item) => commitWriteRow(context, item, signal)),
+  const settled = await mapWithConcurrency(
+    items,
+    REGULAR_WRITE_CONCURRENCY,
+    async (item): Promise<SettledWrite> => {
+      if (signal?.aborted) return { ok: false, reason: abortErrorFrom(signal), sent: false };
+      try {
+        await commitWriteRow(context, item, signal);
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, reason: error as Error, sent: true };
+      }
+    },
   );
   const outcome: RegularWriteOutcome = { deadUploads: [] };
-  for (const [index, result] of results.entries()) {
-    if (result.status === 'fulfilled') continue;
+  for (const [index, result] of settled.entries()) {
+    if (result.ok) continue;
     const item = items[index];
-    const reason = result.reason as Error;
+    const { reason } = result;
+    if (!result.sent) {
+      // Nothing was sent, so no row can name this upload.
+      outcome.deadUploads.push(item);
+      outcome.error = outcome.error ?? reason;
+      continue;
+    }
     if (isConditionalCheckFailed(reason)) {
       reportGuardRejection(context, item, reason);
       if (rejectionProvesForeignRow(item, reason)) outcome.deadUploads.push(item);
@@ -699,9 +727,9 @@ export async function writeRegularRows(
     const { verdict, row } = await verifyFailure(context, item);
     // First-write-wins turns this write away once any row holds its key, so
     // only a row still absent can be taken by an attempt that may still land.
-    const settled = row === undefined ? settledVerdict(verdict, reason) : verdict;
-    if (settled === 'landed') continue;
-    if (settled === 'not-landed') outcome.deadUploads.push(item);
+    const settledNow = row === undefined ? settledVerdict(verdict, reason) : verdict;
+    if (settledNow === 'landed') continue;
+    if (settledNow === 'not-landed') outcome.deadUploads.push(item);
     outcome.error = outcome.error ?? reason;
   }
   return outcome;
