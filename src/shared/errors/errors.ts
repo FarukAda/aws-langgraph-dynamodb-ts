@@ -335,3 +335,46 @@ export function compensationFailedError(
     details: { rollbackError: rollback },
   });
 }
+
+/**
+ * The error for an append-saga chunk whose own outcome could not be
+ * established, raised once every chunk this call *could* confirm has already
+ * been undone — the rollback itself did not fail; this chunk alone could not
+ * be read back, or its write may still be applied after the read.
+ *
+ * Accepts: `cause` — the failing chunk's own failure. `unsettledBecause` —
+ * why its outcome is unknown: the read-back's own failure, or the write's
+ * own failure, when some attempt of it may still be applied. Both are built
+ * from a `catch`, so either may be whatever a `throw` produced rather than
+ * an `Error`.
+ *
+ * Returns: a `COMPENSATION_FAILED` error carrying `cause` as `cause` and
+ * `unsettledBecause` as `details.rollbackError`, each normalised through
+ * `toError` so both are always error-shaped. Its message says the chunk's
+ * own fate could not be established — never that a rollback failed, since
+ * every chunk this call could confirm was already rolled back before this is
+ * raised. The session's `messageCount` may have drifted, which
+ * `reconcileMessageCount` repairs; the quoted text of both errors is
+ * redacted before it is embedded.
+ *
+ * Throws: nothing; building an error may not fail. Reading `.message` off a
+ * thrown `null` or `undefined` would throw here, which is why `toError`
+ * normalises both `cause` and `unsettledBecause` before anything reads off
+ * them.
+ */
+export function unsettledAppendError(
+  cause: Error,
+  unsettledBecause: Error,
+): DynamoDBLangGraphError<ErrorCode.COMPENSATION_FAILED> {
+  const trigger = toError(cause);
+  const unsettled = toError(unsettledBecause);
+  return build(unsettledAppendError, {
+    message:
+      `an append chunk could not be settled after ${redactedMessage(trigger)} ` +
+      `(unsettled because: ${redactedMessage(unsettled)})`,
+    code: ErrorCode.COMPENSATION_FAILED,
+    context: {},
+    cause: trigger,
+    details: { rollbackError: unsettled },
+  });
+}

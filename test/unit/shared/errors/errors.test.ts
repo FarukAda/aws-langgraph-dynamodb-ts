@@ -9,6 +9,7 @@ import {
   resultTruncatedError,
   retryBudgetMayStillLand,
   retryExhaustedError,
+  unsettledAppendError,
   validationError,
 } from '../../../../src/shared/errors/errors';
 
@@ -25,6 +26,7 @@ const EVERY_FACTORY = [
     () => batchWriteAllIncompleteError({ succeeded: 0, total: 1, failures: [] }),
   ],
   ['compensationFailedError', () => compensationFailedError(new Error('t'), new Error('r'))],
+  ['unsettledAppendError', () => unsettledAppendError(new Error('t'), new Error('u'))],
 ] as const;
 
 describe('every factory', () => {
@@ -278,6 +280,37 @@ describe('compensationFailedError', () => {
 
   it('normalises a trigger and a rollback that are not errors through toError', () => {
     const error = compensationFailedError('trigger blew up' as never, null as never);
+    expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
+    expect(error.message).toContain('trigger blew up');
+    expect((error.cause as Error).message).toBe('trigger blew up');
+    expect(error.details.rollbackError.message).toBe('null was thrown');
+  });
+});
+
+describe('unsettledAppendError', () => {
+  it('carries the trigger as cause and why the chunk is unsettled in details', () => {
+    const trigger = new Error('append failed');
+    const unsettledBecause = new Error('read-back timed out');
+    const error = unsettledAppendError(trigger, unsettledBecause);
+    expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
+    expect(error.cause).toBe(trigger);
+    expect(error.details).toEqual({ rollbackError: unsettledBecause });
+    expect(error.message).toMatch(/append failed/);
+    expect(error.message).toMatch(/read-back timed out/);
+  });
+
+  /**
+   * The rollback that undid every other chunk did not fail here — it is
+   * this one chunk's own fate that could not be established. A message that
+   * says "rollback" would tell an operator the wrong thing happened.
+   */
+  it('never claims a failed rollback, unlike compensationFailedError', () => {
+    const error = unsettledAppendError(new Error('append failed'), new Error('unsettled'));
+    expect(error.message).not.toContain('rollback');
+  });
+
+  it('normalises a trigger and an unsettled reason that are not errors through toError', () => {
+    const error = unsettledAppendError('trigger blew up' as never, null as never);
     expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
     expect(error.message).toContain('trigger blew up');
     expect((error.cause as Error).message).toBe('trigger blew up');

@@ -41,12 +41,17 @@ import type { HistoryContext } from '../internal/setup';
  * not finish, or when a failing chunk's own outcome could not be established;
  * `ABORTED` when the signal fires, after the same rollback.
  *
- * Guarantees: a caller observes all messages or none. `messageCount` always
- * agrees with the messages that landed, because each chunk writes both in one
- * transaction. Every message of the append shares one creation-anchored expiry,
- * so a conversation expires whole rather than losing its oldest turns first. No
- * S3 object is left behind by a failure, at any stage — including a failure
- * partway through encoding, before the saga exists.
+ * Guarantees: a caller observes all messages or none — except the one chunk
+ * a failed call could not settle: an `ABORTED` append whose in-flight chunk
+ * commits after the call returns, or a `COMPENSATION_FAILED` append whose
+ * failing chunk's own outcome could not be established. Read the session
+ * back before deciding whether to resend those messages. `messageCount`
+ * always agrees with the messages that landed, because each chunk writes
+ * both in one transaction. Every message of the append shares one
+ * creation-anchored expiry, so a conversation expires whole rather than
+ * losing its oldest turns first. No S3 object is left behind by a failure,
+ * at any stage — including a failure partway through encoding, before the
+ * saga exists.
  */
 export async function addMessages(
   context: HistoryContext,

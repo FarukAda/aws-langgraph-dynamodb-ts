@@ -77,7 +77,12 @@ export type BatchWriteIncompleteDetails = BatchDrainDetails | BatchPassDetails;
 
 /** What a `COMPENSATION_FAILED` error reports besides its trigger, which is `cause`. */
 export interface CompensationFailedDetails {
-  /** Why the rollback itself could not finish; itself often a `BATCH_WRITE_INCOMPLETE`. */
+  /**
+   * Why the append could not be undone or settled: the rollback's own
+   * failure (itself often a `BATCH_WRITE_INCOMPLETE`), the read-back's
+   * failure, or the write's own failure when some attempt of it may still
+   * be applied.
+   */
   readonly rollbackError: Error;
 }
 

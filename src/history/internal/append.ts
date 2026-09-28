@@ -28,11 +28,12 @@ import {
   type WriteVerdict,
 } from '../../shared/dynamodb/idempotent-write';
 import { type RowKey, SORT_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
-import { DynamoDBLangGraphError, toError } from '../../shared/errors/base-error';
+import { DynamoDBLangGraphError, failureLabel, toError } from '../../shared/errors/base-error';
 import { refusedByService } from '../../shared/errors/classify';
 import { ErrorCode } from '../../shared/errors/error-code';
-import { compensationFailedError } from '../../shared/errors/errors';
+import { compensationFailedError, unsettledAppendError } from '../../shared/errors/errors';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
+import { truncateForLog } from '../../shared/logging/truncate';
 import type { SessionId, StorableMessages } from './parse';
 import { buildMessageRow, type MessageRow } from './rows';
 import {
@@ -174,13 +175,17 @@ export async function appendMessages(
 /**
  * Say what the compensation is doing, and make sure the saying cannot stop it.
  *
- * The caller's `Logger` is consumer code, and both lines here are written from
- * inside a rollback: the first is {@link compensate}'s opening statement, the
- * second sits in the `catch` that builds `COMPENSATION_FAILED`. Unguarded, a
- * throw out of either would take the rollback with it — the first skipping
- * the S3 cleanup, every committed chunk's deletes, the count revert and the
- * rethrow in one go; the second replacing the one error whose job is to say
- * that `messageCount` drifted.
+ * The caller's `Logger` is consumer code, and all three lines here are
+ * written from inside a rollback: the first is {@link compensate}'s opening
+ * statement; the second sits in the `catch` that builds `COMPENSATION_FAILED`
+ * from a rollback that failed outright; the third fires once the rollback has
+ * succeeded but the failing chunk itself could not be settled, and carries
+ * `unsettledBecause` as a `reason` field so its cause is visible without
+ * catching the error the call still throws. Unguarded, a throw out of any of
+ * them would take the rollback with it — the first skipping the S3 cleanup,
+ * every committed chunk's deletes, the count revert and the rethrow in one
+ * go; the other two replacing the one error whose job is to say what went
+ * wrong with the logger's own.
  *
  * The guard itself is {@link absorbLoggerFailure}, which this held an inline
  * copy of while that helper belonged to another change. Swallowing is still
@@ -194,9 +199,18 @@ function reportStep(
   context: HistoryContext,
   level: 'warn' | 'error',
   message: string,
-  { sessionId, committedChunks }: { sessionId: SessionId; committedChunks: number },
+  fields: { sessionId: SessionId; committedChunks: number; unsettledBecause?: Error },
 ): void {
-  absorbLoggerFailure(() => context.logger[level](message, { sessionId, committedChunks }));
+  const { sessionId, committedChunks, unsettledBecause } = fields;
+  absorbLoggerFailure(() =>
+    context.logger[level](message, {
+      sessionId,
+      committedChunks,
+      ...(unsettledBecause === undefined
+        ? {}
+        : { reason: truncateForLog(failureLabel(unsettledBecause)) }),
+    }),
+  );
 }
 
 /**
@@ -261,8 +275,13 @@ async function rollbackCommitted(
  * suffix is cleaned immediately, the committed prefix only after its rows are
  * confirmed deleted. If the rollback itself fails, the committed chunks' S3
  * objects are deliberately left in place (their rows may survive) and it
- * raises `COMPENSATION_FAILED` carrying both the trigger and the
- * rollback error; otherwise it rethrows the trigger.
+ * raises `COMPENSATION_FAILED` carrying both the trigger and the rollback
+ * error. Once the rollback has succeeded, it rethrows the trigger unchanged —
+ * unless the failing chunk itself is unsettled and the trigger is not a
+ * cancel, in which case it raises `COMPENSATION_FAILED` again, this time
+ * carrying `failure.unsettledBecause`: the rollback did not fail, but the
+ * session still cannot be called restored while that one chunk's own fate is
+ * unknown. A cancel is always reported as the cancel it is.
  *
  * `failure.uncertain` marks the failed chunk
  * (`append.chunks[failure.committed.length]`) as one whose outcome could not be
@@ -275,20 +294,25 @@ async function rollbackCommitted(
  * order; empty means the very first chunk failed, and then the only thing to
  * undo is the session row this call may have created. `failure.trigger` — the
  * failure that started this. `failure.uncertain` — see above.
+ * `failure.unsettledBecause` — why the failing chunk is unsettled, when it
+ * is: the read-back's own failure, or the write's own failure when some
+ * attempt of it may still be applied.
  *
  * Returns: never; the declared `Promise<never>` is the contract.
  *
- * Throws: `failure.trigger` when the rollback succeeded, `COMPENSATION_FAILED`
- * when it did not. `COMPENSATION_FAILED` too when the failing chunk is
- * unsettled and the trigger is not a cancel, carrying `failure.unsettledBecause`
- * as `details.rollbackError`.
+ * Throws: `failure.trigger` when the rollback succeeded and the failing chunk
+ * is settled, or is a cancel; `COMPENSATION_FAILED` when the rollback itself
+ * failed, carrying both the trigger and the rollback error as
+ * `details.rollbackError`; or when the rollback succeeded but the failing
+ * chunk is unsettled and the trigger is not a cancel, carrying the trigger
+ * and `failure.unsettledBecause` as `details.rollbackError`.
  *
  * Guarantees: an object is deleted only once no row can reference it — the
  * never-committed suffix immediately, the committed prefix only after its rows
  * are confirmed gone, and an unverified chunk never. Storage is leaked in
  * preference to leaving a live row pointing at a deleted object.
  *
- * Neither of its two log lines can stop it: both go through
+ * None of its three log lines can stop it: all three go through
  * {@link reportStep}. Otherwise a throw from the first would skip the S3
  * cleanup, the rollback, the count revert and the rethrow all at once, leaving
  * every committed chunk in the table with `messageCount` still counting it,
@@ -333,12 +357,12 @@ export async function compensate(
     context,
     'error',
     'history.addMessages could not tell whether a failed chunk committed; messageCount may have drifted',
-    { sessionId, committedChunks: committed.length },
+    { sessionId, committedChunks: committed.length, unsettledBecause: unsettledBecause ?? trigger },
   );
   // A cancel is reported as the cancel it is. Any other failure whose chunk may
   // be live cannot claim the session is back to where it was.
   if (isAbortError(trigger)) throw trigger;
-  throw compensationFailedError(trigger, unsettledBecause ?? trigger);
+  throw unsettledAppendError(trigger, unsettledBecause ?? trigger);
 }
 
 /** What a failed chunk's read-back established, and what kept it from establishing more. */
@@ -441,15 +465,19 @@ function asCommitted(chunk: MessageRow[]): CommittedChunk {
  * Returns: nothing, and only when every chunk is known to have committed.
  *
  * Throws: the first chunk's failure, after the rollback has restored the
- * pre-call state; or `COMPENSATION_FAILED` carrying both that failure
- * and the rollback's own, when the rollback could not finish. `ABORTED` when
- * the signal fires, after the same rollback.
+ * pre-call state; `COMPENSATION_FAILED` carrying both that failure and the
+ * rollback's own, when the rollback could not finish; `COMPENSATION_FAILED`
+ * too, carrying the failing chunk's own unsettled reason as
+ * `details.rollbackError`, when the rollback succeeded but that chunk's own
+ * outcome could not be established; `ABORTED` when the signal fires, after
+ * the same rollback.
  *
  * Guarantees: each message's S3 key carries its own ULID, so no two rows of any
  * call can address the same object and the rollback's cleanup can never delete
  * an object a surviving row still points at. What a caller observes is
- * all-or-nothing; what the table holds is all-or-nothing only until a rollback
- * fails, which is why that case is a distinct error and not a rethrow.
+ * all-or-nothing; what the table holds is all-or-nothing only until a
+ * rollback fails, or a failing chunk's own outcome cannot be established,
+ * which is why either case is a distinct error and not a rethrow.
  */
 export async function appendChunks(context: HistoryContext, append: ChunkedAppend): Promise<void> {
   const committed: CommittedChunk[] = [];

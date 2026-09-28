@@ -107,15 +107,19 @@ export class DynamoDBChatMessageHistory {
    * an array, or, with the offending index, for an element that is not a
    * message or one that could never be read back; or naming `signal` or
    * `options.<key>` for a key this package does not read;
-   * `COMPENSATION_FAILED` when a later chunk fails and either the rollback
-   * fails too or the failing chunk's own outcome could not be established;
+   * `COMPENSATION_FAILED` when a chunk fails and either the rollback fails
+   * too or that chunk's own outcome could not be established;
    * `RETRY_EXHAUSTED` after 18 contended attempts; a classified AWS failure;
    * `ABORTED`.
    *
-   * Guarantees: a caller observes all messages or none. One transaction per
-   * chunk of up to 99 keeps `messageCount` exact. Lock-free and safe under
-   * concurrent appends to one session; every message shares the session's TTL
-   * when one is configured.
+   * Guarantees: a caller observes all messages or none — except the one
+   * chunk a failed call could not settle: an `ABORTED` append whose in-flight
+   * chunk commits after the call returns, or a `COMPENSATION_FAILED` append
+   * whose failing chunk's own outcome could not be established. Read the
+   * session back before deciding whether to resend those messages. One
+   * transaction per chunk of up to 99 keeps `messageCount` exact. Lock-free
+   * and safe under concurrent appends to one session; every message shares
+   * the session's TTL when one is configured.
    */
   addMessages(sessionId: string, messages: BaseMessage[], options?: CancelOptions): Promise<void> {
     return guardPublic('history.addMessages', () => {

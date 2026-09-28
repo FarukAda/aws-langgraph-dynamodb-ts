@@ -8,7 +8,7 @@
 
 > **isDynamoDBLangGraphError**(`value`): `value is AnyDynamoDBLangGraphError`
 
-Defined in: [shared/errors/base-error.ts:186](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L186)
+Defined in: [shared/errors/base-error.ts:191](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/errors/base-error.ts#L191)
 
 Whether `value` is one of this library's errors.
 

@@ -15,8 +15,11 @@ dropped connection each end the client's wait, not the service's work: a
 request DynamoDB has already received is applied after the client gave up on
 it, and a read issued in between finds nothing. The chat-history append went
 further and did not read a chunk back after a cancel at all. Either way a row
-that commits after the read names objects that are gone, and every later read
-of that checkpoint, item or session fails on it.
+that commits after the read names objects that are gone. A checkpointer or
+store read of that row fails outright; a chat-history read of that message
+fails the same way under `onCorruptMessage: 'throw'`, or is silently dropped
+with an `error` log under the default `'skip'` — either way it is
+permanently unreadable.
 
 Two further answers say the same about a write DynamoDB *did* respond to.
 AWS's `TransactWriteItems` API reference documents

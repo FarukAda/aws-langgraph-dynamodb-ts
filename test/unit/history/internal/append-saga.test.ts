@@ -336,15 +336,23 @@ describe('appendChunks: ambiguous chunk failure', () => {
   // The transaction is retried up to MESSAGE_APPEND_RETRY_MAX_ATTEMPTS times
   // with real backoff and appendChunks exposes no rng seam, so the exhausted
   // outcome is injected directly: withRetry rethrows a `RETRY_EXHAUSTED` error
-  // unchanged, which is exactly what the saga sees after a lost-response
-  // transaction whose re-issues all timed out. The cause deliberately carries
-  // no retryable signal (the classifier walks the cause chain), or the mock
-  // itself would be retried through the whole 18-attempt backoff.
+  // unchanged, which is exactly what the saga sees once a whole retry budget
+  // is spent and every attempt was answered — not `TransactionInProgressException`
+  // and not a 5xx, either of which would leave the chunk unsettled instead. The
+  // cause is a real, definite AWS refusal rather than a name this library's own
+  // classifier itself retries (a throttle's own name included): `withRetry`
+  // classifies whatever this mock rejects with exactly as it would a fresh
+  // attempt's own failure, so a retryable name here would see the mock retried
+  // through the whole 18-attempt backoff instead of exercising this call's own
+  // handling of the outcome.
   function exhausted(): Error {
     return retryExhaustedError(
-      'Operation failed after 18 attempts: timeout',
+      'Operation failed after 18 attempts: access denied',
       18,
-      Object.assign(new Error('timeout'), { name: 'SimulatedTransportFailure' }),
+      Object.assign(new Error('access denied'), {
+        name: 'AccessDeniedException',
+        $metadata: { httpStatusCode: 400 },
+      }),
     );
   }
 
@@ -403,7 +411,7 @@ describe('appendChunks: ambiguous chunk failure', () => {
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining('could not tell whether a failed chunk committed'),
-      { sessionId: 's1', committedChunks: 0 },
+      { sessionId: 's1', committedChunks: 0, reason: 'AccessDeniedException' },
     );
   });
 
@@ -481,9 +489,11 @@ describe('appendChunks: ambiguous chunk failure', () => {
       }),
     ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.ABORTED });
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    // The cancel is what reaches the caller, but why the chunk itself is
+    // unsettled is not silently dropped: it still reaches the log.
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining('could not tell whether a failed chunk committed'),
-      expect.anything(),
+      expect.objectContaining({ reason: 'ABORTED' }),
     );
   });
 
