@@ -12,6 +12,7 @@
 import type { S3Client } from '@aws-sdk/client-s3';
 
 import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../dynamodb/client';
+import { copyForCaller } from '../../errors/base-error';
 import { validationError } from '../../errors/errors';
 import type { S3ClientConfigLike } from './client-types';
 
@@ -50,7 +51,10 @@ function wrapMissingPeer(error: Error): never {
  * Throws: `VALIDATION` naming `s3` when the package is not installed,
  * carrying the install command; any other import failure — a broken build, a
  * syntax error inside the package — passes through unchanged. A failure is not
- * cached, so an install or a fixed bundle succeeds on a later call.
+ * cached, so an install or a fixed bundle succeeds on a later call. Each
+ * concurrent caller of a failed import gets its own error instance
+ * (`copyForCaller`), so the public boundary stamping one's `context.operation`
+ * cannot leave it sitting in another caller's error too.
  */
 export async function loadS3Sdk(): Promise<S3Sdk> {
   if (!sdkPromise) {
@@ -59,7 +63,11 @@ export async function loadS3Sdk(): Promise<S3Sdk> {
       return wrapMissingPeer(error);
     });
   }
-  return sdkPromise;
+  try {
+    return await sdkPromise;
+  } catch (error) {
+    throw copyForCaller(error as Error);
+  }
 }
 
 /**

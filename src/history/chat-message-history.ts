@@ -3,12 +3,13 @@
  *
  * The public class holds only what it resolved from its options and routes
  * each read and write to the action that implements it, through
- * `guardPublic`. Each asynchronous method is the error boundary, so no error
- * but the library's own reaches a caller (record 13); the synchronous
- * `destroy` and `forSession` are the exceptions — the latter is also the
- * one route from it to LangChain's single-session history. Where an action
- * lives, how it reads or writes, and which client or offloader it uses can
- * change without touching this surface.
+ * `guardPublic`. Every method is the error boundary, so no error but the
+ * library's own reaches a caller (record 13) — an asynchronous one through
+ * `guardPublic`, and the synchronous `destroy` and `forSession` through
+ * `guardPublicSync`; `forSession` is also the one route from it to
+ * LangChain's single-session history. Where an action lives, how it reads or
+ * writes, and which client or offloader it uses can change without touching
+ * this surface.
  */
 
 import type { BaseMessage } from '@langchain/core/messages';
@@ -288,7 +289,11 @@ export class DynamoDBChatMessageHistory {
    * here rather than on first use.
    */
   forSession(sessionId: string, window?: AdapterWindow): DynamoDBSessionChatMessageHistory {
-    return new DynamoDBSessionChatMessageHistory(this, sessionId, window);
+    return guardPublicSync(
+      'history.forSession',
+      () => new DynamoDBSessionChatMessageHistory(this, sessionId, window),
+      this.context.tableName,
+    );
   }
 
   /**

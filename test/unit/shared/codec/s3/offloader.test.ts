@@ -326,6 +326,35 @@ describe('S3Offloader', () => {
       process.off('unhandledRejection', onUnhandledRejection);
     }
   });
+
+  /**
+   * `getClient()` caches one promise for every caller; handing a rejection's
+   * identical object back to each of them used to mean whichever of upload,
+   * download, deleteBatch or ensureLifecycleRule reached the public boundary
+   * first stamped its own `operation` onto it — left sitting there for
+   * whichever of the others read the same object next.
+   */
+  it('gives concurrent callers reaching a shared construction failure their own error instance', async () => {
+    const shared = validationError(
+      'S3 offload requires the optional peer @aws-sdk/client-s3',
+      's3',
+    );
+    createDefaultS3ClientMock.mockRejectedValueOnce(shared);
+    const offloader = new S3Offloader({ bucketName: 'b' });
+
+    const [first, second] = await Promise.all([
+      offloader
+        .upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' })
+        .catch((error: Error) => error),
+      offloader.download('a.bin').catch((error: Error) => error),
+    ]);
+
+    expect(first).not.toBe(second);
+    expect(first).not.toBe(shared);
+    expect(second).not.toBe(shared);
+    expect(first).toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 's3' } });
+    expect(second).toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 's3' } });
+  });
 });
 
 describe('optional peer preload', () => {

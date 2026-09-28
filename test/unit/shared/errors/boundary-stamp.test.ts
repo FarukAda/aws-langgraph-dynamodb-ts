@@ -69,6 +69,23 @@ describe('the public boundary says where an error surfaced', () => {
     expect((foreign as { context?: unknown }).context).toBeUndefined();
   });
 
+  /**
+   * `context.operation ??= operation` throws a `TypeError` in strict mode on a
+   * frozen object that does not already carry `operation` — an assignment
+   * `toPublicError` must never let escape, since it runs inside a `catch`
+   * whose whole job is reporting the failure already in hand.
+   */
+  it('never throws for a context it cannot write to, frozen included', () => {
+    const frozen = new DynamoDBLangGraphError('s3', ErrorCode.S3_OFFLOAD_FAILED, { key: 'k' });
+    Object.freeze(frozen.context);
+    let result: unknown;
+    expect(() => {
+      result = toPublicError(frozen, 'store.put', 'tbl');
+    }).not.toThrow();
+    expect(result).toBe(frozen);
+    expect(frozen.context).toEqual({ key: 'k' });
+  });
+
   it('guards a synchronous method the same way, and returns what it returns', () => {
     expect(
       thrownBy(() =>

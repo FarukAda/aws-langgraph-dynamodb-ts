@@ -212,6 +212,40 @@ export function hasErrorCode<C extends ErrorCode>(
 }
 
 /**
+ * A caller's own copy of a branded error that several concurrent callers would
+ * otherwise share — a cached rejected import, a cached rejected client build.
+ * Sharing the one instance is safe while nothing on the path back to a public
+ * method writes to it, but the public boundary does: it stamps `context.operation`
+ * and `context.tableName` on an error that names neither, in place, and a
+ * second caller reaching the same shared instance through a *different*
+ * public method would then find the first caller's operation and table
+ * already sitting in its own context, unable to write its own. Giving each
+ * caller its own instance up front — same `message`, `code`, `context` and
+ * `cause` — keeps the two from ever writing to one object. Not a general
+ * clone: an *unbranded* failure needs none, since `wrapForeignError`
+ * (`shared/errors/boundary.ts`) already builds a fresh wrapper for it at
+ * every boundary crossing, unlike a branded error, which crosses unwrapped.
+ *
+ * Accepts: `error` — anything a `catch` can bind.
+ *
+ * Returns: a new `DynamoDBLangGraphError` carrying the same `message`, `code`,
+ * `context`, `cause` and `details` as `error`, when `error` already was one;
+ * `error` itself, unchanged, for anything else.
+ *
+ * Throws: nothing, for any value.
+ */
+export function copyForCaller(error: Error): Error {
+  if (!isDynamoDBLangGraphError(error)) return error;
+  return new DynamoDBLangGraphError(
+    error.message,
+    error.code,
+    error.context,
+    error.cause as Error | undefined,
+    error.details,
+  );
+}
+
+/**
  * What a log line calls a failure.
  *
  * Accepts: any error a `catch` bound.

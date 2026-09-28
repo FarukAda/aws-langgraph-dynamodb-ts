@@ -6,11 +6,13 @@
  * the five answer and refuse alike. `search` guards the same way but calls
  * its own action directly, to carry a signal that `batch` cannot;
  * `reconcileVectorIndex` and `ensureS3LifecycleRule` guard directly too,
- * since neither is a batchable store operation. Each asynchronous method
- * declared here is also the error boundary (record 13); `stop` and `destroy`
- * are the synchronous exceptions, releasing what the store owns through its
- * shell, and the inherited `start()` no-op — declared by `BaseStore`, not
- * overridden here — is neither guarded nor routed through any of this.
+ * since neither is a batchable store operation. Each method declared here is
+ * also the error boundary (record 13) — an asynchronous one through
+ * `guardPublic`, and the synchronous `destroy`, releasing what the store owns
+ * through its shell, through `guardPublicSync`; `stop` is that same guarded
+ * call under upstream's lifecycle name. The inherited `start()` no-op —
+ * declared by `BaseStore`, not overridden here — is neither guarded nor
+ * routed through any of this.
  */
 
 import {

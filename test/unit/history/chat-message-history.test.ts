@@ -377,6 +377,25 @@ describe('forSession checks its arguments when it is called', () => {
     expect(() => h.forSession('s1', { limit: 0 })).toThrow(refusal('limit'));
     expect(() => h.forSession('s1', { limit: -1 })).toThrow(refusal('limit'));
   });
+
+  /**
+   * `forSession` runs on every request under `RunnableWithMessageHistory`, so
+   * a malformed session id it refuses must say where — like every other
+   * public method — rather than being the one silent public entry point.
+   */
+  it('names history.forSession and this table on the error it raises', () => {
+    const h = history(createStrictDocumentMock().client);
+    expect(() => h.forSession('a#b')).toThrow(
+      expect.objectContaining({
+        code: ErrorCode.VALIDATION,
+        context: expect.objectContaining({
+          field: 'sessionId',
+          operation: 'history.forSession',
+          tableName: 'history',
+        }),
+      }),
+    );
+  });
 });
 
 describe('bounded reads', () => {

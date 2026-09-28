@@ -1,6 +1,7 @@
 import { S3Client } from '@aws-sdk/client-s3';
 
 import { createDefaultS3Client, loadS3Sdk } from '../../../../../src/shared/codec/s3/client';
+import { toPublicError } from '../../../../../src/shared/errors/boundary';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 
 type ClientModule = typeof import('../../../../../src/shared/codec/s3/client');
@@ -65,5 +66,34 @@ describe('loadS3Sdk without the optional peer', () => {
   it('rethrows a module failure that is not a missing module unchanged', async () => {
     const isolated = isolatedClientModule(new SyntaxError('broken build'));
     await expect(isolated.loadS3Sdk()).rejects.toThrow('broken build');
+  });
+
+  /**
+   * Concurrent callers share one rejected import promise. Handing them the
+   * identical `VALIDATION` error back used to mean whichever public method's
+   * boundary reached it first stamped its own `operation` and `tableName`
+   * onto the one object — visible in the second caller's error too, since a
+   * caller from a *different* method would find those fields already filled
+   * and unable to write its own.
+   */
+  it('gives each concurrent caller of a failed import its own error instance', async () => {
+    const missing = Object.assign(new Error("Cannot find package '@aws-sdk/client-s3'"), {
+      code: 'ERR_MODULE_NOT_FOUND',
+    });
+    const isolated = isolatedClientModule(missing);
+    const [first, second] = await Promise.all([
+      isolated.loadS3Sdk().catch((error: Error) => error),
+      isolated.loadS3Sdk().catch((error: Error) => error),
+    ]);
+    expect(first).not.toBe(second);
+    expect(first).toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 's3' } });
+    expect(second).toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 's3' } });
+
+    // Simulate the two callers reaching the public boundary through different
+    // methods on different tables: each error must keep its own stamp.
+    const stampedFirst = toPublicError(first as Error, 'saver.put', 'ckpt');
+    const stampedSecond = toPublicError(second as Error, 'store.get', 'store');
+    expect(stampedFirst.context).toMatchObject({ operation: 'saver.put', tableName: 'ckpt' });
+    expect(stampedSecond.context).toMatchObject({ operation: 'store.get', tableName: 'store' });
   });
 });

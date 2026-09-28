@@ -20,8 +20,8 @@ import {
   sleep,
   withRetry,
 } from '../../dynamodb/retry';
-import { DynamoDBLangGraphError, failureLabel } from '../../errors/base-error';
-import { awsDiagnostics, classifyAwsError } from '../../errors/classify';
+import { copyForCaller, DynamoDBLangGraphError, failureLabel } from '../../errors/base-error';
+import { awsDiagnostics, classifiableCause, classifyAwsError } from '../../errors/classify';
 import { ErrorCode } from '../../errors/error-code';
 import { validationError } from '../../errors/errors';
 import { absorbLoggerFailure, type Logger } from '../../logging/logger';
@@ -132,7 +132,15 @@ export class S3Offloader {
         },
       );
     }
-    return this.clientPromise;
+    // Every caller shares this one promise, so a failed build's error would
+    // otherwise be one object handed to whichever of upload, download,
+    // deleteBatch or ensureLifecycleRule reaches it — through however many
+    // different public operations called them concurrently. `.catch` here
+    // runs once per caller of this method, not once for the shared promise,
+    // so each gets its own copy to carry through the public boundary.
+    return this.clientPromise.catch((error: Error) => {
+      throw copyForCaller(error);
+    });
   }
 
   /**
@@ -438,7 +446,11 @@ export async function uploadObject(client: S3Client, params: UploadParams): Prom
     throw new DynamoDBLangGraphError(
       redactedMessage(error as Error),
       ErrorCode.S3_OFFLOAD_FAILED,
-      { operation: 'upload', key: params.key, ...awsDiagnostics(error as Error) },
+      {
+        operation: 'upload',
+        key: params.key,
+        ...awsDiagnostics(classifiableCause(error as Error)),
+      },
       error as Error,
     );
   }
@@ -510,7 +522,7 @@ export async function downloadObject(
     throw new DynamoDBLangGraphError(
       redactedMessage(error as Error),
       ErrorCode.S3_OFFLOAD_FAILED,
-      { operation: 'download', key, ...awsDiagnostics(error as Error) },
+      { operation: 'download', key, ...awsDiagnostics(classifiableCause(error as Error)) },
       error as Error,
     );
   }

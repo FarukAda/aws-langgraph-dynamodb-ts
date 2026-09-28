@@ -3,9 +3,9 @@
  *
  * Only this package's own error leaves a public method (record 13): an error of
  * its own passes through, given the public operation and the table it surfaced
- * through when it names neither, and anything else — an SDK failure, a
- * caller's thrown value — is classified and wrapped with its cause attached
- * and its text redacted.
+ * through for whichever of the two it does not already name, and anything
+ * else — an SDK failure, a caller's thrown value — is classified and wrapped
+ * with its cause attached and its text redacted.
  */
 
 import { redactedMessage } from '../logging/secret-patterns';
@@ -17,13 +17,22 @@ import {
   isDynamoDBLangGraphError,
   toError,
 } from './base-error';
-import { awsDiagnostics, classifyAwsError } from './classify';
-import { ErrorCode } from './error-code';
+import { awsDiagnostics, classifiableCause, classifyAwsError } from './classify';
 
 /**
- * Fill in where an error surfaced, when it does not say already. The innermost
- * boundary wins: an error already naming an operation — an S3 transfer's
- * `upload` or `download`, or a method a nested adapter call guarded — keeps it.
+ * Fill in where an error surfaced, when it does not say already.
+ *
+ * `operation` and `tableName` are filled independently: an error already
+ * naming an operation — an S3 transfer's `upload` or `download`, or a method
+ * a nested adapter call guarded — still gains a table name it lacks, and the
+ * reverse holds too. The innermost boundary wins: whichever guarded call
+ * first catches the error stamps it, and every guard further out finds both
+ * fields already there and changes neither.
+ *
+ * Never throws: a context this package cannot write to — frozen, or an older
+ * release's own shape — is left exactly as it was, since this runs inside the
+ * one place a public method's own `catch` would otherwise have the failure it
+ * is reporting replaced by whatever this raised instead.
  */
 function stampContext(
   error: AnyDynamoDBLangGraphError,
@@ -32,8 +41,12 @@ function stampContext(
 ): void {
   const context = error.context as ErrorContext | undefined;
   if (typeof context !== 'object' || context === null) return;
-  context.operation ??= operation;
-  if (tableName !== undefined) context.tableName ??= tableName;
+  try {
+    context.operation ??= operation;
+    if (tableName !== undefined) context.tableName ??= tableName;
+  } catch {
+    // As documented above: best-effort, and this function may not throw.
+  }
 }
 
 /**
@@ -43,10 +56,10 @@ function stampContext(
  * (`toError` settles that first). `operation` — the public method's name.
  * `tableName` — the adapter's table, when the method has one.
  *
- * Returns: a branded library error — the same one, when it already was one, its
- * `context.operation` and `context.tableName` filled in when it names neither —
- * or anything else wrapped by {@link wrapForeignError} with the code the
- * classifier assigns, stamped the same way.
+ * Returns: a branded library error — the same one, when it already was one,
+ * with whichever of `context.operation` and `context.tableName` it does not
+ * already carry filled in — or anything else wrapped by {@link wrapForeignError}
+ * with the code the classifier assigns, stamped the same way.
  *
  * Throws: nothing. It runs inside a `catch`, where throwing would discard the
  * failure being reported and replace it with its own.
@@ -130,48 +143,6 @@ export function guardPublicSync<T>(operation: string, fn: () => T, tableName?: s
   } catch (error) {
     throw toPublicError(error as Error, operation, tableName);
   }
-}
-
-/** How far {@link classifiableCause} walks a cause chain before giving up. */
-const MAX_CAUSE_DEPTH = 32;
-
-/** The one field this module reads off a node while walking its cause chain. */
-interface CauseChain {
-  cause?: Error;
-}
-
-/**
- * The node in `error`'s own cause chain — `error` itself, then its `cause`,
- * then that error's own `cause`, and so on — that {@link classifyAwsError}
- * does not answer `UNEXPECTED_ERROR` for.
- *
- * Accepts: `error` — the outermost foreign failure, already normalised by
- * {@link toError}.
- *
- * Returns: the first node the classifier places under an AWS or network code,
- * so a caller's own error wrapping a modeled SDK exception, or an SDK error
- * whose own `cause` is a raw transport failure, still classifies on the
- * AWS/network failure underneath rather than losing it one level up — the
- * same failure the retry layer's cause-chain walk (`isRetryableError` in
- * `shared/dynamodb/retry.ts`) already sees. `error` itself when
- * nothing in its chain classifies either. The walk gives up after
- * {@link MAX_CAUSE_DEPTH} nodes, and a cycle in the chain stops it rather than
- * looping, exactly as that other walk does.
- *
- * Throws: nothing, for any value {@link toError} can produce.
- */
-function classifiableCause(error: Error): Error {
-  const seen = new WeakSet<object>();
-  let node = error;
-  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
-    if (classifyAwsError(node) !== ErrorCode.UNEXPECTED_ERROR) return node;
-    if (typeof node !== 'object' || node === null || seen.has(node)) break;
-    seen.add(node);
-    const next = (node as CauseChain).cause;
-    if (next === undefined) break;
-    node = next;
-  }
-  return error;
 }
 
 /**

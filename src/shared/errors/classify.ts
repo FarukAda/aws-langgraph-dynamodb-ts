@@ -217,6 +217,49 @@ export function classifyAwsError(error: Error): ErrorCode {
   return isAwsShaped(fields) ? ErrorCode.AWS_REQUEST_FAILED : ErrorCode.UNEXPECTED_ERROR;
 }
 
+/** How far {@link classifiableCause} walks a cause chain before giving up. */
+const MAX_CAUSE_DEPTH = 32;
+
+/** The one field {@link classifiableCause} reads off a node while walking its cause chain. */
+interface CauseChain {
+  cause?: Error;
+}
+
+/**
+ * The node in `error`'s own cause chain — `error` itself, then its `cause`,
+ * then that error's own `cause`, and so on — that {@link classifyAwsError}
+ * does not answer `UNEXPECTED_ERROR` for.
+ *
+ * Accepts: `error` — the outermost failure to classify, already normalised by
+ * `toError`.
+ *
+ * Returns: the first node the classifier places under an AWS or network code,
+ * so a caller's own error wrapping a modeled SDK exception, an SDK error whose
+ * own `cause` is a raw transport failure, or a `RETRY_EXHAUSTED` error wrapping
+ * either as its own `cause`, still classifies — and still yields diagnostics —
+ * on the AWS/network failure underneath rather than losing it one level up —
+ * the same failure the retry layer's cause-chain walk (`isRetryableError` in
+ * `shared/dynamodb/retry.ts`) already sees. `error` itself when nothing in its
+ * chain classifies either. The walk gives up after {@link MAX_CAUSE_DEPTH}
+ * nodes, and a cycle in the chain stops it rather than looping, exactly as
+ * that other walk does.
+ *
+ * Throws: nothing, for any value `toError` can produce.
+ */
+export function classifiableCause(error: Error): Error {
+  const seen = new WeakSet<object>();
+  let node = error;
+  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
+    if (classifyAwsError(node) !== ErrorCode.UNEXPECTED_ERROR) return node;
+    if (typeof node !== 'object' || node === null || seen.has(node)) break;
+    seen.add(node);
+    const next = (node as CauseChain).cause;
+    if (next === undefined) break;
+    node = next;
+  }
+  return error;
+}
+
 /**
  * The fields an operator needs first, lifted off an AWS-shaped error.
  *

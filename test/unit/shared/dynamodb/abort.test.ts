@@ -18,6 +18,27 @@ describe('abortErrorFrom', () => {
     expect(abortErrorFrom(controller.signal)).toBe(reason);
   });
 
+  /**
+   * Not a bug, unlike the two S3 sharing points: a reason the caller shares
+   * across more than one call's signal is one object by the caller's own
+   * choice, not something this library caches, and returning it unchanged
+   * rather than a copy is what keeps a reason from accumulating wrappers
+   * across layers. Whichever call's boundary reaches it first is the one its
+   * `context.operation` reports — documented in the boundary's own JSDoc and
+   * in the README where `operation` is defined.
+   */
+  it('lets two calls sharing one reason see whichever boundary stamped it first', () => {
+    const reason = abortError('shutting down');
+    const controller = new AbortController();
+    controller.abort(reason);
+    const first = abortErrorFrom(controller.signal);
+    const second = abortErrorFrom(controller.signal);
+    expect(first).toBe(second);
+    expect(first).toBe(reason);
+    first.context.operation = 'saver.put';
+    expect(second.context.operation).toBe('saver.put');
+  });
+
   it('turns a non-Error reason into the cause and tolerates a missing reason', () => {
     const controller = new AbortController();
     controller.abort('shutting down');
