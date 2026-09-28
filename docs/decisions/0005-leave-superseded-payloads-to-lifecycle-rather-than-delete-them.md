@@ -57,12 +57,15 @@ object nothing gets around to deleting survives, regardless.
 
 Negative. This decision accepts orphaned objects as a normal outcome:
 pathological contention, a failed best-effort delete or an unverifiable
-write all leave one behind, on purpose, and only the lifecycle rule or the
-sweep script recovers the storage. A deployment that never configures a
-TTL, and so never calls `ensureS3LifecycleRule()`, has no backstop at all.
-The sweep itself only sees a versioned bucket, and only within the grace
-window before S3 reclaims the delete marker; a strand older than that, or
-on an unversioned bucket, is invisible to it.
+write all leave one behind, on purpose. The lifecycle rule reclaims them
+automatically where a `ttl` is set; `scripts/find-orphaned-payloads.mjs`
+finds them, and deletes them on request, where none is — so a deployment
+that never configures a TTL, and so never calls `ensureS3LifecycleRule()`,
+still has a backstop, run by hand rather than by the rule.
+`scripts/find-stranded-payloads.mjs` covers the opposite direction instead:
+a live row that still names a released object, and only within a versioned
+bucket's grace window before S3 reclaims the delete marker; a strand older
+than that, or on an unversioned bucket, is invisible to it.
 
 Neutral. Keeping the sweep script out of the package's `bin` trades away
 discoverability: an operator who needs it must know to look in the

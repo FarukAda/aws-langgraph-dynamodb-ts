@@ -83,7 +83,7 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 - [IAM permissions](#iam-permissions)
   - [Multi-tenant deployments](#multi-tenant-deployments) · [Trust boundary](#trust-boundary)
 - [Operations](#operations)
-  - [Limits](#limits) · [What each operation costs](#what-each-operation-costs) · [Monitoring](#monitoring) · [Production notes](#production-notes) · [Maintenance operations](#maintenance-operations) · [What can still go wrong](#what-can-still-go-wrong) · [Finding rows whose payload was released](#finding-rows-whose-payload-was-released) · [Lambda and other short-lived runtimes](#lambda-and-other-short-lived-runtimes) · [Multi-tenancy](#multi-tenancy)
+  - [Limits](#limits) · [What each operation costs](#what-each-operation-costs) · [Monitoring](#monitoring) · [Production notes](#production-notes) · [Maintenance operations](#maintenance-operations) · [What can still go wrong](#what-can-still-go-wrong) · [Finding rows whose payload was released](#finding-rows-whose-payload-was-released) · [Finding objects no row names](#finding-objects-no-row-names) · [Lambda and other short-lived runtimes](#lambda-and-other-short-lived-runtimes) · [Multi-tenancy](#multi-tenancy)
 - [Versioning and compatibility](#versioning-and-compatibility)
   - [The public API](#the-public-api) · [The on-disk layout](#the-on-disk-layout) · [Errors, logs and row versions](#errors-logs-and-row-versions) · [Supported runtimes and peers](#supported-runtimes-and-peers) · [Deprecation](#deprecation) · [Not covered](#not-covered) · [Differences from the reference implementations](#differences-from-the-reference-implementations)
 - [Testing](#testing)
@@ -997,14 +997,14 @@ const logger: Logger = {
 | `error` | `history.addMessages rollback failed; messageCount may have drifted` | `sessionId`, `committedChunks` | a multi-chunk append failed and its rollback failed too (`COMPENSATION_FAILED`); run `reconcileMessageCount` for the session once it is idle |
 | `error` | `history.addMessages could not tell whether a failed chunk committed; messageCount may have drifted` | `sessionId`, `committedChunks`, `reason` | a chunk's read-back failed, or some attempt of it may still be applied (no answer, `TransactionInProgressException`, or a 5xx) — `reason` names that failure; the other chunks were rolled back, this one's objects were kept, and the call fails with `COMPENSATION_FAILED` (or `ABORTED` on a cancel). Run `reconcileMessageCount` once the session is idle |
 | `error` | `getMessages: skipped a corrupt message item` | `sessionId`, `sortKey`, `reason` | a message row could not be decoded (or its S3 object is gone) and was dropped under `onCorruptMessage: 'skip'`; inspect or delete the row |
-| `warn` | `store.put: compare-and-swap exhausted; overwriting unconditionally` | `namespace`, `key`, `attempts` | three concurrent overwrites of one item; the put succeeded but one S3 object may be orphaned until the lifecycle rule sweeps it |
+| `warn` | `store.put: compare-and-swap exhausted; overwriting unconditionally` | `namespace`, `key`, `attempts` | three concurrent overwrites of one item; the put succeeded but one S3 object may be orphaned until the lifecycle rule sweeps it (with a `ttl` set) or `scripts/find-orphaned-payloads.mjs` finds it (without one) |
 | `warn` | `store.delete: compare-and-swap exhausted; the item was not deleted` | `namespace`, `key`, `attempts` | three writes landed at one item between this delete's read and its attempt, each time; the item is still there and nothing was released, because the live row names it — re-run the delete once the key is idle |
 | `warn` | `putWrites: special-write compare-and-swap exhausted; overwriting unconditionally` | `sortKey`, `channel`, `attempts` | same, for an interrupt/resume/error write written concurrently for one task |
 | `warn` | `ensureS3LifecycleRule: wrote the lifecycle rules but a re-read did not show them within the polling window` | `bucket`, `prefix` | S3 documents that a lifecycle configuration can take a few minutes to propagate, so this is most likely lag rather than a lost write; the rules were written — call `ensureS3LifecycleRule()` again later to confirm |
 | `warn` | `ensureS3LifecycleRule: versioning is off on the offload bucket, so releasing a payload deletes it outright with no recovery window` | `bucket` | the bucket keeps no versions, so releasing an offloaded payload erases it and no lifecycle rule can hold anything back; enable bucket versioning if you want a mistaken release to be recoverable |
 | `warn` | `ensureS3LifecycleRule: versioning is suspended on the offload bucket, so releasing a payload deletes it outright` | `bucket` | same exposure, and not the same remedy: re-enable versioning to restore it from here on, and treat the payloads released during the suspension as gone — nothing brings those back |
 | `warn` | `ensureS3LifecycleRule: could not read the offload bucket versioning state, so whether a released payload is recoverable is unknown` | `bucket`, `reason` | the lifecycle rules were written; only the versioning check failed, most often `AccessDenied` on a role without `s3:GetBucketVersioning`. Grant it, or check the state yourself |
-| `warn` | `Some orphaned S3 objects could not be deleted after` | `failedCount` | objects leaked after a failed write or a delete; `ensureS3LifecycleRule()` reclaims them, otherwise clean up by prefix |
+| `warn` | `Some orphaned S3 objects could not be deleted after` | `failedCount` | objects leaked after a failed write or a delete; reclaimed by `ensureS3LifecycleRule()` when a `ttl` is set, and found by `scripts/find-orphaned-payloads.mjs` when none is |
 | `warn` | `Failed to clean up orphaned S3 objects after` | `reason` | the cleanup itself failed after retries; same remedy |
 | `warn` | `: refusing to delete an S3 object outside this row's scope` | `key` | a row referenced an object outside its own key path — a tampered or foreign row; the object was left alone, investigate the writer |
 | `warn` | `store vector-index sync failed; reconcileVectorIndex will repair` | `namespace`, `key`, `operation`, `reason` | the `vectorBackend` rejected the `operation` named in the fields, an upsert or a delete; the canonical item is fine, run `reconcileVectorIndex` when convenient |
@@ -1089,7 +1089,7 @@ Set `s3: { bucketName }`. Any serialized payload at or above `thresholdBytes` (d
 
 ### Overwrite races and orphaned objects
 
-Both the store's concurrent-`put` overwrite race and the checkpointer's *special*-write overwrite race (`__error__`, `__interrupt__`, `__resume__`, `__scheduled__`) are held by two mechanisms answering different questions: a **compare-and-swap** decides *which* payload a write supersedes, and a **client request token** decides that a re-sent request lands *once*. Every write uploads under an id of its own, so no row another write commits ever names its objects, and a leak remains possible only in a handful of backstopped cases — an exhausted compare-and-swap, a best-effort delete that genuinely fails, or a write that cannot be verified — all reclaimed by `ensureS3LifecycleRule()`. Full detail — every leak case, and the one race the compare-and-swap alone does not close: [Guide → Overwrite races and orphaned objects](docs/guide.md#overwrite-races-and-orphaned-objects).
+Both the store's concurrent-`put` overwrite race and the checkpointer's *special*-write overwrite race (`__error__`, `__interrupt__`, `__resume__`, `__scheduled__`) are held by two mechanisms answering different questions: a **compare-and-swap** decides *which* payload a write supersedes, and a **client request token** decides that a re-sent request lands *once*. Every write uploads under an id of its own, so no row another write commits ever names its objects, and a leak remains possible only in a handful of backstopped cases — an exhausted compare-and-swap, a best-effort delete that genuinely fails, or a write that cannot be verified — reclaimed by the rule `ensureS3LifecycleRule()` writes when a `ttl` is set, and found by `scripts/find-orphaned-payloads.mjs` when none is ([Finding objects no row names](#finding-objects-no-row-names)). Full detail — every leak case, and the one race the compare-and-swap alone does not close: [Guide → Overwrite races and orphaned objects](docs/guide.md#overwrite-races-and-orphaned-objects).
 
 ### Write idempotency
 
@@ -1781,6 +1781,20 @@ A row in DynamoDB and its payload in S3 are two writes with no transaction acros
 
 On a versioned bucket a released payload becomes a noncurrent version behind a delete marker for the grace window the [lifecycle rules](#s3-lifecycle-rules) set, and `scripts/find-stranded-payloads.mjs` **in the repository** — deliberately not in the npm tarball — sweeps that window for a **stranded row**: one still live and still naming an object whose payload was released. It needs `s3:ListBucketVersions`/`s3:GetObjectVersion` on the bucket and `dynamodb:GetItem` on the table — permissions the operator running it holds, not the application role — and costs about one to two cents in AWS requests per sweep at realistic volumes. Full detail — what it reads, what it cannot find, and what to do with a finding: [Guide → Finding rows whose payload was released](docs/guide.md#finding-rows-whose-payload-was-released).
 
+### Finding objects no row names
+
+Without a `ttl` nothing reclaims an orphaned object. Such objects come from:
+- a write that may still land after failing — no answer, or DynamoDB answering `TransactionInProgressException` or a server error — and kept its upload;
+- a best-effort delete that failed;
+- an exhausted compare-and-swap.
+
+`scripts/find-orphaned-payloads.mjs` **in the repository** finds them. Like the stranded-row sweep, it is deliberately not in the npm tarball. It lists the offload prefix, reads each object's backlink and then its row, and reports every object older than `--min-age-hours` (default 24) whose row is gone, is past its `ttl`, or names another object. It deletes them only when given `--delete`. It needs:
+- `s3:ListBucket` and `s3:GetObject` on the bucket;
+- `dynamodb:GetItem` on the table;
+- `s3:DeleteObject` as well, to delete.
+
+These are the operator's permissions, not the application role's. Full detail: [Guide → Finding objects no row names](docs/guide.md#finding-objects-no-row-names).
+
 ### Lambda and other short-lived runtimes
 
 Construct the adapters once at module scope (or one `DynamoDBFactory.createAll()`), reuse them across invocations, and pass a `client` you own if the function also uses DynamoDB elsewhere. Size the function timeout against the retry budgets under [Retries and backoff](#retries-and-backoff): a heavily contended chat append can spend about four minutes across its attempts. Full detail: [Guide → Lambda and other short-lived runtimes](docs/guide.md#lambda-and-other-short-lived-runtimes).
@@ -1957,6 +1971,7 @@ scripts/
 ├── check-doc-samples.mjs       # Type-checks every TypeScript sample in the documents a reader copies from
 ├── check-doc-links.mjs         # Resolves every relative link and #anchor in the hand-written documents
 ├── find-stranded-payloads.mjs  # Reports rows whose offloaded payload was released (not in the tarball)
+├── find-orphaned-payloads.mjs  # Reports objects no live row names (not in the tarball)
 ├── pack-check.mjs              # The tarball holds exactly dist, the licence, the README and the manifest
 ├── peer-floors.mjs             # The lowest version each peer range admits, for the peer-floor CI job
 ├── require-green-ci.mjs        # The release gate: every required check present and successful

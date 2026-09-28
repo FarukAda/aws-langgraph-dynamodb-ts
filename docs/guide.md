@@ -6,8 +6,9 @@ links to for the mechanism behind the promise — the compare-and-swap and reque
 machinery behind S3 offload, what a partition delete promises and what it costs, search
 and vector-index consistency, checkpointer and chat-history semantics, the request-unit
 cost of every call plus a worked example, what can still go wrong between a DynamoDB row
-and its S3 payload and the sweep that finds a stranded one, and the on-disk layout and
-error/version guarantees behind [Versioning and compatibility](../README.md#versioning-and-compatibility).
+and its S3 payload and the sweeps that find a stranded row or an orphaned object, and the
+on-disk layout and error/version guarantees behind
+[Versioning and compatibility](../README.md#versioning-and-compatibility).
 Every fact here is read from the same `src` the README is checked against.
 
 ## Contents
@@ -32,6 +33,7 @@ Every fact here is read from the same `src` the README is checked against.
 - [Monitoring](#monitoring)
 - [What can still go wrong](#what-can-still-go-wrong)
 - [Finding rows whose payload was released](#finding-rows-whose-payload-was-released)
+- [Finding objects no row names](#finding-objects-no-row-names)
 - [Lambda and other short-lived runtimes](#lambda-and-other-short-lived-runtimes)
 - [The on-disk layout](#the-on-disk-layout)
 - [Errors, logs and row versions](#errors-logs-and-row-versions)
@@ -139,7 +141,7 @@ Set `s3: { bucketName }`. Any serialized payload at or above `thresholdBytes` (d
 - It **throws** when a rule cannot be written rather than logging — a `VALIDATION` error for a `keyPrefix` it will not scope a rule to, the code the classifier assigns for anything S3 refuses (most often `ACCESS_DENIED` for a missing `s3:PutLifecycleConfiguration`), and `CONTENTION` when every one of the five rounds it polls needs a write, a competing writer replacing the configuration on every single re-read — so call it from a provisioning step and treat a rejection as a deployment error, not as something to ignore. It does *not* throw when a re-read simply never shows its rules within its polling window, or when a rewrite only at the last of the five rounds still leaves it unconfirmed: S3 documents that a lifecycle configuration can take minutes to propagate, so either is logged as a `warn` instead — the rules were written; run it again later to confirm.
 - Its one best-effort step is the versioning probe that follows the write, which warns instead of throwing (see [Maintenance operations](../README.md#maintenance-operations)).
 - It is opt-in rather than automatic because it needs that broader bucket-level permission and is not safe to fire on every adapter construction.
-- If you configure `ttl` + `s3` but never call it, nothing reclaims objects that best-effort cleanup misses — they stay in the bucket until you remove them or add a lifecycle rule yourself.
+- If you configure `ttl` + `s3` but never call it, or configure `s3` without a `ttl` (where it is a no-op), nothing reclaims the objects that best-effort cleanup misses; [the orphan sweep](#finding-objects-no-row-names) finds them.
 
 ## S3 lifecycle rules in depth
 
@@ -178,7 +180,7 @@ Both the store's concurrent-`put` overwrite race and the checkpointer's *special
 
 The two are not interchangeable, and [Write idempotency](#write-idempotency) below is why: the token says nothing about a write whose condition turned it away, and that is exactly the write the compare-and-swap then re-pins and re-issues — under a fresh token, because the re-pinned request is no longer the same request.
 
-A leak from either path remains possible in these cases, all backstopped by `ensureS3LifecycleRule()`:
+A leak from either path remains possible in these cases, all backstopped by the rule `ensureS3LifecycleRule()` writes when a `ttl` is set, and by [the orphan sweep](#finding-objects-no-row-names) when none is:
 
 - the bounded compare-and-swap (3 attempts) is exhausted under pathological contention, which falls back to an unconditional overwrite and logs a `warn`;
 - a best-effort delete genuinely fails;
@@ -187,7 +189,7 @@ A leak from either path remains possible in these cases, all backstopped by `ens
 
 Every write uploads under an id of its own — a store put's `rev`, a checkpoint put's ULID, a `putWrites` call's `writeGroup`, a history message's ULID — so no row another write commits names its objects, and no cleanup reads the row again before it deletes: a `store.put` or special write releases the payload it superseded once its own write has committed, `store.delete` releases the object of the row it removed, and a failed `store.put`, `saver.put` or `putWrites` releases its own uploads only once a read of the row, or the row returned with a rejected write, shows that the row does not hold its write. Uploads are sent with `If-None-Match: *`, so a retried upload request writes nothing new, and two writes of the same bytes store two objects.
 
-Separately, and unchanged by any of the above, the checkpointer's *regular* (non-special) writes still resolve a genuine race first-write-wins with no compare-and-swap, so the loser's own upload there remains an orphan reclaimed only by best-effort cleanup and `ensureS3LifecycleRule()`. A store `delete` closes a different gap: once the row is gone with its acknowledgement, nothing could say which object it had referenced. It reads the row before removing it, so the object of a delete whose acknowledgement is lost is released from that observation rather than left behind.
+Separately, and unchanged by any of the above, the checkpointer's *regular* (non-special) writes still resolve a genuine race first-write-wins with no compare-and-swap, so the loser's own upload there remains an orphan reclaimed only by best-effort cleanup and the rule `ensureS3LifecycleRule()` writes when a `ttl` is set, or found by [the orphan sweep](#finding-objects-no-row-names) when none is. A store `delete` closes a different gap: once the row is gone with its acknowledgement, nothing could say which object it had referenced. It reads the row before removing it, so the object of a delete whose acknowledgement is lost is released from that observation rather than left behind.
 
 ## Write idempotency
 
@@ -361,8 +363,8 @@ A row in DynamoDB and its payload in S3 are two writes with no transaction acros
 - **A retryable error on the inline paths that plain `PutItem` writes never saw before `0.9.0`.** Because an inline write stays a `PutItem` while an offloaded write to the same row is a transaction, an inline write can meet a bare `TransactionConflictException`: 18% of the inline side's attempts under ten-against-ten contention on one row. It is retryable by name, so it costs requests rather than correctness — but it is a behaviour change on a path that is otherwise untouched, and it is the price of deciding by payload rather than by adapter.
 - **The store's unconditional fallback is still unconditional.** When `store.put`'s compare-and-swap budget is spent it overwrites with no guard at all and logs a `warn`. A token stops that put's own retries re-landing it *when the payload was offloaded*, and nothing does when it was inline; nothing at all stops it overwriting what a racer committed in the meantime, and the object it then releases is whatever its last observation named. Unchanged behaviour, listed here so that "the overwrite race is closed" is not read as "the store put has no unguarded write left".
 - **`deleteThread()` and `clear()` are still single-pass.** A write that starts after the partition read lands and survives the pass; only the re-landing of a write that committed *before* the read is prevented, and only where that write carries a token.
-- **Leaks are unchanged.** Every orphan case listed under [S3 offloading](#s3-offloading) — an exhausted compare-and-swap, a best-effort delete that genuinely fails, a write that cannot be verified — still leaves an object behind, and `ensureS3LifecycleRule()` is still what reclaims it.
-- **A write cut short keeps its uploads.** A write the caller's signal, the request timeout or a dropped connection ended before DynamoDB answered may still be applied after the call returns, so its uploaded objects are kept instead of released (decision record 25). Where no row ends up naming them they are orphans, reclaimed by the lifecycle rule when a `ttl` is set. An append cancelled while a chunk was in flight may leave that chunk's messages in the session: read it back before re-sending them.
+- **Leaks are unchanged.** Every orphan case listed under [S3 offloading](#s3-offloading) — an exhausted compare-and-swap, a best-effort delete that genuinely fails, a write that cannot be verified — still leaves an object behind, and `ensureS3LifecycleRule()` is still what reclaims it when a `ttl` is set, or [the orphan sweep](#finding-objects-no-row-names) when none is.
+- **A write cut short keeps its uploads.** A write the caller's signal, the request timeout or a dropped connection ended before DynamoDB answered may still be applied after the call returns, so its uploaded objects are kept instead of released (decision record 25). Where no row ends up naming them they are orphans, reclaimed by the lifecycle rule when a `ttl` is set, or found by [the orphan sweep](#finding-objects-no-row-names) when none is. An append cancelled while a chunk was in flight may leave that chunk's messages in the session: read it back before re-sending them.
 - **Some rows written before `1.0.0-rc.2` carry no per-write id.** A partition delete pins each row on the id the read observed of it, and a row carrying none is deleted unconditionally, exactly as every row was before. It affects the rows whose id arrived in `1.0.0-rc.2` — a checkpoint's `META` and `PAYLOAD` rows, a history message row and the history `SESSION` row — and not pending-write rows, which have carried `writeGroup` since `0.8.0`. It drains rather than needing a migration: a row gets an id the next time it is written, and a table started on `1.0.0-rc.2` or later has none missing.
 - **A partition delete can split a checkpoint from its pending writes.** The two are written by different calls under different ids, so a refusal on one side leaves the other deletable: pending writes can outlive their checkpoint.
   - The reverse — a checkpoint that loses its acknowledged `putWrites` output — is closed, because a refused checkpoint row makes the pass skip the rest of that checkpoint's rows. Closing the open direction would need the refusal known before any of the unit's deletes went out, and no ordering gives that: deleting pending writes first only swaps which direction closes.
@@ -419,6 +421,39 @@ The cost grows with that listing; the memory does not. `ListObjectVersions` answ
 **What it cannot find.** A strand whose grace window has already expired. S3 reclaims the noncurrent version first and then the delete marker, so there is neither a marker to list nor a backlink to read, and the sweep is blind to it by construction. Finding those needs the opposite direction — a full table `Scan`, keeping every row that carries an offloaded descriptor, then one `HeadObject` per descriptor to see whether the object is still there — which costs a read of the whole table and stays a recipe rather than a script. While the marker is still present but its last version has gone, the sweep counts the key separately as having no surviving payload version, which is the last warning you get. Read that count as an upper bound on expired grace windows rather than a list of them: a bare delete marker is also what a `DeleteObject` on a key that never existed leaves, and what any foreign delete under the prefix leaves.
 
 **What to do with a finding.** The script repairs nothing, and it should not: the right remedy depends on why the row is there. Either **restore the payload** — `DeleteObjectVersion` on the *delete marker's* version id, which makes the payload current again, and which only works while the hours remaining are positive — or **accept the delete** — `DeleteItem` on the DynamoDB key. For a checkpointer `WRITE` row that survived a `deleteThread()`, deleting the row is right; for a store item recreated after its object was released, it is not.
+
+## Finding objects no row names
+
+An offloaded object belongs to exactly one row. Its key ends in the id of the write that uploaded it, and it carries that row's key as user metadata (`dynamodb-pk-b64`, `dynamodb-sk-b64`). An object whose row is gone, is past its `ttl`, or names another object is an orphan. Several things leave one behind:
+- a write that may still have landed after it failed — an attempt that got no answer, or that DynamoDB answered with `TransactionInProgressException` or a server error — and kept its upload (decision record 25);
+- a best-effort delete that failed;
+- a compare-and-swap that fell back to an unconditional write.
+
+The lifecycle rule reclaims orphans when a `ttl` is set. Nothing does when none is, and they accumulate for the life of the bucket.
+
+`scripts/find-orphaned-payloads.mjs` finds them. It lives **in the repository**, not in the npm tarball, for the reason the stranded-row sweep gives:
+
+```bash
+node scripts/find-orphaned-payloads.mjs \
+  --bucket my-bucket --table my-table --region eu-west-1 \
+  --prefix langgraph-checkpoints/ --min-age-hours 24
+```
+
+**What it reads, in order:**
+1. `ListObjectsV2` under the prefix, paginated. It lists only current objects, so a released object behind a delete marker is not listed.
+2. For each object older than `--min-age-hours`, `HeadObject` for its backlink.
+3. A strongly consistent `GetItem` on that key.
+
+An object younger than the minimum age is never judged. A write uploads before it writes its row, and its retries stop 300 s in; the default of 24 hours leaves wide room. An object whose backlink cannot be read, and a row DynamoDB will not return, are each printed as one `UNREADABLE` line, and the sweep carries on.
+
+**What it does with a finding.** Without `--delete`, nothing: it prints one `ORPHAN` line per object, with its reason (`row-gone`, `row-expired`, `row-names-another-object`) and size. With `--delete`, it deletes them in batches of up to 1000 keys. On a versioned bucket that leaves a delete marker, so a deleted orphan stays recoverable until the lifecycle rule reclaims its noncurrent version. The exit code is 0 whenever the sweep completed.
+
+**What it costs.** For `O` objects under the prefix and `C` of them old enough to check: `ceil(O / 1000)` `ListObjectsV2` requests, then one `HeadObject` and one strongly consistent `GetItem` per checked object. That is `ceil(O / 1000) + 2C` requests, plus `ceil(orphans / 1000)` `DeleteObjects` with `--delete`. It is proportional to the bucket, so run it on demand or on a slow schedule, not hourly.
+
+**Permissions** are the operator's:
+- `s3:ListBucket` and `s3:GetObject` on the bucket;
+- `dynamodb:GetItem` on the table;
+- `s3:DeleteObject` for `--delete`.
 
 ## Lambda and other short-lived runtimes
 

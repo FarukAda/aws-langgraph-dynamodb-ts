@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`maxIterations` on `DynamoDBStore`**: the DynamoDB pages one `search`, `listNamespaces` or `reconcileVectorIndex` reads before `RESULT_TRUNCATED` (default 1000; `Infinity` for none). Those scans were capped at 1000 pages with no way to raise it, which a rootless scan over a large table of mostly non-store rows reached long before `maxScanItems`.
+- **`scripts/find-orphaned-payloads.mjs`, a sweep for offloaded objects no live row names** — the orphans a failed or unverified write, a failed best-effort delete or an exhausted compare-and-swap leave, which nothing reclaims on a deployment without a `ttl`. It reports by default and deletes only with `--delete`, never touching an object younger than `--min-age-hours` (24). Repository-only, like the stranded-row sweep.
 
 ### Changed (breaking)
 
@@ -43,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The IAM policy recommends `s3:ListBucket` on the offload bucket, with why: without it S3 reports a missing object as `AccessDenied`, which the library cannot tell from a refused one.
 - `indexShards` is documented as fixed for the table's life: the backfill writes keys only to rows that have none and cannot re-shard, raising the count is safe, and lowering it hides rows.
+- The README no longer says leaked objects are "all reclaimed by `ensureS3LifecycleRule()`": that holds only with a `ttl`, and the new orphan sweep covers deployments without one. The same claim, and a decision record saying a TTL-less deployment "has no backstop at all", are corrected in the same places in the guide and `docs/decisions/0005`.
 
 ## [1.0.0-rc.2] - 2026-09-27
 
