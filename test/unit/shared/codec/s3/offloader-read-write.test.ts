@@ -128,6 +128,31 @@ describe('uploadObject', () => {
       context: { operation: 'upload', key: 'k' },
     });
   });
+
+  it('names the AWS failure beneath a failed upload in its context', async () => {
+    s3Mock.on(PutObjectCommand).rejects(
+      Object.assign(new Error('denied'), {
+        name: 'AccessDenied',
+        $metadata: { httpStatusCode: 403, requestId: 'r2' },
+      }),
+    );
+    await expect(
+      uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        data: new Uint8Array([1]),
+      }),
+    ).rejects.toMatchObject({
+      code: 'S3_OFFLOAD_FAILED',
+      context: {
+        operation: 'upload',
+        key: 'k.bin',
+        awsErrorName: 'AccessDenied',
+        httpStatusCode: 403,
+        requestId: 'r2',
+      },
+    });
+  });
 });
 
 describe('downloadObject', () => {

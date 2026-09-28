@@ -22,7 +22,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 
 import type { AdapterShell } from '../shared/adapter';
-import { guardPublic } from '../shared/errors/boundary';
+import { guardPublic, guardPublicSync } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { assertSignalLike, assertCancelOptions } from '../shared/validation/collaborators';
 import { assertShape } from '../shared/validation/option-shape';
@@ -164,10 +164,14 @@ export class DynamoDBStore extends BaseStore {
    * about one round trip rather than ten.
    */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
-    return guardPublic('store.batch', async () => {
-      const results = await this.execute(parseOperations(operations));
-      return results as OperationResults<Op>;
-    });
+    return guardPublic(
+      'store.batch',
+      async () => {
+        const results = await this.execute(parseOperations(operations));
+        return results as OperationResults<Op>;
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -199,12 +203,16 @@ export class DynamoDBStore extends BaseStore {
    * signal to fire.
    */
   override async get(namespace: string[], key: string): Promise<Item | null> {
-    return guardPublic('store.get', async () => {
-      const [item] = await this.execute([
-        { kind: 'get', address: parseStoreAddress(namespace, key) },
-      ]);
-      return item as Item | null;
-    });
+    return guardPublic(
+      'store.get',
+      async () => {
+        const [item] = await this.execute([
+          { kind: 'get', address: parseStoreAddress(namespace, key) },
+        ]);
+        return item as Item | null;
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -235,9 +243,13 @@ export class DynamoDBStore extends BaseStore {
     value: Parameters<BaseStore['put']>[2],
     index?: Parameters<BaseStore['put']>[3],
   ): Promise<void> {
-    return guardPublic('store.put', async () => {
-      await this.execute([parsePutArguments(namespace, key, value, index)]);
-    });
+    return guardPublic(
+      'store.put',
+      async () => {
+        await this.execute([parsePutArguments(namespace, key, value, index)]);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -270,9 +282,13 @@ export class DynamoDBStore extends BaseStore {
    * is correct: a live row still names the object.
    */
   override async delete(namespace: string[], key: string): Promise<void> {
-    return guardPublic('store.delete', async () => {
-      await this.execute([{ kind: 'delete', address: parseStoreAddress(namespace, key) }]);
-    });
+    return guardPublic(
+      'store.delete',
+      async () => {
+        await this.execute([{ kind: 'delete', address: parseStoreAddress(namespace, key) }]);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -293,10 +309,14 @@ export class DynamoDBStore extends BaseStore {
    * AWS failure.
    */
   override async listNamespaces(options: ListNamespacesOptions = {}): Promise<string[][]> {
-    return guardPublic('store.listNamespaces', async () => {
-      const [namespaces] = await this.execute([parseListNamespacesOptions(options)]);
-      return namespaces as string[][];
-    });
+    return guardPublic(
+      'store.listNamespaces',
+      async () => {
+        const [namespaces] = await this.execute([parseListNamespacesOptions(options)]);
+        return namespaces as string[][];
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -330,13 +350,17 @@ export class DynamoDBStore extends BaseStore {
     namespacePrefix: string[],
     options: SearchOptions = {},
   ): Promise<SearchItem[]> {
-    return guardPublic('store.search', () => {
-      const prefix = parseNamespacePrefix(namespacePrefix, 'namespacePrefix');
-      assertShape(options, STORE_SEARCH_KEYS, 'options');
-      assertSignalLike(options.signal);
-      const { signal, ...rest } = options;
-      return searchItems(this.context, parseSearch(prefix, rest), signal);
-    });
+    return guardPublic(
+      'store.search',
+      () => {
+        const prefix = parseNamespacePrefix(namespacePrefix, 'namespacePrefix');
+        assertShape(options, STORE_SEARCH_KEYS, 'options');
+        assertSignalLike(options.signal);
+        const { signal, ...rest } = options;
+        return searchItems(this.context, parseSearch(prefix, rest), signal);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -363,10 +387,14 @@ export class DynamoDBStore extends BaseStore {
     namespacePrefix: string[],
     options?: CancelOptions,
   ): Promise<VectorReconcileResult> {
-    return guardPublic('store.reconcileVectorIndex', () => {
-      assertCancelOptions(options);
-      return reconcileVectorIndexAction(this.context, namespacePrefix, options);
-    });
+    return guardPublic(
+      'store.reconcileVectorIndex',
+      () => {
+        assertCancelOptions(options);
+        return reconcileVectorIndexAction(this.context, namespacePrefix, options);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -393,12 +421,13 @@ export class DynamoDBStore extends BaseStore {
    * Returns: nothing. Idempotent, and a no-op for a client the caller injected
    * — that one is theirs to close.
    *
-   * Throws: whatever a resource's own `destroy` raises — but only after every
-   * other one has been released, so a client that fails to close never strands
-   * the one behind it.
+   * Throws: the first failure a resource's own `destroy` raised, as a
+   * `DynamoDBLangGraphError` (`UNEXPECTED_ERROR` unless the failure was AWS's)
+   * with it as `cause` — raised only after every other resource has been
+   * released, and only by the first call: `destroy()` is idempotent.
    */
   destroy(): void {
-    this.shell.release();
+    guardPublicSync('store.destroy', () => this.shell.release(), this.context.tableName);
   }
 
   /**
@@ -419,6 +448,10 @@ export class DynamoDBStore extends BaseStore {
    * per request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    return guardPublic('store.ensureS3LifecycleRule', () => this.shell.ensureLifecycleRule());
+    return guardPublic(
+      'store.ensureS3LifecycleRule',
+      () => this.shell.ensureLifecycleRule(),
+      this.context.tableName,
+    );
   }
 }

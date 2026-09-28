@@ -96,7 +96,10 @@ export interface AdapterShell {
   readonly core: AdapterCore;
   /** Provision the S3 lifecycle rule for the configured ttl; see {@link ensureLifecycleFor}. */
   ensureLifecycleRule(): Promise<void>;
-  /** Release the offloader, and the DynamoDB client when the adapter built it; see {@link releaseOwned}. */
+  /**
+   * Release the offloader, and the DynamoDB client when the adapter built it;
+   * see {@link releaseOwned}. `release` runs once; a later call does nothing.
+   */
   release(): void;
 }
 
@@ -190,9 +193,16 @@ export function openAdapter(
     readConcurrency: options.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
     indexName: options.indexName,
   };
+  let released = false;
   return {
     core,
     ensureLifecycleRule: () => ensureLifecycleFor(core),
-    release: () => releaseOwned([offloader, resolved.ownsClient ? resolved.ddbClient : undefined]),
+    release: () => {
+      // A second call has nothing left to release, and a client's own destroy
+      // need not be safe to repeat.
+      if (released) return;
+      released = true;
+      releaseOwned([offloader, resolved.ownsClient ? resolved.ddbClient : undefined]);
+    },
   };
 }

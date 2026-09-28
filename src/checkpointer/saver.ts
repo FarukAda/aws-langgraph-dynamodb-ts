@@ -24,7 +24,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 
 import type { AdapterShell } from '../shared/adapter';
-import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
+import { guardPublic, guardPublicIterable, guardPublicSync } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { assertCancelOptions } from '../shared/validation/collaborators';
 import { parseShape } from '../shared/validation/option-shape';
@@ -101,7 +101,11 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * seen.
    */
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-    return guardPublic('saver.getTuple', () => getCheckpointTuple(this.context, config));
+    return guardPublic(
+      'saver.getTuple',
+      () => getCheckpointTuple(this.context, config),
+      this.context.tableName,
+    );
   }
 
   /**
@@ -140,7 +144,11 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * yielded tuple (see the README cost table).
    */
   list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple> {
-    return guardPublicIterable('saver.list', listCheckpoints(this.context, config, options));
+    return guardPublicIterable(
+      'saver.list',
+      listCheckpoints(this.context, config, options),
+      this.context.tableName,
+    );
   }
 
   /**
@@ -179,8 +187,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     metadata: CheckpointMetadata,
     newVersions?: ChannelVersions,
   ): Promise<RunnableConfig> {
-    return guardPublic('saver.put', () =>
-      putCheckpoint(this.context, config, checkpoint, metadata, newVersions),
+    return guardPublic(
+      'saver.put',
+      () => putCheckpoint(this.context, config, checkpoint, metadata, newVersions),
+      this.context.tableName,
     );
   }
 
@@ -218,8 +228,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * double-fault interleaving (see the README's S3 offloading notes).
    */
   async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
-    return guardPublic('saver.putWrites', () =>
-      putWritesAction(this.context, config, writes, taskId),
+    return guardPublic(
+      'saver.putWrites',
+      () => putWritesAction(this.context, config, writes, taskId),
+      this.context.tableName,
     );
   }
 
@@ -252,10 +264,14 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * no object this call could have released.
    */
   async deleteThread(threadId: string, options?: CancelOptions): Promise<void> {
-    return guardPublic('saver.deleteThread', () => {
-      assertCancelOptions(options);
-      return deleteThreadAction(this.context, threadId, options);
-    });
+    return guardPublic(
+      'saver.deleteThread',
+      () => {
+        assertCancelOptions(options);
+        return deleteThreadAction(this.context, threadId, options);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -297,15 +313,19 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   getDeltaChannelHistory(
     options: DeltaChannelHistoryOptions,
   ): Promise<Record<string, DeltaChannelHistory>> {
-    return guardPublic('saver.getDeltaChannelHistory', () => {
-      const request = parseDeltaHistoryRequest(options);
-      return deltaChannelHistory(
-        this.context,
-        (c) => this.getTuple(c),
-        request.config,
-        request.channels,
-      );
-    });
+    return guardPublic(
+      'saver.getDeltaChannelHistory',
+      () => {
+        const request = parseDeltaHistoryRequest(options);
+        return deltaChannelHistory(
+          this.context,
+          (c) => this.getTuple(c),
+          request.config,
+          request.channels,
+        );
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -316,12 +336,13 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * Returns: nothing. Idempotent, and a no-op for a client the caller injected
    * — that one is theirs to close.
    *
-   * Throws: whatever a resource's own `destroy` raises — but only after every
-   * other one has been released, so a client that fails to close never strands
-   * the one behind it.
+   * Throws: the first failure a resource's own `destroy` raised, as a
+   * `DynamoDBLangGraphError` (`UNEXPECTED_ERROR` unless the failure was AWS's)
+   * with it as `cause` — raised only after every other resource has been
+   * released, and only by the first call: `destroy()` is idempotent.
    */
   destroy(): void {
-    this.shell.release();
+    guardPublicSync('saver.destroy', () => this.shell.release(), this.context.tableName);
   }
 
   /**
@@ -343,6 +364,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * not per request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    return guardPublic('saver.ensureS3LifecycleRule', () => this.shell.ensureLifecycleRule());
+    return guardPublic(
+      'saver.ensureS3LifecycleRule',
+      () => this.shell.ensureLifecycleRule(),
+      this.context.tableName,
+    );
   }
 }

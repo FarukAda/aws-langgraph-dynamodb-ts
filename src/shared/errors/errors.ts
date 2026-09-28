@@ -22,6 +22,7 @@ import {
   type ErrorContext,
   type ErrorDetailsFor,
 } from './base-error';
+import { awsDiagnostics } from './classify';
 import { ErrorCode } from './error-code';
 
 /**
@@ -114,7 +115,9 @@ const MAY_STILL_LAND = Symbol('retryExhaustedError.mayStillLand');
  * for not recording one.
  *
  * Returns: a `RETRY_EXHAUSTED` error, with `context.attempts` when `attempts`
- * was given. It says the attempts are spent, **not** that the operation did
+ * was given, and the `awsErrorName`, `httpStatusCode` and `requestId` of the
+ * last failure when that failure was AWS's, so a count by status needs no walk
+ * of `cause`. It says the attempts are spent, **not** that the operation did
  * not happen: a write whose response was lost is reported this way too, which
  * is why every caller that would delete something reads the row back first.
  *
@@ -129,7 +132,10 @@ export function retryExhaustedError(
   const error = build(retryExhaustedError, {
     message,
     code: ErrorCode.RETRY_EXHAUSTED,
-    context: attempts === undefined ? {} : { attempts },
+    context: {
+      ...(attempts === undefined ? {} : { attempts }),
+      ...(cause === undefined ? {} : awsDiagnostics(cause)),
+    },
     cause,
   });
   Object.defineProperty(error, MAY_STILL_LAND, { value: mayStillLand, enumerable: false });

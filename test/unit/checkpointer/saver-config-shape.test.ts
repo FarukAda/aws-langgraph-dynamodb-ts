@@ -56,7 +56,10 @@ const ROUTES: [string, Route][] = [
 ];
 
 const refusal = (field: string) =>
-  expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field } });
+  expect.objectContaining({
+    code: ErrorCode.VALIDATION,
+    context: expect.objectContaining({ field }),
+  });
 
 describe.each(ROUTES)('saver.%s config shape', (_name, call) => {
   /**

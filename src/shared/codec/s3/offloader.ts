@@ -21,7 +21,7 @@ import {
   withRetry,
 } from '../../dynamodb/retry';
 import { DynamoDBLangGraphError, failureLabel } from '../../errors/base-error';
-import { classifyAwsError } from '../../errors/classify';
+import { awsDiagnostics, classifyAwsError } from '../../errors/classify';
 import { ErrorCode } from '../../errors/error-code';
 import { validationError } from '../../errors/errors';
 import { absorbLoggerFailure, type Logger } from '../../logging/logger';
@@ -402,7 +402,8 @@ function alreadyStored(error: Error): boolean {
  * carrying the key and the underlying error, after three attempts on a
  * transient failure. Its message quotes the SDK's, with credential shapes
  * redacted — a signing failure names the key it signed with, and this message
- * reaches `err.message` on a public error.
+ * reaches `err.message` on a public error. Its context carries the S3
+ * failure's `awsErrorName`, `httpStatusCode` and `requestId` when it was AWS's.
  *
  * Guarantees: a cancelled upload leaves at most the object it was writing, at
  * a key ending in this write's own object id, which no row names because the
@@ -437,7 +438,7 @@ export async function uploadObject(client: S3Client, params: UploadParams): Prom
     throw new DynamoDBLangGraphError(
       redactedMessage(error as Error),
       ErrorCode.S3_OFFLOAD_FAILED,
-      { operation: 'upload', key: params.key },
+      { operation: 'upload', key: params.key, ...awsDiagnostics(error as Error) },
       error as Error,
     );
   }
@@ -463,7 +464,8 @@ export interface StoredObject {
  * and for any SDK failure that survives the retries. Its message quotes the
  * underlying one with credential shapes redacted; the SDK error is kept as
  * `cause`, so `NoSuchKey` stays distinguishable
- * ({@link isMissingObjectError}).
+ * ({@link isMissingObjectError}). Its context carries the S3 failure's
+ * `awsErrorName`, `httpStatusCode` and `requestId` when it was AWS's.
  *
  * Guarantees: an object over the cap is refused from its declared
  * `ContentLength` before the body is touched, and while streaming when the
@@ -508,7 +510,7 @@ export async function downloadObject(
     throw new DynamoDBLangGraphError(
       redactedMessage(error as Error),
       ErrorCode.S3_OFFLOAD_FAILED,
-      { operation: 'download', key },
+      { operation: 'download', key, ...awsDiagnostics(error as Error) },
       error as Error,
     );
   }

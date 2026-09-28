@@ -104,6 +104,23 @@ describe('retryExhaustedError', () => {
   it('defaults the mayStillLand record to false', () => {
     expect(retryBudgetMayStillLand(retryExhaustedError('exhausted'))).toBe(false);
   });
+
+  it('carries the AWS diagnostics of the last failure', () => {
+    const last = Object.assign(new Error('throttled'), {
+      name: 'ThrottlingException',
+      $metadata: { httpStatusCode: 400, requestId: 'r9' },
+    });
+    expect(retryExhaustedError('spent', 5, last).context).toEqual({
+      attempts: 5,
+      awsErrorName: 'ThrottlingException',
+      httpStatusCode: 400,
+      requestId: 'r9',
+    });
+  });
+
+  it('carries only the attempts when the last failure was not AWS-shaped', () => {
+    expect(retryExhaustedError('spent', 5, new Error('x')).context).toEqual({ attempts: 5 });
+  });
 });
 
 describe('retryBudgetMayStillLand', () => {

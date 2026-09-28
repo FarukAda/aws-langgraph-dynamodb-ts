@@ -449,7 +449,7 @@ DynamoDBSaver.deleteThread | threadId=null | throws VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId=undefined | throws VALIDATION field=thread_id
 DynamoDBSaver.deleteThread | threadId={} | throws VALIDATION field=thread_id
 DynamoDBSaver.destroy | an offloader whose resolved S3 client closes cleanly | RESOLVED "raised=none ddbReleased=1"
-DynamoDBSaver.destroy | an offloader whose resolved S3 client refuses to close | RESOLVED "raised=sockets gone ddbReleased=1"
+DynamoDBSaver.destroy | an offloader whose resolved S3 client refuses to close | RESOLVED "raised=saver.destroy…(len 55 #dbd1232e)
 DynamoDBSaver.ensureS3LifecycleRule | no s3/ttl configured | RESOLVED undefined
 DynamoDBSaver.getDeltaChannelHistory | options=null | throws VALIDATION field=options
 DynamoDBSaver.getDeltaChannelHistory | options=undefined | throws VALIDATION field=options

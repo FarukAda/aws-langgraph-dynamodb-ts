@@ -273,7 +273,10 @@ export class DynamoDBFactory {
       built.push(adapter);
       return adapter;
     };
+    let destroyed = false;
     const destroy = (): void => {
+      if (destroyed) return;
+      destroyed = true;
       for (const adapter of built) release(logger, () => adapter.destroy());
       release(logger, () => resolved.ddbClient?.destroy());
     };

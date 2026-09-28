@@ -70,15 +70,16 @@ const ADAPTERS: readonly [string, (options: never) => Adapter][] = [
  */
 async function teardownOf(
   build: (options: never) => Adapter,
-): Promise<{ raised: string | undefined; clientReleases: number }> {
+): Promise<{ raised: { code?: string; cause?: string } | undefined; clientReleases: number }> {
   const owned = ownedClientFactory();
   const adapter = build(optionsFor(owned.create) as never);
   await adapter.ensureS3LifecycleRule();
-  let raised: string | undefined;
+  let raised: { code?: string; cause?: string } | undefined;
   try {
     adapter.destroy();
   } catch (error) {
-    raised = (error as Error).message;
+    const caught = error as { code?: string; cause?: Error };
+    raised = { code: caught.code, cause: caught.cause?.message };
   }
   return { raised, clientReleases: owned.destroy.mock.calls.length };
 }
@@ -94,9 +95,18 @@ async function teardownOf(
 describe('an adapter releases every resource it owns, whatever one of them does', () => {
   it.each(ADAPTERS)('%s releases the client behind the failing resource', async (_name, build) => {
     expect(await teardownOf(build)).toEqual({
-      raised: 'socket already closed',
+      raised: { code: 'UNEXPECTED_ERROR', cause: 'socket already closed' },
       clientReleases: 1,
     });
+  });
+
+  it.each(ADAPTERS)('%s releases nothing on a second destroy', async (_name, build) => {
+    const owned = ownedClientFactory();
+    const adapter = build(optionsFor(owned.create) as never);
+    await adapter.ensureS3LifecycleRule();
+    expect(() => adapter.destroy()).toThrow('socket already closed');
+    expect(() => adapter.destroy()).not.toThrow();
+    expect(owned.destroy).toHaveBeenCalledTimes(1);
   });
 
   it('answers alike on all three, so no adapter leaks where another releases', async () => {

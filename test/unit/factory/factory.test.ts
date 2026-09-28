@@ -74,6 +74,16 @@ describe('DynamoDBFactory', () => {
     expect(fake.destroy).toHaveBeenCalledTimes(1);
   });
 
+  it('tears the shared client down once however often destroy is called', () => {
+    const destroy = jest.fn();
+    const client = { destroy, config: {}, middlewareStack: fakeMiddlewareStack(), send: jest.fn() };
+    const factory = new DynamoDBFactory({ createClient: () => client as never });
+    const all = factory.createAll({ saver: { tableName: 'tbl' } });
+    all.destroy();
+    all.destroy();
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
   it('createAll reuses an injected base client instead of building a new one', () => {
     const { client } = createStrictDocumentMock();
     const destroySpy = jest.spyOn(client, 'destroy');

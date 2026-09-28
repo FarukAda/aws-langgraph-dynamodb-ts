@@ -281,6 +281,9 @@ describe('the three checkpointer read paths agree on a failed download', () => {
       code: ErrorCode.S3_OFFLOAD_FAILED,
       operation: 'download',
       key,
+      tableName: 'ckpt',
+      awsErrorName: 'NoSuchKey',
+      httpStatusCode: 404,
     });
   });
 
@@ -303,13 +306,19 @@ describe('the three checkpointer read paths agree on a failed download', () => {
       code: ErrorCode.S3_OFFLOAD_FAILED,
       operation: 'download',
       key,
+      tableName: 'ckpt',
+      awsErrorName: 'NoSuchKey',
+      httpStatusCode: 404,
     });
   });
 
   /**
    * `assembleTuple` is the seam both public paths reach the download through,
    * and it is driven here only to show it adds nothing of its own: the error a
-   * caller sees is the one the codec raised, unwrapped and unrebranded.
+   * caller sees is the one the codec raised, unwrapped and unrebranded. Called
+   * directly, as here, it never passes through the public boundary, so it
+   * carries no `tableName` — that stamp is the boundary's own contribution,
+   * not the codec's, and `saver.getTuple` is what adds it.
    */
   it('adds nothing of its own in assembleTuple, the seam both public paths share', async () => {
     const rows = await seed();
@@ -320,6 +329,6 @@ describe('the three checkpointer read paths agree on a failed download', () => {
     const fromAssemble = await rejection(() =>
       assembleTuple(context, { threadId: 't', checkpointNs: '' }, rows.meta, { consistent: true }),
     );
-    expect(verdict(fromAssemble)).toEqual(verdict(fromGetTuple));
+    expect(verdict(fromAssemble)).toEqual({ ...verdict(fromGetTuple), tableName: undefined });
   });
 });

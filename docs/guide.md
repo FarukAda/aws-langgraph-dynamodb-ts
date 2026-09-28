@@ -339,9 +339,9 @@ What each unit costs in your account — on demand or provisioned — and what a
 
 ## Monitoring
 
-Alert on the three `error` events (a corrupt message row, a failed append rollback, an append chunk whose outcome is unknown) and on the five `warn` events that name an orphan or an exhausted compare-and-swap (see [Logging](../README.md#logging)); count `RETRY_EXHAUSTED` and the AWS codes (`THROTTLED`, `SERVICE_UNAVAILABLE`, `ACCESS_DENIED`, …) by `context.operation` and `context.httpStatusCode`.
+Alert on the three `error` events (a corrupt message row, a failed append rollback, an append chunk whose outcome is unknown) and on the five `warn` events that name an orphan or an exhausted compare-and-swap (see [Logging](../README.md#logging)); count `RETRY_EXHAUSTED` and the AWS codes (`THROTTLED`, `SERVICE_UNAVAILABLE`, `ACCESS_DENIED`, …) by `context.operation`, `context.tableName` and `context.httpStatusCode`.
 
-For AWS Support you want the `requestId` of the last failure, and it is on the **cause**: ``RETRY_EXHAUSTED`.context` carries `attempts` and nothing else, the last error is its `cause`, and the id is that error's own `$metadata.requestId`. The `debug` retry line names the attempt, the delay and the error's name — no `requestId`. An AWS failure a public method wrapped is the one that carries it in its own context (`error.context.requestId`), copied off the SDK error it wraps.
+For AWS Support you want the `requestId` of the last failure. A `RETRY_EXHAUSTED` error carries it in `context.requestId`, beside that failure's `awsErrorName` and `httpStatusCode`; the failure itself is the error's `cause`. So does an AWS failure a public method wrapped, and an `S3_OFFLOAD_FAILED` for the S3 failure beneath it. The `debug` retry line names the attempt, the delay and the error's name, but not the `requestId`.
 
 Watch the table's `ThrottledRequests` and `ConsumedWriteCapacityUnits` per partition key prefix — the [hot-partition](../README.md#production-notes) note explains which identifier concentrates load.
 

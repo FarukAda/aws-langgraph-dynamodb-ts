@@ -14,7 +14,7 @@
 import type { BaseMessage } from '@langchain/core/messages';
 
 import type { AdapterShell } from '../shared/adapter';
-import { guardPublic } from '../shared/errors/boundary';
+import { guardPublic, guardPublicSync } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { assertCancelOptions } from '../shared/validation/collaborators';
 import { addMessages as addMessagesAction } from './actions/add-messages';
@@ -91,8 +91,10 @@ export class DynamoDBChatMessageHistory {
    * @remarks One query page plus one S3 download per offloaded message.
    */
   getMessages(sessionId: string, options?: GetMessagesOptions): Promise<BaseMessage[]> {
-    return guardPublic('history.getMessages', () =>
-      getMessagesAction(this.context, sessionId, options),
+    return guardPublic(
+      'history.getMessages',
+      () => getMessagesAction(this.context, sessionId, options),
+      this.context.tableName,
     );
   }
 
@@ -126,10 +128,14 @@ export class DynamoDBChatMessageHistory {
    * the session's TTL when one is configured.
    */
   addMessages(sessionId: string, messages: BaseMessage[], options?: CancelOptions): Promise<void> {
-    return guardPublic('history.addMessages', () => {
-      assertCancelOptions(options);
-      return addMessagesAction(this.context, sessionId, messages, options?.signal);
-    });
+    return guardPublic(
+      'history.addMessages',
+      () => {
+        assertCancelOptions(options);
+        return addMessagesAction(this.context, sessionId, messages, options?.signal);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -142,10 +148,14 @@ export class DynamoDBChatMessageHistory {
    * Throws: as {@link addMessages}.
    */
   addMessage(sessionId: string, message: BaseMessage, options?: CancelOptions): Promise<void> {
-    return guardPublic('history.addMessage', () => {
-      assertCancelOptions(options);
-      return addMessagesAction(this.context, sessionId, [message], options?.signal);
-    });
+    return guardPublic(
+      'history.addMessage',
+      () => {
+        assertCancelOptions(options);
+        return addMessagesAction(this.context, sessionId, [message], options?.signal);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -173,10 +183,14 @@ export class DynamoDBChatMessageHistory {
    * row then over-counts until `reconcileMessageCount` repairs it.
    */
   clear(sessionId: string, options?: CancelOptions): Promise<void> {
-    return guardPublic('history.clear', () => {
-      assertCancelOptions(options);
-      return clearSession(this.context, sessionId, options);
-    });
+    return guardPublic(
+      'history.clear',
+      () => {
+        assertCancelOptions(options);
+        return clearSession(this.context, sessionId, options);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -216,7 +230,11 @@ export class DynamoDBChatMessageHistory {
    * whatever the table holds.
    */
   listSessions(options?: ListSessionsOptions): Promise<SessionPage> {
-    return guardPublic('history.listSessions', () => listSessionsAction(this.context, options));
+    return guardPublic(
+      'history.listSessions',
+      () => listSessionsAction(this.context, options),
+      this.context.tableName,
+    );
   }
 
   /**
@@ -243,10 +261,14 @@ export class DynamoDBChatMessageHistory {
    * recount instead of clobbering the increment.
    */
   reconcileMessageCount(sessionId: string, options?: CancelOptions): Promise<number> {
-    return guardPublic('history.reconcileMessageCount', () => {
-      assertCancelOptions(options);
-      return reconcileMessageCountAction(this.context, sessionId, options?.signal);
-    });
+    return guardPublic(
+      'history.reconcileMessageCount',
+      () => {
+        assertCancelOptions(options);
+        return reconcileMessageCountAction(this.context, sessionId, options?.signal);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -277,12 +299,13 @@ export class DynamoDBChatMessageHistory {
    * Returns: nothing. Idempotent, and a no-op for a client the caller injected
    * — that one is theirs to close.
    *
-   * Throws: whatever a resource's own `destroy` raises — but only after every
-   * other one has been released, so a client that fails to close never strands
-   * the one behind it.
+   * Throws: the first failure a resource's own `destroy` raised, as a
+   * `DynamoDBLangGraphError` (`UNEXPECTED_ERROR` unless the failure was AWS's)
+   * with it as `cause` — raised only after every other resource has been
+   * released, and only by the first call: `destroy()` is idempotent.
    */
   destroy(): void {
-    this.shell.release();
+    guardPublicSync('history.destroy', () => this.shell.release(), this.context.tableName);
   }
 
   /**
@@ -302,6 +325,10 @@ export class DynamoDBChatMessageHistory {
    * per request.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    return guardPublic('history.ensureS3LifecycleRule', () => this.shell.ensureLifecycleRule());
+    return guardPublic(
+      'history.ensureS3LifecycleRule',
+      () => this.shell.ensureLifecycleRule(),
+      this.context.tableName,
+    );
   }
 }
