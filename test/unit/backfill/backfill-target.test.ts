@@ -19,17 +19,9 @@ describe('indexTargetOf', () => {
     ['a session row with no sessionId', { PK: 'HIST#s', SK: 'HISTORY#SESSION' }],
     ['a row of no adapter', { PK: 'OTHER#x', SK: 'x' }],
     ['a row whose keys are not strings', { PK: 1, SK: 2 }],
+    ['a store row', { PK: 'STORE#ns', SK: 'sub#key', updatedAt: '2026-01-02T03:04:05.000Z' }],
   ])('does not index %s', (_name, row) => {
     expect(indexTargetOf(row)).toBeUndefined();
-  });
-
-  it('indexes a store row at its own update time', () => {
-    const row = { PK: 'STORE#ns', SK: 'sub#key', updatedAt: '2026-01-02T03:04:05.000Z' };
-    expect(indexTargetOf(row)).toEqual({
-      tag: 'STORE',
-      id: 'sub#key',
-      at: '2026-01-02T03:04:05.000Z',
-    });
   });
 
   it('indexes a session row at its own update time', () => {
@@ -42,10 +34,10 @@ describe('indexTargetOf', () => {
     expect(indexTargetOf(row)).toEqual({ tag: 'SESS', id: 's', at: '2026-01-02T03:04:05.000Z' });
   });
 
-  it('falls back to the pre-index epoch for a row carrying no update time', () => {
-    expect(indexTargetOf({ PK: 'STORE#ns', SK: 'key' })).toEqual({
-      tag: 'STORE',
-      id: 'key',
+  it('falls back to the pre-index epoch for a session row carrying no update time', () => {
+    expect(indexTargetOf({ PK: 'HIST#s', SK: 'HISTORY#SESSION', sessionId: 's' })).toEqual({
+      tag: 'SESS',
+      id: 's',
       at: BACKFILLED_AT,
     });
   });

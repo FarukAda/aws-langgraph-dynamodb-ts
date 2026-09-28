@@ -21,8 +21,13 @@ import type {
 import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';
 import type { VectorBackend, VectorScoreDirection } from './vector-backend';
 
-/** Options for {@link DynamoDBStore}. */
-export type DynamoDBStoreOptions = BaseAdapterOptions &
+/**
+ * Options for {@link DynamoDBStore}.
+ *
+ * `indexName` and `indexShards` are not store options: no store read uses the
+ * recency index, so a store given either refuses it as an unknown key.
+ */
+export type DynamoDBStoreOptions = Omit<BaseAdapterOptions, 'indexName' | 'indexShards'> &
   CodecOptions & {
     /**
      * Optional semantic-search index configuration (embeddings + fields).

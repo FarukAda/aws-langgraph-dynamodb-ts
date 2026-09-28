@@ -118,8 +118,6 @@ export const STORE_KEYS = allKeysOf<DynamoDBStoreOptions>({
   ttl: 'ttl',
   logger: 'logger',
   retry: 'retry',
-  indexShards: 'indexShards',
-  indexName: 'indexName',
   readConcurrency: 'readConcurrency',
   compression: 'compression',
   s3: 's3',

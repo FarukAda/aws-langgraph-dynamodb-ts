@@ -14,8 +14,6 @@ describe('the store option-key lists (compiler-verified against the types)', () 
       'ttl',
       'logger',
       'retry',
-      'indexShards',
-      'indexName',
       'readConcurrency',
       'compression',
       's3',

@@ -1,7 +1,6 @@
 import { checkpointIndexTarget } from '../../../src/checkpointer/internal/rows';
 import { sessionIndexTarget } from '../../../src/history/internal/session';
 import { BACKFILLED_AT, backfilledAt } from '../../../src/shared/dynamodb/recency-index';
-import { storeIndexTarget } from '../../../src/store/internal/rows';
 
 describe('which rows the recency index covers, asked of each row owner', () => {
   const meta = { PK: 'CHKPT#t', SK: 'META##c1', checkpointId: 'c1' };
@@ -10,14 +9,17 @@ describe('which rows the recency index covers, asked of each row owner', () => {
 
   it('lets each owner name its own rows', () => {
     expect(checkpointIndexTarget(meta)).toEqual({ tag: 'CHKPT', id: 'c1', at: BACKFILLED_AT });
-    expect(storeIndexTarget(item)).toEqual({ tag: 'STORE', id: 'k', at: item.updatedAt });
     expect(sessionIndexTarget(session)).toEqual({ tag: 'SESS', id: 's1', at: BACKFILLED_AT });
   });
 
   it("lets no owner answer for another adapter's row", () => {
     expect(checkpointIndexTarget(item)).toBeUndefined();
-    expect(storeIndexTarget(session)).toBeUndefined();
     expect(sessionIndexTarget(meta)).toBeUndefined();
+  });
+
+  it('leaves a store row out of the index: no store listing reads it', () => {
+    expect(checkpointIndexTarget(item)).toBeUndefined();
+    expect(sessionIndexTarget(item)).toBeUndefined();
   });
 
   it('indexes a row at its own time when it recorded one, else before everything', () => {

@@ -6,11 +6,14 @@
 
 # Type Alias: DynamoDBStoreOptions
 
-> **DynamoDBStoreOptions** = [`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md) & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
+> **DynamoDBStoreOptions** = `Omit`\<[`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md), `"indexName"` \| `"indexShards"`\> & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
 
-Defined in: [store/types.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L25)
+Defined in: [store/types.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L30)
 
 Options for [DynamoDBStore](../classes/DynamoDBStore.md).
+
+`indexName` and `indexShards` are not store options: no store read uses the
+recency index, so a store given either refuses it as an unknown key.
 
 ## Type Declaration
 

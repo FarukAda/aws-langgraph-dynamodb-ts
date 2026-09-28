@@ -8,13 +8,13 @@
 
 > **backfillRecencyIndex**(`options`): `Promise`\<[`BackfillResult`](../interfaces/BackfillResult.md)\>
 
-Defined in: [backfill/backfill.ts:203](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L203)
+Defined in: [backfill/backfill.ts:207](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L207)
 
 Give rows written before the recency index their index keys.
 
 **Run this before setting `indexName` on any adapter.** A row without the
 keys is not in the index, so enabling the index first would make every
-pre-existing session, item and checkpoint silently vanish from the listings
+pre-existing session and checkpoint silently vanish from the listings
 that read it — the rows are still there, and every other read still returns
 them, but a listing would not.
 
@@ -24,8 +24,9 @@ live adapter has already indexed is left exactly as it is, and a row deleted
 after the scan found it stays deleted rather than being re-created by an
 `UpdateItem`, which upserts.
 
-`indexShards` must match what the adapters use. A mismatch puts rows on
-shards no listing queries, which looks exactly like the rows being missing.
+`indexShards` must match what the saver and the history use. A mismatch
+puts rows on shards no listing queries, which looks exactly like the rows
+being missing.
 
 Accepts: `options` — validated in full before any read: only the keys
 `BackfillOptions` declares; `tableName`, `indexShards` and the numbers in
@@ -34,7 +35,7 @@ Accepts: `options` — validated in full before any read: only the keys
 default 100. `options.cursor` — from a previous run, to resume.
 `options.maxPages` — how far one run goes, so a large table can be
 backfilled in bounded slices. `options.indexShards` — must equal the
-adapters' setting, and has their ceiling. `options.dryRun` — a boolean.
+saver's and the history's setting, and has their ceiling. `options.dryRun` — a boolean.
 `options.signal` — cancels the run; `retry.signal` does so when there is no
 top-level `signal`, and the top-level one wins when both are given.
 

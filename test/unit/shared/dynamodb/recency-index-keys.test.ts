@@ -12,8 +12,8 @@ describe('indexKeys', () => {
    * machines.
    */
   it('maps one id to one shard, every time', () => {
-    const first = indexKeys('STORE', 'items#k1', '2026-01-01T00:00:00.000Z', 8);
-    const again = indexKeys('STORE', 'items#k1', '2026-06-01T00:00:00.000Z', 8);
+    const first = indexKeys('SESS', 'items#k1', '2026-01-01T00:00:00.000Z', 8);
+    const again = indexKeys('SESS', 'items#k1', '2026-06-01T00:00:00.000Z', 8);
     expect(first.gsi1pk).toBe(again.gsi1pk);
   });
 
@@ -47,14 +47,14 @@ describe('indexKeys', () => {
   });
 
   it('accepts a single shard, which means no fan-out', () => {
-    expect(indexKeys('STORE', 'a', 'x', 1).gsi1pk).toBe('STORE#0');
+    expect(indexKeys('SESS', 'a', 'x', 1).gsi1pk).toBe('SESS#0');
   });
 
   it.each([0, -1, 1.5, Number.NaN])(
     'refuses %p shards instead of producing a broken key',
     (bad) => {
       try {
-        indexKeys('STORE', 'a', 'x', bad);
+        indexKeys('SESS', 'a', 'x', bad);
         throw new Error('expected a throw');
       } catch (error) {
         expect((error as { code?: string }).code).toBe(ErrorCode.VALIDATION);
@@ -62,6 +62,22 @@ describe('indexKeys', () => {
       }
     },
   );
+
+  it('keeps the sort key within 1024 bytes for an id near the identifier cap', () => {
+    const at = '2026-01-01T00:00:00.000Z';
+    const long = 'x'.repeat(1024);
+    const keys = indexKeys('SESS', long, at, 8);
+    expect(Buffer.byteLength(keys.gsi1sk, 'utf8')).toBeLessThanOrEqual(1024);
+    expect(keys.gsi1sk.startsWith(`${at}#`)).toBe(true);
+    expect(indexKeys('SESS', long, at, 8)).toEqual(keys);
+    expect(indexKeys('SESS', `${long.slice(1)}y`, at, 8).gsi1sk).not.toBe(keys.gsi1sk);
+  });
+
+  it('carries an id verbatim while the composed key fits', () => {
+    expect(indexKeys('SESS', 's1', '2026-01-01T00:00:00.000Z', 8).gsi1sk).toBe(
+      '2026-01-01T00:00:00.000Z#s1',
+    );
+  });
 });
 
 describe('indexPartitions', () => {

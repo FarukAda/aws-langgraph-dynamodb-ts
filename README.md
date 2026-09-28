@@ -664,7 +664,7 @@ In the tables below, *Default* is what an omitted option means and *Ceiling* is 
 
 ### Shared options
 
-Every adapter — `DynamoDBSaver`, `DynamoDBStore` and `DynamoDBChatMessageHistory` — reads these.
+Every adapter — `DynamoDBSaver`, `DynamoDBStore` and `DynamoDBChatMessageHistory` — reads these, except `indexName` and `indexShards`: only the saver and history read those two, and the store refuses them.
 
 | Option | Type | Default | Ceiling | Notes |
 | --- | --- | --- | --- | --- |
@@ -677,8 +677,8 @@ Every adapter — `DynamoDBSaver`, `DynamoDBStore` and `DynamoDBChatMessageHisto
 | `compression` | `CompressionConfig` | none: payloads are stored uncompressed | per field ([nested options](#nested-options)) | gzip for payloads of at least `minSizeBytes` ([Gzip compression](#gzip-compression)) |
 | `s3` | `S3OffloadConfig` | none: a payload over 392 KB is refused | per field ([nested options](#nested-options)) | offload large payloads to S3; needs the optional `@aws-sdk/client-s3` peer ([S3 offloading](#s3-offloading)) |
 | `serde` | `SerializerProtocol` | saver: LangGraph's `JsonPlusSerializer`; store and history: the exported `JSON_SERDE` (plain JSON) | — | serializer override; must provide `dumpsTyped` and `loadsTyped`. See the note below the table |
-| `indexName` | `string` | none: the listings that cross partitions scan the table | — | the name of the recency index (a GSI on `gsi1pk`/`gsi1sk`); a non-empty string. See the note below the table |
-| `indexShards` | `number` | 8 | 1024 | index partitions per adapter. Fixed when the table is created: changing it changes every row's shard and requires another backfill. One partition per adapter would concentrate every listing on one key, which is worse than the scan it replaces |
+| `indexName` | `string` | none: the listings that cross partitions scan the table | — | the name of the recency index (a GSI on `gsi1pk`/`gsi1sk`) that `saver.list()` without a `thread_id` and `history.listSessions()` read; a non-empty string. Not a store option: the store refuses it. See the note below the table |
+| `indexShards` | `number` | 8 | 1024 | index partitions per adapter (saver and history; the store refuses it). Fixed for the table's life: each row keeps the shard it was written with, and the backfill writes keys only to rows that have none, so it cannot move a row. Raising it is safe, since old shards stay queried; lowering it hides the rows on dropped shards from the listings. One partition per adapter would concentrate every listing on one key, which is worse than the scan it replaces |
 | `readConcurrency` | `number` | 8 | 128 | payloads decoded at once by a single call. It is the multiplier on this package's memory ceiling — `readConcurrency × (s3.maxDownloadBytes + compression.maxDecompressedBytes)`, 800 MiB at the defaults — so lower it on a small container. It also bounds how many recency-index shards one listing queries at once |
 
 **`client`** — reuse an existing client; not closed by `destroy()`. Passing it together with `clientConfig` is refused, naming `client`. It must provide `get`, `put`, `delete`, `update`, `query`, `scan`, `batchWrite` and `transactWrite`, so a raw `DynamoDBClient` is refused. It must translate the default way: one built with `unmarshallOptions.wrapNumbers` or `marshallOptions.convertEmptyValues: true` is refused, naming `client`, because a wrapped number and a NULL empty string change what every row reads back as. Construct it with `maxAttempts: 1` **and a request timeout of its own** (`DynamoDBDocument.from(new DynamoDBClient({ maxAttempts: 1, requestHandler: { requestTimeout: 10_000, throwOnRequestTimeout: true }, … }))`): the SDK's own retries are not disabled on an injected client and would stack inside the library's retry budget — a `warn` is logged at construction when they would — and an injected client is used exactly as handed over, so one with no handler timeout leaves a single attempt unbounded, which `maxAttempts: 1` does not fix (see [Retries and backoff](#retries-and-backoff))
@@ -1494,16 +1494,18 @@ Every adapter uses the **same simple key schema**: a string partition key `PK`, 
 | `PK` | String (HASH) | partition key |
 | `SK` | String (RANGE) | sort key |
 | `ttl` | Number | (optional) Unix-epoch-seconds expiry; enable DynamoDB TTL on this attribute |
-| `gsi1pk` | String | (optional) recency-index partition key; written to the rows that listings cross partitions for — checkpointer `META`, store items, history `SESSION` |
+| `gsi1pk` | String | (optional) recency-index partition key; written to the rows the recency listings read — checkpointer `META` and history `SESSION`; store rows carry none |
 | `gsi1sk` | String | (optional) recency-index sort key, `<updatedAt>#<id>` |
 
-Those two index attributes are always written; they cost nothing until the table
-carries a global secondary index on them and an adapter is told its name with
-`indexName`. Without it every listing behaves exactly as before, so upgrading
-changes nothing until you create the index — see
-[Infrastructure setup](#infrastructure-setup) for the definition and
-[Maintenance operations](#maintenance-operations) for the backfill that must run
-first.
+Those two index attributes are always written on checkpoint `META` and history
+`SESSION` rows. Until the table carries a global secondary index on them and an
+adapter names it with `indexName`, they cost only their own bytes, and every
+listing behaves exactly as before. So upgrading changes nothing until you
+create the index; see [Infrastructure setup](#infrastructure-setup) for the
+definition and [Maintenance operations](#maintenance-operations) for the
+backfill that must run first. A store row written by `1.0.0-rc.2` may still
+carry the two attributes. Nothing reads them, and the next put of that item
+drops them.
 
 Payloads live under one reserved attribute per row kind (`checkpoint`, `metadata`, `value`, `message`) as a **payload descriptor**: `{ schemaVersion: 1, location: 'INLINE' | 'S3', serdeType, compressed, bytes | s3Key }`. This shape is a compatibility contract: unknown fields are ignored, a missing `schemaVersion` reads as 1, and a higher `schemaVersion` or an unknown `location` is refused with a `VALIDATION` error (field `descriptor`) rather than misread.
 
@@ -1718,7 +1720,7 @@ Four measured facts bound what that means:
 | Retries per DynamoDB call (`retry.maxAttempts`) | 5 (about 1.5 s of sleep, about 51.5 s of wall time); message appends 18 (about 61 s of sleep, about 4 minutes) | 100 | `RETRY_EXHAUSTED` |
 | Backoff delay (`retry.baseDelayMs`, `retry.maxDelayMs`) | 100 ms base, 5 s cap | 60 s each | latency, not an error |
 | Offloaded payloads decoded concurrently by one read, and recency-index shards queried at once by one listing (`readConcurrency`) | 8 | 128 | latency and memory, not an error |
-| Index shards per adapter (`indexShards`) | 8 | 1024 | an indexed listing issues at least one `Query` per shard, `readConcurrency` at a time; `backfillRecencyIndex` takes the same ceiling and must be given the same value |
+| Index shards per adapter (`indexShards`) | 8 | 1024 | an indexed listing issues at least one `Query` per shard, `readConcurrency` at a time; the saver and history only; `backfillRecencyIndex` takes the same ceiling and must be given the same value, which stays fixed for the table's life |
 
 ### What each operation costs
 
@@ -1754,9 +1756,9 @@ Four tools repair or provision state and are meant for deployment scripts and op
 
 - **`ensureS3LifecycleRule()`** (all three adapters) — installs the S3 lifecycle expiration rule that matches the configured `ttl` under the adapter's key prefix, idempotently. It **throws** when the bucket's lifecycle configuration cannot be read or written (`AccessDenied`, `NoSuchBucket`, throttling) — that part swallows nothing — so call it once at deployment time, from a role that holds the two lifecycle actions, and treat a failure as a deployment failure. One thing it does not raise: the bucket-versioning probe that runs **after** the rules are written is best-effort and reports at `warn` (see [Logging](#logging)), because a role that provisioned rules yesterday without `s3:GetBucketVersioning` must not start failing today. A bucket with no lifecycle configuration at all is not an error either; the rules are written onto an empty set. It is a no-op when `s3` or `ttl` is not configured.
 - **`store.reconcileVectorIndex(namespacePrefix)`** — re-pushes every live item's embedding to the configured `vectorBackend` and, when the backend implements `listKeys`, prunes vectors whose item is gone; returns `{ upserted, pruned }`. Run it when the namespace is idle; it reads every row under the prefix (bounded by `maxScanItems`).
-- **`backfillRecencyIndex({ tableName, client, … })`** — gives rows written before the recency index their `gsi1pk`/`gsi1sk`. **Run it before setting `indexName` on any adapter**: a row without the keys is not in the index, so enabling the index first makes every pre-existing session, item and checkpoint vanish from the listings that read it — the rows are still there, and every other read still returns them, but a listing would not.
+- **`backfillRecencyIndex({ tableName, client, … })`** — gives rows written before the recency index their `gsi1pk`/`gsi1sk`. **Run it before setting `indexName` on any adapter**: a row without the keys is not in the index, so enabling the index first makes every pre-existing session and checkpoint vanish from the listings that read it — the rows are still there, and every other read still returns them, but a listing would not.
   - Resumable by passing back the `nextCursor` it returns as `cursor`, re-runnable, and safe against a live table: every write is conditional on the row still being there **and** having no keys yet. That first half is not decoration: `UpdateItem` upserts, so a condition naming only the index attribute is satisfied by a key holding nothing at all, and a row deleted between the scan that found it and the update that backfilled it would otherwise come back as a stub of `PK`, `SK` and the two index keys — and therefore *inside* the index, where a thread-less `saver.list()` logged one `warn` for it on every listing thereafter and `history.listSessions()` dropped it silently, one row short of the `limit` its page had asked for.
-  - `indexShards` must match what the adapters use. Every option is checked before the first read, with `VALIDATION` naming it: an unknown key, a `tableName` DynamoDB would refuse, a `client` without `scan` and `update` or whose translation would change how a row reads back, an `indexShards` outside 1–1024, a `pageSize` or `maxPages` that is not an integer of at least 1, a `dryRun` that is not a boolean, a `retry` whose numbers break the adapters' bounds or whose hooks are not functions, a `signal` that is not an `AbortSignal`, and a `cursor` the tool did not issue.
+  - `indexShards` must match what the saver and the history use. The backfill writes keys only to rows that have none, so it cannot re-shard a table written with another count. Every option is checked before the first read, with `VALIDATION` naming it: an unknown key, a `tableName` DynamoDB would refuse, a `client` without `scan` and `update` or whose translation would change how a row reads back, an `indexShards` outside 1–1024, a `pageSize` or `maxPages` that is not an integer of at least 1, a `dryRun` that is not a boolean, a `retry` whose numbers break the adapters' bounds or whose hooks are not functions, a `signal` that is not an `AbortSignal`, and a `cursor` the tool did not issue.
   - `signal` cancels the run; so does `retry.signal` when no top-level `signal` is given, and when both are given the top-level one wins.
   - A refused write is not a failure and does not stop the run. Both halves of the condition refuse exactly the rows this run has nothing to do for — one that already carries keys a live adapter gave it, one that is no longer there — so the row is counted in the `skipped` of the `BackfillResult` and the walk carries on; on a table with adapters writing to it, which is the only kind a backfill is ever run against, the already-indexed refusal is the normal case rather than an edge one.
   - Any *other* AWS SDK error it does not retry reaches the caller with the code the classifier assigns and the SDK error as `cause`, and the run ends there with its result discarded — re-run it, and the scan's own filter skips whatever the stopped run had already indexed.

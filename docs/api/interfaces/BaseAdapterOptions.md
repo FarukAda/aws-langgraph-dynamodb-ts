@@ -37,7 +37,7 @@ The config a client is built from when `client` is not provided.
 
 > `optional` **indexName?**: `string`
 
-Defined in: [shared/options.ts:67](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L67)
+Defined in: [shared/options.ts:74](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L74)
 
 Name of the recency index (a GSI on `gsi1pk`/`gsi1sk`) on this table.
 
@@ -50,20 +50,27 @@ first: `history.listSessions`, which pages it by cursor, and a
 Leaving it unset keeps both on the table scan, so the index can be created
 and backfilled before any adapter reads it.
 
+The store takes no `indexName`: its rootless search and its namespace
+listing stay table scans.
+
 ***
 
 ### indexShards?
 
 > `optional` **indexShards?**: `number`
 
-Defined in: [shared/options.ts:54](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L54)
+Defined in: [shared/options.ts:58](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L58)
 
 Index partitions per adapter in the recency index (GSI1), default 8.
 
-Rows carry the index attributes whether or not the table defines the
-index, so enabling it later needs no rewrite of new rows — only a backfill
-of the old ones. The value is fixed at table creation: changing it changes
-every row's shard, so an existing index must be backfilled again.
+Checkpoint and session rows carry the index attributes whether or not the
+table defines the index, so enabling it later needs only a backfill of the
+rows written before. The value is fixed for the table's life. Every row
+keeps the shard it was written with, and `backfillRecencyIndex` writes
+keys only to rows that have none, so it cannot move a row. Raising the
+count is safe: the old shards stay among the ones a listing queries.
+Lowering it hides every row on a dropped shard from the listings. The
+store takes no `indexShards`.
 
 A single index partition per adapter would concentrate every listing on
 one partition, which is worse than the table scan it replaces.
@@ -84,7 +91,7 @@ Optional per-instance logger (defaults to a silent logger).
 
 > `optional` **readConcurrency?**: `number`
 
-Defined in: [shared/options.ts:80](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L80)
+Defined in: [shared/options.ts:87](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/options.ts#L87)
 
 How many payloads a single call decodes at once, default 8.
 

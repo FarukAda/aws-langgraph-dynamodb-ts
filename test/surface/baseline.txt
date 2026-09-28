@@ -619,19 +619,19 @@ DynamoDBStore | index={"dims":3,"embeddings":{"embedQuery":fn,"embedDocuments":f
 DynamoDBStore | index={"dims":3} | sync throws VALIDATION field=index.embeddings
 DynamoDBStore | index={"dims":NaN} | sync throws VALIDATION field=index.embeddings
 DynamoDBStore | index={} | sync throws VALIDATION field=index.embeddings
-DynamoDBStore | indexName="" | sync throws VALIDATION field=indexName
-DynamoDBStore | indexName="idx name" | OK DynamoDBStore
-DynamoDBStore | indexName="idx#1" | OK DynamoDBStore
-DynamoDBStore | indexName="xxxxxxxxxxxxxxxxxxxx…(len 300 #d2492384)" | OK DynamoDBStore
-DynamoDBStore | indexName=123 | sync throws VALIDATION field=indexName
-DynamoDBStore | indexName=null | sync throws VALIDATION field=indexName
-DynamoDBStore | indexShards="8" | sync throws VALIDATION field=indexShards
-DynamoDBStore | indexShards=-1 | sync throws VALIDATION field=indexShards
-DynamoDBStore | indexShards=0 | sync throws VALIDATION field=indexShards
-DynamoDBStore | indexShards=1.5 | sync throws VALIDATION field=indexShards
-DynamoDBStore | indexShards=1000000000000 | sync throws VALIDATION field=indexShards
-DynamoDBStore | indexShards=NaN | sync throws VALIDATION field=indexShards
-DynamoDBStore | indexShards=null | sync throws VALIDATION field=indexShards
+DynamoDBStore | indexName="" | sync throws VALIDATION field=options.indexName
+DynamoDBStore | indexName="idx name" | sync throws VALIDATION field=options.indexName
+DynamoDBStore | indexName="idx#1" | sync throws VALIDATION field=options.indexName
+DynamoDBStore | indexName="xxxxxxxxxxxxxxxxxxxx…(len 300 #d2492384)" | sync throws VALIDATION field=options.indexName
+DynamoDBStore | indexName=123 | sync throws VALIDATION field=options.indexName
+DynamoDBStore | indexName=null | sync throws VALIDATION field=options.indexName
+DynamoDBStore | indexShards="8" | sync throws VALIDATION field=options.indexShards
+DynamoDBStore | indexShards=-1 | sync throws VALIDATION field=options.indexShards
+DynamoDBStore | indexShards=0 | sync throws VALIDATION field=options.indexShards
+DynamoDBStore | indexShards=1.5 | sync throws VALIDATION field=options.indexShards
+DynamoDBStore | indexShards=1000000000000 | sync throws VALIDATION field=options.indexShards
+DynamoDBStore | indexShards=NaN | sync throws VALIDATION field=options.indexShards
+DynamoDBStore | indexShards=null | sync throws VALIDATION field=options.indexShards
 DynamoDBStore | logger="x" | sync throws VALIDATION field=logger
 DynamoDBStore | logger=null | sync throws VALIDATION field=logger
 DynamoDBStore | logger={"info":1,"warn":1,"error":1,"debug":1} | sync throws VALIDATION field=logger.debug
