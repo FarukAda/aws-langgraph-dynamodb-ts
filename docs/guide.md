@@ -424,8 +424,9 @@ The cost grows with that listing; the memory does not. `ListObjectVersions` answ
 
 ## Finding objects no row names
 
-An offloaded object belongs to exactly one row. Its key ends in the id of the write that uploaded it, and it carries that row's key as user metadata (`dynamodb-pk-b64`, `dynamodb-sk-b64`). An object whose row is gone, is past its `ttl`, or names another object is an orphan. Several things leave one behind:
+An offloaded object belongs to exactly one row. Its key ends in the id of the write that uploaded it, and it carries that row's key as user metadata (`dynamodb-pk-b64`, `dynamodb-sk-b64`). An object whose row is gone, or names another object, is an **orphan** — `--delete` may remove it. An object whose row is past its `ttl` but has not yet been removed by DynamoDB is reported separately, as **expired**, and is never removed by `--delete`: see "What it does with a finding" below for why. Several things leave an orphan behind:
 - a write that may still have landed after it failed — an attempt that got no answer, or that DynamoDB answered with `TransactionInProgressException` or a server error — and kept its upload (decision record 25);
+- a write whose read-back itself failed, so its own uploads could not be confirmed unreferenced;
 - a best-effort delete that failed;
 - a compare-and-swap that fell back to an unconditional write.
 
@@ -439,21 +440,25 @@ node scripts/find-orphaned-payloads.mjs \
   --prefix langgraph-checkpoints/ --min-age-hours 24
 ```
 
+**Precondition: every object under `--prefix` must belong to `--table`.** Neither an object's key nor its backlink carries a table name, so a `--table` that names the wrong table — a typo landing on another real table, or two tables sharing one bucket and prefix — makes every one of that table's still-live objects decode to "no such row" and look `row-gone`. Give tables that share a bucket distinct `keyPrefix` values. As a guard, `--delete` refuses to run when the sweep checked at least one object and not one turned out live: that is exactly this mistake's signature, and the script prints why and exits non-zero instead of deleting anything.
+
 **What it reads, in order:**
 1. `ListObjectsV2` under the prefix, paginated. It lists only current objects, so a released object behind a delete marker is not listed.
 2. For each object older than `--min-age-hours`, `HeadObject` for its backlink.
 3. A strongly consistent `GetItem` on that key.
 
-An object younger than the minimum age is never judged. A write uploads before it writes its row, and its retries stop 300 s in; the default of 24 hours leaves wide room. An object whose backlink cannot be read, and a row DynamoDB will not return, are each printed as one `UNREADABLE` line, and the sweep carries on.
+An object younger than the minimum age is never judged. A write uploads before it writes its row, and its retries stop 300 s in; the default of 24 hours leaves wide room, and `--min-age-hours` cannot be set below 1 — a write's upload plus its 300 s write lifetime plus a request timeout stays well inside that one hour, and the minimum age is the only guard against judging (and, with `--delete`, removing) an upload whose row is not written yet. An object whose backlink cannot be read, and a row DynamoDB refuses to return (a throttled or denied `GetItem` — not a row that is simply gone, which reads back as `row-gone` instead), are each printed as one `UNREADABLE` line, and the sweep carries on. An object uploaded before `1.0.0-rc.2` carries no backlink at all — `1.0.0-rc.1` wrote none — so it is always `UNREADABLE` and can never be judged; expect a flood of these on a bucket an earlier release wrote to, not a sign of a broken sweep.
 
-**What it does with a finding.** Without `--delete`, nothing: it prints one `ORPHAN` line per object, with its reason (`row-gone`, `row-expired`, `row-names-another-object`) and size. With `--delete`, it deletes them in batches of up to 1000 keys. On a versioned bucket that leaves a delete marker, so a deleted orphan stays recoverable until the lifecycle rule reclaims its noncurrent version. The exit code is 0 whenever the sweep completed.
+**What it does with a finding.** Without `--delete`, nothing: it prints one `ORPHAN` line per deletable finding (`row-gone`, `row-names-another-object`) and one `EXPIRED` line per row whose `ttl` has passed but is still there, each with its reason and size, before anything is deleted. `--delete` removes only the `ORPHAN` findings, in batches of up to 1000 keys, and never an `EXPIRED` one: the checkpointer serves a checkpoint's PAYLOAD row and its pending-WRITE rows without checking their own `ttl` at all — only the checkpoint's META row's `ttl` gates whether the checkpoint is served — so such a row is not necessarily absent to every reader yet, however long past its own `ttl`, and deleting its object could break a `getTuple` or `list` that is still about to read it. It becomes a deletable `row-gone` orphan, on a later run, once DynamoDB has actually removed the row — which the service documents happening within a few days of `ttl`, with no fixed bound. On a versioned bucket, `--delete` leaves a delete marker behind rather than erasing the object outright; that alone does **not** free the storage. Reclaiming it needs `ensureS3LifecycleRule()`'s noncurrent-version-expiration and delete-marker-reclaim rules, written only when a `ttl` is set — `ensureLifecycleFor` is a no-op without one — so on a TTL-less deployment an operator who wants the storage back, not just the object gone from a current listing, adds those two rules themselves ([their shapes](../README.md#s3-lifecycle-rules)). The exit code is 0 when the sweep and every requested delete succeeded; non-zero when the sweep itself failed, when `--delete` was refused (the precondition above), or when any object could not be deleted — each failed key is printed as one `DELETE-FAILED` line first.
 
 **What it costs.** For `O` objects under the prefix and `C` of them old enough to check: `ceil(O / 1000)` `ListObjectsV2` requests, then one `HeadObject` and one strongly consistent `GetItem` per checked object. That is `ceil(O / 1000) + 2C` requests, plus `ceil(orphans / 1000)` `DeleteObjects` with `--delete`. It is proportional to the bucket, so run it on demand or on a slow schedule, not hourly.
 
-**Permissions** are the operator's:
+**Permissions** are the operator's to hold when running this script:
 - `s3:ListBucket` and `s3:GetObject` on the bucket;
 - `dynamodb:GetItem` on the table;
 - `s3:DeleteObject` for `--delete`.
+
+These happen to already sit on the documented [application role](../README.md#iam-permissions) too, but attribute them to whoever runs the sweep, not to the always-running application.
 
 ## Lambda and other short-lived runtimes
 

@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`maxIterations` on `DynamoDBStore`**: the DynamoDB pages one `search`, `listNamespaces` or `reconcileVectorIndex` reads before `RESULT_TRUNCATED` (default 1000; `Infinity` for none). Those scans were capped at 1000 pages with no way to raise it, which a rootless scan over a large table of mostly non-store rows reached long before `maxScanItems`.
-- **`scripts/find-orphaned-payloads.mjs`, a sweep for offloaded objects no live row names** — the orphans a failed or unverified write, a failed best-effort delete or an exhausted compare-and-swap leave, which nothing reclaims on a deployment without a `ttl`. It reports by default and deletes only with `--delete`, never touching an object younger than `--min-age-hours` (24). Repository-only, like the stranded-row sweep.
+- **`scripts/find-orphaned-payloads.mjs`, a sweep for offloaded objects no live row names** — the orphans a failed or unverified write, a failed best-effort delete or an exhausted compare-and-swap leave, which nothing reclaims on a deployment without a `ttl`. It reports by default and deletes only with `--delete`, never touching an object younger than `--min-age-hours` (1 hour floor, 24 default) and never one whose row is only past its `ttl` but not yet removed by DynamoDB — a checkpoint's PAYLOAD and pending-WRITE rows are served without checking their own `ttl`, so such an object may still be read. `--delete` also refuses to run when every checked object was judged and not one was live, the signature of a `--table` or `--prefix` that does not match these objects. Repository-only, like the stranded-row sweep.
 
 ### Changed (breaking)
 
@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The IAM policy recommends `s3:ListBucket` on the offload bucket, with why: without it S3 reports a missing object as `AccessDenied`, which the library cannot tell from a refused one.
 - `indexShards` is documented as fixed for the table's life: the backfill writes keys only to rows that have none and cannot re-shard, raising the count is safe, and lowering it hides rows.
-- The README no longer says leaked objects are "all reclaimed by `ensureS3LifecycleRule()`": that holds only with a `ttl`, and the new orphan sweep covers deployments without one. The same claim, and a decision record saying a TTL-less deployment "has no backstop at all", are corrected in the same places in the guide and `docs/decisions/0005`.
+- The README no longer says leaked objects are "all reclaimed by `ensureS3LifecycleRule()`": that holds only with a `ttl`, and the new orphan sweep finds and, with `--delete`, removes them on a deployment without one — though on a versioned bucket, freeing the storage `--delete` leaves behind as a delete marker still needs a noncurrent-version-expiration and delete-marker-reclaim rule, which only `ttl` gets written automatically. The same claim, and a decision record saying a TTL-less deployment "has no backstop at all", are corrected in the same places in the guide and `docs/decisions/0005`.
 
 ## [1.0.0-rc.2] - 2026-09-27
 

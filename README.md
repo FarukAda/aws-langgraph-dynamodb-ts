@@ -997,7 +997,7 @@ const logger: Logger = {
 | `error` | `history.addMessages rollback failed; messageCount may have drifted` | `sessionId`, `committedChunks` | a multi-chunk append failed and its rollback failed too (`COMPENSATION_FAILED`); run `reconcileMessageCount` for the session once it is idle |
 | `error` | `history.addMessages could not tell whether a failed chunk committed; messageCount may have drifted` | `sessionId`, `committedChunks`, `reason` | a chunk's read-back failed, or some attempt of it may still be applied (no answer, `TransactionInProgressException`, or a 5xx) — `reason` names that failure; the other chunks were rolled back, this one's objects were kept, and the call fails with `COMPENSATION_FAILED` (or `ABORTED` on a cancel). Run `reconcileMessageCount` once the session is idle |
 | `error` | `getMessages: skipped a corrupt message item` | `sessionId`, `sortKey`, `reason` | a message row could not be decoded (or its S3 object is gone) and was dropped under `onCorruptMessage: 'skip'`; inspect or delete the row |
-| `warn` | `store.put: compare-and-swap exhausted; overwriting unconditionally` | `namespace`, `key`, `attempts` | three concurrent overwrites of one item; the put succeeded but one S3 object may be orphaned until the lifecycle rule sweeps it (with a `ttl` set) or `scripts/find-orphaned-payloads.mjs` finds it (without one) |
+| `warn` | `store.put: compare-and-swap exhausted; overwriting unconditionally` | `namespace`, `key`, `attempts` | three concurrent overwrites of one item; the put succeeded but one S3 object may be orphaned — reclaimed by the lifecycle rule with a `ttl` set, or reported by `scripts/find-orphaned-payloads.mjs` and removed with `--delete` without one |
 | `warn` | `store.delete: compare-and-swap exhausted; the item was not deleted` | `namespace`, `key`, `attempts` | three writes landed at one item between this delete's read and its attempt, each time; the item is still there and nothing was released, because the live row names it — re-run the delete once the key is idle |
 | `warn` | `putWrites: special-write compare-and-swap exhausted; overwriting unconditionally` | `sortKey`, `channel`, `attempts` | same, for an interrupt/resume/error write written concurrently for one task |
 | `warn` | `ensureS3LifecycleRule: wrote the lifecycle rules but a re-read did not show them within the polling window` | `bucket`, `prefix` | S3 documents that a lifecycle configuration can take a few minutes to propagate, so this is most likely lag rather than a lost write; the rules were written — call `ensureS3LifecycleRule()` again later to confirm |
@@ -1785,15 +1785,16 @@ On a versioned bucket a released payload becomes a noncurrent version behind a d
 
 Without a `ttl` nothing reclaims an orphaned object. Such objects come from:
 - a write that may still land after failing — no answer, or DynamoDB answering `TransactionInProgressException` or a server error — and kept its upload;
+- a write whose read-back itself failed, so its own uploads could not be confirmed unreferenced;
 - a best-effort delete that failed;
 - an exhausted compare-and-swap.
 
-`scripts/find-orphaned-payloads.mjs` **in the repository** finds them. Like the stranded-row sweep, it is deliberately not in the npm tarball. It lists the offload prefix, reads each object's backlink and then its row, and reports every object older than `--min-age-hours` (default 24) whose row is gone, is past its `ttl`, or names another object. It deletes them only when given `--delete`. It needs:
+`scripts/find-orphaned-payloads.mjs` **in the repository** finds them. Like the stranded-row sweep, it is deliberately not in the npm tarball. It lists the offload prefix, reads each object's backlink and then its row, and reports every object older than `--min-age-hours` (at least 1, default 24) as one of: `row-gone` or `row-names-another-object` (deletable orphans), or `row-expired` (the row's `ttl` has passed but DynamoDB has not yet removed it — a checkpoint's PAYLOAD and pending-WRITE rows are served without checking their own `ttl`, so such a row may still be read; **never deleted** here). It deletes only the orphans, only when given `--delete`, and refuses to delete anything when every object it checked was judged and not one was live — the signature of a `--table` or `--prefix` that does not match these objects, since neither a key nor a backlink carries a table name. On a versioned bucket, `--delete` leaves a delete marker rather than erasing an object outright; freeing that storage still needs `ensureS3LifecycleRule()`'s two rules, written only when a `ttl` is set — without one, add a noncurrent-version-expiration and delete-marker-reclaim rule yourself, or the marker piles up unreclaimed like any other release on a TTL-less deployment. An object from before `1.0.0-rc.2` carries no backlink at all, so it is always reported `UNREADABLE`; a flood of those on an upgraded bucket is expected, not a fault. It needs:
 - `s3:ListBucket` and `s3:GetObject` on the bucket;
 - `dynamodb:GetItem` on the table;
 - `s3:DeleteObject` as well, to delete.
 
-These are the operator's permissions, not the application role's. Full detail: [Guide → Finding objects no row names](docs/guide.md#finding-objects-no-row-names).
+These already sit on the documented application role too, but attribute them to whoever runs this script — an operator's own session, not the always-running application. Full detail: [Guide → Finding objects no row names](docs/guide.md#finding-objects-no-row-names).
 
 ### Lambda and other short-lived runtimes
 

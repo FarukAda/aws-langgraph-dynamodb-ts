@@ -61,13 +61,18 @@ write all leave one behind, on purpose. The lifecycle rule reclaims them
 automatically where a `ttl` is set; `scripts/find-orphaned-payloads.mjs`
 finds them, and deletes them on request, where none is — so a deployment
 that never configures a TTL, and so never calls `ensureS3LifecycleRule()`,
-still has a backstop, run by hand rather than by the rule.
-`scripts/find-stranded-payloads.mjs` covers the opposite direction instead:
-a live row that still names a released object, and only within a versioned
-bucket's grace window before S3 reclaims the delete marker; a strand older
-than that, or on an unversioned bucket, is invisible to it.
+still has a backstop, run by hand rather than by the rule. That backstop is
+partial on a versioned bucket, though: its `--delete` leaves a delete marker
+rather than erasing the object, and nothing expires the noncurrent version
+or reclaims the marker without a `ttl`, so freeing the storage still needs
+an operator-provisioned rule of its own. `scripts/find-stranded-payloads.mjs`
+covers the opposite direction instead: a live row that still names a
+released object, and only within a versioned bucket's grace window before
+S3 reclaims the delete marker; a strand older than that, or on an
+unversioned bucket, is invisible to it.
 
-Neutral. Keeping the sweep script out of the package's `bin` trades away
-discoverability: an operator who needs it must know to look in the
-repository rather than finding it through `npm ls` or the package's own
-command surface.
+Neutral. Keeping both sweep scripts —
+`scripts/find-stranded-payloads.mjs` and `scripts/find-orphaned-payloads.mjs`
+— out of the package's `bin` trades away discoverability: an operator who
+needs either must know to look in the repository rather than finding it
+through `npm ls` or the package's own command surface.
