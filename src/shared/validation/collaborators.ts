@@ -86,6 +86,53 @@ export function assertMembers(value: object, members: readonly string[], field: 
   }
 }
 
+/** The part of a `DynamoDBDocument` that says how it converts between JavaScript values and attributes. */
+interface TranslatingClient {
+  config?: {
+    translateConfig?: {
+      marshallOptions?: { convertEmptyValues?: boolean };
+      unmarshallOptions?: {
+        wrapNumbers?: boolean | ((value: string) => number | bigint | string | object);
+      };
+    };
+  };
+}
+
+/**
+ * Refuse an injected client whose document translation changes what this
+ * package writes or reads back.
+ *
+ * Accepts: `client` — the injected document client, or any object standing in
+ * for one; one without `config.translateConfig` translates the default way.
+ *
+ * Returns: nothing: the client is kept under its declared type, and this checks it.
+ *
+ * Throws: `VALIDATION` naming `client` when its `unmarshallOptions.wrapNumbers`
+ * is set — every number this package reads back (a row's format version, a
+ * `ttl`, a message count) would arrive wrapped, so a newer row would read as
+ * version 0 and a session as malformed — or when its
+ * `marshallOptions.convertEmptyValues` is on, which stores the root checkpoint
+ * namespace, the empty string, as NULL.
+ */
+export function assertClientTranslation(client: object): void {
+  const translate = (client as TranslatingClient).config?.translateConfig;
+  if (translate?.unmarshallOptions?.wrapNumbers) {
+    throw validationError(
+      'client reads numbers back wrapped (unmarshallOptions.wrapNumbers), where this package ' +
+        'reads a row version, a ttl and a count as numbers; inject a DynamoDBDocument built ' +
+        'without it',
+      'client',
+    );
+  }
+  if (translate?.marshallOptions?.convertEmptyValues === true) {
+    throw validationError(
+      'client stores an empty string as NULL (marshallOptions.convertEmptyValues), which erases ' +
+        'the root checkpoint namespace; inject a DynamoDBDocument built without it',
+      'client',
+    );
+  }
+}
+
 /**
  * Validate the collaborators every adapter shares: `client`, `logger` and
  * `serde`. Pulled out of each `setUp*` as one call rather than three inline
@@ -100,14 +147,19 @@ export function assertMembers(value: object, members: readonly string[], field: 
  * and this checks it. A collaborator the caller did not supply is left
  * untouched, so it still reaches its default.
  *
- * Throws: see {@link assertMembers}.
+ * Throws: see {@link assertMembers} for a collaborator missing a method, and
+ * {@link assertClientTranslation} for a `client` whose translation would
+ * change how a row reads back.
  */
 export function assertBaseCollaborators(options: {
   client?: object;
   logger?: object;
   serde?: object;
 }): void {
-  if (options.client !== undefined) assertMembers(options.client, CLIENT_MEMBERS, 'client');
+  if (options.client !== undefined) {
+    assertMembers(options.client, CLIENT_MEMBERS, 'client');
+    assertClientTranslation(options.client);
+  }
   if (options.logger !== undefined) assertMembers(options.logger, LOGGER_MEMBERS, 'logger');
   if (options.serde !== undefined) assertMembers(options.serde, SERDE_MEMBERS, 'serde');
 }

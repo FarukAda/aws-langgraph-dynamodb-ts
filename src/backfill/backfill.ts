@@ -24,7 +24,11 @@ import { type RetryOptions, withDynamoDBRetry } from '../shared/dynamodb/retry';
 import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../shared/dynamodb/table-schema';
 import { guardPublic } from '../shared/errors/boundary';
 import { validationError } from '../shared/errors/errors';
-import { assertMembers, assertSignalLike } from '../shared/validation/collaborators';
+import {
+  assertClientTranslation,
+  assertMembers,
+  assertSignalLike,
+} from '../shared/validation/collaborators';
 import { allKeysOf, assertShape } from '../shared/validation/option-shape';
 import { assertRetryBounds, assertTableName } from '../shared/validation/options';
 import { assertInteger, assertStringArray } from '../shared/validation/primitives';
@@ -456,6 +460,7 @@ export function assertBackfillOptions(options: BackfillOptions): void {
   assertShape(options, BACKFILL_KEYS, 'options');
   assertTableName(options.tableName);
   assertMembers(options.client, BACKFILL_CLIENT_MEMBERS, 'client');
+  assertClientTranslation(options.client);
   assertPositiveBound(options.indexShards, 'indexShards', MAX_INDEX_SHARDS);
   assertPositiveBound(options.pageSize, 'pageSize');
   assertPositiveBound(options.maxPages, 'maxPages');
