@@ -1446,9 +1446,10 @@ const saver = new DynamoDBSaver({
 
 ### S3 lifecycle rules
 
-`ensureS3LifecycleRule()` writes **two** rules, both scoped to the adapter's `keyPrefix`. They are
-given verbatim here so a deployment that manages its own lifecycle can reproduce them — one that
-configures `s3` without a `ttl` (where the call is a no-op), or one that never calls it at all.
+`ensureS3LifecycleRule()` writes **two** rules, both scoped to the adapter's `keyPrefix`, when both
+`s3` and a `ttl` are configured. They are given verbatim here so **a deployment with a `ttl`** that
+manages its own lifecycle can reproduce them. **A deployment without a `ttl` must not copy these
+verbatim** — see the warning below the rules for why, and the safe shape to use instead.
 
 The example below is the checkpointer's **default** `keyPrefix` — no adapter writes to the bare
 `langgraph-checkpoints/` base by default; each defaults to its own sub-prefix
@@ -1484,6 +1485,36 @@ on a bucket **without versioning**: there are no noncurrent versions to keep and
 reclaim, and a release is an ordinary delete with no recovery window at all — `ensureS3LifecycleRule()`
 reports the bucket's versioning state at `warn` rather than enforcing it, because versioning is the
 operator's to enable, not this library's to require.
+
+**Without a `ttl`, never write the `Expiration` clause above.** `ensureS3LifecycleRule()` is then a
+no-op — no row ever expires — so that clause has no row's `ttl` to correlate with: it deletes every
+live payload's **current** version once it turns that many days old, whether or not a row still
+names it. A deployment with `s3` and no `ttl` that wants
+[`scripts/find-orphaned-payloads.mjs`](#finding-objects-no-row-names)'s `--delete` to actually free
+storage — rather than only leave a delete marker that nothing then reclaims — adds just the
+noncurrent half, never `Expiration`, plus the marker-reclaim rule unchanged:
+
+```json
+{
+  "ID": "langgraph-ttl-langgraph-checkpoints-checkpointer",
+  "Filter": { "Prefix": "langgraph-checkpoints/checkpointer/" },
+  "Status": "Enabled",
+  "NoncurrentVersionExpiration": { "NoncurrentDays": 1 }
+}
+```
+
+```json
+{
+  "ID": "langgraph-ttl-langgraph-checkpoints-checkpointer-markers",
+  "Filter": { "Prefix": "langgraph-checkpoints/checkpointer/" },
+  "Status": "Enabled",
+  "Expiration": { "ExpiredObjectDeleteMarker": true }
+}
+```
+
+The marker-reclaim rule is identical either way: `ExpiredObjectDeleteMarker` only ever reclaims a
+delete marker once its last noncurrent version has expired, never a current, live object, so it
+carries no risk with or without a `ttl`.
 
 Full detail — exactly which existing lifecycle rules a floor is measured against and why it never
 lowers, which fields survive a rewrite, and what "reported, never enforced" costs an operator who
@@ -1789,7 +1820,16 @@ Without a `ttl` nothing reclaims an orphaned object. Such objects come from:
 - a best-effort delete that failed;
 - an exhausted compare-and-swap.
 
-`scripts/find-orphaned-payloads.mjs` **in the repository** finds them. Like the stranded-row sweep, it is deliberately not in the npm tarball. It lists the offload prefix, reads each object's backlink and then its row, and reports every object older than `--min-age-hours` (at least 1, default 24) as one of: `row-gone` or `row-names-another-object` (deletable orphans), or `row-expired` (the row's `ttl` has passed but DynamoDB has not yet removed it — a checkpoint's PAYLOAD and pending-WRITE rows are served without checking their own `ttl`, so such a row may still be read; **never deleted** here). It deletes only the orphans, only when given `--delete`, and refuses to delete anything when every object it checked was judged and not one was live — the signature of a `--table` or `--prefix` that does not match these objects, since neither a key nor a backlink carries a table name. On a versioned bucket, `--delete` leaves a delete marker rather than erasing an object outright; freeing that storage still needs `ensureS3LifecycleRule()`'s two rules, written only when a `ttl` is set — without one, add a noncurrent-version-expiration and delete-marker-reclaim rule yourself, or the marker piles up unreclaimed like any other release on a TTL-less deployment. An object from before `1.0.0-rc.2` carries no backlink at all, so it is always reported `UNREADABLE`; a flood of those on an upgraded bucket is expected, not a fault. It needs:
+`scripts/find-orphaned-payloads.mjs` **in the repository** finds them. Like the stranded-row sweep, it is deliberately not in the npm tarball. It lists the offload prefix, reads each object's backlink and then its row, and reports every object older than `--min-age-hours` (at least 1, default 24) as one of: `row-gone` or `row-names-another-object` (deletable orphans), or `row-expired` (the row's `ttl` has passed but DynamoDB has not yet removed it — a checkpoint's PAYLOAD and pending-WRITE rows are served without checking their own `ttl`, so such a row may still be read; **never deleted** here).
+
+**Precondition: every object under `--prefix` must belong to `--table`.** Neither a key nor a backlink carries a table name.
+- The default prefix is the parent of every adapter's own default `keyPrefix` (`langgraph-checkpoints/{checkpointer,store,history}/`), so it is safe only when **one** table backs every adapter under it.
+- With a table per adapter, sweep each adapter's own `keyPrefix` against its own table, not the shared base prefix.
+- Tables that share a bucket need distinct `keyPrefix` values regardless.
+
+`--delete` **requires an explicit `--prefix`**; the default applies to report-only runs only. It also refuses to run when there is something to delete but not one checked object resolved to any row in `--table` — the signature of a `--table` or `--prefix` that matches nothing here; it cannot catch a prefix shared with another table's live objects (only an explicit, adapter-scoped `--prefix` does that), and it cannot tell that apart from a `--table` that is genuinely correct where every one of these objects really is an orphan (for example, after every thread under this prefix was deleted) — the remedy there is to confirm from the report and delete the flagged keys directly, with the AWS CLI or console.
+
+On a versioned bucket, `--delete` leaves a delete marker rather than erasing an object outright; freeing that storage still needs a `NoncurrentVersionExpiration` rule plus the delete-marker-reclaim rule — **never** the `Expiration.Days` clause `ensureS3LifecycleRule()` writes, which deletes live payloads outright without a `ttl` ([the safe shape](#s3-lifecycle-rules)). An object from before `1.0.0-rc.2` carries no backlink at all, so it is always reported `UNREADABLE`; a flood of those on an upgraded bucket is expected, not a fault. It needs:
 - `s3:ListBucket` and `s3:GetObject` on the bucket;
 - `dynamodb:GetItem` on the table;
 - `s3:DeleteObject` as well, to delete.

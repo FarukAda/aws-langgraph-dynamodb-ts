@@ -167,6 +167,20 @@ test('parseArgs refuses a --prefix that does not scope the objects it sweeps', (
   assert.equal(parseArgs([...base, 'p/']).prefix, 'p/');
 });
 
+test('parseArgs requires an explicit --prefix for --delete, even though the default is itself a valid prefix', () => {
+  assert.throws(
+    () => parseArgs(['--bucket', 'b', '--table', 't', '--delete']),
+    /--delete requires an explicit --prefix/,
+  );
+  // Explicit and equal to the default is accepted: the operator opted in.
+  const parsed = parseArgs(['--bucket', 'b', '--table', 't', '--prefix', DEFAULT_PREFIX, '--delete']);
+  assert.equal(parsed.delete, true);
+  assert.equal(parsed.prefix, DEFAULT_PREFIX);
+  // The inline --prefix=value form counts as explicit too.
+  const inline = parseArgs(['--bucket', 'b', '--table', 't', `--prefix=${DEFAULT_PREFIX}`, '--delete']);
+  assert.equal(inline.delete, true);
+});
+
 test('orphanReason says why a read row does not keep its object', () => {
   assert.equal(orphanReason(null, 'k', NOW), 'row-gone');
   assert.equal(orphanReason({ ttl: Math.floor(NOW / 1000), value: descriptor('k') }, 'k', NOW), 'row-expired');
@@ -288,9 +302,20 @@ test('sweep follows pagination across pages, passing the continuation token forw
 });
 
 test('sweep refuses a page that claims more pages but gives no continuation token, rather than looping forever', async () => {
+  // If the IsTruncated-without-token guard ever regressed, a fake that keeps
+  // resolving the same page would make this test hang instead of fail: the
+  // loop would never yield anything to reject on. Rejecting the second
+  // ListObjectsV2 call turns that regression into a fast failure instead.
+  let calls = 0;
   const s3 = {
     send(command) {
       if (command.constructor.name === 'ListObjectsV2Command') {
+        calls += 1;
+        if (calls > 1) {
+          return Promise.reject(
+            new Error('eachObjectPage looped past the malformed page instead of refusing it'),
+          );
+        }
         return Promise.resolve({ Contents: [], IsTruncated: true });
       }
       return Promise.reject(new Error(`unexpected ${command.constructor.name}`));
@@ -379,7 +404,7 @@ test('main sweeps with bounded clients, deletes on --delete, and releases both c
   const log = console.log;
   console.log = (line) => lines.push(line);
   try {
-    await main(['--bucket', 'b', '--table', 't', '--delete'], {
+    await main(['--bucket', 'b', '--table', 't', '--prefix', DEFAULT_PREFIX, '--delete'], {
       createS3: (config) => {
         configs.s3 = config;
         return s3;
@@ -421,10 +446,18 @@ test('main without --delete never sends DeleteObjects, and still tells the opera
   assert.ok(lines.some((line) => line.startsWith('Nothing was deleted.')));
 });
 
-test('main refuses --delete when every checked object was judged and not one was live: the signature of a wrong --table or --prefix', async () => {
+test('main refuses --delete when not one checked object resolved to any row in --table, and explains the remedy for a genuinely correct table', async () => {
   const s3 = fakeS3({
-    objects: [{ Key: 'wrong.bin', LastModified: OLD, Size: 1 }],
-    heads: { 'wrong.bin': backlink('CHKPT#missing') },
+    objects: [
+      { Key: 'wrong1.bin', LastModified: OLD, Size: 1 },
+      { Key: 'wrong2.bin', LastModified: OLD, Size: 2 },
+      { Key: 'noise.bin', LastModified: OLD, Size: 3 },
+    ],
+    heads: {
+      'wrong1.bin': backlink('CHKPT#missing1'),
+      'wrong2.bin': backlink('CHKPT#missing2'),
+      'noise.bin': { Metadata: {} },
+    },
   });
   const ddb = fakeDynamoDB({});
   const lines = [];
@@ -432,19 +465,88 @@ test('main refuses --delete when every checked object was judged and not one was
   console.log = (line) => lines.push(line);
   try {
     await assert.rejects(
-      main(['--bucket', 'b', '--table', 't', '--delete'], {
+      main(['--bucket', 'b', '--table', 't', '--prefix', DEFAULT_PREFIX, '--delete'], {
         createS3: () => s3,
         createDynamoDB: () => ddb,
         now: NOW,
       }),
-      /refusing --delete/,
+      (error) => {
+        assert.match(error.message, /refusing --delete/);
+        assert.match(error.message, /1 unreadable/);
+        assert.match(error.message, /0 expired/);
+        assert.match(error.message, /0 live/);
+        assert.match(error.message, /AWS CLI/);
+        return true;
+      },
     );
   } finally {
     console.log = log;
   }
   assert.equal(s3.sent.some((entry) => entry.name === 'DeleteObjectsCommand'), false);
   // The findings were still printed, so the operator can see why.
-  assert.ok(lines.some((line) => line.startsWith('ORPHAN objectKey=wrong.bin')));
+  assert.ok(lines.some((line) => line.startsWith('ORPHAN objectKey=wrong1.bin')));
+  assert.ok(lines.some((line) => line.startsWith('UNREADABLE objectKey=noise.bin')));
+});
+
+test('main does not refuse --delete when an expired finding proves --table is right, even though live is 0', async () => {
+  const past = Math.floor(NOW / 1000) - 60;
+  const s3 = fakeS3({
+    objects: [
+      { Key: 'gone.bin', LastModified: OLD, Size: 3 },
+      { Key: 'expired.bin', LastModified: OLD, Size: 4 },
+    ],
+    heads: {
+      'gone.bin': backlink('CHKPT#gone'),
+      'expired.bin': backlink('CHKPT#expired'),
+    },
+  });
+  const ddb = fakeDynamoDB({
+    'CHKPT#expired': { PK: 'CHKPT#expired', SK: 'SK', checkpoint: descriptor('expired.bin'), ttl: past },
+  });
+  const log = console.log;
+  console.log = () => {};
+  try {
+    await main(['--bucket', 'b', '--table', 't', '--prefix', DEFAULT_PREFIX, '--delete'], {
+      createS3: () => s3,
+      createDynamoDB: () => ddb,
+      now: NOW,
+    });
+  } finally {
+    console.log = log;
+  }
+  const deleteCall = s3.sent.find((entry) => entry.name === 'DeleteObjectsCommand');
+  assert.ok(deleteCall, '--delete proceeded rather than being refused');
+  assert.deepEqual(
+    deleteCall.input.Delete.Objects.map((object) => object.Key),
+    ['gone.bin'],
+  );
+});
+
+test('main does not refuse --delete when there is nothing to delete: everything old enough is UNREADABLE (a pre-rc.2 bucket) and nothing young was checked', async () => {
+  const s3 = fakeS3({
+    objects: [
+      { Key: 'young.bin', LastModified: YOUNG, Size: 1 },
+      { Key: 'legacy.bin', LastModified: OLD, Size: 2 },
+    ],
+    heads: {
+      'legacy.bin': { Metadata: {} },
+    },
+  });
+  const ddb = fakeDynamoDB({});
+  const lines = [];
+  const log = console.log;
+  console.log = (line) => lines.push(line);
+  try {
+    await main(['--bucket', 'b', '--table', 't', '--prefix', DEFAULT_PREFIX, '--delete'], {
+      createS3: () => s3,
+      createDynamoDB: () => ddb,
+      now: NOW,
+    });
+  } finally {
+    console.log = log;
+  }
+  assert.equal(s3.sent.some((entry) => entry.name === 'DeleteObjectsCommand'), false);
+  assert.ok(lines.some((line) => line.startsWith('UNREADABLE objectKey=legacy.bin')));
 });
 
 test('main does not refuse --delete when nothing was old enough to check', async () => {
@@ -453,7 +555,7 @@ test('main does not refuse --delete when nothing was old enough to check', async
   const log = console.log;
   console.log = () => {};
   try {
-    await main(['--bucket', 'b', '--table', 't', '--delete'], {
+    await main(['--bucket', 'b', '--table', 't', '--prefix', DEFAULT_PREFIX, '--delete'], {
       createS3: () => s3,
       createDynamoDB: () => ddb,
       now: NOW,
@@ -479,7 +581,7 @@ test('main prints its findings before attempting to delete, and exits non-zero (
   console.log = (line) => lines.push(line);
   try {
     await assert.rejects(
-      main(['--bucket', 'b', '--table', 't', '--delete'], {
+      main(['--bucket', 'b', '--table', 't', '--prefix', DEFAULT_PREFIX, '--delete'], {
         createS3: () => s3,
         createDynamoDB: () => ddb,
         now: NOW,

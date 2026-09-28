@@ -17,6 +17,8 @@
  * - a write that may still land after failing — no answer, or DynamoDB
  *   answering `TransactionInProgressException` or a server error — keeps its
  *   upload;
+ * - a write whose read-back itself failed, so its own uploads could not be
+ *   confirmed unreferenced;
  * - a best-effort delete fails;
  * - an exhausted compare-and-swap overwrites unconditionally.
  * With a `ttl`, the lifecycle rule `ensureS3LifecycleRule()` writes reclaims
@@ -24,13 +26,29 @@
  *
  * PRECONDITION: every object under `--prefix` must belong to `--table`. An
  * object's key and its backlink both carry the row's `pk`/`sk` but no table
- * name (see `docs/guide.md#the-on-disk-layout`), so a mistyped `--table` that
- * happens to name a different real table, or two tables sharing one bucket
- * and prefix, makes every one of that table's still-live objects decode to
- * "no such row" and look `row-gone`. Give tables that share a bucket distinct
- * `keyPrefix` values. As a guard, `--delete` refuses to run when every
- * checked object was judged and not one turned out live — the signature of
- * exactly this mistake — printing why and exiting non-zero instead.
+ * name (see `docs/guide.md#the-on-disk-layout`), so a `--table` that names
+ * the wrong table makes that table's still-live objects decode to "no such
+ * row." Concretely:
+ * - `DEFAULT_PREFIX` — the parent of every adapter's own default `keyPrefix`
+ *   (`langgraph-checkpoints/{checkpointer,store,history}/`) — is safe only
+ *   when **one** table backs every adapter under it.
+ * - With a table per adapter, sweep each adapter's own `keyPrefix` against
+ *   its own table, not the shared base prefix.
+ * - Tables that share a bucket need distinct `keyPrefix` values regardless.
+ * For this reason `--delete` REQUIRES an explicit `--prefix`; the default
+ * applies to report-only runs only (see `parseArgs`).
+ *
+ * As a further guard, `--delete` also refuses to run when there is something
+ * to delete but not one checked object resolved to any row — live, expired
+ * or superseded — in `--table` (see `main`). That catches a `--table` or
+ * `--prefix` that matches nothing here at all; it does **not** catch a
+ * prefix shared with another table's live objects — only an explicit,
+ * adapter-scoped `--prefix` does that. It also cannot tell a genuinely
+ * correct `--table` where every one of these objects really is an orphan
+ * (for example, after every thread under this prefix was deleted) from a
+ * wrong one; the remedy there is to confirm from the report and delete the
+ * flagged keys directly, with the AWS CLI or console, rather than re-running
+ * `--delete`.
  *
  * An object uploaded before `1.0.0-rc.2` carries no backlink at all —
  * `1.0.0-rc.1` set none — so it is always reported `UNREADABLE` and can never
@@ -50,17 +68,25 @@
  *
  * Usage:
  *   node scripts/find-orphaned-payloads.mjs --bucket B --table T [--region R]
- *                                           [--prefix P] [--min-age-hours N] [--delete]
+ *                                           --prefix P [--min-age-hours N] [--delete]
+ *   node scripts/find-orphaned-payloads.mjs --bucket B --table T [--region R]
+ *                                           [--min-age-hours N]   # report only; --prefix defaults
  *
- * Without `--delete` it writes nothing. With it, it deletes the ORPHAN
- * findings only — never an EXPIRED one — in batches of up to 1000 keys. On a
- * versioned bucket a delete leaves a delete marker rather than erasing the
- * object outright, but freeing that storage needs more than this flag:
- * `ensureS3LifecycleRule()`'s noncurrent-version-expiration and
- * delete-marker-reclaim rules do that when a `ttl` is set, and nothing does
- * when none is — `ensureLifecycleFor` is a no-op without a `ttl` — so on a
- * TTL-less deployment an operator who wants the storage back, not just the
- * current version gone, must add those two rules themselves.
+ * Without `--delete` it writes nothing, and `--prefix` may be omitted (it
+ * then defaults to `DEFAULT_PREFIX`, spanning every adapter). With `--delete`,
+ * `--prefix` is required. It deletes the ORPHAN findings only — never an
+ * EXPIRED one — in batches of up to 1000 keys. On a versioned bucket a delete
+ * leaves a delete marker rather than erasing the object outright, but
+ * freeing that storage needs more than this flag: `ensureS3LifecycleRule()`'s
+ * noncurrent-version-expiration and delete-marker-reclaim rules do that when
+ * a `ttl` is set — `ensureLifecycleFor` is a no-op without one. An operator
+ * on a TTL-less deployment who wants that storage back adds rules of their
+ * own, but **never** the `Expiration.Days` clause `ensureS3LifecycleRule()`
+ * writes: with no `ttl`, no row ever expires, so that clause would delete
+ * every live payload's *current* version once it turns that many days old.
+ * Add only a `NoncurrentVersionExpiration` rule, plus the delete-marker-
+ * reclaim rule unchanged (see README.md's "S3 lifecycle rules" section for
+ * both shapes, including the one without `Expiration`).
  *
  * Exit code: 0 when the sweep and every requested delete succeeded; non-zero
  * when the sweep itself failed, when `--delete` was refused (see
@@ -175,7 +201,10 @@ function assertScopedPrefix(prefix) {
  *
  * Throws when a flag is unknown or has no value, when `--delete` is given a
  * value, when `--bucket` or `--table` is missing, when `--min-age-hours` is
- * below its floor, or when `--prefix` does not scope a real path.
+ * below its floor, when `--prefix` does not scope a real path, or when
+ * `--delete` is given without an explicit `--prefix` (see the module header:
+ * the default prefix spans every adapter, so it is safe for `--delete` only
+ * when the caller has affirmatively chosen it).
  */
 export function parseArgs(argv) {
   const parsed = {
@@ -186,6 +215,7 @@ export function parseArgs(argv) {
     minAgeHours: DEFAULT_MIN_AGE_HOURS,
     delete: false,
   };
+  let prefixGiven = false;
   for (let index = 0; index < argv.length; index += 1) {
     const [flag, inline] = splitFlag(argv[index]);
     if (flag === '--delete') {
@@ -205,11 +235,21 @@ export function parseArgs(argv) {
       value = argv[index];
     }
     if (value === undefined) throw new Error(`"${flag}" needs a value`);
+    if (flag === '--prefix') prefixGiven = true;
     parsed[field] = field === 'minAgeHours' ? minAgeHoursOf(value) : value;
   }
   if (parsed.bucket === undefined) throw new Error('--bucket is required');
   if (parsed.table === undefined) throw new Error('--table is required');
   assertScopedPrefix(parsed.prefix);
+  if (parsed.delete && !prefixGiven) {
+    throw new Error(
+      '--delete requires an explicit --prefix: the default prefix ' +
+        `("${DEFAULT_PREFIX}") spans every adapter's objects, so with a table per adapter a --delete ` +
+        'run against it can find another adapter\'s live objects "gone" in this --table and delete ' +
+        "them. Pass --prefix explicitly — this adapter's own keyPrefix when tables are split per " +
+        'adapter, or the base prefix again when one table backs every adapter under it.',
+    );
+  }
   return parsed;
 }
 
@@ -510,11 +550,13 @@ const realDynamoDB = (config) => new DynamoDBClient(config);
  * tests; the command line sets none of them.
  *
  * The findings print immediately after the sweep, before any delete is
- * attempted. With `--delete`, a sweep that checked at least one object but
- * found none live refuses to delete anything — the signature of a `--table`
- * or `--prefix` that does not match these objects (see the module header) —
- * and otherwise deletes the orphans found, printing the outcome and throwing
- * (so the process exits non-zero) if any object could not be deleted.
+ * attempted. With `--delete`, a sweep with something to delete but where not
+ * one checked object resolved to any row — live, expired or superseded — in
+ * `--table` refuses to delete anything: the signature of a `--table` or
+ * `--prefix` that does not match these objects (see PRECONDITION in the
+ * module header). Otherwise it deletes the orphans found, printing the
+ * outcome and throwing (so the process exits non-zero) if any object could
+ * not be deleted.
  */
 export async function main(
   argv,
@@ -536,12 +578,19 @@ export async function main(
       for (const line of deletionLines(result, undefined)) console.log(line);
       return;
     }
-    if (result.checked > 0 && result.live === 0) {
+    const foundAnyRow =
+      result.live +
+      result.expired.length +
+      result.orphans.filter((orphan) => orphan.reason === 'row-names-another-object').length;
+    if (result.orphans.length > 0 && foundAnyRow === 0) {
       throw new Error(
-        `refusing --delete: ${result.checked} object(s) were checked and not one was named by a live ` +
-          'row. That is the signature of a wrong --table or --prefix: every object under --prefix must ' +
-          'belong to --table, and tables sharing a bucket need distinct keyPrefix values. Re-check both, ' +
-          'then re-run without --delete to confirm before deleting anything.',
+        `refusing --delete: ${result.orphans.length} object(s) would be deleted, but not one of the ` +
+          `${result.checked} checked object(s) resolved to a row in --table (${result.unreadable.length} ` +
+          `unreadable, ${result.expired.length} expired, ${result.live} live). That is the signature of ` +
+          'a wrong --table or --prefix. It can also mean --table is genuinely correct and every one of ' +
+          'these really is an orphan (for example, after every thread under this prefix was deleted): if ' +
+          'you have confirmed --table and --prefix, delete the keys the ORPHAN lines above name directly, ' +
+          'with the AWS CLI or console, instead of re-running --delete.',
       );
     }
     const deletion = { failed: await deleteOrphans(s3, options.bucket, result.orphans) };
@@ -560,7 +609,10 @@ export async function main(
 
 if (isMain(import.meta.url)) {
   main(process.argv.slice(2)).catch((error) => {
-    console.error(`sweep failed: ${error.message}`);
+    // Neutral, not "sweep failed": this also reports a bad argument, a
+    // refused --delete and a delete failure, none of which is the sweep
+    // itself failing.
+    console.error(`find-orphaned-payloads.mjs: ${error.message}`);
     process.exitCode = 1;
   });
 }
