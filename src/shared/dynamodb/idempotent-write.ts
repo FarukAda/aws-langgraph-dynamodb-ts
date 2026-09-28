@@ -641,16 +641,21 @@ export function verdictFor(probe: RowProbe, row: AttributeMap | undefined): Writ
  * Accepts: `failure` — what the write threw.
  *
  * Returns: true for `ABORTED`; for a spent retry budget, the record
- * `withRetry` kept across every attempt it made
- * (`retryBudgetMayStillLand`) — not `cause`, which is only the last attempt's
- * own failure; for any other failure, judged by itself
- * (`mayStillBeInFlight`).
+ * `withRetry` kept across every attempt it made (`retryBudgetMayStillLand`),
+ * or — when that record does not say so — the last attempt's own failure
+ * judged by itself (`mayStillBeInFlight`), which is what a `RETRY_EXHAUSTED`
+ * error built outside `withRetry` falls back to, carrying no record of its
+ * own; for any other failure, judged by itself (`mayStillBeInFlight`).
  *
  * Throws: nothing, for any value.
  */
 export function mayStillLand(failure: Error): boolean {
   if (isAbortError(failure)) return true;
-  if (hasErrorCode(failure, ErrorCode.RETRY_EXHAUSTED)) return retryBudgetMayStillLand(failure);
+  if (hasErrorCode(failure, ErrorCode.RETRY_EXHAUSTED)) {
+    return (
+      retryBudgetMayStillLand(failure) || mayStillBeInFlight(failure.cause as Error | undefined)
+    );
+  }
   return mayStillBeInFlight(failure);
 }
 

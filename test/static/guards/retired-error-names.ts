@@ -74,6 +74,11 @@ const ALLOWED_USES: readonly AllowedUse[] = [
     reason: "classifies AWS's own ValidationError cancellation reason",
   },
   {
+    file: 'test/unit/shared/errors/classify-answer.test.ts',
+    text: "Code: 'ValidationError'",
+    reason: "AWS's own ValidationError transaction cancellation reason",
+  },
+  {
     file: 'test/unit/history/internal/append-transaction.test.ts',
     text: "Code: 'ValidationError'",
     reason: "AWS's own ValidationError transaction cancellation reason",

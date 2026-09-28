@@ -37,8 +37,9 @@ import type { HistoryContext } from '../internal/setup';
  *
  * Throws: `VALIDATION` naming `sessionId` or `messages` (with the offending
  * index) before any write; `S3_OFFLOAD_FAILED`; whatever the transaction
- * throws, after the rollback; `COMPENSATION_FAILED` when that
- * rollback could not finish.
+ * throws, after the rollback; `COMPENSATION_FAILED` when that rollback could
+ * not finish, or when a failing chunk's own outcome could not be established;
+ * `ABORTED` when the signal fires, after the same rollback.
  *
  * Guarantees: a caller observes all messages or none. `messageCount` always
  * agrees with the messages that landed, because each chunk writes both in one

@@ -23,11 +23,21 @@ describe('mayStillLand', () => {
     // withRetry kept across every attempt is what settles it, not a
     // re-derivation from `cause` alone.
     expect(mayStillLand(retryExhaustedError('spent', 5, answered(), true))).toBe(true);
-    expect(mayStillLand(retryExhaustedError('spent', 5, timeout(), false))).toBe(false);
   });
 
-  it('defaults to false for a RETRY_EXHAUSTED error built without a record', () => {
-    expect(mayStillLand(retryExhaustedError('spent', 5, timeout()))).toBe(false);
+  it("falls back to the last attempt's own cause when the record itself does not say true", () => {
+    // A RETRY_EXHAUSTED error built outside withRetry — as this package's own
+    // append-saga tests build one to model a lost-response commit — carries
+    // an explicit record of `false` rather than no record at all. Either way,
+    // a cause that may still be in flight must still count, or such an error
+    // would read as answered.
+    expect(mayStillLand(retryExhaustedError('spent', 5, timeout(), false))).toBe(true);
+    expect(mayStillLand(retryExhaustedError('spent', 5, answered(), false))).toBe(false);
+  });
+
+  it('defaults the same way for a RETRY_EXHAUSTED error built without a record at all', () => {
+    expect(mayStillLand(retryExhaustedError('spent', 5, timeout()))).toBe(true);
+    expect(mayStillLand(retryExhaustedError('spent', 5, answered()))).toBe(false);
   });
 
   it('judges any other failure by itself, including one DynamoDB answered ambiguously', () => {

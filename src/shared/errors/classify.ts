@@ -321,6 +321,33 @@ export function mayStillBeInFlight(error: Error | undefined): boolean {
   );
 }
 
+/** The codes of a failure the service answered by refusing the request, of which it applied nothing. */
+const REFUSED: readonly ErrorCode[] = [
+  ErrorCode.AWS_REJECTED,
+  ErrorCode.ACCESS_DENIED,
+  ErrorCode.NOT_FOUND,
+  ErrorCode.CONDITION_CONFLICT,
+];
+
+/**
+ * Whether the service refused a request outright, so that none of it was applied.
+ *
+ * Accepts: anything a `catch` can bind.
+ *
+ * Returns: true for a cancelled transaction — DynamoDB applies none of a
+ * transaction it cancels — and for a failure the classifier places under a
+ * refusal: a malformed request, a denied permission, a missing table or index,
+ * a failed condition. False for everything else, a spent retry budget and a
+ * cancel included, since neither says what the service did.
+ *
+ * Throws: nothing, for any value.
+ */
+export function refusedByService(error: Error): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  if ((error as AwsErrorFields).name === TRANSACTION_CANCELLED) return true;
+  return REFUSED.includes(classifyAwsError(error));
+}
+
 /**
  * Whether an S3 read failed because the object is gone.
  *

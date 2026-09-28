@@ -5,8 +5,9 @@
  * so a large append is several transactions, each writing its messages and the
  * SESSION row's update together. When one of them fails the append is rolled
  * back: committed chunks are deleted and their effect on the SESSION row
- * reverted, and each S3 object is released only once no row can name it. An
- * ambiguous failure is read back before anything is undone. This is also the
+ * reverted, and each S3 object is released only once no row can name it.
+ * Every failure but a refusal is read back before anything is undone, and a
+ * chunk that may still commit keeps its objects. This is also the
  * one module that writes a message row, which is what lets a delete pin a
  * message row to the SESSION row's `writeId`.
  */
@@ -14,15 +15,21 @@
 import { nowIso } from '../../shared/clock';
 import { PayloadLocation, type PayloadDescriptor, collectS3Keys } from '../../shared/codec/codec';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
+import { abortErrorFrom, isAbortError } from '../../shared/dynamodb/abort';
 import { batchWriteAll } from '../../shared/dynamodb/batch-write';
 import { conditionFailedAt, conditionalCheckFailure } from '../../shared/dynamodb/cancellation';
+import type { AttributeMap } from '../../shared/dynamodb/client';
 import {
+  readRow,
+  settledVerdict,
   transactIdempotently,
-  verifyRow,
+  verdictFor,
+  type RowProbe,
   type WriteVerdict,
 } from '../../shared/dynamodb/idempotent-write';
 import { type RowKey, SORT_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
-import { DynamoDBLangGraphError, hasErrorCode, toError } from '../../shared/errors/base-error';
+import { DynamoDBLangGraphError, toError } from '../../shared/errors/base-error';
+import { refusedByService } from '../../shared/errors/classify';
 import { ErrorCode } from '../../shared/errors/error-code';
 import { compensationFailedError } from '../../shared/errors/errors';
 import { absorbLoggerFailure } from '../../shared/logging/logger';
@@ -75,6 +82,8 @@ export interface FailedAppend {
   readonly trigger: Error;
   /** True when the failing chunk's own outcome could not be read back. */
   readonly uncertain: boolean;
+  /** Why the failing chunk's outcome is unknown: the read-back's own failure, or the write's failure when some attempt of it may still be applied. */
+  readonly unsettledBecause?: Error;
 }
 
 /** Message Puts per append transaction: the 100-item limit, less the metadata Update. */
@@ -138,8 +147,10 @@ async function buildMessageRows(
  * Returns: nothing, once every chunk has committed.
  *
  * Throws: the first chunk's failure after the append is rolled back;
- * `COMPENSATION_FAILED` when the rollback itself fails; whatever encoding a
- * message throws, after this call's own uploads are released.
+ * `COMPENSATION_FAILED` when the rollback itself fails, or when a failing
+ * chunk's own outcome could not be established; `ABORTED` when the signal
+ * fires, after the same rollback; whatever encoding a message throws, after
+ * this call's own uploads are released.
  */
 export async function appendMessages(
   context: HistoryContext,
@@ -268,7 +279,9 @@ async function rollbackCommitted(
  * Returns: never; the declared `Promise<never>` is the contract.
  *
  * Throws: `failure.trigger` when the rollback succeeded, `COMPENSATION_FAILED`
- * when it did not.
+ * when it did not. `COMPENSATION_FAILED` too when the failing chunk is
+ * unsettled and the trigger is not a cancel, carrying `failure.unsettledBecause`
+ * as `details.rollbackError`.
  *
  * Guarantees: an object is deleted only once no row can reference it — the
  * never-committed suffix immediately, the committed prefix only after its rows
@@ -288,7 +301,7 @@ export async function compensate(
   failure: FailedAppend,
 ): Promise<never> {
   const { sessionId, chunks } = append;
-  const { committed, trigger, uncertain } = failure;
+  const { committed, trigger, uncertain, unsettledBecause } = failure;
   if (committed.length > 0) {
     reportStep(
       context,
@@ -315,34 +328,66 @@ export async function compensate(
   }
   // Only now that committed rows are confirmed deleted is it safe to delete their S3 objects.
   await cleanBatchS3(context, chunks.slice(0, committed.length));
-  throw trigger;
+  if (!uncertain) throw trigger;
+  reportStep(
+    context,
+    'error',
+    'history.addMessages could not tell whether a failed chunk committed; messageCount may have drifted',
+    { sessionId, committedChunks: committed.length },
+  );
+  // A cancel is reported as the cancel it is. Any other failure whose chunk may
+  // be live cannot claim the session is back to where it was.
+  if (isAbortError(trigger)) throw trigger;
+  throw compensationFailedError(trigger, unsettledBecause ?? trigger);
 }
 
-/** True for the one failure shape that leaves the outcome ambiguous. */
-function isAmbiguous(error: Error): boolean {
-  return hasErrorCode(error, ErrorCode.RETRY_EXHAUSTED);
+/** What a failed chunk's read-back established, and what kept it from establishing more. */
+interface ChunkSettlement {
+  readonly verdict: WriteVerdict;
+  /** Why the chunk's outcome is unknown; present only when `verdict` is `'unverified'`. */
+  readonly unsettledBecause?: Error;
 }
 
 /**
- * Read the chunk's first row back. A chunk commits atomically, so one row
- * present means the whole chunk (and its count `ADD`) landed and only the
- * response was lost.
- *
- * The row's own sort key is what identifies it: message sort keys are per-call
- * ULIDs, so a row at that key can only be this call's own, and its presence is
- * the whole question.
+ * The probe that finds a chunk by its first row. A chunk commits whole, and a
+ * message row's sort key is its own per-call ULID, so a row at that key can
+ * only be this call's own and its presence is the whole question.
  */
-async function verifyChunkLanded(
-  context: HistoryContext,
-  chunk: MessageRow[],
-): Promise<WriteVerdict> {
-  const { verdict } = await verifyRow(context, {
+function chunkProbe(chunk: MessageRow[]): RowProbe {
+  return {
     key: rowKeyOf(chunk[0]),
     kind: 'attribute',
     attribute: SORT_KEY_ATTRIBUTE,
     expected: chunk[0].SK,
-  });
-  return verdict;
+  };
+}
+
+/**
+ * Establish what a failed chunk did.
+ *
+ * A refusal the service answered applied nothing and costs no read. Every
+ * other failure is read back, a cancel included, since the chunk it cut short
+ * may have committed; and a row the read finds absent still does not settle a
+ * chunk whose failure may still be applied — some attempt of it got no
+ * answer, or DynamoDB answered that attempt as still in progress
+ * (`TransactionInProgressException`) or with a server error (5xx) — since
+ * DynamoDB may apply it after the read (record 25).
+ */
+async function settleFailedChunk(
+  context: HistoryContext,
+  chunk: MessageRow[],
+  failure: Error,
+): Promise<ChunkSettlement> {
+  if (!isAbortError(failure) && refusedByService(failure)) return { verdict: 'not-landed' };
+  const probe = chunkProbe(chunk);
+  let row: AttributeMap | undefined;
+  try {
+    row = await readRow(context, probe);
+  } catch (error) {
+    return { verdict: 'unverified', unsettledBecause: toError(error as Error) };
+  }
+  const verdict = settledVerdict(verdictFor(probe, row), failure);
+  return verdict === 'unverified' ? { verdict, unsettledBecause: failure } : { verdict };
 }
 
 /** Run one chunk's transaction, returning its error instead of throwing. */
@@ -377,11 +422,16 @@ function asCommitted(chunk: MessageRow[]): CommittedChunk {
  * surfaces as `COMPENSATION_FAILED` and deliberately leaves the
  * committed chunks' S3 objects behind, since their rows may survive.
  *
- * A `RETRY_EXHAUSTED` error is ambiguous — the transaction may have committed
- * and lost its response — so the chunk is read back first: present means it
- * committed (continue), absent means it did not (compensate), and a failed
- * read compensates but leaks that chunk's objects rather than delete objects
- * its possibly-live rows reference.
+ * A failure that is not a refusal is ambiguous — the transaction may have
+ * committed and lost its response — so the chunk is read back first. Present
+ * means it committed. Absent means it did not, unless some attempt of it may
+ * still be applied by DynamoDB — one that got no answer, or one DynamoDB
+ * answered as still in progress (`TransactionInProgressException`) or with a
+ * server error (5xx). A failed read, and that last case, leave the chunk
+ * unsettled: its objects are leaked, the rest is rolled back, and the call
+ * fails with `COMPENSATION_FAILED`, or with `ABORTED` when the caller
+ * cancelled. A chunk that landed although the cancel cut its answer short is
+ * rolled back with the rest, and no chunk is sent once the signal has fired.
  *
  * Accepts: `append.sessionId` — the session every chunk writes to.
  * `append.chunks` — in order, each already within the transaction's limits;
@@ -392,7 +442,8 @@ function asCommitted(chunk: MessageRow[]): CommittedChunk {
  *
  * Throws: the first chunk's failure, after the rollback has restored the
  * pre-call state; or `COMPENSATION_FAILED` carrying both that failure
- * and the rollback's own, when the rollback could not finish.
+ * and the rollback's own, when the rollback could not finish. `ABORTED` when
+ * the signal fires, after the same rollback.
  *
  * Guarantees: each message's S3 key carries its own ULID, so no two rows of any
  * call can address the same object and the rollback's cleanup can never delete
@@ -403,22 +454,28 @@ function asCommitted(chunk: MessageRow[]): CommittedChunk {
 export async function appendChunks(context: HistoryContext, append: ChunkedAppend): Promise<void> {
   const committed: CommittedChunk[] = [];
   for (const chunk of append.chunks) {
+    if (append.signal?.aborted) {
+      // Nothing of this chunk or any after it has been sent, so all of them are safe to release.
+      await compensate(context, append, {
+        committed,
+        trigger: abortErrorFrom(append.signal),
+        uncertain: false,
+      });
+    }
     const failure = await commitChunk(context, append, chunk);
     if (!failure) {
       committed.push(asCommitted(chunk));
       continue;
     }
-    const verdict: WriteVerdict = isAmbiguous(failure)
-      ? await verifyChunkLanded(context, chunk)
-      : 'not-landed';
-    if (verdict === 'landed') {
-      committed.push(asCommitted(chunk));
-      continue;
-    }
+    const settled = await settleFailedChunk(context, chunk, failure);
+    if (settled.verdict === 'landed') committed.push(asCommitted(chunk));
+    // A chunk that landed is committed; the append goes on unless the caller cancelled.
+    if (settled.verdict === 'landed' && !isAbortError(failure)) continue;
     await compensate(context, append, {
       committed,
       trigger: failure,
-      uncertain: verdict === 'unverified',
+      uncertain: settled.verdict === 'unverified',
+      unsettledBecause: settled.unsettledBecause,
     });
   }
 }

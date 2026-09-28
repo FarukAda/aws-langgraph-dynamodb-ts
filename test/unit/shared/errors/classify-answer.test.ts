@@ -1,4 +1,8 @@
-import { endedWithoutAnswer, mayStillBeInFlight } from '../../../../src/shared/errors/classify';
+import {
+  endedWithoutAnswer,
+  mayStillBeInFlight,
+  refusedByService,
+} from '../../../../src/shared/errors/classify';
 
 const named = (name: string, extra: Record<string, unknown> = {}): Error =>
   Object.assign(new Error(name), { name, ...extra });
@@ -98,5 +102,30 @@ describe('mayStillBeInFlight', () => {
     ['nothing at all', undefined],
   ])('is false for %s', (_label, error) => {
     expect(mayStillBeInFlight(error)).toBe(false);
+  });
+});
+
+describe('refusedByService', () => {
+  it.each([
+    named('ValidationException'),
+    named('AccessDeniedException'),
+    named('ResourceNotFoundException'),
+    named('ConditionalCheckFailedException'),
+    Object.assign(named('TransactionCanceledException'), {
+      CancellationReasons: [{ Code: 'ValidationError' }],
+    }),
+  ])('is true for %p', (error) => {
+    expect(refusedByService(error)).toBe(true);
+  });
+
+  it.each([named('ThrottlingException'), named('TimeoutError'), new Error('boom')])(
+    'is false for %p',
+    (error) => {
+      expect(refusedByService(error)).toBe(false);
+    },
+  );
+
+  it.each([null, undefined, 'boom', 7])('is total: %p never throws and is false', (value) => {
+    expect(refusedByService(value as never)).toBe(false);
   });
 });

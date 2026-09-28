@@ -381,21 +381,30 @@ describe('appendChunks: ambiguous chunk failure', () => {
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1']);
   });
 
-  it("leaks the uncertain chunk's objects when the re-read itself fails", async () => {
+  it("leaks the uncertain chunk's objects and reports COMPENSATION_FAILED when the re-read itself fails", async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(exhausted());
     mock
       .on(GetCommand)
       .rejects(Object.assign(new Error('denied'), { name: 'AccessDeniedException' }));
     const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
-    await expect(
-      appendChunks(context(client, offloader), {
-        sessionId: SESSION_ID,
-        chunks: [[s3Item('MSG#1', 'k1')]],
-        fields: { now: 'u' },
-      }),
-    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.RETRY_EXHAUSTED });
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    const error = await appendChunks(context(client, offloader, logger), {
+      sessionId: SESSION_ID,
+      chunks: [[s3Item('MSG#1', 'k1')]],
+      fields: { now: 'u' },
+    }).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.COMPENSATION_FAILED,
+      cause: expect.objectContaining({ code: ErrorCode.RETRY_EXHAUSTED }),
+      details: { rollbackError: expect.objectContaining({ name: 'AccessDeniedException' }) },
+    });
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('could not tell whether a failed chunk committed'),
+      { sessionId: 's1', committedChunks: 0 },
+    );
   });
 
   it('still cleans the never-attempted suffix when an earlier chunk is uncertain', async () => {
@@ -411,7 +420,10 @@ describe('appendChunks: ambiguous chunk failure', () => {
         chunks: [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
         fields: { now: 'u' },
       }),
-    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.RETRY_EXHAUSTED });
+    ).rejects.toMatchObject({
+      name: 'DynamoDBLangGraphError',
+      code: ErrorCode.COMPENSATION_FAILED,
+    });
     // k1 may be referenced by a live row; k2's chunk was never attempted.
     expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
     expect(offloader.deleteBatch).toHaveBeenCalledWith(['k2']);
@@ -430,5 +442,149 @@ describe('appendChunks: ambiguous chunk failure', () => {
       }),
     ).rejects.toThrow('bad');
     expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+  });
+
+  it('treats a chunk cut short before any answer as unsettled, even when the read finds nothing', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(Object.assign(new Error('cut'), { name: 'AbortError' }));
+    mock.on(GetCommand).resolves({});
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    await expect(
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')]],
+        fields: { now: 'u' },
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.COMPENSATION_FAILED,
+      details: { rollbackError: expect.objectContaining({ name: 'AbortError' }) },
+    });
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it("reports a cancel that cut a chunk short, and keeps that chunk's objects", async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    mock.on(TransactWriteCommand).callsFake(() => {
+      controller.abort();
+      return Promise.reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+    });
+    mock.on(GetCommand).resolves({});
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+    await expect(
+      appendChunks(context(client, offloader, logger), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')]],
+        fields: { now: 'u' },
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'DynamoDBLangGraphError', code: ErrorCode.ABORTED });
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('could not tell whether a failed chunk committed'),
+      expect.anything(),
+    );
+  });
+
+  it('rolls back a chunk that landed although the cancel cut its answer short', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    mock
+      .on(TransactWriteCommand)
+      .callsFakeOnce(() => {
+        controller.abort();
+        return Promise.reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      })
+      .resolves({});
+    mock.on(GetCommand).resolves({ Item: { SK: 'MSG#1' } });
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    await expect(
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')]],
+        fields: { now: 'u' },
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED });
+    const deletes =
+      mock.commandCalls(BatchWriteCommand)[0].args[0].input.RequestItems?.history ?? [];
+    expect(deletes.map((r) => r.DeleteRequest?.Key?.SK)).toEqual(['MSG#1']);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1']);
+  });
+
+  it('sends no chunk after the caller cancels, and releases every chunk it never sent', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const controller = new AbortController();
+    mock
+      .on(TransactWriteCommand)
+      .callsFakeOnce(() => {
+        controller.abort();
+        return Promise.resolve({});
+      })
+      .resolves({});
+    mock.on(BatchWriteCommand).resolves({ UnprocessedItems: {} });
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    await expect(
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')], [s3Item('MSG#2', 'k2')]],
+        fields: { now: 'u' },
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.ABORTED });
+    // The first chunk and the session revert; the second chunk is never sent.
+    expect(mock.commandCalls(TransactWriteCommand)).toHaveLength(2);
+    expect(mock.commandCalls(GetCommand)).toHaveLength(0);
+    expect(offloader.deleteBatch.mock.calls).toEqual([[['k2']], [['k1']]]);
+  });
+
+  it('reads back a failure it cannot place, and compensates when the chunk is absent', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock.on(TransactWriteCommand).rejects(new Error('socket closed'));
+    mock.on(GetCommand).resolves({});
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    await expect(
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')]],
+        fields: { now: 'u' },
+      }),
+    ).rejects.toThrow('socket closed');
+    expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+    expect(offloader.deleteBatch).toHaveBeenCalledWith(['k1']);
+  });
+
+  // A spent retry budget may still land when *any* attempt of it — not only
+  // the last — left DynamoDB free to apply the write later. Model that
+  // directly: the budget's record says an
+  // earlier attempt ended without an answer, even though the last attempt
+  // (`cause`) was answered outright by a refusal. The cause's name is
+  // deliberately not one `withRetry`'s own classifier retries — as `exhausted()`
+  // above notes, a retryable name here would see the mock retried through the
+  // whole 18-attempt backoff instead of exercising this call's own handling.
+  it('treats a spent budget as unsettled when an earlier attempt got no answer, even though the last was answered', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    mock
+      .on(TransactWriteCommand)
+      .rejects(
+        retryExhaustedError(
+          'Operation failed after 18 attempts: bad request',
+          18,
+          Object.assign(new Error('bad request'), { name: 'ValidationException' }),
+          true,
+        ),
+      );
+    mock.on(GetCommand).resolves({});
+    const offloader = { deleteBatch: jest.fn().mockResolvedValue([]) };
+    await expect(
+      appendChunks(context(client, offloader), {
+        sessionId: SESSION_ID,
+        chunks: [[s3Item('MSG#1', 'k1')]],
+        fields: { now: 'u' },
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.COMPENSATION_FAILED });
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 });

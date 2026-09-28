@@ -20,7 +20,7 @@ the numbering, and that no number is used twice.
 | [3](0003-offload-large-payloads-to-s3-behind-a-descriptor.md) | Offload large payloads to S3 behind a descriptor | Accepted |
 | [4](0004-write-each-s3-payload-once-under-a-unique-key.md) | Write each S3 payload once under a unique key | Accepted |
 | [5](0005-leave-superseded-payloads-to-lifecycle-rather-than-delete-them.md) | Leave superseded payloads to lifecycle rather than delete them | Accepted |
-| [6](0006-commit-a-checkpoint-in-one-transaction-and-verify-by-reading-back.md) | Commit a checkpoint in one transaction and verify by reading back | Accepted |
+| [6](0006-commit-a-checkpoint-in-one-transaction-and-verify-by-reading-back.md) | Commit a checkpoint in one transaction and verify by reading back | Accepted; amended by 25 |
 | [7](0007-stamp-every-row-with-a-format-version-and-refuse-newer-rows.md) | Stamp every row with a format version and refuse newer rows | Accepted |
 | [8](0008-make-the-recency-index-opt-in-and-sharded.md) | Make the recency index opt-in and sharded | Accepted |
 | [9](0009-treat-the-in-memory-reference-implementations-as-the-oracle.md) | Treat the in-memory reference implementations as the oracle | Accepted |
@@ -39,3 +39,4 @@ the numbering, and that no number is used twice.
 | [22](0022-give-each-row-format-denormalised-copy-and-write-protocol-one-owner.md) | Give each row format, denormalised copy and write protocol one owning module | Accepted |
 | [23](0023-write-interface-docs-as-jsdoc-and-other-comments-as-line-comments.md) | Write interface documentation as JSDoc and every other comment as a line comment | Accepted |
 | [24](0024-give-each-concept-one-name-and-each-kind-of-check-one-verb.md) | Give each concept one name and each kind of check one verb | Accepted |
+| [25](0025-treat-a-write-that-got-no-answer-as-one-that-may-still-land.md) | Treat a write that got no answer as one that may still land | Accepted |
