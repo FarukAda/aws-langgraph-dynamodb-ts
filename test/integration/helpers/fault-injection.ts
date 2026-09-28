@@ -58,7 +58,7 @@ export function dropResponses(client: DynamoDBClient, commandName: string, times
       const name = (context as { commandName?: string }).commandName ?? '';
       if (name === commandName && remaining > 0) {
         remaining -= 1;
-        throw Object.assign(new Error('simulated lost response'), { name: 'ETIMEDOUT' });
+        throw Object.assign(new Error('simulated lost response'), { name: 'TimeoutError' });
       }
       return result;
     },
