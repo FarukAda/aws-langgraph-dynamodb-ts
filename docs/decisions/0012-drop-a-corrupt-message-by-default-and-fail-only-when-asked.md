@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted; amended by 26.
 
 ## Context
 

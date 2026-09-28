@@ -26,7 +26,7 @@ the numbering, and that no number is used twice.
 | [9](0009-treat-the-in-memory-reference-implementations-as-the-oracle.md) | Treat the in-memory reference implementations as the oracle | Accepted |
 | [10](0010-store-every-channel-value-regardless-of-new-versions.md) | Store every channel value regardless of `newVersions` | Accepted |
 | [11](0011-default-the-serializers-and-report-serde-refusals-as-validation.md) | Default the serializers, and report serde refusals as validation | Accepted |
-| [12](0012-drop-a-corrupt-message-by-default-and-fail-only-when-asked.md) | Drop a corrupt stored message by default, and fail the read only when asked | Accepted |
+| [12](0012-drop-a-corrupt-message-by-default-and-fail-only-when-asked.md) | Drop a corrupt stored message by default, and fail the read only when asked | Accepted; amended by 26 |
 | [13](0013-let-only-library-errors-cross-the-public-boundary.md) | Let only library errors cross the public boundary | Accepted; superseded in part by 19 |
 | [14](0014-retry-through-one-classifier-and-bound-every-loop.md) | Retry through one classifier and bound every loop | Accepted; amended by 19 |
 | [15](0015-gate-the-build-on-complete-coverage.md) | Gate the build on complete coverage | Accepted |
@@ -40,3 +40,4 @@ the numbering, and that no number is used twice.
 | [23](0023-write-interface-docs-as-jsdoc-and-other-comments-as-line-comments.md) | Write interface documentation as JSDoc and every other comment as a line comment | Accepted |
 | [24](0024-give-each-concept-one-name-and-each-kind-of-check-one-verb.md) | Give each concept one name and each kind of check one verb | Accepted |
 | [25](0025-treat-a-write-that-got-no-answer-as-one-that-may-still-land.md) | Treat a write that got no answer as one that may still land | Accepted |
+| [26](0026-treat-a-reader-side-limit-as-a-refusal-not-as-payload-loss.md) | Treat a reader-side limit as a refusal, not as payload loss | Accepted |

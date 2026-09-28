@@ -57,6 +57,23 @@ describe('compress', () => {
       compressed: false,
     });
   });
+
+  it('stores a payload larger than the decompression cap uncompressed, so its own reader never refuses it', async () => {
+    const data = new Uint8Array(64).fill(7);
+    await expect(
+      compress(data, { enabled: true, minSizeBytes: 1, maxDecompressedBytes: 32 }),
+    ).resolves.toEqual({ bytes: data, compressed: false });
+  });
+
+  it('still compresses a payload exactly at the decompression cap', async () => {
+    const data = new Uint8Array(32).fill(7);
+    const result = await compress(data, {
+      enabled: true,
+      minSizeBytes: 1,
+      maxDecompressedBytes: 32,
+    });
+    expect(result.compressed).toBe(true);
+  });
 });
 
 describe('decompress', () => {

@@ -23,6 +23,7 @@ import {
 import { DynamoDBLangGraphError, failureLabel } from '../../errors/base-error';
 import { classifyAwsError } from '../../errors/classify';
 import { ErrorCode } from '../../errors/error-code';
+import { validationError } from '../../errors/errors';
 import { absorbLoggerFailure, type Logger } from '../../logging/logger';
 import { redactedMessage } from '../../logging/secret-patterns';
 import { truncateForLog } from '../../logging/truncate';
@@ -224,8 +225,10 @@ export class S3Offloader {
    * attempt of this upload did (see `uploadObject`); the caller's obligation is
    * the same either way.
    *
-   * Throws: `S3_OFFLOAD_FAILED` carrying the key; `ABORTED` when the signal
-   * fires, which is the caller's own stop rather than a failed offload.
+   * Throws: `VALIDATION` naming `payload` for bytes over `maxDownloadBytes`,
+   * before any request; `S3_OFFLOAD_FAILED` carrying the key; `ABORTED` when
+   * the signal fires, which is the caller's own stop rather than a failed
+   * offload.
    */
   async upload(
     key: string,
@@ -233,6 +236,14 @@ export class S3Offloader {
     row: BacklinkRow,
     signal?: AbortSignal,
   ): Promise<string> {
+    if (data.length > this.maxDownloadBytes) {
+      throw validationError(
+        `payload of ${data.length} bytes exceeds s3.maxDownloadBytes (${this.maxDownloadBytes}), ` +
+          'so no reader configured like this adapter could download it; raise ' +
+          's3.maxDownloadBytes or store a smaller value',
+        'payload',
+      );
+    }
     await uploadObject(await this.getClient(), {
       bucket: this.bucketName,
       key,

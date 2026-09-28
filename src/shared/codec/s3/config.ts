@@ -38,7 +38,12 @@ export interface S3OffloadConfig {
   thresholdBytes?: number;
   serverSideEncryption?: string;
   sseKmsKeyId?: string;
-  /** Largest object this adapter will buffer from S3 (default 50 MiB). */
+  /**
+   * Largest object this adapter will buffer from S3 (default 50 MiB). An
+   * offloaded payload larger than it is refused at the write, and a value
+   * below `thresholdBytes` is refused at construction, so an adapter never
+   * stores an object it could not read back.
+   */
   maxDownloadBytes?: number;
   /**
    * S3 client configuration (an `S3ClientConfig`). `region` defaults to the

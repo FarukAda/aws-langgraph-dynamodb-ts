@@ -24,7 +24,7 @@ Defined in: [shared/codec/s3/config.ts:27](https://github.com/FarukAda/aws-langg
 
 > `optional` **clientConfig?**: [`S3ClientConfigLike`](../type-aliases/S3ClientConfigLike.md)
 
-Defined in: [shared/codec/s3/config.ts:47](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/config.ts#L47)
+Defined in: [shared/codec/s3/config.ts:52](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/config.ts#L52)
 
 S3 client configuration (an `S3ClientConfig`). `region` defaults to the
 adapter's DynamoDB region.
@@ -43,9 +43,12 @@ Defined in: [shared/codec/s3/config.ts:28](https://github.com/FarukAda/aws-langg
 
 > `optional` **maxDownloadBytes?**: `number`
 
-Defined in: [shared/codec/s3/config.ts:42](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/config.ts#L42)
+Defined in: [shared/codec/s3/config.ts:47](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/shared/codec/s3/config.ts#L47)
 
-Largest object this adapter will buffer from S3 (default 50 MiB).
+Largest object this adapter will buffer from S3 (default 50 MiB). An
+offloaded payload larger than it is refused at the write, and a value
+below `thresholdBytes` is refused at construction, so an adapter never
+stores an object it could not read back.
 
 ***
 

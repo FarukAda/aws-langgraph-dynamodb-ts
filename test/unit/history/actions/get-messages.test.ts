@@ -260,7 +260,7 @@ describe('getMessages', () => {
       );
     });
 
-    it('skips a message that trips the decompression guard', async () => {
+    it('fails the read for a message larger than this reader decompresses, under skip too', async () => {
       const { client, mock } = createStrictDocumentMock();
       const error = jest.fn();
       const writer = context(client, { compression: { enabled: true, minSizeBytes: 0 } });
@@ -283,12 +283,10 @@ describe('getMessages', () => {
         compression: { enabled: true, maxDecompressedBytes: 16 },
         logger: { ...SILENT_LOGGER, error },
       });
-      const messages = await getMessages(reader, 's1');
-      expect(messages.map((m) => m.content)).toEqual(['ok']);
-      expect(error).toHaveBeenCalledWith(
-        expect.stringContaining('corrupt'),
-        expect.objectContaining({ sortKey: 'HISTORY#MSG#01A' }),
-      );
+      await expect(getMessages(reader, 's1')).rejects.toMatchObject({
+        code: ErrorCode.COMPRESSION_LIMIT,
+      });
+      expect(error).not.toHaveBeenCalled();
     });
   });
 

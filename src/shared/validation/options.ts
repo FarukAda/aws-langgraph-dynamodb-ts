@@ -10,6 +10,7 @@
 import { MAX_INLINE_PAYLOAD_BYTES } from '../codec/codec';
 import type { CompressionConfig } from '../codec/compression';
 import { assertScopedKeyPrefix, type S3OffloadConfig } from '../codec/s3/config';
+import { DEFAULT_MAX_S3_DOWNLOAD_BYTES, DEFAULT_S3_THRESHOLD_BYTES } from '../codec/s3/offloader';
 import { MAX_INDEX_SHARDS } from '../dynamodb/recency-index';
 import type { RetryPolicy } from '../dynamodb/retry';
 import { validationError } from '../errors/errors';
@@ -338,6 +339,15 @@ export function assertS3(config: S3OffloadConfig): void {
       min: 1,
       max: MAX_PAYLOAD_BUFFER_BYTES,
     });
+  }
+  const threshold = config.thresholdBytes ?? DEFAULT_S3_THRESHOLD_BYTES;
+  const downloadable = config.maxDownloadBytes ?? DEFAULT_MAX_S3_DOWNLOAD_BYTES;
+  if (downloadable < threshold) {
+    throw validationError(
+      `s3.maxDownloadBytes (${downloadable}) must be at least s3.thresholdBytes (${threshold}): ` +
+        'every offloaded payload is at least the threshold, so none could be read back',
+      's3.maxDownloadBytes',
+    );
   }
   assertS3Encryption(config);
   // Called to build the S3 client at the first offload, where a value that is

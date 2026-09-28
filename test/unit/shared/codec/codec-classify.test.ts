@@ -205,9 +205,9 @@ describe('isMissingObjectError', () => {
 });
 
 describe('isPermanentPayloadLoss', () => {
-  it('is true for a decompression-guard trip and a missing object, false otherwise', () => {
+  it('is true for a missing object, and false for a decompression limit and everything else', () => {
     const bomb = new DynamoDBLangGraphError('bomb', ErrorCode.COMPRESSION_LIMIT);
-    expect(isPermanentPayloadLoss(bomb)).toBe(true);
+    expect(isPermanentPayloadLoss(bomb)).toBe(false);
     expect(isPermanentPayloadLoss(s3Failure('NoSuchKey'))).toBe(true);
     expect(isPermanentPayloadLoss(s3Failure('ServiceUnavailable'))).toBe(false);
     expect(isPermanentPayloadLoss(validationError('v'))).toBe(false);

@@ -50,7 +50,8 @@ export interface CompressionResult {
  * returns the input untouched. `config.minSizeBytes` — the size below which
  * gzip is not attempted, default {@link DEFAULT_COMPRESSION_MIN_BYTES}.
  * `config.level` — zlib level 0–9, default {@link DEFAULT_COMPRESSION_LEVEL}.
- * `config.maxDecompressedBytes` is read on the way back, not here.
+ * `config.maxDecompressedBytes` — a payload larger than it is stored
+ * uncompressed, since no reader configured like this writer would inflate it.
  *
  * Returns: `compressed: true` only when gzip beat the input by more than 10%;
  * otherwise the input bytes and `compressed: false`. The flag is recorded in
@@ -64,7 +65,12 @@ export async function compress(
   config: CompressionConfig,
 ): Promise<CompressionResult> {
   const minSize = config.minSizeBytes ?? DEFAULT_COMPRESSION_MIN_BYTES;
-  if (!config.enabled || data.length < minSize) return { bytes: data, compressed: false };
+  const readable = config.maxDecompressedBytes ?? DEFAULT_MAX_DECOMPRESSED_BYTES;
+  // A payload larger than a reader configured like this writer inflates is
+  // stored as it is, so this writer's own cap never refuses what it wrote.
+  if (!config.enabled || data.length < minSize || data.length > readable) {
+    return { bytes: data, compressed: false };
+  }
   const level = config.level ?? DEFAULT_COMPRESSION_LEVEL;
   const gzipped = new Uint8Array(await gzipAsync(data, { level }));
   if (gzipped.length >= data.length * COMPRESSION_GAIN_RATIO) {
@@ -95,9 +101,11 @@ function corruptPayload(cause: Error): DynamoDBLangGraphError {
  * Returns: the decoded bytes.
  *
  * Throws: `COMPRESSION_LIMIT` when the output would exceed `maxBytes`, and
- * `PAYLOAD_CORRUPT` when `compressed` is true but the bytes are not gzip. Both
- * are permanent for that payload ({@link isPermanentPayloadLoss}), so a caller
- * reports rather than retries.
+ * `PAYLOAD_CORRUPT` when `compressed` is true but the bytes are not gzip.
+ * `PAYLOAD_CORRUPT` is permanent for that payload
+ * ({@link isPermanentPayloadLoss}). `COMPRESSION_LIMIT` is this reader's
+ * limit, not the payload's loss: a reader with a larger cap reads it, and
+ * this package never compresses a payload past its writer's own cap.
  */
 export async function decompress(
   data: Uint8Array,
