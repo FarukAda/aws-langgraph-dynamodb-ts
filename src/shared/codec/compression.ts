@@ -104,8 +104,10 @@ function corruptPayload(cause: Error): DynamoDBLangGraphError {
  * `PAYLOAD_CORRUPT` when `compressed` is true but the bytes are not gzip.
  * `PAYLOAD_CORRUPT` is permanent for that payload
  * ({@link isPermanentPayloadLoss}). `COMPRESSION_LIMIT` is this reader's
- * limit, not the payload's loss: a reader with a larger cap reads it, and
- * this package never compresses a payload past its writer's own cap.
+ * limit, not the payload's loss: a reader with a larger cap reads it. From
+ * this release on, `compress` never produces a payload past its writer's own
+ * cap; a payload an earlier release compressed — which did not check it —
+ * can still exceed a smaller `maxBytes` here.
  */
 export async function decompress(
   data: Uint8Array,

@@ -51,13 +51,14 @@ function corruptOrRethrow(error: Error): Decoded {
  * Decode one item in three stages so failures are classified by what caused
  * them. Fetching the bytes (an S3 download, decompression) is infrastructure:
  * a transport, throttling or permission failure there is rethrown. Only a
- * *permanent* loss at that stage — the object is gone — is corruption; a
- * payload larger than this reader decompresses is this reader's limit and is
- * rethrown; a row whose `s3Key` lies outside the session's own path is a
- * configuration or tenancy fault, and a payload whose `schemaVersion` is newer
- * than this release reads is a turn a newer reader still serves, so both are
- * rethrown like any other infrastructure failure (see `assertKeyInScope` and
- * `assertReadableDescriptor`).
+ * *permanent* loss at that stage — the object is gone, its bytes are no
+ * longer the form the row declares, or the row's own descriptor is
+ * unreadable — is corruption; a payload larger than this reader decompresses
+ * is this reader's limit and is rethrown; a row whose `s3Key` lies outside
+ * the session's own path is a configuration or tenancy fault, and a payload
+ * whose `schemaVersion` is newer than this release reads is a turn a newer
+ * reader still serves, so both are rethrown like any other infrastructure
+ * failure (see `assertKeyInScope` and `assertReadableDescriptor`).
  *
  * Deserializing is classified the same way, through the same predicate: bytes
  * that are no longer the form the row declares are this message's own loss, but
@@ -130,10 +131,12 @@ async function decodeMessage(
  * did not write, naming
  * `s3Key` for a row addressing an object outside the session's own path, and
  * naming `serde` for a row whose payload the serializer refuses to
- * reconstruct, all three whatever the policy; any infrastructure failure — a
- * throttle, a permission, a transport error — whatever the policy, because
- * dropping a message for one of those would hand back a silently truncated
- * conversation that the chain then re-persists as the truth.
+ * reconstruct, all three whatever the policy; `COMPRESSION_LIMIT` for a
+ * payload larger than this reader's `compression.maxDecompressedBytes`,
+ * whatever the policy too; any infrastructure failure — a throttle, a
+ * permission, a transport error — whatever the policy, because dropping a
+ * message for one of those would hand back a silently truncated conversation
+ * that the chain then re-persists as the truth.
  *
  * Guarantees: strongly consistent, so the turn just appended is visible.
  * Offloaded messages download several at a time, and the corruption policy is

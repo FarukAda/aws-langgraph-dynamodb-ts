@@ -57,7 +57,7 @@ at module scope and in a Lambda's init phase.
 
 > **deleteThread**(`threadId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:252](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L252)
+Defined in: [checkpointer/saver.ts:254](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L254)
 
 Delete every checkpoint, payload and pending write of a thread.
 
@@ -110,7 +110,7 @@ no object this call could have released.
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/saver.ts:321](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L321)
+Defined in: [checkpointer/saver.ts:323](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L323)
 
 Release owned resources.
 
@@ -133,7 +133,7 @@ the one behind it.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:343](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L343)
+Defined in: [checkpointer/saver.ts:345](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L345)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded payloads don't outlive the items that point at them.
@@ -165,7 +165,7 @@ not per request.
 
 > **getDeltaChannelHistory**(`options`): `Promise`\<`Record`\<`string`, `DeltaChannelHistory`\>\>
 
-Defined in: [checkpointer/saver.ts:295](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L295)
+Defined in: [checkpointer/saver.ts:297](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L297)
 
 Walk a checkpoint's ancestors for the delta channels named, returning each
 channel's on-path writes oldest-first and its nearest stored value.
@@ -338,7 +338,7 @@ yielded tuple (see the README cost table).
 
 > **put**(`config`, `checkpoint`, `metadata`, `newVersions?`): `Promise`\<`RunnableConfig`\<`Record`\<`string`, `any`\>\>\>
 
-Defined in: [checkpointer/saver.ts:175](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L175)
+Defined in: [checkpointer/saver.ts:176](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L176)
 
 Store a checkpoint and its metadata in one transaction.
 
@@ -358,9 +358,10 @@ config of the wrong shape, `thread_id` for a missing or malformed thread
 id, `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
 identifier, `checkpoint` for a `null` or `undefined` checkpoint,
 `checkpoint_id` for a malformed `checkpoint.id`, `payload` for a payload
-too large to store inline without `s3`, or `s3Key` for an offloaded
-object's key over S3's cap; `S3_OFFLOAD_FAILED` when an offloaded payload
-cannot be uploaded; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
+too large to store inline without `s3`, or, once offloaded, larger than
+`s3.maxDownloadBytes`; `s3Key` for an offloaded object's key over S3's
+cap; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded;
+a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
 
 Guarantees: both rows land or neither does. Writing the same
 `checkpoint.id` again replaces both, so a retry is safe. Each put uploads
@@ -400,7 +401,7 @@ rows named are not deleted with them: they are left to the lifecycle rule
 
 > **putWrites**(`config`, `writes`, `taskId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:218](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L218)
+Defined in: [checkpointer/saver.ts:220](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L220)
 
 Store a task's pending writes for the checkpoint `config` names.
 
@@ -420,8 +421,9 @@ identifier, and `checkpoint_id` when the config names none; `writes` for
 writes that is not an array, or holds an entry that is not one; `channel`
 for a malformed channel; `sortKey` for identifiers composing a sort key
 over DynamoDB's cap; `payload` for a value too large to store inline
-without `s3`; or `s3Key` for an offloaded object's key over S3's cap.
-`S3_OFFLOAD_FAILED`; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
+without `s3`, or, once offloaded, larger than `s3.maxDownloadBytes`; or
+`s3Key` for an offloaded object's key over S3's cap. `S3_OFFLOAD_FAILED`;
+a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
 
 Guarantees: regular writes are first-write-wins; special channels
 (`__interrupt__`, `__resume__`, `__error__`, `__scheduled__`) overwrite,

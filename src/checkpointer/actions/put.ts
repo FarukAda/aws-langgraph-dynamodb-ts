@@ -66,9 +66,10 @@ import type { CheckpointerContext } from '../internal/setup';
  * config of the wrong shape, `thread_id`, `checkpoint_ns`, `checkpoint_id` or
  * `thread_ts` for a malformed identifier, `checkpoint` for a `null` or
  * `undefined` checkpoint, `checkpoint_id` for a malformed `checkpoint.id`,
- * `payload` for a payload too large to store inline without `s3`, or `s3Key`
- * for an offloaded object's key over S3's cap; `S3_OFFLOAD_FAILED`; whatever
- * the transaction throws once the outcome is established.
+ * `payload` for a payload too large to store inline without `s3`, or, once
+ * offloaded, larger than `s3.maxDownloadBytes`; `s3Key` for an offloaded
+ * object's key over S3's cap; `S3_OFFLOAD_FAILED`; whatever the transaction
+ * throws once the outcome is established.
  *
  * Guarantees: both rows land or neither does — they are one transaction, so a
  * META row never names a payload that is not there. That transaction goes out

@@ -454,9 +454,11 @@ export interface BuildRowOptions {
  * item is listed across partitions by a rootless search, so it is indexed.
  *
  * Throws: `VALIDATION` naming `value` for a value with no JSON
- * representation; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be
- * uploaded. Encoding happens before any write, so a value that cannot be stored
- * never half-writes a row.
+ * representation, or `payload` for one too large to store inline without
+ * `s3`, or, once offloaded, larger than `s3.maxDownloadBytes`;
+ * `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded. Encoding
+ * happens before any write, so a value that cannot be stored never
+ * half-writes a row.
  */
 export async function buildStoreRow(
   context: StoreContext,

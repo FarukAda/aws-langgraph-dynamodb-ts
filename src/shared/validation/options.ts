@@ -260,9 +260,12 @@ export function assertCompression(config: CompressionConfig): void {
     // `s3`, is a meaningful configuration: compress only what will be offloaded
     // anyway. A `thresholdBytes` above the inline limit is not: a payload
     // between the two is too large to store inline and too small to offload,
-    // so its write fails. `minSizeBytes` only decides whether gzip runs; the
-    // only value it can never act on is one larger than any payload this
-    // package can read back.
+    // so its write fails. `minSizeBytes` only decides whether gzip runs; a
+    // value it can never act on is one larger than any payload this package
+    // can read back, and — since `compress` now stores anything over
+    // `maxDecompressedBytes` uncompressed regardless of `minSizeBytes` — so
+    // is any `minSizeBytes` above `maxDecompressedBytes`: nothing is ever
+    // both at or above the one and at or below the other.
     assertInteger(config.minSizeBytes, 'compression.minSizeBytes', {
       min: 0,
       max: MAX_PAYLOAD_BUFFER_BYTES,

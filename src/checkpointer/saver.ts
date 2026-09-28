@@ -162,9 +162,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * id, `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
    * identifier, `checkpoint` for a `null` or `undefined` checkpoint,
    * `checkpoint_id` for a malformed `checkpoint.id`, `payload` for a payload
-   * too large to store inline without `s3`, or `s3Key` for an offloaded
-   * object's key over S3's cap; `S3_OFFLOAD_FAILED` when an offloaded payload
-   * cannot be uploaded; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
+   * too large to store inline without `s3`, or, once offloaded, larger than
+   * `s3.maxDownloadBytes`; `s3Key` for an offloaded object's key over S3's
+   * cap; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded;
+   * a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
    *
    * Guarantees: both rows land or neither does. Writing the same
    * `checkpoint.id` again replaces both, so a retry is safe. Each put uploads
@@ -202,8 +203,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * writes that is not an array, or holds an entry that is not one; `channel`
    * for a malformed channel; `sortKey` for identifiers composing a sort key
    * over DynamoDB's cap; `payload` for a value too large to store inline
-   * without `s3`; or `s3Key` for an offloaded object's key over S3's cap.
-   * `S3_OFFLOAD_FAILED`; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
+   * without `s3`, or, once offloaded, larger than `s3.maxDownloadBytes`; or
+   * `s3Key` for an offloaded object's key over S3's cap. `S3_OFFLOAD_FAILED`;
+   * a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
    *
    * Guarantees: regular writes are first-write-wins; special channels
    * (`__interrupt__`, `__resume__`, `__error__`, `__scheduled__`) overwrite,

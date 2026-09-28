@@ -541,11 +541,13 @@ const nextPutObjectId = createUlidFactory();
  * payload first, so a META row never names a payload that is not there yet.
  *
  * Throws: `VALIDATION` naming `value` for a checkpoint the serializer cannot
- * represent; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded.
- * Encoding precedes every write, so a checkpoint that cannot be stored never
- * half-writes a thread — and a metadata payload refused after the checkpoint's
- * own object has uploaded releases that object before the failure leaves here
- * (see {@link releaseUploads}), so a refusal strands nothing either.
+ * represent, or `payload` for one too large to store inline without `s3`,
+ * or, once offloaded, larger than `s3.maxDownloadBytes`; `S3_OFFLOAD_FAILED`
+ * when an offloaded payload cannot be uploaded. Encoding precedes every
+ * write, so a checkpoint that cannot be stored never half-writes a thread —
+ * and a metadata payload refused after the checkpoint's own object has
+ * uploaded releases that object before the failure leaves here (see
+ * {@link releaseUploads}), so a refusal strands nothing either.
  */
 export async function buildCheckpointRows(
   context: CheckpointerContext,
@@ -625,10 +627,12 @@ export async function buildCheckpointRows(
  * Returns: one row per write, special channels first, each carrying its
  * `occurrence` so a channel emitted twice by one call keeps both values.
  *
- * Throws: `VALIDATION` naming `value`; `S3_OFFLOAD_FAILED`. A payload refused
- * partway through releases the objects the earlier writes of the same call had
- * already uploaded (see {@link releaseUploads}), so a build that throws
- * returns the caller to where it started.
+ * Throws: `VALIDATION` naming `value` for a write the serializer cannot
+ * represent, or `payload` for one too large to store inline without `s3`,
+ * or, once offloaded, larger than `s3.maxDownloadBytes`; `S3_OFFLOAD_FAILED`.
+ * A payload refused partway through releases the objects the earlier writes
+ * of the same call had already uploaded (see {@link releaseUploads}), so a
+ * build that throws returns the caller to where it started.
  */
 export async function buildWriteRows(
   context: CheckpointerContext,

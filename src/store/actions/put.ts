@@ -47,8 +47,10 @@ async function resolvePassages(
  * Returns: nothing. Deleting an item that is not there is not an error.
  *
  * Throws: `VALIDATION` naming `value` for a value that JSON cannot represent —
- * refused at the write rather than stored as a row that can never be read back;
- * `S3_OFFLOAD_FAILED`; whatever the write throws.
+ * refused at the write rather than stored as a row that can never be read
+ * back — or naming `payload` for one too large to store inline without `s3`,
+ * or, once offloaded, larger than `s3.maxDownloadBytes`; `S3_OFFLOAD_FAILED`;
+ * whatever the write throws.
  *
  * Guarantees: DynamoDB holds the canonical item — the vector index is synced
  * afterwards and best-effort, so a backend outage never fails a put or leaves a

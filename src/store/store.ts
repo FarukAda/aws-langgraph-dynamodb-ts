@@ -218,7 +218,9 @@ export class DynamoDBStore extends BaseStore {
    * Returns: nothing.
    *
    * Throws: `VALIDATION` naming `namespace`, `namespace element`, `key`,
-   * `sortKey`, `value` or `index`; a classified AWS failure; `RETRY_EXHAUSTED`.
+   * `sortKey`, `value` or `index`; `payload` for a value too large to store
+   * inline without `s3`, or, once offloaded, larger than
+   * `s3.maxDownloadBytes`; a classified AWS failure; `RETRY_EXHAUSTED`.
    */
   override async put(
     namespace: string[],

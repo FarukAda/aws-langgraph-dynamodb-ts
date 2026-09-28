@@ -434,13 +434,14 @@ function assertSerialisedToBytes(raw: Uint8Array): void {
  *
  * Throws: whatever `serde.dumpsTyped` throws; `ABORTED` when the signal
  * fires during the upload; `S3_OFFLOAD_FAILED` from the upload; and two
- * distinguishable `VALIDATION` errors. One names `payload` — the bytes are too
- * large to store inline — and is raised only when there is **no** offloader
- * and they exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that
- * cell cannot arise: `s3.thresholdBytes` is itself capped at that limit
- * (`src/shared/validation/options.ts`, `assertS3`), so bytes too large
- * to store inline are always at or above the threshold and offload instead.
- * The other names `value` — it serialises to nothing (see
+ * distinguishable `VALIDATION` errors. One names `payload`, raised either
+ * way a payload can turn out unstorable: with **no** offloader, the bytes
+ * exceed `MAX_INLINE_PAYLOAD_BYTES`; with one, `s3.thresholdBytes` is itself
+ * capped at that limit (`src/shared/validation/options.ts`, `assertS3`), so
+ * bytes too large to store inline are always at or above the threshold and
+ * offload instead — where they are refused if they exceed
+ * `s3.maxDownloadBytes`, before the upload ({@link S3Offloader.upload}). The
+ * other names `value` — it serialises to nothing (see
  * {@link assertSerialisedToBytes}) — and is raised for an offloaded payload
  * and an inline one alike, before either is stored.
  */
@@ -573,8 +574,10 @@ function isUnreadableDescriptor(error: Error): boolean {
  * to write off. The `serde` refusal, on the same reasoning (see
  * `loadPayloadValue`). `FORMAT_UNSUPPORTED`, on a row or on a payload: newer
  * is not lost. And `COMPRESSION_LIMIT`: a payload larger than this reader
- * inflates is intact, a reader with a larger cap reads it, and this package
- * never compresses a payload past its writer's own cap.
+ * inflates is intact, and a reader with a larger cap reads it. From this
+ * release on, this package never compresses a payload past its writer's own
+ * cap; a payload an earlier release compressed — which did not check it —
+ * can still trip a smaller one here.
  *
  * Returns: whether a caller should report rather than retry.
  *

@@ -256,9 +256,10 @@ export interface MessageRowSource {
  * `<keyPrefix><sessionId, base64url>/<messageId>.bin`.
  *
  * Throws: `VALIDATION` naming `value` for a message the serializer cannot
- * represent; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded.
- * Encoding precedes the transaction, so a message that cannot be stored never
- * half-writes a turn.
+ * represent, or `payload` for one too large to store inline without `s3`,
+ * or, once offloaded, larger than `s3.maxDownloadBytes`; `S3_OFFLOAD_FAILED`
+ * when an offloaded payload cannot be uploaded. Encoding precedes the
+ * transaction, so a message that cannot be stored never half-writes a turn.
  */
 export async function buildMessageRow(
   context: HistoryContext,
