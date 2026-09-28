@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`checkpoint_ns` may be 512 bytes, up from 256.** LangGraph names a nested subgraph's namespace after its parent's plus the node name and a 36-character task id, so 256 bytes refused graphs at their fifth or sixth level of nesting with ordinary node names. Composed sort keys and S3 keys are still checked against their own caps. A row with a namespace over 256 bytes cannot be read by `1.0.0-rc.2`.
 
+### Removed
+
+- **`SessionBackend`**, the deprecated alias of `MultiSessionHistory`. It existed only in `1.0.0-rc.1` and `1.0.0-rc.2` — `0.9.0` never exported it — so it is removed before `1.0.0` rather than carried as a deprecated name through the first stable major. Use `MultiSessionHistory`.
+
 ### Fixed
 
 - **A write DynamoDB may still apply no longer releases the S3 objects it uploaded while its row can still commit.** `saver.put`, `saver.putWrites` and `store.put` read a failed write's row back before releasing what the write had uploaded, and took a row found absent as proof that the write had not landed. That proof fails whenever DynamoDB may still apply a request this client no longer controls: a cancel, a request timeout or a dropped connection that cut an attempt short before it was answered; DynamoDB answering that this same write's own earlier attempt, under the same request token, was still being processed (`TransactionInProgressException`); or a server error, which AWS documents as leaving a write's outcome undecided rather than refused. Any attempt of a retried write's whole budget counts, not only its last, since an earlier one can still be in flight while a later one is answered outright. Such a failure now keeps its uploads for the lifecycle rule; a write whose signal had fired before it was sent is not sent at all, and its uploads are released at once.

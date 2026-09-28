@@ -49,3 +49,8 @@ an item. The deprecated alias is one more exported name until it is removed.
 
 Neutral. The public option `maxScanItems` and the AWS API's own names
 (`TransactWriteItems`, `BatchWriteItem`) keep theirs.
+
+Amended before `1.0.0`: the `SessionBackend` alias was removed rather than
+kept deprecated until the next major. `0.9.0` never exported it, so only
+release candidates could depend on it, and a deprecated name should not enter
+the first stable major.

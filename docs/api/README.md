@@ -84,7 +84,6 @@ exports map admits no deep import, so nothing else is reachable.
 - [S3ClientOption](type-aliases/S3ClientOption.md)
 - [S3RegionLike](type-aliases/S3RegionLike.md)
 - [SearchOptions](type-aliases/SearchOptions.md)
-- [~~SessionBackend~~](type-aliases/SessionBackend.md)
 - [TtlOption](type-aliases/TtlOption.md)
 - [VectorScoreDirection](type-aliases/VectorScoreDirection.md)
 
