@@ -11,9 +11,28 @@
  *
  * What it reads, in order: `ListObjectVersions` under the prefix, paginated;
  * for each released key, `HeadObject` on the surviving payload version to read
- * that backlink; then a strongly-consistent `GetItem` on the decoded key. It
- * writes nothing and repairs nothing — it prints the two remedies and leaves the
- * choice to an operator, because the right one depends on why the row is there.
+ * that backlink; then a strongly-consistent `GetItem` on the decoded key, and —
+ * only for a checkpoint PAYLOAD or WRITE row that read finds past its own
+ * `ttl` — one further strongly-consistent `GetItem` on that checkpoint's META
+ * row. It writes nothing and repairs nothing — it prints the two remedies and
+ * leaves the choice to an operator, because the right one depends on why the
+ * row is there.
+ *
+ * A row past its `ttl` is not always gone to every reader, so it is not always
+ * left out of the report. A checkpoint META row, a store item row and a
+ * history message row are: `getTuple`, `list`, `store.get`/`search` and
+ * `history.getMessages` each check a row's own `ttl` before serving it, so one
+ * of those past its `ttl` is ordinary expiry, counted apart rather than
+ * reported. A checkpoint PAYLOAD row and every pending-WRITE row are not:
+ * `getTuple`/`list` serve those once the checkpoint's META row is judged live,
+ * without ever checking the PAYLOAD or WRITE row's own `ttl` — and a WRITE row
+ * stamps its own `ttl` independently when `putWrites` runs, so it can expire
+ * while its checkpoint's META row is still live and served. One of those past
+ * its own `ttl` is therefore still reported as stranded, unless its
+ * checkpoint's META row is itself past its `ttl` or absent — which the one
+ * extra `GetItem` above decides. A row whose kind this script cannot place, or
+ * whose META row it cannot read, is reported rather than guessed at: a false
+ * report is safer than a hidden broken checkpoint.
  *
  * Usage:
  *   node scripts/find-stranded-payloads.mjs --bucket B --table T [--region R]
@@ -29,7 +48,8 @@
 import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';
 import { HeadObjectCommand, ListObjectVersionsCommand, S3Client } from '@aws-sdk/client-s3';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
-import { pathToFileURL } from 'node:url';
+
+import { isMain } from './is-main.mjs';
 
 /**
  * The key prefix swept when none is given. It mirrors `DEFAULT_S3_KEY_PREFIX`
@@ -329,6 +349,89 @@ export function rowNamesKey(item, s3Key) {
   return Object.values(item).some((value) => rowNamesKey(value, s3Key));
 }
 
+/**
+ * Whether a row is past its `ttl`. Every read of this package treats such a
+ * row as absent, and DynamoDB deletes it within a few days — but that is only
+ * true of *some* row kinds here; see {@link classifyRow} and the module
+ * header for which, and why a checkpoint PAYLOAD or WRITE row is not one of
+ * them.
+ */
+export function isExpiredRow(row, now = Date.now()) {
+  return typeof row.ttl === 'number' && row.ttl <= Math.floor(now / 1000);
+}
+
+/**
+ * Partition-key and sort-key tags {@link classifyRow} needs to tell one row
+ * kind from another. They are the same tags `ADAPTER_TAGS` and
+ * `KEY_SEPARATOR` in `src/shared/dynamodb/table-schema.ts`, the checkpointer's
+ * own `META#`/`PAYLOAD#`/`WRITE#` sort-key tags in
+ * `src/checkpointer/internal/rows.ts`, and the `HISTORY#MSG#` tag in
+ * `src/history/internal/rows.ts` compose every row's key from — copied here
+ * as literals, the way this file already mirrors `DEFAULT_S3_KEY_PREFIX` and
+ * `S3_RELEASE_GRACE_DAYS`, because this script does not import from `src`.
+ */
+const CHECKPOINTER_PARTITION_PREFIX = 'CHKPT#';
+const STORE_PARTITION_PREFIX = 'STORE#';
+const HISTORY_PARTITION_PREFIX = 'HIST#';
+const META_SORT_PREFIX = 'META#';
+const PAYLOAD_SORT_PREFIX = 'PAYLOAD#';
+const WRITE_SORT_PREFIX = 'WRITE#';
+const HISTORY_MESSAGE_SORT_PREFIX = 'HISTORY#MSG#';
+
+/**
+ * A checkpoint META row's key, composed from a PAYLOAD or WRITE candidate's
+ * own `SK`. Both kinds carry their checkpoint's namespace and id in exactly
+ * the same two segments, right after the row-kind tag — `PAYLOAD#<ns>#<id>`
+ * and `WRITE#<ns>#<id>#<taskId>#<index>#<channel>` — which is the one thing
+ * this function trusts: neither row kind carries `checkpointNs`/
+ * `checkpointId` as its own attribute, so the key is the only place to read
+ * them from. Returns null for a sort key with fewer segments than a real one
+ * ever has, rather than compose a key that cannot be right.
+ */
+function checkpointMetaKeyOf(row) {
+  const segments = row.SK.split('#');
+  if (segments.length < 3) return null;
+  return { PK: row.PK, SK: `${META_SORT_PREFIX}${segments[1]}#${segments[2]}` };
+}
+
+/**
+ * What this sweep can tell about a row that names a released key, for judging
+ * whether its own expired `ttl` actually hides it from every reader.
+ *
+ * `'self-gated'`: a checkpoint META row, a store item row or a history
+ * message row. Every read of this package already treats one of these as
+ * absent once its own `ttl` passes.
+ *
+ * `'meta-gated'`: a checkpoint PAYLOAD row or a pending-WRITE row, carrying
+ * the key of its checkpoint's META row. `getTuple`/`list` serve one of these
+ * once the checkpoint's META row is judged live, without ever checking the
+ * PAYLOAD or WRITE row's own `ttl` — so one past its own `ttl` is hidden only
+ * when its META row is itself past its `ttl` or absent.
+ *
+ * `'unrecognised'`: neither — a row shape this script does not know, or a
+ * PAYLOAD/WRITE row whose sort key is too short to carry a checkpoint id.
+ * Never treated as hidden: this script would be guessing.
+ */
+function classifyRow(row) {
+  const pk = typeof row.PK === 'string' ? row.PK : '';
+  const sk = typeof row.SK === 'string' ? row.SK : '';
+  if (pk.startsWith(STORE_PARTITION_PREFIX)) return { kind: 'self-gated' };
+  if (pk.startsWith(HISTORY_PARTITION_PREFIX)) {
+    return sk.startsWith(HISTORY_MESSAGE_SORT_PREFIX)
+      ? { kind: 'self-gated' }
+      : { kind: 'unrecognised' };
+  }
+  if (pk.startsWith(CHECKPOINTER_PARTITION_PREFIX)) {
+    if (sk.startsWith(META_SORT_PREFIX)) return { kind: 'self-gated' };
+    if (sk.startsWith(PAYLOAD_SORT_PREFIX) || sk.startsWith(WRITE_SORT_PREFIX)) {
+      const metaKey = checkpointMetaKeyOf(row);
+      return metaKey === null ? { kind: 'unrecognised' } : { kind: 'meta-gated', metaKey };
+    }
+    return { kind: 'unrecognised' };
+  }
+  return { kind: 'unrecognised' };
+}
+
 /** Each `ListObjectVersions` page under `prefix`, handed to `onPage` in order. */
 async function eachListingPage(s3, { bucket, prefix }, onPage) {
   let keyMarker;
@@ -404,12 +507,66 @@ async function readRow(ddb, { table, pk, sk }, release, result) {
 }
 
 /**
+ * A checkpoint PAYLOAD or WRITE candidate's own checkpoint META row, read
+ * consistently: the row, null when there is none, or undefined with the
+ * reason recorded when the read itself failed. The same shape as
+ * {@link readRow}, kept separate so a failed read is reported against the
+ * META key it actually queried, not the candidate's own key.
+ */
+async function readCheckpointMeta(ddb, table, metaKey, release, result) {
+  try {
+    const response = await ddb.send(
+      new GetItemCommand({
+        TableName: table,
+        Key: { PK: { S: metaKey.PK }, SK: { S: metaKey.SK } },
+        ConsistentRead: true,
+      }),
+    );
+    return response.Item === undefined ? null : unmarshall(response.Item);
+  } catch (error) {
+    const name = error.name ?? 'unknown error';
+    result.unreadable.push({
+      key: release.key,
+      versionId: release.payloadVersionId,
+      reason:
+        `GetItem on this row's checkpoint META pk=${JSON.stringify(metaKey.PK)} ` +
+        `sk=${JSON.stringify(metaKey.SK)} failed: ${name}`,
+    });
+    return undefined;
+  }
+}
+
+/**
+ * Whether a row already confirmed to name the released key, and already found
+ * past its own `ttl`, is genuinely hidden from every reader — the only case
+ * this sweep may count apart rather than report (see the module header for
+ * the rule this implements).
+ *
+ * Called only for a candidate that would otherwise be reported, so the one
+ * extra `GetItem` a 'meta-gated' row costs is rare by construction. A row
+ * this script cannot classify, and a 'meta-gated' row whose META read itself
+ * fails, both answer false — reported, not skipped — because a false report
+ * is safer than a hidden broken checkpoint.
+ */
+async function rowHiddenByTtl(ddb, table, row, release, result, now) {
+  const classified = classifyRow(row);
+  if (classified.kind === 'self-gated') return true;
+  if (classified.kind === 'unrecognised') return false;
+  const meta = await readCheckpointMeta(ddb, table, classified.metaKey, release, result);
+  if (meta === undefined) return false;
+  return meta === null || isExpiredRow(meta, now);
+}
+
+/**
  * Sweep one prefix and report the rows whose payload was released.
  *
  * Reads only. `s3` and `ddb` are anything with a `send`, so the whole sweep is
  * driven by fakes in the tests. Each release is inspected as the listing closes
  * its key, so nothing proportional to the bucket is ever held: only the open
- * key, the releases one page closed, and the findings themselves.
+ * key, the releases one page closed, and the findings themselves. A checkpoint
+ * PAYLOAD or WRITE candidate already past its own `ttl` costs one further
+ * `GetItem`, on its checkpoint's META row — the one row kind whose own `ttl`
+ * does not already settle it; see {@link rowHiddenByTtl}.
  */
 export async function sweep({ s3, ddb, bucket, table, prefix, graceDays, now = Date.now() }) {
   const result = {
@@ -423,6 +580,7 @@ export async function sweep({ s3, ddb, bucket, table, prefix, graceDays, now = D
     releases: 0,
     expired: 0,
     checked: 0,
+    expiredRows: 0,
     unreadable: [],
     stranded: [],
   };
@@ -437,6 +595,10 @@ export async function sweep({ s3, ddb, bucket, table, prefix, graceDays, now = D
     if (backlink === null) return;
     const row = await readRow(ddb, { table, ...backlink }, release, result);
     if (row === null || row === undefined || !rowNamesKey(row, release.key)) return;
+    if (isExpiredRow(row, now) && (await rowHiddenByTtl(ddb, table, row, release, result, now))) {
+      result.expiredRows += 1;
+      return;
+    }
     result.stranded.push({
       pk: backlink.pk,
       sk: backlink.sk,
@@ -498,7 +660,8 @@ export function reportLines(result) {
     `listed ${result.versions} version(s) and ${result.markers} delete marker(s) ` +
       `over ${result.pages} page(s)`,
     `${result.releases} released key(s): ${result.checked} checked, ` +
-      `${result.expired} with no surviving payload version`,
+      `${result.expired} with no surviving payload version, ` +
+      `${result.expiredRows} past their ttl and already hidden from every reader`,
   ];
   for (const row of result.unreadable) {
     lines.push(
@@ -583,10 +746,7 @@ export async function main(argv, { createS3 = realS3, createDynamoDB = realDynam
   }
 }
 
-const runDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-
-if (runDirectly) {
+if (isMain(import.meta.url)) {
   main(process.argv.slice(2)).catch((error) => {
     console.error(`sweep failed: ${error.message}`);
     process.exitCode = 1;

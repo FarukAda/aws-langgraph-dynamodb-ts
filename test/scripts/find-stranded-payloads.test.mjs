@@ -29,6 +29,7 @@ import {
   finishJoin,
   formatStranded,
   graceHoursRemaining,
+  isExpiredRow,
   joinReleases,
   main,
   parseArgs,
@@ -611,6 +612,297 @@ test('a sweep that finds nothing still reports what it swept', async () => {
   assert.deepEqual(result.stranded, []);
   assert.match(reportLines(result).join('\n'), /bkt/);
   assert.equal(ddb.sent.length, 0);
+});
+
+test('isExpiredRow reads a row past its ttl as gone, as every read of this package does', () => {
+  const now = Date.parse('2026-09-27T12:00:00Z');
+  const second = Math.floor(now / 1000);
+  assert.equal(isExpiredRow({ ttl: second }, now), true);
+  assert.equal(isExpiredRow({ ttl: second + 1 }, now), false);
+  assert.equal(isExpiredRow({}, now), false);
+});
+
+/**
+ * A row's own `ttl` is not what every reader tests. `getTuple`/`list` judge a
+ * checkpoint by its META row alone and then serve its PAYLOAD row and every
+ * pending-WRITE row without checking either row's own `ttl` — so one of those
+ * can be past its own `ttl` while its checkpoint is still live and served, and
+ * a stranded one of those is a real broken checkpoint, not ordinary expiry.
+ * The fixtures below are deliberately minimal, realistic row shapes — the same
+ * `PK`/`SK` conventions `src/checkpointer/internal/rows.ts`,
+ * `src/store/internal/rows.ts` and `src/history/internal/rows.ts` compose —
+ * rather than reusing {@link sweepFixture}, so each test isolates exactly one
+ * row kind and one ttl/META combination.
+ */
+const TTL_NOW = Date.parse('2026-09-27T12:00:00Z');
+const TTL_EXPIRED = Math.floor(TTL_NOW / 1000) - 60;
+const TTL_LIVE = Math.floor(TTL_NOW / 1000) + 60 * 60 * 24;
+const TTL_KEY = 'langgraph-checkpoints/ttl.bin';
+
+/**
+ * A sweep over exactly one released key (`TTL_KEY`), whose surviving
+ * payload's backlink points at `row`'s own key, with `row` — and, when given,
+ * `metaRow` at its own key — served back by a hand-rolled DynamoDB. Every
+ * case below needs only this: one release, one backlink, one candidate row,
+ * and, for a checkpoint PAYLOAD or WRITE candidate, its checkpoint's META row.
+ * `refuses` is passed straight through to `fakeDynamo`, for the one test that
+ * needs the META lookup itself to fail.
+ */
+async function sweepOneRow({ row, metaRow, refuses }) {
+  const s3 = fakeS3({
+    pages: [releasedPage(TTL_KEY)],
+    heads: {
+      [`${TTL_KEY}|${TTL_KEY}-v1`]: {
+        Metadata: { 'dynamodb-pk-b64': b64(row.PK), 'dynamodb-sk-b64': b64(row.SK) },
+      },
+    },
+  });
+  const items = { [`${row.PK}|${row.SK}`]: row };
+  if (metaRow !== undefined) items[`${metaRow.PK}|${metaRow.SK}`] = metaRow;
+  const ddb = fakeDynamo(items, refuses);
+  const result = await sweep({
+    s3,
+    ddb,
+    bucket: 'b',
+    table: 't',
+    prefix: DEFAULT_PREFIX,
+    graceDays: 1,
+    now: TTL_NOW,
+  });
+  return { result, ddb };
+}
+
+test('an expired checkpoint META row is skipped: getTuple already hides it by its own ttl', async () => {
+  const row = {
+    PK: 'CHKPT#t1',
+    SK: 'META#ns#c1',
+    threadId: 't1',
+    checkpointNs: 'ns',
+    checkpointId: 'c1',
+    metadata: offloaded(TTL_KEY),
+    ttl: TTL_EXPIRED,
+  };
+  const { result } = await sweepOneRow({ row });
+  assert.deepEqual(result.stranded, []);
+  assert.equal(result.expiredRows, 1);
+});
+
+test('an expired store item row is skipped: store.get/search already hide it by its own ttl', async () => {
+  const row = {
+    PK: 'STORE#ns0',
+    SK: 'ns1#k1',
+    namespace: ['ns0', 'ns1'],
+    key: 'k1',
+    value: offloaded(TTL_KEY),
+    ttl: TTL_EXPIRED,
+  };
+  const { result } = await sweepOneRow({ row });
+  assert.deepEqual(result.stranded, []);
+  assert.equal(result.expiredRows, 1);
+});
+
+test('an expired history message row is skipped: getMessages already hides it by its own ttl', async () => {
+  const row = {
+    PK: 'HIST#s1',
+    SK: 'HISTORY#MSG#01ARZ3NDEKTSV4RRFFQ69G5FAV',
+    sessionId: 's1',
+    message: offloaded(TTL_KEY),
+    ttl: TTL_EXPIRED,
+  };
+  const { result } = await sweepOneRow({ row });
+  assert.deepEqual(result.stranded, []);
+  assert.equal(result.expiredRows, 1);
+});
+
+test('an expired WRITE row is still reported when its checkpoint META row is live', async () => {
+  const row = {
+    PK: 'CHKPT#t2',
+    SK: 'WRITE#ns#c2#task1#0000000008#chan',
+    taskId: 'task1',
+    index: 0,
+    channel: 'chan',
+    writeGroup: 'g1',
+    value: offloaded(TTL_KEY),
+    ttl: TTL_EXPIRED,
+  };
+  const metaRow = {
+    PK: 'CHKPT#t2',
+    SK: 'META#ns#c2',
+    threadId: 't2',
+    checkpointNs: 'ns',
+    checkpointId: 'c2',
+    metadata: offloaded('langgraph-checkpoints/unrelated.bin'),
+    ttl: TTL_LIVE,
+  };
+  const { result, ddb } = await sweepOneRow({ row, metaRow });
+  assert.deepEqual(
+    result.stranded.map((r) => [r.pk, r.sk]),
+    [['CHKPT#t2', 'WRITE#ns#c2#task1#0000000008#chan']],
+  );
+  assert.equal(result.expiredRows, 0);
+  assert.ok(
+    ddb.sent.some((entry) => entry.input.Key.SK.S === 'META#ns#c2'),
+    'the sweep must look the checkpoint META row up before deciding',
+  );
+});
+
+test('an expired WRITE row is skipped when its checkpoint META row is itself expired', async () => {
+  const row = {
+    PK: 'CHKPT#t2',
+    SK: 'WRITE#ns#c2#task1#0000000008#chan',
+    taskId: 'task1',
+    index: 0,
+    channel: 'chan',
+    writeGroup: 'g1',
+    value: offloaded(TTL_KEY),
+    ttl: TTL_EXPIRED,
+  };
+  const metaRow = {
+    PK: 'CHKPT#t2',
+    SK: 'META#ns#c2',
+    threadId: 't2',
+    checkpointNs: 'ns',
+    checkpointId: 'c2',
+    metadata: offloaded('langgraph-checkpoints/unrelated.bin'),
+    ttl: TTL_EXPIRED,
+  };
+  const { result } = await sweepOneRow({ row, metaRow });
+  assert.deepEqual(result.stranded, []);
+  assert.equal(result.expiredRows, 1);
+});
+
+test('an expired WRITE row is skipped when its checkpoint META row is absent', async () => {
+  const row = {
+    PK: 'CHKPT#t2',
+    SK: 'WRITE#ns#c2#task1#0000000008#chan',
+    taskId: 'task1',
+    index: 0,
+    channel: 'chan',
+    writeGroup: 'g1',
+    value: offloaded(TTL_KEY),
+    ttl: TTL_EXPIRED,
+  };
+  const { result } = await sweepOneRow({ row });
+  assert.deepEqual(result.stranded, []);
+  assert.equal(result.expiredRows, 1);
+});
+
+test('a live WRITE row costs no extra GetItem: the META lookup only runs for an expired candidate', async () => {
+  const row = {
+    PK: 'CHKPT#t2',
+    SK: 'WRITE#ns#c2#task1#0000000008#chan',
+    taskId: 'task1',
+    index: 0,
+    channel: 'chan',
+    writeGroup: 'g1',
+    value: offloaded(TTL_KEY),
+  };
+  const { result, ddb } = await sweepOneRow({ row });
+  assert.deepEqual(
+    result.stranded.map((r) => [r.pk, r.sk]),
+    [['CHKPT#t2', 'WRITE#ns#c2#task1#0000000008#chan']],
+  );
+  assert.equal(ddb.sent.length, 1, 'a live candidate must cost exactly its own GetItem, no META lookup');
+});
+
+test('an expired PAYLOAD row is still reported when its checkpoint META row is live', async () => {
+  const row = {
+    PK: 'CHKPT#t3',
+    SK: 'PAYLOAD#ns#c3',
+    checkpoint: offloaded(TTL_KEY),
+    ttl: TTL_EXPIRED,
+  };
+  const metaRow = {
+    PK: 'CHKPT#t3',
+    SK: 'META#ns#c3',
+    threadId: 't3',
+    checkpointNs: 'ns',
+    checkpointId: 'c3',
+    metadata: offloaded('langgraph-checkpoints/unrelated.bin'),
+    ttl: TTL_LIVE,
+  };
+  const { result } = await sweepOneRow({ row, metaRow });
+  assert.deepEqual(
+    result.stranded.map((r) => [r.pk, r.sk]),
+    [['CHKPT#t3', 'PAYLOAD#ns#c3']],
+  );
+  assert.equal(result.expiredRows, 0);
+});
+
+test('an expired PAYLOAD row is skipped when its checkpoint META row is itself expired', async () => {
+  const row = {
+    PK: 'CHKPT#t3',
+    SK: 'PAYLOAD#ns#c3',
+    checkpoint: offloaded(TTL_KEY),
+    ttl: TTL_EXPIRED,
+  };
+  const metaRow = {
+    PK: 'CHKPT#t3',
+    SK: 'META#ns#c3',
+    threadId: 't3',
+    checkpointNs: 'ns',
+    checkpointId: 'c3',
+    metadata: offloaded('langgraph-checkpoints/unrelated.bin'),
+    ttl: TTL_EXPIRED,
+  };
+  const { result } = await sweepOneRow({ row, metaRow });
+  assert.deepEqual(result.stranded, []);
+  assert.equal(result.expiredRows, 1);
+});
+
+test('an expired PAYLOAD row is skipped when its checkpoint META row is absent', async () => {
+  const row = {
+    PK: 'CHKPT#t3',
+    SK: 'PAYLOAD#ns#c3',
+    checkpoint: offloaded(TTL_KEY),
+    ttl: TTL_EXPIRED,
+  };
+  const { result } = await sweepOneRow({ row });
+  assert.deepEqual(result.stranded, []);
+  assert.equal(result.expiredRows, 1);
+});
+
+test('an unrecognisable row past its ttl is reported rather than skipped', async () => {
+  /**
+   * This is deliberately the shape an earlier draft of this fix would have
+   * skipped outright: a row naming the released key, past its own ttl, whose
+   * SK matches none of this script's known row-kind tags. Whether a row this
+   * shape is truly hidden depends on a reader this script cannot identify, so
+   * reporting it is the safe default, not a false positive.
+   */
+  const row = { PK: 'CHKPT#t9', SK: 'SK', checkpoint: offloaded(TTL_KEY), ttl: TTL_EXPIRED };
+  const { result } = await sweepOneRow({ row });
+  assert.deepEqual(
+    result.stranded.map((r) => [r.pk, r.sk]),
+    [['CHKPT#t9', 'SK']],
+  );
+  assert.equal(result.expiredRows, 0);
+});
+
+test('a checkpoint META read that itself fails leaves the candidate reported, not skipped', async () => {
+  const row = {
+    PK: 'CHKPT#t2',
+    SK: 'WRITE#ns#c2#task1#0000000008#chan',
+    taskId: 'task1',
+    index: 0,
+    channel: 'chan',
+    writeGroup: 'g1',
+    value: offloaded(TTL_KEY),
+    ttl: TTL_EXPIRED,
+  };
+  const { result } = await sweepOneRow({
+    row,
+    refuses: { 'CHKPT#t2|META#ns#c2': 'ProvisionedThroughputExceededException' },
+  });
+  assert.deepEqual(
+    result.stranded.map((r) => [r.pk, r.sk]),
+    [['CHKPT#t2', 'WRITE#ns#c2#task1#0000000008#chan']],
+    'a META lookup this script could not complete must not hide a candidate',
+  );
+  assert.ok(
+    result.unreadable.some((entry) => entry.reason.includes('ProvisionedThroughputExceededException')),
+    'the failed META lookup is still recorded, for an operator to see why',
+  );
 });
 
 /**
