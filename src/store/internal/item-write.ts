@@ -26,9 +26,11 @@ import {
   type WriteVerdict,
 } from '../../shared/dynamodb/idempotent-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { MAX_ROW_BYTES, rowSizeBytes } from '../../shared/dynamodb/row-size';
 import { type RowKey, rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
+import { validationError } from '../../shared/errors/errors';
 import type { StoreAddress } from './parse';
 import {
   type ExistingRowMeta,
@@ -252,6 +254,35 @@ async function cleanUp(
 }
 
 /**
+ * Refuse a row DynamoDB would refuse for its size.
+ *
+ * Accepts: `record` — the fully built row, its payload encoded and its inline
+ * vectors attached.
+ *
+ * Returns: nothing: the row is kept under its declared type, and this checks it.
+ *
+ * Throws: `VALIDATION` when the row would pass DynamoDB's 400 KB item limit —
+ * naming `index` when the row fits without its vectors, since the vectors are
+ * what pushed it over (index fewer fields, embed with fewer dimensions, or
+ * configure a `vectorBackend`), and `value` otherwise.
+ */
+export function assertRowFits(record: StoreItemRow): void {
+  const bytes = rowSizeBytes(record);
+  if (bytes <= MAX_ROW_BYTES) return;
+  const { embeddings, ...bare } = record;
+  const vectorsOverflow = embeddings !== undefined && rowSizeBytes(bare) <= MAX_ROW_BYTES;
+  throw validationError(
+    vectorsOverflow
+      ? `the item's ${embeddings.length} inline vectors make its row ${bytes} bytes, over ` +
+          `DynamoDB's ${MAX_ROW_BYTES}-byte item limit; index fewer fields, embed with fewer ` +
+          'dimensions, or configure a vectorBackend'
+      : `the item's row would be ${bytes} bytes, over DynamoDB's ${MAX_ROW_BYTES}-byte item ` +
+          'limit; configure s3 offloading or store a smaller value',
+    vectorsOverflow ? 'index' : 'value',
+  );
+}
+
+/**
  * Put the record and clean up whichever side is now dead.
  *
  * The compare-and-swap path runs **only when an offloader is configured**:
@@ -288,7 +319,9 @@ async function cleanUp(
  * Returns: nothing. The row is committed and exactly one side's object, at
  * most, has been released.
  *
- * Throws: whatever the write throws, unless the verification proves the write
+ * Throws: `VALIDATION` naming `index` or `value` for a row over DynamoDB's
+ * item limit, before any write and after releasing this put's own upload;
+ * whatever the write throws, unless the verification proves the write
  * landed after all — in which case the error is swallowed and the cleanup runs
  * as on the success path.
  *
@@ -304,6 +337,13 @@ export async function persistRow(
   record: StoreItemRow,
   existing: ExistingRowMeta,
 ): Promise<void> {
+  try {
+    assertRowFits(record);
+  } catch (error) {
+    // Nothing was written, so no row names this put's own upload.
+    await cleanUp(context, record.value, 'store.put');
+    throw error;
+  }
   let superseded = existing;
   try {
     if (context.offloader) {

@@ -8,7 +8,7 @@
 
 > **SearchOptions** = `Pick`\<`SearchOperation`, `"filter"` \| `"limit"` \| `"offset"` \| `"query"`\> & [`CancelOptions`](../interfaces/CancelOptions.md)
 
-Defined in: [store/types.ts:76](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L76)
+Defined in: [store/types.ts:78](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L78)
 
 Options [DynamoDBStore.search](../classes/DynamoDBStore.md#search) accepts: the metadata/paging fields of
 `SearchOperation` it exposes as its own parameter (`namespacePrefix` is a

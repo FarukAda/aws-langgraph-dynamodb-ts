@@ -149,7 +149,10 @@ export class DynamoDBStore extends BaseStore {
    * search; `offset`, `limit`, `maxDepth`, `matchConditions`, `prefix`,
    * `prefix element`, `suffix` or `suffix element` for a listing; and later,
    * from a running operation, `value` for one JSON cannot represent,
-   * `maxSearchCandidates` or `index.dims`. A classified AWS failure; `RETRY_EXHAUSTED`;
+   * `maxSearchCandidates` or `index.dims`, or — once a put's row is built —
+   * `index` or `value` again for one over DynamoDB's 400 KB item limit, naming
+   * `index` when its inline vectors are what pushed it over. A classified AWS
+   * failure; `RETRY_EXHAUSTED`;
    * `RESULT_TRUNCATED` from a search or a listing that reads past
    * `maxScanItems`. One failing operation rejects the whole batch.
    *
@@ -220,7 +223,10 @@ export class DynamoDBStore extends BaseStore {
    * Throws: `VALIDATION` naming `namespace`, `namespace element`, `key`,
    * `sortKey`, `value` or `index`; `payload` for a value too large to store
    * inline without `s3`, or, once offloaded, larger than
-   * `s3.maxDownloadBytes`; a classified AWS failure; `RETRY_EXHAUSTED`.
+   * `s3.maxDownloadBytes`; `VALIDATION` again, naming `index` or `value`, for
+   * the built row over DynamoDB's 400 KB item limit — `index` when its inline
+   * vectors are what pushed it over — checked before anything is written; a
+   * classified AWS failure; `RETRY_EXHAUSTED`.
    */
   override async put(
     namespace: string[],

@@ -49,8 +49,11 @@ async function resolvePassages(
  * Throws: `VALIDATION` naming `value` for a value that JSON cannot represent —
  * refused at the write rather than stored as a row that can never be read
  * back — or naming `payload` for one too large to store inline without `s3`,
- * or, once offloaded, larger than `s3.maxDownloadBytes`; `S3_OFFLOAD_FAILED`;
- * whatever the write throws.
+ * or, once offloaded, larger than `s3.maxDownloadBytes`; `VALIDATION` again,
+ * naming `index` or `value`, for the built row — payload plus its inline
+ * vectors — over DynamoDB's 400 KB item limit, naming `index` when the
+ * vectors are what pushed it over, checked before anything is written;
+ * `S3_OFFLOAD_FAILED`; whatever the write throws.
  *
  * Guarantees: DynamoDB holds the canonical item — the vector index is synced
  * afterwards and best-effort, so a backend outage never fails a put or leaves a

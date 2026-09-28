@@ -29,11 +29,11 @@ export interface S3OffloadConfig {
   /**
    * Serialized payloads at or above this size are offloaded (default 350 KB).
    * Only the payload counts: the store's inline vectors live on the same item
-   * and are not part of it. The store embeds one vector **per configured
-   * field** (`index.fields`, one field by default), each about 10 bytes per
-   * dimension, so three fields at 1024 dims cost roughly 30 KB, not 10 KB.
-   * Keep `thresholdBytes` plus that total under DynamoDB's 400 KB item limit
-   * or the put fails, surfaced as `AWS_REJECTED`.
+   * and are not part of it. The store embeds one vector per text its
+   * `index.fields` extract — a wildcard path yields one per element — each up
+   * to about 10 bytes per dimension, so three texts at 1024 dims cost roughly
+   * 30 KB. A row that payload and those vectors would take past DynamoDB's
+   * 400 KB item limit is refused with `VALIDATION` naming `index`.
    */
   thresholdBytes?: number;
   serverSideEncryption?: string;

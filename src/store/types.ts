@@ -28,10 +28,12 @@ export type DynamoDBStoreOptions = BaseAdapterOptions &
      * Optional semantic-search index configuration (embeddings + fields).
      *
      * Without a `vectorBackend` the vectors live on the item itself, one per
-     * extracted path at roughly 10 bytes per dimension. They are not counted
-     * toward `s3.thresholdBytes` — offload decides on the payload alone — so a
-     * value near the threshold plus many vectors is the combination to watch
-     * against DynamoDB's 400 KB item limit; see that option's note.
+     * text the configured fields extract — a wildcard path such as
+     * `sections[*].text` extracts one per element — at up to 10 bytes per
+     * dimension. They are not counted toward `s3.thresholdBytes` — offload
+     * decides on the payload alone — and a row they would take past
+     * DynamoDB's 400 KB item limit is refused with `VALIDATION` naming
+     * `index` before anything is written.
      */
     index?: IndexConfig;
     /**

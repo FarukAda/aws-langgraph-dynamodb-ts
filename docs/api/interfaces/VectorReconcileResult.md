@@ -6,7 +6,7 @@
 
 # Interface: VectorReconcileResult
 
-Defined in: [store/types.ts:105](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L105)
+Defined in: [store/types.ts:107](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L107)
 
 Counts returned by [DynamoDBStore.reconcileVectorIndex](../classes/DynamoDBStore.md#reconcilevectorindex).
 
@@ -16,7 +16,7 @@ Counts returned by [DynamoDBStore.reconcileVectorIndex](../classes/DynamoDBStore
 
 > **pruned**: `number`
 
-Defined in: [store/types.ts:107](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L107)
+Defined in: [store/types.ts:109](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L109)
 
 ***
 
@@ -24,4 +24,4 @@ Defined in: [store/types.ts:107](https://github.com/FarukAda/aws-langgraph-dynam
 
 > **upserted**: `number`
 
-Defined in: [store/types.ts:106](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L106)
+Defined in: [store/types.ts:108](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L108)
