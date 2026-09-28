@@ -134,7 +134,7 @@ released, and only by the first call: `destroy()` is idempotent.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:375](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L375)
+Defined in: [checkpointer/saver.ts:376](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L376)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded payloads don't outlive the items that point at them.
@@ -152,8 +152,9 @@ written, and a later call can confirm them.
 
 Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
 a classified AWS failure when the bucket's lifecycle cannot be read or
-written; `CONTENTION` when a competing writer replaces the configuration
-on every one of the five writes this call makes.
+written; `CONTENTION` when every one of the five rounds this call polls
+needs a write — a competing writer replacing the configuration on every
+single re-read.
 
 #### Returns
 

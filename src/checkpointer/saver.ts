@@ -363,8 +363,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    *
    * Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
    * a classified AWS failure when the bucket's lifecycle cannot be read or
-   * written; `CONTENTION` when a competing writer replaces the configuration
-   * on every one of the five writes this call makes.
+   * written; `CONTENTION` when every one of the five rounds this call polls
+   * needs a write — a competing writer replacing the configuration on every
+   * single re-read.
    * @remarks Needs the bucket-level `s3:GetLifecycleConfiguration` and
    * `s3:PutLifecycleConfiguration` permissions, which are broader than the
    * object-level CRUD the rest of S3 offload needs. Call it once at deployment,

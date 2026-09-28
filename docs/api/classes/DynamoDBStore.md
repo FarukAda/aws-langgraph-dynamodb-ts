@@ -205,7 +205,7 @@ released, and only by the first call: `destroy()` is idempotent.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:460](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L460)
+Defined in: [store/store.ts:461](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L461)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -222,8 +222,9 @@ written, and a later call can confirm them.
 
 Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
 a classified AWS failure when the bucket's lifecycle cannot be read or
-written; `CONTENTION` when a competing writer replaces the configuration
-on every one of the five writes this call makes.
+written; `CONTENTION` when every one of the five rounds this call polls
+needs a write — a competing writer replacing the configuration on every
+single re-read.
 
 #### Returns
 

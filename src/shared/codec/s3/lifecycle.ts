@@ -179,13 +179,17 @@ function sameRuleSet(a: readonly LifecycleRule[], b: readonly LifecycleRule[]): 
   return fingerprint(a) === fingerprint(b);
 }
 
-/** The error for a competing writer this call could not outlast through {@link LIFECYCLE_SETTLE_WRITES} writes. */
+/**
+ * The error for a competing writer this call could not outlast: every one of
+ * the {@link LIFECYCLE_SETTLE_WRITES} rounds it polls needed a write.
+ */
 function lifecycleContention(target: LifecycleTarget): DynamoDBLangGraphError {
   return new DynamoDBLangGraphError(
     `the lifecycle configuration of bucket ${truncateForLog(target.bucket)} kept losing the ` +
-      `rules for ${truncateForLog(target.prefix)} to a different configuration on every one of ` +
-      `${LIFECYCLE_SETTLE_WRITES} writes: another writer is replacing it at the same time; run ` +
-      'ensureS3LifecycleRule again once it has finished',
+      `rules for ${truncateForLog(target.prefix)} to a different configuration: every one of ` +
+      `the ${LIFECYCLE_SETTLE_WRITES} rounds this call polls needed a write, another writer ` +
+      'replacing it on every re-read; run ensureS3LifecycleRule again once that writer has ' +
+      'finished',
     ErrorCode.CONTENTION,
     {},
   );

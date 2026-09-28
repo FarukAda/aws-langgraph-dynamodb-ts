@@ -101,11 +101,10 @@ describe('ensureLifecycleRule reads back what it wrote', () => {
 
   /**
    * Lag on every round but the last, which then finds a genuinely different
-   * configuration. Only two writes ever happen, so this must not read as
-   * "another writer replaced it on every one of five writes" — it ends
-   * exactly like a lag exit, because this call cannot tell "a rival replaced
-   * it once more" from "this write itself merely is not visible yet" from
-   * here.
+   * configuration. Only two writes ever happen, so this is not `CONTENTION`,
+   * which needs every one of the five rounds to write — it ends exactly like
+   * a lag exit, because this call cannot tell "a rival replaced it once more"
+   * from "this write itself merely is not visible yet" from here.
    */
   it('a rewrite only at the last round ends like lag: warns, returns, after fewer than five writes', async () => {
     let reads = 0;

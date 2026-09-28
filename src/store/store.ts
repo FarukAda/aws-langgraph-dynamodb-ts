@@ -448,8 +448,9 @@ export class DynamoDBStore extends BaseStore {
    *
    * Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
    * a classified AWS failure when the bucket's lifecycle cannot be read or
-   * written; `CONTENTION` when a competing writer replaces the configuration
-   * on every one of the five writes this call makes.
+   * written; `CONTENTION` when every one of the five rounds this call polls
+   * needs a write — a competing writer replacing the configuration on every
+   * single re-read.
    * @remarks Requires the bucket-level `s3:GetLifecycleConfiguration` /
    * `s3:PutLifecycleConfiguration` permissions, broader than the object-level
    * CRUD the rest of S3 offload needs — call it once during provisioning, not

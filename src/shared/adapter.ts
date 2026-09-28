@@ -138,9 +138,9 @@ export type AdapterOptions = BaseAdapterOptions & CodecOptions & { serde?: objec
  *
  * Throws: whatever reading or writing the bucket's lifecycle configuration
  * throws, `VALIDATION` naming `s3.keyPrefix` when the rule id this prefix
- * would take is already held by a different prefix, and `CONTENTION` when a
- * competing writer replaces the configuration on every one of the five
- * writes this call makes.
+ * would take is already held by a different prefix, and `CONTENTION` when
+ * every one of the five rounds this call polls needs a write — a competing
+ * writer replacing the configuration on every single re-read.
  *
  * Guarantees: needs the bucket-level `s3:GetLifecycleConfiguration` /
  * `s3:PutLifecycleConfiguration` permissions, which are broader than the

@@ -342,9 +342,9 @@ export class S3Offloader {
    *
    * Throws: `VALIDATION` naming `s3.keyPrefix` when a rule id this prefix
    * would take is already held by a different prefix; whatever reading or
-   * writing the bucket's lifecycle configuration throws; `CONTENTION` when a
-   * competing writer replaces the configuration on every one of the five
-   * writes this call makes.
+   * writing the bucket's lifecycle configuration throws; `CONTENTION` when
+   * every one of the five rounds this call polls needs a write — a competing
+   * writer replacing the configuration on every single re-read.
    */
   async ensureLifecycleRule(ttlDays: number, logger: Logger): Promise<void> {
     return ensureLifecycleRule(
