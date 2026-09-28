@@ -89,12 +89,17 @@ export class DynamoDBStore extends BaseStore {
    * namespaces for a listing, and `null` for a put or a delete — the value the
    * reference store's `batch` answers a put or a delete with. The kind was
    * decided once, by the parser that built `operation`, so this switches on it
-   * instead of asking the operation's shape again.
+   * instead of asking the operation's shape again. `readConcurrency` — this
+   * operation's share of the call's decode budget, which only a search spends
+   * more than one of.
    */
-  private async dispatch(operation: ParsedOperation): Promise<SingleResult> {
+  private async dispatch(
+    operation: ParsedOperation,
+    readConcurrency: number,
+  ): Promise<SingleResult> {
     switch (operation.kind) {
       case 'search':
-        return searchItems(this.context, operation);
+        return searchItems({ ...this.context, readConcurrency }, operation);
       case 'put':
       case 'delete':
         await putItem(this.context, operation);
@@ -113,12 +118,15 @@ export class DynamoDBStore extends BaseStore {
    * the brand the *inner* one assigned, so routing `get`, `put`, `delete` and
    * `listNamespaces` through the public {@link batch} reported all four as
    * `store.batch` and left an operator counting AWS failures by
-   * `context.operation` unable to tell them apart.
+   * `context.operation` unable to tell them apart. The operations one run
+   * keeps in flight together share `this.context.readConcurrency`, the call's
+   * one decode budget, so a run of several concurrent searches never multiplies
+   * it (see {@link runBatch}).
    */
   private async execute(operations: readonly ParsedOperation[]): Promise<SingleResult[]> {
     return runBatch(
       operations,
-      (operation) => this.dispatch(operation),
+      (operation, readConcurrency) => this.dispatch(operation, readConcurrency),
       this.context.readConcurrency,
     );
   }
@@ -163,7 +171,8 @@ export class DynamoDBStore extends BaseStore {
    * get after a put of the same item sees it, a get before one does not, and a
    * search sees every write that precedes it and none that follow. Operations
    * addressing different items run concurrently, so a batch of ten gets costs
-   * about one round trip rather than ten.
+   * about one round trip rather than ten, sharing one `readConcurrency`
+   * decode budget between them rather than each holding a full one.
    */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
     return guardPublic(

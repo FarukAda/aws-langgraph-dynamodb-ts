@@ -6,6 +6,9 @@
  * operation's effect starts the next run. A caller sees the order it wrote —
  * a `get` after a `put` of the same item sees it, a `search` sees every write
  * before it — and how independence is judged can change without the store.
+ * The operations of one run also share the call's one decode budget, divided
+ * between them, so a batch of concurrent searches costs no more memory than a
+ * single one.
  */
 
 import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
@@ -106,24 +109,35 @@ function planBatch(operations: readonly ParsedOperation[]): number[][] {
  * order. Results come back in operation order.
  *
  * Accepts: `operations` — in caller order, which is the order they are
- * observed in; empty returns empty. `limit` — operations in flight within one
- * run.
+ * observed in; empty returns empty. `dispatch` — handed each operation and
+ * its share of the budget: `limit` divided by the operations its run keeps
+ * in flight, and never less than one. `limit` — operations in flight within
+ * one run.
  *
  * Returns: the results in operation order, not completion order.
  *
  * Throws: the first failure. Any failure rejects the whole batch: no operation
  * in a later run starts, the ones already in flight settle, and that first
  * error is the one thrown.
+ *
+ * Guarantees: the operations of one call decode at most `limit` payloads at
+ * once between them, which is what `readConcurrency`'s documented memory
+ * ceiling assumes.
  */
 export async function runBatch<R>(
   operations: readonly ParsedOperation[],
-  dispatch: (operation: ParsedOperation) => Promise<R>,
+  dispatch: (operation: ParsedOperation, readConcurrency: number) => Promise<R>,
   limit: number = DEFAULT_READ_CONCURRENCY,
 ): Promise<R[]> {
   const results: R[] = [];
   for (const run of planBatch(operations)) {
+    // Each operation in flight may decode payloads of its own — a search
+    // decodes up to its read concurrency at once — so a run divides the call's
+    // one budget between them. A batch then holds `limit` decodes in flight,
+    // not `limit` squared.
+    const share = Math.max(1, Math.floor(limit / Math.min(limit, run.length)));
     await mapWithConcurrency(run, limit, async (index) => {
-      results[index] = await dispatch(operations[index]);
+      results[index] = await dispatch(operations[index], share);
     });
   }
   return results;
