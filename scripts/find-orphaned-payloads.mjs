@@ -34,21 +34,30 @@
  *   when **one** table backs every adapter under it.
  * - With a table per adapter, sweep each adapter's own `keyPrefix` against
  *   its own table, not the shared base prefix.
- * - Tables that share a bucket need distinct `keyPrefix` values regardless.
+ * - Tables that share a bucket need `keyPrefix` values that are
+ *   non-overlapping — neither one a prefix of the other — regardless: with
+ *   `app/` for one table and `app/store/` for another, sweeping `app/`
+ *   still lists the nested adapter's live objects as this table's orphans.
  * For this reason `--delete` REQUIRES an explicit `--prefix`; the default
  * applies to report-only runs only (see `parseArgs`).
  *
  * As a further guard, `--delete` also refuses to run when there is something
- * to delete but not one checked object resolved to any row — live, expired
- * or superseded — in `--table` (see `main`). That catches a `--table` or
- * `--prefix` that matches nothing here at all; it does **not** catch a
- * prefix shared with another table's live objects — only an explicit,
- * adapter-scoped `--prefix` does that. It also cannot tell a genuinely
- * correct `--table` where every one of these objects really is an orphan
- * (for example, after every thread under this prefix was deleted) from a
- * wrong one; the remedy there is to confirm from the report and delete the
- * flagged keys directly, with the AWS CLI or console, rather than re-running
- * `--delete`.
+ * to delete but not one checked object found evidence of the right table in
+ * `--table` (see `main`): a live row, or an expired row that still names
+ * *this exact object*. A row found at a backlinked key that names a
+ * *different* object is not evidence — object ids are unique per write, so
+ * another table's row never names this bucket's exact key, live or expired,
+ * while the right table's rows do; a `--table` that merely collides with one
+ * unrelated row at a backlinked key (store keys are deterministic, so this
+ * is ordinary — `STORE#<ns0>` / `<ns…>#<key>`) must still be refused. This
+ * catches a `--table` or `--prefix` that matches nothing here at all; it
+ * does **not** catch a prefix shared with another table's live objects —
+ * only an explicit, adapter-scoped `--prefix` does that. It also cannot
+ * tell a genuinely correct `--table` where every one of these objects
+ * really is an orphan (for example, after every thread under this prefix
+ * was deleted) from a wrong one; the remedy there is to confirm from the
+ * report and delete the flagged keys directly, with the AWS CLI or console,
+ * rather than re-running `--delete`.
  *
  * An object uploaded before `1.0.0-rc.2` carries no backlink at all —
  * `1.0.0-rc.1` set none — so it is always reported `UNREADABLE` and can never
@@ -372,7 +381,11 @@ async function readRow(ddb, { table, pk, sk }, key, result) {
  * `result.orphans` holds only what `--delete` may remove (`row-gone` and
  * `row-names-another-object`); `result.expired` holds every `row-expired`
  * finding separately, since none of those are ever safe to delete here (see
- * the module header and {@link orphanReason}).
+ * the module header and {@link orphanReason}). Each expired entry also
+ * carries `namesThisObject`: whether the row found at its backlinked key
+ * actually names *this* object, as opposed to a different one at a
+ * colliding key in the wrong table (`main`'s guard counts only the former as
+ * evidence the table is right).
  */
 export async function sweep({ s3, ddb, bucket, table, prefix, minAgeHours, now = Date.now() }) {
   const result = {
@@ -417,8 +430,17 @@ export async function sweep({ s3, ddb, bucket, table, prefix, minAgeHours, now =
         lastModified: new Date(lastModified),
         size: object.Size ?? 0,
       };
-      if (reason === 'row-expired') result.expired.push(entry);
-      else result.orphans.push(entry);
+      if (reason === 'row-expired') {
+        // `orphanReason` returns 'row-expired' for any row at this backlinked
+        // key whose ttl has passed, whether or not it is the row that names
+        // this exact object — a row at a colliding key in the wrong table can
+        // be expired too. Only a match is evidence the table is right; see
+        // `main`.
+        entry.namesThisObject = rowNamesKey(row, object.Key);
+        result.expired.push(entry);
+      } else {
+        result.orphans.push(entry);
+      }
     }
   });
   return result;
@@ -514,7 +536,7 @@ export function reportLines(result) {
 export function deletionLines(result, deletion) {
   if (deletion === undefined) {
     return result.orphans.length > 0
-      ? ['Nothing was deleted. Re-run with --delete to delete the orphans above.']
+      ? ['Nothing was deleted. Re-run with --delete and an explicit --prefix to delete the orphans above.']
       : [];
   }
   const lines = [];
@@ -578,10 +600,15 @@ export async function main(
       for (const line of deletionLines(result, undefined)) console.log(line);
       return;
     }
+    // Evidence the table is right: a live row, or an expired row that still
+    // names the exact object checked. A `row-names-another-object` orphan is
+    // NOT evidence — object ids are unique per write, so another table's row
+    // never names this bucket's exact key, live or expired, while the right
+    // table's rows do. Counting it let a --table that merely collides with
+    // one unrelated row at a backlinked key (store keys are deterministic,
+    // so this is ordinary) pass the guard and delete every object checked.
     const foundAnyRow =
-      result.live +
-      result.expired.length +
-      result.orphans.filter((orphan) => orphan.reason === 'row-names-another-object').length;
+      result.live + result.expired.filter((entry) => entry.namesThisObject).length;
     if (result.orphans.length > 0 && foundAnyRow === 0) {
       throw new Error(
         `refusing --delete: ${result.orphans.length} object(s) would be deleted, but not one of the ` +

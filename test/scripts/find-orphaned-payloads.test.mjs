@@ -77,7 +77,8 @@ function fakeDynamoDB(rows = {}, failing = new Set()) {
 /**
  * One bucket walking every branch: young, live, gone, expired-but-not-yet-gone,
  * superseded, unreadable twice. `live=1` throughout, so this fixture never
- * trips the "--delete refused: nothing checked was live" guard.
+ * trips the "--delete refused: not one checked object resolved to a row in
+ * --table" guard.
  */
 function fixture() {
   const past = Math.floor(NOW / 1000) - 60;
@@ -218,11 +219,42 @@ test('sweep separates deletable orphans from expired-but-not-yet-gone rows, and 
     ],
   );
   assert.deepEqual(
-    result.expired.map((entry) => [entry.key, entry.reason]),
-    [['expired.bin', 'row-expired']],
+    result.expired.map((entry) => [entry.key, entry.reason, entry.namesThisObject]),
+    [['expired.bin', 'row-expired', true]],
   );
   assert.deepEqual(result.unreadable.map((entry) => entry.key), ['foreign.bin', 'throttled.bin']);
   assert.equal(s3.sent.some((entry) => entry.input.Key === 'young.bin'), false);
+});
+
+test('sweep records false for namesThisObject when the expired row at a backlinked key names a different object', async () => {
+  // Two objects backlinked to the same row: only the one the row's current
+  // descriptor actually names should record namesThisObject: true.
+  const past = Math.floor(NOW / 1000) - 60;
+  const s3 = fakeS3({
+    objects: [
+      { Key: 'current.bin', LastModified: OLD, Size: 1 },
+      { Key: 'stale.bin', LastModified: OLD, Size: 2 },
+    ],
+    heads: {
+      'current.bin': backlink('CHKPT#x'),
+      'stale.bin': backlink('CHKPT#x'),
+    },
+  });
+  const ddb = fakeDynamoDB({
+    'CHKPT#x': { PK: 'CHKPT#x', SK: 'SK', checkpoint: descriptor('current.bin'), ttl: past },
+  });
+  const result = await sweep({
+    s3,
+    ddb,
+    bucket: 'b',
+    table: 't',
+    prefix: DEFAULT_PREFIX,
+    minAgeHours: 24,
+    now: NOW,
+  });
+  const byKey = Object.fromEntries(result.expired.map((entry) => [entry.key, entry.namesThisObject]));
+  assert.equal(byKey['current.bin'], true);
+  assert.equal(byKey['stale.bin'], false);
 });
 
 test('sweep reports a HeadObject rejection as unreadable', async () => {
@@ -388,7 +420,7 @@ test('deletionLines says nothing was deleted unless --delete ran, and reports fa
     ],
   };
   assert.deepEqual(deletionLines(result, undefined), [
-    'Nothing was deleted. Re-run with --delete to delete the orphans above.',
+    'Nothing was deleted. Re-run with --delete and an explicit --prefix to delete the orphans above.',
   ]);
   assert.deepEqual(deletionLines({ orphans: [] }, undefined), []);
   assert.match(deletionLines(result, { failed: [] }).at(-1), /deleted 1 object\(s\)/);
@@ -520,6 +552,101 @@ test('main does not refuse --delete when an expired finding proves --table is ri
     deleteCall.input.Delete.Objects.map((object) => object.Key),
     ['gone.bin'],
   );
+});
+
+/**
+ * The reviewer's collision probe: a prod bucket with 3 live objects, swept
+ * against a staging table whose only row happens to collide (store keys are
+ * deterministic, so this is ordinary, not contrived) with one of them at
+ * STORE#config/global. None of round 1's evidence rule's terms may count a
+ * row that does not name the checked object's exact key.
+ */
+function collisionFixture(stagingRow) {
+  const s3 = fakeS3({
+    objects: [
+      { Key: 'prod1.bin', LastModified: OLD, Size: 1 },
+      { Key: 'prod2.bin', LastModified: OLD, Size: 2 },
+      { Key: 'prod3.bin', LastModified: OLD, Size: 3 },
+    ],
+    heads: {
+      'prod1.bin': backlink('STORE#config', 'global'),
+      'prod2.bin': backlink('STORE#a', 'x'),
+      'prod3.bin': backlink('STORE#b', 'y'),
+    },
+  });
+  const ddb = fakeDynamoDB(stagingRow ? { 'STORE#config': stagingRow } : {});
+  return { s3, ddb };
+}
+
+test('main refuses --delete when a colliding LIVE row in --table names a different object (the probe\'s "3 of 3" case)', async () => {
+  const { s3, ddb } = collisionFixture({
+    PK: 'STORE#config',
+    SK: 'global',
+    value: descriptor('staging-own.bin'),
+  });
+  const log = console.log;
+  console.log = () => {};
+  try {
+    await assert.rejects(
+      main(['--bucket', 'b', '--table', 'staging-table', '--prefix', DEFAULT_PREFIX, '--delete'], {
+        createS3: () => s3,
+        createDynamoDB: () => ddb,
+        now: NOW,
+      }),
+      /refusing --delete/,
+    );
+  } finally {
+    console.log = log;
+  }
+  assert.equal(s3.sent.some((entry) => entry.name === 'DeleteObjectsCommand'), false);
+});
+
+test('main refuses --delete when a colliding LIVE row in --table is inline, not S3 (same "3 of 3" case, a different reason rowNamesKey is false)', async () => {
+  const { s3, ddb } = collisionFixture({
+    PK: 'STORE#config',
+    SK: 'global',
+    value: { location: 'INLINE', bytes: new Uint8Array([1, 2, 3]), serdeType: 'json', compressed: false },
+  });
+  const log = console.log;
+  console.log = () => {};
+  try {
+    await assert.rejects(
+      main(['--bucket', 'b', '--table', 'staging-table', '--prefix', DEFAULT_PREFIX, '--delete'], {
+        createS3: () => s3,
+        createDynamoDB: () => ddb,
+        now: NOW,
+      }),
+      /refusing --delete/,
+    );
+  } finally {
+    console.log = log;
+  }
+  assert.equal(s3.sent.some((entry) => entry.name === 'DeleteObjectsCommand'), false);
+});
+
+test('main refuses --delete when a colliding EXPIRED row in --table names a different object (the probe\'s "2 of 3" case)', async () => {
+  const past = Math.floor(NOW / 1000) - 60;
+  const { s3, ddb } = collisionFixture({
+    PK: 'STORE#config',
+    SK: 'global',
+    value: descriptor('staging-own.bin'),
+    ttl: past,
+  });
+  const log = console.log;
+  console.log = () => {};
+  try {
+    await assert.rejects(
+      main(['--bucket', 'b', '--table', 'staging-table', '--prefix', DEFAULT_PREFIX, '--delete'], {
+        createS3: () => s3,
+        createDynamoDB: () => ddb,
+        now: NOW,
+      }),
+      /refusing --delete/,
+    );
+  } finally {
+    console.log = log;
+  }
+  assert.equal(s3.sent.some((entry) => entry.name === 'DeleteObjectsCommand'), false);
 });
 
 test('main does not refuse --delete when there is nothing to delete: everything old enough is UNREADABLE (a pre-rc.2 bucket) and nothing young was checked', async () => {
