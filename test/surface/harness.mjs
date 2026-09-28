@@ -475,9 +475,24 @@ async function fuzzStoredRows() {
  * as a bare escape.
  */
 async function fuzzTeardown() {
-  const { S3Client } = req('@aws-sdk/client-s3');
+  const { GetBucketLifecycleConfigurationCommand, PutBucketLifecycleConfigurationCommand, S3Client } = req('@aws-sdk/client-s3');
   const s3 = mockClient(S3Client);
   s3.resolves({});
+  /**
+   * `ensureS3LifecycleRule` below now reads a bucket's lifecycle configuration
+   * back after writing it and rewrites until the read shows its own rules (S3
+   * serves that configuration eventually consistently). A blanket `resolves({})`
+   * would answer every read as empty forever, so the call would never settle
+   * and would fail this probe with `CONTENTION` after real, growing waits
+   * instead of exercising the teardown this function is about. These two
+   * commands get a stateful answer instead; everything else keeps the blanket one.
+   */
+  let lifecycleRules = [];
+  s3.on(GetBucketLifecycleConfigurationCommand).callsFake(() => ({ Rules: lifecycleRules }));
+  s3.on(PutBucketLifecycleConfigurationCommand).callsFake((input) => {
+    lifecycleRules = input.LifecycleConfiguration?.Rules ?? [];
+    return {};
+  });
   /** Asserted before any S3 client exists: no case in this tier may reach AWS. */
   trySync('transport-safety', 'S3 send is intercepted before an S3 client is built', () => Boolean(S3Client.prototype.send.isSinonProxy));
   const realS3Destroy = S3Client.prototype.destroy;

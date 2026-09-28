@@ -133,8 +133,10 @@ export type AdapterOptions = BaseAdapterOptions & CodecOptions & { serde?: objec
  * there is a no-op too, so calling this on every deploy is safe.
  *
  * Throws: whatever reading or writing the bucket's lifecycle configuration
- * throws, and `VALIDATION` naming `s3.keyPrefix` when the rule id this
- * prefix would take is already held by a different prefix.
+ * throws, `VALIDATION` naming `s3.keyPrefix` when the rule id this prefix
+ * would take is already held by a different prefix, and `CONTENTION` when a
+ * re-read never shows this call's rules through five writes, because another
+ * writer keeps replacing the configuration at the same time.
  *
  * Guarantees: needs the bucket-level `s3:GetLifecycleConfiguration` /
  * `s3:PutLifecycleConfiguration` permissions, which are broader than the

@@ -1,5 +1,4 @@
 import {
-  GetBucketLifecycleConfigurationCommand,
   GetBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
@@ -13,6 +12,7 @@ import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-hi
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
+import { lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -198,8 +198,7 @@ describe('createAll teardown is total', () => {
    */
   it('releases the rest when one adapter fails to release its own', async () => {
     const fake = fakeClientFactory();
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const logger = fakeLogger();
     const factory = new DynamoDBFactory({
@@ -244,11 +243,22 @@ describe('shared adapter defaults', () => {
     createS3Client: () => new S3Client({ region: 'us-east-1' }),
   });
 
+  /**
+   * The `Days` of the rule *this* call's own write settled, not any earlier
+   * adapter's already-written rule the read-back now carries along too: once
+   * the bucket is read back statefully, a later adapter's write includes every
+   * rule an earlier one already put there, so the first `"Days"` in the JSON
+   * can belong to another adapter entirely. This call's own ttl rule is always
+   * the one `planRules` appended last among the entries carrying `Days`.
+   */
   function lifecycleDays(): number[] {
     return s3Mock
       .commandCalls(PutBucketLifecycleConfigurationCommand)
       .map((call) => JSON.stringify(call.args[0].input))
-      .map((json) => Number(/"Days":(\d+)/.exec(json)![1]));
+      .map((json) => {
+        const matches = [...json.matchAll(/"Days":(\d+)/g)];
+        return Number(matches[matches.length - 1][1]);
+      });
   }
 
   /**
@@ -260,8 +270,7 @@ describe('shared adapter defaults', () => {
    */
   it('gives every adapter the DynamoDB region for S3, on both build paths', async () => {
     const seen: object[] = [];
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const logger = fakeLogger();
     const base = {
@@ -291,8 +300,7 @@ describe('shared adapter defaults', () => {
 
   it('propagates shared ttl and s3 to every adapter, a per-adapter ttl winning', async () => {
     const { client } = createStrictDocumentMock();
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const logger = fakeLogger();
     const factory = new DynamoDBFactory({ client, logger, ttl: { days: 30 }, s3: s3() });
@@ -315,8 +323,7 @@ describe('shared adapter defaults', () => {
   it('keeps the shared ttl and s3 when a per-adapter client displaces the base client', async () => {
     const fake = fakeClientFactory();
     const create = jest.fn(fake.create);
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const logger = fakeLogger();
     const factory = new DynamoDBFactory({

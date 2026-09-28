@@ -23,8 +23,20 @@ const serde = {
  * is what a teardown written as a sequence of statements stops at.
  */
 function hostileS3Client(): unknown {
+  let rules: object[] = [];
   return {
-    send: (): unknown => ({}),
+    send: (command: {
+      constructor: { name: string };
+      input: { LifecycleConfiguration?: { Rules?: object[] } };
+    }): unknown => {
+      if (command.constructor.name === 'PutBucketLifecycleConfigurationCommand') {
+        rules = command.input.LifecycleConfiguration?.Rules ?? [];
+      }
+      if (command.constructor.name === 'GetBucketLifecycleConfigurationCommand') {
+        return { Rules: rules };
+      }
+      return {};
+    },
     destroy: (): never => {
       throw new Error('socket already closed');
     },

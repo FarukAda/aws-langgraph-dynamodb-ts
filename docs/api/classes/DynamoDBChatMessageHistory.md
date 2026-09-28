@@ -206,7 +206,7 @@ released, and only by the first call: `destroy()` is idempotent.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:332](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L332)
+Defined in: [history/chat-message-history.ts:335](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L335)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -217,7 +217,10 @@ without both.
 Returns: nothing. Installing a rule that is already there is a no-op too.
 
 Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
-a classified AWS failure when the bucket's lifecycle cannot be read or written.
+a classified AWS failure when the bucket's lifecycle cannot be read or
+written; `CONTENTION` when a re-read never shows this call's rules
+through five writes, because another writer keeps replacing the bucket's
+lifecycle configuration at the same time.
 
 #### Returns
 

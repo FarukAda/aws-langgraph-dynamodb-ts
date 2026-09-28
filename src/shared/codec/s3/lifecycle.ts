@@ -14,7 +14,10 @@ import type {
   TransitionDefaultMinimumObjectSize,
 } from '@aws-sdk/client-s3';
 
+import { sleep } from '../../dynamodb/retry';
+import { DynamoDBLangGraphError } from '../../errors/base-error';
 import { isMissingLifecycleConfiguration } from '../../errors/classify';
+import { ErrorCode } from '../../errors/error-code';
 import { validationError } from '../../errors/errors';
 import type { Logger } from '../../logging/logger';
 import { truncateForLog } from '../../logging/truncate';
@@ -89,6 +92,60 @@ export interface LifecycleTarget {
   readonly days: number;
 }
 
+/** Writes {@link ensureLifecycleRule} makes before it reports a writer it cannot outlast. */
+export const LIFECYCLE_SETTLE_WRITES = 5;
+
+/** The wait before the first rewrite of rules a re-read did not show, doubling each time. */
+const LIFECYCLE_SETTLE_BASE_MS = 1_000;
+
+/** How {@link ensureLifecycleRule} waits between writes; a test passes one that takes no time. */
+export interface LifecyclePace {
+  wait?: (delayMs: number) => Promise<void>;
+}
+
+/** The two rule ids a prefix takes. */
+interface RuleIds {
+  ttl: string;
+  marker: string;
+}
+
+/**
+ * The configuration to write for `state`, and whether it already holds both
+ * rules as they should be — in which case nothing is written.
+ */
+function planRules(
+  state: LifecycleState,
+  target: LifecycleTarget,
+  ids: RuleIds,
+): { settled: boolean; rules: LifecycleRule[] } {
+  const heldTtl = state.rules.find((rule) => rule.ID === ids.ttl);
+  const heldMarker = state.rules.find((rule) => rule.ID === ids.marker);
+  assertNoIdCollision(heldTtl, target.prefix, ids.ttl);
+  assertNoIdCollision(heldMarker, target.prefix, ids.marker);
+  const expiry = ttlRule(
+    { id: ids.ttl, prefix: target.prefix, days: target.days },
+    state.rules,
+    heldTtl,
+  );
+  const reclaim = markerRule(ids.marker, target.prefix, heldMarker);
+  return {
+    settled: alreadyCorrect(heldTtl, expiry) && alreadyCorrect(heldMarker, reclaim),
+    rules: upsert(upsert(state.rules, expiry), reclaim),
+  };
+}
+
+/** The error for rules that did not stay through {@link LIFECYCLE_SETTLE_WRITES} writes. */
+function lifecycleContention(target: LifecycleTarget): DynamoDBLangGraphError {
+  return new DynamoDBLangGraphError(
+    `the lifecycle configuration of bucket ${truncateForLog(target.bucket)} did not keep the ` +
+      `rules for ${truncateForLog(target.prefix)} through ${LIFECYCLE_SETTLE_WRITES} writes: ` +
+      'another writer is changing it at the same time; run ensureS3LifecycleRule again once it ' +
+      'has finished',
+    ErrorCode.CONTENTION,
+    { operation: 'ensureS3LifecycleRule' },
+  );
+}
+
 /**
  * Ensure the two rules scoped to `target.prefix` exist on `target.bucket`: a
  * `target.days`-day expiration for current versions, and the reclaim that
@@ -100,10 +157,19 @@ export interface LifecycleTarget {
  * versions are governed by the release grace instead (see {@link ttlRule}),
  * which is a floor measured against every rule already governing these keys.
  * Both are inert on an unversioned bucket, which keeps no noncurrent version
- * and leaves no marker.
+ * and leaves no marker. `pace.wait` — how to wait between writes; the default
+ * sleeps.
  *
  * Returns: nothing. Idempotent: when both rules already say this, no write is
- * issued. The bucket's versioning state is reported either way, because the
+ * issued. It reads the configuration back after writing and writes again,
+ * after a growing wait (1, 2, 4, 8 s), until both rules are there — a
+ * bucket's configuration, lifecycle included, is served eventually
+ * consistently rather than read-your-writes
+ * (https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html, "Amazon
+ * S3 data consistency model": "Bucket configurations have an eventual
+ * consistency model"), so a read right after this call's own write, or
+ * another adapter's a moment earlier, can still show what was there before
+ * it. The bucket's versioning state is reported either way, because the
  * containment a released payload depends on is missing or present regardless
  * of whether this particular call had a rule to write.
  *
@@ -112,6 +178,9 @@ export interface LifecycleTarget {
  * (see {@link assertNoIdCollision}); otherwise whatever the SDK rejects with. A
  * bucket with no lifecycle configuration at all is not an error — S3 reports
  * `NoSuchLifecycleConfiguration` and this starts from an empty rule set.
+ * `CONTENTION` when the rules are still missing after
+ * {@link LIFECYCLE_SETTLE_WRITES} writes — another writer is replacing the
+ * configuration at the same time.
  *
  * Guarantees: rules this package did not write are preserved, and so is the
  * bucket-level `TransitionDefaultMinimumObjectSize` — a Put replaces the whole
@@ -121,23 +190,25 @@ export async function ensureLifecycleRule(
   client: S3Client,
   target: LifecycleTarget,
   logger: Logger,
+  pace: LifecyclePace = {},
 ): Promise<void> {
   assertScopedKeyPrefix(target.prefix);
-  const ttlId = buildLifecycleRuleId(target.prefix);
-  const markerId = buildMarkerRuleId(target.prefix);
-  const state = await readState(client, target.bucket);
-  const heldTtl = state.rules.find((rule) => rule.ID === ttlId);
-  const heldMarker = state.rules.find((rule) => rule.ID === markerId);
-  assertNoIdCollision(heldTtl, target.prefix, ttlId);
-  assertNoIdCollision(heldMarker, target.prefix, markerId);
-  const expiry = ttlRule(
-    { id: ttlId, prefix: target.prefix, days: target.days },
-    state.rules,
-    heldTtl,
-  );
-  const reclaim = markerRule(markerId, target.prefix, heldMarker);
-  if (!alreadyCorrect(heldTtl, expiry) || !alreadyCorrect(heldMarker, reclaim)) {
-    await putRules(client, target.bucket, state, upsert(upsert(state.rules, expiry), reclaim));
+  const ids = {
+    ttl: buildLifecycleRuleId(target.prefix),
+    marker: buildMarkerRuleId(target.prefix),
+  };
+  const wait = pace.wait ?? ((delayMs: number) => sleep(delayMs));
+  for (let writes = 0; ; writes += 1) {
+    const state = await readState(client, target.bucket);
+    const plan = planRules(state, target, ids);
+    if (plan.settled) break;
+    if (writes === LIFECYCLE_SETTLE_WRITES) throw lifecycleContention(target);
+    // S3 serves a bucket's configuration eventually consistently, so a read
+    // right after a write can still show what was there before it, and another
+    // writer can replace it outright. Either way the rules are written again,
+    // after a wait that doubles each time.
+    if (writes > 0) await wait(LIFECYCLE_SETTLE_BASE_MS * 2 ** (writes - 1));
+    await putRules(client, target.bucket, state, plan.rules);
   }
   await reportBucketVersioning(client, target.bucket, logger);
 }

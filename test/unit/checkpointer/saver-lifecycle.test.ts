@@ -1,5 +1,4 @@
 import {
-  GetBucketLifecycleConfigurationCommand,
   GetBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
@@ -8,6 +7,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
+import { lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -34,8 +34,7 @@ function s3Offload() {
 describe('DynamoDBSaver.ensureS3LifecycleRule', () => {
   it('provisions the rule when both s3 and ttl are configured', async () => {
     const { client } = createStrictDocumentMock();
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const saver = new DynamoDBSaver({
@@ -53,8 +52,7 @@ describe('DynamoDBSaver.ensureS3LifecycleRule', () => {
 
   it('reports a bucket that keeps no versions, through the adapter logger', async () => {
     const { client } = createStrictDocumentMock();
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({});
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const saver = new DynamoDBSaver({

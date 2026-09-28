@@ -1,5 +1,4 @@
 import {
-  GetBucketLifecycleConfigurationCommand,
   GetBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
@@ -21,6 +20,7 @@ import { DynamoDBSessionChatMessageHistory } from '../../../src/history/session-
 import { JSON_SERDE } from '../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
+import { lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -119,8 +119,7 @@ describe('DynamoDBChatMessageHistory', () => {
 
   it('ensureS3LifecycleRule provisions the rule when both s3 and ttl are configured', async () => {
     const { client } = createStrictDocumentMock();
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const h = new DynamoDBChatMessageHistory({

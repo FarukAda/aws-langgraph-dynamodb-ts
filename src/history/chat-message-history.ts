@@ -323,7 +323,10 @@ export class DynamoDBChatMessageHistory {
    * Returns: nothing. Installing a rule that is already there is a no-op too.
    *
    * Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
-   * a classified AWS failure when the bucket's lifecycle cannot be read or written.
+   * a classified AWS failure when the bucket's lifecycle cannot be read or
+   * written; `CONTENTION` when a re-read never shows this call's rules
+   * through five writes, because another writer keeps replacing the bucket's
+   * lifecycle configuration at the same time.
    * @remarks Requires the bucket-level `s3:GetLifecycleConfiguration` /
    * `s3:PutLifecycleConfiguration` permissions, broader than the object-level
    * CRUD the rest of S3 offload needs — call it once during provisioning, not

@@ -1,6 +1,5 @@
 import {
   DeleteObjectsCommand,
-  GetBucketLifecycleConfigurationCommand,
   GetBucketVersioningCommand,
   GetObjectCommand,
   PutBucketLifecycleConfigurationCommand,
@@ -14,6 +13,7 @@ import * as s3ClientModule from '../../../../../src/shared/codec/s3/client';
 import { S3Offloader } from '../../../../../src/shared/codec/s3/offloader';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import { validationError } from '../../../../../src/shared/errors/errors';
+import { lifecycleBucket } from '../../../../shared/helpers/lifecycle-bucket';
 
 // Wrap (not stub out) the real `createDefaultS3Client` so tests can observe
 // call counts / inject failures on the genuine async construction path
@@ -207,8 +207,7 @@ describe('S3Offloader', () => {
   });
 
   it('ensureLifecycleRule delegates to the bucket lifecycle config', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const { offloader } = makeOffloader();
@@ -219,8 +218,7 @@ describe('S3Offloader', () => {
 
   /** The adapter's logger reaches the bucket-versioning report through here. */
   it('ensureLifecycleRule reports an unversioned bucket through the adapter logger', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({});
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const { offloader } = makeOffloader();

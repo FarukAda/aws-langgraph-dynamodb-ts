@@ -9,9 +9,12 @@
  * than inside the factory are decided here once per code, on the one error
  * class (record 19). `FORMAT_UNSUPPORTED`, `PAYLOAD_CORRUPT`,
  * `COMPRESSION_LIMIT`, `S3_OFFLOAD_FAILED` and `ANCESTOR_EXPIRED` are raised
- * with `new DynamoDBLangGraphError` at their own call sites instead, and
- * every AWS-classified code is wrapped once, by `wrapForeignError` in the
- * error boundary, not per code here.
+ * with `new DynamoDBLangGraphError` at their own call sites instead; so is
+ * `CONTENTION` when `ensureLifecycleRule` gives up on a lifecycle write that
+ * never stays, which is this package's own verdict rather than an AWS
+ * rejection. Every other occurrence of an AWS-classified code, `CONTENTION`
+ * included, is wrapped once, by `wrapForeignError` in the error boundary, not
+ * per code here.
  */
 
 import type { WriteRequest } from '../dynamodb/client';
