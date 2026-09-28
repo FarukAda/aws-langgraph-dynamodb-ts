@@ -139,6 +139,38 @@ describe('a compiled LangGraph graph over DynamoDBSaver', () => {
     expect(childHistory[0].values.steps).toEqual(['inner']);
   });
 
+  it('checkpoints a subgraph nested six levels deep under realistic node names', async () => {
+    /** A compiled graph whose only node, `name`, runs `inner`. */
+    const around = (name: string, inner: unknown) =>
+      new StateGraph(State)
+        .addNode(name, inner as never)
+        .addEdge(START, name as never)
+        .addEdge(name as never, END)
+        .compile();
+    let inner: unknown = around('leaf_worker_node', () => ({ steps: ['leaf'] }));
+    for (let level = 1; level <= 5; level += 1) {
+      inner = around(`research_assistant_level_${level}`, inner);
+    }
+    const root = new StateGraph(State)
+      .addNode('research_assistant_root', inner as never)
+      .addEdge(START, 'research_assistant_root')
+      .addEdge('research_assistant_root', END)
+      .compile({ checkpointer: saver });
+    const config = thread('deep-subgraph-1');
+    const result = await root.invoke({ steps: [] }, config);
+    expect(result.steps).toEqual(['leaf']);
+    const namespaces: string[] = [];
+    for await (const tuple of saver.list(config)) {
+      namespaces.push(String(tuple.config.configurable?.checkpoint_ns));
+    }
+    const deepest = namespaces.reduce(
+      (longest, ns) => (ns.split('|').length > longest.split('|').length ? ns : longest),
+      '',
+    );
+    expect(deepest.split('|')).toHaveLength(6);
+    expect(Buffer.byteLength(deepest, 'utf8')).toBeGreaterThan(256);
+  });
+
   it('forks with updateState and resumes the fork independently', async () => {
     const graph = approvalGraph(saver);
     const config = thread('fork-1');

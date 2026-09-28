@@ -19,6 +19,7 @@ import type {
 
 import {
   KEY_SEPARATOR,
+  MAX_CHECKPOINT_NS_BYTES,
   MAX_KEY_SEGMENT_BYTES,
   MAX_PARTITION_ID_BYTES,
   MAX_SORT_KEY_BYTES,
@@ -81,7 +82,8 @@ export function parseThreadId(value: unknown): ThreadId {
  * Parse a checkpoint namespace.
  *
  * Accepts: `value` — anything; `''` is legal, because it *is* the root
- * namespace, and every other identifier rule applies (see `parseKeySegment`).
+ * namespace, and every other identifier rule applies (see `parseKeySegment`),
+ * at most {@link MAX_CHECKPOINT_NS_BYTES} bytes of UTF-8.
  *
  * Returns: `value` as a {@link CheckpointNs}.
  *
@@ -92,7 +94,7 @@ export function parseCheckpointNs(value: unknown): CheckpointNs {
     value,
     KEY_SEPARATOR,
     'checkpoint_ns',
-    MAX_KEY_SEGMENT_BYTES,
+    MAX_CHECKPOINT_NS_BYTES,
   ) as CheckpointNs;
 }
 

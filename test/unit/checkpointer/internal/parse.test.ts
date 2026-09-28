@@ -68,7 +68,7 @@ describe('the identifier parsers', () => {
     expect(parseCheckpointNs('')).toBe('');
     expect(ROOT_NAMESPACE).toBe('');
     expect(parseCheckpointNs('inner')).toBe('inner');
-    for (const value of ['a#b', 'a\nb', 'n'.repeat(257), 7, undefined]) {
+    for (const value of ['a#b', 'a\nb', 'n'.repeat(513), 7, undefined]) {
       expect(() => parseCheckpointNs(value)).toThrow(refusal('checkpoint_ns'));
     }
   });
