@@ -214,7 +214,9 @@ describe('collectReconcileTargets', () => {
       parseNamespace(['users', 'u1'], 'namespacePrefix'),
     );
 
-    expect(targets).toEqual([{ namespace: ['users', 'u1'], key: 'a', embedding: [0.5] }]);
+    expect(targets).toEqual([
+      { namespace: ['users', 'u1'], key: 'a', embedding: [0.5], rev: record.rev },
+    ]);
     expect(embeddings.embedDocuments).toHaveBeenCalledTimes(1);
     expect(embeddings.embedQuery).not.toHaveBeenCalled();
   });

@@ -182,7 +182,7 @@ is correct: a live row still names the object.
 
 > **destroy**(): `void`
 
-Defined in: [store/store.ts:440](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L440)
+Defined in: [store/store.ts:441](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L441)
 
 Release owned resources.
 
@@ -206,7 +206,7 @@ released, and only by the first call: `destroy()` is idempotent.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [store/store.ts:470](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L470)
+Defined in: [store/store.ts:471](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L471)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -392,7 +392,7 @@ classified AWS failure; `RETRY_EXHAUSTED`.
 
 > **reconcileVectorIndex**(`namespacePrefix`, `options?`): `Promise`\<[`VectorReconcileResult`](../interfaces/VectorReconcileResult.md)\>
 
-Defined in: [store/store.ts:397](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L397)
+Defined in: [store/store.ts:398](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L398)
 
 Repair the configured vector backend against the canonical items under
 `namespacePrefix`. A maintenance tool; see the action of the same name.
@@ -411,7 +411,8 @@ omitted such a row would prune the vectors of items that are still there;
 a classified AWS failure.
 
 Guarantees: DynamoDB is never written — only the backend is repaired — and
-a vector is deleted only on evidence that its item is gone.
+a vector is deleted only on evidence that its item is gone, or unchanged
+since a snapshot that already found it with nothing to embed.
 
 #### Parameters
 
@@ -485,7 +486,7 @@ the `vectorBackend` when one is configured.
 
 > **stop**(): `void`
 
-Defined in: [store/store.ts:423](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L423)
+Defined in: [store/store.ts:424](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/store.ts#L424)
 
 LangGraph's lifecycle hook.
 

@@ -284,7 +284,7 @@ A `delete` additionally confirms the key holds no row — one consistent `PK`-on
 - Reconciliation re-embeds with the store's **configured** index fields, so per-`put` field overrides are not reproduced.
 - Prune happens only when `listKeys` is implemented; otherwise reconcile re-pushes only and logs that prune was skipped.
 - The prefix must be a non-empty namespace.
-- The prune keeps two windows of its own, wider than the delete path's: a candidate the snapshot *saw* but that now yields no indexable text is pruned on that evidence alone, with no confirmation read, so an item re-put with indexable text between the snapshot and the prune loses its vector; and a candidate the snapshot never saw is confirmed gone one statement before the backend call, the same two-statement gap as above.
+- The prune re-reads every candidate before deleting its vector. It deletes a candidate the snapshot saw only if the row is gone, or still holds the revision the snapshot read: a re-put since the snapshot carries a new revision and keeps its vector. It deletes one the snapshot never saw only if no row exists. What remains is the same two-statement gap as the delete path, a put that commits between that read and the backend call.
 
 ## Checkpointer semantics
 

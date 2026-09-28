@@ -392,7 +392,8 @@ export class DynamoDBStore extends BaseStore {
    * a classified AWS failure.
    *
    * Guarantees: DynamoDB is never written — only the backend is repaired — and
-   * a vector is deleted only on evidence that its item is gone.
+   * a vector is deleted only on evidence that its item is gone, or unchanged
+   * since a snapshot that already found it with nothing to embed.
    */
   reconcileVectorIndex(
     namespacePrefix: string[],

@@ -517,8 +517,9 @@ export interface StoredObject {
  * `awsErrorName`, `httpStatusCode` and `requestId` when it was AWS's.
  *
  * Guarantees: an object over the cap is refused from its declared
- * `ContentLength` before the body is touched, and while streaming when the
- * length is absent, so a replaced or hostile object cannot exhaust memory.
+ * `ContentLength` before the body is touched, and that body is destroyed
+ * rather than left open, and while streaming when the length is absent, so a
+ * replaced or hostile object cannot exhaust memory.
  * Transient failures are retried by this package alone — the client is built
  * with `maxAttempts: 1`.
  *
@@ -546,6 +547,9 @@ export async function downloadObject(
           request,
         );
         if (typeof response.ContentLength === 'number' && response.ContentLength > maxBytes) {
+          // The body is never read, so release its socket now instead of
+          // leaving it to the idle timer.
+          (response.Body as StreamingBody | undefined)?.destroy?.();
           throw oversizedObjectError(key, response.ContentLength, maxBytes);
         }
         if (!response.Body) {
