@@ -557,8 +557,9 @@ export async function writeSpecialRowsWithCleanup(
 /**
  * Outcome of {@link writeRegularRows}: never rejects. `deadUploads` holds
  * exactly the items whose own S3 upload is confirmed unreferenced by this
- * call's row — a verified non-commit, or a guard rejection whose returned row
- * provably belongs to another call. Everything else either committed, was
+ * call's row — a verified non-commit, a guard rejection whose returned row
+ * provably belongs to another call, or a write the caller's signal came
+ * before, which was never sent at all. Everything else either committed, was
  * turned away by a row this call may have written itself, or could not be
  * verified; none of those may be cleaned up.
  *
@@ -652,9 +653,10 @@ async function verifyFailure(
  * Regular pending writes one `putWrites` call keeps in flight. A `Send`
  * fan-out can name a thousand of them, and the SDK's HTTP agent holds 50
  * sockets by default: past that, a request waits for a socket, and the
- * request timeout counts the wait, so a burst times out healthy writes that
- * the retry layer then re-sends. Thirty-two in flight stays under the socket
- * pool and still overlaps the round trips.
+ * request timeout counts the wait, so a wide enough fan-out, larger values,
+ * or an injected client with a shorter request timeout can time out healthy
+ * writes that the retry layer then re-sends. Thirty-two in flight stays
+ * under the socket pool and still overlaps the round trips.
  */
 export const REGULAR_WRITE_CONCURRENCY = 32;
 

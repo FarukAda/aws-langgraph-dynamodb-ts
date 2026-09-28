@@ -29,14 +29,15 @@ import type { Logger } from '../logging/logger';
  * of them defaults to 0 — a hung socket holds that attempt open forever and
  * the write lifetime bounds nothing.
  *
- * Measured, not picked. Across the fan-out widths this package documents, the
- * worst interval the handler itself saw — socket acquisition including the
- * wait behind the agent's fifty sockets, connect, request write and
- * time-to-first-response-header — was 0.92 s, at a thousand concurrent writes
- * of 20 KB values, and ten seconds is roughly eleven times that. The asymmetry
- * settles the close call: too large leaves one attempt hanging for at most ten
- * seconds, which the write lifetime's own headroom absorbs, while too small
- * turns a healthy wide fan-out into a retry storm.
+ * Measured, not picked. At a thousand concurrent writes of 20 KB values —
+ * wider than one call's own fan-out now runs, but within reach of several
+ * calls sharing one client — the worst interval the handler itself saw —
+ * socket acquisition including the wait behind the agent's fifty sockets,
+ * connect, request write and time-to-first-response-header — was 0.92 s, and
+ * ten seconds is roughly eleven times that. The asymmetry settles the close
+ * call: too large leaves one attempt hanging for at most ten seconds, which
+ * the write lifetime's own headroom absorbs, while too small turns a healthy
+ * wide fan-out into a retry storm.
  */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -118,11 +119,11 @@ export function resolveDynamoDBClient(options: ResolveClientOptions): ResolvedDy
   // mid-stream, and an idle timer does. No `connectionTimeout` is passed,
   // deliberately — its timer starts when the request is created and is
   // cleared only when the agent *assigns* a socket, so the time a request
-  // spends queued behind `maxSockets` counts against it. At the thousand-wide
-  // fan-out this package documents, any value short enough to be useful
-  // destroys healthy writes that this library then retries, and any value
-  // long enough to be safe bounds nothing the request timeout does not
-  // already bound.
+  // spends queued behind `maxSockets` counts against it. Under a wide enough
+  // concurrent load — many writes from one call, or several calls sharing
+  // this client at once — any value short enough to be useful destroys
+  // healthy writes that this library then retries, and any value long enough
+  // to be safe bounds nothing the request timeout does not already bound.
   const ddbClient = createClient({
     maxAttempts: 1,
     requestHandler: {

@@ -34,7 +34,7 @@ function item(index: number): CheckpointWriteRow {
   };
 }
 
-/** A real transport shape (record 14's fixture rule), never a bare `{ name }`. */
+/** A transport failure's real shape (`code`, not just `name`) — the way the SDK actually rejects. */
 function transportTimeout(): Error {
   return Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' });
 }
@@ -77,9 +77,11 @@ describe('writeRegularRows fan-out', () => {
       // has had a turn.
       if (started === REGULAR_WRITE_CONCURRENCY) controller.abort();
       return new Promise((resolve, reject) => {
-        // The very first dispatch never gets an answer, so its outcome is
-        // resolved by the settle logic below rather than by the transport;
-        // every other one in flight lands normally.
+        // The very first dispatch rejects with a value that never matters on
+        // its own: the signal has already fired by the time it settles, so
+        // `withRetry` reports it as ABORTED regardless of this reason,
+        // exercising the settle logic below. Every other one in flight lands
+        // normally.
         releases[callIndex] = () => (callIndex === 0 ? reject(transportTimeout()) : resolve({}));
       });
     });
