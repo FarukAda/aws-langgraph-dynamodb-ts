@@ -49,7 +49,7 @@ export function lifecycleBucket(
 }
 
 /**
- * Runs `fn` under fake timers, advanced once past the whole lifecycle
+ * Runs `fn` under fake timers, advanced once safely past the whole lifecycle
  * backoff ladder (1+2+4+8 s), so a real `sleep`-based wait inside it settles
  * at once instead of costing real wall-clock time. `ensureS3LifecycleRule()`
  * has no `pace` of its own to inject on any adapter — it is an internal seam
@@ -58,17 +58,37 @@ export function lifecycleBucket(
  *
  * Unlike mocking `sleep` itself, this leaves the real function in place: an
  * `AbortSignal` passed through a wait behaves exactly as it does outside a
- * test, and nothing beside the lifecycle call `fn` makes is affected — a
- * DynamoDB retry backoff or an S3 transfer retry started elsewhere keeps its
- * own real timing.
+ * test. It is not free of side effects on everything else, though:
+ * `jest.useFakeTimers()` fakes every timer API, `process.nextTick`,
+ * `queueMicrotask` and `Date` for the whole process while it is active, not
+ * only for `fn` — which overrides the frozen `Date.now` every test already
+ * gets from `test-setup.ts` for as long as this call is in flight. A
+ * DynamoDB retry backoff or an S3 transfer retry `fn` itself starts is still
+ * only faked for that same window, and keeps its own real timing once this
+ * returns.
  */
 export async function fastLifecyclePoll<T>(fn: () => Promise<T>): Promise<T> {
   jest.useFakeTimers();
+  const result = fn();
+  // Marked handled at once, before advancing the clock can carry this
+  // function past the tick a rejection lands on: Jest 30 charges an
+  // unhandled rejection to the test the moment one goes unclaimed at a
+  // microtask checkpoint, and nothing has looked at `result` yet at that
+  // point — a caller awaiting this function's own return, further down the
+  // same tick, is too late to prevent that charge. The real rejection this
+  // function returns is untouched by this.
+  result.catch(() => {});
   try {
-    const result = fn();
-    await jest.advanceTimersByTimeAsync(15_000);
-    return await result;
+    // A few seconds past the ladder's exact 15 s sum, not equal to it: the
+    // last wait is armed relative to when its own `sleep` call starts, which
+    // is a tick or two after this function's own start, so advancing by
+    // exactly the nominal sum risks landing just short of when it fires.
+    await jest.advanceTimersByTimeAsync(20_000);
   } finally {
+    // Independent of whether `result` has settled: a wrapped call that never
+    // resolves must not leave fake timers switched on for every test that
+    // runs after it in this file.
     jest.useRealTimers();
   }
+  return result;
 }

@@ -247,8 +247,12 @@ function warnLifecyclePending(target: LifecycleTarget, logger: Logger): void {
  * rules were written, only their visibility could not be confirmed here, and
  * a later call (or the same one, run again after a few minutes) can still
  * find them settled. The bucket's versioning state is reported on every exit
- * this makes, `CONTENTION` included, because the containment a released
- * payload depends on is missing or present regardless of how this call ended.
+ * the loop itself chooses — settled, lag, a late rival, or `CONTENTION` —
+ * because the containment a released payload depends on is missing or
+ * present regardless of how this call ended. A read or write failure, or a
+ * `VALIDATION` `planRules` raises from a re-read, propagates directly instead
+ * and skips it, the same as it would skip any other cleanup this never got
+ * to.
  *
  * Throws: `VALIDATION` naming `s3.keyPrefix` for an unscoped prefix, or when
  * either rule id this prefix produces is already held by a different prefix
@@ -332,9 +336,11 @@ export async function ensureLifecycleRule(
       break;
     }
   }
-  // Runs on every exit, `CONTENTION` included: the containment a released
-  // payload depends on is missing or present regardless of how this call
-  // ended, and the throw below must not skip reporting it.
+  // Runs on every exit the loop itself chooses — settled, lag, a late rival,
+  // or CONTENTION — because the containment a released payload depends on is
+  // missing or present regardless of how this call ended, and the throw
+  // below must not skip reporting it. A read or write failure above never
+  // reaches this line at all; it propagates directly instead.
   await reportBucketVersioning(client, target.bucket, logger);
   if (contended) throw lifecycleContention(target);
 }

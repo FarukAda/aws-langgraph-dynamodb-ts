@@ -14,7 +14,7 @@ import {
 } from '../../../../../src/shared/codec/s3/lifecycle';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import { SILENT_LOGGER } from '../../../../../src/shared/logging/logger';
-import { lifecycleBucket } from '../../../../shared/helpers/lifecycle-bucket';
+import { fastLifecyclePoll, lifecycleBucket } from '../../../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 beforeEach(() => {
@@ -100,12 +100,12 @@ describe('ensureLifecycleRule reads back what it wrote', () => {
   });
 
   /**
-   * The reviewer's probe: lag on every round but the last, which then finds a
-   * genuinely different configuration. Only two writes ever happen, so this
-   * must not read as "another writer replaced it on every one of five
-   * writes" — it ends exactly like a lag exit, because this call cannot tell
-   * "a rival replaced it once more" from "this write itself merely is not
-   * visible yet" from here.
+   * Lag on every round but the last, which then finds a genuinely different
+   * configuration. Only two writes ever happen, so this must not read as
+   * "another writer replaced it on every one of five writes" — it ends
+   * exactly like a lag exit, because this call cannot tell "a rival replaced
+   * it once more" from "this write itself merely is not visible yet" from
+   * here.
    */
   it('a rewrite only at the last round ends like lag: warns, returns, after fewer than five writes', async () => {
     let reads = 0;
@@ -269,5 +269,19 @@ describe('ensureLifecycleRule reads back what it wrote', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('fastLifecyclePoll', () => {
+  /**
+   * A rejection from the wrapped call sits unconsumed while the clock is
+   * being advanced — nothing has looked at it yet at that point — so without
+   * marking it handled at once, Jest 30 charges the test with an unhandled
+   * rejection even though this very assertion goes on to catch it.
+   */
+  it('propagates a rejection from the wrapped call, without an unhandled rejection', async () => {
+    await expect(fastLifecyclePoll(() => Promise.reject(new Error('boom')))).rejects.toThrow(
+      'boom',
+    );
   });
 });
