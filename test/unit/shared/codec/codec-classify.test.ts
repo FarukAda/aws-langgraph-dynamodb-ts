@@ -7,6 +7,7 @@ import {
   encodePayload,
   isMissingObjectError,
   isPermanentPayloadLoss,
+  isRefusedObjectError,
 } from '../../../../src/shared/codec/codec';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -201,6 +202,16 @@ describe('isMissingObjectError', () => {
     expect(isMissingObjectError(s3Failure('AccessDenied'))).toBe(false);
     expect(isMissingObjectError(retryExhaustedError('x', 5))).toBe(false);
     expect(isMissingObjectError(Object.assign(new Error('x'), { name: 'NoSuchKey' }))).toBe(false);
+  });
+});
+
+describe('isRefusedObjectError', () => {
+  it('is true only for a download S3 refused', () => {
+    expect(isRefusedObjectError(s3Failure('AccessDenied'))).toBe(true);
+    expect(isRefusedObjectError(s3Failure('NoSuchKey'))).toBe(false);
+    expect(isRefusedObjectError(Object.assign(new Error('x'), { name: 'AccessDenied' }))).toBe(
+      false,
+    );
   });
 });
 

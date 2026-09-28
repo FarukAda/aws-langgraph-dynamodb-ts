@@ -14,6 +14,7 @@ import { nowSeconds } from '../../shared/clock';
 import {
   PayloadLocation,
   isMissingObjectError,
+  isRefusedObjectError,
   type DescriptorRef,
 } from '../../shared/codec/codec';
 import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
@@ -95,12 +96,15 @@ function sameObject(read: StoreItemRow, reread: StoreItemRow): boolean {
  *
  * An offloaded item can lose a race with a concurrent overwrite: between the
  * row read and the S3 download the writer commits a new descriptor and deletes
- * the object this read was about to fetch. That surfaces as `NoSuchKey`, and
- * one strongly-consistent re-read settles it — the row now points at the new
- * object (return that), is gone (null), or still points at the same missing
- * object (a genuine loss, rethrown). A row the overwrite left with no
- * descriptor at all is a replacement like any other: it is decoded, and refused
- * by its own coded error. Any other download failure propagates.
+ * the object this read was about to fetch. That surfaces as `NoSuchKey` — or
+ * as a 403 `AccessDenied` for a role without `s3:ListBucket`, which S3 answers
+ * for a missing key instead — and one strongly-consistent re-read settles it —
+ * the row now points at the new object (return that), is gone (null), or
+ * still points at the same missing object (a genuine loss, rethrown) — and a
+ * refused download on an unchanged row is rethrown the same way, since it is
+ * then a real permission failure. A row the overwrite left with no descriptor
+ * at all is a replacement like any other: it is decoded, and refused by its
+ * own coded error. Any other download failure propagates.
  *
  * Accepts: `address` — parsed; no check is repeated here. `signal` — aborts
  * the reads.
@@ -133,7 +137,7 @@ export async function getItem(
   try {
     return await readStoreItem(context, record, signal);
   } catch (error) {
-    if (!isMissingObjectError(error as Error)) throw error;
+    if (!isMissingObjectError(error as Error) && !isRefusedObjectError(error as Error)) throw error;
     const fresh = await readRow(context, namespace, key, signal);
     if (!fresh) return null;
     if (sameObject(record, fresh)) throw error;

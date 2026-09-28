@@ -1603,6 +1603,12 @@ When S3 offloading is enabled, the role also needs the object actions under the 
   "Resource": "arn:aws:s3:::<bucket>/langgraph-checkpoints/*"
 },
 {
+  "Sid": "LangGraphS3List",
+  "Effect": "Allow",
+  "Action": ["s3:ListBucket"],
+  "Resource": "arn:aws:s3:::<bucket>"
+},
+{
   "Sid": "LangGraphS3Lifecycle",
   "Effect": "Allow",
   "Action": [
@@ -1613,6 +1619,12 @@ When S3 offloading is enabled, the role also needs the object actions under the 
   "Resource": "arn:aws:s3:::<bucket>"
 }
 ```
+
+`s3:ListBucket` is recommended rather than required. Without it, S3 answers a download of a key that no longer exists with 403 `AccessDenied` instead of 404 `NoSuchKey` ([GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)). The library then cannot tell a released object from a refused one:
+- `store.get` still recovers from a concurrent overwrite, by re-reading the row;
+- chat history's `onCorruptMessage: 'skip'` cannot recognise a gone object, so the read fails instead of skipping it.
+
+The action lets the role list every key in the bucket, and those keys carry base64url identifiers. Where that matters, use a bucket dedicated to this package.
 
 `s3:GetBucketVersioning` is the one action there whose absence is **not** fatal: the call reports the bucket's versioning state and logs a `warn` it cannot read it, so a role provisioned before this action existed keeps working and simply learns nothing about its recovery window.
 

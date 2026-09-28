@@ -17,7 +17,7 @@ import {
   isDynamoDBLangGraphError,
   toError,
 } from '../errors/base-error';
-import { isMissingObject } from '../errors/classify';
+import { classifyAwsError, isMissingObject } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
 import { validationError } from '../errors/errors';
 import { truncateForLog } from '../logging/truncate';
@@ -536,6 +536,27 @@ export function isMissingObjectError(error: Error): boolean {
     hasErrorCode(error, ErrorCode.S3_OFFLOAD_FAILED) &&
     error.cause !== undefined &&
     isMissingObject(error.cause as Error)
+  );
+}
+
+/**
+ * True when S3 refused to answer a download rather than answering it.
+ *
+ * Accepts: `error` — any error; only `S3_OFFLOAD_FAILED` whose cause the
+ * classifier codes `ACCESS_DENIED` matches.
+ *
+ * Returns: whether S3 declined to say anything about the object. Without
+ * `s3:ListBucket` on the bucket, S3 answers a GET of a key that does not exist
+ * with 403 rather than 404, so this is what a released object looks like to
+ * such a role — and equally what a missing `s3:GetObject` looks like. A caller
+ * settles which by other means before treating it as either.
+ *
+ * Throws: **nothing**, for any value.
+ */
+export function isRefusedObjectError(error: Error): boolean {
+  return (
+    hasErrorCode(error, ErrorCode.S3_OFFLOAD_FAILED) &&
+    classifyAwsError(error.cause as Error) === ErrorCode.ACCESS_DENIED
   );
 }
 

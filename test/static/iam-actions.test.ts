@@ -1,4 +1,10 @@
-import { actionsUsedBy, documentedActions, readReadme, usedActions } from './guards/iam-actions';
+import {
+  actionsUsedBy,
+  BEHAVIOURAL_ACTIONS,
+  documentedActions,
+  readReadme,
+  usedActions,
+} from './guards/iam-actions';
 
 describe('actionsUsedBy', () => {
   it('maps DocumentClient methods and S3 commands to IAM actions, transactions to their item actions', () => {
@@ -45,6 +51,8 @@ describe('documentedActions', () => {
 
 describe('the README IAM section', () => {
   it('grants exactly the DynamoDB and S3 actions the code uses', () => {
-    expect(documentedActions(readReadme())).toEqual(usedActions());
+    expect(documentedActions(readReadme())).toEqual(
+      [...new Set([...usedActions(), ...BEHAVIOURAL_ACTIONS])].sort(),
+    );
   });
 });
