@@ -179,7 +179,7 @@ export function openAdapter(
   const resolved = resolveDynamoDBClient(options);
   if (!resolved.ownsClient) void warnOnStackedRetries(resolved.client, logger);
   const offloader = options.s3
-    ? new S3Offloader(offloaderConfigFor(options.s3, adapter, options.clientConfig))
+    ? new S3Offloader(offloaderConfigFor(options.s3, adapter, options.clientConfig), logger)
     : undefined;
   const core: AdapterCore = {
     client: resolved.client,

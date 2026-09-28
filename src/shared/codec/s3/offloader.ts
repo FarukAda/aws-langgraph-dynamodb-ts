@@ -17,6 +17,7 @@ import {
   fullJitter,
   isTransientS3Error,
   nextBackoffDelay,
+  type RetryAttemptInfo,
   sleep,
   withRetry,
 } from '../../dynamodb/retry';
@@ -24,7 +25,7 @@ import { copyForCaller, DynamoDBLangGraphError, failureLabel } from '../../error
 import { awsDiagnostics, classifiableCause, classifyAwsError } from '../../errors/classify';
 import { ErrorCode } from '../../errors/error-code';
 import { validationError } from '../../errors/errors';
-import { absorbLoggerFailure, type Logger } from '../../logging/logger';
+import { absorbLoggerFailure, type Logger, SILENT_LOGGER } from '../../logging/logger';
 import { redactedMessage } from '../../logging/secret-patterns';
 import { truncateForLog } from '../../logging/truncate';
 import { createDefaultS3Client, loadS3Sdk } from './client';
@@ -72,10 +73,12 @@ export class S3Offloader {
   private readonly sseKmsKeyId?: string;
   private readonly maxDownloadBytes: number;
   private readonly config: S3OffloadConfig;
+  private readonly logger: Logger;
 
   /**
    * Accepts: `config` — already validated by the adapter that builds this, with
-   * its key prefix resolved to the adapter's own path.
+   * its key prefix resolved to the adapter's own path. `logger` — the
+   * adapter's, which each S3 transfer retry is reported to at `debug`.
    *
    * Returns: an offloader whose S3 client is built lazily, on the first
    * operation that needs one.
@@ -84,8 +87,9 @@ export class S3Offloader {
    * import is warmed so the failure surfaces, typed, on the first S3 operation
    * rather than on the first oversize payload days later.
    */
-  constructor(config: S3OffloadConfig) {
+  constructor(config: S3OffloadConfig, logger: Logger = SILENT_LOGGER) {
     this.config = config;
+    this.logger = logger;
     this.bucketName = config.bucketName;
     this.keyPrefix = config.keyPrefix ?? DEFAULT_S3_KEY_PREFIX;
     this.thresholdBytes = config.thresholdBytes ?? DEFAULT_S3_THRESHOLD_BYTES;
@@ -222,6 +226,23 @@ export class S3Offloader {
   }
 
   /**
+   * The line one S3 transfer retry writes: the message a DynamoDB retry writes,
+   * so a count of retries by error name covers both, plus the transfer it was.
+   * The error is quoted by name only, bounded like every other quoted name.
+   */
+  private retryReporter(operation: 'upload' | 'download'): (info: RetryAttemptInfo) => void {
+    return ({ attempt, delayMs, error }) =>
+      absorbLoggerFailure(() =>
+        this.logger.debug('retrying after a transient error', {
+          attempt,
+          delayMs,
+          operation,
+          error: truncateForLog(failureLabel(error)),
+        }),
+      );
+  }
+
+  /**
    * Upload `data` under `key`, writing only while the key is free.
    *
    * Accepts: `key` — built by {@link buildKey} for the write uploading `data`,
@@ -260,6 +281,7 @@ export class S3Offloader {
       sseKmsKeyId: this.sseKmsKeyId,
       metadata: backlinkMetadata(row),
       signal,
+      onRetry: this.retryReporter('upload'),
     });
     return key;
   }
@@ -285,6 +307,7 @@ export class S3Offloader {
       await this.getClient(),
       { bucket: this.bucketName, key, maxBytes: this.maxDownloadBytes },
       signal,
+      this.retryReporter('download'),
     );
   }
 
@@ -354,6 +377,8 @@ export interface UploadParams {
   metadata?: Record<string, string>;
   /** The caller's cancellation; absent, the upload cannot be interrupted. */
   signal?: AbortSignal;
+  /** Called before each retry's backoff, as `withRetry` calls it. */
+  onRetry?: (info: RetryAttemptInfo) => void;
 }
 
 /**
@@ -438,7 +463,12 @@ export async function uploadObject(client: S3Client, params: UploadParams): Prom
           }),
           request,
         ),
-      { maxAttempts: 3, isRetryable: isTransientS3Error, signal: params.signal },
+      {
+        maxAttempts: 3,
+        isRetryable: isTransientS3Error,
+        signal: params.signal,
+        onRetry: params.onRetry,
+      },
     );
   } catch (error) {
     if (alreadyStored(error as Error)) return;
@@ -468,6 +498,7 @@ export interface StoredObject {
  *
  * Accepts: `object.maxBytes` — the largest object this call will buffer.
  * `signal` — cancels the request, and with it a body already streaming.
+ * `onRetry` — called before each retry's backoff.
  *
  * Returns: the object's bytes.
  *
@@ -497,6 +528,7 @@ export async function downloadObject(
   client: S3Client,
   object: StoredObject,
   signal?: AbortSignal,
+  onRetry?: (info: RetryAttemptInfo) => void,
 ): Promise<Uint8Array> {
   const { GetObjectCommand } = await loadS3Sdk();
   const { bucket, key, maxBytes } = object;
@@ -515,7 +547,7 @@ export async function downloadObject(
         }
         return readBodyBounded(response.Body, key, maxBytes);
       },
-      { maxAttempts: 3, isRetryable: isTransientS3Error, signal },
+      { maxAttempts: 3, isRetryable: isTransientS3Error, signal, onRetry },
     );
   } catch (error) {
     rethrowIfCancelled(error as Error);
