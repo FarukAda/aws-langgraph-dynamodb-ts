@@ -9,10 +9,28 @@ import { mockClient } from 'aws-sdk-client-mock';
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { DynamoDBFactory } from '../../../src/factory/factory';
 import { DynamoDBChatMessageHistory } from '../../../src/history/chat-message-history';
+import {
+  type AdapterName,
+  buildLifecycleRuleId,
+  DEFAULT_S3_KEY_PREFIX,
+  defaultAdapterKeyPrefix,
+} from '../../../src/shared/codec/s3/config';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
 import { lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
+
+// ensureS3LifecycleRule() has no pace of its own to inject: its default wait
+// is the real `sleep`, imported here so a case that needs a re-read cycle
+// does not cost a real second — several cases here provision more than one
+// adapter in sequence. DynamoDB retry backoff, which calls the same function
+// from inside its own module rather than through this import, is untouched.
+jest.mock('../../../src/shared/dynamodb/retry', () => {
+  const actual = jest.requireActual<typeof import('../../../src/shared/dynamodb/retry')>(
+    '../../../src/shared/dynamodb/retry',
+  );
+  return { ...actual, sleep: jest.fn(() => Promise.resolve()) };
+});
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -244,21 +262,21 @@ describe('shared adapter defaults', () => {
   });
 
   /**
-   * The `Days` of the rule *this* call's own write settled, not any earlier
-   * adapter's already-written rule the read-back now carries along too: once
-   * the bucket is read back statefully, a later adapter's write includes every
-   * rule an earlier one already put there, so the first `"Days"` in the JSON
-   * can belong to another adapter entirely. This call's own ttl rule is always
-   * the one `planRules` appended last among the entries carrying `Days`.
+   * The `Days` of each listed adapter's own ttl rule, found by the exact id
+   * {@link buildLifecycleRuleId} computes for its default prefix — not by
+   * position in the written array. Once the bucket is read back statefully, a
+   * later adapter's write carries every rule an earlier one already put there
+   * along with it, so a positional guess (the first or last `Days` in the
+   * JSON) can land on another adapter's rule entirely; finding it by id is
+   * exact regardless of how many other rules ride along.
    */
-  function lifecycleDays(): number[] {
-    return s3Mock
-      .commandCalls(PutBucketLifecycleConfigurationCommand)
-      .map((call) => JSON.stringify(call.args[0].input))
-      .map((json) => {
-        const matches = [...json.matchAll(/"Days":(\d+)/g)];
-        return Number(matches[matches.length - 1][1]);
-      });
+  function lifecycleDays(adapters: readonly AdapterName[]): number[] {
+    const calls = s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand);
+    return adapters.map((adapter, index) => {
+      const id = buildLifecycleRuleId(defaultAdapterKeyPrefix(DEFAULT_S3_KEY_PREFIX, adapter));
+      const rules = calls[index].args[0].input.LifecycleConfiguration?.Rules ?? [];
+      return rules.find((rule) => rule.ID === id)!.Expiration!.Days!;
+    });
   }
 
   /**
@@ -315,7 +333,7 @@ describe('shared adapter defaults', () => {
     await all.saver.ensureS3LifecycleRule();
     await all.store.ensureS3LifecycleRule();
     await all.history.ensureS3LifecycleRule();
-    expect(lifecycleDays()).toEqual([32, 3, 32]);
+    expect(lifecycleDays(['checkpointer', 'store', 'history'])).toEqual([32, 3, 32]);
     expect(logger.warn).not.toHaveBeenCalled();
     all.destroy();
   });
@@ -341,7 +359,7 @@ describe('shared adapter defaults', () => {
     await new Promise((resolve) => setImmediate(resolve));
     logger.warn.mockClear();
     await saver.ensureS3LifecycleRule();
-    expect(lifecycleDays()).toEqual([32]);
+    expect(lifecycleDays(['checkpointer'])).toEqual([32]);
     expect(logger.warn).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });

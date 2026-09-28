@@ -130,13 +130,17 @@ export type AdapterOptions = BaseAdapterOptions & CodecOptions & { serde?: objec
  * Returns: nothing. Without an offloader there is nothing to rule over, and
  * without a ttl no item expires, so any rule would delete a payload a live row
  * still needs: either absence does nothing. Installing a rule that is already
- * there is a no-op too, so calling this on every deploy is safe.
+ * there is a no-op too, so calling this on every deploy is safe. When it
+ * writes the rules but cannot confirm within its polling window that a
+ * re-read shows them — S3 documents that a lifecycle configuration can take
+ * minutes to propagate — it logs a `warn` and returns rather than throwing:
+ * the rules were written, and a later call can confirm them.
  *
  * Throws: whatever reading or writing the bucket's lifecycle configuration
  * throws, `VALIDATION` naming `s3.keyPrefix` when the rule id this prefix
  * would take is already held by a different prefix, and `CONTENTION` when a
- * re-read never shows this call's rules through five writes, because another
- * writer keeps replacing the configuration at the same time.
+ * re-read keeps showing a competing writer's configuration in place of this
+ * call's rules through five writes.
  *
  * Guarantees: needs the bucket-level `s3:GetLifecycleConfiguration` /
  * `s3:PutLifecycleConfiguration` permissions, which are broader than the

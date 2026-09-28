@@ -206,7 +206,7 @@ released, and only by the first call: `destroy()` is idempotent.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [history/chat-message-history.ts:335](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L335)
+Defined in: [history/chat-message-history.ts:340](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/history/chat-message-history.ts#L340)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded objects don't outlive their DynamoDB item forever.
@@ -215,12 +215,15 @@ Accepts: nothing; the rule follows the configured `s3` and `ttl`. A no-op
 without both.
 
 Returns: nothing. Installing a rule that is already there is a no-op too.
+When it writes the rules but cannot confirm within its polling window
+that a re-read shows them — S3 documents that a lifecycle configuration
+can take minutes to propagate — it logs a `warn` and returns rather than
+throwing: the rules were written, and a later call can confirm them.
 
 Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
 a classified AWS failure when the bucket's lifecycle cannot be read or
-written; `CONTENTION` when a re-read never shows this call's rules
-through five writes, because another writer keeps replacing the bucket's
-lifecycle configuration at the same time.
+written; `CONTENTION` when a re-read keeps showing a competing writer's
+configuration in place of this call's rules through five writes.
 
 #### Returns
 
@@ -231,7 +234,9 @@ lifecycle configuration at the same time.
 Requires the bucket-level `s3:GetLifecycleConfiguration` /
 `s3:PutLifecycleConfiguration` permissions, broader than the object-level
 CRUD the rest of S3 offload needs — call it once during provisioning, not
-per request.
+per request. When several adapters or processes provision the same
+bucket, call them one at a time and run each again once every one of
+them has run.
 
 ***
 

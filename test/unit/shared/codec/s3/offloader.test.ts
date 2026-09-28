@@ -30,6 +30,18 @@ jest.mock('../../../../../src/shared/codec/s3/client', () => {
   };
 });
 
+// ensureLifecycleRule() has no pace of its own to inject here: its default
+// wait is the real `sleep`, imported here so a case that needs a re-read
+// cycle does not cost a real second — the upload/download retry paths below,
+// which call the same function from inside its own module rather than
+// through this import, are untouched.
+jest.mock('../../../../../src/shared/dynamodb/retry', () => {
+  const actual = jest.requireActual<typeof import('../../../../../src/shared/dynamodb/retry')>(
+    '../../../../../src/shared/dynamodb/retry',
+  );
+  return { ...actual, sleep: jest.fn(() => Promise.resolve()) };
+});
+
 const createDefaultS3ClientMock = s3ClientModule.createDefaultS3Client as jest.MockedFunction<
   typeof s3ClientModule.createDefaultS3Client
 >;

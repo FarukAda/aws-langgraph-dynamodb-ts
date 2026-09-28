@@ -321,16 +321,21 @@ export class DynamoDBChatMessageHistory {
    * without both.
    *
    * Returns: nothing. Installing a rule that is already there is a no-op too.
+   * When it writes the rules but cannot confirm within its polling window
+   * that a re-read shows them — S3 documents that a lifecycle configuration
+   * can take minutes to propagate — it logs a `warn` and returns rather than
+   * throwing: the rules were written, and a later call can confirm them.
    *
    * Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
    * a classified AWS failure when the bucket's lifecycle cannot be read or
-   * written; `CONTENTION` when a re-read never shows this call's rules
-   * through five writes, because another writer keeps replacing the bucket's
-   * lifecycle configuration at the same time.
+   * written; `CONTENTION` when a re-read keeps showing a competing writer's
+   * configuration in place of this call's rules through five writes.
    * @remarks Requires the bucket-level `s3:GetLifecycleConfiguration` /
    * `s3:PutLifecycleConfiguration` permissions, broader than the object-level
    * CRUD the rest of S3 offload needs — call it once during provisioning, not
-   * per request.
+   * per request. When several adapters or processes provision the same
+   * bucket, call them one at a time and run each again once every one of
+   * them has run.
    */
   async ensureS3LifecycleRule(): Promise<void> {
     return guardPublic(

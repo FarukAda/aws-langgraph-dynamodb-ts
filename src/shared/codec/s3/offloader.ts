@@ -334,13 +334,17 @@ export class S3Offloader {
    * reported rather than enforced.
    *
    * Returns: nothing. Rules that are already correct are left alone, so this
-   * is safe to call on every deploy.
+   * is safe to call on every deploy. When it writes the rules but cannot
+   * confirm within its polling window that a re-read shows them — S3
+   * documents that a lifecycle configuration can take minutes to propagate —
+   * it logs a `warn` and returns rather than throwing: the rules were
+   * written, and a later call can confirm them.
    *
    * Throws: `VALIDATION` naming `s3.keyPrefix` when a rule id this prefix
    * would take is already held by a different prefix; whatever reading or
    * writing the bucket's lifecycle configuration throws; `CONTENTION` when a
-   * re-read never shows this call's rules through five writes, because
-   * another writer keeps replacing the configuration at the same time.
+   * re-read keeps showing a competing writer's configuration in place of
+   * this call's rules through five writes.
    */
   async ensureLifecycleRule(ttlDays: number, logger: Logger): Promise<void> {
     return ensureLifecycleRule(

@@ -13,7 +13,10 @@ import type { Checkpoint } from '@langchain/langgraph-checkpoint';
 
 import { DynamoDBChatMessageHistory, DynamoDBSaver, DynamoDBStore } from '../../src/index';
 import { buildLifecycleRuleId, buildMarkerRuleId } from '../../src/shared/codec/s3/config';
-import { S3_RELEASE_GRACE_DAYS } from '../../src/shared/codec/s3/lifecycle';
+import {
+  LIFECYCLE_SETTLE_WRITES,
+  S3_RELEASE_GRACE_DAYS,
+} from '../../src/shared/codec/s3/lifecycle';
 import { liveRegion } from './helpers/env';
 import { rejection } from './helpers/probe';
 import { deleteBucketCompletely, deleteTableCompletely, settleAll } from './helpers/teardown';
@@ -314,10 +317,23 @@ describe('S3 lifecycle rules and error taxonomy against real AWS', () => {
     expect(marker?.Status).toBe('Enabled');
     expect(marker?.Expiration).toEqual({ ExpiredObjectDeleteMarker: true });
     expect(marker?.NoncurrentVersionExpiration).toBeUndefined();
-    expect(counter.puts).toBe(1);
+    // ensureS3LifecycleRule() now polls its own write: a re-read that still
+    // shows the pre-write state is propagation lag and is not rewritten, but
+    // a re-read that shows some other configuration without these rules is
+    // treated as a competing writer and rewritten, merged with whatever that
+    // read now holds. On a real bucket either can happen once, so this is at
+    // least the one mandatory write and at most every write the polling
+    // window allows before it would give up with CONTENTION.
+    expect(counter.puts).toBeGreaterThanOrEqual(1);
+    expect(counter.puts).toBeLessThanOrEqual(LIFECYCLE_SETTLE_WRITES);
 
-    // This adapter's own client can still be served a stale read, which
-    // self-heals by rewriting; retry until one call lands on a converged read.
+    // A second, later call starts its own poll from its own first read, which
+    // can still open on a read the first call's own wait happened to outrun
+    // — S3's lifecycle configuration stays eventually consistent for every
+    // reader, not only the one that wrote it, and propagation can take
+    // minutes. Retry the whole call until one lands on a read that already
+    // shows the rules, rather than treating an occasional extra write as a
+    // defect.
     let wroteNothing = false;
     for (let attempt = 0; attempt < 5 && !wroteNothing; attempt++) {
       const before = counter.puts;

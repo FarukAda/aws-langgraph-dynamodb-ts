@@ -4,8 +4,11 @@
  * Two rules per prefix — one expiring objects a day after the ttl plus the
  * sweep margin and keeping a released payload's noncurrent version for a grace
  * window, one reclaiming expired delete markers — are written without
- * disturbing any other rule on the bucket, rewritten only when they differ,
- * and followed by a report of whether the bucket keeps versions at all.
+ * disturbing any other rule on the bucket, rewritten only when they differ.
+ * Each write is checked by a re-read, built fresh each time rather than from
+ * a plan a wait has gone stale, so a rule that appeared during that wait is
+ * carried forward rather than overwritten; this is followed by a report of
+ * whether the bucket keeps versions at all.
  */
 
 import type {
@@ -92,13 +95,13 @@ export interface LifecycleTarget {
   readonly days: number;
 }
 
-/** Writes {@link ensureLifecycleRule} makes before it reports a writer it cannot outlast. */
+/** Rounds {@link ensureLifecycleRule} polls before it reports a writer it cannot outlast. */
 export const LIFECYCLE_SETTLE_WRITES = 5;
 
-/** The wait before the first rewrite of rules a re-read did not show, doubling each time. */
+/** The wait before the first re-read of a write not yet confirmed, doubling each time. */
 const LIFECYCLE_SETTLE_BASE_MS = 1_000;
 
-/** How {@link ensureLifecycleRule} waits between writes; a test passes one that takes no time. */
+/** How {@link ensureLifecycleRule} waits between re-reads; a test passes one that takes no time. */
 export interface LifecyclePace {
   wait?: (delayMs: number) => Promise<void>;
 }
@@ -134,15 +137,74 @@ function planRules(
   };
 }
 
-/** The error for rules that did not stay through {@link LIFECYCLE_SETTLE_WRITES} writes. */
+/** The wait before an attempt's re-read (1-indexed), doubling from {@link LIFECYCLE_SETTLE_BASE_MS}. */
+function delayForAttempt(attempt: number): number {
+  return LIFECYCLE_SETTLE_BASE_MS * 2 ** (attempt - 1);
+}
+
+/**
+ * A rule's content the way {@link sameRuleSet} compares it: its id and the
+ * fields anything on this bucket is likely to set, normalised so neither a
+ * field this package does not manage nor how S3 happens to format it reads
+ * as a change nobody made.
+ */
+function ruleFingerprint(rule: LifecycleRule): string {
+  return JSON.stringify([
+    rule.ID,
+    rule.Status,
+    scopeOf(rule),
+    rule.Expiration?.Days,
+    rule.Expiration?.ExpiredObjectDeleteMarker,
+    rule.Expiration?.Date,
+    rule.NoncurrentVersionExpiration?.NoncurrentDays,
+  ]);
+}
+
+/**
+ * Whether two reads of a bucket's lifecycle configuration hold the same
+ * rules — compared by id and content, never by array order, so a read that
+ * merely lists the same rules in a different position does not read as a
+ * change nobody made.
+ *
+ * Accepts: `a`, `b` — two rule sets, read moments apart.
+ *
+ * Returns: whether every id present in either one carries the same
+ * {@link ruleFingerprint} in both.
+ *
+ * Throws: nothing.
+ */
+function sameRuleSet(a: readonly LifecycleRule[], b: readonly LifecycleRule[]): boolean {
+  const fingerprint = (rules: readonly LifecycleRule[]): string =>
+    rules.map(ruleFingerprint).sort().join('\n');
+  return fingerprint(a) === fingerprint(b);
+}
+
+/** The error for a competing writer this call could not outlast through {@link LIFECYCLE_SETTLE_WRITES} writes. */
 function lifecycleContention(target: LifecycleTarget): DynamoDBLangGraphError {
   return new DynamoDBLangGraphError(
-    `the lifecycle configuration of bucket ${truncateForLog(target.bucket)} did not keep the ` +
-      `rules for ${truncateForLog(target.prefix)} through ${LIFECYCLE_SETTLE_WRITES} writes: ` +
-      'another writer is changing it at the same time; run ensureS3LifecycleRule again once it ' +
-      'has finished',
+    `the lifecycle configuration of bucket ${truncateForLog(target.bucket)} kept losing the ` +
+      `rules for ${truncateForLog(target.prefix)} to a different configuration on every one of ` +
+      `${LIFECYCLE_SETTLE_WRITES} writes: another writer is replacing it at the same time; run ` +
+      'ensureS3LifecycleRule again once it has finished',
     ErrorCode.CONTENTION,
-    { operation: 'ensureS3LifecycleRule' },
+    {},
+  );
+}
+
+/**
+ * Warn that this call wrote its rules but a re-read never showed them within
+ * the polling window, and return rather than throw: AWS documents that a
+ * bucket's lifecycle configuration can take a few minutes to propagate, so a
+ * window of a few seconds finding nothing is expected lag, not evidence of a
+ * competing writer — see {@link ensureLifecycleRule}'s own doc comment for
+ * the citation.
+ */
+function warnLifecyclePending(target: LifecycleTarget, logger: Logger): void {
+  logger.warn(
+    'ensureS3LifecycleRule: wrote the lifecycle rules but a re-read did not show them within the ' +
+      'polling window; S3 documents that propagation can take a few minutes, so this is most ' +
+      'likely lag rather than a lost write — call ensureS3LifecycleRule() again later to confirm',
+    { bucket: truncateForLog(target.bucket), prefix: truncateForLog(target.prefix) },
   );
 }
 
@@ -157,34 +219,52 @@ function lifecycleContention(target: LifecycleTarget): DynamoDBLangGraphError {
  * versions are governed by the release grace instead (see {@link ttlRule}),
  * which is a floor measured against every rule already governing these keys.
  * Both are inert on an unversioned bucket, which keeps no noncurrent version
- * and leaves no marker. `pace.wait` — how to wait between writes; the default
- * sleeps.
+ * and leaves no marker. `pace.wait` — how to wait between re-reads; the
+ * default sleeps.
  *
  * Returns: nothing. Idempotent: when both rules already say this, no write is
- * issued. It reads the configuration back after writing and writes again,
- * after a growing wait (1, 2, 4, 8 s), until both rules are there — a
- * bucket's configuration, lifecycle included, is served eventually
- * consistently rather than read-your-writes
+ * issued. Otherwise it writes them, waits, and re-reads. A bucket's
+ * configuration is served eventually consistently rather than
+ * read-your-writes
  * (https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html, "Amazon
  * S3 data consistency model": "Bucket configurations have an eventual
- * consistency model"), so a read right after this call's own write, or
- * another adapter's a moment earlier, can still show what was there before
- * it. The bucket's versioning state is reported either way, because the
- * containment a released payload depends on is missing or present regardless
- * of whether this particular call had a rule to write.
+ * consistency model"), and S3 documents specifically that a lifecycle
+ * configuration can take a few minutes to fully propagate
+ * (https://docs.aws.amazon.com/AmazonS3/latest/userguide/how-to-set-lifecycle-configuration-intro.html,
+ * "Lifecycle configuration propagation delay"). So a re-read that still shows
+ * exactly what was read before this call's last write is treated as that lag,
+ * not as loss, and prompts another wait rather than another write; a re-read
+ * that instead shows some *other* configuration, still without this call's
+ * rules, is a competing writer, and the rules are written again, merged with
+ * whatever that read now holds. The waits (1, 2, 4, 8 s) and the five-round
+ * limit are this library's own polling policy — a choice, not a bound AWS
+ * documents. If the window ends on lag rather than a competing writer, this
+ * logs a `warn` and returns rather than throwing: the rules were written,
+ * only their visibility could not be confirmed here, and a later call (or the
+ * same one, run again) can still find them settled. The bucket's versioning
+ * state is reported in every case, because the containment a released payload
+ * depends on is missing or present regardless of whether this particular call
+ * had a rule to write or could confirm one.
  *
  * Throws: `VALIDATION` naming `s3.keyPrefix` for an unscoped prefix, or when
  * either rule id this prefix produces is already held by a different prefix
- * (see {@link assertNoIdCollision}); otherwise whatever the SDK rejects with. A
- * bucket with no lifecycle configuration at all is not an error — S3 reports
+ * (see {@link assertNoIdCollision}); `CONTENTION` when a re-read keeps showing
+ * a competing writer's configuration through {@link LIFECYCLE_SETTLE_WRITES}
+ * writes; otherwise whatever the SDK rejects with. A bucket with no lifecycle
+ * configuration at all is not an error — S3 reports
  * `NoSuchLifecycleConfiguration` and this starts from an empty rule set.
- * `CONTENTION` when the rules are still missing after
- * {@link LIFECYCLE_SETTLE_WRITES} writes — another writer is replacing the
- * configuration at the same time.
  *
  * Guarantees: rules this package did not write are preserved, and so is the
  * bucket-level `TransitionDefaultMinimumObjectSize` — a Put replaces the whole
- * configuration, so dropping it would silently reset the bucket to the default.
+ * configuration, so dropping it would silently reset the bucket to the
+ * default. Each write is built from a re-read taken right before it, never
+ * from a plan built before that read's wait, so a rule a competing writer
+ * added during the wait is carried into this call's own write instead of
+ * being silently overwritten by a stale plan. That protection covers only
+ * this call's own polling, though: a first read that already raced a
+ * different call's write is not detected, so provisioning callers still need
+ * to run one at a time, and re-run each once every one of them has run when
+ * more than one adapter or process shares a bucket.
  */
 export async function ensureLifecycleRule(
   client: S3Client,
@@ -198,17 +278,36 @@ export async function ensureLifecycleRule(
     marker: buildMarkerRuleId(target.prefix),
   };
   const wait = pace.wait ?? ((delayMs: number) => sleep(delayMs));
-  for (let writes = 0; ; writes += 1) {
+  let before: readonly LifecycleRule[] = [];
+  for (let attempt = 0; ; attempt += 1) {
+    if (attempt > 0) await wait(delayForAttempt(attempt));
     const state = await readState(client, target.bucket);
     const plan = planRules(state, target, ids);
     if (plan.settled) break;
-    if (writes === LIFECYCLE_SETTLE_WRITES) throw lifecycleContention(target);
-    // S3 serves a bucket's configuration eventually consistently, so a read
-    // right after a write can still show what was there before it, and another
-    // writer can replace it outright. Either way the rules are written again,
-    // after a wait that doubles each time.
-    if (writes > 0) await wait(LIFECYCLE_SETTLE_BASE_MS * 2 ** (writes - 1));
+    const lastAttempt = attempt === LIFECYCLE_SETTLE_WRITES - 1;
+    if (attempt > 0 && sameRuleSet(state.rules, before)) {
+      if (lastAttempt) {
+        warnLifecyclePending(target, logger);
+        await reportBucketVersioning(client, target.bucket, logger);
+        return;
+      }
+      logger.debug(
+        'ensureS3LifecycleRule: a re-read still shows what was there before this write; ' +
+          'waiting for it to propagate',
+        { attempt, delayMs: delayForAttempt(attempt) },
+      );
+      continue;
+    }
+    if (attempt > 0) {
+      logger.debug(
+        'ensureS3LifecycleRule: a re-read shows a different configuration without these ' +
+          'rules; writing them again',
+        { attempt, delayMs: delayForAttempt(attempt) },
+      );
+    }
     await putRules(client, target.bucket, state, plan.rules);
+    before = state.rules;
+    if (lastAttempt) throw lifecycleContention(target);
   }
   await reportBucketVersioning(client, target.bucket, logger);
 }
