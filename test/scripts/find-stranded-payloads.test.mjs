@@ -714,7 +714,17 @@ test('an expired history message row is skipped: getMessages already hides it by
   assert.equal(result.expiredRows, 1);
 });
 
-test('an expired WRITE row is still reported when its checkpoint META row is live', async () => {
+/**
+ * A pending-WRITE row is never gated by any `ttl` at all, its own checkpoint's
+ * META included: `migratePendingSends` lets a pre-v4 checkpoint's *child* read
+ * a parent's pending writes through the child's own `getTuple`/`list`,
+ * without ever reading the parent's META row, so a live child can still be
+ * serving a WRITE row whose own checkpoint's META is expired or absent. No
+ * `GetItem` this script could send would rule that out, so it costs none: an
+ * expired WRITE row is always reported, whatever its own checkpoint's META
+ * row says or whether that row is even read.
+ */
+test('an expired WRITE row is reported when its checkpoint META row is live, and costs no META GetItem', async () => {
   const row = {
     PK: 'CHKPT#t2',
     SK: 'WRITE#ns#c2#task1#0000000008#chan',
@@ -740,13 +750,10 @@ test('an expired WRITE row is still reported when its checkpoint META row is liv
     [['CHKPT#t2', 'WRITE#ns#c2#task1#0000000008#chan']],
   );
   assert.equal(result.expiredRows, 0);
-  assert.ok(
-    ddb.sent.some((entry) => entry.input.Key.SK.S === 'META#ns#c2'),
-    'the sweep must look the checkpoint META row up before deciding',
-  );
+  assert.equal(ddb.sent.length, 1, 'a WRITE row must never trigger the checkpoint META lookup');
 });
 
-test('an expired WRITE row is skipped when its checkpoint META row is itself expired', async () => {
+test('an expired WRITE row is reported even when its checkpoint META row is itself expired', async () => {
   const row = {
     PK: 'CHKPT#t2',
     SK: 'WRITE#ns#c2#task1#0000000008#chan',
@@ -766,12 +773,16 @@ test('an expired WRITE row is skipped when its checkpoint META row is itself exp
     metadata: offloaded('langgraph-checkpoints/unrelated.bin'),
     ttl: TTL_EXPIRED,
   };
-  const { result } = await sweepOneRow({ row, metaRow });
-  assert.deepEqual(result.stranded, []);
-  assert.equal(result.expiredRows, 1);
+  const { result, ddb } = await sweepOneRow({ row, metaRow });
+  assert.deepEqual(
+    result.stranded.map((r) => [r.pk, r.sk]),
+    [['CHKPT#t2', 'WRITE#ns#c2#task1#0000000008#chan']],
+  );
+  assert.equal(result.expiredRows, 0);
+  assert.equal(ddb.sent.length, 1, 'a WRITE row must never trigger the checkpoint META lookup');
 });
 
-test('an expired WRITE row is skipped when its checkpoint META row is absent', async () => {
+test('an expired WRITE row is always reported, whatever its META says, because a pre-v4 child could still be serving it without ever reading that META', async () => {
   const row = {
     PK: 'CHKPT#t2',
     SK: 'WRITE#ns#c2#task1#0000000008#chan',
@@ -782,26 +793,30 @@ test('an expired WRITE row is skipped when its checkpoint META row is absent', a
     value: offloaded(TTL_KEY),
     ttl: TTL_EXPIRED,
   };
-  const { result } = await sweepOneRow({ row });
-  assert.deepEqual(result.stranded, []);
-  assert.equal(result.expiredRows, 1);
-});
-
-test('a live WRITE row costs no extra GetItem: the META lookup only runs for an expired candidate', async () => {
-  const row = {
-    PK: 'CHKPT#t2',
-    SK: 'WRITE#ns#c2#task1#0000000008#chan',
-    taskId: 'task1',
-    index: 0,
-    channel: 'chan',
-    writeGroup: 'g1',
-    value: offloaded(TTL_KEY),
-  };
+  // No metaRow at all: the checkpoint's META row is absent. Even so, and even
+  // though an absent META would hide a PAYLOAD row, a WRITE row is reported:
+  // migratePendingSends (src/checkpointer/internal/read.ts) lets a live pre-v4
+  // *child* checkpoint serve this checkpoint's pending writes through the
+  // child's own getTuple/list, without ever reading this checkpoint's own META
+  // row — so this row's own META being absent proves nothing about whether a
+  // child still serves it.
   const { result, ddb } = await sweepOneRow({ row });
   assert.deepEqual(
     result.stranded.map((r) => [r.pk, r.sk]),
     [['CHKPT#t2', 'WRITE#ns#c2#task1#0000000008#chan']],
   );
+  assert.equal(result.expiredRows, 0);
+  assert.equal(ddb.sent.length, 1, 'a WRITE row must never trigger the checkpoint META lookup');
+});
+
+test('a live PAYLOAD row costs no extra GetItem: the META lookup only runs for an expired candidate', async () => {
+  const row = {
+    PK: 'CHKPT#t6',
+    SK: 'PAYLOAD#ns#c6',
+    checkpoint: offloaded(TTL_KEY),
+  };
+  const { result, ddb } = await sweepOneRow({ row });
+  assert.deepEqual(result.stranded.map((r) => [r.pk, r.sk]), [['CHKPT#t6', 'PAYLOAD#ns#c6']]);
   assert.equal(ddb.sent.length, 1, 'a live candidate must cost exactly its own GetItem, no META lookup');
 });
 
@@ -880,23 +895,22 @@ test('an unrecognisable row past its ttl is reported rather than skipped', async
 });
 
 test('a checkpoint META read that itself fails leaves the candidate reported, not skipped', async () => {
+  // Only a PAYLOAD row ever triggers this lookup: a WRITE row never does (see
+  // classifyRow), so this case can only arise for the one row kind that is
+  // still meta-gated.
   const row = {
-    PK: 'CHKPT#t2',
-    SK: 'WRITE#ns#c2#task1#0000000008#chan',
-    taskId: 'task1',
-    index: 0,
-    channel: 'chan',
-    writeGroup: 'g1',
-    value: offloaded(TTL_KEY),
+    PK: 'CHKPT#t3',
+    SK: 'PAYLOAD#ns#c3',
+    checkpoint: offloaded(TTL_KEY),
     ttl: TTL_EXPIRED,
   };
   const { result } = await sweepOneRow({
     row,
-    refuses: { 'CHKPT#t2|META#ns#c2': 'ProvisionedThroughputExceededException' },
+    refuses: { 'CHKPT#t3|META#ns#c3': 'ProvisionedThroughputExceededException' },
   });
   assert.deepEqual(
     result.stranded.map((r) => [r.pk, r.sk]),
-    [['CHKPT#t2', 'WRITE#ns#c2#task1#0000000008#chan']],
+    [['CHKPT#t3', 'PAYLOAD#ns#c3']],
     'a META lookup this script could not complete must not hide a candidate',
   );
   assert.ok(

@@ -12,27 +12,31 @@
  * What it reads, in order: `ListObjectVersions` under the prefix, paginated;
  * for each released key, `HeadObject` on the surviving payload version to read
  * that backlink; then a strongly-consistent `GetItem` on the decoded key, and —
- * only for a checkpoint PAYLOAD or WRITE row that read finds past its own
- * `ttl` — one further strongly-consistent `GetItem` on that checkpoint's META
- * row. It writes nothing and repairs nothing — it prints the two remedies and
- * leaves the choice to an operator, because the right one depends on why the
- * row is there.
+ * only for a checkpoint PAYLOAD row that read finds past its own `ttl` — one
+ * further strongly-consistent `GetItem` on that checkpoint's META row. It
+ * writes nothing and repairs nothing — it prints the two remedies and leaves
+ * the choice to an operator, because the right one depends on why the row is
+ * there.
  *
  * A row past its `ttl` is not always gone to every reader, so it is not always
  * left out of the report. A checkpoint META row, a store item row and a
  * history message row are: `getTuple`, `list`, `store.get`/`search` and
  * `history.getMessages` each check a row's own `ttl` before serving it, so one
  * of those past its `ttl` is ordinary expiry, counted apart rather than
- * reported. A checkpoint PAYLOAD row and every pending-WRITE row are not:
- * `getTuple`/`list` serve those once the checkpoint's META row is judged live,
- * without ever checking the PAYLOAD or WRITE row's own `ttl` — and a WRITE row
- * stamps its own `ttl` independently when `putWrites` runs, so it can expire
- * while its checkpoint's META row is still live and served. One of those past
- * its own `ttl` is therefore still reported as stranded, unless its
- * checkpoint's META row is itself past its `ttl` or absent — which the one
- * extra `GetItem` above decides. A row whose kind this script cannot place, or
- * whose META row it cannot read, is reported rather than guessed at: a false
- * report is safer than a hidden broken checkpoint.
+ * reported. A checkpoint PAYLOAD row is not: `getTuple`/`list` serve it once
+ * the checkpoint's META row is judged live, without ever checking the PAYLOAD
+ * row's own `ttl`, so one past its own `ttl` is still reported as stranded
+ * unless its checkpoint's META row is itself past its `ttl` or absent — which
+ * the one extra `GetItem` above decides. A pending-WRITE row never gets that
+ * gate at all, however long past its own `ttl`: a pre-v4 checkpoint's child
+ * migrates its parent's pending writes into its own read (`migratePendingSends`
+ * in `src/checkpointer/internal/read.ts`) without ever reading the parent's
+ * META row, so a live pre-v4 child can go on serving a WRITE row of a
+ * checkpoint whose own META is expired or absent, and no cheap check here can
+ * rule that out — a WRITE row past its own `ttl` is therefore always reported.
+ * A row whose kind this script cannot place, or whose META row it cannot
+ * read, is reported rather than guessed at: a false report is safer than a
+ * hidden broken checkpoint.
  *
  * Usage:
  *   node scripts/find-stranded-payloads.mjs --bucket B --table T [--region R]
@@ -353,8 +357,8 @@ export function rowNamesKey(item, s3Key) {
  * Whether a row is past its `ttl`. Every read of this package treats such a
  * row as absent, and DynamoDB deletes it within a few days — but that is only
  * true of *some* row kinds here; see {@link classifyRow} and the module
- * header for which, and why a checkpoint PAYLOAD or WRITE row is not one of
- * them.
+ * header for which, and why a checkpoint PAYLOAD row is not always one of
+ * them, and a pending-WRITE row never is.
  */
 export function isExpiredRow(row, now = Date.now()) {
   return typeof row.ttl === 'number' && row.ttl <= Math.floor(now / 1000);
@@ -379,14 +383,15 @@ const WRITE_SORT_PREFIX = 'WRITE#';
 const HISTORY_MESSAGE_SORT_PREFIX = 'HISTORY#MSG#';
 
 /**
- * A checkpoint META row's key, composed from a PAYLOAD or WRITE candidate's
- * own `SK`. Both kinds carry their checkpoint's namespace and id in exactly
- * the same two segments, right after the row-kind tag — `PAYLOAD#<ns>#<id>`
- * and `WRITE#<ns>#<id>#<taskId>#<index>#<channel>` — which is the one thing
- * this function trusts: neither row kind carries `checkpointNs`/
- * `checkpointId` as its own attribute, so the key is the only place to read
- * them from. Returns null for a sort key with fewer segments than a real one
- * ever has, rather than compose a key that cannot be right.
+ * A checkpoint META row's key, composed from a PAYLOAD candidate's own `SK`
+ * (`PAYLOAD#<ns>#<id>`) — the checkpoint's namespace and id sit in exactly
+ * those two segments, right after the row-kind tag, which is the one thing
+ * this function trusts: a PAYLOAD row carries no `checkpointNs`/
+ * `checkpointId` of its own, so the key is the only place to read them from.
+ * WRITE rows never reach this function: see the module header for why a
+ * pending-WRITE row is never checked against its checkpoint's META at all.
+ * Returns null for a sort key with fewer segments than a real one ever has,
+ * rather than compose a key that cannot be right.
  */
 function checkpointMetaKeyOf(row) {
   const segments = row.SK.split('#');
@@ -402,15 +407,28 @@ function checkpointMetaKeyOf(row) {
  * message row. Every read of this package already treats one of these as
  * absent once its own `ttl` passes.
  *
- * `'meta-gated'`: a checkpoint PAYLOAD row or a pending-WRITE row, carrying
- * the key of its checkpoint's META row. `getTuple`/`list` serve one of these
- * once the checkpoint's META row is judged live, without ever checking the
- * PAYLOAD or WRITE row's own `ttl` — so one past its own `ttl` is hidden only
- * when its META row is itself past its `ttl` or absent.
+ * `'meta-gated'`: a checkpoint PAYLOAD row, carrying the key of its
+ * checkpoint's META row. `getTuple`/`list` serve it once the checkpoint's
+ * META row is judged live, without ever checking the PAYLOAD row's own
+ * `ttl` — so one past its own `ttl` is hidden only when its META row is
+ * itself past its `ttl` or absent. Only that checkpoint's own `getTuple`/
+ * `list` ever serves its PAYLOAD row, which is what makes its own META row a
+ * reliable gate.
  *
- * `'unrecognised'`: neither — a row shape this script does not know, or a
- * PAYLOAD/WRITE row whose sort key is too short to carry a checkpoint id.
- * Never treated as hidden: this script would be guessing.
+ * `'never-gated'`: a pending-WRITE row. It is never hidden by any `ttl`,
+ * its own or its checkpoint's META row's: a pre-v4 checkpoint's child reads
+ * its parent's pending writes through `migratePendingSends`
+ * (`src/checkpointer/internal/read.ts`) without ever reading the parent's
+ * META row, so a live pre-v4 child can still serve a WRITE row belonging to a
+ * checkpoint whose own META is expired or absent. No cheap check — one
+ * `GetItem` on the WRITE row's own checkpoint's META included — can rule that
+ * out, since the child that might be serving it is a different checkpoint
+ * this script has no cheap way to find.
+ *
+ * `'unrecognised'`: none of the above — a row shape this script does not
+ * know, or a PAYLOAD row whose sort key is too short to carry a checkpoint
+ * id. Treated the same as `'never-gated'` (never hidden), for the opposite
+ * reason: this script would be guessing.
  */
 function classifyRow(row) {
   const pk = typeof row.PK === 'string' ? row.PK : '';
@@ -423,7 +441,8 @@ function classifyRow(row) {
   }
   if (pk.startsWith(CHECKPOINTER_PARTITION_PREFIX)) {
     if (sk.startsWith(META_SORT_PREFIX)) return { kind: 'self-gated' };
-    if (sk.startsWith(PAYLOAD_SORT_PREFIX) || sk.startsWith(WRITE_SORT_PREFIX)) {
+    if (sk.startsWith(WRITE_SORT_PREFIX)) return { kind: 'never-gated' };
+    if (sk.startsWith(PAYLOAD_SORT_PREFIX)) {
       const metaKey = checkpointMetaKeyOf(row);
       return metaKey === null ? { kind: 'unrecognised' } : { kind: 'meta-gated', metaKey };
     }
@@ -507,7 +526,7 @@ async function readRow(ddb, { table, pk, sk }, release, result) {
 }
 
 /**
- * A checkpoint PAYLOAD or WRITE candidate's own checkpoint META row, read
+ * A checkpoint PAYLOAD candidate's own checkpoint META row, read
  * consistently: the row, null when there is none, or undefined with the
  * reason recorded when the read itself failed. The same shape as
  * {@link readRow}, kept separate so a failed read is reported against the
@@ -543,15 +562,17 @@ async function readCheckpointMeta(ddb, table, metaKey, release, result) {
  * the rule this implements).
  *
  * Called only for a candidate that would otherwise be reported, so the one
- * extra `GetItem` a 'meta-gated' row costs is rare by construction. A row
- * this script cannot classify, and a 'meta-gated' row whose META read itself
- * fails, both answer false — reported, not skipped — because a false report
- * is safer than a hidden broken checkpoint.
+ * extra `GetItem` a 'meta-gated' row costs is rare by construction — and it
+ * is the only row kind that ever costs one: a 'never-gated' WRITE row and an
+ * 'unrecognised' row both answer false without reading anything further,
+ * for their own different reasons (see {@link classifyRow}). A 'meta-gated'
+ * row whose META read itself fails also answers false — reported, not
+ * skipped — because a false report is safer than a hidden broken checkpoint.
  */
 async function rowHiddenByTtl(ddb, table, row, release, result, now) {
   const classified = classifyRow(row);
   if (classified.kind === 'self-gated') return true;
-  if (classified.kind === 'unrecognised') return false;
+  if (classified.kind !== 'meta-gated') return false;
   const meta = await readCheckpointMeta(ddb, table, classified.metaKey, release, result);
   if (meta === undefined) return false;
   return meta === null || isExpiredRow(meta, now);
@@ -564,9 +585,9 @@ async function rowHiddenByTtl(ddb, table, row, release, result, now) {
  * driven by fakes in the tests. Each release is inspected as the listing closes
  * its key, so nothing proportional to the bucket is ever held: only the open
  * key, the releases one page closed, and the findings themselves. A checkpoint
- * PAYLOAD or WRITE candidate already past its own `ttl` costs one further
- * `GetItem`, on its checkpoint's META row — the one row kind whose own `ttl`
- * does not already settle it; see {@link rowHiddenByTtl}.
+ * PAYLOAD candidate already past its own `ttl` costs one further `GetItem`,
+ * on its checkpoint's META row — the only row kind this sweep ever re-checks
+ * that way; see {@link rowHiddenByTtl}.
  */
 export async function sweep({ s3, ddb, bucket, table, prefix, graceDays, now = Date.now() }) {
   const result = {
