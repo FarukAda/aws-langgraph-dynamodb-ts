@@ -18,19 +18,7 @@ import {
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
-import { lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
-
-// ensureS3LifecycleRule() has no pace of its own to inject: its default wait
-// is the real `sleep`, imported here so a case that needs a re-read cycle
-// does not cost a real second — several cases here provision more than one
-// adapter in sequence. DynamoDB retry backoff, which calls the same function
-// from inside its own module rather than through this import, is untouched.
-jest.mock('../../../src/shared/dynamodb/retry', () => {
-  const actual = jest.requireActual<typeof import('../../../src/shared/dynamodb/retry')>(
-    '../../../src/shared/dynamodb/retry',
-  );
-  return { ...actual, sleep: jest.fn(() => Promise.resolve()) };
-});
+import { fastLifecyclePoll, lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -226,8 +214,8 @@ describe('createAll teardown is total', () => {
       s3: throwingS3(),
     });
     const all = factory.createAll({ saver: { tableName: 'ckpt' }, store: { tableName: 'store' } });
-    await all.saver.ensureS3LifecycleRule();
-    await all.store.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => all.saver.ensureS3LifecycleRule());
+    await fastLifecyclePoll(() => all.store.ensureS3LifecycleRule());
     expect(logger.warn).not.toHaveBeenCalled();
     expect(() => all.destroy()).not.toThrow();
     expect(fake.destroy).toHaveBeenCalledTimes(1);
@@ -306,11 +294,11 @@ describe('shared adapter defaults', () => {
     };
 
     const store = new DynamoDBFactory(base).createStore({ tableName: 'store' });
-    await store.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => store.ensureS3LifecycleRule());
     expect(seen.pop()).toMatchObject({ region: 'eu-central-1' });
 
     const all = new DynamoDBFactory(base).createAll({ store: { tableName: 'store' } });
-    await all.store.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => all.store.ensureS3LifecycleRule());
     expect(seen.pop()).toMatchObject({ region: 'eu-central-1' });
     expect(logger.warn).not.toHaveBeenCalled();
     all.destroy();
@@ -330,9 +318,9 @@ describe('shared adapter defaults', () => {
     /** The injected client has maxAttempts > 1, triggering a warning asynchronously during setup. */
     await new Promise((resolve) => setImmediate(resolve));
     logger.warn.mockClear();
-    await all.saver.ensureS3LifecycleRule();
-    await all.store.ensureS3LifecycleRule();
-    await all.history.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => all.saver.ensureS3LifecycleRule());
+    await fastLifecyclePoll(() => all.store.ensureS3LifecycleRule());
+    await fastLifecyclePoll(() => all.history.ensureS3LifecycleRule());
     expect(lifecycleDays(['checkpointer', 'store', 'history'])).toEqual([32, 3, 32]);
     expect(logger.warn).not.toHaveBeenCalled();
     all.destroy();
@@ -358,7 +346,7 @@ describe('shared adapter defaults', () => {
     /** The injected client has maxAttempts > 1, triggering a warning asynchronously during setup. */
     await new Promise((resolve) => setImmediate(resolve));
     logger.warn.mockClear();
-    await saver.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => saver.ensureS3LifecycleRule());
     expect(lifecycleDays(['checkpointer'])).toEqual([32]);
     expect(logger.warn).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();

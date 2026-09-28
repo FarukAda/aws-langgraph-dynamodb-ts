@@ -7,19 +7,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 
 import { DynamoDBSaver } from '../../../src/checkpointer/saver';
 import { createStrictDocumentMock } from '../../shared/helpers/ddb-mock';
-import { lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
-
-// ensureS3LifecycleRule() has no pace of its own to inject: its default wait
-// is the real `sleep`, imported here so a case that needs a re-read cycle
-// does not cost a real second — DynamoDB retry backoff, which calls the same
-// function from inside its own module rather than through this import, is
-// untouched.
-jest.mock('../../../src/shared/dynamodb/retry', () => {
-  const actual = jest.requireActual<typeof import('../../../src/shared/dynamodb/retry')>(
-    '../../../src/shared/dynamodb/retry',
-  );
-  return { ...actual, sleep: jest.fn(() => Promise.resolve()) };
-});
+import { fastLifecyclePoll, lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -57,7 +45,7 @@ describe('DynamoDBSaver.ensureS3LifecycleRule', () => {
       s3: s3Offload(),
       ttl: { days: 30 },
     });
-    await saver.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => saver.ensureS3LifecycleRule());
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
     // The injected client's own maxAttempts > 1 triggers a fire-and-forget
     // warning from construction (see `warnOnStackedRetries`) that can land at
@@ -84,7 +72,7 @@ describe('DynamoDBSaver.ensureS3LifecycleRule', () => {
       s3: s3Offload(),
       ttl: { days: 30 },
     });
-    await saver.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => saver.ensureS3LifecycleRule());
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('versioning is off'), {
       bucket: 'b',
     });

@@ -7,18 +7,7 @@ import { releaseOwned } from '../../../src/shared/adapter';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
-
-// ensureS3LifecycleRule() has no pace of its own to inject: its default wait
-// is the real `sleep`, imported here so `hostileS3Client`'s stateful bucket
-// does not cost a real second per case — this file builds every adapter at
-// least once. DynamoDB retry backoff, which calls the same function from
-// inside its own module rather than through this import, is untouched.
-jest.mock('../../../src/shared/dynamodb/retry', () => {
-  const actual = jest.requireActual<typeof import('../../../src/shared/dynamodb/retry')>(
-    '../../../src/shared/dynamodb/retry',
-  );
-  return { ...actual, sleep: jest.fn(() => Promise.resolve()) };
-});
+import { fastLifecyclePoll } from '../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -118,7 +107,7 @@ async function teardownOf(
  */
 describe('an adapter releases every resource it owns, whatever one of them does', () => {
   it.each(ADAPTERS)('%s releases the client behind the failing resource', async (_name, build) => {
-    expect(await teardownOf(build)).toEqual({
+    expect(await fastLifecyclePoll(() => teardownOf(build))).toEqual({
       raised: { code: 'UNEXPECTED_ERROR', cause: 'socket already closed' },
       clientReleases: 1,
     });
@@ -127,14 +116,19 @@ describe('an adapter releases every resource it owns, whatever one of them does'
   it.each(ADAPTERS)('%s releases nothing on a second destroy', async (_name, build) => {
     const owned = ownedClientFactory();
     const adapter = build(optionsFor(owned.create) as never);
-    await adapter.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => adapter.ensureS3LifecycleRule());
     expect(() => adapter.destroy()).toThrow('socket already closed');
     expect(() => adapter.destroy()).not.toThrow();
     expect(owned.destroy).toHaveBeenCalledTimes(1);
   });
 
   it('answers alike on all three, so no adapter leaks where another releases', async () => {
-    const answers = await Promise.all(ADAPTERS.map(([, build]) => teardownOf(build)));
+    // The three teardowns run concurrently, so they share one fake-timer
+    // window rather than each toggling it — `jest.useFakeTimers()` is a
+    // global switch, not scoped per call.
+    const answers = await fastLifecyclePoll(() =>
+      Promise.all(ADAPTERS.map(([, build]) => teardownOf(build))),
+    );
     expect(new Set(answers.map((answer) => JSON.stringify(answer))).size).toBe(1);
   });
 
@@ -154,7 +148,7 @@ describe('an adapter releases every resource it owns, whatever one of them does'
       client,
       s3: { bucketName: 'b', createS3Client: () => hostileS3Client() },
     } as never);
-    await adapter.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => adapter.ensureS3LifecycleRule());
     expect(() => adapter.destroy()).toThrow('socket already closed');
     expect(destroy).not.toHaveBeenCalled();
   });
@@ -163,7 +157,7 @@ describe('an adapter releases every resource it owns, whatever one of them does'
   it('releases the same way through the store lifecycle hook', async () => {
     const owned = ownedClientFactory();
     const store = new DynamoDBStore(optionsFor(owned.create) as never);
-    await store.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => store.ensureS3LifecycleRule());
     expect(() => store.stop()).toThrow('socket already closed');
     expect(owned.destroy).toHaveBeenCalledTimes(1);
   });

@@ -47,3 +47,28 @@ export function lifecycleBucket(
     });
   return writes;
 }
+
+/**
+ * Runs `fn` under fake timers, advanced once past the whole lifecycle
+ * backoff ladder (1+2+4+8 s), so a real `sleep`-based wait inside it settles
+ * at once instead of costing real wall-clock time. `ensureS3LifecycleRule()`
+ * has no `pace` of its own to inject on any adapter — it is an internal seam
+ * — so a test that reaches a public method's own default wait needs this
+ * rather than an injected one.
+ *
+ * Unlike mocking `sleep` itself, this leaves the real function in place: an
+ * `AbortSignal` passed through a wait behaves exactly as it does outside a
+ * test, and nothing beside the lifecycle call `fn` makes is affected — a
+ * DynamoDB retry backoff or an S3 transfer retry started elsewhere keeps its
+ * own real timing.
+ */
+export async function fastLifecyclePoll<T>(fn: () => Promise<T>): Promise<T> {
+  jest.useFakeTimers();
+  try {
+    const result = fn();
+    await jest.advanceTimersByTimeAsync(15_000);
+    return await result;
+  } finally {
+    jest.useRealTimers();
+  }
+}

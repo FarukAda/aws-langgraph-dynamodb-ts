@@ -13,7 +13,7 @@ import * as s3ClientModule from '../../../../../src/shared/codec/s3/client';
 import { S3Offloader } from '../../../../../src/shared/codec/s3/offloader';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import { validationError } from '../../../../../src/shared/errors/errors';
-import { lifecycleBucket } from '../../../../shared/helpers/lifecycle-bucket';
+import { fastLifecyclePoll, lifecycleBucket } from '../../../../shared/helpers/lifecycle-bucket';
 
 // Wrap (not stub out) the real `createDefaultS3Client` so tests can observe
 // call counts / inject failures on the genuine async construction path
@@ -28,18 +28,6 @@ jest.mock('../../../../../src/shared/codec/s3/client', () => {
     createDefaultS3Client: jest.fn(actual.createDefaultS3Client),
     loadS3Sdk: jest.fn(actual.loadS3Sdk),
   };
-});
-
-// ensureLifecycleRule() has no pace of its own to inject here: its default
-// wait is the real `sleep`, imported here so a case that needs a re-read
-// cycle does not cost a real second — the upload/download retry paths below,
-// which call the same function from inside its own module rather than
-// through this import, are untouched.
-jest.mock('../../../../../src/shared/dynamodb/retry', () => {
-  const actual = jest.requireActual<typeof import('../../../../../src/shared/dynamodb/retry')>(
-    '../../../../../src/shared/dynamodb/retry',
-  );
-  return { ...actual, sleep: jest.fn(() => Promise.resolve()) };
 });
 
 const createDefaultS3ClientMock = s3ClientModule.createDefaultS3Client as jest.MockedFunction<
@@ -223,7 +211,7 @@ describe('S3Offloader', () => {
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const { offloader } = makeOffloader();
-    await offloader.ensureLifecycleRule(30, logger);
+    await fastLifecyclePoll(() => offloader.ensureLifecycleRule(30, logger));
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
     expect(logger.warn).not.toHaveBeenCalled();
   });
@@ -234,7 +222,7 @@ describe('S3Offloader', () => {
     s3Mock.on(GetBucketVersioningCommand).resolves({});
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const { offloader } = makeOffloader();
-    await offloader.ensureLifecycleRule(30, logger);
+    await fastLifecyclePoll(() => offloader.ensureLifecycleRule(30, logger));
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('versioning is off'),
       expect.objectContaining({ bucket: 'b' }),

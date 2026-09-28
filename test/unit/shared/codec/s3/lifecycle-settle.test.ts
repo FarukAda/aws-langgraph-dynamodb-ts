@@ -65,7 +65,7 @@ describe('ensureLifecycleRule reads back what it wrote', () => {
     expect(written).toHaveLength(1);
     expect(logger.debug).toHaveBeenCalledWith(
       expect.stringContaining('still shows what was there before this write'),
-      { attempt: 1, delayMs: 1000 },
+      { attempt: 1, waitedMs: 1000 },
     );
     expect(logger.warn).not.toHaveBeenCalled();
   });
@@ -95,6 +95,42 @@ describe('ensureLifecycleRule reads back what it wrote', () => {
       ),
       { bucket: 'b', prefix: target.prefix },
     );
+    // The versioning report still runs on a lag exit.
+    expect(s3Mock.commandCalls(GetBucketVersioningCommand)).toHaveLength(1);
+  });
+
+  /**
+   * The reviewer's probe: lag on every round but the last, which then finds a
+   * genuinely different configuration. Only two writes ever happen, so this
+   * must not read as "another writer replaced it on every one of five
+   * writes" — it ends exactly like a lag exit, because this call cannot tell
+   * "a rival replaced it once more" from "this write itself merely is not
+   * visible yet" from here.
+   */
+  it('a rewrite only at the last round ends like lag: warns, returns, after fewer than five writes', async () => {
+    let reads = 0;
+    const written: LifecycleRule[][] = [];
+    const logger = fakeLogger();
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).callsFake(() => {
+      reads += 1;
+      if (reads <= 4) return { Rules: [] };
+      return { Rules: [foreign] };
+    });
+    s3Mock
+      .on(PutBucketLifecycleConfigurationCommand)
+      .callsFake((input: PutBucketLifecycleConfigurationCommandInput) => {
+        written.push(input.LifecycleConfiguration?.Rules ?? []);
+        return {};
+      });
+    await expect(ensureLifecycleRule(client(), target, logger, instant)).resolves.toBeUndefined();
+    expect(written).toHaveLength(2);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'wrote the lifecycle rules but a re-read did not show them within the polling window',
+      ),
+      { bucket: 'b', prefix: target.prefix },
+    );
+    expect(s3Mock.commandCalls(GetBucketVersioningCommand)).toHaveLength(1);
   });
 
   it("writes its rules again, beside the other writer's, when a concurrent write replaced them", async () => {
@@ -124,7 +160,7 @@ describe('ensureLifecycleRule reads back what it wrote', () => {
     );
     expect(logger.debug).toHaveBeenCalledWith(
       expect.stringContaining('shows a different configuration without these rules'),
-      { attempt: 1, delayMs: 1000 },
+      { attempt: 1, waitedMs: 1000 },
     );
   });
 
@@ -149,6 +185,8 @@ describe('ensureLifecycleRule reads back what it wrote', () => {
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(
       LIFECYCLE_SETTLE_WRITES,
     );
+    // The versioning report still runs before the throw, not instead of it.
+    expect(s3Mock.commandCalls(GetBucketVersioningCommand)).toHaveLength(1);
   });
 
   it('waits longer before each rewrite', async () => {
@@ -178,6 +216,40 @@ describe('ensureLifecycleRule reads back what it wrote', () => {
       'denied',
     );
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(0);
+  });
+
+  /** The same, but from inside the poll rather than the very first read. */
+  it('a failure from a later re-read surfaces at once, not swallowed by the poll', async () => {
+    let reads = 0;
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).callsFake(() => {
+      reads += 1;
+      if (reads === 1) return { Rules: [] };
+      throw Object.assign(new Error('denied'), { name: 'AccessDenied' });
+    });
+    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    await expect(ensureLifecycleRule(client(), target, SILENT_LOGGER, instant)).rejects.toThrow(
+      'denied',
+    );
+    expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
+  });
+
+  /** Likewise for a rewrite — a Put after the first — rather than the first write. */
+  it('a failure from a later rewrite surfaces at once, not swallowed by the poll', async () => {
+    let reads = 0;
+    let puts = 0;
+    s3Mock.on(GetBucketLifecycleConfigurationCommand).callsFake(() => {
+      reads += 1;
+      return { Rules: [{ ...foreign, ID: `someone-else-${reads}` }] };
+    });
+    s3Mock.on(PutBucketLifecycleConfigurationCommand).callsFake(() => {
+      puts += 1;
+      if (puts === 1) return {};
+      throw Object.assign(new Error('denied'), { name: 'AccessDenied' });
+    });
+    await expect(ensureLifecycleRule(client(), target, SILENT_LOGGER, instant)).rejects.toThrow(
+      'denied',
+    );
+    expect(puts).toBe(2);
   });
 
   /**

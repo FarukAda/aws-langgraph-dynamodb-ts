@@ -20,19 +20,7 @@ import { DynamoDBSessionChatMessageHistory } from '../../../src/history/session-
 import { JSON_SERDE } from '../../../src/shared/codec/json-serde';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
-import { lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
-
-// ensureS3LifecycleRule() has no pace of its own to inject: its default wait
-// is the real `sleep`, imported here so a case that needs a re-read cycle
-// does not cost a real second — DynamoDB retry backoff, which calls the same
-// function from inside its own module rather than through this import, is
-// untouched.
-jest.mock('../../../src/shared/dynamodb/retry', () => {
-  const actual = jest.requireActual<typeof import('../../../src/shared/dynamodb/retry')>(
-    '../../../src/shared/dynamodb/retry',
-  );
-  return { ...actual, sleep: jest.fn(() => Promise.resolve()) };
-});
+import { fastLifecyclePoll, lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -145,7 +133,7 @@ describe('DynamoDBChatMessageHistory', () => {
     /** The injected client has maxAttempts > 1, triggering a warning asynchronously during setup. */
     await new Promise((resolve) => setImmediate(resolve));
     logger.warn.mockClear();
-    await h.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => h.ensureS3LifecycleRule());
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
     /** A warn here would mean the versioning stub above was not the one consumed. */
     expect(logger.warn).not.toHaveBeenCalled();

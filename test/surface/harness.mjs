@@ -479,13 +479,16 @@ async function fuzzTeardown() {
   const s3 = mockClient(S3Client);
   s3.resolves({});
   /**
-   * `ensureS3LifecycleRule` below now reads a bucket's lifecycle configuration
-   * back after writing it and rewrites until the read shows its own rules (S3
-   * serves that configuration eventually consistently). A blanket `resolves({})`
-   * would answer every read as empty forever, so the call would never settle
-   * and would fail this probe with `CONTENTION` after real, growing waits
-   * instead of exercising the teardown this function is about. These two
-   * commands get a stateful answer instead; everything else keeps the blanket one.
+   * `ensureS3LifecycleRule` below re-reads a bucket's lifecycle configuration
+   * after writing it, and rewrites only when that re-read shows a genuinely
+   * different configuration still missing its own rules (S3 serves that
+   * configuration eventually consistently). A blanket `resolves({})` would
+   * answer every read the same empty way forever, which reads as ordinary
+   * propagation lag rather than a rival writer: the call would still resolve,
+   * but only after warning and waiting out its whole polling window (1, 2, 4,
+   * then 8 s) instead of settling on the first re-read and exercising the
+   * teardown this function is about. These two commands get a stateful
+   * answer instead; everything else keeps the blanket one.
    */
   let lifecycleRules = [];
   s3.on(GetBucketLifecycleConfigurationCommand).callsFake(() => ({ Rules: lifecycleRules }));
