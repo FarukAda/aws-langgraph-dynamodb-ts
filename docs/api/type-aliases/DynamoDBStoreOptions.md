@@ -31,6 +31,16 @@ decides on the payload alone — and a row they would take past
 DynamoDB's 400 KB item limit is refused with `VALIDATION` naming
 `index` before anything is written.
 
+### maxIterations?
+
+> `optional` **maxIterations?**: `number`
+
+Cap on DynamoDB pages one search, namespace listing or reconcile reads
+before `RESULT_TRUNCATED` (default 1000; a page is at most 1 MB).
+`Infinity` reads to the end. It is the cap a rootless search or listing
+over a large table meets first when most of what it scans is not store
+rows, since those pages hold few rows for `maxScanItems` to count.
+
 ### maxScanItems?
 
 > `optional` **maxScanItems?**: `number`

@@ -637,6 +637,12 @@ DynamoDBStore | logger=null | sync throws VALIDATION field=logger
 DynamoDBStore | logger={"info":1,"warn":1,"error":1,"debug":1} | sync throws VALIDATION field=logger.debug
 DynamoDBStore | logger={"info":fn} | sync throws VALIDATION field=logger.debug
 DynamoDBStore | logger={} | sync throws VALIDATION field=logger.debug
+DynamoDBStore | maxIterations="5" | sync throws VALIDATION field=maxIterations
+DynamoDBStore | maxIterations=-1 | sync throws VALIDATION field=maxIterations
+DynamoDBStore | maxIterations=0 | sync throws VALIDATION field=maxIterations
+DynamoDBStore | maxIterations=1.5 | sync throws VALIDATION field=maxIterations
+DynamoDBStore | maxIterations=NaN | sync throws VALIDATION field=maxIterations
+DynamoDBStore | maxIterations=null | sync throws VALIDATION field=maxIterations
 DynamoDBStore | maxScanItems="x" | sync throws VALIDATION field=maxScanItems
 DynamoDBStore | maxScanItems=-1 | sync throws VALIDATION field=maxScanItems
 DynamoDBStore | maxScanItems=0 | sync throws VALIDATION field=maxScanItems

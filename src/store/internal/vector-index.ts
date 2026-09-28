@@ -229,8 +229,9 @@ async function drainPending(
  * Throws: whatever the reads, the decodes and the embeddings model throw; a
  * failed embedding rejects the whole reconcile, because a skipped item would
  * leave the live set and {@link selectOrphans} would prune its still-valid
- * vector. `RESULT_TRUNCATED` when `maxScanItems` is reached while rows
- * remain — reconciling from a partial view would prune live vectors.
+ * vector. `RESULT_TRUNCATED` when `maxScanItems` or `maxIterations` is
+ * reached while rows remain — reconciling from a partial view would prune
+ * live vectors.
  *
  * Guarantees: rows are decoded in bounded batches, so a namespace of offloaded
  * items costs neither one round-trip at a time nor every payload in memory at
@@ -251,6 +252,7 @@ export async function collectReconcileTargets(
     client: context.client,
     params: withoutExpired(scopedQuery(context.tableName, prefix), now),
     maxItems: context.maxScanItems,
+    maxIterations: context.maxIterations,
   });
   for await (const raw of source) {
     const record = parseWholeStoreRow(raw);

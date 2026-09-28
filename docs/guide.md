@@ -251,6 +251,8 @@ In the store, a `search()` call with no `query` (or with a `query` but no `index
 
 Only a page that cannot be filled from fewer rows is bounded by `maxScanItems` (default 10,000; exceeding it throws rather than silently returning a partial result). This is a different cap from `maxSearchCandidates` below: `maxScanItems` gates rows read, `maxSearchCandidates` gates the in-DB semantic ranker. For namespaces that routinely exceed the default, prefer a `vectorBackend` or a narrower `namespacePrefix` over raising the cap, which stops at 1,000,000.
 
+A rootless search or listing also walks DynamoDB pages under `maxIterations` (default 1000, `Infinity` for no cap). A table whose rows are mostly not store items — large checkpoints sharing the table, say — can meet this cap long before `maxScanItems` counts enough store rows to matter, since a page of such a table holds few or none; raise `maxIterations` for that table rather than `maxScanItems` alone.
+
 ## Semantic search
 
 Give the store an `index` with a LangChain `Embeddings` implementation. On `put`, each extracted text is embedded separately — one vector per text the configured paths extract, as the reference store does — and on `search` with a `query` an item is ranked by its **best-matching** vector, so a long document with one strongly relevant section is found instead of being averaged away. A row written before the per-path change carries a single vector and still ranks exactly as it did.
@@ -456,7 +458,7 @@ The cause itself is attached as `err.cause` and keeps its message whole; only th
 | V-2 | Namespace prefixes match element-wise | the reference compares the joined string, so `['users']` matches `['userspace']` |
 | V-3 | Namespace elements may not contain `#` | the separator is structural in the sort key |
 | V-4 | A namespace whose items are all deleted stops being listed | the reference retains an empty namespace with no row behind it |
-| V-5 | `search` / `listNamespaces` raise `RESULT_TRUNCATED` past `maxScanItems` | silently truncating a result set is worse than refusing it |
+| V-5 | `search` / `listNamespaces` raise `RESULT_TRUNCATED` past `maxScanItems` or `maxIterations` | silently truncating a result set is worse than refusing it |
 | V-6 | Re-putting with `index: false` clears the stored vector | the reference keeps a stale vector for a changed value |
 | V-8 | A value JSON refuses (circular, `BigInt`) yields no index text instead of throwing from inside text extraction | the put is refused a moment later by the codec, with a `VALIDATION` error naming `value` rather than a raw `TypeError` from the embedding step |
 | V-9 | Namespaces the collation calls equal are ordered by code unit | the reference leaves that pair to insertion order, which here is DynamoDB's read order, so a page boundary could fall between them differently on two calls |

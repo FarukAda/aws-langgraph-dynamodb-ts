@@ -14,7 +14,7 @@ import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-check
 
 import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter';
 import { JSON_SERDE } from '../../shared/codec/json-serde';
-import { MAX_TOTAL_ROWS_IN_MEMORY } from '../../shared/dynamodb/paginate';
+import { MAX_LOOP_ITERATIONS, MAX_TOTAL_ROWS_IN_MEMORY } from '../../shared/dynamodb/paginate';
 import { validationError } from '../../shared/errors/errors';
 import {
   assertMembers,
@@ -56,6 +56,7 @@ export interface StoreContext extends AdapterCore {
   vectorScoreDirection: VectorScoreDirection;
   maxSearchCandidates: number;
   maxScanItems: number;
+  maxIterations: number;
 }
 
 /** Result of wiring up a store from its options. */
@@ -100,6 +101,7 @@ export function setUpStore(options: DynamoDBStoreOptions): StoreSetup {
       vectorScoreDirection: options.vectorScoreDirection ?? 'relevance',
       maxSearchCandidates: options.maxSearchCandidates ?? DEFAULT_MAX_SEARCH_CANDIDATES,
       maxScanItems: options.maxScanItems ?? MAX_TOTAL_ROWS_IN_MEMORY,
+      maxIterations: options.maxIterations ?? MAX_LOOP_ITERATIONS,
     },
   };
 }
@@ -126,6 +128,7 @@ export const STORE_KEYS = allKeysOf<DynamoDBStoreOptions>({
   vectorBackend: 'vectorBackend',
   maxSearchCandidates: 'maxSearchCandidates',
   maxScanItems: 'maxScanItems',
+  maxIterations: 'maxIterations',
   vectorScoreDirection: 'vectorScoreDirection',
 });
 
@@ -207,7 +210,11 @@ function assertScoreDirection(direction?: VectorScoreDirection): void {
   );
 }
 
-/** Both in-memory caps must be positive integers; 0 would silently return nothing. */
+/**
+ * Every cap must be a positive integer — `maxIterations` alone also accepts
+ * `Infinity`, for no cap — since 0 would stop a read before it returns
+ * anything.
+ */
 function assertLimits(options: DynamoDBStoreOptions): void {
   if (options.maxScanItems !== undefined) {
     assertInteger(options.maxScanItems, 'maxScanItems', { min: 1, max: MAX_SCAN_ITEMS });
@@ -217,6 +224,9 @@ function assertLimits(options: DynamoDBStoreOptions): void {
       min: 1,
       max: MAX_SEARCH_CANDIDATES,
     });
+  }
+  if (options.maxIterations !== undefined && options.maxIterations !== Infinity) {
+    assertInteger(options.maxIterations, 'maxIterations', { min: 1 });
   }
 }
 

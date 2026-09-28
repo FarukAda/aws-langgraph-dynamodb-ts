@@ -66,6 +66,7 @@ describe('each write call uploads to its own objects, even for identical bytes',
       logger: SILENT_LOGGER,
       maxSearchCandidates: 1000,
       maxScanItems: 10000,
+      maxIterations: 1000,
       vectorScoreDirection: 'relevance',
       offloader: offloader as never,
     };

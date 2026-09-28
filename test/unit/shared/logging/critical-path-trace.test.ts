@@ -101,6 +101,7 @@ describe('critical paths leave an operational trace', () => {
       logger,
       maxSearchCandidates: 1000,
       maxScanItems: 10000,
+      maxIterations: 1000,
       vectorScoreDirection: 'relevance',
     };
     await expect(getItem(context, parseStoreAddress(['ns'], 'k'))).resolves.toBeNull();

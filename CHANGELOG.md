@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`maxIterations` on `DynamoDBStore`**: the DynamoDB pages one `search`, `listNamespaces` or `reconcileVectorIndex` reads before `RESULT_TRUNCATED` (default 1000; `Infinity` for none). Those scans were capped at 1000 pages with no way to raise it, which a rootless scan over a large table of mostly non-store rows reached long before `maxScanItems`.
+
 ### Changed (breaking)
 
 - **`history.addMessages` reports a chunk whose outcome it cannot establish as `COMPENSATION_FAILED`.** An append whose failing chunk could not be read back — a single-message append included, since it is one chunk too — used to roll back what had committed and rethrow the chunk's own error — the error that means "the session is back to where it was, retrying is safe" — while that chunk's messages might be in the table. It now fails with `COMPENSATION_FAILED`, carrying the read's failure (or the write's own failure, when some attempt of it may still be applied — it got no answer, or DynamoDB answered that it was still in progress (`TransactionInProgressException`) or failed with a server error (5xx)) as `details.rollbackError`, and logs `history.addMessages could not tell whether a failed chunk committed; messageCount may have drifted` at `error`, naming that same failure in a `reason` field. A caller retrying on ordinary errors no longer risks duplicating messages; run `reconcileMessageCount` instead.

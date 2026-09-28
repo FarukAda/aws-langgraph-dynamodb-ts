@@ -154,7 +154,8 @@ export class DynamoDBStore extends BaseStore {
    * `index` when its inline vectors are what pushed it over. A classified AWS
    * failure; `RETRY_EXHAUSTED`;
    * `RESULT_TRUNCATED` from a search or a listing that reads past
-   * `maxScanItems`. One failing operation rejects the whole batch.
+   * `maxScanItems` or `maxIterations`. One failing operation rejects the
+   * whole batch.
    *
    * Guarantees: the order the caller wrote is the order the caller observes — a
    * get after a put of the same item sees it, a get before one does not, and a
@@ -287,8 +288,9 @@ export class DynamoDBStore extends BaseStore {
    *
    * Throws: `VALIDATION` naming `options`, `options.<key>`, `prefix`,
    * `prefix element`, `suffix`, `suffix element`, `maxDepth`, `limit` or
-   * `offset`; `RESULT_TRUNCATED` past `maxScanItems`; `FORMAT_UNSUPPORTED`
-   * for an item written by a newer version; a classified AWS failure.
+   * `offset`; `RESULT_TRUNCATED` past `maxScanItems` or `maxIterations`;
+   * `FORMAT_UNSUPPORTED` for an item written by a newer version; a classified
+   * AWS failure.
    */
   override async listNamespaces(options: ListNamespacesOptions = {}): Promise<string[][]> {
     return guardPublic('store.listNamespaces', async () => {
@@ -348,8 +350,8 @@ export class DynamoDBStore extends BaseStore {
    *
    * Throws: `VALIDATION` without both an `index` and a `vectorBackend`, for
    * an empty prefix, for an invalid `signal`, or for `options.<key>` naming a
-   * key this package does not read; `RESULT_TRUNCATED` past `maxScanItems`;
-   * `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
+   * key this package does not read; `RESULT_TRUNCATED` past `maxScanItems` or
+   * `maxIterations`; `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
    * version — repairing a backend from a view of the prefix that silently
    * omitted such a row would prune the vectors of items that are still there;
    * a classified AWS failure.

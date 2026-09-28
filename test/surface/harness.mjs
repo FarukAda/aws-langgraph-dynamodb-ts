@@ -168,6 +168,7 @@ const PER_ADAPTER = {
     index: [null, 'x', {}, { dims: 0 }, { dims: NaN }, { dims: '3' }, { dims: 3 }, { dims: 3, embed: 'x' }, { dims: 3, embed: {} }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, fields: 'x' }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, fields: [1] }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, foo: 1 }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, fields: 'x' }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, fields: [1] }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, foo: 1 }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, fields: ['a'] }],
     maxSearchCandidates: [0, -1, NaN, 'x', 1.5, 1e12],
     maxScanItems: [0, -1, NaN, 'x', 1.5, Infinity],
+    maxIterations: [0, -1, 1.5, NaN, '5', null],
     vectorScoreDirection: ['Distance', '', null, 1, 'relevance'],
     vectorBackend: [{}, 'x', null, { upsert() {}, query() {}, delete() {} }],
   },

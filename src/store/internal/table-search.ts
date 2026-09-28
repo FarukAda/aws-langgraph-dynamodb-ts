@@ -69,6 +69,7 @@ function candidateSource(
         client: context.client,
         params: withoutExpired(scopedQuery(context.tableName, search.namespacePrefix), now),
         maxItems: context.maxScanItems,
+        maxIterations: context.maxIterations,
       })
     : paginateScan({
         retry: retryFor(context, signal),
@@ -76,6 +77,7 @@ function candidateSource(
         client: context.client,
         params: withoutExpired(storeScan(context.tableName), now),
         maxItems: context.maxScanItems,
+        maxIterations: context.maxIterations,
       });
 }
 
@@ -145,9 +147,9 @@ function tooManyCandidates(
  *
  * Throws: `VALIDATION` naming `maxSearchCandidates` before any decode when a
  * semantic collection exceeds `cap`; `RESULT_TRUNCATED` when
- * `maxScanItems` is reached while rows remain — a search never silently answers
- * from part of the table; `ABORTED` when the signal fires between pages;
- * whatever a decode throws for a corrupt or unreadable row.
+ * `maxScanItems` or `maxIterations` is reached while rows remain — a search
+ * never silently answers from part of the table; `ABORTED` when the signal
+ * fires between pages; whatever a decode throws for a corrupt or unreadable row.
  *
  * Guarantees: a page closes the paginator as soon as it is full, so a namespace
  * far larger than the page costs neither a full decode nor a truncation error.

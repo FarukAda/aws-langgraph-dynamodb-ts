@@ -29,9 +29,9 @@ import type { VectorReconcileResult } from '../types';
  * Throws: `VALIDATION` naming `namespacePrefix` or `namespacePrefix element`
  * for an empty or malformed prefix, as `search` names it, and `vectorBackend`
  * when the store has no index or backend to reconcile;
- * `RESULT_TRUNCATED` past `maxScanItems`, since repairing from a
- * partial view would prune live vectors; whatever the reads, the embeddings
- * model and the backend throw.
+ * `RESULT_TRUNCATED` past `maxScanItems` or `maxIterations`, since repairing
+ * from a partial view would prune live vectors; whatever the reads, the
+ * embeddings model and the backend throw.
  *
  * Guarantees: re-embeds with the store's configured fields, so a per-put
  * `index` field override is not reproduced — a reconcile makes the backend

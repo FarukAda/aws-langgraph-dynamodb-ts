@@ -21,6 +21,7 @@ function context(index?: StoreContext['index']): StoreContext {
     index,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    maxIterations: 1000,
     vectorScoreDirection: 'relevance',
   };
 }

@@ -65,6 +65,14 @@ export type DynamoDBStoreOptions = Omit<BaseAdapterOptions, 'indexName' | 'index
      */
     maxScanItems?: number;
     /**
+     * Cap on DynamoDB pages one search, namespace listing or reconcile reads
+     * before `RESULT_TRUNCATED` (default 1000; a page is at most 1 MB).
+     * `Infinity` reads to the end. It is the cap a rootless search or listing
+     * over a large table meets first when most of what it scans is not store
+     * rows, since those pages hold few rows for `maxScanItems` to count.
+     */
+    maxIterations?: number;
+    /**
      * Direction of the score a `vectorBackend` returns. `'relevance'` (the
      * default) forwards it unchanged; `'distance'` negates and re-sorts, so a
      * distance-native backend (S3 Vectors, FAISS L2, pgvector `<->`) satisfies
