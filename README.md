@@ -843,7 +843,7 @@ Every page `limit` in this package has a ceiling of 10 000 (`VALIDATION` naming 
 | --- | --- | --- | --- | --- |
 | `client` | `DynamoDBDocument` | **required** | — | must provide `scan` and `update`, and translate the default way — see the note below the shared options table |
 | `tableName` | `string` | **required** | — | the adapters' rule |
-| `indexShards` | `number` | 8 | 1024 | must equal the adapters' `indexShards`, or rows land on shards no listing queries |
+| `indexShards` | `number` | 8 | 1024 | must equal the saver's and the history's `indexShards`, or rows land on shards no listing queries |
 | `pageSize` | `number` | 100 | — | rows per scan page |
 | `maxPages` | `number` | none: the whole table | — | stops after this many pages and returns a `nextCursor` |
 | `cursor` | `string` | none | — | the `nextCursor` of an earlier run, to resume it |
@@ -1421,7 +1421,7 @@ aws dynamodb update-time-to-live \
   --time-to-live-specification "Enabled=true,AttributeName=ttl"
 ```
 
-The recency index (the last two `attribute-definitions` and the `--global-secondary-indexes` flag) is optional, exactly as in the CDK and Terraform definitions in the guide: drop them, run `backfillRecencyIndex()` and add the index later, then set `indexName: 'gsi1'` on the adapters. The GSI's projection must be `ALL` — the recency-index reads listed under [Maintenance operations](#maintenance-operations) read the row straight off the index, not through a follow-up `GetItem`.
+The recency index (the last two `attribute-definitions` and the `--global-secondary-indexes` flag) is optional, exactly as in the CDK and Terraform definitions in the guide: drop them, run `backfillRecencyIndex()` and add the index later, then set `indexName: 'gsi1'` on the saver and the history. The GSI's projection must be `ALL` — the recency-index reads listed under [Maintenance operations](#maintenance-operations) read the row straight off the index, not through a follow-up `GetItem`.
 
 </details>
 
@@ -1495,7 +1495,7 @@ Every adapter uses the **same simple key schema**: a string partition key `PK`, 
 | `SK` | String (RANGE) | sort key |
 | `ttl` | Number | (optional) Unix-epoch-seconds expiry; enable DynamoDB TTL on this attribute |
 | `gsi1pk` | String | (optional) recency-index partition key; written to the rows the recency listings read — checkpointer `META` and history `SESSION`; store rows carry none |
-| `gsi1sk` | String | (optional) recency-index sort key, `<updatedAt>#<id>` |
+| `gsi1sk` | String | (optional) recency-index sort key: `<updatedAt>#<id>`, or `<updatedAt>#sha256:<hex of id>` when the verbatim form would pass DynamoDB's 1024-byte sort-key cap |
 
 Those two index attributes are always written on checkpoint `META` and history
 `SESSION` rows. Until the table carries a global secondary index on them and an
@@ -1505,7 +1505,11 @@ create the index; see [Infrastructure setup](#infrastructure-setup) for the
 definition and [Maintenance operations](#maintenance-operations) for the
 backfill that must run first. A store row written by `1.0.0-rc.2` may still
 carry the two attributes. Nothing reads them, and the next put of that item
-drops them.
+drops them. On a table that already carries the GSI, those leftover keys hold
+an `ALL`-projected copy of the row in the index meanwhile, billed as index
+storage, until that put, a delete, or the row's TTL expiry; a one-off
+`UpdateItem` (`REMOVE gsi1pk, gsi1sk`) over the store's `STORE#` rows reclaims
+it sooner.
 
 Payloads live under one reserved attribute per row kind (`checkpoint`, `metadata`, `value`, `message`) as a **payload descriptor**: `{ schemaVersion: 1, location: 'INLINE' | 'S3', serdeType, compressed, bytes | s3Key }`. This shape is a compatibility contract: unknown fields are ignored, a missing `schemaVersion` reads as 1, and a higher `schemaVersion` or an unknown `location` is refused with a `VALIDATION` error (field `descriptor`) rather than misread.
 
@@ -1756,7 +1760,7 @@ Four tools repair or provision state and are meant for deployment scripts and op
 
 - **`ensureS3LifecycleRule()`** (all three adapters) — installs the S3 lifecycle expiration rule that matches the configured `ttl` under the adapter's key prefix, idempotently. It **throws** when the bucket's lifecycle configuration cannot be read or written (`AccessDenied`, `NoSuchBucket`, throttling) — that part swallows nothing — so call it once at deployment time, from a role that holds the two lifecycle actions, and treat a failure as a deployment failure. One thing it does not raise: the bucket-versioning probe that runs **after** the rules are written is best-effort and reports at `warn` (see [Logging](#logging)), because a role that provisioned rules yesterday without `s3:GetBucketVersioning` must not start failing today. A bucket with no lifecycle configuration at all is not an error either; the rules are written onto an empty set. It is a no-op when `s3` or `ttl` is not configured.
 - **`store.reconcileVectorIndex(namespacePrefix)`** — re-pushes every live item's embedding to the configured `vectorBackend` and, when the backend implements `listKeys`, prunes vectors whose item is gone; returns `{ upserted, pruned }`. Run it when the namespace is idle; it reads every row under the prefix (bounded by `maxScanItems`).
-- **`backfillRecencyIndex({ tableName, client, … })`** — gives rows written before the recency index their `gsi1pk`/`gsi1sk`. **Run it before setting `indexName` on any adapter**: a row without the keys is not in the index, so enabling the index first makes every pre-existing session and checkpoint vanish from the listings that read it — the rows are still there, and every other read still returns them, but a listing would not.
+- **`backfillRecencyIndex({ tableName, client, … })`** — gives rows written before the recency index their `gsi1pk`/`gsi1sk`. **Run it before setting `indexName` on any adapter**: a row without the keys is not in the index, so enabling the index first makes every pre-existing session and checkpoint vanish from the listings that read it — the rows are still there, and every other read still returns them, but a listing would not. A session `1.0.0-rc.2` or earlier wrote with an id long enough that `<updatedAt>#<id>` alone would pass 1024 bytes keeps that over-length `gsi1sk` after the upgrade; this tool leaves it alone too, since it already carries `gsi1pk`, so the row stays excluded from the index — and `reconcileMessageCount` on it keeps failing — until its own next `history.addMessages` call rewrites the key under the new digest form.
   - Resumable by passing back the `nextCursor` it returns as `cursor`, re-runnable, and safe against a live table: every write is conditional on the row still being there **and** having no keys yet. That first half is not decoration: `UpdateItem` upserts, so a condition naming only the index attribute is satisfied by a key holding nothing at all, and a row deleted between the scan that found it and the update that backfilled it would otherwise come back as a stub of `PK`, `SK` and the two index keys — and therefore *inside* the index, where a thread-less `saver.list()` logged one `warn` for it on every listing thereafter and `history.listSessions()` dropped it silently, one row short of the `limit` its page had asked for.
   - `indexShards` must match what the saver and the history use. The backfill writes keys only to rows that have none, so it cannot re-shard a table written with another count. Every option is checked before the first read, with `VALIDATION` naming it: an unknown key, a `tableName` DynamoDB would refuse, a `client` without `scan` and `update` or whose translation would change how a row reads back, an `indexShards` outside 1–1024, a `pageSize` or `maxPages` that is not an integer of at least 1, a `dryRun` that is not a boolean, a `retry` whose numbers break the adapters' bounds or whose hooks are not functions, a `signal` that is not an `AbortSignal`, and a `cursor` the tool did not issue.
   - `signal` cancels the run; so does `retry.signal` when no top-level `signal` is given, and when both are given the top-level one wins.

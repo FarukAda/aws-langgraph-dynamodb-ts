@@ -30,8 +30,10 @@ export interface IndexPage {
 /**
  * A cursor is the sort key of the last row handed out.
  *
- * That is all it needs to be: `gsi1sk` is `<timestamp>#<id>`, which is unique
- * and totally ordered, so the next page is simply "everything below this". It
+ * That is all it needs to be: `gsi1sk` is `<timestamp>#<id>`, or
+ * `<timestamp>#sha256:<hex of id>` once the id alone would pass the sort-key
+ * cap ({@link indexSortKey}) — either way unique and totally ordered, so the
+ * next page is simply "everything below this". It
  * is also why the cursor is not a `LastEvaluatedKey` — one per shard would have
  * to be carried, and a shard count change would silently invalidate them.
  * Opaque to the caller all the same: its shape is not a promise.
@@ -55,10 +57,11 @@ function encodeCursor(sortKey: string): string {
  * Returns: the `gsi1sk` to resume below.
  *
  * Throws: `VALIDATION` naming `cursor` when the decoded value carries no
- * `#`. `gsi1sk` is `<timestamp>#<id>`, so such a value was issued by something
- * else — a scan cursor, a page token from another API — and using it as a bound
- * would quietly return the wrong page rather than say so. A value that carries
- * a `#` is not checked further.
+ * `#`. Every `gsi1sk` this package writes — `<timestamp>#<id>` or, past the
+ * sort-key cap, `<timestamp>#sha256:<hex>` — carries one, so a value without
+ * one was issued by something else — a scan cursor, a page token from another
+ * API — and using it as a bound would quietly return the wrong page rather
+ * than say so. A value that carries a `#` is not checked further.
  */
 function decodeCursor(cursor: string): string {
   const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
@@ -328,15 +331,18 @@ function indexSortKey(at: string, id: string): string {
  *
  * The sort key leads with an ISO-8601 timestamp, used unparsed: its byte order
  * already is its chronological order, so a recency listing is a key condition
- * rather than an in-memory sort. The row's own id follows it, which makes the
- * key total — two rows written in the same millisecond still order, so a cursor
- * can never loop.
+ * rather than an in-memory sort. The row's own id, or its SHA-256 digest once
+ * the composed key would pass DynamoDB's 1024-byte sort-key cap
+ * ({@link indexSortKey}), follows it, which makes the key total — two rows
+ * written in the same millisecond still order, so a cursor can never loop.
  *
  * Accepts: `tag` — the adapter's. `id` — the row's own identifier, which
  * decides its shard and breaks ties in the sort key. `at` — an ISO-8601
- * instant. `shards` — index partitions per adapter, at least 1; fixed at table
- * creation, since changing it changes every row's shard and requires a
- * backfill.
+ * instant. `shards` — index partitions per adapter, at least 1; fixed for the
+ * table's life once rows carry keys, since `backfillRecencyIndex` writes keys
+ * only to rows that have none and so can never move a row already on a
+ * shard — raising the count is safe, since a listing still queries the old
+ * shards too, and lowering it hides the rows already on a dropped shard.
  *
  * Returns: the two index attributes; an id whose composed sort key would pass
  * 1024 bytes is carried as its SHA-256 digest.

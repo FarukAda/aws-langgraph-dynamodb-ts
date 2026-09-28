@@ -63,7 +63,7 @@ export class LangGraphTableStack extends Stack {
     });
 
     // Optional: the recency index. Add it, run backfillRecencyIndex(), then set
-    // `indexName: 'gsi1'` on the adapters. Without it every listing still works.
+    // `indexName: 'gsi1'` on the saver and the history. Without it every listing still works.
     table.addGlobalSecondaryIndex({
       indexName: 'gsi1',
       partitionKey: { name: 'gsi1pk', type: dynamodb.AttributeType.STRING },
@@ -102,7 +102,7 @@ resource "aws_dynamodb_table" "langgraph" {
   }
 
   # Optional: the recency index. Add it, run backfillRecencyIndex(), then set
-  # `indexName = "gsi1"` on the adapters. Without it every listing still works.
+  # `indexName = "gsi1"` on the saver and the history. Without it every listing still works.
   attribute {
     name = "gsi1pk"
     type = "S"

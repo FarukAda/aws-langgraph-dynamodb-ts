@@ -22,7 +22,7 @@ the numbering, and that no number is used twice.
 | [5](0005-leave-superseded-payloads-to-lifecycle-rather-than-delete-them.md) | Leave superseded payloads to lifecycle rather than delete them | Accepted |
 | [6](0006-commit-a-checkpoint-in-one-transaction-and-verify-by-reading-back.md) | Commit a checkpoint in one transaction and verify by reading back | Accepted; amended by 25 |
 | [7](0007-stamp-every-row-with-a-format-version-and-refuse-newer-rows.md) | Stamp every row with a format version and refuse newer rows | Accepted |
-| [8](0008-make-the-recency-index-opt-in-and-sharded.md) | Make the recency index opt-in and sharded | Accepted; superseded in part by 27 |
+| [8](0008-make-the-recency-index-opt-in-and-sharded.md) | Make the recency index opt-in and sharded | Accepted; superseded in part by 27, amended by 27 |
 | [9](0009-treat-the-in-memory-reference-implementations-as-the-oracle.md) | Treat the in-memory reference implementations as the oracle | Accepted |
 | [10](0010-store-every-channel-value-regardless-of-new-versions.md) | Store every channel value regardless of `newVersions` | Accepted |
 | [11](0011-default-the-serializers-and-report-serde-refusals-as-validation.md) | Default the serializers, and report serde refusals as validation | Accepted |

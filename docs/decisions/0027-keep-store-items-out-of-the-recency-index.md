@@ -17,6 +17,15 @@ The store still wrote `gsi1pk`/`gsi1sk` on every item, still accepted
 `ALL` projection, every store write was written twice for a listing that
 does not exist.
 
+Record 8 also said that changing `indexShards` "moves every row's shard and
+needs another full backfill". `backfillRecencyIndex` writes keys only to
+rows that carry none (`attribute_not_exists(#gpk)`,
+`src/backfill/backfill.ts`), so it was already incapable of moving a row off
+the shard it was written to — no count change was ever "fixed by" a
+backfill in that sense. Raising the count is safe, since a listing still
+queries the old shards alongside the new ones; only lowering it hides the
+rows already sitting on a dropped shard.
+
 ## Decision
 
 Store rows carry no recency-index keys (`buildStoreRow`,
@@ -24,9 +33,13 @@ Store rows carry no recency-index keys (`buildStoreRow`,
 (`src/shared/dynamodb/recency-index.ts`), `backfillRecencyIndex` leaves store
 rows alone, and the store refuses `indexName` and `indexShards` as options it
 does not read. Record 8 is superseded for the store; its decisions for the
-checkpointer and the chat history stand. A store row written by
-`1.0.0-rc.2` keeps its keys until it is next put, which rewrites the whole
-item without them; nothing reads them meanwhile.
+checkpointer and the chat history stand. It is also amended on
+`indexShards`: `backfillRecencyIndex` writes keys only to rows that have
+none, so it can never move a row already carrying them to a new shard —
+raising the count is safe, since a listing still queries the old shards
+too, and only lowering it hides the rows already on a dropped shard. A
+store row written by `1.0.0-rc.2` keeps its keys until it is next put,
+which rewrites the whole item without them; nothing reads them meanwhile.
 
 ## Consequences
 

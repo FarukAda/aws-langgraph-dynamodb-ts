@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted; superseded in part by 27.
+Accepted; superseded in part by 27, amended by 27.
 
 ## Context
 
