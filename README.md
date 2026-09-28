@@ -162,7 +162,7 @@ Every payload — a checkpoint, its metadata, a pending write, a store value, a 
 
 **Checkpoint read — `saver.getTuple`:**
 
-1. A config naming no thread answers `undefined`. Otherwise the `META` row is a consistent `GetItem` when `checkpoint_id` is given, or a consistent newest-first `Query` of the namespace's `META#` rows, 50 per page, keeping the first live one.
+1. A config naming no thread answers `undefined`. Otherwise the `META` row is a consistent `GetItem` when `checkpoint_id` is given, or a consistent newest-first `Query` of the namespace's `META#` rows — one per page without a `ttl`, 50 with one — keeping the first live one.
 2. A consistent `GetItem` reads the `PAYLOAD` row; when it is not there the answer is `undefined`.
 3. The checkpoint and the metadata are decoded while a consistent `Query` reads every pending `WRITE` row of the checkpoint, uncapped; superseded writes are dropped and the rest decoded `readConcurrency` at a time (8 by default).
 4. A row whose format version `v` is newer than this release understands fails with `FORMAT_UNSUPPORTED`. A `META` row past its `ttl` is treated as absent, however long DynamoDB's sweep lags.
