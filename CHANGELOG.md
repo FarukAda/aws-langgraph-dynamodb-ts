@@ -718,7 +718,19 @@ consistency tightened across the read paths.
 - The global logger singleton (`setGlobalLogger` / `getLogger` / `resetLogger`).
 - Store filter operators `$in` / `$nin` (use the supported comparison operators).
 
-## [0.2.0] - Unreleased
+## [0.2.2] - 2026-05-27
+
+A maintenance release; `0.2.1` was never published.
+
+### Changed
+
+- Releases are published to npm through trusted publishing (OIDC) instead of a stored token.
+
+### Dependencies
+
+- `@aws-sdk/client-dynamodb` and `@aws-sdk/lib-dynamodb` `^3.1054.0` (were `^3.1031.0`); `@langchain/core` `^1.1.48`, `@langchain/langgraph` `^1.3.2`, `@langchain/langgraph-checkpoint` `^1.0.2`, `@langchain/aws` `^1.3.9`; `uuid` overridden to `>=11.1.1`. Development tooling and the release workflow's `softprops/action-gh-release` (v3) updated.
+
+## [0.2.0] - 2026-04-17
 
 A production-hardening pass. Every item below is either a security fix or a
 correctness fix; there are no new features. Several changes are silent
@@ -864,7 +876,15 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 
 ---
 
-## [0.1.0] - Unreleased
+## [0.1.1] - 2026-03-22
+
+A maintenance release.
+
+### Dependencies
+
+- `@aws-sdk/client-dynamodb` and `@aws-sdk/lib-dynamodb` `^3.1014.0` (were `^3.997.0`); `@langchain/core` `^1.1.35`, `@langchain/langgraph` `^1.2.5`, `@langchain/langgraph-checkpoint` `^1.0.1`, `@langchain/aws` `^1.3.3`. Development tooling updated, and CI moves to `actions/checkout` and `actions/setup-node` v6.
+
+## [0.1.0] - 2026-02-25
 
 ### Added
 
@@ -1042,7 +1062,9 @@ behavior changes, so read the **Migration** block per entry before upgrading.
 [0.3.2]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.2.2...v0.3.0
-[0.2.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.1.0...v0.2.0
+[0.2.2]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.2.0...v0.2.2
+[0.2.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.0.11...v0.1.0
 [0.0.11]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/farukada/aws-langgraph-dynamodb-ts/compare/v0.0.9...v0.0.10
