@@ -101,7 +101,7 @@ Five more workflows run beside it:
 
 Two TypeScript versions are installed on purpose: the `typescript` alias resolves to TypeScript 6 and drives ts-jest, ESLint and TypeDoc; `@typescript/native` (TypeScript 7) provides `tsc` and builds `dist` and the shipped declarations. `npm run typecheck` checks `src` with the compiler that emits; `npm run typecheck:all` checks the whole program including tests and configs. Linting is ESLint with Prettier; run `npm run lint:fix` before committing.
 
-Three stricter compiler flags were evaluated for the build and deliberately not enabled: `verbatimModuleSyntax` (incompatible with the CommonJS build, which would need `import = require` syntax everywhere), `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (39 and 56 sites whose guards would be unreachable branches under the 100 % branch gate). `package.json` carries no `overrides` block: the one it used to hold pinned `uuid`, which no longer appears in the lock file at all. `npm run pack:check` verifies the tarball listing, `publint` and `@arethetypeswrong/cli` before a release.
+Three stricter compiler flags were evaluated for the build and deliberately not enabled: `verbatimModuleSyntax` (incompatible with the CommonJS half of the dual build, which would need `import = require` syntax everywhere), `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (39 and 56 sites whose guards would be unreachable branches under the 100 % branch gate). `package.json` carries no `overrides` block: the one it used to hold pinned `uuid`, which no longer appears in the lock file at all. `npm run pack:check` verifies the tarball listing, `publint` and `@arethetypeswrong/cli` before a release.
 
 ## Where behaviour comes from
 

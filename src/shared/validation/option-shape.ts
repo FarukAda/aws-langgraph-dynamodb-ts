@@ -10,7 +10,7 @@
  * same for every option object this package reads.
  */
 
-import { validationError } from '../errors/errors';
+import { validationError } from '../errors/errors.js';
 
 /**
  * Every key of `T`, listed once.

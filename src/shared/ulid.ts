@@ -12,7 +12,7 @@
 
 import { randomBytes } from 'node:crypto';
 
-import { validationError } from './errors/errors';
+import { validationError } from './errors/errors.js';
 
 const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const ENCODING_LEN = 32;

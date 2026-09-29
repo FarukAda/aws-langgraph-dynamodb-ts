@@ -24,20 +24,20 @@ import {
   type PendingWrite,
 } from '@langchain/langgraph-checkpoint';
 
-import type { AdapterShell } from '../shared/adapter';
-import { guardPublic, guardPublicIterable, guardPublicSync } from '../shared/errors/boundary';
-import type { CancelOptions } from '../shared/options';
-import { assertCancelOptions } from '../shared/validation/collaborators';
-import { parseShape } from '../shared/validation/option-shape';
-import { deleteThread as deleteThreadAction } from './actions/delete-thread';
-import { getCheckpointTuple } from './actions/get-tuple';
-import { listCheckpoints } from './actions/list';
-import { putCheckpoint } from './actions/put';
-import { putWrites as putWritesAction } from './actions/put-writes';
-import { deltaChannelHistory } from './internal/delta-history';
-import { parseDeltaHistoryRequest } from './internal/parse';
-import { SAVER_KEYS, type CheckpointerContext, setUpCheckpointer } from './internal/setup';
-import type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './types';
+import type { AdapterShell } from '../shared/adapter.js';
+import { guardPublic, guardPublicIterable, guardPublicSync } from '../shared/errors/boundary.js';
+import type { CancelOptions } from '../shared/options.js';
+import { assertCancelOptions } from '../shared/validation/collaborators.js';
+import { parseShape } from '../shared/validation/option-shape.js';
+import { deleteThread as deleteThreadAction } from './actions/delete-thread.js';
+import { getCheckpointTuple } from './actions/get-tuple.js';
+import { listCheckpoints } from './actions/list.js';
+import { putWrites as putWritesAction } from './actions/put-writes.js';
+import { putCheckpoint } from './actions/put.js';
+import { deltaChannelHistory } from './internal/delta-history.js';
+import { parseDeltaHistoryRequest } from './internal/parse.js';
+import { SAVER_KEYS, type CheckpointerContext, setUpCheckpointer } from './internal/setup.js';
+import type { DeltaChannelHistoryOptions, DynamoDBSaverOptions } from './types.js';
 
 /**
  * DynamoDB-backed LangGraph checkpoint saver. Every public method rejects only

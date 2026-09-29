@@ -23,17 +23,17 @@ import {
   type SearchItem,
 } from '@langchain/langgraph-checkpoint';
 
-import type { AdapterShell } from '../shared/adapter';
-import { guardPublic, guardPublicSync } from '../shared/errors/boundary';
-import type { CancelOptions } from '../shared/options';
-import { assertSignalLike, assertCancelOptions } from '../shared/validation/collaborators';
-import { assertObjectShape } from '../shared/validation/option-shape';
-import { listNamespaces } from './actions/list-namespaces';
-import { putItem } from './actions/put';
-import { reconcileVectorIndex as reconcileVectorIndexAction } from './actions/reconcile-vector-index';
-import { searchItems } from './actions/search';
-import { runBatch } from './internal/batch-plan';
-import { getItem } from './internal/get-item';
+import type { AdapterShell } from '../shared/adapter.js';
+import { guardPublic, guardPublicSync } from '../shared/errors/boundary.js';
+import type { CancelOptions } from '../shared/options.js';
+import { assertSignalLike, assertCancelOptions } from '../shared/validation/collaborators.js';
+import { assertObjectShape } from '../shared/validation/option-shape.js';
+import { listNamespaces } from './actions/list-namespaces.js';
+import { putItem } from './actions/put.js';
+import { reconcileVectorIndex as reconcileVectorIndexAction } from './actions/reconcile-vector-index.js';
+import { searchItems } from './actions/search.js';
+import { runBatch } from './internal/batch-plan.js';
+import { getItem } from './internal/get-item.js';
 import {
   parseListNamespacesOptions,
   parseNamespacePrefix,
@@ -42,14 +42,14 @@ import {
   parsePutArguments,
   parseSearch,
   parseStoreAddress,
-} from './internal/parse';
-import { type StoreContext, setUpStore } from './internal/setup';
+} from './internal/parse.js';
+import { type StoreContext, setUpStore } from './internal/setup.js';
 import type {
   DynamoDBStoreOptions,
   ListNamespacesOptions,
   SearchOptions,
   VectorReconcileResult,
-} from './types';
+} from './types.js';
 
 type SingleResult = Item | null | SearchItem[] | string[][];
 

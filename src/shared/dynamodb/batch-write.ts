@@ -6,11 +6,11 @@
  * that still cannot finish is reported with how much of it did.
  */
 
-import { hasErrorCode } from '../errors/base-error';
-import { ErrorCode } from '../errors/error-code';
-import { batchWriteAllIncompleteError, batchWriteIncompleteError } from '../errors/errors';
-import { isAbortError } from './abort';
-import type { DynamoDBDocumentLike, WriteRequest } from './client';
+import { hasErrorCode } from '../errors/base-error.js';
+import { ErrorCode } from '../errors/error-code.js';
+import { batchWriteAllIncompleteError, batchWriteIncompleteError } from '../errors/errors.js';
+import { isAbortError } from './abort.js';
+import type { DynamoDBDocumentLike, WriteRequest } from './client.js';
 import {
   fullJitter,
   INITIAL_BACKOFF_DELAY_MS,
@@ -19,7 +19,7 @@ import {
   sleep,
   type RetryOptions,
   withDynamoDBRetry,
-} from './retry';
+} from './retry.js';
 
 /**
  * DynamoDB BatchWriteItem maximum requests per call.

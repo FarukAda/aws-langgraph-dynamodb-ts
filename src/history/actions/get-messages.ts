@@ -22,16 +22,16 @@ import {
   isPermanentPayloadLoss,
   loadPayloadValue,
   readPayloadBytes,
-} from '../../shared/codec/codec';
-import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
-import { failureLabel, toError } from '../../shared/errors/base-error';
-import { truncateForLog } from '../../shared/logging/truncate';
-import type { CancelOptions } from '../../shared/options';
-import { readWindow } from '../internal/message-read';
-import { parseGetMessagesRequest, type SessionId } from '../internal/parse';
-import type { MessageRow } from '../internal/rows';
-import type { HistoryContext } from '../internal/setup';
-import type { MessageWindow } from '../types';
+} from '../../shared/codec/codec.js';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency.js';
+import { failureLabel, toError } from '../../shared/errors/base-error.js';
+import { truncateForLog } from '../../shared/logging/truncate.js';
+import type { CancelOptions } from '../../shared/options.js';
+import { readWindow } from '../internal/message-read.js';
+import { parseGetMessagesRequest, type SessionId } from '../internal/parse.js';
+import type { MessageRow } from '../internal/rows.js';
+import type { HistoryContext } from '../internal/setup.js';
+import type { MessageWindow } from '../types.js';
 
 /** One item's decode outcome: a rebuilt message, or a proof that it never can be. */
 type Decoded = { kind: 'ok'; message: BaseMessage } | { kind: 'corrupt'; error: Error };

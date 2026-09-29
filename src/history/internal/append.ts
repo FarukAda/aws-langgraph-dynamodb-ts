@@ -12,13 +12,17 @@
  * message row to the SESSION row's `writeId`.
  */
 
-import { nowIso } from '../../shared/clock';
-import { PayloadLocation, type PayloadDescriptor, collectS3Keys } from '../../shared/codec/codec';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
-import { abortErrorFrom, isAbortError } from '../../shared/dynamodb/abort';
-import { batchWriteAll } from '../../shared/dynamodb/batch-write';
-import { conditionFailedAt, conditionalCheckFailure } from '../../shared/dynamodb/cancellation';
-import type { AttributeMap } from '../../shared/dynamodb/client';
+import { nowIso } from '../../shared/clock.js';
+import {
+  PayloadLocation,
+  type PayloadDescriptor,
+  collectS3Keys,
+} from '../../shared/codec/codec.js';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader.js';
+import { abortErrorFrom, isAbortError } from '../../shared/dynamodb/abort.js';
+import { batchWriteAll } from '../../shared/dynamodb/batch-write.js';
+import { conditionFailedAt, conditionalCheckFailure } from '../../shared/dynamodb/cancellation.js';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
 import {
   readRow,
   settledVerdict,
@@ -26,16 +30,16 @@ import {
   verdictFor,
   type RowProbe,
   type WriteVerdict,
-} from '../../shared/dynamodb/idempotent-write';
-import { type RowKey, SORT_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema';
-import { DynamoDBLangGraphError, failureLabel, toError } from '../../shared/errors/base-error';
-import { refusedByService } from '../../shared/errors/classify';
-import { ErrorCode } from '../../shared/errors/error-code';
-import { compensationFailedError, unsettledAppendError } from '../../shared/errors/errors';
-import { absorbLoggerFailure } from '../../shared/logging/logger';
-import { truncateForLog } from '../../shared/logging/truncate';
-import type { SessionId, StorableMessages } from './parse';
-import { buildMessageRow, type MessageRow } from './rows';
+} from '../../shared/dynamodb/idempotent-write.js';
+import { type RowKey, SORT_KEY_ATTRIBUTE, rowKeyOf } from '../../shared/dynamodb/table-schema.js';
+import { DynamoDBLangGraphError, failureLabel, toError } from '../../shared/errors/base-error.js';
+import { refusedByService } from '../../shared/errors/classify.js';
+import { ErrorCode } from '../../shared/errors/error-code.js';
+import { compensationFailedError, unsettledAppendError } from '../../shared/errors/errors.js';
+import { absorbLoggerFailure } from '../../shared/logging/logger.js';
+import { truncateForLog } from '../../shared/logging/truncate.js';
+import type { SessionId, StorableMessages } from './parse.js';
+import { buildMessageRow, type MessageRow } from './rows.js';
 import {
   buildSessionUpdate,
   deriveTitle,
@@ -43,8 +47,8 @@ import {
   revertSessionCreation,
   type SessionUpdateFields,
   type TtlAnchorResult,
-} from './session';
-import { type HistoryContext, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from './setup';
+} from './session.js';
+import { type HistoryContext, MESSAGE_APPEND_RETRY_MAX_ATTEMPTS } from './setup.js';
 
 /** One append, parsed: the session, its messages in stored form, and the session's ttl anchor. */
 export interface AppendRequest {

@@ -5,6 +5,9 @@
 export const sharedJestConfig = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  // The sources import each other by their emitted `.js` names, which name no
+  // file before a build: jest resolves the `.ts` source behind each one.
+  moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' },
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',

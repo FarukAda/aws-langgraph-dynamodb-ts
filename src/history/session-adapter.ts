@@ -11,15 +11,15 @@
 import { BaseListChatMessageHistory } from '@langchain/core/chat_history';
 import type { BaseMessage } from '@langchain/core/messages';
 
-import { guardPublic } from '../shared/errors/boundary';
-import { assertMembers } from '../shared/validation/collaborators';
-import { allKeysOf, assertShape } from '../shared/validation/option-shape';
+import { guardPublic } from '../shared/errors/boundary.js';
+import { assertMembers } from '../shared/validation/collaborators.js';
+import { allKeysOf, assertShape } from '../shared/validation/option-shape.js';
 import {
   parseMessageWindow,
   parseSessionId,
   type ParsedWindow,
   type SessionId,
-} from './internal/parse';
+} from './internal/parse.js';
 
 /** The read window an adapter applies to every `getMessages`. */
 export type AdapterWindow = { limit?: number };

@@ -3,6 +3,8 @@ import { dirname, join, resolve } from 'node:path';
 
 import * as ts from 'typescript';
 
+import { withoutEmittedExtension } from './source-files';
+
 /** A detected dependency cycle: the ordered file paths that close the loop. */
 export type ImportCycle = string[];
 
@@ -13,7 +15,7 @@ export type ImportCycle = string[];
  */
 function resolveRelativeImport(fromFile: string, specifier: string): string | undefined {
   if (!specifier.startsWith('.')) return undefined;
-  const base = resolve(dirname(fromFile), specifier);
+  const base = resolve(dirname(fromFile), withoutEmittedExtension(specifier));
   const candidates = [`${base}.ts`, join(base, 'index.ts')];
   return candidates.find((candidate) => existsSync(candidate));
 }

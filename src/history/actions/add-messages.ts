@@ -11,11 +11,11 @@
 
 import type { BaseMessage } from '@langchain/core/messages';
 
-import { calculateTtlTimestamp } from '../../shared/validation/ttl';
-import { appendMessages } from '../internal/append';
-import { parseMessages, parseSessionId } from '../internal/parse';
-import { resolveTtlAnchor } from '../internal/session';
-import type { HistoryContext } from '../internal/setup';
+import { calculateTtlTimestamp } from '../../shared/validation/ttl.js';
+import { appendMessages } from '../internal/append.js';
+import { parseMessages, parseSessionId } from '../internal/parse.js';
+import { resolveTtlAnchor } from '../internal/session.js';
+import type { HistoryContext } from '../internal/setup.js';
 
 /**
  * Append messages as one item per message. Each chunk writes its message Puts

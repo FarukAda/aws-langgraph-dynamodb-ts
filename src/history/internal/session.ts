@@ -17,34 +17,39 @@
 import type { NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 import type { StoredMessage } from '@langchain/core/messages';
 
-import { nowSeconds } from '../../shared/clock';
-import { conditionFailedAt } from '../../shared/dynamodb/cancellation';
-import type { AttributeMap, TransactAction } from '../../shared/dynamodb/client';
+import { nowSeconds } from '../../shared/clock.js';
+import { conditionFailedAt } from '../../shared/dynamodb/cancellation.js';
+import type { AttributeMap, TransactAction } from '../../shared/dynamodb/client.js';
 import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   transactIdempotently,
-} from '../../shared/dynamodb/idempotent-write';
+} from '../../shared/dynamodb/idempotent-write.js';
 import {
   backfilledAt,
   DEFAULT_INDEX_SHARDS,
   indexKeys,
   type IndexTarget,
-} from '../../shared/dynamodb/recency-index';
-import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
+} from '../../shared/dynamodb/recency-index.js';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry.js';
 import {
   assertReadableRow,
   isExpiredRow,
   PARTITION_KEY_ATTRIBUTE,
   ROW_FORMAT_VERSION,
-} from '../../shared/dynamodb/table-schema';
-import { classifyAwsError } from '../../shared/errors/classify';
-import { ErrorCode } from '../../shared/errors/error-code';
-import { conflictError } from '../../shared/errors/errors';
-import type { SessionMetadata } from '../types';
-import { countLiveMessages } from './message-read';
-import type { SessionId } from './parse';
-import { historyPartitionPrefix, SESSION_SORT_KEY, sessionPartition, sessionRowKey } from './rows';
-import type { HistoryContext } from './setup';
+} from '../../shared/dynamodb/table-schema.js';
+import { classifyAwsError } from '../../shared/errors/classify.js';
+import { ErrorCode } from '../../shared/errors/error-code.js';
+import { conflictError } from '../../shared/errors/errors.js';
+import type { SessionMetadata } from '../types.js';
+import { countLiveMessages } from './message-read.js';
+import type { SessionId } from './parse.js';
+import {
+  historyPartitionPrefix,
+  SESSION_SORT_KEY,
+  sessionPartition,
+  sessionRowKey,
+} from './rows.js';
+import type { HistoryContext } from './setup.js';
 
 /**
  * True when the transaction's first item — the SESSION row update or delete,

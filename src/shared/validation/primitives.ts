@@ -10,7 +10,7 @@
  * restate them, so tightening one changes every method at once.
  */
 
-import { validationError } from '../errors/errors';
+import { validationError } from '../errors/errors.js';
 
 /**
  * Largest `limit` any read accepts, on every method that takes one.

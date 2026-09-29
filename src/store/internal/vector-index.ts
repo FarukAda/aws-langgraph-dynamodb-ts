@@ -12,32 +12,32 @@
 
 import type { IndexConfig, Item, SearchItem } from '@langchain/langgraph-checkpoint';
 
-import { nowSeconds } from '../../shared/clock';
-import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
-import { isRowAbsent, readRow } from '../../shared/dynamodb/idempotent-write';
-import { paginateQuery } from '../../shared/dynamodb/paginate';
-import { retryFor } from '../../shared/dynamodb/retry';
-import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema';
-import { failureLabel } from '../../shared/errors/base-error';
-import { validationError } from '../../shared/errors/errors';
-import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
-import type { VectorReconcileResult } from '../types';
+import { nowSeconds } from '../../shared/clock.js';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency.js';
+import { isRowAbsent, readRow } from '../../shared/dynamodb/idempotent-write.js';
+import { paginateQuery } from '../../shared/dynamodb/paginate.js';
+import { retryFor } from '../../shared/dynamodb/retry.js';
+import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema.js';
+import { failureLabel } from '../../shared/errors/base-error.js';
+import { validationError } from '../../shared/errors/errors.js';
+import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate.js';
+import type { VectorReconcileResult } from '../types.js';
 import type {
   VectorBackend,
   VectorMatch,
   VectorRef,
   VectorScoreDirection,
-} from '../vector-backend';
-import type { JsonValue } from './filter';
-import { passesFilter } from './filter';
-import { getItem } from './get-item';
+} from '../vector-backend.js';
+import type { JsonValue } from './filter.js';
+import { passesFilter } from './filter.js';
+import { getItem } from './get-item.js';
 import {
   type Namespace,
   type ParsedPut,
   type ParsedSearch,
   parseStoreAddress,
   type StoreAddress,
-} from './parse';
+} from './parse.js';
 import {
   itemRowKey,
   namespaceMatchesPrefix,
@@ -46,9 +46,9 @@ import {
   REVISION_ATTRIBUTE,
   scopedQuery,
   type StoreItemRow,
-} from './rows';
-import { assertVectorDims, embedValue, embedValues } from './semantic-search';
-import type { StoreContext } from './setup';
+} from './rows.js';
+import { assertVectorDims, embedValue, embedValues } from './semantic-search.js';
+import type { StoreContext } from './setup.js';
 
 /** A store context whose vector copy is configured: an embeddings index and a backend. */
 export type BackendContext = StoreContext & {

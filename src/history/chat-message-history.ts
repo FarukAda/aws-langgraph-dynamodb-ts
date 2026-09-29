@@ -14,23 +14,23 @@
 
 import type { BaseMessage } from '@langchain/core/messages';
 
-import type { AdapterShell } from '../shared/adapter';
-import { guardPublic, guardPublicSync } from '../shared/errors/boundary';
-import type { CancelOptions } from '../shared/options';
-import { assertCancelOptions } from '../shared/validation/collaborators';
-import { addMessages as addMessagesAction } from './actions/add-messages';
-import { clearSession } from './actions/clear';
-import { getMessages as getMessagesAction } from './actions/get-messages';
-import { listSessions as listSessionsAction } from './actions/list-sessions';
-import { reconcileMessageCount as reconcileMessageCountAction } from './actions/reconcile-count';
-import { type HistoryContext, setUpHistory } from './internal/setup';
-import { type AdapterWindow, DynamoDBSessionChatMessageHistory } from './session-adapter';
+import type { AdapterShell } from '../shared/adapter.js';
+import { guardPublic, guardPublicSync } from '../shared/errors/boundary.js';
+import type { CancelOptions } from '../shared/options.js';
+import { assertCancelOptions } from '../shared/validation/collaborators.js';
+import { addMessages as addMessagesAction } from './actions/add-messages.js';
+import { clearSession } from './actions/clear.js';
+import { getMessages as getMessagesAction } from './actions/get-messages.js';
+import { listSessions as listSessionsAction } from './actions/list-sessions.js';
+import { reconcileMessageCount as reconcileMessageCountAction } from './actions/reconcile-count.js';
+import { type HistoryContext, setUpHistory } from './internal/setup.js';
+import { type AdapterWindow, DynamoDBSessionChatMessageHistory } from './session-adapter.js';
 import type {
   DynamoDBChatMessageHistoryOptions,
   GetMessagesOptions,
   ListSessionsOptions,
   SessionPage,
-} from './types';
+} from './types.js';
 
 /**
  * DynamoDB-backed multi-session chat history. Each message is its own row,

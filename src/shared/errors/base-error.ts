@@ -8,8 +8,8 @@
  * anything reads it.
  */
 
-import type { WriteRequest } from '../dynamodb/client';
-import { ErrorCode } from './error-code';
+import type { WriteRequest } from '../dynamodb/client.js';
+import { ErrorCode } from './error-code.js';
 
 const ERROR_BRAND = Symbol.for('@farukada/aws-langgraph-dynamodb-ts/error');
 

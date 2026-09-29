@@ -8,8 +8,8 @@
  * quotes its cause share these rules, so a new credential shape is one edit.
  */
 
-import { toError } from '../errors/base-error';
-import { truncateRelayedText } from './truncate';
+import { toError } from '../errors/base-error.js';
+import { truncateRelayedText } from './truncate.js';
 
 /** Marker substituted for anything recognised as secret. */
 export const REDACTED = '[REDACTED]';

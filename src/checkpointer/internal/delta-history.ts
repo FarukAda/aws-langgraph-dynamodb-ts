@@ -16,16 +16,16 @@ import type {
   DeltaChannelHistory,
 } from '@langchain/langgraph-checkpoint';
 
-import { nowSeconds } from '../../shared/clock';
-import type { AttributeMap } from '../../shared/dynamodb/client';
-import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
-import { isExpiredRow } from '../../shared/dynamodb/table-schema';
-import { DynamoDBLangGraphError } from '../../shared/errors/base-error';
-import { ErrorCode } from '../../shared/errors/error-code';
-import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate';
-import type { CheckpointConfigurable } from '../types';
-import { metaRowKey } from './rows';
-import type { CheckpointerContext } from './setup';
+import { nowSeconds } from '../../shared/clock.js';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry.js';
+import { isExpiredRow } from '../../shared/dynamodb/table-schema.js';
+import { DynamoDBLangGraphError } from '../../shared/errors/base-error.js';
+import { ErrorCode } from '../../shared/errors/error-code.js';
+import { truncateForLog, truncateLabelsForLog } from '../../shared/logging/truncate.js';
+import type { CheckpointConfigurable } from '../types.js';
+import { metaRowKey } from './rows.js';
+import type { CheckpointerContext } from './setup.js';
 
 /**
  * A channel's stored value, as the contract being implemented defines it: a

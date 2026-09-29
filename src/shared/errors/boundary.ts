@@ -8,16 +8,16 @@
  * with its cause attached and its text redacted.
  */
 
-import { redactedMessage } from '../logging/secret-patterns';
-import { truncateForLog } from '../logging/truncate';
+import { redactedMessage } from '../logging/secret-patterns.js';
+import { truncateForLog } from '../logging/truncate.js';
 import {
   type AnyDynamoDBLangGraphError,
   DynamoDBLangGraphError,
   type ErrorContext,
   isDynamoDBLangGraphError,
   toError,
-} from './base-error';
-import { awsDiagnostics, classifiableCause, classifyAwsError } from './classify';
+} from './base-error.js';
+import { awsDiagnostics, classifiableCause, classifyAwsError } from './classify.js';
 
 /**
  * Fill in where an error surfaced, when it does not say already.

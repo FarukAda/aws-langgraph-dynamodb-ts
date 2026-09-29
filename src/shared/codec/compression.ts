@@ -11,8 +11,8 @@
 import { promisify } from 'node:util';
 import { gunzip, gzip } from 'node:zlib';
 
-import { DynamoDBLangGraphError } from '../errors/base-error';
-import { ErrorCode } from '../errors/error-code';
+import { DynamoDBLangGraphError } from '../errors/base-error.js';
+import { ErrorCode } from '../errors/error-code.js';
 
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);

@@ -17,7 +17,7 @@ import {
   type TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 
-import type { Logger } from '../logging/logger';
+import type { Logger } from '../logging/logger.js';
 
 /**
  * How long one request attempt may take on a client this library builds

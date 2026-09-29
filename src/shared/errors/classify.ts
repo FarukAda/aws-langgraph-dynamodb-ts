@@ -13,9 +13,9 @@ import {
   conditionalCheckFailure,
   throttledCancellation,
   transientCancellation,
-} from '../dynamodb/cancellation';
-import type { ErrorContext } from './base-error';
-import { ErrorCode } from './error-code';
+} from '../dynamodb/cancellation.js';
+import type { ErrorContext } from './base-error.js';
+import { ErrorCode } from './error-code.js';
 
 /** The fields an AWS SDK v3 error, or a transport error under it, can carry. */
 interface AwsErrorFields {

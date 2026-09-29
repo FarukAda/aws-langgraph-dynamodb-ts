@@ -10,12 +10,12 @@
 
 import type { MatchCondition } from '@langchain/langgraph-checkpoint';
 
-import { nowSeconds } from '../../shared/clock';
-import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
-import { isExpiredRow, KEY_SEPARATOR, withoutExpired } from '../../shared/dynamodb/table-schema';
-import type { ParsedList } from '../internal/parse';
-import { parseStoreRow, projectKeys, scopedQuery, storeScan } from '../internal/rows';
-import type { StoreContext } from '../internal/setup';
+import { nowSeconds } from '../../shared/clock.js';
+import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate.js';
+import { isExpiredRow, KEY_SEPARATOR, withoutExpired } from '../../shared/dynamodb/table-schema.js';
+import type { ParsedList } from '../internal/parse.js';
+import { parseStoreRow, projectKeys, scopedQuery, storeScan } from '../internal/rows.js';
+import type { StoreContext } from '../internal/setup.js';
 
 const WILDCARD = '*';
 

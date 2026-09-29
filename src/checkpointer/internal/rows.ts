@@ -22,24 +22,24 @@ import type {
 } from '@langchain/langgraph-checkpoint';
 import { WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint';
 
-import { nowIso } from '../../shared/clock';
+import { nowIso } from '../../shared/clock.js';
 import {
   codecDepsOf,
   collectS3Keys,
   decodePayload,
   encodePayload,
   type PayloadDescriptor,
-} from '../../shared/codec/codec';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
-import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
-import type { AttributeMap } from '../../shared/dynamodb/client';
-import { namedDescriptor, type NamedDescriptor } from '../../shared/dynamodb/partition-delete';
+} from '../../shared/codec/codec.js';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader.js';
+import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency.js';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
+import { namedDescriptor, type NamedDescriptor } from '../../shared/dynamodb/partition-delete.js';
 import {
   BACKFILLED_AT,
   DEFAULT_INDEX_SHARDS,
   indexKeys,
   type IndexTarget,
-} from '../../shared/dynamodb/recency-index';
+} from '../../shared/dynamodb/recency-index.js';
 import {
   ADAPTER_TAGS,
   assertReadableRow,
@@ -48,11 +48,11 @@ import {
   ROW_FORMAT_VERSION,
   type RowKey,
   SORT_KEY_ATTRIBUTE,
-} from '../../shared/dynamodb/table-schema';
-import { validationError } from '../../shared/errors/errors';
-import { truncateForLog } from '../../shared/logging/truncate';
-import { createUlidFactory } from '../../shared/ulid';
-import type { CheckpointerContext } from './setup';
+} from '../../shared/dynamodb/table-schema.js';
+import { validationError } from '../../shared/errors/errors.js';
+import { truncateForLog } from '../../shared/logging/truncate.js';
+import { createUlidFactory } from '../../shared/ulid.js';
+import type { CheckpointerContext } from './setup.js';
 
 /** Where one stored checkpoint lives: from a parsed address, or from a row's own identifiers. */
 export interface CheckpointLocation {

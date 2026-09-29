@@ -9,18 +9,18 @@
  * expired, foreign and malformed ones.
  */
 
-import { nowSeconds } from '../../shared/clock';
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency';
-import { paginateScan } from '../../shared/dynamodb/paginate';
-import { DEFAULT_INDEX_SHARDS, queryRecencyIndex } from '../../shared/dynamodb/recency-index';
-import { retryFor } from '../../shared/dynamodb/retry';
-import { PARTITION_KEY_ATTRIBUTE, SORT_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema';
-import { type PageLimit, parseLimit } from '../../shared/validation/primitives';
-import { type ListSessionsRequest, parseListSessionsRequest } from '../internal/parse';
-import { SESSION_SORT_KEY, historyPartitionPrefix } from '../internal/rows';
-import { summariseSession } from '../internal/session';
-import type { HistoryContext } from '../internal/setup';
-import type { ListSessionsOptions, SessionMetadata, SessionPage } from '../types';
+import { nowSeconds } from '../../shared/clock.js';
+import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency.js';
+import { paginateScan } from '../../shared/dynamodb/paginate.js';
+import { DEFAULT_INDEX_SHARDS, queryRecencyIndex } from '../../shared/dynamodb/recency-index.js';
+import { retryFor } from '../../shared/dynamodb/retry.js';
+import { PARTITION_KEY_ATTRIBUTE, SORT_KEY_ATTRIBUTE } from '../../shared/dynamodb/table-schema.js';
+import { type PageLimit, parseLimit } from '../../shared/validation/primitives.js';
+import { type ListSessionsRequest, parseListSessionsRequest } from '../internal/parse.js';
+import { SESSION_SORT_KEY, historyPartitionPrefix } from '../internal/rows.js';
+import { summariseSession } from '../internal/session.js';
+import type { HistoryContext } from '../internal/setup.js';
+import type { ListSessionsOptions, SessionMetadata, SessionPage } from '../types.js';
 
 /** Rows per page when the caller names none. */
 const DEFAULT_PAGE_SIZE: PageLimit = parseLimit(100, 0);

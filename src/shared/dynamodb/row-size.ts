@@ -10,7 +10,7 @@
  * built the row — an embedding, an upload — was already done.
  */
 
-import type { AttributeMap } from './client';
+import type { AttributeMap } from './client.js';
 
 /** DynamoDB's cap on one item, 400 KB, in the binary kilobytes its documentation counts in. */
 export const MAX_ROW_BYTES = 400 * 1024;

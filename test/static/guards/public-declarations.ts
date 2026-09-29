@@ -4,7 +4,7 @@ import { relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 
 import { type UnguardedMethod, unguardedMethodsIn } from './guarded-methods';
-import { SRC_ROOT } from './source-files';
+import { SRC_ROOT, withoutEmittedExtension } from './source-files';
 
 /**
  * One value `entry` (shaped like `src/index.ts`) makes public, before it is
@@ -237,7 +237,7 @@ function syntheticReader(
 
 /** A reader over the real tree: `path`, relative to `src/index.ts`, is the `.ts` file it names. */
 function treeReader(path: string): ResolvedModule {
-  const absolute = `${resolve(SRC_ROOT, path)}.ts`;
+  const absolute = `${resolve(SRC_ROOT, withoutEmittedExtension(path))}.ts`;
   return {
     file: relative(SRC_ROOT, absolute).split(sep).join('/'),
     source: readFileSync(absolute, 'utf8'),

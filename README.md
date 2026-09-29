@@ -16,7 +16,7 @@ Built with [LangGraph](https://langchain-ai.github.io/langgraphjs/) · [LangChai
 
 ---
 
-A DynamoDB persistence layer for [LangGraph](https://langchain-ai.github.io/langgraphjs/) in TypeScript (CommonJS build, consumable from both ESM and CommonJS; Node ≥ 22). It provides three LangGraph/LangChain adapters — a checkpoint saver, a long-term memory store and a chat message history — plus a factory, and all three can live in a single DynamoDB table.
+A DynamoDB persistence layer for [LangGraph](https://langchain-ai.github.io/langgraphjs/) in TypeScript (an ES-module build and a CommonJS build; Node ≥ 22). It provides three LangGraph/LangChain adapters — a checkpoint saver, a long-term memory store and a chat message history — plus a factory, and all three can live in a single DynamoDB table.
 
 Every adapter supports optional **gzip compression**, **S3 offloading** of payloads over DynamoDB's 400 KB item limit, and **TTL-based expiry**. The store additionally supports **vector semantic search** — in-DynamoDB by default, or delegated to a **pluggable `VectorBackend`** (e.g. OpenSearch / pgvector) for large corpora — via any LangChain `Embeddings` implementation.
 
@@ -211,10 +211,10 @@ npm install @aws-sdk/client-s3
 npm install @langchain/aws        # e.g. Bedrock Titan embeddings
 ```
 
-The build is CommonJS and works from both module systems:
+The package ships two builds from one source: `import` loads an ES-module build and `require` a CommonJS one, each with its own declarations, so an ES-module application loads one copy of `@langchain/core` and `@langchain/langgraph-checkpoint` rather than a CommonJS copy beside its own ([decision record 29](docs/decisions/0029-publish-both-an-es-module-and-a-commonjs-build.md)). Use named imports; the package has no default export:
 
 ```typescript
-import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts'; // ESM or TypeScript
+import { DynamoDBSaver } from '@farukada/aws-langgraph-dynamodb-ts'; // ES modules or TypeScript
 ```
 
 ```js
@@ -235,10 +235,10 @@ const { DynamoDBSaver } = require('@farukada/aws-langgraph-dynamodb-ts'); // Com
 ### Runtime requirements
 
 - **Node.js** 22 or later; CI runs 22, 24 and 26 on Linux, macOS and Windows.
-- **Module format:** one CommonJS build, usable from both `import` and `require`, as shown above.
+- **Module format:** an ES-module build for `import` and a CommonJS build for `require`, each with its own declarations, as shown above.
 - **TypeScript:** the shipped declarations target TypeScript 5.x and later.
 - **Tree-shaking:** the package declares `"sideEffects": false`.
-- **Bundling:** the optional `@aws-sdk/client-s3` peer is loaded lazily through a dynamic `import()`, so a bundler (esbuild, rollup, webpack) must either have it installed or mark `@aws-sdk/*` external — CDK's `NodejsFunction` does the latter by default, a bare esbuild build does not.
+- **Bundling:** the optional `@aws-sdk/client-s3` peer is loaded lazily on first use — a dynamic `import()`, which the CommonJS build compiles to `require` — so a bundler (esbuild, rollup, webpack) must either have it installed or mark `@aws-sdk/*` external — CDK's `NodejsFunction` does the latter by default, a bare esbuild build does not.
 - **Top-level `await`:** the samples in this README use it, which needs an ES module (a `.mjs` file, `"type": "module"`, or TypeScript emitting ES modules). In CommonJS, wrap a sample's body in an `async` function and call it.
 
 ### Minimal agent
@@ -1341,6 +1341,7 @@ What your code has to change, most common first:
   - `ensureS3LifecycleRule()` also reads `s3:GetBucketVersioning`.
   - `s3:ListBucket` is recommended ([IAM permissions](#iam-permissions)).
 - **Packaging:**
+  - `import` loads an ES-module build and `require` a CommonJS one. Use named imports: a default import (`import pkg from …`) no longer resolves to the package's exports.
   - The tarball ships no source maps and declares `sideEffects: false`.
   - The `createClient` and `createS3Client` hooks are internal.
   - `package.json` is exported for tooling.
@@ -1991,7 +1992,7 @@ This package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### The public API
 
-The public API is everything exported from the package entry point (`dist/index.js` / `dist/index.d.ts`): the five classes `DynamoDBSaver`, `DynamoDBStore`, `DynamoDBChatMessageHistory`, `DynamoDBSessionChatMessageHistory` and `DynamoDBFactory`; the error model (`DynamoDBLangGraphError`, `ErrorCode`, `isDynamoDBLangGraphError`); the operator tool `backfillRecencyIndex`; the logging helpers (`redactLogger`, `redactSecrets`); the `JSON_SERDE` serializer; and every exported type. A test (`test/types/public-surface.test.ts`) enumerates the set and pins the adapter method signatures.
+The public API is everything exported from the package entry point (`dist/esm/index.js` for `import` and `dist/cjs/index.js` for `require`, each beside its `index.d.ts`): the five classes `DynamoDBSaver`, `DynamoDBStore`, `DynamoDBChatMessageHistory`, `DynamoDBSessionChatMessageHistory` and `DynamoDBFactory`; the error model (`DynamoDBLangGraphError`, `ErrorCode`, `isDynamoDBLangGraphError`); the operator tool `backfillRecencyIndex`; the logging helpers (`redactLogger`, `redactSecrets`); the `JSON_SERDE` serializer; and every exported type. A test (`test/types/public-surface.test.ts`) enumerates the set and pins the adapter method signatures.
 
 - A **minor** may add exports, add optional options and parameters, add optional fields to returned objects, and widen accepted inputs.
 - A **patch** changes behaviour only to fix a defect against the documented behaviour.

@@ -11,9 +11,9 @@
 
 import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter';
-import { allKeysOf } from '../../shared/validation/option-shape';
-import type { DynamoDBSaverOptions } from '../types';
+import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter.js';
+import { allKeysOf } from '../../shared/validation/option-shape.js';
+import type { DynamoDBSaverOptions } from '../types.js';
 
 /**
  * The keys of the saver's constructor options, exhaustive in both directions:

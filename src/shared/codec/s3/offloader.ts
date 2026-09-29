@@ -11,8 +11,8 @@
 
 import type { S3Client, ServerSideEncryption } from '@aws-sdk/client-s3';
 
-import { isAbortError } from '../../dynamodb/abort';
-import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../dynamodb/client';
+import { isAbortError } from '../../dynamodb/abort.js';
+import { DEFAULT_SOCKET_TIMEOUT_MS } from '../../dynamodb/client.js';
 import {
   fullJitter,
   isTransientS3Error,
@@ -20,16 +20,16 @@ import {
   type RetryAttemptInfo,
   sleep,
   withRetry,
-} from '../../dynamodb/retry';
-import { copyForCaller, DynamoDBLangGraphError, failureLabel } from '../../errors/base-error';
-import { awsDiagnostics, classifiableCause, classifyAwsError } from '../../errors/classify';
-import { ErrorCode } from '../../errors/error-code';
-import { validationError } from '../../errors/errors';
-import { absorbLoggerFailure, type Logger, SILENT_LOGGER } from '../../logging/logger';
-import { redactedMessage } from '../../logging/secret-patterns';
-import { truncateForLog } from '../../logging/truncate';
-import { createDefaultS3Client, loadS3Sdk } from './client';
-import type { S3ClientConfigLike } from './client-types';
+} from '../../dynamodb/retry.js';
+import { copyForCaller, DynamoDBLangGraphError, failureLabel } from '../../errors/base-error.js';
+import { awsDiagnostics, classifiableCause, classifyAwsError } from '../../errors/classify.js';
+import { ErrorCode } from '../../errors/error-code.js';
+import { validationError } from '../../errors/errors.js';
+import { absorbLoggerFailure, type Logger, SILENT_LOGGER } from '../../logging/logger.js';
+import { redactedMessage } from '../../logging/secret-patterns.js';
+import { truncateForLog } from '../../logging/truncate.js';
+import type { S3ClientConfigLike } from './client-types.js';
+import { createDefaultS3Client, loadS3Sdk } from './client.js';
 import {
   assertKeyInScope,
   buildS3Key,
@@ -37,8 +37,8 @@ import {
   encodeKeyPart,
   isKeyInScope,
   S3OffloadConfig,
-} from './config';
-import { ensureLifecycleRule } from './lifecycle';
+} from './config.js';
+import { ensureLifecycleRule } from './lifecycle.js';
 
 /** Default payload size that triggers S3 offload (350 KB; 50 KB under the DDB 400 KB cap). */
 export const DEFAULT_S3_THRESHOLD_BYTES = 350 * 1024;

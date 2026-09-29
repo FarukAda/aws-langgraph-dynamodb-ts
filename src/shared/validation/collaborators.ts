@@ -8,9 +8,9 @@
  * first call deep inside an operation.
  */
 
-import { validationError } from '../errors/errors';
-import type { CancelOptions } from '../options';
-import { allKeysOf, assertShape, isObjectShape } from './option-shape';
+import { validationError } from '../errors/errors.js';
+import type { CancelOptions } from '../options.js';
+import { allKeysOf, assertShape, isObjectShape } from './option-shape.js';
 
 /** The `DynamoDBDocument` methods this package calls on an injected `client`. */
 export const CLIENT_MEMBERS: readonly string[] = [

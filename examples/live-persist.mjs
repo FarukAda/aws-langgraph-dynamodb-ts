@@ -13,7 +13,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 
-import { DynamoDBSaver } from '../dist/index.js';
+import { DynamoDBSaver } from '../dist/esm/index.js';
 import { REGION } from './_harness.mjs';
 
 const TABLE = process.env.LANGGRAPH_DEMO_TABLE ?? 'langgraph-saver-demo';

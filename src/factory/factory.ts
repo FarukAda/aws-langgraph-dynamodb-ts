@@ -9,27 +9,27 @@
  * had built before its own error propagates.
  */
 
-import { DynamoDBSaver } from '../checkpointer/saver';
-import type { DynamoDBSaverOptions } from '../checkpointer/types';
-import { DynamoDBChatMessageHistory } from '../history/chat-message-history';
-import type { DynamoDBChatMessageHistoryOptions } from '../history/types';
-import { s3ClientOptions } from '../shared/codec/s3/client-types';
-import type { S3OffloadConfig } from '../shared/codec/s3/config';
-import { resolveDynamoDBClient } from '../shared/dynamodb/client';
-import { failureLabel } from '../shared/errors/base-error';
-import { type Logger, resolveLogger } from '../shared/logging/logger';
-import { truncateForLog } from '../shared/logging/truncate';
-import { assertMembers, LOGGER_MEMBERS } from '../shared/validation/collaborators';
+import { DynamoDBSaver } from '../checkpointer/saver.js';
+import type { DynamoDBSaverOptions } from '../checkpointer/types.js';
+import { DynamoDBChatMessageHistory } from '../history/chat-message-history.js';
+import type { DynamoDBChatMessageHistoryOptions } from '../history/types.js';
+import { s3ClientOptions } from '../shared/codec/s3/client-types.js';
+import type { S3OffloadConfig } from '../shared/codec/s3/config.js';
+import { resolveDynamoDBClient } from '../shared/dynamodb/client.js';
+import { failureLabel } from '../shared/errors/base-error.js';
+import { type Logger, resolveLogger } from '../shared/logging/logger.js';
+import { truncateForLog } from '../shared/logging/truncate.js';
+import { assertMembers, LOGGER_MEMBERS } from '../shared/validation/collaborators.js';
 import {
   allKeysOf,
   assertObjectShape,
   assertShape,
   isObjectShape,
-} from '../shared/validation/option-shape';
-import { assertClientChoice } from '../shared/validation/options';
-import { DynamoDBStore } from '../store/store';
-import type { DynamoDBStoreOptions } from '../store/types';
-import type { CreateAllOptions, CreatedAdapters, FactoryBaseOptions } from './types';
+} from '../shared/validation/option-shape.js';
+import { assertClientChoice } from '../shared/validation/options.js';
+import { DynamoDBStore } from '../store/store.js';
+import type { DynamoDBStoreOptions } from '../store/types.js';
+import type { CreateAllOptions, CreatedAdapters, FactoryBaseOptions } from './types.js';
 
 /** The factory's own options, checked against {@link FactoryBaseOptions} at compile time. */
 const FACTORY_BASE_KEYS = allKeysOf<FactoryBaseOptions>({

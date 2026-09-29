@@ -9,17 +9,17 @@
  * returns.
  */
 
-import { nowSeconds } from '../../shared/clock';
-import type { AttributeMap } from '../../shared/dynamodb/client';
-import { LIST_SCAN_WARN_THRESHOLD, paginateQuery } from '../../shared/dynamodb/paginate';
-import { retryFor } from '../../shared/dynamodb/retry';
-import { isExpiredRow, assertReadableRow } from '../../shared/dynamodb/table-schema';
-import { validationError } from '../../shared/errors/errors';
-import { truncateForLog } from '../../shared/logging/truncate';
-import { ulidTimePrefix } from '../../shared/ulid';
-import type { ParsedWindow, SessionId } from './parse';
-import { type MessageRow, messageQuery, messageSortKey, parseMessageRow } from './rows';
-import type { HistoryContext } from './setup';
+import { nowSeconds } from '../../shared/clock.js';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
+import { LIST_SCAN_WARN_THRESHOLD, paginateQuery } from '../../shared/dynamodb/paginate.js';
+import { retryFor } from '../../shared/dynamodb/retry.js';
+import { isExpiredRow, assertReadableRow } from '../../shared/dynamodb/table-schema.js';
+import { validationError } from '../../shared/errors/errors.js';
+import { truncateForLog } from '../../shared/logging/truncate.js';
+import { ulidTimePrefix } from '../../shared/ulid.js';
+import type { ParsedWindow, SessionId } from './parse.js';
+import { type MessageRow, messageQuery, messageSortKey, parseMessageRow } from './rows.js';
+import type { HistoryContext } from './setup.js';
 
 /**
  * The row as one of this adapter's messages, or a refusal naming it.

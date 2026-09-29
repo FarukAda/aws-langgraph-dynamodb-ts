@@ -8,11 +8,11 @@
  * store's method knows neither half.
  */
 
-import { validationError } from '../../shared/errors/errors';
-import { parseNamespace } from '../internal/parse';
-import type { StoreContext } from '../internal/setup';
-import { hasVectorBackend, reconcileVectors } from '../internal/vector-index';
-import type { VectorReconcileResult } from '../types';
+import { validationError } from '../../shared/errors/errors.js';
+import { parseNamespace } from '../internal/parse.js';
+import type { StoreContext } from '../internal/setup.js';
+import { hasVectorBackend, reconcileVectors } from '../internal/vector-index.js';
+import type { VectorReconcileResult } from '../types.js';
 
 /**
  * Repair the vector backend against the canonical DynamoDB items under

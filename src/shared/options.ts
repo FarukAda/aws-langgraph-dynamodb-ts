@@ -10,12 +10,12 @@
 
 import type { DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 
-import type { CompressionConfig } from './codec/compression';
-import type { S3OffloadConfig } from './codec/s3/config';
-import type { DynamoDBDocumentLike } from './dynamodb/client';
-import type { RetryPolicy } from './dynamodb/retry';
-import type { Logger } from './logging/logger';
-import type { TtlOption } from './validation/ttl';
+import type { CompressionConfig } from './codec/compression.js';
+import type { S3OffloadConfig } from './codec/s3/config.js';
+import type { DynamoDBDocumentLike } from './dynamodb/client.js';
+import type { RetryPolicy } from './dynamodb/retry.js';
+import type { Logger } from './logging/logger.js';
+import type { TtlOption } from './validation/ttl.js';
 
 /**
  * Options common to every adapter (the unified options shape). An adapter

@@ -13,7 +13,7 @@
     "noImplicitOverride": true,
     "skipLibCheck": true,
     "rootDir": "src",
-    "outDir": "dist",
+    "outDir": "dist/esm",
     "declaration": true,
     "stripInternal": true,
     "resolveJsonModule": true,

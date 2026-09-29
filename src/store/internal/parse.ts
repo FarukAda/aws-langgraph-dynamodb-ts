@@ -22,9 +22,9 @@ import {
   KEY_SEPARATOR,
   MAX_KEY_SEGMENT_BYTES,
   MAX_SORT_KEY_BYTES,
-} from '../../shared/dynamodb/table-schema';
-import { validationError } from '../../shared/errors/errors';
-import { assertObjectShape } from '../../shared/validation/option-shape';
+} from '../../shared/dynamodb/table-schema.js';
+import { validationError } from '../../shared/errors/errors.js';
+import { assertObjectShape } from '../../shared/validation/option-shape.js';
 import {
   type PageLimit,
   parseIdentifier,
@@ -32,10 +32,10 @@ import {
   parseLimit,
   parseString,
   parseStringArray,
-} from '../../shared/validation/primitives';
-import type { ListNamespacesOptions } from '../types';
-import type { JsonValue } from './filter';
-import { sortKey } from './rows';
+} from '../../shared/validation/primitives.js';
+import type { ListNamespacesOptions } from '../types.js';
+import type { JsonValue } from './filter.js';
+import { sortKey } from './rows.js';
 
 declare const namespaceBrand: unique symbol;
 declare const namespacePrefixBrand: unique symbol;

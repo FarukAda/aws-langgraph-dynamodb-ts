@@ -17,16 +17,16 @@
  * per code here.
  */
 
-import type { WriteRequest } from '../dynamodb/client';
-import { redactedMessage } from '../logging/secret-patterns';
+import type { WriteRequest } from '../dynamodb/client.js';
+import { redactedMessage } from '../logging/secret-patterns.js';
 import {
   DynamoDBLangGraphError,
   toError,
   type ErrorContext,
   type ErrorDetailsFor,
-} from './base-error';
-import { awsDiagnostics } from './classify';
-import { ErrorCode } from './error-code';
+} from './base-error.js';
+import { awsDiagnostics } from './classify.js';
+import { ErrorCode } from './error-code.js';
 
 /**
  * Build one error, with the stack starting at the code that called `factory`

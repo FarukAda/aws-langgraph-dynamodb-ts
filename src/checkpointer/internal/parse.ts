@@ -23,19 +23,19 @@ import {
   MAX_KEY_SEGMENT_BYTES,
   MAX_PARTITION_ID_BYTES,
   MAX_SORT_KEY_BYTES,
-} from '../../shared/dynamodb/table-schema';
-import { validationError } from '../../shared/errors/errors';
-import { assertSignalLike } from '../../shared/validation/collaborators';
-import { assertObjectShape } from '../../shared/validation/option-shape';
+} from '../../shared/dynamodb/table-schema.js';
+import { validationError } from '../../shared/errors/errors.js';
+import { assertSignalLike } from '../../shared/validation/collaborators.js';
+import { assertObjectShape } from '../../shared/validation/option-shape.js';
 import {
   type PageLimit,
   parseIdentifier,
   parseKeySegment,
   parseLimit,
   parseStringArray,
-} from '../../shared/validation/primitives';
-import type { CheckpointConfigurable, DeltaChannelHistoryOptions } from '../types';
-import { writeSortKeyBytes } from './rows';
+} from '../../shared/validation/primitives.js';
+import type { CheckpointConfigurable, DeltaChannelHistoryOptions } from '../types.js';
+import { writeSortKeyBytes } from './rows.js';
 
 declare const threadIdBrand: unique symbol;
 declare const checkpointNsBrand: unique symbol;

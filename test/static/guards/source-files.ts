@@ -20,3 +20,12 @@ export function listSourceFiles(root: string = SRC_ROOT): string[] {
   }
   return out;
 }
+
+/**
+ * The module a relative specifier names, without the `.js` the sources write:
+ * they import each other by their emitted names (`./rows.js`), which the
+ * compiler maps to the `.ts` source beside the importer.
+ */
+export function withoutEmittedExtension(specifier: string): string {
+  return specifier.replace(/\.js$/, '');
+}

@@ -13,19 +13,19 @@ import { isDeepStrictEqual } from 'node:util';
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { CheckpointMetadata } from '@langchain/langgraph-checkpoint';
 
-import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency';
-import type { AttributeMap } from '../../shared/dynamodb/client';
-import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate';
-import { DEFAULT_INDEX_SHARDS, iterateRecencyIndex } from '../../shared/dynamodb/recency-index';
-import { retryFor } from '../../shared/dynamodb/retry';
+import { DEFAULT_READ_CONCURRENCY } from '../../shared/concurrency.js';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
+import { paginateQuery, paginateScan } from '../../shared/dynamodb/paginate.js';
+import { DEFAULT_INDEX_SHARDS, iterateRecencyIndex } from '../../shared/dynamodb/recency-index.js';
+import { retryFor } from '../../shared/dynamodb/retry.js';
 import {
   compareSortKeys,
   PARTITION_KEY_ATTRIBUTE,
   SORT_KEY_ATTRIBUTE,
   withoutExpired,
-} from '../../shared/dynamodb/table-schema';
-import { truncateForLog } from '../../shared/logging/truncate';
-import type { FilterValue, ListScope, ThreadId } from './parse';
+} from '../../shared/dynamodb/table-schema.js';
+import { truncateForLog } from '../../shared/logging/truncate.js';
+import type { FilterValue, ListScope, ThreadId } from './parse.js';
 import {
   beginsWithQuery,
   checkpointerPartitionPrefix,
@@ -36,8 +36,8 @@ import {
   parseMetaRow,
   partitionKey,
   readMetadata,
-} from './rows';
-import type { CheckpointerContext } from './setup';
+} from './rows.js';
+import type { CheckpointerContext } from './setup.js';
 
 /**
  * The META query for a scope that names a thread.

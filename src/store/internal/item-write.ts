@@ -11,8 +11,8 @@
  * and a put is a plain write.
  */
 
-import { collectS3Keys, type DescriptorRef } from '../../shared/codec/codec';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
+import { collectS3Keys, type DescriptorRef } from '../../shared/codec/codec.js';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader.js';
 import {
   commitRow,
   deleteIdempotently,
@@ -24,14 +24,14 @@ import {
   settledVerdict,
   verifyRow,
   type WriteVerdict,
-} from '../../shared/dynamodb/idempotent-write';
-import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
-import { MAX_ROW_BYTES, rowSizeBytes } from '../../shared/dynamodb/row-size';
-import { type RowKey, rowKeyOf } from '../../shared/dynamodb/table-schema';
-import { hasErrorCode } from '../../shared/errors/base-error';
-import { ErrorCode } from '../../shared/errors/error-code';
-import { validationError } from '../../shared/errors/errors';
-import type { StoreAddress } from './parse';
+} from '../../shared/dynamodb/idempotent-write.js';
+import { withDynamoDBRetry } from '../../shared/dynamodb/retry.js';
+import { MAX_ROW_BYTES, rowSizeBytes } from '../../shared/dynamodb/row-size.js';
+import { type RowKey, rowKeyOf } from '../../shared/dynamodb/table-schema.js';
+import { hasErrorCode } from '../../shared/errors/base-error.js';
+import { ErrorCode } from '../../shared/errors/error-code.js';
+import { validationError } from '../../shared/errors/errors.js';
+import type { StoreAddress } from './parse.js';
 import {
   type ExistingRowMeta,
   existingFrom,
@@ -39,9 +39,9 @@ import {
   readExisting,
   REVISION_ATTRIBUTE,
   type StoreItemRow,
-} from './rows';
-import type { StoreContext } from './setup';
-import { dropVectorWhenGone } from './vector-index';
+} from './rows.js';
+import type { StoreContext } from './setup.js';
+import { dropVectorWhenGone } from './vector-index.js';
 
 /**
  * What a refused attempt licenses next: the observation to re-pin on, or

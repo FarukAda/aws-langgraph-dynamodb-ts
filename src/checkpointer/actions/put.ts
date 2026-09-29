@@ -16,9 +16,9 @@ import type {
   CheckpointMetadata,
 } from '@langchain/langgraph-checkpoint';
 
-import { collectS3Keys } from '../../shared/codec/codec';
-import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
-import { abortErrorFrom } from '../../shared/dynamodb/abort';
+import { collectS3Keys } from '../../shared/codec/codec.js';
+import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader.js';
+import { abortErrorFrom } from '../../shared/dynamodb/abort.js';
 import {
   offloadedKey,
   type RowProbe,
@@ -26,16 +26,16 @@ import {
   transactIdempotently,
   verifyRow,
   type WriteVerdict,
-} from '../../shared/dynamodb/idempotent-write';
-import { rowKeyOf } from '../../shared/dynamodb/table-schema';
-import { calculateTtlTimestamp } from '../../shared/validation/ttl';
-import { parsePutRequest } from '../internal/parse';
+} from '../../shared/dynamodb/idempotent-write.js';
+import { rowKeyOf } from '../../shared/dynamodb/table-schema.js';
+import { calculateTtlTimestamp } from '../../shared/validation/ttl.js';
+import { parsePutRequest } from '../internal/parse.js';
 import {
   buildCheckpointRows,
   type CheckpointMetaRow,
   type CheckpointPayloadRow,
-} from '../internal/rows';
-import type { CheckpointerContext } from '../internal/setup';
+} from '../internal/rows.js';
+import type { CheckpointerContext } from '../internal/setup.js';
 
 /**
  * Persist a checkpoint and its metadata as a transactional pair of META and

@@ -13,7 +13,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { BedrockEmbeddings } from '@langchain/aws';
 
-import { DynamoDBStore } from '../dist/index.js';
+import { DynamoDBStore } from '../dist/esm/index.js';
 import { REGION } from './_harness.mjs';
 
 const TABLE = process.env.LANGGRAPH_DEMO_TABLE ?? 'langgraph-store-demo';

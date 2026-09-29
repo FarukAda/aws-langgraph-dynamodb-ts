@@ -1,5 +1,6 @@
 /**
- * Edge-input fuzz over the whole public surface of dist/. cwd must be the repo root.
+ * Edge-input fuzz over the whole public surface of dist/cjs, the CommonJS build.
+ * cwd must be the repo root.
  */
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -10,7 +11,7 @@ import { describe } from './describe.mjs';
 const require = createRequire(import.meta.url);
 const root = process.cwd();
 const req = (m) => require(require.resolve(m, { paths: [root] }));
-const lib = require(path.join(root, 'dist/index.js'));
+const lib = require(path.join(root, 'dist/cjs/index.js'));
 const { DynamoDBClient } = req('@aws-sdk/client-dynamodb');
 const ddb = req('@aws-sdk/lib-dynamodb');
 const { mockClient: mockClientIn } = req('aws-sdk-client-mock');

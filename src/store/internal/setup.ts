@@ -12,23 +12,23 @@
 
 import type { IndexConfig, SerializerProtocol } from '@langchain/langgraph-checkpoint';
 
-import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter';
-import { JSON_SERDE } from '../../shared/codec/json-serde';
-import { MAX_LOOP_ITERATIONS, MAX_TOTAL_ROWS_IN_MEMORY } from '../../shared/dynamodb/paginate';
-import { validationError } from '../../shared/errors/errors';
+import { type AdapterCore, type AdapterShell, openAdapter } from '../../shared/adapter.js';
+import { JSON_SERDE } from '../../shared/codec/json-serde.js';
+import { MAX_LOOP_ITERATIONS, MAX_TOTAL_ROWS_IN_MEMORY } from '../../shared/dynamodb/paginate.js';
+import { validationError } from '../../shared/errors/errors.js';
 import {
   assertMembers,
   EMBEDDINGS_MEMBERS,
   VECTOR_BACKEND_MEMBERS,
-} from '../../shared/validation/collaborators';
-import { allKeysOf, assertShape } from '../../shared/validation/option-shape';
-import { assertInteger, assertStringArray } from '../../shared/validation/primitives';
-import type { DynamoDBStoreOptions } from '../types';
+} from '../../shared/validation/collaborators.js';
+import { allKeysOf, assertShape } from '../../shared/validation/option-shape.js';
+import { assertInteger, assertStringArray } from '../../shared/validation/primitives.js';
+import type { DynamoDBStoreOptions } from '../types.js';
 import {
   VECTOR_SCORE_DIRECTIONS,
   type VectorBackend,
   type VectorScoreDirection,
-} from '../vector-backend';
+} from '../vector-backend.js';
 
 /** Default cap on candidates the in-DB semantic ranker will score. */
 export const DEFAULT_MAX_SEARCH_CANDIDATES = 1000;

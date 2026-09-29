@@ -18,8 +18,8 @@ import type {
   SerializerProtocol,
 } from '@langchain/langgraph-checkpoint';
 
-import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options';
-import type { VectorBackend, VectorScoreDirection } from './vector-backend';
+import type { BaseAdapterOptions, CancelOptions, CodecOptions } from '../shared/options.js';
+import type { VectorBackend, VectorScoreDirection } from './vector-backend.js';
 
 /**
  * Options for {@link DynamoDBStore}.

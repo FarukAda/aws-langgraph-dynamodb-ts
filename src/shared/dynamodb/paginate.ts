@@ -10,10 +10,10 @@
 
 import type { QueryCommandInput, ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 
-import { resultTruncatedError, validationError } from '../errors/errors';
-import { abortErrorFrom } from './abort';
-import type { DynamoDBDocumentLike, AttributeMap } from './client';
-import { type RetryOptions, withDynamoDBRetry } from './retry';
+import { resultTruncatedError, validationError } from '../errors/errors.js';
+import { abortErrorFrom } from './abort.js';
+import type { DynamoDBDocumentLike, AttributeMap } from './client.js';
+import { type RetryOptions, withDynamoDBRetry } from './retry.js';
 
 /** Hard cap on query-pagination loop iterations (runaway-loop guard). */
 export const MAX_LOOP_ITERATIONS = 1000;

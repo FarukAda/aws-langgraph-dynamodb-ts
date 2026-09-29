@@ -10,9 +10,9 @@
  * that row is read, not here.
  */
 
-import { validationError } from '../errors/errors';
-import { allKeysOf, assertShape } from './option-shape';
-import { assertInteger } from './primitives';
+import { validationError } from '../errors/errors.js';
+import { allKeysOf, assertShape } from './option-shape.js';
+import { assertInteger } from './primitives.js';
 
 const SECONDS_PER_DAY = 24 * 60 * 60;
 

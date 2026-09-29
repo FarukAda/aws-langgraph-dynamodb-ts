@@ -16,22 +16,22 @@ import {
   type StoredMessage,
 } from '@langchain/core/messages';
 
-import { KEY_SEPARATOR, MAX_PARTITION_ID_BYTES } from '../../shared/dynamodb/table-schema';
-import { validationError } from '../../shared/errors/errors';
-import { redactedMessage } from '../../shared/logging/secret-patterns';
-import { truncateForLog } from '../../shared/logging/truncate';
-import { ULID_TIME_RANGE_MS } from '../../shared/ulid';
-import { assertSignalLike } from '../../shared/validation/collaborators';
-import { assertShape } from '../../shared/validation/option-shape';
+import { KEY_SEPARATOR, MAX_PARTITION_ID_BYTES } from '../../shared/dynamodb/table-schema.js';
+import { validationError } from '../../shared/errors/errors.js';
+import { redactedMessage } from '../../shared/logging/secret-patterns.js';
+import { truncateForLog } from '../../shared/logging/truncate.js';
+import { ULID_TIME_RANGE_MS } from '../../shared/ulid.js';
+import { assertSignalLike } from '../../shared/validation/collaborators.js';
+import { assertShape } from '../../shared/validation/option-shape.js';
 import {
   type PageLimit,
   parseIdentifier,
   parseInteger,
   parseLimit,
   parseString,
-} from '../../shared/validation/primitives';
-import type { GetMessagesOptions, ListSessionsOptions, MessageWindow } from '../types';
-import { GET_MESSAGES_KEYS, LIST_SESSIONS_KEYS } from './setup';
+} from '../../shared/validation/primitives.js';
+import type { GetMessagesOptions, ListSessionsOptions, MessageWindow } from '../types.js';
+import { GET_MESSAGES_KEYS, LIST_SESSIONS_KEYS } from './setup.js';
 
 declare const sessionIdBrand: unique symbol;
 declare const storableMessagesBrand: unique symbol;

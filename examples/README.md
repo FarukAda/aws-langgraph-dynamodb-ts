@@ -13,7 +13,7 @@ npm ci
 npm run build
 ```
 
-Every example imports `../dist/index.js`, so the package must be built first.
+Every example imports `../dist/esm/index.js`, the ES-module build, so the package must be built first.
 Then, for each script:
 
 - AWS credentials, resolved through the SDK's default credential chain

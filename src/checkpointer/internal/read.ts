@@ -19,16 +19,16 @@ import {
   TASKS,
 } from '@langchain/langgraph-checkpoint';
 
-import { nowSeconds } from '../../shared/clock';
-import type { AttributeMap } from '../../shared/dynamodb/client';
-import { LIST_SCAN_WARN_THRESHOLD, paginateQuery } from '../../shared/dynamodb/paginate';
-import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry';
+import { nowSeconds } from '../../shared/clock.js';
+import type { AttributeMap } from '../../shared/dynamodb/client.js';
+import { LIST_SCAN_WARN_THRESHOLD, paginateQuery } from '../../shared/dynamodb/paginate.js';
+import { withDynamoDBRetry, retryFor } from '../../shared/dynamodb/retry.js';
 import {
   isExpiredRow,
   withoutExpired,
   assertReadableRow,
-} from '../../shared/dynamodb/table-schema';
-import type { ThreadAddress } from './parse';
+} from '../../shared/dynamodb/table-schema.js';
+import type { ThreadAddress } from './parse.js';
 import {
   beginsWithQuery,
   type CheckpointLocation,
@@ -44,8 +44,8 @@ import {
   readMetadata,
   toPendingWrites,
   writeSortKeyPrefix,
-} from './rows';
-import type { CheckpointerContext } from './setup';
+} from './rows.js';
+import type { CheckpointerContext } from './setup.js';
 
 /** The thread and namespace a read was asked for. */
 export interface ThreadLocation {

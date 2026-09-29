@@ -8,9 +8,9 @@
  * the append cannot come to disagree about what the count means.
  */
 
-import { parseSessionId } from '../internal/parse';
-import { repairMessageCount } from '../internal/session';
-import type { HistoryContext } from '../internal/setup';
+import { parseSessionId } from '../internal/parse.js';
+import { repairMessageCount } from '../internal/session.js';
+import type { HistoryContext } from '../internal/setup.js';
 
 /**
  * Recompute `messageCount` from the number of stored message items and write it

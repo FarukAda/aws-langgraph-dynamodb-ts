@@ -10,12 +10,12 @@
 
 import type { SearchItem } from '@langchain/langgraph-checkpoint';
 
-import { truncateLabelsForLog } from '../../shared/logging/truncate';
-import type { ParsedSearch } from '../internal/parse';
-import { assertVectorDims } from '../internal/semantic-search';
-import type { StoreContext } from '../internal/setup';
-import { collectCandidates, rankInMemory } from '../internal/table-search';
-import { hasVectorBackend, searchViaBackend } from '../internal/vector-index';
+import { truncateLabelsForLog } from '../../shared/logging/truncate.js';
+import type { ParsedSearch } from '../internal/parse.js';
+import { assertVectorDims } from '../internal/semantic-search.js';
+import type { StoreContext } from '../internal/setup.js';
+import { collectCandidates, rankInMemory } from '../internal/table-search.js';
+import { hasVectorBackend, searchViaBackend } from '../internal/vector-index.js';
 
 /**
  * Search items under a namespace prefix: metadata filtering plus optional
