@@ -236,9 +236,9 @@ describe('parseListNamespacesOptions', () => {
     });
   });
 
-  it('refuses a key it does not read before any value', () => {
+  it('ignores a key it does not read, and still refuses a malformed one it does', () => {
     expect(() => parseListNamespacesOptions({ bogus: 1, limit: -1 } as never)).toThrow(
-      refusal('options.bogus'),
+      refusal('limit'),
     );
   });
 });

@@ -24,7 +24,7 @@ import {
   MAX_SORT_KEY_BYTES,
 } from '../../shared/dynamodb/table-schema';
 import { validationError } from '../../shared/errors/errors';
-import { assertObjectShape, assertShape } from '../../shared/validation/option-shape';
+import { assertObjectShape } from '../../shared/validation/option-shape';
 import {
   type PageLimit,
   parseIdentifier,
@@ -36,7 +36,6 @@ import {
 import type { ListNamespacesOptions } from '../types';
 import type { JsonValue } from './filter';
 import { sortKey } from './rows';
-import { STORE_LIST_NAMESPACES_KEYS } from './setup';
 
 declare const namespaceBrand: unique symbol;
 declare const namespacePrefixBrand: unique symbol;
@@ -326,16 +325,19 @@ export function parseListOperation(op: ListNamespacesOperation): ParsedList {
 /**
  * Parse the options of `listNamespaces`.
  *
- * Accepts: `options` — only `prefix`, `suffix`, `maxDepth`, `limit` and
- * `offset`; `limit` defaults to 100 and `offset` to 0.
+ * Accepts: `options` — an object; `prefix`, `suffix`, `maxDepth`, `limit` and
+ * `offset` are read, `limit` defaulting to 100 and `offset` to 0. Any other key
+ * is ignored rather than refused: `BaseStore.listNamespaces` declares these
+ * options, so a key a later LangGraph adds must not refuse the call (decision
+ * record 28).
  *
  * Returns: the listing the options describe.
  *
- * Throws: `VALIDATION` naming `options.<key>` for a key this package does not
- * read, then as {@link parseListOperation}.
+ * Throws: `VALIDATION` naming `options` for options that are not an object,
+ * then as {@link parseListOperation}.
  */
 export function parseListNamespacesOptions(options: ListNamespacesOptions): ParsedList {
-  assertShape(options, STORE_LIST_NAMESPACES_KEYS, 'options');
+  assertObjectShape(options, 'options');
   const { prefix, suffix, maxDepth, limit = DEFAULT_LIST_LIMIT, offset = 0 } = options;
   const matchConditions: MatchCondition[] = [];
   if (prefix !== undefined) matchConditions.push({ matchType: 'prefix', path: prefix });

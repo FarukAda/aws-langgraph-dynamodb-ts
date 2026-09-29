@@ -323,10 +323,12 @@ describe('parseListScope', () => {
     expect(() => parseListScope(ADDRESSED, { before: 'x' as never })).toThrow(refusal('before'));
     expect(() => parseListScope(ADDRESSED, { before: malformedBound })).toThrow(refusal('before'));
     expect(() => parseListScope(ADDRESSED, { filter: 'x' as never })).toThrow(refusal('filter'));
-    expect(() => parseListScope(ADDRESSED, { bogus: 1 } as never)).toThrow(
-      refusal('options.bogus'),
-    );
     expect(() => parseListScope('x' as never, { bogus: 1 } as never)).toThrow(refusal('config'));
+  });
+
+  it('ignores an options key LangGraph may add (decision record 28)', () => {
+    expect(parseListScope(ADDRESSED, { bogus: 1 } as never).limit).toBeUndefined();
+    expect(parseListScope(ADDRESSED, { limit: 2, bogus: 1 } as never).limit).toBe(2);
   });
 });
 
@@ -340,11 +342,13 @@ describe('parseDeltaHistoryRequest', () => {
     expect(request.channels).not.toBe(channels);
   });
 
+  it('ignores an options key LangGraph may add (decision record 28)', () => {
+    const request = parseDeltaHistoryRequest({ config: {}, channels: ['m'], x: 1 } as never);
+    expect(request.channels).toEqual(['m']);
+  });
+
   it('refuses options, a config and channels it cannot read', () => {
     expect(() => parseDeltaHistoryRequest(null as never)).toThrow(refusal('options'));
-    expect(() => parseDeltaHistoryRequest({ config: {}, channels: [], x: 1 } as never)).toThrow(
-      refusal('options.x'),
-    );
     expect(() => parseDeltaHistoryRequest({ config: null as never, channels: [] })).toThrow(
       refusal('config'),
     );

@@ -212,12 +212,18 @@ describe('options shape', () => {
     });
   });
 
-  it('search refuses a key this package does not read', async () => {
+  it('search ignores an options key LangGraph may add (decision record 28)', async () => {
     const { client } = createStrictDocumentMock();
     const store = new DynamoDBStore({ tableName: 'store', client });
-    await expect(store.search(['ns'], { bogus: true } as never)).rejects.toMatchObject({
+    await expect(store.search(['ns'], { limit: 0, bogus: true } as never)).resolves.toEqual([]);
+  });
+
+  it('search still refuses a malformed key it reads, beside one it does not', async () => {
+    const { client } = createStrictDocumentMock();
+    const store = new DynamoDBStore({ tableName: 'store', client });
+    await expect(store.search(['ns'], { limit: -1, bogus: true } as never)).rejects.toMatchObject({
       code: ErrorCode.VALIDATION,
-      context: { field: 'options.bogus' },
+      context: { field: 'limit' },
     });
   });
 

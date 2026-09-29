@@ -78,9 +78,18 @@ describe('parseListNamespacesOptions', () => {
     });
   });
 
-  it('refuses options that are not an object or carry a key it does not read', () => {
+  it('refuses options that are not an object', () => {
     expect(() => parseListNamespacesOptions(null as never)).toThrow(refusal('options'));
-    expect(() => parseListNamespacesOptions({ foo: 1 } as never)).toThrow(refusal('options.foo'));
+  });
+
+  it('ignores an options key LangGraph may add (decision record 28)', () => {
+    expect(parseListNamespacesOptions({ foo: 1 } as never)).toEqual({
+      kind: 'list',
+      matchConditions: undefined,
+      maxDepth: undefined,
+      limit: 100,
+      offset: 0,
+    });
   });
 
   /**

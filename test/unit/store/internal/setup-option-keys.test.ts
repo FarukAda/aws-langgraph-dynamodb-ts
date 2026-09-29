@@ -1,11 +1,7 @@
-import {
-  STORE_KEYS,
-  STORE_LIST_NAMESPACES_KEYS,
-  STORE_SEARCH_KEYS,
-} from '../../../../src/store/internal/setup';
+import { STORE_KEYS } from '../../../../src/store/internal/setup';
 
-describe('the store option-key lists (compiler-verified against the types)', () => {
-  it('lists exactly what the store reads from each options bag', () => {
+describe('the store option-key list (compiler-verified against the type)', () => {
+  it('lists exactly what the store reads from its constructor options', () => {
     expect(STORE_KEYS).toEqual([
       'tableName',
       'client',
@@ -25,7 +21,5 @@ describe('the store option-key lists (compiler-verified against the types)', () 
       'maxIterations',
       'vectorScoreDirection',
     ]);
-    expect(STORE_SEARCH_KEYS).toEqual(['filter', 'limit', 'offset', 'query', 'signal']);
-    expect(STORE_LIST_NAMESPACES_KEYS).toEqual(['prefix', 'suffix', 'maxDepth', 'limit', 'offset']);
   });
 });

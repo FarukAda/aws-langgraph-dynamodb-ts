@@ -42,3 +42,4 @@ the numbering, and that no number is used twice.
 | [25](0025-treat-a-write-that-got-no-answer-as-one-that-may-still-land.md) | Treat a write that got no answer as one that may still land | Accepted |
 | [26](0026-treat-a-reader-side-limit-as-a-refusal-not-as-payload-loss.md) | Treat a reader-side limit as a refusal, not as payload loss | Accepted |
 | [27](0027-keep-store-items-out-of-the-recency-index.md) | Keep store items out of the recency index | Accepted |
+| [28](0028-ignore-keys-langgraph-adds-to-option-objects-it-defines.md) | Ignore keys LangGraph adds to option objects it defines | Accepted |

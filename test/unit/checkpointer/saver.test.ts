@@ -99,17 +99,14 @@ describe('DynamoDBSaver', () => {
     });
   });
 
-  it('refuses a `list` options key this package does not read', async () => {
+  it('ignores a `list` options key LangGraph may add (decision record 28)', async () => {
     const { client } = createStrictDocumentMock();
     const saver = new DynamoDBSaver({ tableName: 'ckpt', client, serde });
     const iterator = saver.list({ configurable: { thread_id: 't' } }, {
-      limit: 1,
+      limit: 0,
       bogus: true,
     } as never);
-    await expect(iterator.next()).rejects.toMatchObject({
-      code: ErrorCode.VALIDATION,
-      context: { field: 'options.bogus' },
-    });
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
   });
 
   describe('list: `before`, `config` and `filter` shape', () => {

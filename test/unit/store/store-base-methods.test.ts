@@ -65,9 +65,9 @@ const REFUSED: [string, Call, string][] = [
   ['listNamespaces with null options', (s) => s.listNamespaces(null as never), 'options'],
   ['listNamespaces with string options', (s) => s.listNamespaces('x' as never), 'options'],
   [
-    'listNamespaces with an unread key',
-    (s) => s.listNamespaces({ foo: 1 } as never),
-    'options.foo',
+    'listNamespaces with an unread key beside a malformed limit',
+    (s) => s.listNamespaces({ foo: 1, limit: -1 } as never),
+    'limit',
   ],
   [
     'listNamespaces with a string prefix',

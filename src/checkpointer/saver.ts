@@ -128,15 +128,17 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * `config`, `configurable` or `signal` for a config of the wrong shape, as
    * {@link getTuple} does, or `thread_id`, `checkpoint_ns`, `checkpoint_id` or
    * `thread_ts` for a malformed identifier — all checked before `options`;
-   * then `options` for options that are not an object, `options.<key>` for a
-   * key this package does not read, `filter` for a filter that is not an
-   * object, `limit` for a limit that is not an integer from 0 to
+   * then `options` for options that are not an object, `filter` for a filter
+   * that is not an object, `limit` for a limit that is not an integer from 0 to
    * `MAX_PAGE_LIMIT` (10,000), and `before` for a `before` that is not an
    * object or whose `configurable.checkpoint_id` is
    * neither absent (`undefined`, `null` or `''`) nor a well-formed checkpoint
    * id. `FORMAT_UNSUPPORTED`; `RESULT_TRUNCATED`, without a `thread_id` and
    * with `indexName`, for an index shard whose pages do not end; a classified AWS failure;
-   * `RETRY_EXHAUSTED`; `ABORTED`.
+   * `RETRY_EXHAUSTED`; `ABORTED`. An option key this version does not read is
+   * ignored rather than refused: LangGraph defines these options and passes
+   * its own through (`getStateHistory`), so a key it adds must not turn a
+   * listing into a refusal (decision record 28).
    *
    * Guarantees: eventually consistent — a listing tolerates the replica lag
    * `getTuple` does not.
@@ -285,9 +287,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * per put puts that within reach here, so an ancestor a channel still needs
    * that has expired is reported instead of dropped.
    *
-   * Accepts: `options` — must be an object naming exactly `config` and
-   * `channels`, the shape `BaseCheckpointSaver`'s own signature declares.
-   * `options.channels` — the delta channels to rebuild, required; an empty
+   * Accepts: `options` — an object carrying `config` and `channels`, the
+   * shape `BaseCheckpointSaver`'s own signature declares; LangGraph calls this
+   * itself, so a key a later LangGraph adds is ignored rather than refused
+   * (decision record 28). `options.channels` — the delta channels to rebuild, required; an empty
    * array reads nothing rather than being refused, since it is a legitimate
    * "nothing to rebuild" request. `options.config` — the checkpoint to walk
    * back from, shaped as {@link getTuple} requires and checked for that shape
@@ -299,7 +302,7 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * stored value found.
    *
    * Throws: `VALIDATION` naming `options` for options that are not an
-   * object, `options.<key>` for an unknown key, `config`, `configurable` or
+   * object, `config`, `configurable` or
    * `signal` for a config of the wrong shape, or `channels` for a value that
    * is not an array of strings, and, once a channel is named, `thread_id`,
    * `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed

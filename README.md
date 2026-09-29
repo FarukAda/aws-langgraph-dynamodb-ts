@@ -654,7 +654,7 @@ All adapters share a common base. Provide **either** a prebuilt `client` (which 
 
 Options are checked at construction, and a mistake raises `VALIDATION` naming the option:
 
-- **Unknown keys.** An option key the adapter does not read — a misspelling such as `readConcurency`, or an option that belongs to another adapter, such as `vectorBackend` on a saver — is refused, naming `options.<key>`, including in a `DynamoDBFactory` section. So is a key `ttl`, `retry`, `compression`, `s3` or `index` does not read (`ttl.<key>`, `index.<key>`, …): `ttl` takes only `days` or `seconds`, and `index` only `dims`, `embeddings` and `fields`.
+- **Unknown keys.** An option key the adapter does not read — a misspelling such as `readConcurency`, or an option that belongs to another adapter, such as `vectorBackend` on a saver — is refused, naming `options.<key>`, including in a `DynamoDBFactory` section. So is a key `ttl`, `retry`, `compression`, `s3` or `index` does not read (`ttl.<key>`, `index.<key>`, …): `ttl` takes only `days` or `seconds`, and `index` only `dims`, `embeddings` and `fields`. The four option objects LangGraph itself defines are the exception — `saver.list`'s, `getDeltaChannelHistory`'s, `store.search`'s and `store.listNamespaces`' — which ignore a key this version does not read, because LangGraph passes its own through and a key a later LangGraph adds must not break the call ([decision record 28](docs/decisions/0028-ignore-keys-langgraph-adds-to-option-objects-it-defines.md)). The keys they do read are validated as before.
 - **AWS SDK configuration.** `clientConfig` and `s3.clientConfig` must be objects when given, so a string, `null` or an array is refused, naming `clientConfig` or `s3.clientConfig`. The keys inside them are passed to the AWS SDK unchecked: they belong to the SDK's `DynamoDBClientConfig` and `S3ClientConfig`, which gain keys between SDK releases, and your application may install a newer SDK than the one this package was built against, so a key list checked here would refuse valid configuration.
 - **Collaborators.** `client`, `logger`, `serde`, `index.embeddings` and `vectorBackend` are checked by shape, not by class, so the check holds when two copies of a dependency are installed. A value that is not an object (`null` included) names the option; an object missing a method this package calls names the first one missing, such as `client.get` or `logger.debug`.
 - **Ceilings.** A numeric option above its ceiling is refused. The ceilings are in the tables below and in [Limits](#limits).
@@ -771,7 +771,7 @@ A `keyPrefix` must be a string holding a non-empty path ending in `/`, and every
 
 ### Per-call options
 
-Every page `limit` in this package has a ceiling of 10 000 (`VALIDATION` naming `limit`, raised at the call), and every options object refuses a key it does not read, naming `options.<key>` (`window.<key>` for `forSession`), except `redactLogger`'s, below.
+Every page `limit` in this package has a ceiling of 10 000 (`VALIDATION` naming `limit`, raised at the call), and every options object this package defines refuses a key it does not read, naming `options.<key>` (`window.<key>` for `forSession`), except `redactLogger`'s, below; the four LangGraph defines ignore one (see *Unknown keys* under [Configuration reference](#configuration-reference)).
 
 **`history.getMessages(sessionId, options?)`** (`GetMessagesOptions`):
 
@@ -1300,7 +1300,7 @@ What your code has to change, most common first:
   - The peer floors are `@langchain/core` `^1.2.11` (was `^1.2.9`) and the optional `@aws-sdk/client-s3` `^3.1132.0` (was `^3.900.0`); `@langchain/langgraph-checkpoint` stays `^1.1.5`.
   - The dependencies are `@aws-sdk/client-dynamodb` and `@aws-sdk/lib-dynamodb` `^3.1132.0` (was `^3.1116.0`), and the new `@aws-sdk/util-dynamodb`.
 - **Inputs that are now refused with `VALIDATION`**, naming what is wrong. Each was accepted, ignored or reported as an AWS failure before:
-  - an option key the adapter does not read (`options.<key>`), on every options object, every per-call options object and every `{ signal }`, and a non-object options value;
+  - an option key the adapter does not read (`options.<key>`) on every options object this package defines — the constructors', every `{ signal }`, `getMessages`' and the history window — and a non-object options value. The option objects LangGraph defines (`saver.list`'s, `getDeltaChannelHistory`'s, `store.search`'s and `store.listNamespaces`') ignore a key they do not read, so a LangGraph release that adds one cannot break the call ([decision record 28](docs/decisions/0028-ignore-keys-langgraph-adds-to-option-objects-it-defines.md));
   - a number past its ceiling (see [Limits](#limits)), and a read cap (`maxItems`, `maxIterations`) that is not an integer of at least 1;
   - an identifier over its byte cap (1024 bytes for `thread_id`/`sessionId`, 512 for `checkpoint_ns`, 256 for every other segment) or holding a control character. `0.9` already refused C0 characters and DEL; the byte caps and the C1 range (U+0080 to U+009F) are new, so a row already stored under a longer identifier can no longer be addressed;
   - a `ttl` that is not exactly one unit of at most five years;
