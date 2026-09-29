@@ -92,7 +92,10 @@ describe('only the publish job can mint a credential, and it runs no third-party
   });
 
   it('publishes the tarball verify packed, not a fresh pack', () => {
-    const publishes = jobs.publish.filter((line) => /\bnpm publish\b/.test(line));
+    /** A comment naming the command is not a publish; only the commands are held to the tarball. */
+    const publishes = jobs.publish.filter(
+      (line) => !/^\s*#/.test(line) && /\bnpm publish\b/.test(line),
+    );
     expect(publishes.length).toBeGreaterThan(0);
     for (const line of publishes) expect(line).toContain('"./${TARBALL}"');
     expect(jobs.publish.join('\n')).toContain('TARBALL: ${{ needs.verify.outputs.tarball }}');
@@ -120,5 +123,63 @@ describe('the live-AWS workflow', () => {
     expect(text).toContain('--json --outputFile=jest-aws.json');
     expect(text).toContain(`numPassedTests`);
     expect(text).toMatch(/if \[ "\$\{PASSED\}" -lt 1 \]; then\s+echo "::error::[^"]*"\s+exit 1/);
+  });
+});
+
+/**
+ * What the release vouches for beyond a green CI: the commit is one `main`
+ * holds, the files it ships carry provenance a consumer can verify, and nothing
+ * outside GitHub's own actions runs with the token that creates the release.
+ */
+describe('the release refuses what it cannot vouch for', () => {
+  const jobs = jobBodies('release.yml');
+  const uses = (lines: string[]): string[] =>
+    lines
+      .map((line) => /^\s+(?:-\s+)?uses:\s*(\S+)/.exec(line)?.[1])
+      .filter((action) => action !== undefined);
+
+  it('refuses a tag whose commit main does not hold', () => {
+    const text = jobs.verify.join('\n');
+    expect(text).toMatch(/git merge-base --is-ancestor "\$\{GITHUB_SHA\}" FETCH_HEAD/);
+    expect(text).toMatch(/^\s+fetch-depth:\s*0\b/m);
+  });
+
+  it('restores no cache in the job that builds what is published', () => {
+    expect(jobs.verify.join('\n')).not.toMatch(/^\s+cache:/m);
+  });
+
+  /**
+   * Before the publish, like everything else that can fail: signing talks to
+   * services that can be down, and a failure after `npm publish` would leave a
+   * live version with no GitHub release.
+   */
+  it('attests the tarball and the SBOMs in the publish job, before publishing', () => {
+    const text = jobs.publish.join('\n');
+    expect(text).toMatch(/^\s+attestations:\s*write\b/m);
+    const attest = jobs.publish.findIndex((line) =>
+      /uses: actions\/attest-build-provenance@[0-9a-f]{40}/.test(line),
+    );
+    const publish = jobs.publish.findIndex((line) =>
+      /npm publish "\.\/\$\{TARBALL\}" --ignore-scripts --access public --provenance/.test(line),
+    );
+    expect(attest).toBeGreaterThan(-1);
+    expect(publish).toBeGreaterThan(attest);
+    for (const subject of [
+      '${{ needs.verify.outputs.tarball }}',
+      'sbom.runtime.cyclonedx.json',
+      'sbom.build.cyclonedx.json',
+    ]) {
+      expect(jobs.publish.slice(attest, publish).join('\n')).toContain(subject);
+    }
+  });
+
+  it('creates the GitHub release with gh and no third-party action', () => {
+    const actions = uses(jobs['github-release']);
+    expect(actions.length).toBeGreaterThan(0);
+    for (const action of actions) expect(action).toMatch(/^actions\/[\w-]+@[0-9a-f]{40}$/);
+    const text = jobs['github-release'].join('\n');
+    expect(text).toMatch(/\bgh release create\b[^\n]*--verify-tag/);
+    expect(text).toMatch(/\bgh release edit\b/);
+    expect(text).toContain('provenance.intoto.jsonl');
   });
 });

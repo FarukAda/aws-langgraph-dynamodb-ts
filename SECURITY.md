@@ -42,4 +42,4 @@ What this boundary does **not** change, because those bounds hold whichever seri
 
 ## Verifying a release
 
-Releases are published by the repository's release workflow with npm provenance. Verify an installed version with `npm audit signatures`, and compare the tarball contents with `npm pack --dry-run @farukada/aws-langgraph-dynamodb-ts@<version>` — only `dist/`, `LICENSE`, `README.md` and `package.json` ship.
+Releases are published by the repository's release workflow with npm provenance. Verify an installed version with `npm audit signatures`. The tarball and both SBOMs also carry a GitHub build-provenance attestation, attached to the GitHub release as `provenance.intoto.jsonl`; verify a downloaded file with `gh attestation verify <file> --repo FarukAda/aws-langgraph-dynamodb-ts`. Compare the tarball contents with `npm pack --dry-run @farukada/aws-langgraph-dynamodb-ts@<version>` — only `dist/`, `LICENSE`, `README.md` and `package.json` ship.

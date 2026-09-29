@@ -89,13 +89,14 @@ A real-AWS test creates its own resources and tears them down in `afterAll` (use
 - **`API reference is regenerated`** — runs `npm run docs` and fails if `docs/api` drifts from the committed copy.
 - **`package smoke (npm pack + install + import)`** — builds, runs the surface baseline, `npm run pack:check`, the package smoke test and `npm run test:consumer-types`.
 
-Five more workflows run beside it:
+Six more workflows run beside it:
 
 - **`codeql.yml`** runs CodeQL's `security-extended` queries over the TypeScript source and over the workflow files themselves, on push and pull request to `main` and weekly.
 - **`dependency-review.yml`** diffs a pull request's dependency changes against the base branch and fails on a newly introduced high-severity vulnerability.
 - **`scorecard.yml`** runs the OpenSSF Scorecard weekly and on push to `main`, publishing a supply-chain-posture score to the public Scorecard dataset.
+- **`latest-peers.yml`** runs weekly and on demand: the full type check, the unit tier and the conformance tier against the newest `@langchain/core`, `@langchain/langgraph-checkpoint` and `@langchain/langgraph`, on DynamoDB Local. It is an early warning rather than a gate, and no required check: a release is gated on the ranges it declares (decision record 28).
 - **`integration-live.yml`** runs only on a pushed release tag (`v*`) — the `live-aws integration` check described above.
-- **`release.yml`** runs on that same tag push, waits for every check named in `scripts/required-checks.json` to succeed on the tagged commit, then verifies, packs and publishes the tarball to npm with provenance from a job that installs no third-party code.
+- **`release.yml`** runs on that same tag push, refuses a tag whose commit `main` does not hold, waits for every check named in `scripts/required-checks.json` to succeed on the tagged commit, then verifies and packs the tarball in a job that cannot publish. The publish job runs no third-party code: it attests the tarball and both SBOMs with GitHub's own action, then publishes that exact tarball to npm with provenance. The GitHub release, which carries the SBOMs and the attestation bundle, is created afterwards with the runner's `gh`.
 
 ## Toolchain
 

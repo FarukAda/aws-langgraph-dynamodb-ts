@@ -106,7 +106,7 @@ Every adapter supports optional **gzip compression**, **S3 offloading** of paylo
 | **Cancellation** | The long-running methods take an `AbortSignal`, which reaches the AWS SDK on every DynamoDB request and S3 transfer the call makes for you — not on the verification reads and the cleanup after a failure, which must finish, so a cancel ends a request in flight and rejects with `ABORTED`. [Cancellation](#cancellation) |
 | **One error class, stable codes, validated input** | Every failure is a `DynamoDBLangGraphError` with a branchable `code`; no raw AWS error escapes a public method. Options and identifiers are checked before any request, and a mistake is a `VALIDATION` error naming the field. [Error handling](#error-handling) |
 | **Silent by default, redactable logging** | Nothing is written to your console unless you pass a `logger`; `redactLogger` replaces secret-looking fields with `[REDACTED]` in what you do log. [Logging](#logging) |
-| **Supply-chain provenance** | Published to npm with provenance attestations. [npm provenance](https://www.npmjs.com/package/@farukada/aws-langgraph-dynamodb-ts#provenance) |
+| **Supply-chain provenance** | Published to npm with provenance attestations; each release's tarball and SBOMs also carry a GitHub build-provenance attestation (`gh attestation verify`). [npm provenance](https://www.npmjs.com/package/@farukada/aws-langgraph-dynamodb-ts#provenance) |
 
 ## Versioning and support
 
@@ -2182,8 +2182,9 @@ docs/
 ├── codeql.yml                  # Static analysis of the source and the workflows; push, PR and weekly
 ├── dependency-review.yml       # Fails a PR that adds a dependency with a high or critical advisory
 ├── scorecard.yml               # OpenSSF Scorecard; push to main, branch-protection changes and weekly
+├── latest-peers.yml            # Weekly, against the newest LangChain and LangGraph releases; a warning, not a gate
 ├── integration-live.yml        # The real-AWS tier, on every v* tag and never on a schedule
-└── release.yml                 # Tag-triggered publish with npm provenance and SBOMs, gated on green CI
+└── release.yml                 # Tag-triggered publish from main with npm provenance and attested SBOMs, gated on green CI
 ```
 
 ## Design decisions and evidence
