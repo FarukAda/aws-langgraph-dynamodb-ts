@@ -242,7 +242,7 @@ The pass still buffers twenty-five rows at a time and keeps at most **8 requests
 
 ## TTL expiry
 
-Set `ttl: { days }` or `ttl: { seconds }`. The `ttl` attribute is written as a Unix-epoch-seconds timestamp; enable DynamoDB TTL on the `ttl` attribute for automatic deletion. Every adapter filters rows past their `ttl` on read — `get`/`search`/`listNamespaces` in the store, `getTuple`/`list` in the checkpointer, `getMessages`/`listSessions` in chat history — so nothing expired comes back during DynamoDB's sweep lag (see [Expiry with TTL](../README.md#expiry-with-ttl) for how long that can take).
+Set `ttl: { days }` or `ttl: { seconds }`. The `ttl` attribute is written as a Unix-epoch-seconds timestamp; enable DynamoDB TTL on the `ttl` attribute for automatic deletion. Every adapter filters rows past their `ttl` on read (a checkpoint's payload and pending-write rows follow its metadata row) — `get`/`search`/`listNamespaces` in the store, `getTuple`/`list` in the checkpointer, `getMessages`/`listSessions` in chat history — so nothing expired comes back during DynamoDB's sweep lag (see [Expiry with TTL](../README.md#expiry-with-ttl) for how long that can take).
 
 **Checkpointer.** A thread whose head expired reads as its newest *live* checkpoint (or as empty); older checkpoints can expire while the head lives, so `parentConfig` may point at a checkpoint that is gone, which LangGraph's resume path does not need; and a swept payload reads as "no checkpoint" only for an already-expired head.
 
