@@ -218,14 +218,11 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     # A deployment environment is the one control that puts a human between
-    # `git push --tags` and a live `latest`. It is left commented out because
-    # turning it on is a two-sided change and enabling only this half can break
-    # publishing: the OIDC token then carries an `environment` claim, and npm's
-    # docs do not state whether a trusted publisher configured *without* an
-    # environment accepts one. To enable: create the environment with a
-    # required reviewer in repository settings, set the same name in the npm
-    # trusted publisher configuration, then uncomment.
-    # environment: npm-publish
+    # `git push --tags` and a live `latest`: the job waits for a required
+    # reviewer before it can mint an OIDC token. The token then carries an
+    # `environment` claim, and npm's trusted publisher for this package names
+    # the same environment, so the two sides must change together.
+    environment: npm-publish
     permissions:
       # Required for npm Trusted Publishing and automatic provenance, and the
       # only thing this job is granted: the GitHub release is created by the
