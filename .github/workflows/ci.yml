@@ -363,11 +363,14 @@ jobs:
   package-smoke:
     name: package smoke (npm pack + install + import)
     runs-on: ubuntu-latest
-    # test:surface below already bounds itself (scripts/run-with-timeout.mjs);
-    # this bounds the whole job against everything else that could stall —
-    # npm ci, the build, pack:check — so a hang here costs minutes, not the
-    # unbounded default GitHub gives a job with no timeout-minutes.
-    timeout-minutes: 15
+    # The steps below bound themselves: test:surface through
+    # scripts/run-with-timeout.mjs, each package-smoke test at 10 minutes and
+    # the consumer-types test at 15, all of them installing from the network.
+    # This bounds the whole job against everything else that could stall —
+    # npm ci, the build, pack:check — and sits above a single test's own bound,
+    # so a test that hangs on a slow registry fails with its own timeout and
+    # diagnostics instead of the job being cut off around it.
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
