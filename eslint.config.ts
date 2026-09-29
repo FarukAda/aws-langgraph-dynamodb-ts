@@ -29,10 +29,20 @@ const plugins: Record<string, ESLint.Plugin> = {
  */
 const disableTypeChecked = ts.configs.disableTypeChecked as Linter.Config;
 
+/**
+ * The one `unknown` allowed in every module: the declared type of a parameter
+ * of a function whose return type is a type predicate. A guard exists to find
+ * out what its argument is, so that argument is honestly not yet known to be
+ * anything, and typing it narrower pushes a cast onto every caller.
+ * `test/static/guards/forbidden-types.ts` applies the same exemption.
+ */
+const GUARD_PARAMETER =
+  'FunctionDeclaration[returnType.typeAnnotation.type="TSTypePredicate"] > Identifier.params > TSTypeAnnotation > TSUnknownKeyword';
+
 const NO_UNKNOWN = {
-  selector: 'TSUnknownKeyword',
+  selector: `TSUnknownKeyword:not(${GUARD_PARAMETER})`,
   message:
-    'The `unknown` type is banned in src. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
+    'The `unknown` type is banned in src, except as the type of a parameter of a type-predicate function. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
 };
 /**
  * The modules that turn a caller's input into a checked type. A `parse*`
@@ -50,10 +60,9 @@ const PARSER_MODULES = [
   'src/store/internal/parse.ts',
 ];
 const NO_UNKNOWN_OUTSIDE_PARSER_PARAMETERS = {
-  selector:
-    'TSUnknownKeyword:not(FunctionDeclaration[id.name=/^parse[A-Z]/] > Identifier.params > TSTypeAnnotation > TSUnknownKeyword)',
+  selector: `TSUnknownKeyword:not(FunctionDeclaration[id.name=/^parse[A-Z]/] > Identifier.params > TSTypeAnnotation > TSUnknownKeyword):not(${GUARD_PARAMETER})`,
   message:
-    '`unknown` is allowed only as the type of a parameter of a `parse*` function in a parser module. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
+    '`unknown` is allowed only as the type of a parameter of a `parse*` function in a parser module, or of a type-predicate function. Model the shape explicitly (see CONTRIBUTING.md, "The rules the guards enforce").',
 };
 const NO_EXPORT_ALL = {
   selector: 'ExportAllDeclaration',

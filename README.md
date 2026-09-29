@@ -601,9 +601,8 @@ try {
   const recent = await history.getMessages('session-1', { limit: 20, signal });
   await agent.invoke({ messages: [{ role: 'user', content: 'Hello' }] }, { ...thread, signal });
 } catch (error) {
-  const e = error as Error;
-  if (isDynamoDBLangGraphError(e) && e.code === ErrorCode.ABORTED) {
-    console.warn('cancelled during a DynamoDB or S3 call', e.context.operation);
+  if (isDynamoDBLangGraphError(error) && error.code === ErrorCode.ABORTED) {
+    console.warn('cancelled during a DynamoDB or S3 call', error.context.operation);
   } else if (signal.aborted) {
     console.warn('cancelled by LangGraph outside a saver call');
   } else {
@@ -876,7 +875,7 @@ Every error the library throws is a `DynamoDBLangGraphError` carrying a stable `
 
 The innermost guarded method a call reaches names the `operation`: `saver.getDeltaChannelHistory`'s own ancestor reads report `saver.getTuple`, and a single-session adapter's calls report the multi-session method they delegate to (`history.getMessages`, and so on) rather than the session method that made the call. The same holds for an `AbortSignal` shared across more than one call whose `reason` is already one of this library's own `ABORTED` errors: whichever call's boundary reaches it first is the one its `context.operation` reports, and the first call's `context.tableName` sticks the same way.
 
-Branch on `code` and detect library errors with the exported brand check rather than `instanceof`, which breaks when a bundler duplicates the package. Earlier releases set the same brand, so an error from an older copy installed beside this one is recognised too — in that release's shape: no `details`, its counts as flat properties, and possibly `code: 'UPSTREAM'`. The check is safe on any caught value, including one that is not an object at all — which is what a `catch` clause can actually hold. `ErrorCode` is frozen: a member cannot be reassigned by anything sharing the process, so `error.code === ErrorCode.X` means the same thing to every consumer:
+Branch on `code` and detect library errors with the exported brand check rather than `instanceof`, which breaks when a bundler duplicates the package. Earlier releases set the same brand, so an error from an older copy installed beside this one is recognised too — in that release's shape: no `details`, its counts as flat properties, and possibly `code: 'UPSTREAM'`. The check takes the `unknown` a `catch` clause binds under `strict`, with no cast, and is safe on any value, including one that is not an object at all. `ErrorCode` is frozen: a member cannot be reassigned by anything sharing the process, so `error.code === ErrorCode.X` means the same thing to every consumer:
 
 ```typescript
 import { ErrorCode, isDynamoDBLangGraphError } from '@farukada/aws-langgraph-dynamodb-ts';
@@ -884,17 +883,16 @@ import { ErrorCode, isDynamoDBLangGraphError } from '@farukada/aws-langgraph-dyn
 try {
   await store.put([''], 'k', { v: 1 });
 } catch (error) {
-  const e = error as Error; // guard a variable: a guard on `error as Error` leaves `error` itself unknown
-  if (isDynamoDBLangGraphError(e)) {
-    switch (e.code) {
+  if (isDynamoDBLangGraphError(error)) {
+    switch (error.code) {
       case ErrorCode.VALIDATION:
-        console.error('bad input', e.context.field); // names the offending option or argument
+        console.error('bad input', error.context.field); // names the offending option or argument
         break;
       case ErrorCode.THROTTLED:
-        console.warn('back off', e.context.awsErrorName); // says which limit
+        console.warn('back off', error.context.awsErrorName); // says which limit
         break;
       case ErrorCode.COMPENSATION_FAILED:
-        console.error(e.details.rollbackError); // typed by the code, no cast; then run reconcileMessageCount
+        console.error(error.details.rollbackError); // typed by the code, no cast; then run reconcileMessageCount
         break;
     }
   }
@@ -1289,8 +1287,7 @@ What your code has to change, most common first:
 
   try {
     await store.put(['users', 'u1'], 'profile', { name: 'Ada' });
-  } catch (caught) {
-    const error = caught as Error;
+  } catch (error) {
     // 0.9 tested `error instanceof ValidationError` and read `error.context.operation`.
     if (isDynamoDBLangGraphError(error) && error.code === ErrorCode.VALIDATION) {
       console.warn(error.context.field);

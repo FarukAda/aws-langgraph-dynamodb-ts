@@ -42,15 +42,27 @@ const TYPECHECK_COMPILERS = ['typescript@5', 'typescript@latest'];
 const OPTIONAL_PEER = '@aws-sdk/client-s3';
 
 /**
- * A consumer that names the S3 offload types. With skipLibCheck off, tsc
- * follows every declaration this reaches; a `.d.ts` importing the optional
- * peer would fail here with TS2307 pointing into node_modules.
+ * A consumer that names the S3 offload types and guards a caught error the way
+ * the README shows. With skipLibCheck off, tsc follows every declaration this
+ * reaches; a `.d.ts` importing the optional peer would fail here with TS2307
+ * pointing into node_modules. Under `--strict` a `catch` binds `unknown`, so
+ * the guard compiles here only while it accepts that value with no cast.
  */
 const CONSUMER = `
+import { isDynamoDBLangGraphError } from '@farukada/aws-langgraph-dynamodb-ts';
 import type { DynamoDBStoreOptions, S3OffloadConfig } from '@farukada/aws-langgraph-dynamodb-ts';
 
 export const s3: S3OffloadConfig = { bucketName: 'b', clientConfig: { region: 'eu-west-1' } };
 export const options: DynamoDBStoreOptions = { tableName: 't', clientConfig: { region: 'eu-west-1' }, s3 };
+
+export function codeOf(run: () => void): string | undefined {
+  try {
+    run();
+    return undefined;
+  } catch (error) {
+    return isDynamoDBLangGraphError(error) ? error.code : undefined;
+  }
+}
 `;
 
 /** Every `.d.ts` reachable from `entry` through relative imports (extensionless or `.js`). */
