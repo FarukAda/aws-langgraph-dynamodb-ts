@@ -176,8 +176,8 @@ export function withRowVersion<T extends AttributeMap>(item: T): T & { v: number
  *
  * Throws: nothing.
  *
- * Guarantees: an expired row is absent to every reader even while DynamoDB's
- * own sweep lags, which AWS documents as typically within a few days of the
+ * Guarantees: a caller that applies this hides an expired row even while
+ * DynamoDB's own sweep lags, which AWS documents as typically within a few days of the
  * `ttl`, with no fixed bound
  * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html).
  */

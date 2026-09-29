@@ -24,12 +24,13 @@ export const MAX_TTL_SECONDS = MAX_TTL_DAYS * 24 * 60 * 60;
 
 /**
  * Extra days an S3 lifecycle rule adds over the TTL it backs, so the offloaded
- * object outlives its row's expiry, never the other way round. DynamoDB
- * deletes an expired item typically within a few days of its `ttl`, with no
- * fixed bound
- * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html);
- * the margin does not span that lag, and does not need to, because every read
- * hides a row past its `ttl`.
+ * object is never removed before the row that names it expires, never the
+ * other way round. The rule expires an object by age, at or after creation +
+ * ceil(ttl) + this margin, which is at or after the `ttl` of any row naming
+ * it, so DynamoDB's physical-deletion lag (typically within a few days of the
+ * `ttl`, with no fixed bound:
+ * https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html)
+ * does not matter. The margin is headroom, not a bound on that lag.
  */
 export const S3_LIFECYCLE_SWEEP_MARGIN_DAYS = 2;
 
@@ -145,9 +146,11 @@ export function calculateTtlTimestamp(ttl: TtlOption, now: () => number = Date.n
  * DynamoDB deletes an expired item typically within a few days of its `ttl`,
  * with no fixed bound
  * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html).
- * The margin keeps the object past the row's expiry, which a bare
- * `{ days: N }` did not; a row that DynamoDB has not yet deleted is hidden by
- * every read, so the object going first is never observed.
+ * Every row naming the object carries a `ttl` no later than its creation plus
+ * `ttl`, so the object, expiring at or after that, is not removed before its
+ * row expires; readers hide a metadata, store or history row by its own `ttl`,
+ * and serve a checkpoint's payload and pending-write rows only while its
+ * metadata row is live. The margin is headroom, not a bound on the lag.
  */
 export function lifecycleExpirationDays(ttl: TtlOption): number {
   return Math.ceil(resolveTtlSeconds(ttl) / SECONDS_PER_DAY) + S3_LIFECYCLE_SWEEP_MARGIN_DAYS;

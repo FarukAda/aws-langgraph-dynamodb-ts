@@ -593,7 +593,11 @@ test('main refuses --delete when a colliding LIVE row in --table names a differe
         createDynamoDB: () => ddb,
         now: NOW,
       }),
-      /refusing --delete/,
+      (error) => {
+        assert.match(error.message, /refusing --delete/);
+        assert.match(error.message, /1 superseded/);
+        return true;
+      },
     );
   } finally {
     console.log = log;

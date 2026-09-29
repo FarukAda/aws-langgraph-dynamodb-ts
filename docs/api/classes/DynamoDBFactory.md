@@ -6,11 +6,12 @@
 
 # Class: DynamoDBFactory
 
-Defined in: [factory/factory.ts:116](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L116)
+Defined in: [factory/factory.ts:117](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L117)
 
 Convenience constructors for the adapters.
 
-Individual `create*` methods each build their own client; [createAll](#createall)
+Individual `create*` methods each build one adapter, on the factory's `client`
+when it was given one and otherwise on a client of their own; [createAll](#createall)
 builds one shared client used by all three and returns a combined `destroy`
 that tears everything down once. Each adapter validates the options it ends
 up with, so the same mistake is caught the same way however the adapter was
@@ -29,7 +30,7 @@ field names (`options.<key>`, `tableName`, …) for anything inside one.
 
 > **new DynamoDBFactory**(`base?`): `DynamoDBFactory`
 
-Defined in: [factory/factory.ts:135](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L135)
+Defined in: [factory/factory.ts:136](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L136)
 
 Accepts: `base` — the defaults every adapter inherits. Checked here, where
 the caller wrote them: an unknown key would otherwise be ignored, and a
@@ -64,7 +65,7 @@ itself, since a per-adapter value may still replace it.
 
 > **createAll**\<`O`\>(`options`): [`CreatedAdapters`](../interfaces/CreatedAdapters.md)\<`O`\>
 
-Defined in: [factory/factory.ts:261](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L261)
+Defined in: [factory/factory.ts:263](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L263)
 
 Build the adapters whose sections are given, all on one shared client.
 
@@ -112,9 +113,10 @@ others.
 
 > **createChatMessageHistory**(`options`): [`DynamoDBChatMessageHistory`](DynamoDBChatMessageHistory.md)
 
-Defined in: [factory/factory.ts:231](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L231)
+Defined in: [factory/factory.ts:233](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L233)
 
-A chat history on its own client.
+A chat history, on the factory's `client` when it has one and otherwise on
+its own.
 
 Accepts: as [createSaver](#createsaver), for the history's options.
 
@@ -138,16 +140,16 @@ Throws: as [createSaver](#createsaver).
 
 > **createSaver**(`options`): [`DynamoDBSaver`](DynamoDBSaver.md)
 
-Defined in: [factory/factory.ts:203](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L203)
+Defined in: [factory/factory.ts:204](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L204)
 
-A saver on its own client.
+A saver, on the factory's `client` when it has one and otherwise on its own.
 
 Accepts: `options` — the saver's own, laid over the factory's defaults. A
 per-adapter value wins; see defaultsFor for how a client choice
 replaces the factory's as a unit.
 
-Returns: the saver, which owns the client it built and releases it on
-`destroy()`.
+Returns: the saver. It owns, and releases on `destroy()`, only a client it
+built itself; a `client` from the factory is never closed by it.
 
 Throws: `VALIDATION` for any invalid option, naming it as the saver's
 constructor does — `options` for a value that is not an object, checked
@@ -171,9 +173,9 @@ characters instead of refusing it.
 
 > **createStore**(`options`): [`DynamoDBStore`](DynamoDBStore.md)
 
-Defined in: [factory/factory.ts:217](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L217)
+Defined in: [factory/factory.ts:218](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/factory/factory.ts#L218)
 
-A store on its own client.
+A store, on the factory's `client` when it has one and otherwise on its own.
 
 Accepts: as [createSaver](#createsaver), for the store's options.
 

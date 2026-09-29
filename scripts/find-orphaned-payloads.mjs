@@ -577,7 +577,7 @@ const realDynamoDB = (config) => new DynamoDBClient(config);
  * tests; the command line sets none of them.
  *
  * The findings print immediately after the sweep, before any delete is
- * attempted. With `--delete`, a sweep with something to delete but where not
+ * attempted. With `--delete`, a sweep with something to delete but where no
  * checked object had evidence of `--table` — a live row, or an expired row
  * that still names that exact object — refuses to delete anything, however
  * many superseded rows it found: the signature of a `--table` or
