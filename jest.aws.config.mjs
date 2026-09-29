@@ -1,4 +1,4 @@
-import { sharedJestConfig } from './jest.shared.config.ts';
+import { sharedJestConfig } from './jest.shared.config.mjs';
 
 /**
  * Real-AWS tier: creates and deletes uniquely named tables and buckets

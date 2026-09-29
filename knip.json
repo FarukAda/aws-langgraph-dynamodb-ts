@@ -6,10 +6,10 @@
     "scripts/*.mjs",
     ".github/scripts/*.mjs",
     "*.config.ts",
+    "jest*.config.mjs",
     "test/**/*.test.ts",
     "test/package-smoke/*.test.mjs",
     "test/scripts/*.test.mjs"
   ],
-  "project": ["src/**/*.ts", "test/**/*.ts"],
-  "ignoreDependencies": ["ts-node"]
+  "project": ["src/**/*.ts", "test/**/*.ts"]
 }

@@ -205,7 +205,7 @@ describe('handEditedDocFiles', () => {
         'package.json',
         'tsconfig.json',
         'tsconfig.build.json',
-        'jest.config.ts',
+        'jest.config.mjs',
         'eslint.config.ts',
         '.github/CODEOWNERS',
         '.github/workflows/ci.yml',

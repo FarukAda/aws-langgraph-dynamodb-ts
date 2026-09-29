@@ -16,7 +16,7 @@ npm run lint && npm run typecheck && npm run typecheck:all && npm test && npm ru
 
 ## Before opening a PR
 
-- `npm run lint`, `npm run typecheck` and `npm run typecheck:all` (the whole program: `src`, `test` and the configs) pass with no output.
+- `npm run lint`, `npm run typecheck` and `npm run typecheck:all` (the whole program: `src`, `test` and `eslint.config.ts`) pass with no output.
 - `npm test` passes at 100 % branch, function, line and statement coverage — a PR that drops it fails CI.
 - `npm run build && npm run pack:check` succeeds; the latter verifies the tarball's listing, `publint` and `@arethetypeswrong/cli`.
 - `npm run check:docs` passes when a `ts`/`typescript` sample in the README, `CONTRIBUTING.md`, `docs/guide.md` or the CHANGELOG changed, and `npm run check:links` when a heading moved or a relative link changed.

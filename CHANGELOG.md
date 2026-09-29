@@ -87,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - Dependabot raises a range only when a new version falls outside it (`versioning-strategy: increase-if-necessary`), so a routine update no longer moves a dependency or peer floor; the CI wait loop prints its attempt number; `run-with-timeout` says why when its command cannot be started; `engines.npm` is gone from the manifest, where nothing enforced it and it only warned consumers on other package managers — the npm floor for development is in `CONTRIBUTING.md`.
+- The jest configs are plain `.mjs` modules, which every supported Node version loads directly, so no jest run prints Node 24's "Failed to load the ES module … jest.config.ts" warning any more; `ts-node`, which only served as jest's fallback loader for the TypeScript configs, is removed from the development dependencies.
 
 ## [1.0.0-rc.2] - 2026-09-27
 

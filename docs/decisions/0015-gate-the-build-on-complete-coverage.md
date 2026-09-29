@@ -23,7 +23,7 @@ better one: whether the uncovered line should exist at all.
 ## Decision
 
 We fail the build below 100 % of statements, branches, functions and lines
-(`jest.config.ts`), collected across everything under `src/` and enforced
+(`jest.config.mjs`), collected across everything under `src/` and enforced
 on every `npm test` run. An optional feature earns no exemption from this:
 record 8's sharded recency index, opt-in and off by default, is covered by
 tests that turn it on and exercise its shard-selection and backfill code
