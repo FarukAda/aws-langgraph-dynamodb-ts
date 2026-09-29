@@ -294,24 +294,25 @@ export function assertRowFits(record: StoreItemRow): void {
  * delete exactly the payload it superseded rather than a descriptor a racer may
  * already have replaced.
  *
- * Every failure reaching the catch arrives after at least one put was issued —
- * `putWithRevisionSwap` only re-reads from inside its own catch — so none of
- * them proves a non-commit on its own: a put can commit server-side and lose
- * its response, and a `ConditionalCheckFailedException` is as consistent with
+ * Every failed put arrives after at least one write was issued —
+ * `putWithRevisionSwap` only re-reads after a rejection — so none of them
+ * proves a non-commit on its own: a put can commit server-side and lose its
+ * response, and a `ConditionalCheckFailedException` is as consistent with
  * hitting the row this call just wrote as with a competitor's win. The row is
- * therefore read back (`verifyWriteLanded`) before anything is deleted. Only a
- * confirmed `'not-landed'` deletes this record's own object; a confirmed
- * `'landed'` cleans up the previous object like the success path and swallows
- * the error, and an `'unverified'` read deletes nothing and rethrows — leaking
- * one object at worst rather than stranding a live row pointing at a deleted
- * one. So does a read that finds nothing, or finds another revision, after a
- * write that DynamoDB may still apply: any attempt of the budget that got no
- * answer, that DynamoDB answered as still in progress
- * (`TransactionInProgressException`) or that failed with a server error
- * (5xx). The verification compares the per-call `rev`, so an inline record is
- * verified too: otherwise a lost acknowledgement of an inline overwrite would
- * be reported as a failure while the previous offloaded object was never
- * cleaned.
+ * therefore read back ({@link settleFailedPut}) before anything is deleted.
+ * Only a confirmed `'not-landed'` deletes this record's own object; a confirmed
+ * `'landed'` cleans up what the landed write replaced — the observation the
+ * attempt in flight was pinned to, which after a re-pin is a competitor's, not
+ * what this call first read — and swallows the error; an `'unverified'` read
+ * deletes nothing and rethrows, leaking one object at worst rather than
+ * stranding a live row pointing at a deleted one. So does a read that finds
+ * nothing, or finds another revision, after a write that DynamoDB may still
+ * apply: any attempt of the budget that got no answer, that DynamoDB answered
+ * as still in progress (`TransactionInProgressException`) or that failed with a
+ * server error (5xx). The verification compares the per-call `rev`, so an
+ * inline record is verified too: otherwise a lost acknowledgement of an inline
+ * overwrite would be reported as a failure while the previous offloaded object
+ * was never cleaned.
  *
  * Neither release reads the row again first. The record's object is uploaded
  * under the record's own `rev`, which no other put uses, so no row another put
@@ -326,9 +327,9 @@ export function assertRowFits(record: StoreItemRow): void {
  *
  * Throws: `VALIDATION` naming `index` or `value` for a row over DynamoDB's
  * item limit, before any write and after releasing this put's own upload;
- * whatever the write throws, unless the verification proves the write
- * landed after all — in which case the error is swallowed and the cleanup runs
- * as on the success path.
+ * whatever the write, or the swap's re-read after a rejection, throws, unless
+ * the verification proves the write landed after all — in which case the error
+ * is swallowed and the cleanup runs as on the success path.
  *
  * Guarantees: this record's own object is released only after a read proves
  * the write did not land, and a superseded object only after this record is
@@ -349,25 +350,53 @@ export async function persistRow(
     await cleanUp(context, record.value, 'store.put');
     throw error;
   }
-  let superseded = existing;
-  try {
-    if (context.offloader) {
-      superseded = await putWithRevisionSwap(context, record, existing);
-    } else {
+  let superseded: ExistingRowMeta;
+  if (context.offloader) {
+    const swap = await putWithRevisionSwap(context, record, existing);
+    superseded = swap.ok
+      ? swap.superseded
+      : await settleFailedPut(context, record, swap.reason, swap.pinned);
+  } else {
+    try {
       await withDynamoDBRetry(
         (request) => context.client.put({ TableName: context.tableName, Item: record }, request),
         context.retry,
       );
+      superseded = existing;
+    } catch (error) {
+      superseded = await settleFailedPut(context, record, error as Error, existing);
     }
-  } catch (error) {
-    const verdict = settledVerdict(await verifyWriteLanded(context, record), error as Error);
-    if (verdict === 'not-landed') await cleanUp(context, record.value, 'store.put');
-    if (verdict !== 'landed') throw error;
   }
   await cleanUp(context, superseded.value, 'store.put.overwrite', [
     ...record.namespace,
     record.key,
   ]);
+}
+
+/**
+ * Settle a put that failed, from a read of its row.
+ *
+ * Accepts: `record` — the row the put carried, with its own `rev`. `error` —
+ * what the write threw. `pinned` — the observation the attempt in flight when
+ * it threw was pinned to: what that write replaced, if it landed.
+ *
+ * Returns: `pinned`, when the read shows the write landed and only its answer
+ * was lost, so the caller releases what that write replaced.
+ *
+ * Throws: `error`, after releasing this put's own upload when the read confirms
+ * the write did not land, and releasing nothing when the outcome stays
+ * unverified (see {@link persistRow}).
+ */
+async function settleFailedPut(
+  context: StoreContext,
+  record: StoreItemRow,
+  error: Error,
+  pinned: ExistingRowMeta,
+): Promise<ExistingRowMeta> {
+  const verdict = settledVerdict(await verifyWriteLanded(context, record), error);
+  if (verdict === 'landed') return pinned;
+  if (verdict === 'not-landed') await cleanUp(context, record.value, 'store.put');
+  throw error;
 }
 
 /**
@@ -430,8 +459,16 @@ async function put(
 }
 
 /**
+ * How a revision swap ended, settled rather than thrown: what its committed
+ * write superseded, or the failure together with the observation the attempt in
+ * flight was pinned to — what that write replaced, if it landed after all.
+ */
+type SwapOutcome =
+  { ok: true; superseded: ExistingRowMeta } | { ok: false; reason: Error; pinned: ExistingRowMeta };
+
+/**
  * Commit `record`, re-reading and retrying while another writer holds the row,
- * and return the state this write actually superseded — the only descriptor
+ * and report the state this write actually superseded — the only descriptor
  * safe to delete afterwards.
  *
  * Without the swap both racers read the same previous descriptor, both commit,
@@ -461,12 +498,17 @@ async function put(
  * `existing` — what the caller read before encoding, used as the first pin; an
  * `exists: false` observation pins "no row", so a creation races correctly too.
  *
- * Returns: the state this write actually superseded — the descriptor safe to
- * delete — which is the last observation the winning put was pinned to, never
- * this record's own value.
+ * Returns: on success, the state this write actually superseded — the
+ * descriptor safe to delete — which is the last observation the winning put
+ * was pinned to, never this record's own value. On failure — a put failing
+ * other than on its guard, or a re-read failing after a rejection — the error,
+ * with the observation the failed attempt was pinned to. After a re-pin that is
+ * a competitor's row, not `existing`: the competitor already replaced and
+ * released `existing`, so a write that landed without an answer superseded the
+ * competitor's object, and only this observation names it.
  *
- * Throws: whatever the put throws other than a conditional-check failure; those
- * are the swap's own business.
+ * Throws: nothing; a failure is reported in the outcome, because only the
+ * swap knows which observation the failed attempt was pinned to.
  *
  * Guarantees: at most {@link OVERWRITE_CAS_MAX_ATTEMPTS} conditional puts, and
  * a re-read only when the rejection did not already carry the row that caused
@@ -476,20 +518,30 @@ export async function putWithRevisionSwap(
   context: StoreContext,
   record: StoreItemRow,
   existing: ExistingRowMeta,
-): Promise<ExistingRowMeta> {
+): Promise<SwapOutcome> {
   let observed = existing;
   for (let attempt = 1; attempt <= OVERWRITE_CAS_MAX_ATTEMPTS; attempt++) {
     const attempted = observed;
     try {
       await put(context, record, attempted);
-      return attempted;
+      return { ok: true, superseded: attempted };
     } catch (error) {
       const rejection = error as Error;
-      if (!isConditionalCheckFailed(rejection)) throw rejection;
-      // The rejection carries the row that turned it away; the read is spent only when it does not.
-      const rejected = rejectedRow(rejection);
-      observed = rejected ? existingFrom(rejected) : await readExisting(context, rowKeyOf(record));
-      if (record.rev !== undefined && observed.revision === record.rev) return attempted;
+      if (!isConditionalCheckFailed(rejection)) {
+        return { ok: false, reason: rejection, pinned: attempted };
+      }
+      try {
+        // The rejection carries the row that turned it away; the read is spent only when it does not.
+        const rejected = rejectedRow(rejection);
+        observed = rejected
+          ? existingFrom(rejected)
+          : await readExisting(context, rowKeyOf(record));
+      } catch (readError) {
+        return { ok: false, reason: readError as Error, pinned: attempted };
+      }
+      if (record.rev !== undefined && observed.revision === record.rev) {
+        return { ok: true, superseded: attempted };
+      }
       // A row that vanished between attempts (a concurrent delete) makes this a fresh creation.
       record.createdAt = observed.exists
         ? (observed.createdAt ?? record.createdAt)
@@ -501,8 +553,12 @@ export async function putWithRevisionSwap(
       'S3 object under a concurrent put (reclaimed by ensureS3LifecycleRule)',
     { namespace: record.namespace, key: record.key, attempts: OVERWRITE_CAS_MAX_ATTEMPTS },
   );
-  await put(context, record);
-  return observed;
+  try {
+    await put(context, record);
+    return { ok: true, superseded: observed };
+  } catch (error) {
+    return { ok: false, reason: error as Error, pinned: observed };
+  }
 }
 
 /**

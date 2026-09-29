@@ -3,6 +3,7 @@ import type { AttributeMap } from '../../../../src/shared/dynamodb/client';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
 import { putWithRevisionSwap } from '../../../../src/store/internal/item-write';
 import type { ExistingRowMeta, StoreItemRow } from '../../../../src/store/internal/rows';
+import { landed } from '../../../shared/helpers/landed-swap';
 
 /** The request a plain put takes, and the item shape a transaction wraps. */
 interface WriteInput {
@@ -110,7 +111,7 @@ describe('an offloaded put goes out under a request token', () => {
   it('sends one transaction item carrying the guard fragments the plain put carried', async () => {
     const { context, emitted } = recorder({ failures: 0 });
 
-    await putWithRevisionSwap(context as never, record(offloaded('new')), pinnedToR0);
+    await landed(putWithRevisionSwap(context as never, record(offloaded('new')), pinnedToR0));
 
     expect(emitted.map((entry) => entry.kind)).toEqual(['transact']);
     expect(emitted[0].items).toBe(1);
@@ -131,7 +132,7 @@ describe('an offloaded put goes out under a request token', () => {
       reReads: [{ exists: true, revision: 'r1', value: offloaded('theirs') }],
     });
 
-    await putWithRevisionSwap(context as never, record(offloaded('new')), pinnedToR0);
+    await landed(putWithRevisionSwap(context as never, record(offloaded('new')), pinnedToR0));
 
     expect(emitted.map((entry) => entry.kind)).toEqual(['transact', 'transact']);
     expect(emitted[0].put.ExpressionAttributeValues).toEqual({ ':rev': 'r0' });
@@ -150,7 +151,7 @@ describe('an offloaded put goes out under a request token', () => {
       ],
     });
 
-    await putWithRevisionSwap(context as never, record(offloaded('new')), pinnedToR0);
+    await landed(putWithRevisionSwap(context as never, record(offloaded('new')), pinnedToR0));
 
     expect(emitted).toHaveLength(4);
     expect(emitted[3].kind).toBe('transact');
@@ -165,7 +166,7 @@ describe('an inline put is left exactly as it was', () => {
     const { context, emitted } = recorder({ failures: 0 });
     const item = record(inline());
 
-    await putWithRevisionSwap(context as never, item, pinnedToR0);
+    await landed(putWithRevisionSwap(context as never, item, pinnedToR0));
 
     expect(emitted.map((entry) => entry.kind)).toEqual(['put']);
     expect(emitted[0].token).toBeUndefined();
@@ -231,7 +232,9 @@ describe('a lost acknowledgement whose retry re-lands', () => {
   it('leaves the row a concurrent delete removed deleted, when the payload was offloaded', async () => {
     const table = racedByADelete();
 
-    await putWithRevisionSwap(table.context as never, record(offloaded('new')), { exists: false });
+    await landed(
+      putWithRevisionSwap(table.context as never, record(offloaded('new')), { exists: false }),
+    );
 
     expect(table.requests()).toBe(2);
     expect(table.survives()).toBe(false);
@@ -240,7 +243,7 @@ describe('a lost acknowledgement whose retry re-lands', () => {
   it('still resurrects an inline row, which is the outcome that has not changed', async () => {
     const table = racedByADelete();
 
-    await putWithRevisionSwap(table.context as never, record(inline()), { exists: false });
+    await landed(putWithRevisionSwap(table.context as never, record(inline()), { exists: false }));
 
     expect(table.requests()).toBe(2);
     expect(table.survives()).toBe(true);
@@ -286,10 +289,12 @@ describe('a guard rejection arriving as a cancelled transaction', () => {
       },
     };
 
-    const superseded = await putWithRevisionSwap(context as never, record(offloaded('new')), {
-      exists: true,
-      revision: 'stale',
-    });
+    const superseded = await landed(
+      putWithRevisionSwap(context as never, record(offloaded('new')), {
+        exists: true,
+        revision: 'stale',
+      }),
+    );
 
     expect(reads).toBe(0);
     expect(superseded).toEqual({

@@ -70,6 +70,34 @@ describe('searchItems vectorBackend contract', () => {
     expect(maxInFlight).toBeGreaterThan(1);
   });
 
+  /**
+   * The page bound is a property of the request alone, so it is refused before
+   * the one step that costs money: embedding the query is a paid call to the
+   * caller's model, and a refused search should not have made it.
+   */
+  it('refuses a page past maxSearchCandidates before embedding the query', async () => {
+    const { client } = createStrictDocumentMock();
+    const embeddings = { embedQuery: jest.fn().mockResolvedValue([0, 1]) };
+    const vectorBackend = { upsert: jest.fn(), delete: jest.fn(), query: jest.fn() };
+    const ctx = context(client, {
+      index: { dims: 2, embeddings: embeddings as never },
+      vectorBackend: vectorBackend,
+      maxSearchCandidates: 5,
+    });
+
+    await expect(
+      searchItems(
+        ctx,
+        parsedSearch({ namespacePrefix: ['users'], query: 'q', offset: 3, limit: 3 }),
+      ),
+    ).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION,
+      context: { field: 'maxSearchCandidates' },
+    });
+    expect(embeddings.embedQuery).not.toHaveBeenCalled();
+    expect(vectorBackend.query).not.toHaveBeenCalled();
+  });
+
   it('warns when a backend returns scores that are not non-increasing', async () => {
     // The upstream SearchItem.score contract is "higher = better match", and
     // match.score is forwarded verbatim. A backend surfacing a raw *distance*

@@ -1,7 +1,9 @@
 import { PayloadLocation } from '../../../../src/shared/codec/codec';
+import { retryExhaustedError } from '../../../../src/shared/errors/errors';
 import { SILENT_LOGGER } from '../../../../src/shared/logging/logger';
-import { putWithRevisionSwap } from '../../../../src/store/internal/item-write';
+import { persistRow, putWithRevisionSwap } from '../../../../src/store/internal/item-write';
 import type { ExistingRowMeta, StoreItemRow } from '../../../../src/store/internal/rows';
+import { landed } from '../../../shared/helpers/landed-swap';
 
 const descriptor = (s3Key: string) => ({
   location: PayloadLocation.S3 as const,
@@ -80,7 +82,7 @@ describe('putWithRevisionSwap', () => {
       createdAt: 'T0',
     };
 
-    const superseded = await putWithRevisionSwap(context as never, record(), previous);
+    const superseded = await landed(putWithRevisionSwap(context as never, record(), previous));
 
     expect(superseded.value).toEqual(descriptor('old'));
     expect(inputs[0].ConditionExpression).toBe('#rev = :rev');
@@ -96,12 +98,14 @@ describe('putWithRevisionSwap', () => {
       reReads: [{ exists: true, revision: 'r1', value: descriptor('theirs'), createdAt: 'T0' }],
     });
 
-    const superseded = await putWithRevisionSwap(context as never, record(), {
-      exists: true,
-      revision: 'r0',
-      value: descriptor('old'),
-      createdAt: 'T0',
-    });
+    const superseded = await landed(
+      putWithRevisionSwap(context as never, record(), {
+        exists: true,
+        revision: 'r0',
+        value: descriptor('old'),
+        createdAt: 'T0',
+      }),
+    );
 
     expect(putCount()).toBe(2);
     expect(superseded.value).toEqual(descriptor('theirs'));
@@ -115,7 +119,7 @@ describe('putWithRevisionSwap', () => {
     });
     const item = record();
 
-    await putWithRevisionSwap(context as never, item, { exists: false });
+    await landed(putWithRevisionSwap(context as never, item, { exists: false }));
 
     expect(item.createdAt).toBe('ORIGINAL');
   });
@@ -132,7 +136,7 @@ describe('putWithRevisionSwap', () => {
       logger: { ...SILENT_LOGGER, warn },
     });
 
-    await putWithRevisionSwap(context as never, record(), { exists: true, revision: 'r0' });
+    await landed(putWithRevisionSwap(context as never, record(), { exists: true, revision: 'r0' }));
 
     expect(putCount()).toBe(4);
     expect(inputs[3].ConditionExpression).toBeUndefined();
@@ -155,25 +159,28 @@ describe('putWithRevisionSwap', () => {
       reReads: [{ exists: true, revision: 'mine', value: descriptor('new'), createdAt: 'T0' }],
     });
 
-    const superseded = await putWithRevisionSwap(context as never, record(), {
-      exists: true,
-      revision: 'r0',
-      value: descriptor('old'),
-      createdAt: 'T0',
-    });
+    const superseded = await landed(
+      putWithRevisionSwap(context as never, record(), {
+        exists: true,
+        revision: 'r0',
+        value: descriptor('old'),
+        createdAt: 'T0',
+      }),
+    );
 
     expect(putCount()).toBe(1);
     expect(superseded.value).toEqual(descriptor('old'));
   });
 
-  it('propagates a non-conditional error untouched', async () => {
+  it('reports a non-conditional error untouched, pinned to the observation it was sent against', async () => {
+    const boom = Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
     const context = {
       tableName: 'store',
       offloader: {},
       logger: SILENT_LOGGER,
       client: {
         transactWrite: () => {
-          throw Object.assign(new Error('boom'), { name: 'ResourceNotFoundException' });
+          throw boom;
         },
         get: () => ({ Item: undefined }),
       },
@@ -181,7 +188,87 @@ describe('putWithRevisionSwap', () => {
 
     await expect(
       putWithRevisionSwap(context as never, record(), { exists: false }),
-    ).rejects.toThrow('boom');
+    ).resolves.toEqual({ ok: false, reason: boom, pinned: { exists: false } });
+  });
+
+  /**
+   * The rejected attempt may be this call's own landed write reported back, so
+   * the failure carries that attempt's pin — here the competitor's row the first
+   * rejection re-pinned on, not the observation the call started from.
+   */
+  it('reports a re-read that fails after a rejection, pinned to the attempt it turned away', async () => {
+    const readDown = Object.assign(new Error('read down'), { name: 'ValidationException' });
+    let writes = 0;
+    const context = {
+      tableName: 'store',
+      offloader: {},
+      logger: SILENT_LOGGER,
+      client: {
+        transactWrite: () => {
+          writes += 1;
+          throw writes === 1
+            ? cancelledGuard({
+                rev: { S: 'r1' },
+                createdAt: { S: 'T-1' },
+                value: {
+                  M: {
+                    location: { S: 'S3' },
+                    serdeType: { S: 'json' },
+                    compressed: { BOOL: false },
+                    s3Key: { S: 'theirs' },
+                  },
+                },
+              })
+            : cancelledGuard();
+        },
+        get: () => {
+          throw readDown;
+        },
+      },
+    };
+
+    await expect(
+      putWithRevisionSwap(context as never, record(), { exists: true, revision: 'r0' }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: readDown,
+      pinned: { exists: true, revision: 'r1', value: descriptor('theirs'), createdAt: 'T-1' },
+    });
+    expect(writes).toBe(2);
+  });
+
+  it('reports a failed fallback write, pinned to the last observation it overwrote', async () => {
+    const bad = Object.assign(new Error('bad'), { name: 'ValidationException' });
+    const reReads: ExistingRowMeta[] = [
+      { exists: true, revision: 'r1', value: descriptor('one'), createdAt: 'T0' },
+      { exists: true, revision: 'r2', value: descriptor('two'), createdAt: 'T0' },
+      { exists: true, revision: 'r3', value: descriptor('three'), createdAt: 'T0' },
+    ];
+    let writes = 0;
+    const context = {
+      tableName: 'store',
+      offloader: {},
+      logger: SILENT_LOGGER,
+      client: {
+        transactWrite: () => {
+          writes += 1;
+          throw writes <= 3 ? cancelledGuard() : bad;
+        },
+        get: () => {
+          const next = reReads.shift()!;
+          return { Item: { createdAt: next.createdAt, value: next.value, rev: next.revision } };
+        },
+      },
+    };
+
+    await expect(
+      putWithRevisionSwap(context as never, record(), { exists: true, revision: 'r0' }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: bad,
+      pinned: { exists: true, revision: 'r3', value: descriptor('three'), createdAt: 'T0' },
+    });
+    expect(writes).toBe(4);
   });
 
   it('does not mistake a revision-less row for its own write when the record carries no nonce', async () => {
@@ -198,12 +285,14 @@ describe('putWithRevisionSwap', () => {
     });
     const unnonced = { ...record(), rev: undefined };
 
-    const superseded = await putWithRevisionSwap(context as never, unnonced, {
-      exists: true,
-      revision: 'r0',
-      value: descriptor('old'),
-      createdAt: 'T0',
-    });
+    const superseded = await landed(
+      putWithRevisionSwap(context as never, unnonced, {
+        exists: true,
+        revision: 'r0',
+        value: descriptor('old'),
+        createdAt: 'T0',
+      }),
+    );
 
     expect(putCount()).toBe(2);
     expect(superseded.value).toEqual(descriptor('theirs'));
@@ -263,10 +352,12 @@ describe('putWithRevisionSwap with the rejected row on the exception', () => {
         bytes: new Uint8Array([1]),
       },
     };
-    const superseded = await putWithRevisionSwap(context as never, inlineRecord, {
-      exists: true,
-      revision: 'stale',
-    });
+    const superseded = await landed(
+      putWithRevisionSwap(context as never, inlineRecord, {
+        exists: true,
+        revision: 'stale',
+      }),
+    );
     expect(reads).toBe(0);
     expect(superseded).toEqual({
       exists: true,
@@ -278,10 +369,63 @@ describe('putWithRevisionSwap with the rejected row on the exception', () => {
   });
 });
 
+/**
+ * A swap that re-pins on a competitor's row and then ends ambiguously — its
+ * write landed, but the acknowledgement did not — superseded the competitor's
+ * object, not the one this call first saw (the competitor already replaced and
+ * released that). Releasing the first observation leaked the competitor's
+ * object for good: no row names it once this write has landed.
+ */
+describe('persistRow after a re-pinned swap whose write landed without an answer', () => {
+  const competitorRow = {
+    rev: { S: 'r2' },
+    createdAt: { S: 'T-1' },
+    value: {
+      M: {
+        location: { S: 'S3' },
+        serdeType: { S: 'json' },
+        compressed: { BOOL: false },
+        s3Key: { S: 'theirs' },
+      },
+    },
+  };
+
+  it('releases the object the landed write replaced: the one its re-pin observed', async () => {
+    let writes = 0;
+    const deleteBatch = jest.fn().mockResolvedValue([]);
+    const context = {
+      tableName: 'store',
+      logger: SILENT_LOGGER,
+      offloader: { deleteBatch, ownsKey: () => true },
+      client: {
+        transactWrite: () => {
+          writes += 1;
+          if (writes === 1) throw cancelledGuard(competitorRow);
+          throw retryExhaustedError('Operation failed after 5 attempts', 5, new Error('timeout'));
+        },
+        get: () => ({ Item: { rev: 'mine' } }),
+      },
+    };
+
+    await persistRow(context as never, record(), {
+      exists: true,
+      revision: 'r0',
+      value: descriptor('old'),
+      createdAt: 'T0',
+    });
+
+    expect(writes).toBe(2);
+    expect(deleteBatch).toHaveBeenCalledTimes(1);
+    expect(deleteBatch).toHaveBeenCalledWith(['theirs']);
+  });
+});
+
 describe('createdAt after a delete/put race', () => {
   it("takes the put timestamp when the re-read finds the row gone, not the deleted row's createdAt", async () => {
     const { context, inputs } = harness({ failures: 1, reReads: [{ exists: false }] });
-    await putWithRevisionSwap(context as never, record(), { exists: true, revision: 'stale' });
+    await landed(
+      putWithRevisionSwap(context as never, record(), { exists: true, revision: 'stale' }),
+    );
     expect((inputs[1].Item as { createdAt: string }).createdAt).toBe('T1');
   });
 });

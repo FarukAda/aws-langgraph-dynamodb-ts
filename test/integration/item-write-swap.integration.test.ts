@@ -144,10 +144,15 @@ describe('overwrite compare-and-swap', () => {
     // DynamoDBDocument rather than a mock.
     const context = { tableName, offloader: {}, logger: SILENT_LOGGER, client };
 
-    const [supersededA, supersededB] = await Promise.all([
+    const [swapA, swapB] = await Promise.all([
       putWithRevisionSwap(context as never, record('A'), existing),
       putWithRevisionSwap(context as never, record('B'), existing),
     ]);
+    // Both commit: the loser re-pins on the winner's row and lands on its next attempt.
+    if (!swapA.ok) throw swapA.reason;
+    if (!swapB.ok) throw swapB.reason;
+    const supersededA = swapA.superseded;
+    const supersededB = swapB.superseded;
 
     // Exactly one call landed first (superseding the seed row); the other
     // lost that race, re-read, and must report the FIRST writer's own

@@ -595,9 +595,9 @@ export async function searchViaBackend(
   const backend = context.vectorBackend;
   const index = context.index;
   const { offset, limit } = search;
-  const queryVector = await index.embeddings.embedQuery(search.query as string);
-  assertVectorDims(index, queryVector, 'query');
   const need = offset + limit;
+  // The page bound is a property of the request alone, so it is refused before
+  // the embedding, which is a paid call to the caller's model.
   if (need > context.maxSearchCandidates) {
     throw validationError(
       `Requested page (offset ${offset} + limit ${limit} = ${need}) exceeds maxSearchCandidates ` +
@@ -605,6 +605,8 @@ export async function searchViaBackend(
       'maxSearchCandidates',
     );
   }
+  const queryVector = await index.embeddings.embedQuery(search.query as string);
+  assertVectorDims(index, queryVector, 'query');
   let topK = Math.min(need, context.maxSearchCandidates);
   let results: SearchItem[];
   const fetched = new Map<string, Item | null>();
