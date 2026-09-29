@@ -1305,7 +1305,7 @@ What your code has to change, most common first:
 - **Inputs that are now refused with `VALIDATION`**, naming what is wrong. Each was accepted, ignored or reported as an AWS failure before:
   - an option key the adapter does not read (`options.<key>`), on every options object, every per-call options object and every `{ signal }`, and a non-object options value;
   - a number past its ceiling (see [Limits](#limits)), and a read cap (`maxItems`, `maxIterations`) that is not an integer of at least 1;
-  - an identifier over its byte cap (1024 bytes for `thread_id`/`sessionId`, 512 for `checkpoint_ns`, 256 for every other segment) or holding a control character. `0.9` measured none of these, so a row already stored under a longer identifier can no longer be addressed;
+  - an identifier over its byte cap (1024 bytes for `thread_id`/`sessionId`, 512 for `checkpoint_ns`, 256 for every other segment) or holding a control character. `0.9` already refused C0 characters and DEL; the byte caps and the C1 range (U+0080 to U+009F) are new, so a row already stored under a longer identifier can no longer be addressed;
   - a `ttl` that is not exactly one unit of at most five years;
   - an `s3.keyPrefix` that is not a real path ending in `/` (no empty, `.` or `..` segment), also from `ensureS3LifecycleRule()`, which refuses an empty or root prefix too;
   - an `s3.maxDownloadBytes` below `s3.thresholdBytes`, refused at construction, and an offloaded payload larger than `s3.maxDownloadBytes`, refused at the write (naming `payload`) before it is uploaded. Both used to fail only at the first read. A payload larger than `compression.maxDecompressedBytes` is now stored uncompressed instead of compressed past the cap;
@@ -1321,6 +1321,8 @@ What your code has to change, most common first:
   - `history.forSession()` checks its arguments at the call, not inside the promise a runnable awaits.
   - `saver.list()` without a `thread_id` lists every thread (it threw).
   - `getTuple` for a config naming no thread answers `undefined`.
+  - `saver.put()` of an existing `checkpoint_id` keeps the write that committed last, and a retry of an already-committed write is answered from DynamoDB's idempotency cache instead of landing again.
+  - `store.search`, and a search inside `store.batch`, refuse a `null` `offset` or `limit`, which read as 0 and then the default.
   - `saver.put()` persists only the channels `newVersions` names, plus those the parent stored.
   - `store.batch()` answers a put or a delete with `null`.
   - `store.delete()` reads before it deletes, and can resolve with the item still there ([V-29](#differences-from-the-reference-implementations)).
@@ -1336,6 +1338,7 @@ What your code has to change, most common first:
   - A session row it wrote with an id of 1000 to 1024 bytes, on a table without the index, has a `gsi1sk` over 1024 bytes. DynamoDB's index backfill leaves it out, and `backfillRecencyIndex()` skips it because it already has keys. Until its next `addMessages` rewrites the key, the session is missing from indexed listings and `reconcileMessageCount` on it is refused.
   - A row with a `checkpoint_ns` of 257 to 512 bytes, which `1.0.0` accepts, cannot be read by `rc.2`.
   - `SessionBackend`, the deprecated alias `rc.1` and `rc.2` exported, is removed (`0.9` never exported it): use `MultiSessionHistory`.
+- **`ensureS3LifecycleRule()` writes a different rule.** `0.9` set `Expiration.Days` to the `ttl` in whole days. `1.0.0` sets it to the `ttl` rounded up to whole days plus 2 (headroom for DynamoDB's TTL sweep), so a bucket you re-run it on has its rule rewritten and its objects expire two days or more later than before. It also requires a `keyPrefix` ending in `/`, adds a `NoncurrentVersionExpiration` (one day, or your longer existing value) and a delete-marker reclaim rule,, and keeps a longer noncurrent-version retention the bucket already carries. Re-running it after upgrading applies all of this; see [S3 lifecycle rules](#s3-lifecycle-rules).
 - **IAM:**
   - `dynamodb:Scan` is needed only by the table-wide reads (`saver.list()` without a `thread_id`, `history.listSessions()` without `indexName`, a rootless `store.search([])` or `listNamespaces()`, `backfillRecencyIndex()`).
   - `ensureS3LifecycleRule()` also reads `s3:GetBucketVersioning`.
@@ -1350,7 +1353,7 @@ Worth adopting once upgraded:
 - `readConcurrency`, `retry` and `{ signal }` cancellation;
 - `getMessages({ limit, before })` and the `forSession` window;
 - `JSON_SERDE` for a checkpointer whose table's writers you do not trust ([Trust boundary](#trust-boundary));
-- the two operator sweeps ([Finding rows whose payload was released](#finding-rows-whose-payload-was-released), [Finding objects no row names](#finding-objects-no-row-names)).
+- the two operator sweeps ([Finding rows whose payload was released](#finding-rows-whose-payload-was-released), [Finding objects no row names](#finding-objects-no-row-names)); the second has a precondition (every object under its `--prefix` must belong to `--table`) and its `--delete` needs an explicit `--prefix`.
 
 The CHANGELOG's `1.0.0-rc.1` and `1.0.0-rc.2` sections, and the `[Unreleased]` section until `1.0.0` is cut, hold every change in full.
 
