@@ -87,6 +87,7 @@ async function readStore(offloader: ReturnType<typeof scopedOffloader>): Promise
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    maxIterations: 1000,
     vectorScoreDirection: 'relevance',
     offloader: offloader as never,
   };

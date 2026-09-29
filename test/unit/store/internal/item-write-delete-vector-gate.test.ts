@@ -79,6 +79,7 @@ function harness(withBackend = true) {
     logger: { ...SILENT_LOGGER, info },
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    maxIterations: 1000,
     vectorScoreDirection: 'relevance',
     retry: { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 },
     offloader: offloader as never,

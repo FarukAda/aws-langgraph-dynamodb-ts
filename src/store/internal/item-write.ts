@@ -21,13 +21,16 @@ import {
   OVERWRITE_CAS_MAX_ATTEMPTS,
   rejectedRow,
   revisionGuard,
+  settledVerdict,
   verifyRow,
   type WriteVerdict,
 } from '../../shared/dynamodb/idempotent-write';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
+import { MAX_ROW_BYTES, rowSizeBytes } from '../../shared/dynamodb/row-size';
 import { type RowKey, rowKeyOf } from '../../shared/dynamodb/table-schema';
 import { hasErrorCode } from '../../shared/errors/base-error';
 import { ErrorCode } from '../../shared/errors/error-code';
+import { validationError } from '../../shared/errors/errors';
 import type { StoreAddress } from './parse';
 import {
   type ExistingRowMeta,
@@ -52,8 +55,10 @@ import { dropVectorWhenGone } from './vector-index';
  * own: with a strongly-consistent read, treating a confirmed absence as a
  * delete that landed. Under a request token that read has little to settle,
  * because every attempt inside one budget re-sends the identical request and a
- * replay is answered from the idempotency cache rather than re-applied; only
- * the last attempt's outcome is in question.
+ * replay is answered from the idempotency cache rather than re-applied. What
+ * stays in question is whether the delete landed at all, and that is a
+ * question about every attempt of the budget, not only its last: an earlier
+ * one can have landed while a later one was answered.
  *
  * `isRowAbsent` reports a read that itself failed as `false` — "not confirmed",
  * never "still there" — so an unknown outcome rethrows and releases nothing.
@@ -251,6 +256,35 @@ async function cleanUp(
 }
 
 /**
+ * Refuse a row DynamoDB would refuse for its size.
+ *
+ * Accepts: `record` — the fully built row, its payload encoded and its inline
+ * vectors attached.
+ *
+ * Returns: nothing: the row is kept under its declared type, and this checks it.
+ *
+ * Throws: `VALIDATION` when the row would pass DynamoDB's 400 KB item limit —
+ * naming `index` when the row fits without its vectors, since the vectors are
+ * what pushed it over (index fewer fields, embed with fewer dimensions, or
+ * configure a `vectorBackend`), and `value` otherwise.
+ */
+export function assertRowFits(record: StoreItemRow): void {
+  const bytes = rowSizeBytes(record);
+  if (bytes <= MAX_ROW_BYTES) return;
+  const { embeddings, ...bare } = record;
+  const vectorsOverflow = embeddings !== undefined && rowSizeBytes(bare) <= MAX_ROW_BYTES;
+  throw validationError(
+    vectorsOverflow
+      ? `the item's ${embeddings.length} inline vectors make its row ${bytes} bytes, over ` +
+          `DynamoDB's ${MAX_ROW_BYTES}-byte item limit; index fewer fields, embed with fewer ` +
+          'dimensions, or configure a vectorBackend'
+      : `the item's row would be ${bytes} bytes, over DynamoDB's ${MAX_ROW_BYTES}-byte item ` +
+          'limit; configure s3 offloading or store a smaller value',
+    vectorsOverflow ? 'index' : 'value',
+  );
+}
+
+/**
  * Put the record and clean up whichever side is now dead.
  *
  * The compare-and-swap path runs **only when an offloader is configured**:
@@ -270,9 +304,14 @@ async function cleanUp(
  * `'landed'` cleans up the previous object like the success path and swallows
  * the error, and an `'unverified'` read deletes nothing and rethrows — leaking
  * one object at worst rather than stranding a live row pointing at a deleted
- * one. The verification compares the per-call `rev`, so an inline record is
- * verified too: otherwise a lost acknowledgement of an inline overwrite would be
- * reported as a failure while the previous offloaded object was never cleaned.
+ * one. So does a read that finds nothing, or finds another revision, after a
+ * write that DynamoDB may still apply: any attempt of the budget that got no
+ * answer, that DynamoDB answered as still in progress
+ * (`TransactionInProgressException`) or that failed with a server error
+ * (5xx). The verification compares the per-call `rev`, so an inline record is
+ * verified too: otherwise a lost acknowledgement of an inline overwrite would
+ * be reported as a failure while the previous offloaded object was never
+ * cleaned.
  *
  * Neither release reads the row again first. The record's object is uploaded
  * under the record's own `rev`, which no other put uses, so no row another put
@@ -285,7 +324,9 @@ async function cleanUp(
  * Returns: nothing. The row is committed and exactly one side's object, at
  * most, has been released.
  *
- * Throws: whatever the write throws, unless the verification proves the write
+ * Throws: `VALIDATION` naming `index` or `value` for a row over DynamoDB's
+ * item limit, before any write and after releasing this put's own upload;
+ * whatever the write throws, unless the verification proves the write
  * landed after all — in which case the error is swallowed and the cleanup runs
  * as on the success path.
  *
@@ -301,6 +342,13 @@ export async function persistRow(
   record: StoreItemRow,
   existing: ExistingRowMeta,
 ): Promise<void> {
+  try {
+    assertRowFits(record);
+  } catch (error) {
+    // Nothing was written, so no row names this put's own upload.
+    await cleanUp(context, record.value, 'store.put');
+    throw error;
+  }
   let superseded = existing;
   try {
     if (context.offloader) {
@@ -312,7 +360,7 @@ export async function persistRow(
       );
     }
   } catch (error) {
-    const verdict = await verifyWriteLanded(context, record);
+    const verdict = settledVerdict(await verifyWriteLanded(context, record), error as Error);
     if (verdict === 'not-landed') await cleanUp(context, record.value, 'store.put');
     if (verdict !== 'landed') throw error;
   }
@@ -364,14 +412,13 @@ export async function persistRow(
  * below is written around the answer. An attempt the guard turns away commits
  * nothing, so nothing is cached for its token and a retry would be a fresh
  * evaluation — {@link commitRow}, and the transaction helper it delegates to,
- * state that precondition in full —
- * which is why a loss is
- * answered by re-reading and re-pinning under a new token rather than by
- * re-sending this one. What the token does cover is a
- * *committed* attempt whose acknowledgement was lost: within one budget its
- * re-send is answered from the idempotency cache instead of being turned away
- * by the `rev` it wrote itself, which is the rejection the swap below resolves
- * by re-reading, and which the inline shape can still produce.
+ * state that precondition in full — which is why a loss is answered by
+ * re-reading and re-pinning under a new token rather than by re-sending this
+ * one. What the token does cover is a *committed* attempt whose
+ * acknowledgement was lost: within one budget its re-send is answered from the
+ * idempotency cache instead of being turned away by the `rev` it wrote itself,
+ * which is the rejection the swap below resolves by re-reading, and which the
+ * inline shape can still produce.
  */
 async function put(
   context: StoreContext,

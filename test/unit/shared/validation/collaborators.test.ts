@@ -1,7 +1,12 @@
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocument, type TranslateConfig } from '@aws-sdk/lib-dynamodb';
+
+import { DynamoDBSaver } from '../../../../src/checkpointer/saver';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
 import {
   ABORT_SIGNAL_MEMBERS,
   assertBaseCollaborators,
+  assertClientTranslation,
   assertMembers,
   assertSignalLike,
   CLIENT_MEMBERS,
@@ -174,5 +179,56 @@ describe('assertSignalLike', () => {
     expect(() => assertSignalLike({} as never)).toThrow(
       expect.objectContaining({ code: ErrorCode.VALIDATION, context: { field: 'signal' } }),
     );
+  });
+});
+
+const documentWith = (translateConfig?: TranslateConfig) =>
+  DynamoDBDocument.from(new DynamoDBClient({ region: 'us-east-1' }), translateConfig);
+
+function refusal(run: () => void): unknown {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
+
+describe('assertClientTranslation', () => {
+  it('accepts a client built with the default translation, and a hand-rolled double', () => {
+    expect(refusal(() => assertClientTranslation(documentWith()))).toBeUndefined();
+    expect(refusal(() => assertClientTranslation({ get: () => undefined }))).toBeUndefined();
+  });
+
+  it('accepts the options this package does not depend on', () => {
+    const client = documentWith({
+      marshallOptions: { removeUndefinedValues: true, convertClassInstanceToMap: true },
+      unmarshallOptions: { wrapNumbers: false },
+    });
+    expect(refusal(() => assertClientTranslation(client))).toBeUndefined();
+  });
+
+  it.each([
+    ['wraps numbers', documentWith({ unmarshallOptions: { wrapNumbers: true } })],
+    [
+      'wraps numbers through a function',
+      documentWith({ unmarshallOptions: { wrapNumbers: (value: string) => Number(value) } }),
+    ],
+    [
+      'stores an empty value as NULL',
+      documentWith({ marshallOptions: { convertEmptyValues: true } }),
+    ],
+  ])('refuses a client that %s, naming client', (_label, client) => {
+    expect(refusal(() => assertClientTranslation(client))).toMatchObject({
+      code: 'VALIDATION',
+      context: { field: 'client' },
+    });
+  });
+
+  it('is what an adapter checks its injected client with', () => {
+    const client = documentWith({ unmarshallOptions: { wrapNumbers: true } });
+    expect(refusal(() => new DynamoDBSaver({ tableName: 'tbl', client }))).toMatchObject({
+      context: { field: 'client' },
+    });
   });
 });

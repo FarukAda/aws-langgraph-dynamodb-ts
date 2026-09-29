@@ -128,6 +128,64 @@ describe('uploadObject', () => {
       context: { operation: 'upload', key: 'k' },
     });
   });
+
+  it('names the AWS failure beneath a failed upload in its context', async () => {
+    s3Mock.on(PutObjectCommand).rejects(
+      Object.assign(new Error('denied'), {
+        name: 'AccessDenied',
+        $metadata: { httpStatusCode: 403, requestId: 'r2' },
+      }),
+    );
+    await expect(
+      uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        data: new Uint8Array([1]),
+      }),
+    ).rejects.toMatchObject({
+      code: 'S3_OFFLOAD_FAILED',
+      context: {
+        operation: 'upload',
+        key: 'k.bin',
+        awsErrorName: 'AccessDenied',
+        httpStatusCode: 403,
+        requestId: 'r2',
+      },
+    });
+  });
+
+  /**
+   * `withRetry` wraps a spent budget's last failure in its own `RETRY_EXHAUSTED`
+   * error — named `DynamoDBLangGraphError`, carrying no `$metadata` of its
+   * own — so reading diagnostics off *that* wrapper rather than off the AWS
+   * failure it wraps as `cause` silently dropped them once three attempts, not
+   * one, produced the rejection.
+   */
+  it('still names the AWS failure beneath the context once three attempts spend the retry budget', async () => {
+    s3Mock.on(PutObjectCommand).rejects(
+      Object.assign(new Error('Please reduce your request rate.'), {
+        name: 'SlowDown',
+        $metadata: { httpStatusCode: 503, requestId: 'r3' },
+      }),
+    );
+    await expect(
+      uploadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        data: new Uint8Array([1]),
+      }),
+    ).rejects.toMatchObject({
+      code: 'S3_OFFLOAD_FAILED',
+      context: {
+        operation: 'upload',
+        key: 'k.bin',
+        awsErrorName: 'SlowDown',
+        httpStatusCode: 503,
+        requestId: 'r3',
+      },
+    });
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(3);
+  });
 });
 
 describe('downloadObject', () => {
@@ -174,6 +232,33 @@ describe('downloadObject', () => {
     expect(refusal).toMatchObject({ context: { operation: 'download', key } });
     expect(refusal.message).not.toContain(key);
     expect(refusal.message).toContain(truncateForLog(key));
+  });
+
+  /** Same fix as upload's: the diagnostics must survive a spent retry budget. */
+  it('still names the AWS failure beneath the context once three attempts spend the retry budget', async () => {
+    s3Mock.on(GetObjectCommand).rejects(
+      Object.assign(new Error('Please reduce your request rate.'), {
+        name: 'SlowDown',
+        $metadata: { httpStatusCode: 503, requestId: 'r4' },
+      }),
+    );
+    await expect(
+      downloadObject(new S3Client({ region: 'us-east-1' }), {
+        bucket: 'b',
+        key: 'k.bin',
+        maxBytes: 1024 * 1024,
+      }),
+    ).rejects.toMatchObject({
+      code: 'S3_OFFLOAD_FAILED',
+      context: {
+        operation: 'download',
+        key: 'k.bin',
+        awsErrorName: 'SlowDown',
+        httpStatusCode: 503,
+        requestId: 'r4',
+      },
+    });
+    expect(s3Mock.commandCalls(GetObjectCommand)).toHaveLength(3);
   });
 });
 

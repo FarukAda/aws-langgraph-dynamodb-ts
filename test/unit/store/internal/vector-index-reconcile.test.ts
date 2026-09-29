@@ -26,6 +26,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    maxIterations: 1000,
     vectorScoreDirection: 'relevance',
     ...extra,
   };
@@ -213,7 +214,9 @@ describe('collectReconcileTargets', () => {
       parseNamespace(['users', 'u1'], 'namespacePrefix'),
     );
 
-    expect(targets).toEqual([{ namespace: ['users', 'u1'], key: 'a', embedding: [0.5] }]);
+    expect(targets).toEqual([
+      { namespace: ['users', 'u1'], key: 'a', embedding: [0.5], rev: record.rev },
+    ]);
     expect(embeddings.embedDocuments).toHaveBeenCalledTimes(1);
     expect(embeddings.embedQuery).not.toHaveBeenCalled();
   });

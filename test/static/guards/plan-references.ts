@@ -228,13 +228,17 @@ const GENERATED_ROOT_FILES: ReadonlySet<string> = new Set(['package-lock.json'])
 /** Whether a file directly in the repository root is one a person edits. */
 function isHandEditedRootFile(name: string): boolean {
   if (GENERATED_ROOT_FILES.has(name)) return false;
-  return name.endsWith('.config.ts') || ROOT_DOC_EXTENSIONS.includes(extname(name));
+  return (
+    name.endsWith('.config.ts') ||
+    name.endsWith('.config.mjs') ||
+    ROOT_DOC_EXTENSIONS.includes(extname(name))
+  );
 }
 
 /**
  * The hand-edited files a reader meets beside the code, relative to
  * {@link REPO_ROOT} with forward slashes: every `.md`, `.json`, `.yml` or
- * `.yaml` file and every `*.config.ts` directly in the repository root —
+ * `.yaml` file and every `*.config.ts` and `*.config.mjs` directly in the repository root —
  * derived from the directory, so a new root document is covered without being
  * listed — except the npm lockfile, and every text file under `.github`. The
  * generated `docs/api` is not among them: it is rebuilt from the `src`

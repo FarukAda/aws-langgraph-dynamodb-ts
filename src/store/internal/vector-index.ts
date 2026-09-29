@@ -14,7 +14,7 @@ import type { IndexConfig, Item, SearchItem } from '@langchain/langgraph-checkpo
 
 import { nowSeconds } from '../../shared/clock';
 import { DEFAULT_READ_CONCURRENCY, mapWithConcurrency } from '../../shared/concurrency';
-import { isRowAbsent } from '../../shared/dynamodb/idempotent-write';
+import { isRowAbsent, readRow } from '../../shared/dynamodb/idempotent-write';
 import { paginateQuery } from '../../shared/dynamodb/paginate';
 import { retryFor } from '../../shared/dynamodb/retry';
 import { isExpiredRow, withoutExpired } from '../../shared/dynamodb/table-schema';
@@ -43,6 +43,7 @@ import {
   namespaceMatchesPrefix,
   parseWholeStoreRow,
   readStoreItem,
+  REVISION_ATTRIBUTE,
   scopedQuery,
   type StoreItemRow,
 } from './rows';
@@ -144,8 +145,9 @@ export async function syncItemVector(
  * hold a row *now*", which a racing put that recreated it and a
  * compare-and-swap that left it alone both answer the same way, and which costs
  * a point read of this library's own table rather than anything the backend has
- * to offer. The reconciler asks the same question before pruning a vector, so
- * the delete path and the reconciler are equally careful.
+ * to offer. The reconciler asks the same question before pruning a candidate
+ * it never saw; one it did see is pinned to the revision the snapshot read
+ * instead. Either way, the delete path and the reconciler are equally careful.
  *
  * A read that itself fails answers "not confirmed" and keeps the vector: a
  * stale vector for a deleted item, which `reconcileVectorIndex` removes, rather
@@ -181,10 +183,14 @@ export interface ReconcileTarget {
   namespace: string[];
   key: string;
   embedding: number[] | undefined;
+  /** The revision the snapshot read, which a later put replaces; absent on a row written before revisions. */
+  rev?: string;
 }
 
 /** A live item read back from DynamoDB, awaiting its embedding. */
-type LiveItem = Pick<ReconcileTarget, 'namespace' | 'key'> & { value: Record<string, JsonValue> };
+type LiveItem = Pick<ReconcileTarget, 'namespace' | 'key' | 'rev'> & {
+  value: Record<string, JsonValue>;
+};
 
 /** Stable, collision-free identity for a (namespace, key) pair. */
 function refIdentity(namespace: string[], key: string): string {
@@ -209,6 +215,7 @@ async function drainPending(
     live.push({
       namespace: record.namespace,
       key: record.key,
+      rev: record.rev,
       value: items[index].value as Record<string, JsonValue>,
     });
   });
@@ -229,8 +236,9 @@ async function drainPending(
  * Throws: whatever the reads, the decodes and the embeddings model throw; a
  * failed embedding rejects the whole reconcile, because a skipped item would
  * leave the live set and {@link selectOrphans} would prune its still-valid
- * vector. `RESULT_TRUNCATED` when `maxScanItems` is reached while rows
- * remain — reconciling from a partial view would prune live vectors.
+ * vector. `RESULT_TRUNCATED` when `maxScanItems` or `maxIterations` is
+ * reached while rows remain — reconciling from a partial view would prune
+ * live vectors.
  *
  * Guarantees: rows are decoded in bounded batches, so a namespace of offloaded
  * items costs neither one round-trip at a time nor every payload in memory at
@@ -251,6 +259,7 @@ export async function collectReconcileTargets(
     client: context.client,
     params: withoutExpired(scopedQuery(context.tableName, prefix), now),
     maxItems: context.maxScanItems,
+    maxIterations: context.maxIterations,
   });
   for await (const raw of source) {
     const record = parseWholeStoreRow(raw);
@@ -273,6 +282,7 @@ export async function collectReconcileTargets(
     namespace: entry.namespace,
     key: entry.key,
     embedding: embeddings[i],
+    rev: entry.rev,
   }));
 }
 
@@ -333,6 +343,21 @@ async function confirmedGone(context: StoreContext, ref: VectorRef): Promise<boo
 }
 
 /**
+ * True when a candidate the snapshot saw is gone, or still holds the revision
+ * the snapshot read — so it still yields no indexable text. A put since the
+ * snapshot stamps a new revision and syncs a vector of its own, which the
+ * prune would otherwise take away.
+ */
+async function unchangedSinceSnapshot(
+  context: StoreContext,
+  ref: VectorRef,
+  rev: string | undefined,
+): Promise<boolean> {
+  const row = await readRow(context, { key: itemRowKey(ref), attribute: REVISION_ATTRIBUTE });
+  return row === undefined || row[REVISION_ATTRIBUTE] === rev;
+}
+
+/**
  * Delete backend vectors with no canonical item.
  *
  * Accepts: `live` — the snapshot {@link collectReconcileTargets} took.
@@ -343,11 +368,12 @@ async function confirmedGone(context: StoreContext, ref: VectorRef): Promise<boo
  *
  * Throws: whatever the backend and the confirmation read throw.
  *
- * Guarantees: a vector is deleted only on evidence that its item is gone — the
- * snapshot saw the item and it yields no embedding, or a fresh
- * strongly-consistent read finds no row at all. An item written between the
- * snapshot and the listing looks orphaned and is kept, so reconciling never
- * drops a just-written item out of semantic search.
+ * Guarantees: a vector is deleted only on evidence that its item is gone — a
+ * fresh strongly-consistent read finds the item still at the revision the
+ * snapshot read — when that snapshot yielded it no embedding — or finds no
+ * row at all. An item written between the snapshot and the listing looks
+ * orphaned and is kept, so reconciling never drops a just-written item out of
+ * semantic search.
  */
 export async function pruneOrphans(
   context: StoreContext,
@@ -362,15 +388,19 @@ export async function pruneOrphans(
     return 0;
   }
   const candidates = selectOrphans(await backend.listKeys(prefix), live);
-  // Every item the snapshot actually saw, embedded or not. A candidate in here
-  // is prunable on the evidence already gathered — its item exists but yields
-  // no embedding (its indexable text became empty), so its vector really is
-  // stale. Only a candidate the snapshot never saw at all is ambiguous.
-  const observed = new Set(live.map((target) => refIdentity(target.namespace, target.key)));
+  // What the snapshot read of every item it saw, embedded or not. A candidate
+  // it saw is prunable once a read confirms the row still holds that revision
+  // (or is gone); one it never saw, once a read confirms no row exists.
+  const snapshot = new Map(
+    live.map((target) => [refIdentity(target.namespace, target.key), target.rev]),
+  );
   let pruned = 0;
   for (const ref of candidates) {
-    const seen = observed.has(refIdentity(ref.namespace, ref.key));
-    if (!seen && !(await confirmedGone(context, ref))) {
+    const identity = refIdentity(ref.namespace, ref.key);
+    const stale = snapshot.has(identity)
+      ? await unchangedSinceSnapshot(context, ref, snapshot.get(identity))
+      : await confirmedGone(context, ref);
+    if (!stale) {
       // The ref is a consumer backend's answer, bounded by nothing this package ran.
       context.logger.info('reconcileVectorIndex: kept a vector whose item reappeared', {
         namespace: truncateLabelsForLog(ref.namespace),

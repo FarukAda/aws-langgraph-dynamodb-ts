@@ -38,10 +38,12 @@ export interface Releasable {
  *
  * The hazard is the one `DynamoDBFactory`'s own `release` names: a teardown
  * written as a sequence of statements stops at the first throw, so everything
- * after it is stranded with no reference left to reach it by. Each adapter's
- * `destroy` was exactly that sequence — the S3 offloader, then the DynamoDB
- * client it built — and an S3 client whose sockets are already gone throws from
- * its own `destroy`, so the DynamoDB client leaked for the life of the process.
+ * after it is stranded with no reference left to reach it by. An adapter's
+ * teardown is such a sequence — the S3 offloader, then the DynamoDB client it
+ * built — and an S3 client whose sockets are already gone throws from its own
+ * `destroy`, which would leave the DynamoDB client open for the life of the
+ * process. Each resource is therefore released whatever the ones before it
+ * threw.
  *
  * Accepts: `resources` — in the order they should be released; an absent one
  * (an adapter with no offloader, a client the caller injected and therefore
@@ -96,7 +98,10 @@ export interface AdapterShell {
   readonly core: AdapterCore;
   /** Provision the S3 lifecycle rule for the configured ttl; see {@link ensureLifecycleFor}. */
   ensureLifecycleRule(): Promise<void>;
-  /** Release the offloader, and the DynamoDB client when the adapter built it; see {@link releaseOwned}. */
+  /**
+   * Release the offloader, and the DynamoDB client when the adapter built it;
+   * see {@link releaseOwned}. `release` runs once; a later call does nothing.
+   */
   release(): void;
 }
 
@@ -127,11 +132,17 @@ export type AdapterOptions = BaseAdapterOptions & CodecOptions & { serde?: objec
  * Returns: nothing. Without an offloader there is nothing to rule over, and
  * without a ttl no item expires, so any rule would delete a payload a live row
  * still needs: either absence does nothing. Installing a rule that is already
- * there is a no-op too, so calling this on every deploy is safe.
+ * there is a no-op too, so calling this on every deploy is safe. When it
+ * writes the rules but cannot confirm within its polling window that a
+ * re-read shows them — S3 documents that a lifecycle configuration can take
+ * minutes to propagate — it logs a `warn` and returns rather than throwing:
+ * the rules were written, and a later call can confirm them.
  *
  * Throws: whatever reading or writing the bucket's lifecycle configuration
- * throws, and `VALIDATION` naming `s3.keyPrefix` when the rule id this
- * prefix would take is already held by a different prefix.
+ * throws, `VALIDATION` naming `s3.keyPrefix` when the rule id this prefix
+ * would take is already held by a different prefix, and `CONTENTION` when
+ * every one of the five rounds this call polls needs a write — a competing
+ * writer replacing the configuration on every single re-read.
  *
  * Guarantees: needs the bucket-level `s3:GetLifecycleConfiguration` /
  * `s3:PutLifecycleConfiguration` permissions, which are broader than the
@@ -176,7 +187,7 @@ export function openAdapter(
   const resolved = resolveDynamoDBClient(options);
   if (!resolved.ownsClient) void warnOnStackedRetries(resolved.client, logger);
   const offloader = options.s3
-    ? new S3Offloader(offloaderConfigFor(options.s3, adapter, options.clientConfig))
+    ? new S3Offloader(offloaderConfigFor(options.s3, adapter, options.clientConfig), logger)
     : undefined;
   const core: AdapterCore = {
     client: resolved.client,
@@ -190,9 +201,16 @@ export function openAdapter(
     readConcurrency: options.readConcurrency ?? DEFAULT_READ_CONCURRENCY,
     indexName: options.indexName,
   };
+  let released = false;
   return {
     core,
     ensureLifecycleRule: () => ensureLifecycleFor(core),
-    release: () => releaseOwned([offloader, resolved.ownsClient ? resolved.ddbClient : undefined]),
+    release: () => {
+      // A second call has nothing left to release, and a client's own destroy
+      // need not be safe to repeat.
+      if (released) return;
+      released = true;
+      releaseOwned([offloader, resolved.ownsClient ? resolved.ddbClient : undefined]);
+    },
   };
 }

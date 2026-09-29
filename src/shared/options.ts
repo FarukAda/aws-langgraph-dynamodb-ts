@@ -43,10 +43,14 @@ export interface BaseAdapterOptions {
   /**
    * Index partitions per adapter in the recency index (GSI1), default 8.
    *
-   * Rows carry the index attributes whether or not the table defines the
-   * index, so enabling it later needs no rewrite of new rows — only a backfill
-   * of the old ones. The value is fixed at table creation: changing it changes
-   * every row's shard, so an existing index must be backfilled again.
+   * Checkpoint and session rows carry the index attributes whether or not the
+   * table defines the index, so enabling it later needs only a backfill of the
+   * rows written before. The value is fixed for the table's life. Every row
+   * keeps the shard it was written with, and `backfillRecencyIndex` writes
+   * keys only to rows that have none, so it cannot move a row. Raising the
+   * count is safe: the old shards stay among the ones a listing queries.
+   * Lowering it hides every row on a dropped shard from the listings. The
+   * store takes no `indexShards`.
    *
    * A single index partition per adapter would concentrate every listing on
    * one partition, which is worse than the table scan it replaces.
@@ -63,6 +67,9 @@ export interface BaseAdapterOptions {
    * `saver.list` without a `thread_id`, which streams it and takes no cursor.
    * Leaving it unset keeps both on the table scan, so the index can be created
    * and backfilled before any adapter reads it.
+   *
+   * The store takes no `indexName`: its rootless search and its namespace
+   * listing stay table scans.
    */
   indexName?: string;
   /**

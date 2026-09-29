@@ -24,11 +24,14 @@ import { type RetryOptions, withDynamoDBRetry } from '../shared/dynamodb/retry';
 import { PARTITION_KEY_ATTRIBUTE, rowKeyOf } from '../shared/dynamodb/table-schema';
 import { guardPublic } from '../shared/errors/boundary';
 import { validationError } from '../shared/errors/errors';
-import { assertMembers, assertSignalLike } from '../shared/validation/collaborators';
+import {
+  assertClientTranslation,
+  assertMembers,
+  assertSignalLike,
+} from '../shared/validation/collaborators';
 import { allKeysOf, assertShape } from '../shared/validation/option-shape';
 import { assertRetryBounds, assertTableName } from '../shared/validation/options';
 import { assertInteger, assertStringArray } from '../shared/validation/primitives';
-import { storeIndexTarget } from '../store/internal/rows';
 
 /**
  * The retry policy every request of one run uses: the caller's `retry`, with
@@ -153,7 +156,7 @@ async function backfillPage(
  *
  * **Run this before setting `indexName` on any adapter.** A row without the
  * keys is not in the index, so enabling the index first would make every
- * pre-existing session, item and checkpoint silently vanish from the listings
+ * pre-existing session and checkpoint silently vanish from the listings
  * that read it — the rows are still there, and every other read still returns
  * them, but a listing would not.
  *
@@ -163,8 +166,9 @@ async function backfillPage(
  * after the scan found it stays deleted rather than being re-created by an
  * `UpdateItem`, which upserts.
  *
- * `indexShards` must match what the adapters use. A mismatch puts rows on
- * shards no listing queries, which looks exactly like the rows being missing.
+ * `indexShards` must match what the saver and the history use. A mismatch
+ * puts rows on shards no listing queries, which looks exactly like the rows
+ * being missing.
  *
  * Accepts: `options` — validated in full before any read: only the keys
  * `BackfillOptions` declares; `tableName`, `indexShards` and the numbers in
@@ -173,7 +177,7 @@ async function backfillPage(
  * default 100. `options.cursor` — from a previous run, to resume.
  * `options.maxPages` — how far one run goes, so a large table can be
  * backfilled in bounded slices. `options.indexShards` — must equal the
- * adapters' setting, and has their ceiling. `options.dryRun` — a boolean.
+ * saver's and the history's setting, and has their ceiling. `options.dryRun` — a boolean.
  * `options.signal` — cancels the run; `retry.signal` does so when there is no
  * top-level `signal`, and the top-level one wins when both are given.
  *
@@ -227,19 +231,21 @@ export async function backfillRecencyIndex(options: BackfillOptions): Promise<Ba
 }
 
 /**
- * Which rows the index covers: each adapter answers for its own, and no row belongs to two.
+ * Which rows the index covers: the checkpointer and the chat history each
+ * answer for their own rows; a store row is in no listing the index serves.
  *
  * Accepts: `row` — any row a table scan returns, including a foreign one and
  * one whose `PK`/`SK` are not strings.
  *
  * Returns: the index identity, or undefined for a row no listing reaches — a
- * foreign row, a payload or write row, a META row carrying no `checkpointId`.
+ * foreign row, a payload or write row, a META row carrying no `checkpointId`,
+ * or a store row.
  *
  * Throws: nothing. A backfill walks the whole table; one unrecognised row must
  * be skipped, not fatal.
  */
 export function indexTargetOf(row: AttributeMap): IndexTarget | undefined {
-  return checkpointIndexTarget(row) ?? storeIndexTarget(row) ?? sessionIndexTarget(row);
+  return checkpointIndexTarget(row) ?? sessionIndexTarget(row);
 }
 
 /**
@@ -292,7 +298,7 @@ export function decodeScanCursor(cursor: string): AttributeMap {
 
 /** What one pass of the backfill did, and where to resume. */
 export interface BackfillResult {
-  /** Rows the scan evaluated. */
+  /** Rows the scan returned: those without index keys, since its filter drops every row that has them. Not the rows DynamoDB evaluated, which a filter does not reduce. */
   scanned: number;
   /** Rows given index keys. */
   indexed: number;
@@ -312,7 +318,7 @@ export interface BackfillResult {
 export interface BackfillOptions {
   client: DynamoDBDocumentLike;
   tableName: string;
-  /** Must equal the adapters' `indexShards`, or rows land on shards no listing queries. */
+  /** Must equal the saver's and the history's `indexShards`, or rows land on shards no listing queries. */
   indexShards?: number;
   /** Rows per scan page. */
   pageSize?: number;
@@ -456,6 +462,7 @@ export function assertBackfillOptions(options: BackfillOptions): void {
   assertShape(options, BACKFILL_KEYS, 'options');
   assertTableName(options.tableName);
   assertMembers(options.client, BACKFILL_CLIENT_MEMBERS, 'client');
+  assertClientTranslation(options.client);
   assertPositiveBound(options.indexShards, 'indexShards', MAX_INDEX_SHARDS);
   assertPositiveBound(options.pageSize, 'pageSize');
   assertPositiveBound(options.maxPages, 'maxPages');

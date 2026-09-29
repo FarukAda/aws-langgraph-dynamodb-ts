@@ -223,7 +223,7 @@ describe('overwrite compare-and-swap', () => {
     const base = new DynamoDBClient({ ...DDB_LOCAL_CONFIG, maxAttempts: 1 });
     afterResponse(base, 'TransactWriteItemsCommand', async () => {
       await client.delete({ TableName: tableName, Key: rowKey });
-      throw Object.assign(new Error('simulated lost response'), { name: 'ETIMEDOUT' });
+      throw Object.assign(new Error('simulated lost response'), { name: 'TimeoutError' });
     });
     const store = new DynamoDBStore({
       tableName,

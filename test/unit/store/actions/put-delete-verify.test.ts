@@ -23,6 +23,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    maxIterations: 1000,
     vectorScoreDirection: 'relevance',
     ...extra,
   };
@@ -123,7 +124,7 @@ describe('persistRow ambiguous-failure verification', () => {
       .on(GetCommand)
       .resolvesOnce({})
       .rejects(Object.assign(new Error('read down'), { name: 'ValidationException' }));
-    rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    rejectRowWrites(mock, Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }));
     const offloader = trackingOffloader();
     await expect(
       putItem(context(client, { offloader: offloader as never }), parsedPut(op({}))),
@@ -248,7 +249,7 @@ describe('persistRow verifies an ambiguous inline overwrite by rev', () => {
     );
     mock.on(PutCommand).callsFake((input) => {
       rev = input.Item.rev as string;
-      throw Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
+      throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' });
     });
     const offloader = { ...trackingOffloader(), shouldOffload: () => false };
     const ctx = context(client, {

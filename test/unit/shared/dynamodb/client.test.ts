@@ -140,8 +140,8 @@ describe('the request-handler bound on a client this library builds', () => {
   /**
    * `connectionTimeout` is absent on purpose. Its timer starts at request
    * creation and is cleared only when the agent *assigns* a socket, so the
-   * time a request spends queued behind `maxSockets` counts against it. At the
-   * documented thousand-wide fan-out that destroys healthy writes, which this
+   * time a request spends queued behind `maxSockets` counts against it. Under
+   * a wide enough concurrent load it destroys healthy writes, which this
    * library's retry layer then re-sends. Measured against a one-socket agent:
    * 14 of 100 healthy puts lost at 800 ms and 226 of 400 lost at 2 500 ms,
    * against controls of 100/100 and 400/400 with the field unset.

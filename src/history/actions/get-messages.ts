@@ -51,12 +51,14 @@ function corruptOrRethrow(error: Error): Decoded {
  * Decode one item in three stages so failures are classified by what caused
  * them. Fetching the bytes (an S3 download, decompression) is infrastructure:
  * a transport, throttling or permission failure there is rethrown. Only a
- * *permanent* loss at that stage — the object is gone, or the decompression
- * guard tripped — is corruption; a row whose `s3Key` lies outside the session's
- * own path is a configuration or tenancy fault, and a payload whose
- * `schemaVersion` is newer than this release reads is a turn a newer reader
- * still serves, so both are rethrown like any other infrastructure failure (see
- * `assertKeyInScope` and `assertReadableDescriptor`).
+ * *permanent* loss at that stage — the object is gone, its bytes are no
+ * longer the form the row declares, or the row's own descriptor is
+ * unreadable — is corruption; a payload larger than this reader decompresses
+ * is this reader's limit and is rethrown; a row whose `s3Key` lies outside
+ * the session's own path is a configuration or tenancy fault, and a payload
+ * whose `schemaVersion` is newer than this release reads is a turn a newer
+ * reader still serves, so both are rethrown like any other infrastructure
+ * failure (see `assertKeyInScope` and `assertReadableDescriptor`).
  *
  * Deserializing is classified the same way, through the same predicate: bytes
  * that are no longer the form the row declares are this message's own loss, but
@@ -102,8 +104,8 @@ async function decodeMessage(
  * the window `options` selects: `limit` keeps only the newest `limit`
  * messages, `before` only those appended before that instant (see
  * {@link readWindow}). Items past their TTL are filtered out on read
- * (DynamoDB's background TTL sweep can lag by up to 48h), so the returned
- * history is never stale. A corrupt item — see
+ * (DynamoDB deletes an expired row within a few days, with no fixed bound),
+ * so the returned history is never stale. A corrupt item — see
  * {@link decodeMessage} for exactly what counts — is handled per
  * `onCorruptMessage`: `'throw'` fails the read with the underlying error;
  * `'skip'` (the default) reports it at `error` with its sort key and returns
@@ -129,10 +131,12 @@ async function decodeMessage(
  * did not write, naming
  * `s3Key` for a row addressing an object outside the session's own path, and
  * naming `serde` for a row whose payload the serializer refuses to
- * reconstruct, all three whatever the policy; any infrastructure failure — a
- * throttle, a permission, a transport error — whatever the policy, because
- * dropping a message for one of those would hand back a silently truncated
- * conversation that the chain then re-persists as the truth.
+ * reconstruct, all three whatever the policy; `COMPRESSION_LIMIT` for a
+ * payload larger than this reader's `compression.maxDecompressedBytes`,
+ * whatever the policy too; any infrastructure failure — a throttle, a
+ * permission, a transport error — whatever the policy, because dropping a
+ * message for one of those would hand back a silently truncated conversation
+ * that the chain then re-persists as the truth.
  *
  * Guarantees: strongly consistent, so the turn just appended is visible.
  * Offloaded messages download several at a time, and the corruption policy is

@@ -28,6 +28,7 @@ function context(client: StoreContext['client']): StoreContext {
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    maxIterations: 1000,
     vectorScoreDirection: 'relevance',
   };
 }

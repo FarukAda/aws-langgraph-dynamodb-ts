@@ -3,6 +3,11 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    # Raise a range in package.json only when the new version falls outside it.
+    # This package is a library: a dependency or peer floor moves in a release
+    # the CHANGELOG announces, never in a routine update (README, *Supported
+    # runtimes and peers*).
+    versioning-strategy: increase-if-necessary
     schedule:
       interval: weekly
       day: monday

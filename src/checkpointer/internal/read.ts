@@ -59,23 +59,20 @@ export interface PendingSendsSource extends ThreadLocation {
 }
 
 /**
- * Rows one page of the newest-first META read evaluates. The read stops at the
- * first live row of ours, so this decides only how many *dead* rows one round
- * trip can step over: at one row per page, a thread whose head has aged out
- * under a `ttl` costs one `Query` per expired row, and DynamoDB's own sweep may
- * lag that `ttl` by up to 48 hours, so the run of dead rows can be as long as
- * the thread is busy. This is the hottest read the package performs — every
- * graph step begins with it — so a round trip per aged-out row is the wrong
- * side of the trade to pay on every step.
+ * Rows one page of the newest-first META read evaluates when the adapter has a
+ * `ttl`. The read stops at the first live row of ours, so this decides how
+ * many *dead* rows one round trip can step over. At one row per page, a thread
+ * whose head has aged out costs one `Query` per expired row, and DynamoDB
+ * deletes an expired row within a few days of its `ttl`, with no fixed bound,
+ * so that run can be as long as the thread is busy. This is the hottest read
+ * the package performs — every graph step begins with it.
  *
- * The trade runs the other way when nothing at the head has expired, which is
- * every thread that sets no `ttl` at all. DynamoDB applies `Limit` before the
- * filter and bills for what it evaluated, so such a read pays for up to this
- * many META rows and keeps exactly one. A META row measures roughly 500
- * bytes for a typical checkpoint, which puts a page at ~26 KB: about seven
- * strongly consistent read units where a single row costs one, and a fortieth
- * of the 1 MB a `Query` may return, so the page size rather than the response
- * cap is always what ends a page.
+ * Without a `ttl` the read asks for one row per page instead. Such an adapter
+ * writes no row that can expire, and DynamoDB applies `Limit` before the
+ * filter and bills for what it evaluated: fifty rows of about 500 bytes each
+ * would cost about seven strongly consistent read units where one row costs
+ * one. A table whose rows were written while a `ttl` was set should keep
+ * setting it, or its aged-out head costs one `Query` per row.
  */
 const LATEST_META_PAGE_SIZE = 50;
 
@@ -104,7 +101,8 @@ export interface ReadOptions {
  * for, so a checkpoint past its ttl is absent to every reader however long
  * DynamoDB's sweep lags. The newest-first read returns the first live row of
  * ours and stops there, stepping over expired and foreign rows
- * {@link LATEST_META_PAGE_SIZE} at a time rather than one per round trip.
+ * {@link LATEST_META_PAGE_SIZE} at a time when the adapter has a `ttl`, and
+ * reading one row per page when it has none.
  */
 export async function fetchTargetMeta(
   context: CheckpointerContext,
@@ -135,20 +133,27 @@ export async function fetchTargetMeta(
     partitionKey(threadId),
     metaSortKeyPrefix(checkpointNs),
     {
-      limit: LATEST_META_PAGE_SIZE,
+      // Without a ttl this adapter writes no row that can age out, so the first
+      // row read is normally the answer and a larger page only bills for rows it
+      // discards. Rows written while a ttl was set keep it, and each of those
+      // at the head costs one page here.
+      limit: context.ttl === undefined ? 1 : LATEST_META_PAGE_SIZE,
       consistent: true,
     },
   );
   // Both caps stay off, each for its own reason. `maxItems` counts the rows
   // yielded past the server-side filter, and a finite value there would add
   // the probe `paginateQuery` runs to tell a reached cap apart from an
-  // exhausted read — more requests, on the read the page size above exists to
-  // make cheaper. `maxIterations` is the runaway guard, but a finite value
-  // would turn a namespace whose rows have all aged out into a thrown
-  // `RESULT_TRUNCATED` where this function documents `undefined`, failing
-  // every graph step on exactly the thread shape the page size is here to
-  // serve. The page size is what bounds the walk instead: it divides the
-  // requests a dead head costs by `LATEST_META_PAGE_SIZE`.
+  // exhausted read — more requests, on a read this function already sizes for
+  // cost. `maxIterations` is the runaway guard, but a finite value would turn
+  // a namespace whose rows have all aged out into a thrown `RESULT_TRUNCATED`
+  // where this function documents `undefined`, failing every graph step on
+  // exactly the thread shape the page size above exists to serve — including a
+  // table whose `ttl` was turned off after rows aged out under it, which reads
+  // one row per page and so pages just as far, only at a higher cost. The page
+  // size is what bounds the *cost* of the walk, not its length: with a `ttl`
+  // it divides the requests a dead head costs by `LATEST_META_PAGE_SIZE`;
+  // without one, each request costs exactly one row.
   const rows = paginateQuery({
     retry: retryFor(context, signal),
     signal,

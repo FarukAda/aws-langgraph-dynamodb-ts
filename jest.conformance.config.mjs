@@ -1,4 +1,4 @@
-import { sharedJestConfig } from './jest.shared.config.ts';
+import { sharedJestConfig } from './jest.shared.config.mjs';
 
 /**
  * Conformance tier against DynamoDB Local: a compiled LangGraph graph over the

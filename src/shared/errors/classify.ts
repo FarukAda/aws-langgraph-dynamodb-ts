@@ -217,6 +217,49 @@ export function classifyAwsError(error: Error): ErrorCode {
   return isAwsShaped(fields) ? ErrorCode.AWS_REQUEST_FAILED : ErrorCode.UNEXPECTED_ERROR;
 }
 
+/** How far {@link classifiableCause} walks a cause chain before giving up. */
+const MAX_CAUSE_DEPTH = 32;
+
+/** The one field {@link classifiableCause} reads off a node while walking its cause chain. */
+interface CauseChain {
+  cause?: Error;
+}
+
+/**
+ * The node in `error`'s own cause chain — `error` itself, then its `cause`,
+ * then that error's own `cause`, and so on — that {@link classifyAwsError}
+ * does not answer `UNEXPECTED_ERROR` for.
+ *
+ * Accepts: `error` — the outermost failure to classify, already normalised by
+ * `toError`.
+ *
+ * Returns: the first node the classifier places under an AWS or network code,
+ * so a caller's own error wrapping a modeled SDK exception, an SDK error whose
+ * own `cause` is a raw transport failure, or a `RETRY_EXHAUSTED` error wrapping
+ * either as its own `cause`, still classifies — and still yields diagnostics —
+ * on the AWS/network failure underneath rather than losing it one level up —
+ * the same failure the retry layer's cause-chain walk (`isRetryableError` in
+ * `shared/dynamodb/retry.ts`) already sees. `error` itself when nothing in its
+ * chain classifies either. The walk gives up after {@link MAX_CAUSE_DEPTH}
+ * nodes, and a cycle in the chain stops it rather than looping, exactly as
+ * that other walk does.
+ *
+ * Throws: nothing, for any value `toError` can produce.
+ */
+export function classifiableCause(error: Error): Error {
+  const seen = new WeakSet<object>();
+  let node = error;
+  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
+    if (classifyAwsError(node) !== ErrorCode.UNEXPECTED_ERROR) return node;
+    if (typeof node !== 'object' || node === null || seen.has(node)) break;
+    seen.add(node);
+    const next = (node as CauseChain).cause;
+    if (next === undefined) break;
+    node = next;
+  }
+  return error;
+}
+
 /**
  * The fields an operator needs first, lifted off an AWS-shaped error.
  *
@@ -242,6 +285,112 @@ export function awsDiagnostics(
   const requestId = fields.$metadata?.requestId;
   if (typeof requestId === 'string') out.requestId = requestId;
   return out;
+}
+
+/** The names the SDK gives a request it cut short itself, before any response. */
+const CLIENT_SIDE_CUTS: readonly string[] = ['TimeoutError', 'AbortError'];
+
+/** How far {@link endedWithoutAnswer} walks a cause chain before giving up. */
+const MAX_ANSWER_DEPTH = 8;
+
+/**
+ * Whether a failed request ended on this side, before the service answered it.
+ *
+ * Accepts: anything a `catch` can bind, and `undefined`.
+ *
+ * Returns: true when the failure, or a cause beneath it, is a cut this side
+ * made — the SDK's own `TimeoutError` or `AbortError`, or a Node network error
+ * such as `ECONNRESET` or `ETIMEDOUT` — and no node on the way carries the HTTP
+ * status of a response. The service may still apply a request cut that way
+ * after the caller has stopped waiting for it. False for everything else: a
+ * failure the service answered, and one that says nothing about the transport,
+ * such as a value a caller's own code threw. A cycle in the chain ends the walk.
+ *
+ * Throws: nothing, for any value.
+ */
+export function endedWithoutAnswer(error: Error | undefined): boolean {
+  const seen = new WeakSet<object>();
+  let node: Error | undefined = error;
+  for (let depth = 0; depth < MAX_ANSWER_DEPTH; depth += 1) {
+    if (typeof node !== 'object' || node === null || seen.has(node)) return false;
+    seen.add(node);
+    const fields = node as AwsErrorFields;
+    if (statusOf(fields) !== undefined) return false;
+    if (typeof fields.name === 'string' && CLIENT_SIDE_CUTS.includes(fields.name)) return true;
+    if (typeof fields.code === 'string' && TRANSIENT_NETWORK_ERROR_CODES.includes(fields.code)) {
+      return true;
+    }
+    node = (node as { cause?: Error }).cause;
+  }
+  return false;
+}
+
+/**
+ * The name DynamoDB answers with when a `TransactWriteItems` request under a
+ * `ClientRequestToken` still in use finds its own earlier attempt under that
+ * token still being processed.
+ */
+const TRANSACTION_IN_PROGRESS = 'TransactionInProgressException';
+
+/** The lowest and highest HTTP server-error status, inclusive. */
+const SERVER_ERROR_STATUS_MIN = 500;
+const SERVER_ERROR_STATUS_MAX = 599;
+
+/**
+ * Whether one attempt's own failure leaves DynamoDB free to apply it later,
+ * judged from that attempt alone.
+ *
+ * Accepts: anything a `catch` can bind, and `undefined`.
+ *
+ * Returns: true when the attempt {@link endedWithoutAnswer}; when the service
+ * answered that its own earlier attempt under the same `ClientRequestToken`
+ * was still being processed (`TransactionInProgressException`); or when it
+ * answered with a server error, an HTTP 5xx. AWS says of a 500
+ * (`InternalServerError`) that the request "may have succeeded or failed", with
+ * no later point documented as settling it (DynamoDB Developer Guide, *Error
+ * handling*:
+ * https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html);
+ * this library treats every 5xx the same way. False for a refusal, a throttle,
+ * or any other definite answer.
+ *
+ * Throws: nothing, for any value.
+ */
+export function mayStillBeInFlight(error: Error | undefined): boolean {
+  if (endedWithoutAnswer(error)) return true;
+  if (typeof error !== 'object' || error === null) return false;
+  const fields = error as AwsErrorFields;
+  if (fields.name === TRANSACTION_IN_PROGRESS) return true;
+  const status = statusOf(fields);
+  return (
+    status !== undefined && status >= SERVER_ERROR_STATUS_MIN && status <= SERVER_ERROR_STATUS_MAX
+  );
+}
+
+/** The codes of a failure the service answered by refusing the request, of which it applied nothing. */
+const REFUSED: readonly ErrorCode[] = [
+  ErrorCode.AWS_REJECTED,
+  ErrorCode.ACCESS_DENIED,
+  ErrorCode.NOT_FOUND,
+  ErrorCode.CONDITION_CONFLICT,
+];
+
+/**
+ * Whether the service refused a request outright, so that none of it was applied.
+ *
+ * Accepts: anything a `catch` can bind.
+ *
+ * Returns: true for a cancelled transaction — DynamoDB applies none of a
+ * transaction it cancels — and for a failure the classifier places under a
+ * refusal: a malformed request, a denied permission, a missing table or index,
+ * a failed condition. False for everything else, a spent retry budget and a
+ * cancel included, since neither says what the service did.
+ *
+ * Throws: nothing, for any value.
+ */
+export function refusedByService(error: Error): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  if ((error as AwsErrorFields).name === TRANSACTION_CANCELLED) return true;
+  return REFUSED.includes(classifyAwsError(error));
 }
 
 /**

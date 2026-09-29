@@ -17,13 +17,15 @@ import {
   fullJitter,
   isTransientS3Error,
   nextBackoffDelay,
+  type RetryAttemptInfo,
   sleep,
   withRetry,
 } from '../../dynamodb/retry';
-import { DynamoDBLangGraphError, failureLabel } from '../../errors/base-error';
-import { classifyAwsError } from '../../errors/classify';
+import { copyForCaller, DynamoDBLangGraphError, failureLabel } from '../../errors/base-error';
+import { awsDiagnostics, classifiableCause, classifyAwsError } from '../../errors/classify';
 import { ErrorCode } from '../../errors/error-code';
-import { absorbLoggerFailure, type Logger } from '../../logging/logger';
+import { validationError } from '../../errors/errors';
+import { absorbLoggerFailure, type Logger, SILENT_LOGGER } from '../../logging/logger';
 import { redactedMessage } from '../../logging/secret-patterns';
 import { truncateForLog } from '../../logging/truncate';
 import { createDefaultS3Client, loadS3Sdk } from './client';
@@ -71,10 +73,12 @@ export class S3Offloader {
   private readonly sseKmsKeyId?: string;
   private readonly maxDownloadBytes: number;
   private readonly config: S3OffloadConfig;
+  private readonly logger: Logger;
 
   /**
    * Accepts: `config` — already validated by the adapter that builds this, with
-   * its key prefix resolved to the adapter's own path.
+   * its key prefix resolved to the adapter's own path. `logger` — the
+   * adapter's, which each S3 transfer retry is reported to at `debug`.
    *
    * Returns: an offloader whose S3 client is built lazily, on the first
    * operation that needs one.
@@ -83,8 +87,9 @@ export class S3Offloader {
    * import is warmed so the failure surfaces, typed, on the first S3 operation
    * rather than on the first oversize payload days later.
    */
-  constructor(config: S3OffloadConfig) {
+  constructor(config: S3OffloadConfig, logger: Logger = SILENT_LOGGER) {
     this.config = config;
+    this.logger = logger;
     this.bucketName = config.bucketName;
     this.keyPrefix = config.keyPrefix ?? DEFAULT_S3_KEY_PREFIX;
     this.thresholdBytes = config.thresholdBytes ?? DEFAULT_S3_THRESHOLD_BYTES;
@@ -131,7 +136,15 @@ export class S3Offloader {
         },
       );
     }
-    return this.clientPromise;
+    // Every caller shares this one promise, so a failed build's error would
+    // otherwise be one object handed to whichever of upload, download,
+    // deleteBatch or ensureLifecycleRule reaches it — through however many
+    // different public operations called them concurrently. `.catch` here
+    // runs once per caller of this method, not once for the shared promise,
+    // so each gets its own copy to carry through the public boundary.
+    return this.clientPromise.catch((error: Error) => {
+      throw copyForCaller(error);
+    });
   }
 
   /**
@@ -213,6 +226,23 @@ export class S3Offloader {
   }
 
   /**
+   * The line one S3 transfer retry writes: the message a DynamoDB retry writes,
+   * so a count of retries by error name covers both, plus the transfer it was.
+   * The error is quoted by name only, bounded like every other quoted name.
+   */
+  private retryReporter(operation: 'upload' | 'download'): (info: RetryAttemptInfo) => void {
+    return ({ attempt, delayMs, error }) =>
+      absorbLoggerFailure(() =>
+        this.logger.debug('retrying after a transient error', {
+          attempt,
+          delayMs,
+          operation,
+          error: truncateForLog(failureLabel(error)),
+        }),
+      );
+  }
+
+  /**
    * Upload `data` under `key`, writing only while the key is free.
    *
    * Accepts: `key` — built by {@link buildKey} for the write uploading `data`,
@@ -224,8 +254,10 @@ export class S3Offloader {
    * attempt of this upload did (see `uploadObject`); the caller's obligation is
    * the same either way.
    *
-   * Throws: `S3_OFFLOAD_FAILED` carrying the key; `ABORTED` when the signal
-   * fires, which is the caller's own stop rather than a failed offload.
+   * Throws: `VALIDATION` naming `payload` for bytes over `maxDownloadBytes`,
+   * before any request; `S3_OFFLOAD_FAILED` carrying the key; `ABORTED` when
+   * the signal fires, which is the caller's own stop rather than a failed
+   * offload.
    */
   async upload(
     key: string,
@@ -233,6 +265,14 @@ export class S3Offloader {
     row: BacklinkRow,
     signal?: AbortSignal,
   ): Promise<string> {
+    if (data.length > this.maxDownloadBytes) {
+      throw validationError(
+        `payload of ${data.length} bytes exceeds s3.maxDownloadBytes (${this.maxDownloadBytes}), ` +
+          'so no reader configured like this adapter could download it; raise ' +
+          's3.maxDownloadBytes or store a smaller value',
+        'payload',
+      );
+    }
     await uploadObject(await this.getClient(), {
       bucket: this.bucketName,
       key,
@@ -241,6 +281,7 @@ export class S3Offloader {
       sseKmsKeyId: this.sseKmsKeyId,
       metadata: backlinkMetadata(row),
       signal,
+      onRetry: this.retryReporter('upload'),
     });
     return key;
   }
@@ -266,6 +307,7 @@ export class S3Offloader {
       await this.getClient(),
       { bucket: this.bucketName, key, maxBytes: this.maxDownloadBytes },
       signal,
+      this.retryReporter('download'),
     );
   }
 
@@ -292,11 +334,17 @@ export class S3Offloader {
    * reported rather than enforced.
    *
    * Returns: nothing. Rules that are already correct are left alone, so this
-   * is safe to call on every deploy.
+   * is safe to call on every deploy. When it writes the rules but cannot
+   * confirm within its polling window that a re-read shows them — S3
+   * documents that a lifecycle configuration can take minutes to propagate —
+   * it logs a `warn` and returns rather than throwing: the rules were
+   * written, and a later call can confirm them.
    *
    * Throws: `VALIDATION` naming `s3.keyPrefix` when a rule id this prefix
    * would take is already held by a different prefix; whatever reading or
-   * writing the bucket's lifecycle configuration throws.
+   * writing the bucket's lifecycle configuration throws; `CONTENTION` when
+   * every one of the five rounds this call polls needs a write — a competing
+   * writer replacing the configuration on every single re-read.
    */
   async ensureLifecycleRule(ttlDays: number, logger: Logger): Promise<void> {
     return ensureLifecycleRule(
@@ -335,6 +383,8 @@ export interface UploadParams {
   metadata?: Record<string, string>;
   /** The caller's cancellation; absent, the upload cannot be interrupted. */
   signal?: AbortSignal;
+  /** Called before each retry's backoff, as `withRetry` calls it. */
+  onRetry?: (info: RetryAttemptInfo) => void;
 }
 
 /**
@@ -391,7 +441,8 @@ function alreadyStored(error: Error): boolean {
  * carrying the key and the underlying error, after three attempts on a
  * transient failure. Its message quotes the SDK's, with credential shapes
  * redacted — a signing failure names the key it signed with, and this message
- * reaches `err.message` on a public error.
+ * reaches `err.message` on a public error. Its context carries the S3
+ * failure's `awsErrorName`, `httpStatusCode` and `requestId` when it was AWS's.
  *
  * Guarantees: a cancelled upload leaves at most the object it was writing, at
  * a key ending in this write's own object id, which no row names because the
@@ -418,7 +469,12 @@ export async function uploadObject(client: S3Client, params: UploadParams): Prom
           }),
           request,
         ),
-      { maxAttempts: 3, isRetryable: isTransientS3Error, signal: params.signal },
+      {
+        maxAttempts: 3,
+        isRetryable: isTransientS3Error,
+        signal: params.signal,
+        onRetry: params.onRetry,
+      },
     );
   } catch (error) {
     if (alreadyStored(error as Error)) return;
@@ -426,7 +482,11 @@ export async function uploadObject(client: S3Client, params: UploadParams): Prom
     throw new DynamoDBLangGraphError(
       redactedMessage(error as Error),
       ErrorCode.S3_OFFLOAD_FAILED,
-      { operation: 'upload', key: params.key },
+      {
+        operation: 'upload',
+        key: params.key,
+        ...awsDiagnostics(classifiableCause(error as Error)),
+      },
       error as Error,
     );
   }
@@ -444,19 +504,23 @@ export interface StoredObject {
  *
  * Accepts: `object.maxBytes` — the largest object this call will buffer.
  * `signal` — cancels the request, and with it a body already streaming.
+ * `onRetry` — called before each retry's backoff.
  *
  * Returns: the object's bytes.
  *
  * Throws: `ABORTED` when the signal fires, unwrapped; `S3_OFFLOAD_FAILED`
  * naming the key — for an object over `maxBytes`, for a response with no body,
  * and for any SDK failure that survives the retries. Its message quotes the
- * underlying one with credential shapes redacted; the SDK error is kept as
- * `cause`, so `NoSuchKey` stays distinguishable
- * ({@link isMissingObjectError}).
+ * underlying one with credential shapes redacted; the failure is kept as
+ * `cause` — the SDK error itself for a failure that was not retried, the
+ * `RETRY_EXHAUSTED` error wrapping it once the retry budget is spent — so
+ * `NoSuchKey` stays distinguishable ({@link isMissingObjectError}). Its context carries the S3 failure's
+ * `awsErrorName`, `httpStatusCode` and `requestId` when it was AWS's.
  *
  * Guarantees: an object over the cap is refused from its declared
- * `ContentLength` before the body is touched, and while streaming when the
- * length is absent, so a replaced or hostile object cannot exhaust memory.
+ * `ContentLength` before the body is touched, and that body is destroyed
+ * rather than left open, and while streaming when the length is absent, so a
+ * replaced or hostile object cannot exhaust memory.
  * Transient failures are retried by this package alone — the client is built
  * with `maxAttempts: 1`.
  *
@@ -472,6 +536,7 @@ export async function downloadObject(
   client: S3Client,
   object: StoredObject,
   signal?: AbortSignal,
+  onRetry?: (info: RetryAttemptInfo) => void,
 ): Promise<Uint8Array> {
   const { GetObjectCommand } = await loadS3Sdk();
   const { bucket, key, maxBytes } = object;
@@ -483,6 +548,9 @@ export async function downloadObject(
           request,
         );
         if (typeof response.ContentLength === 'number' && response.ContentLength > maxBytes) {
+          // The body is never read, so release its socket now instead of
+          // leaving it to the idle timer.
+          (response.Body as StreamingBody | undefined)?.destroy?.();
           throw oversizedObjectError(key, response.ContentLength, maxBytes);
         }
         if (!response.Body) {
@@ -490,14 +558,14 @@ export async function downloadObject(
         }
         return readBodyBounded(response.Body, key, maxBytes);
       },
-      { maxAttempts: 3, isRetryable: isTransientS3Error, signal },
+      { maxAttempts: 3, isRetryable: isTransientS3Error, signal, onRetry },
     );
   } catch (error) {
     rethrowIfCancelled(error as Error);
     throw new DynamoDBLangGraphError(
       redactedMessage(error as Error),
       ErrorCode.S3_OFFLOAD_FAILED,
-      { operation: 'download', key },
+      { operation: 'download', key, ...awsDiagnostics(classifiableCause(error as Error)) },
       error as Error,
     );
   }

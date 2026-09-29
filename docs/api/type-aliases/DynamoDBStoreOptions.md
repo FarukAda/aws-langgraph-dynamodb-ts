@@ -6,11 +6,14 @@
 
 # Type Alias: DynamoDBStoreOptions
 
-> **DynamoDBStoreOptions** = [`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md) & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
+> **DynamoDBStoreOptions** = `Omit`\<[`BaseAdapterOptions`](../interfaces/BaseAdapterOptions.md), `"indexName"` \| `"indexShards"`\> & [`CodecOptions`](../interfaces/CodecOptions.md) & `object`
 
-Defined in: [store/types.ts:25](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L25)
+Defined in: [store/types.ts:30](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/store/types.ts#L30)
 
 Options for [DynamoDBStore](../classes/DynamoDBStore.md).
+
+`indexName` and `indexShards` are not store options: no store read uses the
+recency index, so a store given either refuses it as an unknown key.
 
 ## Type Declaration
 
@@ -21,10 +24,22 @@ Options for [DynamoDBStore](../classes/DynamoDBStore.md).
 Optional semantic-search index configuration (embeddings + fields).
 
 Without a `vectorBackend` the vectors live on the item itself, one per
-extracted path at roughly 10 bytes per dimension. They are not counted
-toward `s3.thresholdBytes` — offload decides on the payload alone — so a
-value near the threshold plus many vectors is the combination to watch
-against DynamoDB's 400 KB item limit; see that option's note.
+text the configured fields extract — a wildcard path such as
+`sections[*].text` extracts one per element — at up to 10 bytes per
+dimension. They are not counted toward `s3.thresholdBytes` — offload
+decides on the payload alone — and a row they would take past
+DynamoDB's 400 KB item limit is refused with `VALIDATION` naming
+`index` before anything is written.
+
+### maxIterations?
+
+> `optional` **maxIterations?**: `number`
+
+Cap on DynamoDB pages one search, namespace listing or reconcile reads
+before `RESULT_TRUNCATED` (default 1000; a page is at most 1 MB).
+`Infinity` reads to the end. It is the cap a rootless search or listing
+over a large table meets first when most of what it scans is not store
+rows, since those pages hold few rows for `maxScanItems` to count.
 
 ### maxScanItems?
 

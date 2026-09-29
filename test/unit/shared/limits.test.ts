@@ -24,6 +24,7 @@ import {
   MAX_BACKOFF_DELAY_MS,
 } from '../../../src/shared/dynamodb/retry';
 import {
+  MAX_CHECKPOINT_NS_BYTES,
   MAX_KEY_SEGMENT_BYTES,
   MAX_PARTITION_ID_BYTES,
   MAX_SORT_KEY_BYTES,
@@ -63,6 +64,7 @@ describe('the limits each module owns', () => {
   it('pins the identifier and key byte caps', () => {
     expect(MAX_PARTITION_ID_BYTES).toBe(1024);
     expect(MAX_KEY_SEGMENT_BYTES).toBe(256);
+    expect(MAX_CHECKPOINT_NS_BYTES).toBe(512);
     expect(MAX_SORT_KEY_BYTES).toBe(1024);
     expect(MAX_S3_KEY_BYTES).toBe(1024);
   });

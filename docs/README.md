@@ -31,8 +31,9 @@ mechanism behind a promise: the compare-and-swap and request-token machinery
 behind S3 offload, what a partition delete promises and what it costs, search
 and vector-index consistency, checkpointer and chat-history semantics, the
 request-unit cost of every call with a worked example, what can still go
-wrong between a DynamoDB row and its S3 payload and the sweep that finds a
-stranded one, and the on-disk layout and error/version guarantees behind
+wrong between a DynamoDB row and its S3 payload and the sweeps that find a
+stranded row or an orphaned object, and the on-disk layout and error/version
+guarantees behind
 [Versioning and compatibility](../README.md#versioning-and-compatibility).
 Its samples are compiled against `src` on every CI run, like the README's.
 

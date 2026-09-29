@@ -37,13 +37,6 @@ export interface MultiSessionHistory {
   clear(sessionId: string): Promise<void>;
 }
 
-/**
- * The earlier name of {@link MultiSessionHistory}, the same type.
- *
- * @deprecated Use `MultiSessionHistory`. This alias is removed in the next major release.
- */
-export type SessionBackend = MultiSessionHistory;
-
 /** {@link MultiSessionHistory}'s own members, the ones this adapter calls. */
 const MULTI_SESSION_HISTORY_MEMBERS: readonly string[] = ['getMessages', 'addMessages', 'clear'];
 

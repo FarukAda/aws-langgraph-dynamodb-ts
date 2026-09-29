@@ -14,8 +14,6 @@ describe('the store option-key lists (compiler-verified against the types)', () 
       'ttl',
       'logger',
       'retry',
-      'indexShards',
-      'indexName',
       'readConcurrency',
       'compression',
       's3',
@@ -24,6 +22,7 @@ describe('the store option-key lists (compiler-verified against the types)', () 
       'vectorBackend',
       'maxSearchCandidates',
       'maxScanItems',
+      'maxIterations',
       'vectorScoreDirection',
     ]);
     expect(STORE_SEARCH_KEYS).toEqual(['filter', 'limit', 'offset', 'query', 'signal']);

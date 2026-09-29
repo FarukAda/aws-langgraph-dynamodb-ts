@@ -1,6 +1,7 @@
 import {
   AWS_ERROR_CODES,
   awsDiagnostics,
+  classifiableCause,
   classifyAwsError,
   DEFAULT_RETRYABLE_ERRORS,
   isMissingLifecycleConfiguration,
@@ -131,6 +132,43 @@ describe('awsDiagnostics', () => {
     expect(awsDiagnostics({ $metadata: { httpStatusCode: 500 } } as never)).toEqual({
       httpStatusCode: 500,
     });
+  });
+});
+
+describe('classifiableCause', () => {
+  it('returns the outermost error when it already classifies', () => {
+    const error = sdkError('ThrottlingException');
+    expect(classifiableCause(error)).toBe(error);
+  });
+
+  /**
+   * `withRetry` wraps a spent budget's last failure in its own `RETRY_EXHAUSTED`
+   * error — named `DynamoDBLangGraphError`, with no `$metadata` of its own, so
+   * it does not itself classify — with that failure as `cause`. Diagnostics
+   * read off the wrapper alone are lost; reading them off what this returns
+   * finds them beneath it.
+   */
+  it('walks past a wrapper that does not itself classify to the AWS failure it wraps', () => {
+    const aws = sdkError('SlowDown', { httpStatusCode: 503, requestId: 'r-9' });
+    const wrapper = Object.assign(new Error('Operation failed after 3 attempts'), {
+      name: 'DynamoDBLangGraphError',
+      cause: aws,
+    });
+    expect(classifiableCause(wrapper)).toBe(aws);
+  });
+
+  it('returns the outermost error when nothing in the chain classifies', () => {
+    const innermost = new Error('disk full');
+    const outer = Object.assign(new Error('flush failed'), { cause: innermost });
+    expect(classifiableCause(outer)).toBe(outer);
+  });
+
+  it('stops at a cycle in the cause chain rather than looping', () => {
+    const a: Error = new Error('a');
+    const b: Error = new Error('b');
+    Object.assign(a, { cause: b });
+    Object.assign(b, { cause: a });
+    expect(classifiableCause(a)).toBe(a);
   });
 });
 

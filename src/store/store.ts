@@ -6,11 +6,13 @@
  * the five answer and refuse alike. `search` guards the same way but calls
  * its own action directly, to carry a signal that `batch` cannot;
  * `reconcileVectorIndex` and `ensureS3LifecycleRule` guard directly too,
- * since neither is a batchable store operation. Each asynchronous method
- * declared here is also the error boundary (record 13); `stop` and `destroy`
- * are the synchronous exceptions, releasing what the store owns through its
- * shell, and the inherited `start()` no-op — declared by `BaseStore`, not
- * overridden here — is neither guarded nor routed through any of this.
+ * since neither is a batchable store operation. Each public method declared
+ * here is also the error boundary (record 13) — an asynchronous one through
+ * `guardPublic`, and the synchronous `destroy`, releasing what the store owns
+ * through its shell, through `guardPublicSync`; `stop` is that same guarded
+ * call under upstream's lifecycle name. The inherited `start()` no-op —
+ * declared by `BaseStore`, not overridden here — is neither guarded nor
+ * routed through any of this.
  */
 
 import {
@@ -22,7 +24,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 
 import type { AdapterShell } from '../shared/adapter';
-import { guardPublic } from '../shared/errors/boundary';
+import { guardPublic, guardPublicSync } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { assertSignalLike, assertCancelOptions } from '../shared/validation/collaborators';
 import { assertShape } from '../shared/validation/option-shape';
@@ -87,12 +89,17 @@ export class DynamoDBStore extends BaseStore {
    * namespaces for a listing, and `null` for a put or a delete — the value the
    * reference store's `batch` answers a put or a delete with. The kind was
    * decided once, by the parser that built `operation`, so this switches on it
-   * instead of asking the operation's shape again.
+   * instead of asking the operation's shape again. `readConcurrency` — this
+   * operation's share of the call's decode budget, which only a search spends
+   * more than one of.
    */
-  private async dispatch(operation: ParsedOperation): Promise<SingleResult> {
+  private async dispatch(
+    operation: ParsedOperation,
+    readConcurrency: number,
+  ): Promise<SingleResult> {
     switch (operation.kind) {
       case 'search':
-        return searchItems(this.context, operation);
+        return searchItems({ ...this.context, readConcurrency }, operation);
       case 'put':
       case 'delete':
         await putItem(this.context, operation);
@@ -111,12 +118,15 @@ export class DynamoDBStore extends BaseStore {
    * the brand the *inner* one assigned, so routing `get`, `put`, `delete` and
    * `listNamespaces` through the public {@link batch} reported all four as
    * `store.batch` and left an operator counting AWS failures by
-   * `context.operation` unable to tell them apart.
+   * `context.operation` unable to tell them apart. The operations one run
+   * keeps in flight together share `this.context.readConcurrency`, the call's
+   * one decode budget, so a run of several concurrent searches never multiplies
+   * it (see {@link runBatch}).
    */
   private async execute(operations: readonly ParsedOperation[]): Promise<SingleResult[]> {
     return runBatch(
       operations,
-      (operation) => this.dispatch(operation),
+      (operation, readConcurrency) => this.dispatch(operation, readConcurrency),
       this.context.readConcurrency,
     );
   }
@@ -149,21 +159,30 @@ export class DynamoDBStore extends BaseStore {
    * search; `offset`, `limit`, `maxDepth`, `matchConditions`, `prefix`,
    * `prefix element`, `suffix` or `suffix element` for a listing; and later,
    * from a running operation, `value` for one JSON cannot represent,
-   * `maxSearchCandidates` or `index.dims`. A classified AWS failure; `RETRY_EXHAUSTED`;
+   * `maxSearchCandidates` or `index.dims`, or — once a put's row is built —
+   * `index` or `value` again for one over DynamoDB's 400 KB item limit, naming
+   * `index` when its inline vectors are what pushed it over. A classified AWS
+   * failure; `RETRY_EXHAUSTED`;
    * `RESULT_TRUNCATED` from a search or a listing that reads past
-   * `maxScanItems`. One failing operation rejects the whole batch.
+   * `maxScanItems` or `maxIterations`. One failing operation rejects the
+   * whole batch.
    *
    * Guarantees: the order the caller wrote is the order the caller observes — a
    * get after a put of the same item sees it, a get before one does not, and a
    * search sees every write that precedes it and none that follow. Operations
    * addressing different items run concurrently, so a batch of ten gets costs
-   * about one round trip rather than ten.
+   * about one round trip rather than ten, sharing one `readConcurrency`
+   * decode budget between them rather than each holding a full one.
    */
   async batch<Op extends Operation[]>(operations: Op): Promise<OperationResults<Op>> {
-    return guardPublic('store.batch', async () => {
-      const results = await this.execute(parseOperations(operations));
-      return results as OperationResults<Op>;
-    });
+    return guardPublic(
+      'store.batch',
+      async () => {
+        const results = await this.execute(parseOperations(operations));
+        return results as OperationResults<Op>;
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -195,12 +214,16 @@ export class DynamoDBStore extends BaseStore {
    * signal to fire.
    */
   override async get(namespace: string[], key: string): Promise<Item | null> {
-    return guardPublic('store.get', async () => {
-      const [item] = await this.execute([
-        { kind: 'get', address: parseStoreAddress(namespace, key) },
-      ]);
-      return item as Item | null;
-    });
+    return guardPublic(
+      'store.get',
+      async () => {
+        const [item] = await this.execute([
+          { kind: 'get', address: parseStoreAddress(namespace, key) },
+        ]);
+        return item as Item | null;
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -218,7 +241,12 @@ export class DynamoDBStore extends BaseStore {
    * Returns: nothing.
    *
    * Throws: `VALIDATION` naming `namespace`, `namespace element`, `key`,
-   * `sortKey`, `value` or `index`; a classified AWS failure; `RETRY_EXHAUSTED`.
+   * `sortKey`, `value` or `index`; `payload` for a value too large to store
+   * inline without `s3`, or, once offloaded, larger than
+   * `s3.maxDownloadBytes`; `VALIDATION` again, naming `index` or `value`, for
+   * the built row over DynamoDB's 400 KB item limit — `index` when its inline
+   * vectors are what pushed it over — checked before anything is written; a
+   * classified AWS failure; `RETRY_EXHAUSTED`.
    */
   override async put(
     namespace: string[],
@@ -226,9 +254,13 @@ export class DynamoDBStore extends BaseStore {
     value: Parameters<BaseStore['put']>[2],
     index?: Parameters<BaseStore['put']>[3],
   ): Promise<void> {
-    return guardPublic('store.put', async () => {
-      await this.execute([parsePutArguments(namespace, key, value, index)]);
-    });
+    return guardPublic(
+      'store.put',
+      async () => {
+        await this.execute([parsePutArguments(namespace, key, value, index)]);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -261,9 +293,13 @@ export class DynamoDBStore extends BaseStore {
    * is correct: a live row still names the object.
    */
   override async delete(namespace: string[], key: string): Promise<void> {
-    return guardPublic('store.delete', async () => {
-      await this.execute([{ kind: 'delete', address: parseStoreAddress(namespace, key) }]);
-    });
+    return guardPublic(
+      'store.delete',
+      async () => {
+        await this.execute([{ kind: 'delete', address: parseStoreAddress(namespace, key) }]);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -279,14 +315,19 @@ export class DynamoDBStore extends BaseStore {
    *
    * Throws: `VALIDATION` naming `options`, `options.<key>`, `prefix`,
    * `prefix element`, `suffix`, `suffix element`, `maxDepth`, `limit` or
-   * `offset`; `RESULT_TRUNCATED` past `maxScanItems`; `FORMAT_UNSUPPORTED`
-   * for an item written by a newer version; a classified AWS failure.
+   * `offset`; `RESULT_TRUNCATED` past `maxScanItems` or `maxIterations`;
+   * `FORMAT_UNSUPPORTED` for an item written by a newer version; a classified
+   * AWS failure.
    */
   override async listNamespaces(options: ListNamespacesOptions = {}): Promise<string[][]> {
-    return guardPublic('store.listNamespaces', async () => {
-      const [namespaces] = await this.execute([parseListNamespacesOptions(options)]);
-      return namespaces as string[][];
-    });
+    return guardPublic(
+      'store.listNamespaces',
+      async () => {
+        const [namespaces] = await this.execute([parseListNamespacesOptions(options)]);
+        return namespaces as string[][];
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -308,6 +349,7 @@ export class DynamoDBStore extends BaseStore {
    * `filter`, `query`, `offset`, `limit`, `maxSearchCandidates`, `index.dims`,
    * `signal`, or
    * `options.<key>` for a key this package does not read; `ABORTED`;
+   * `RESULT_TRUNCATED` when the walk reaches `maxScanItems` or `maxIterations`;
    * `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
    * version — a search reads rows it did not name, so one such row anywhere in
    * the prefix it walks reports rather than being passed over; a classified AWS failure.
@@ -320,13 +362,17 @@ export class DynamoDBStore extends BaseStore {
     namespacePrefix: string[],
     options: SearchOptions = {},
   ): Promise<SearchItem[]> {
-    return guardPublic('store.search', () => {
-      const prefix = parseNamespacePrefix(namespacePrefix, 'namespacePrefix');
-      assertShape(options, STORE_SEARCH_KEYS, 'options');
-      assertSignalLike(options.signal);
-      const { signal, ...rest } = options;
-      return searchItems(this.context, parseSearch(prefix, rest), signal);
-    });
+    return guardPublic(
+      'store.search',
+      () => {
+        const prefix = parseNamespacePrefix(namespacePrefix, 'namespacePrefix');
+        assertShape(options, STORE_SEARCH_KEYS, 'options');
+        assertSignalLike(options.signal);
+        const { signal, ...rest } = options;
+        return searchItems(this.context, parseSearch(prefix, rest), signal);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -340,23 +386,28 @@ export class DynamoDBStore extends BaseStore {
    *
    * Throws: `VALIDATION` without both an `index` and a `vectorBackend`, for
    * an empty prefix, for an invalid `signal`, or for `options.<key>` naming a
-   * key this package does not read; `RESULT_TRUNCATED` past `maxScanItems`;
-   * `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
+   * key this package does not read; `RESULT_TRUNCATED` past `maxScanItems` or
+   * `maxIterations`; `FORMAT_UNSUPPORTED` for an item, or its payload, written by a newer
    * version — repairing a backend from a view of the prefix that silently
    * omitted such a row would prune the vectors of items that are still there;
    * a classified AWS failure.
    *
    * Guarantees: DynamoDB is never written — only the backend is repaired — and
-   * a vector is deleted only on evidence that its item is gone.
+   * a vector is deleted only on evidence that its item is gone, or unchanged
+   * since a snapshot that already found it with nothing to embed.
    */
   reconcileVectorIndex(
     namespacePrefix: string[],
     options?: CancelOptions,
   ): Promise<VectorReconcileResult> {
-    return guardPublic('store.reconcileVectorIndex', () => {
-      assertCancelOptions(options);
-      return reconcileVectorIndexAction(this.context, namespacePrefix, options);
-    });
+    return guardPublic(
+      'store.reconcileVectorIndex',
+      () => {
+        assertCancelOptions(options);
+        return reconcileVectorIndexAction(this.context, namespacePrefix, options);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -383,12 +434,13 @@ export class DynamoDBStore extends BaseStore {
    * Returns: nothing. Idempotent, and a no-op for a client the caller injected
    * — that one is theirs to close.
    *
-   * Throws: whatever a resource's own `destroy` raises — but only after every
-   * other one has been released, so a client that fails to close never strands
-   * the one behind it.
+   * Throws: the first failure a resource's own `destroy` raised, as a
+   * `DynamoDBLangGraphError` (`UNEXPECTED_ERROR` unless the failure was AWS's)
+   * with it as `cause` — raised only after every other resource has been
+   * released, and only by the first call: `destroy()` is idempotent.
    */
   destroy(): void {
-    this.shell.release();
+    guardPublicSync('store.destroy', () => this.shell.release(), this.context.tableName);
   }
 
   /**
@@ -399,16 +451,34 @@ export class DynamoDBStore extends BaseStore {
    * without both.
    *
    * Returns: nothing. Installing a rule that is already there is a no-op too,
-   * so calling it on every deploy is safe.
+   * so calling it on every deploy is safe. When it writes the rules but
+   * cannot confirm within its polling window that a re-read shows them — S3
+   * documents that a lifecycle configuration can take minutes to propagate —
+   * it logs a `warn` and returns rather than throwing: the rules were
+   * written, and a later call can confirm them.
    *
    * Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
-   * a classified AWS failure when the bucket's lifecycle cannot be read or written.
+   * a classified AWS failure when the bucket's lifecycle cannot be read or
+   * written; `CONTENTION` when every one of the five rounds this call polls
+   * needs a write — a competing writer replacing the configuration on every
+   * single re-read.
    * @remarks Requires the bucket-level `s3:GetLifecycleConfiguration` /
    * `s3:PutLifecycleConfiguration` permissions, broader than the object-level
    * CRUD the rest of S3 offload needs — call it once during provisioning, not
-   * per request.
+   * per request. When several adapters or processes provision the same
+   * bucket, call them one at a time and run each again after a few minutes
+   * once every one of them has run.
+   *
+   * Lowering the `ttl` and calling this again shortens the rule for every
+   * object under the prefix, including those that rows written under the old
+   * value still name, so do that only once those rows have expired; raising
+   * the `ttl` is safe.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    return guardPublic('store.ensureS3LifecycleRule', () => this.shell.ensureLifecycleRule());
+    return guardPublic(
+      'store.ensureS3LifecycleRule',
+      () => this.shell.ensureLifecycleRule(),
+      this.context.tableName,
+    );
   }
 }

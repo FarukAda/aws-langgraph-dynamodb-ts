@@ -155,7 +155,7 @@ function faultyStore(
 
 /** The transport failure a committed write whose acknowledgement never arrived looks like. */
 const lostResponse = (): Error =>
-  Object.assign(new Error('simulated lost response'), { name: 'ETIMEDOUT' });
+  Object.assign(new Error('simulated lost response'), { name: 'TimeoutError' });
 
 describe('a delete whose acknowledgement is lost', () => {
   /**

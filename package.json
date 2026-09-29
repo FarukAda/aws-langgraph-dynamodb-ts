@@ -39,8 +39,7 @@
     "./package.json": "./package.json"
   },
   "engines": {
-    "node": ">=22.0.0",
-    "npm": ">=10.0.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json",
@@ -49,11 +48,11 @@
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"*.config.ts\" \"**/*.mjs\" --no-error-on-unmatched-pattern",
     "lint:fix": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"*.config.ts\" \"**/*.mjs\" --fix --no-error-on-unmatched-pattern",
     "test": "jest --coverage",
-    "test:integration": "jest --config jest.integration.config.ts",
+    "test:integration": "jest --config jest.integration.config.mjs",
     "test:integration:up": "docker compose up -d",
     "test:integration:down": "docker compose down",
-    "test:conformance": "jest --config jest.conformance.config.ts",
-    "test:aws": "jest --config jest.aws.config.ts",
+    "test:conformance": "jest --config jest.conformance.config.mjs",
+    "test:aws": "jest --config jest.aws.config.mjs",
     "test:static": "jest test/static",
     "test:scripts": "node --test \"test/scripts/**/*.test.mjs\"",
     "test:package-smoke": "node --test test/package-smoke/smoke.test.mjs",
@@ -120,7 +119,6 @@
     "prettier": "^3.9.6",
     "publint": "^0.3.24",
     "ts-jest": "^29.4.12",
-    "ts-node": "^10.9.2",
     "typedoc": "^0.28.20",
     "typedoc-plugin-markdown": "^4.13.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

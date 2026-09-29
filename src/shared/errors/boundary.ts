@@ -2,9 +2,10 @@
  * Hides what crosses the public boundary.
  *
  * Only this package's own error leaves a public method (record 13): an error of
- * its own passes through with the operation named, and anything else — an SDK
- * failure, a caller's thrown value — is classified and wrapped with its cause
- * attached and its text redacted.
+ * its own passes through, given the public operation and the table it surfaced
+ * through for whichever of the two it does not already name, and anything
+ * else — an SDK failure, a caller's thrown value — is classified and wrapped
+ * with its cause attached and its text redacted.
  */
 
 import { redactedMessage } from '../logging/secret-patterns';
@@ -12,37 +13,84 @@ import { truncateForLog } from '../logging/truncate';
 import {
   type AnyDynamoDBLangGraphError,
   DynamoDBLangGraphError,
+  type ErrorContext,
   isDynamoDBLangGraphError,
   toError,
 } from './base-error';
-import { awsDiagnostics, classifyAwsError } from './classify';
-import { ErrorCode } from './error-code';
+import { awsDiagnostics, classifiableCause, classifyAwsError } from './classify';
+
+/**
+ * Fill in where an error surfaced, when it does not say already.
+ *
+ * `operation` and `tableName` are filled independently: an error already
+ * naming an operation — an S3 transfer's `upload` or `download`, or a method
+ * a nested adapter call guarded — still gains a table name it lacks, and the
+ * reverse holds too. The innermost boundary wins: whichever guarded call
+ * first catches the error stamps it, and every guard further out finds both
+ * fields already there and changes neither.
+ *
+ * An error is one object, so it is shared wherever the caller shares it: a
+ * signal whose `reason` is already one of this library's own `ABORTED` errors
+ * reaches every call that signal cancels as that same instance, and whichever
+ * call's boundary reaches it first is the one its `context.operation` (and
+ * `context.tableName`) report.
+ *
+ * Never throws: a context this package cannot write to — frozen, or an older
+ * release's own shape — is left as it was, and a context that accepts only some
+ * of the writes (one sealed while already holding an `operation` key, say, which
+ * takes `operation` but refuses a new `tableName`) keeps the fields written
+ * before the first refusal, since this runs inside the one place a public
+ * method's own `catch` would otherwise have the failure it is reporting
+ * replaced by whatever this raised instead.
+ */
+function stampContext(
+  error: AnyDynamoDBLangGraphError,
+  operation: string,
+  tableName: string | undefined,
+): void {
+  const context = error.context as ErrorContext | undefined;
+  if (typeof context !== 'object' || context === null) return;
+  try {
+    context.operation ??= operation;
+    if (tableName !== undefined) context.tableName ??= tableName;
+  } catch {
+    // As documented above: best-effort, and this function may not throw.
+  }
+}
 
 /**
  * Normalise anything escaping a public method into the library's error model.
  *
  * Accepts: anything a `catch` produced — an `Error`, or a value that is not one
- * (`toError` settles that first).
+ * (`toError` settles that first). `operation` — the public method's name.
+ * `tableName` — the adapter's table, when the method has one.
  *
- * Returns: a branded library error unchanged, since its code was assigned
- * closer to the failure and wins; anything else wrapped by
- * {@link wrapForeignError}, with the code the classifier assigns.
+ * Returns: a branded library error — the same one, when it already was one,
+ * with whichever of `context.operation` and `context.tableName` it does not
+ * already carry filled in — or anything else wrapped by {@link wrapForeignError}
+ * with the code the classifier assigns, stamped the same way.
  *
  * Throws: nothing. It runs inside a `catch`, where throwing would discard the
  * failure being reported and replace it with its own.
  */
-export function toPublicError(error: Error, operation: string): AnyDynamoDBLangGraphError {
+export function toPublicError(
+  error: Error,
+  operation: string,
+  tableName?: string,
+): AnyDynamoDBLangGraphError {
   const normalized = toError(error);
-  return isDynamoDBLangGraphError(normalized)
+  const publicError = isDynamoDBLangGraphError(normalized)
     ? normalized
     : (wrapForeignError(normalized, operation) as AnyDynamoDBLangGraphError);
+  stampContext(publicError, operation, tableName);
+  return publicError;
 }
 
 /**
  * Run a public operation so that every rejection is a library error.
  *
- * Accepts: `operation` — the public method's name, which the wrapped error
- * carries. `fn` — the work.
+ * Accepts: `operation` — the public method's name, which the error carries.
+ * `fn` — the work. `tableName` — the adapter's table, which the error carries.
  *
  * Returns: whatever `fn` resolves to, untouched.
  *
@@ -50,11 +98,15 @@ export function toPublicError(error: Error, operation: string): AnyDynamoDBLangG
  * so internal code can keep rethrowing SDK errors verbatim — the retry
  * classifier depends on their shape, and wrapping them early would blind it.
  */
-export async function guardPublic<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+export async function guardPublic<T>(
+  operation: string,
+  fn: () => Promise<T>,
+  tableName?: string,
+): Promise<T> {
   try {
     return await fn();
   } catch (error) {
-    throw toPublicError(error as Error, operation);
+    throw toPublicError(error as Error, operation, tableName);
   }
 }
 
@@ -62,7 +114,7 @@ export async function guardPublic<T>(operation: string, fn: () => Promise<T>): P
  * The same guard for a streaming result.
  *
  * Accepts: `operation` — the public method's name. `source` — the generator to
- * relay.
+ * relay. `tableName` — the adapter's table.
  *
  * Returns: a generator yielding the source's items untouched. A consumer that
  * stops early still closes the source, so an abandoned listing stops reading
@@ -74,54 +126,32 @@ export async function guardPublic<T>(operation: string, fn: () => Promise<T>): P
 export async function* guardPublicIterable<T>(
   operation: string,
   source: AsyncGenerator<T>,
+  tableName?: string,
 ): AsyncGenerator<T> {
   try {
     for await (const item of source) yield item;
   } catch (error) {
-    throw toPublicError(error as Error, operation);
+    throw toPublicError(error as Error, operation, tableName);
   }
-}
-
-/** How far {@link classifiableCause} walks a cause chain before giving up. */
-const MAX_CAUSE_DEPTH = 32;
-
-/** The one field this module reads off a node while walking its cause chain. */
-interface CauseChain {
-  cause?: Error;
 }
 
 /**
- * The node in `error`'s own cause chain — `error` itself, then its `cause`,
- * then that error's own `cause`, and so on — that {@link classifyAwsError}
- * does not answer `UNEXPECTED_ERROR` for.
+ * The same guard for a synchronous public method.
  *
- * Accepts: `error` — the outermost foreign failure, already normalised by
- * {@link toError}.
+ * Accepts: `operation` — the public method's name. `fn` — the work.
+ * `tableName` — the adapter's table.
  *
- * Returns: the first node the classifier places under an AWS or network code,
- * so a caller's own error wrapping a modeled SDK exception, or an SDK error
- * whose own `cause` is a raw transport failure, still classifies on the
- * AWS/network failure underneath rather than losing it one level up — the
- * same failure the retry layer's cause-chain walk (`isRetryableError` in
- * `shared/dynamodb/retry.ts`) already sees. `error` itself when
- * nothing in its chain classifies either. The walk gives up after
- * {@link MAX_CAUSE_DEPTH} nodes, and a cycle in the chain stops it rather than
- * looping, exactly as that other walk does.
+ * Returns: whatever `fn` returns.
  *
- * Throws: nothing, for any value {@link toError} can produce.
+ * Throws: a library error, always — what a client's own `destroy` threw
+ * included, classified like any other foreign failure and kept as `cause`.
  */
-function classifiableCause(error: Error): Error {
-  const seen = new WeakSet<object>();
-  let node = error;
-  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
-    if (classifyAwsError(node) !== ErrorCode.UNEXPECTED_ERROR) return node;
-    if (typeof node !== 'object' || node === null || seen.has(node)) break;
-    seen.add(node);
-    const next = (node as CauseChain).cause;
-    if (next === undefined) break;
-    node = next;
+export function guardPublicSync<T>(operation: string, fn: () => T, tableName?: string): T {
+  try {
+    return fn();
+  } catch (error) {
+    throw toPublicError(error as Error, operation, tableName);
   }
-  return error;
 }
 
 /**

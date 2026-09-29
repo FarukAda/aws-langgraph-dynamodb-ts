@@ -7,6 +7,7 @@ import { releaseOwned } from '../../../src/shared/adapter';
 import { SILENT_LOGGER } from '../../../src/shared/logging/logger';
 import { DynamoDBStore } from '../../../src/store/store';
 import { createStrictDocumentMock, fakeMiddlewareStack } from '../../shared/helpers/ddb-mock';
+import { fastLifecyclePoll } from '../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -23,8 +24,20 @@ const serde = {
  * is what a teardown written as a sequence of statements stops at.
  */
 function hostileS3Client(): unknown {
+  let rules: object[] = [];
   return {
-    send: (): unknown => ({}),
+    send: (command: {
+      constructor: { name: string };
+      input: { LifecycleConfiguration?: { Rules?: object[] } };
+    }): unknown => {
+      if (command.constructor.name === 'PutBucketLifecycleConfigurationCommand') {
+        rules = command.input.LifecycleConfiguration?.Rules ?? [];
+      }
+      if (command.constructor.name === 'GetBucketLifecycleConfigurationCommand') {
+        return { Rules: rules };
+      }
+      return {};
+    },
     destroy: (): never => {
       throw new Error('socket already closed');
     },
@@ -70,15 +83,16 @@ const ADAPTERS: readonly [string, (options: never) => Adapter][] = [
  */
 async function teardownOf(
   build: (options: never) => Adapter,
-): Promise<{ raised: string | undefined; clientReleases: number }> {
+): Promise<{ raised: { code?: string; cause?: string } | undefined; clientReleases: number }> {
   const owned = ownedClientFactory();
   const adapter = build(optionsFor(owned.create) as never);
   await adapter.ensureS3LifecycleRule();
-  let raised: string | undefined;
+  let raised: { code?: string; cause?: string } | undefined;
   try {
     adapter.destroy();
   } catch (error) {
-    raised = (error as Error).message;
+    const caught = error as { code?: string; cause?: Error };
+    raised = { code: caught.code, cause: caught.cause?.message };
   }
   return { raised, clientReleases: owned.destroy.mock.calls.length };
 }
@@ -93,14 +107,28 @@ async function teardownOf(
  */
 describe('an adapter releases every resource it owns, whatever one of them does', () => {
   it.each(ADAPTERS)('%s releases the client behind the failing resource', async (_name, build) => {
-    expect(await teardownOf(build)).toEqual({
-      raised: 'socket already closed',
+    expect(await fastLifecyclePoll(() => teardownOf(build))).toEqual({
+      raised: { code: 'UNEXPECTED_ERROR', cause: 'socket already closed' },
       clientReleases: 1,
     });
   });
 
+  it.each(ADAPTERS)('%s releases nothing on a second destroy', async (_name, build) => {
+    const owned = ownedClientFactory();
+    const adapter = build(optionsFor(owned.create) as never);
+    await fastLifecyclePoll(() => adapter.ensureS3LifecycleRule());
+    expect(() => adapter.destroy()).toThrow('socket already closed');
+    expect(() => adapter.destroy()).not.toThrow();
+    expect(owned.destroy).toHaveBeenCalledTimes(1);
+  });
+
   it('answers alike on all three, so no adapter leaks where another releases', async () => {
-    const answers = await Promise.all(ADAPTERS.map(([, build]) => teardownOf(build)));
+    // The three teardowns run concurrently, so they share one fake-timer
+    // window rather than each toggling it — `jest.useFakeTimers()` is a
+    // global switch, not scoped per call.
+    const answers = await fastLifecyclePoll(() =>
+      Promise.all(ADAPTERS.map(([, build]) => teardownOf(build))),
+    );
     expect(new Set(answers.map((answer) => JSON.stringify(answer))).size).toBe(1);
   });
 
@@ -120,7 +148,7 @@ describe('an adapter releases every resource it owns, whatever one of them does'
       client,
       s3: { bucketName: 'b', createS3Client: () => hostileS3Client() },
     } as never);
-    await adapter.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => adapter.ensureS3LifecycleRule());
     expect(() => adapter.destroy()).toThrow('socket already closed');
     expect(destroy).not.toHaveBeenCalled();
   });
@@ -129,7 +157,7 @@ describe('an adapter releases every resource it owns, whatever one of them does'
   it('releases the same way through the store lifecycle hook', async () => {
     const owned = ownedClientFactory();
     const store = new DynamoDBStore(optionsFor(owned.create) as never);
-    await store.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => store.ensureS3LifecycleRule());
     expect(() => store.stop()).toThrow('socket already closed');
     expect(owned.destroy).toHaveBeenCalledTimes(1);
   });

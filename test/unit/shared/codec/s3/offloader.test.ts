@@ -1,6 +1,5 @@
 import {
   DeleteObjectsCommand,
-  GetBucketLifecycleConfigurationCommand,
   GetBucketVersioningCommand,
   GetObjectCommand,
   PutBucketLifecycleConfigurationCommand,
@@ -14,6 +13,7 @@ import * as s3ClientModule from '../../../../../src/shared/codec/s3/client';
 import { S3Offloader } from '../../../../../src/shared/codec/s3/offloader';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
 import { validationError } from '../../../../../src/shared/errors/errors';
+import { fastLifecyclePoll, lifecycleBucket } from '../../../../shared/helpers/lifecycle-bucket';
 
 // Wrap (not stub out) the real `createDefaultS3Client` so tests can observe
 // call counts / inject failures on the genuine async construction path
@@ -207,24 +207,22 @@ describe('S3Offloader', () => {
   });
 
   it('ensureLifecycleRule delegates to the bucket lifecycle config', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const { offloader } = makeOffloader();
-    await offloader.ensureLifecycleRule(30, logger);
+    await fastLifecyclePoll(() => offloader.ensureLifecycleRule(30, logger));
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
   /** The adapter's logger reaches the bucket-versioning report through here. */
   it('ensureLifecycleRule reports an unversioned bucket through the adapter logger', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({});
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const { offloader } = makeOffloader();
-    await offloader.ensureLifecycleRule(30, logger);
+    await fastLifecyclePoll(() => offloader.ensureLifecycleRule(30, logger));
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('versioning is off'),
       expect.objectContaining({ bucket: 'b' }),
@@ -325,6 +323,35 @@ describe('S3Offloader', () => {
     } finally {
       process.off('unhandledRejection', onUnhandledRejection);
     }
+  });
+
+  /**
+   * `getClient()` caches one promise for every caller; handing a rejection's
+   * identical object back to each of them used to mean whichever of upload,
+   * download, deleteBatch or ensureLifecycleRule reached the public boundary
+   * first stamped its own `operation` onto it — left sitting there for
+   * whichever of the others read the same object next.
+   */
+  it('gives concurrent callers reaching a shared construction failure their own error instance', async () => {
+    const shared = validationError(
+      'S3 offload requires the optional peer @aws-sdk/client-s3',
+      's3',
+    );
+    createDefaultS3ClientMock.mockRejectedValueOnce(shared);
+    const offloader = new S3Offloader({ bucketName: 'b' });
+
+    const [first, second] = await Promise.all([
+      offloader
+        .upload('a.bin', new Uint8Array([1]), { pk: 'PK', sk: 'SK' })
+        .catch((error: Error) => error),
+      offloader.download('a.bin').catch((error: Error) => error),
+    ]);
+
+    expect(first).not.toBe(second);
+    expect(first).not.toBe(shared);
+    expect(second).not.toBe(shared);
+    expect(first).toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 's3' } });
+    expect(second).toMatchObject({ code: ErrorCode.VALIDATION, context: { field: 's3' } });
   });
 });
 

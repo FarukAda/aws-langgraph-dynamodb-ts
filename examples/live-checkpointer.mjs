@@ -2,7 +2,8 @@
  * Live demo: a real LangGraph agent backed by DynamoDBSaver against real AWS
  * DynamoDB. Creates a table, runs a graph across two separate saver instances
  * (proving state is resumed from DynamoDB, not memory), shows history,
- * time-travel, and thread deletion, then cleans up.
+ * time-travel, and thread deletion, then cleans up: it deletes the table only
+ * if it created it, so a table that already existed is left in place.
  *
  * Run: AWS_REGION=<region> node examples/live-checkpointer.mjs
  */
@@ -24,6 +25,12 @@ const admin = new DynamoDBClient(clientConfig);
 const log = (...a) => console.log(...a);
 const section = (t) => log(`\n=== ${t} ===`);
 
+// True once this run has created the table, so only a table it made is ever
+// deleted, on success or on failure.
+let created = false;
+// True when the table already existed and this run is reusing it.
+let reused = false;
+
 async function ensureTable() {
   section('1. Create real DynamoDB table');
   try {
@@ -41,11 +48,13 @@ async function ensureTable() {
         BillingMode: 'PAY_PER_REQUEST',
       }),
     );
+    created = true;
     await waitUntilTableExists({ client: admin, maxWaitTime: 60 }, { TableName: TABLE });
     log(`   created table "${TABLE}" in ${REGION}`);
   } catch (error) {
-    if (error.name === 'ResourceInUseException') log(`   table "${TABLE}" already exists — reusing`);
-    else throw error;
+    if (error.name !== 'ResourceInUseException') throw error;
+    reused = true;
+    log(`   table "${TABLE}" already exists — reusing`);
   }
 }
 
@@ -66,50 +75,62 @@ function buildGraph(saver) {
 }
 
 async function run() {
-  await ensureTable();
-  const thread = { configurable: { thread_id: 'demo-thread' } };
+  try {
+    await ensureTable();
+    const thread = { configurable: { thread_id: 'demo-thread' } };
 
-  section('2. First turn (saver A) — writes a checkpoint to DynamoDB (gzip on)');
-  const saverA = new DynamoDBSaver({ tableName: TABLE, clientConfig, compression: { enabled: true } });
-  const r1 = await buildGraph(saverA).invoke({ messages: ['user: hello'] }, thread);
-  log('   state after turn 1:', JSON.stringify(r1));
-  saverA.destroy();
+    section('2. First turn (saver A) — writes a checkpoint to DynamoDB (gzip on)');
+    const saverA = new DynamoDBSaver({ tableName: TABLE, clientConfig, compression: { enabled: true } });
+    const r1 = await buildGraph(saverA).invoke({ messages: ['user: hello'] }, thread);
+    log('   state after turn 1:', JSON.stringify(r1));
+    saverA.destroy();
 
-  section('3. Second turn (NEW saver B) — resumes prior state from DynamoDB');
-  const saverB = new DynamoDBSaver({ tableName: TABLE, clientConfig, compression: { enabled: true } });
-  const graphB = buildGraph(saverB);
-  const r2 = await graphB.invoke({ messages: ['user: are you still there?'] }, thread);
-  log('   state after turn 2:', JSON.stringify(r2));
-  log(`   -> count=${r2.count} and ${r2.messages.length} messages: state survived across instances`);
+    section('3. Second turn (NEW saver B) — resumes prior state from DynamoDB');
+    const saverB = new DynamoDBSaver({ tableName: TABLE, clientConfig, compression: { enabled: true } });
+    const graphB = buildGraph(saverB);
+    const r2 = await graphB.invoke({ messages: ['user: are you still there?'] }, thread);
+    log('   state after turn 2:', JSON.stringify(r2));
+    log(`   -> count=${r2.count} and ${r2.messages.length} messages: state survived across instances`);
 
-  section('4. getState — current checkpoint from DynamoDB');
-  const current = await graphB.getState(thread);
-  log('   current count:', current.values.count);
+    section('4. getState — current checkpoint from DynamoDB');
+    const current = await graphB.getState(thread);
+    log('   current count:', current.values.count);
 
-  section('5. History — list every checkpoint (newest first)');
-  const history = [];
-  for await (const snap of graphB.getStateHistory(thread)) {
-    history.push({ id: snap.config.configurable.checkpoint_id, count: snap.values.count });
+    section('5. History — list every checkpoint (newest first)');
+    const history = [];
+    for await (const snap of graphB.getStateHistory(thread)) {
+      history.push({ id: snap.config.configurable.checkpoint_id, count: snap.values.count });
+    }
+    log(`   ${history.length} checkpoints:`, JSON.stringify(history));
+
+    section('6. Time-travel — read a specific older checkpoint by id');
+    const oldest = history[history.length - 1];
+    const past = await saverB.getTuple({
+      configurable: { thread_id: 'demo-thread', checkpoint_id: oldest.id },
+    });
+    log('   oldest checkpoint count:', past?.checkpoint.channel_values.count);
+
+    section('7. deleteThread — purge the thread');
+    await saverB.deleteThread('demo-thread');
+    const afterDelete = await saverB.getTuple(thread);
+    log('   getTuple after delete:', afterDelete === undefined ? 'undefined (gone)' : 'STILL THERE');
+    saverB.destroy();
+  } finally {
+    section('8. Cleanup');
+    if (created) {
+      try {
+        await admin.send(new DeleteTableCommand({ TableName: TABLE }));
+        log('   table deleted');
+      } catch (error) {
+        console.error(`   could not delete table "${TABLE}" — remove it yourself:`, error);
+      }
+    } else if (reused) {
+      log(`   table "${TABLE}" existed before this demo — left in place`);
+    } else {
+      log(`   this demo created no table "${TABLE}" — nothing to delete`);
+    }
+    admin.destroy();
   }
-  log(`   ${history.length} checkpoints:`, JSON.stringify(history));
-
-  section('6. Time-travel — read a specific older checkpoint by id');
-  const oldest = history[history.length - 1];
-  const past = await saverB.getTuple({
-    configurable: { thread_id: 'demo-thread', checkpoint_id: oldest.id },
-  });
-  log('   oldest checkpoint count:', past?.checkpoint.channel_values.count);
-
-  section('7. deleteThread — purge the thread');
-  await saverB.deleteThread('demo-thread');
-  const afterDelete = await saverB.getTuple(thread);
-  log('   getTuple after delete:', afterDelete === undefined ? 'undefined (gone)' : 'STILL THERE');
-  saverB.destroy();
-
-  section('8. Cleanup — delete the table');
-  await admin.send(new DeleteTableCommand({ TableName: TABLE }));
-  admin.destroy();
-  log('   table deleted');
   log('\nDONE — DynamoDBSaver verified end-to-end on real AWS DynamoDB.');
 }
 

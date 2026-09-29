@@ -18,9 +18,11 @@ import type {
 
 import { collectS3Keys } from '../../shared/codec/codec';
 import { cleanUpS3Orphans } from '../../shared/codec/s3/offloader';
+import { abortErrorFrom } from '../../shared/dynamodb/abort';
 import {
   offloadedKey,
   type RowProbe,
+  settledVerdict,
   transactIdempotently,
   verifyRow,
   type WriteVerdict,
@@ -64,9 +66,10 @@ import type { CheckpointerContext } from '../internal/setup';
  * config of the wrong shape, `thread_id`, `checkpoint_ns`, `checkpoint_id` or
  * `thread_ts` for a malformed identifier, `checkpoint` for a `null` or
  * `undefined` checkpoint, `checkpoint_id` for a malformed `checkpoint.id`,
- * `payload` for a payload too large to store inline without `s3`, or `s3Key`
- * for an offloaded object's key over S3's cap; `S3_OFFLOAD_FAILED`; whatever
- * the transaction throws once the outcome is established.
+ * `payload` for a payload too large to store inline without `s3`, or, once
+ * offloaded, larger than `s3.maxDownloadBytes`; `s3Key` for an offloaded
+ * object's key over S3's cap; `S3_OFFLOAD_FAILED`; whatever the transaction
+ * throws once the outcome is established.
  *
  * Guarantees: both rows land or neither does — they are one transaction, so a
  * META row never names a payload that is not there. That transaction goes out
@@ -81,9 +84,14 @@ import type { CheckpointerContext } from '../internal/setup';
  * the row carrying an offloaded descriptor is read back before any upload is
  * deleted (see {@link verifyCheckpointLanded}): a transaction that committed
  * and lost its response is reported as success, a confirmed non-commit cleans
- * up the objects this call uploaded, and an unverifiable outcome leaks them
- * rather than risk stranding a live row. Each put uploads under an object id of
- * its own, so no row another put commits names this call's uploads.
+ * up the objects this call uploaded, and an unverifiable outcome — a failed
+ * read, or a failure after which DynamoDB may still apply the write, because
+ * an attempt of its budget got no answer, was answered
+ * `TransactionInProgressException` or failed with a server error (5xx) —
+ * leaks them rather than risk stranding a live row, and a put
+ * whose signal fired before the transaction was sent sends nothing and
+ * releases its uploads. Each put uploads under an object id of its own, so no
+ * row another put commits names this call's uploads.
  */
 export async function putCheckpoint(
   context: CheckpointerContext,
@@ -99,6 +107,11 @@ export async function putCheckpoint(
   const stored: RunnableConfig = {
     configurable: { thread_id: threadId, checkpoint_ns: checkpointNs, checkpoint_id: checkpointId },
   };
+  if (request.signal?.aborted) {
+    // Nothing has been sent, so no row can name what this put uploaded.
+    await releaseOwnUploads(context, meta, payload);
+    throw abortErrorFrom(request.signal);
+  }
   try {
     // One request, one token, re-sent unchanged for every attempt of the
     // budget — which is what the token is worth here, since a token minted on
@@ -146,7 +159,10 @@ export async function putCheckpoint(
     );
   } catch (error) {
     if (!context.offloader) throw error;
-    const verdict = await verifyCheckpointLanded(context, meta, payload);
+    const verdict = settledVerdict(
+      await verifyCheckpointLanded(context, meta, payload),
+      error as Error,
+    );
     if (verdict === 'landed') {
       context.logger.debug('put: transaction committed although its response was lost', {
         threadId,
@@ -154,16 +170,24 @@ export async function putCheckpoint(
       });
       return stored;
     }
-    if (verdict === 'not-landed') {
-      await cleanUpS3Orphans(context.offloader, {
-        keys: collectS3Keys([meta.metadata, payload.checkpoint]),
-        operation: 'put',
-        logger: context.logger,
-      });
-    }
+    if (verdict === 'not-landed') await releaseOwnUploads(context, meta, payload);
     throw error;
   }
   return stored;
+}
+
+/** Release the two objects this put uploaded, which no row names unless its transaction committed. */
+async function releaseOwnUploads(
+  context: CheckpointerContext,
+  meta: CheckpointMetaRow,
+  payload: CheckpointPayloadRow,
+): Promise<void> {
+  if (!context.offloader) return;
+  await cleanUpS3Orphans(context.offloader, {
+    keys: collectS3Keys([meta.metadata, payload.checkpoint]),
+    operation: 'put',
+    logger: context.logger,
+  });
 }
 
 /**

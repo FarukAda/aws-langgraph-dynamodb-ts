@@ -100,7 +100,8 @@ function overridesClient(options: FactoryBaseOptions): boolean {
 /**
  * Convenience constructors for the adapters.
  *
- * Individual `create*` methods each build their own client; {@link createAll}
+ * Individual `create*` methods each build one adapter, on the factory's `client`
+ * when it was given one and otherwise on a client of their own; {@link createAll}
  * builds one shared client used by all three and returns a combined `destroy`
  * that tears everything down once. Each adapter validates the options it ends
  * up with, so the same mistake is caught the same way however the adapter was
@@ -185,14 +186,14 @@ export class DynamoDBFactory {
   }
 
   /**
-   * A saver on its own client.
+   * A saver, on the factory's `client` when it has one and otherwise on its own.
    *
    * Accepts: `options` — the saver's own, laid over the factory's defaults. A
    * per-adapter value wins; see {@link defaultsFor} for how a client choice
    * replaces the factory's as a unit.
    *
-   * Returns: the saver, which owns the client it built and releases it on
-   * `destroy()`.
+   * Returns: the saver. It owns, and releases on `destroy()`, only a client it
+   * built itself; a `client` from the factory is never closed by it.
    *
    * Throws: `VALIDATION` for any invalid option, naming it as the saver's
    * constructor does — `options` for a value that is not an object, checked
@@ -206,7 +207,7 @@ export class DynamoDBFactory {
   }
 
   /**
-   * A store on its own client.
+   * A store, on the factory's `client` when it has one and otherwise on its own.
    *
    * Accepts: as {@link createSaver}, for the store's options.
    *
@@ -220,7 +221,8 @@ export class DynamoDBFactory {
   }
 
   /**
-   * A chat history on its own client.
+   * A chat history, on the factory's `client` when it has one and otherwise on
+   * its own.
    *
    * Accepts: as {@link createSaver}, for the history's options.
    *
@@ -273,7 +275,10 @@ export class DynamoDBFactory {
       built.push(adapter);
       return adapter;
     };
+    let destroyed = false;
     const destroy = (): void => {
+      if (destroyed) return;
+      destroyed = true;
       for (const adapter of built) release(logger, () => adapter.destroy());
       release(logger, () => resolved.ddbClient?.destroy());
     };

@@ -20,4 +20,4 @@ export const sharedJestConfig = {
   },
   verbose: true,
   clearMocks: true,
-} as const;
+};

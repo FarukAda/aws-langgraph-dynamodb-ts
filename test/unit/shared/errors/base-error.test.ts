@@ -1,5 +1,6 @@
 import type { WriteRequest } from '../../../../src/shared/dynamodb/client';
 import {
+  copyForCaller,
   DynamoDBLangGraphError,
   failureLabel,
   hasErrorCode,
@@ -114,6 +115,54 @@ describe('hasErrorCode', () => {
 
   it.each([null, undefined, 'x', 1])('answers false for %p rather than throwing', (value) => {
     expect(hasErrorCode(value as never, ErrorCode.VALIDATION)).toBe(false);
+  });
+});
+
+describe('copyForCaller', () => {
+  it('builds a fresh instance with the same message, code, context, cause and details', () => {
+    const cause = new Error('boom');
+    const original = new DynamoDBLangGraphError(
+      'm',
+      ErrorCode.BATCH_WRITE_INCOMPLETE,
+      { operation: 'op' },
+      cause,
+      { kind: 'drain', succeededCount: 1, unprocessed: [], retries: 1 },
+    );
+    const copy = copyForCaller(
+      original,
+    ) as DynamoDBLangGraphError<ErrorCode.BATCH_WRITE_INCOMPLETE>;
+    expect(copy).not.toBe(original);
+    expect(copy).toMatchObject({
+      message: 'm',
+      code: ErrorCode.BATCH_WRITE_INCOMPLETE,
+      context: { operation: 'op' },
+      cause,
+    });
+    expect(copy.details).toEqual({
+      kind: 'drain',
+      succeededCount: 1,
+      unprocessed: [],
+      retries: 1,
+    });
+  });
+
+  /**
+   * The whole point: two callers who each got their own copy of a shared
+   * failure can each stamp it — as `toPublicError` does — without the other
+   * seeing the stamp.
+   */
+  it('lets two copies of the same shared error be stamped independently', () => {
+    const shared = new DynamoDBLangGraphError('m', ErrorCode.VALIDATION, { field: 's3' });
+    const a = copyForCaller(shared) as DynamoDBLangGraphError;
+    const b = copyForCaller(shared) as DynamoDBLangGraphError;
+    a.context.operation = 'saver.put';
+    expect(b.context.operation).toBeUndefined();
+    expect(shared.context.operation).toBeUndefined();
+  });
+
+  it('returns an unbranded error unchanged, since it is fresh to every caller already', () => {
+    const plain = new Error('boom');
+    expect(copyForCaller(plain)).toBe(plain);
   });
 });
 

@@ -6,7 +6,7 @@
 
 # Interface: BackfillOptions
 
-Defined in: [backfill/backfill.ts:312](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L312)
+Defined in: [backfill/backfill.ts:318](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L318)
 
 What the backfill needs to walk a table. A key this type does not declare is refused.
 
@@ -16,7 +16,7 @@ What the backfill needs to walk a table. A key this type does not declare is ref
 
 > **client**: [`DynamoDBDocumentLike`](../type-aliases/DynamoDBDocumentLike.md)
 
-Defined in: [backfill/backfill.ts:313](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L313)
+Defined in: [backfill/backfill.ts:319](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L319)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [backfill/backfill.ts:313](https://github.com/FarukAda/aws-langgraph
 
 > `optional` **cursor?**: `string`
 
-Defined in: [backfill/backfill.ts:321](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L321)
+Defined in: [backfill/backfill.ts:327](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L327)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [backfill/backfill.ts:321](https://github.com/FarukAda/aws-langgraph
 
 > `optional` **dryRun?**: `boolean`
 
-Defined in: [backfill/backfill.ts:323](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L323)
+Defined in: [backfill/backfill.ts:329](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L329)
 
 Report what would change without writing.
 
@@ -42,9 +42,9 @@ Report what would change without writing.
 
 > `optional` **indexShards?**: `number`
 
-Defined in: [backfill/backfill.ts:316](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L316)
+Defined in: [backfill/backfill.ts:322](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L322)
 
-Must equal the adapters' `indexShards`, or rows land on shards no listing queries.
+Must equal the saver's and the history's `indexShards`, or rows land on shards no listing queries.
 
 ***
 
@@ -52,7 +52,7 @@ Must equal the adapters' `indexShards`, or rows land on shards no listing querie
 
 > `optional` **maxPages?**: `number`
 
-Defined in: [backfill/backfill.ts:320](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L320)
+Defined in: [backfill/backfill.ts:326](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L326)
 
 Stop after this many pages and return a cursor. Default: walk the whole table.
 
@@ -62,7 +62,7 @@ Stop after this many pages and return a cursor. Default: walk the whole table.
 
 > `optional` **pageSize?**: `number`
 
-Defined in: [backfill/backfill.ts:318](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L318)
+Defined in: [backfill/backfill.ts:324](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L324)
 
 Rows per scan page.
 
@@ -72,7 +72,7 @@ Rows per scan page.
 
 > `optional` **retry?**: [`RetryOptions`](RetryOptions.md)
 
-Defined in: [backfill/backfill.ts:329](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L329)
+Defined in: [backfill/backfill.ts:335](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L335)
 
 The full retry surface, not the adapters' narrower `RetryPolicy`:
 `onRetry` is backfill's only way to observe retries in progress, since it
@@ -84,7 +84,7 @@ takes no `logger`.
 
 > `optional` **signal?**: `AbortSignal`
 
-Defined in: [backfill/backfill.ts:330](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L330)
+Defined in: [backfill/backfill.ts:336](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L336)
 
 ***
 
@@ -92,4 +92,4 @@ Defined in: [backfill/backfill.ts:330](https://github.com/FarukAda/aws-langgraph
 
 > **tableName**: `string`
 
-Defined in: [backfill/backfill.ts:314](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L314)
+Defined in: [backfill/backfill.ts:320](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/backfill/backfill.ts#L320)

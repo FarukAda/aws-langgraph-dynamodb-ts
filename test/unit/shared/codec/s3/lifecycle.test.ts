@@ -8,6 +8,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 
 import { ensureLifecycleRule } from '../../../../../src/shared/codec/s3/lifecycle';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
+import { lifecycleBucket } from '../../../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 
@@ -28,10 +29,7 @@ function client(): S3Client {
 
 describe('ensureLifecycleRule', () => {
   it('adds the rule when none exists, preserving user rules', async () => {
-    s3Mock
-      .on(GetBucketLifecycleConfigurationCommand)
-      .resolves({ Rules: [{ ID: 'user-rule', Status: 'Enabled' }] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [{ ID: 'user-rule', Status: 'Enabled' }] });
     await ensureLifecycleRule(
       client(),
       { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
@@ -48,12 +46,11 @@ describe('ensureLifecycleRule', () => {
   });
 
   it('replaces the existing rule in place when the ttl differs', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+    lifecycleBucket(s3Mock, {
       Rules: [
         { ID: 'langgraph-ttl-langgraph-checkpoints', Status: 'Enabled', Expiration: { Days: 7 } },
       ],
     });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(
       client(),
       { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
@@ -95,7 +92,7 @@ describe('ensureLifecycleRule', () => {
 
   /** A rule carrying this id but no filter scopes nothing knowable; it is rewritten. */
   it('rewrites a rule that has the right ttl but carries no prefix filter', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+    lifecycleBucket(s3Mock, {
       Rules: [
         {
           ID: 'langgraph-ttl-langgraph-checkpoints',
@@ -105,7 +102,6 @@ describe('ensureLifecycleRule', () => {
         },
       ],
     });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(
       client(),
       { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
@@ -145,8 +141,7 @@ describe('ensureLifecycleRule', () => {
   });
 
   it('treats a response with no Rules field as an empty rule set', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, {});
     await ensureLifecycleRule(
       client(),
       { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 14 },
@@ -162,13 +157,12 @@ describe('ensureLifecycleRule', () => {
   });
 
   it('keeps other user rules untouched when replacing our rule', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+    lifecycleBucket(s3Mock, {
       Rules: [
         { ID: 'user-rule', Status: 'Enabled', Expiration: { Days: 99 } },
         { ID: 'langgraph-ttl-langgraph-checkpoints', Status: 'Enabled', Expiration: { Days: 7 } },
       ],
     });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(
       client(),
       { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
@@ -184,10 +178,7 @@ describe('ensureLifecycleRule', () => {
   });
 
   it('treats NoSuchLifecycleConfiguration as an empty rule set', async () => {
-    s3Mock
-      .on(GetBucketLifecycleConfigurationCommand)
-      .rejects(Object.assign(new Error('none'), { name: 'NoSuchLifecycleConfiguration' }));
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock);
     await ensureLifecycleRule(
       client(),
       { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 7 },
@@ -244,11 +235,10 @@ describe('ensureLifecycleRule prefix guard', () => {
 
 describe('ensureLifecycleRule rule shape', () => {
   it('forwards TransitionDefaultMinimumObjectSize instead of resetting it', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+    lifecycleBucket(s3Mock, {
       Rules: [],
       TransitionDefaultMinimumObjectSize: 'varies_by_storage_class',
     });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(
       client(),
       { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
@@ -261,8 +251,7 @@ describe('ensureLifecycleRule rule shape', () => {
   });
 
   it('omits TransitionDefaultMinimumObjectSize when the bucket had none', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, {});
     await ensureLifecycleRule(
       client(),
       { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
@@ -277,8 +266,7 @@ describe('ensureLifecycleRule rule shape', () => {
 
 describe('the versioning report beside the rules', () => {
   it('reads the bucket versioning state after writing the rules', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, {});
     await ensureLifecycleRule(
       client(),
       { bucket: 'b', prefix: 'langgraph-checkpoints/', days: 30 },
@@ -287,14 +275,14 @@ describe('the versioning report beside the rules', () => {
     expect(s3Mock.calls().map((call) => call.args[0].constructor.name)).toEqual([
       'GetBucketLifecycleConfigurationCommand',
       'PutBucketLifecycleConfigurationCommand',
+      'GetBucketLifecycleConfigurationCommand',
       'GetBucketVersioningCommand',
     ]);
   });
 
   /** A bucket that cannot report its versioning still gets its lifecycle rules. */
   it('writes the rules and does not throw when the versioning read is refused', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, {});
     s3Mock
       .on(GetBucketVersioningCommand)
       .rejects(Object.assign(new Error('denied'), { name: 'AccessDenied' }));

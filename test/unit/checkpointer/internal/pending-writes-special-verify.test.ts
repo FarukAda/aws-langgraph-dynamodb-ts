@@ -176,4 +176,59 @@ describe('verifyAfterFailure', () => {
     expect(read).toEqual({ outcome: { committed: false, error: trigger }, observed: holder });
     expect(rejected).toEqual({ outcome: { committed: false, error: rejection }, observed: holder });
   });
+  /**
+   * The attempt is cut short in transit, so it may still arrive. What decides
+   * the upload's fate is whether the row still satisfies the condition that
+   * attempt carries.
+   */
+  describe('an attempt cut short', () => {
+    const cutShort = (): Error =>
+      Object.assign(new Error('socket timed out'), { name: 'TimeoutError' });
+    const noRevision = { exists: true, value: descriptor };
+
+    /**
+     * A row pinned to "no revision" is guarded by `attribute_not_exists`, which
+     * an absent row satisfies too: a row deleted in between (by deleteThread or
+     * the TTL sweep) is still one the in-flight attempt can create, naming this
+     * upload.
+     */
+    it('keeps the upload when a "no revision" pin finds the row absent', async () => {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(GetCommand).resolves({});
+      const trigger = cutShort();
+      const verified = await verifyAfterFailure(context(client), item(), noRevision, trigger);
+      expect(verified).toEqual({ outcome: { committed: true, error: trigger } });
+    });
+
+    it('releases the upload when a "no revision" pin finds the row at another revision', async () => {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(GetCommand).resolves({ Item: { writeGroup: 'group-b', value: descriptor } });
+      const trigger = cutShort();
+      const verified = await verifyAfterFailure(context(client), item(), noRevision, trigger);
+      expect(verified).toEqual({
+        outcome: { committed: false, error: trigger },
+        observed: { exists: true, revision: 'group-b', value: descriptor },
+      });
+    });
+
+    it('releases the upload when a `#rev = :rev` pin finds the row absent', async () => {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(GetCommand).resolves({});
+      const trigger = cutShort();
+      const verified = await verifyAfterFailure(context(client), item(), attempted, trigger);
+      expect(verified).toEqual({
+        outcome: { committed: false, error: trigger },
+        observed: { exists: false },
+      });
+    });
+
+    /** The unconditional overwrite can land over any row, a third writer's included. */
+    it('keeps the upload when an overwrite finds a third writer s group', async () => {
+      const { client, mock } = createStrictDocumentMock();
+      mock.on(GetCommand).resolves({ Item: { writeGroup: 'group-c', value: descriptor } });
+      const trigger = cutShort();
+      const verified = await verifyAfterFailure(context(client), item(), attempted, trigger, false);
+      expect(verified).toEqual({ outcome: { committed: true, error: trigger } });
+    });
+  });
 });

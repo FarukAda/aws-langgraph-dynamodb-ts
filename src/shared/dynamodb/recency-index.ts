@@ -8,6 +8,8 @@
  * merge. The shard function, the key format and the merge are decided here.
  */
 
+import { createHash } from 'node:crypto';
+
 import type { QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
 import { mapWithConcurrency } from '../concurrency';
@@ -16,7 +18,7 @@ import { type PageLimit, parseLimit } from '../validation/primitives';
 import type { AttributeMap, DynamoDBDocumentLike } from './client';
 import { MAX_LOOP_ITERATIONS } from './paginate';
 import { type RetryOptions, withDynamoDBRetry } from './retry';
-import { compareSortKeys } from './table-schema';
+import { compareSortKeys, MAX_SORT_KEY_BYTES } from './table-schema';
 
 /** One page of a recency listing, and where the next one resumes. */
 export interface IndexPage {
@@ -28,8 +30,10 @@ export interface IndexPage {
 /**
  * A cursor is the sort key of the last row handed out.
  *
- * That is all it needs to be: `gsi1sk` is `<timestamp>#<id>`, which is unique
- * and totally ordered, so the next page is simply "everything below this". It
+ * That is all it needs to be: `gsi1sk` is `<timestamp>#<id>`, or
+ * `<timestamp>#sha256:<hex of id>` once the id alone would pass the sort-key
+ * cap ({@link indexSortKey}) — either way unique and totally ordered, so the
+ * next page is simply "everything below this". It
  * is also why the cursor is not a `LastEvaluatedKey` — one per shard would have
  * to be carried, and a shard count change would silently invalidate them.
  * Opaque to the caller all the same: its shape is not a promise.
@@ -53,10 +57,11 @@ function encodeCursor(sortKey: string): string {
  * Returns: the `gsi1sk` to resume below.
  *
  * Throws: `VALIDATION` naming `cursor` when the decoded value carries no
- * `#`. `gsi1sk` is `<timestamp>#<id>`, so such a value was issued by something
- * else — a scan cursor, a page token from another API — and using it as a bound
- * would quietly return the wrong page rather than say so. A value that carries
- * a `#` is not checked further.
+ * `#`. Every `gsi1sk` this package writes — `<timestamp>#<id>` or, past the
+ * sort-key cap, `<timestamp>#sha256:<hex>` — carries one, so a value without
+ * one was issued by something else — a scan cursor, a page token from another
+ * API — and using it as a bound would quietly return the wrong page rather
+ * than say so. A value that carries a `#` is not checked further.
  */
 function decodeCursor(cursor: string): string {
   const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
@@ -226,7 +231,7 @@ export async function* iterateRecencyIndex(
 }
 
 /** The adapter tags that scope GSI1, matching the partition-key tags. */
-export type IndexTag = 'CHKPT' | 'STORE' | 'SESS';
+export type IndexTag = 'CHKPT' | 'SESS';
 
 /** How a row appears in the recency index: its adapter's tag, its identity, and its time. */
 export interface IndexTarget {
@@ -299,6 +304,22 @@ function assertShardCount(shards: number): void {
 }
 
 /**
+ * The index sort key for a row written at `at`: the row's own id verbatim while
+ * the composed key fits DynamoDB's 1024-byte cap on a sort key, and that id's
+ * SHA-256 digest past it. The cap binds a secondary index's keys too: once the
+ * index exists DynamoDB rejects every write to an item whose index key breaks
+ * it, and an index built later leaves that item out
+ * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.OnlineOps.ViolationDetection.html).
+ * The id only breaks ties between rows written in the same millisecond, so any
+ * value unique to it serves.
+ */
+function indexSortKey(at: string, id: string): string {
+  const verbatim = `${at}#${id}`;
+  if (Buffer.byteLength(verbatim, 'utf8') <= MAX_SORT_KEY_BYTES) return verbatim;
+  return `${at}#sha256:${createHash('sha256').update(id, 'utf8').digest('hex')}`;
+}
+
+/**
  * The GSI1 keys for a row that takes part in cross-partition listing.
  *
  * The partition key is the adapter tag plus a shard, because an index keyed by
@@ -310,17 +331,21 @@ function assertShardCount(shards: number): void {
  *
  * The sort key leads with an ISO-8601 timestamp, used unparsed: its byte order
  * already is its chronological order, so a recency listing is a key condition
- * rather than an in-memory sort. The row's own id follows it, which makes the
- * key total — two rows written in the same millisecond still order, so a cursor
- * can never loop.
+ * rather than an in-memory sort. The row's own id, or its SHA-256 digest once
+ * the composed key would pass DynamoDB's 1024-byte sort-key cap
+ * ({@link indexSortKey}), follows it, which makes the key total — two rows
+ * written in the same millisecond still order, so a cursor can never loop.
  *
  * Accepts: `tag` — the adapter's. `id` — the row's own identifier, which
  * decides its shard and breaks ties in the sort key. `at` — an ISO-8601
- * instant. `shards` — index partitions per adapter, at least 1; fixed at table
- * creation, since changing it changes every row's shard and requires a
- * backfill.
+ * instant. `shards` — index partitions per adapter, at least 1; fixed for the
+ * table's life once rows carry keys, since `backfillRecencyIndex` writes keys
+ * only to rows that have none and so can never move a row already on a
+ * shard — raising the count is safe, since a listing still queries the old
+ * shards too, and lowering it hides the rows already on a dropped shard.
  *
- * Returns: the two index attributes.
+ * Returns: the two index attributes; an id whose composed sort key would pass
+ * 1024 bytes is carried as its SHA-256 digest.
  *
  * Throws: `VALIDATION` naming `indexShards` for a count below 1 — the read
  * side built an empty partition list from such a value and reported an empty
@@ -333,7 +358,7 @@ export function indexKeys(tag: IndexTag, id: string, at: string, shards: number)
   assertShardCount(shards);
   return {
     gsi1pk: `${tag}#${fnv1a(id) % shards}`,
-    gsi1sk: `${at}#${id}`,
+    gsi1sk: indexSortKey(at, id),
   };
 }
 

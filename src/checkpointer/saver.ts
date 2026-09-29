@@ -4,11 +4,12 @@
  * `DynamoDBSaver` is the `BaseCheckpointSaver` a graph is handed: it resolves
  * its client, offloader, logger and retry policy once and delegates each
  * read and write to one action, save `getDeltaChannelHistory`, whose walk
- * lives in `internal/delta-history` instead. Each asynchronous method is
- * also the error boundary, so a raw AWS SDK error never reaches a caller
- * unclassified (record 13); `destroy` releases what the saver owns and is
- * the one synchronous exception. Actions can be split, merged or reordered
- * without the public surface moving.
+ * lives in `internal/delta-history` instead. Every method is also the error
+ * boundary, so a raw AWS SDK error never reaches a caller unclassified
+ * (record 13) — an asynchronous one through `guardPublic`/`guardPublicIterable`,
+ * and the synchronous `destroy`, which releases what the saver owns, through
+ * `guardPublicSync`. Actions can be split, merged or reordered without the
+ * public surface moving.
  */
 
 import type { RunnableConfig } from '@langchain/core/runnables';
@@ -24,7 +25,7 @@ import {
 } from '@langchain/langgraph-checkpoint';
 
 import type { AdapterShell } from '../shared/adapter';
-import { guardPublic, guardPublicIterable } from '../shared/errors/boundary';
+import { guardPublic, guardPublicIterable, guardPublicSync } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { assertCancelOptions } from '../shared/validation/collaborators';
 import { parseShape } from '../shared/validation/option-shape';
@@ -101,7 +102,11 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * seen.
    */
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-    return guardPublic('saver.getTuple', () => getCheckpointTuple(this.context, config));
+    return guardPublic(
+      'saver.getTuple',
+      () => getCheckpointTuple(this.context, config),
+      this.context.tableName,
+    );
   }
 
   /**
@@ -140,7 +145,11 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * yielded tuple (see the README cost table).
    */
   list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple> {
-    return guardPublicIterable('saver.list', listCheckpoints(this.context, config, options));
+    return guardPublicIterable(
+      'saver.list',
+      listCheckpoints(this.context, config, options),
+      this.context.tableName,
+    );
   }
 
   /**
@@ -162,9 +171,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * id, `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
    * identifier, `checkpoint` for a `null` or `undefined` checkpoint,
    * `checkpoint_id` for a malformed `checkpoint.id`, `payload` for a payload
-   * too large to store inline without `s3`, or `s3Key` for an offloaded
-   * object's key over S3's cap; `S3_OFFLOAD_FAILED` when an offloaded payload
-   * cannot be uploaded; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
+   * too large to store inline without `s3`, or, once offloaded, larger than
+   * `s3.maxDownloadBytes`; `s3Key` for an offloaded object's key over S3's
+   * cap; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded;
+   * a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
    *
    * Guarantees: both rows land or neither does. Writing the same
    * `checkpoint.id` again replaces both, so a retry is safe. Each put uploads
@@ -178,8 +188,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
     metadata: CheckpointMetadata,
     newVersions?: ChannelVersions,
   ): Promise<RunnableConfig> {
-    return guardPublic('saver.put', () =>
-      putCheckpoint(this.context, config, checkpoint, metadata, newVersions),
+    return guardPublic(
+      'saver.put',
+      () => putCheckpoint(this.context, config, checkpoint, metadata, newVersions),
+      this.context.tableName,
     );
   }
 
@@ -189,8 +201,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * Accepts: `config` — shaped as {@link getTuple} requires, naming a
    * `thread_id` and a `checkpoint_id`, since writes attach to a checkpoint.
    * `config.signal` — aborts the writes. `writes` — an array of
-   * `[channel, value]` arrays, one row each, written in parallel; an empty list
-   * writes nothing. `taskId` — validated as the key segment it becomes.
+   * `[channel, value]` arrays, one row each: a special channel's row is
+   * written alongside the rest, a regular row at most 32 at a time; an empty
+   * list writes nothing. `taskId` — validated as the key segment it becomes.
    *
    * Returns: nothing. Losing a first-write-wins race is a normal outcome, not
    * a failure.
@@ -202,8 +215,9 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * writes that is not an array, or holds an entry that is not one; `channel`
    * for a malformed channel; `sortKey` for identifiers composing a sort key
    * over DynamoDB's cap; `payload` for a value too large to store inline
-   * without `s3`; or `s3Key` for an offloaded object's key over S3's cap.
-   * `S3_OFFLOAD_FAILED`; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
+   * without `s3`, or, once offloaded, larger than `s3.maxDownloadBytes`; or
+   * `s3Key` for an offloaded object's key over S3's cap. `S3_OFFLOAD_FAILED`;
+   * a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
    *
    * Guarantees: regular writes are first-write-wins; special channels
    * (`__interrupt__`, `__resume__`, `__error__`, `__scheduled__`) overwrite,
@@ -216,8 +230,10 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * double-fault interleaving (see the README's S3 offloading notes).
    */
   async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
-    return guardPublic('saver.putWrites', () =>
-      putWritesAction(this.context, config, writes, taskId),
+    return guardPublic(
+      'saver.putWrites',
+      () => putWritesAction(this.context, config, writes, taskId),
+      this.context.tableName,
     );
   }
 
@@ -250,10 +266,14 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * no object this call could have released.
    */
   async deleteThread(threadId: string, options?: CancelOptions): Promise<void> {
-    return guardPublic('saver.deleteThread', () => {
-      assertCancelOptions(options);
-      return deleteThreadAction(this.context, threadId, options);
-    });
+    return guardPublic(
+      'saver.deleteThread',
+      () => {
+        assertCancelOptions(options);
+        return deleteThreadAction(this.context, threadId, options);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -295,15 +315,19 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
   getDeltaChannelHistory(
     options: DeltaChannelHistoryOptions,
   ): Promise<Record<string, DeltaChannelHistory>> {
-    return guardPublic('saver.getDeltaChannelHistory', () => {
-      const request = parseDeltaHistoryRequest(options);
-      return deltaChannelHistory(
-        this.context,
-        (c) => this.getTuple(c),
-        request.config,
-        request.channels,
-      );
-    });
+    return guardPublic(
+      'saver.getDeltaChannelHistory',
+      () => {
+        const request = parseDeltaHistoryRequest(options);
+        return deltaChannelHistory(
+          this.context,
+          (c) => this.getTuple(c),
+          request.config,
+          request.channels,
+        );
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -314,12 +338,13 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * Returns: nothing. Idempotent, and a no-op for a client the caller injected
    * — that one is theirs to close.
    *
-   * Throws: whatever a resource's own `destroy` raises — but only after every
-   * other one has been released, so a client that fails to close never strands
-   * the one behind it.
+   * Throws: the first failure a resource's own `destroy` raised, as a
+   * `DynamoDBLangGraphError` (`UNEXPECTED_ERROR` unless the failure was AWS's)
+   * with it as `cause` — raised only after every other resource has been
+   * released, and only by the first call: `destroy()` is idempotent.
    */
   destroy(): void {
-    this.shell.release();
+    guardPublicSync('saver.destroy', () => this.shell.release(), this.context.tableName);
   }
 
   /**
@@ -331,16 +356,34 @@ export class DynamoDBSaver extends BaseCheckpointSaver {
    * match.
    *
    * Returns: nothing. Installing a rule that is already there is a no-op too,
-   * so calling it on every deploy is safe.
+   * so calling it on every deploy is safe. When it writes the rules but
+   * cannot confirm within its polling window that a re-read shows them — S3
+   * documents that a lifecycle configuration can take minutes to propagate —
+   * it logs a `warn` and returns rather than throwing: the rules were
+   * written, and a later call can confirm them.
    *
    * Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
-   * a classified AWS failure when the bucket's lifecycle cannot be read or written.
+   * a classified AWS failure when the bucket's lifecycle cannot be read or
+   * written; `CONTENTION` when every one of the five rounds this call polls
+   * needs a write — a competing writer replacing the configuration on every
+   * single re-read.
    * @remarks Needs the bucket-level `s3:GetLifecycleConfiguration` and
    * `s3:PutLifecycleConfiguration` permissions, which are broader than the
    * object-level CRUD the rest of S3 offload needs. Call it once at deployment,
-   * not per request.
+   * not per request — and when several adapters or processes provision the
+   * same bucket, call them one at a time and run each again after a few
+   * minutes once every one of them has run.
+   *
+   * Lowering the `ttl` and calling this again shortens the rule for every
+   * object under the prefix, including those that rows written under the old
+   * value still name, so do that only once those rows have expired; raising
+   * the `ttl` is safe.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    return guardPublic('saver.ensureS3LifecycleRule', () => this.shell.ensureLifecycleRule());
+    return guardPublic(
+      'saver.ensureS3LifecycleRule',
+      () => this.shell.ensureLifecycleRule(),
+      this.context.tableName,
+    );
   }
 }

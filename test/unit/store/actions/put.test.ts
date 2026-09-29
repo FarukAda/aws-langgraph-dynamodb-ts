@@ -29,6 +29,7 @@ function context(client: StoreContext['client'], extra?: Partial<StoreContext>):
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    maxIterations: 1000,
     vectorScoreDirection: 'relevance',
     ...extra,
   };
@@ -191,21 +192,24 @@ describe('putItem', () => {
     mock.on(GetCommand).callsFake(() => (rev ? { Item: { rev } } : {}));
     mock.on(TransactWriteCommand).callsFake((input: { TransactItems: TransactPut[] }) => {
       rev = input.TransactItems[0].Put.Item.rev as string;
-      throw Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
+      throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' });
     });
     const offloader = trackingOffloader();
     const ctx = context(client, { offloader: offloader as never });
     await expect(putItem(ctx, parsedPut(op({})))).resolves.toBeUndefined();
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
-  it('cleans up the new S3 object and rethrows when an ambiguous retry-exhaustion write genuinely did not land', async () => {
+  it('keeps the new S3 object and rethrows when a genuine transport timeout leaves the row unverified', async () => {
+    // Every attempt is a real transport timeout: DynamoDB may still apply
+    // whichever one it received, so an absent row is unverified rather than
+    // a confirmed non-commit, and the upload is kept for the lifecycle rule.
     const { client, mock } = createStrictDocumentMock();
     mock.on(GetCommand).resolves({});
-    rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    rejectRowWrites(mock, Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }));
     const offloader = trackingOffloader();
     const ctx = context(client, { offloader: offloader as never });
     await expect(putItem(ctx, parsedPut(op({})))).rejects.toThrow('timeout');
-    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
   it('reads createdAt and the previous value descriptor in a single GetItem call', async () => {

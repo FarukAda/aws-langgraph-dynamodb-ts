@@ -82,8 +82,13 @@ describe('compensate', () => {
     expect(spy.deleted).toEqual(['history/s1/a/k.bin', 'history/s1/b/k.bin']);
   });
 
-  /** Its rows may be live, so its objects are leaked rather than deleted. */
-  it('leaves an unverified chunk s objects alone and cleans the rest', async () => {
+  /**
+   * Its rows may be live, so its objects are leaked rather than deleted; and
+   * since the chunk's own outcome could not be established, the session
+   * cannot be called restored, so the rollback's own success reports
+   * `COMPENSATION_FAILED` rather than the trigger unchanged (record 25).
+   */
+  it('leaves an unverified chunk s objects alone, cleans the rest, and reports COMPENSATION_FAILED', async () => {
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).resolves({});
     const spy = offloaderSpy();
@@ -94,7 +99,7 @@ describe('compensate', () => {
         { sessionId: SESSION_ID, chunks, fields: { now: 'now', title: undefined } },
         { committed: [], trigger, uncertain: true },
       ),
-    ).rejects.toBe(trigger);
+    ).rejects.toMatchObject({ code: ErrorCode.COMPENSATION_FAILED, cause: trigger });
     expect(spy.deleted).toEqual(['history/s1/b/k.bin', 'history/s1/c/k.bin']);
   });
 

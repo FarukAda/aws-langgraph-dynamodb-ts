@@ -168,6 +168,7 @@ const PER_ADAPTER = {
     index: [null, 'x', {}, { dims: 0 }, { dims: NaN }, { dims: '3' }, { dims: 3 }, { dims: 3, embed: 'x' }, { dims: 3, embed: {} }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, fields: 'x' }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, fields: [1] }, { dims: 3, embed: { embedQuery() {}, embedDocuments() {} }, foo: 1 }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, fields: 'x' }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, fields: [1] }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, foo: 1 }, { dims: 3, embeddings: { embedQuery() {}, embedDocuments() {} }, fields: ['a'] }],
     maxSearchCandidates: [0, -1, NaN, 'x', 1.5, 1e12],
     maxScanItems: [0, -1, NaN, 'x', 1.5, Infinity],
+    maxIterations: [0, -1, 1.5, NaN, '5', null],
     vectorScoreDirection: ['Distance', '', null, 1, 'relevance'],
     vectorBackend: [{}, 'x', null, { upsert() {}, query() {}, delete() {} }],
   },
@@ -474,9 +475,27 @@ async function fuzzStoredRows() {
  * as a bare escape.
  */
 async function fuzzTeardown() {
-  const { S3Client } = req('@aws-sdk/client-s3');
+  const { GetBucketLifecycleConfigurationCommand, PutBucketLifecycleConfigurationCommand, S3Client } = req('@aws-sdk/client-s3');
   const s3 = mockClient(S3Client);
   s3.resolves({});
+  /**
+   * `ensureS3LifecycleRule` below re-reads a bucket's lifecycle configuration
+   * after writing it, and rewrites only when that re-read shows a genuinely
+   * different configuration still missing its own rules (S3 serves that
+   * configuration eventually consistently). A blanket `resolves({})` would
+   * answer every read the same empty way forever, which reads as ordinary
+   * propagation lag rather than a rival writer: the call would still resolve,
+   * but only after warning and waiting out its whole polling window (1, 2, 4,
+   * then 8 s) instead of settling on the first re-read and exercising the
+   * teardown this function is about. These two commands get a stateful
+   * answer instead; everything else keeps the blanket one.
+   */
+  let lifecycleRules = [];
+  s3.on(GetBucketLifecycleConfigurationCommand).callsFake(() => ({ Rules: lifecycleRules }));
+  s3.on(PutBucketLifecycleConfigurationCommand).callsFake((input) => {
+    lifecycleRules = input.LifecycleConfiguration?.Rules ?? [];
+    return {};
+  });
   /** Asserted before any S3 client exists: no case in this tier may reach AWS. */
   trySync('transport-safety', 'S3 send is intercepted before an S3 client is built', () => Boolean(S3Client.prototype.send.isSinonProxy));
   const realS3Destroy = S3Client.prototype.destroy;

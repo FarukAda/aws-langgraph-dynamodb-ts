@@ -24,8 +24,8 @@ describe('backfillRecencyIndex', () => {
     mock.on(ScanCommand).resolves({ Items: [meta, payload, item, session, message] });
     mock.on(UpdateCommand).resolves({});
     const result = await backfillRecencyIndex({ client, tableName: TABLE });
-    expect(result).toMatchObject({ scanned: 5, indexed: 3, skipped: 2 });
-    expect(mock.commandCalls(UpdateCommand)).toHaveLength(3);
+    expect(result).toMatchObject({ scanned: 5, indexed: 2, skipped: 3 });
+    expect(mock.commandCalls(UpdateCommand)).toHaveLength(2);
   });
 
   /**
@@ -55,7 +55,7 @@ describe('backfillRecencyIndex', () => {
 
   it('reports what it would do without writing, under dryRun: true, and writes under dryRun: false', async () => {
     const { client, mock } = createStrictDocumentMock();
-    mock.on(ScanCommand).resolves({ Items: [meta, item] });
+    mock.on(ScanCommand).resolves({ Items: [meta, session] });
     mock.on(UpdateCommand).resolves({});
     const dry = await backfillRecencyIndex({ client, tableName: TABLE, dryRun: true });
     expect(dry.indexed).toBe(2);

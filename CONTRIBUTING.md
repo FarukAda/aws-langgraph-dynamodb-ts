@@ -8,7 +8,7 @@ Thank you for helping. This guide is the operational one; the [README](README.md
 git clone https://github.com/FarukAda/aws-langgraph-dynamodb-ts.git
 cd aws-langgraph-dynamodb-ts
 nvm use                # reads .nvmrc (22)
-npm ci                  # Node 22, 24 or 26
+npm ci                  # Node 22, 24 or 26, with npm 10 or later
 npm run lint && npm run typecheck && npm run typecheck:all && npm test && npm run check:docs && npm run check:links
 ```
 
@@ -16,7 +16,7 @@ npm run lint && npm run typecheck && npm run typecheck:all && npm test && npm ru
 
 ## Before opening a PR
 
-- `npm run lint`, `npm run typecheck` and `npm run typecheck:all` (the whole program: `src`, `test` and the configs) pass with no output.
+- `npm run lint`, `npm run typecheck` and `npm run typecheck:all` (the whole program: `src`, `test` and `eslint.config.ts`) pass with no output.
 - `npm test` passes at 100 % branch, function, line and statement coverage — a PR that drops it fails CI.
 - `npm run build && npm run pack:check` succeeds; the latter verifies the tarball's listing, `publint` and `@arethetypeswrong/cli`.
 - `npm run check:docs` passes when a `ts`/`typescript` sample in the README, `CONTRIBUTING.md`, `docs/guide.md` or the CHANGELOG changed, and `npm run check:links` when a heading moved or a relative link changed.
@@ -33,7 +33,7 @@ The static guards fail the build rather than rely on review:
 - every module in `src`, `src/index.ts` included, opens with a `/** */` header whose first paragraph — the second in `src/index.ts`, after the package's name — begins `Hides` and states the one decision the module hides, in at least 160 characters, followed by a blank line (`test/static/module-headers.test.ts`, coding guidelines rule 3);
 - no `any` and no `instanceof` in `src` (errors are detected by brand and `code`); no `unknown` either, except as the declared type of a parameter of a `parse*` function in one of the parser modules listed in `eslint.config.ts` — the one place a value is honestly not yet known to be anything (decision record 21);
 - caller input is parsed once, at the boundary, into a branded type declared in a parser module and built by exactly one `parse*` function there; code downstream asks for the brand and does not check the value again. A test builds such a value through the parser, never with a cast. A function that returns the checked value is a `parse*` — a stored row's parser, which answers `undefined` for a row that is not this adapter's, included; one that returns nothing is an `assert*`; nothing is named `validate*`, `narrow*`, `require*`, `check*` or `checked*` (`test/static/check-names.test.ts`, decision records 21 and 24);
-- one term per concept in every module-level name in `src`: a DynamoDB row is a `row`; `item` names the LangGraph store's `Item` and appears only under `src/store/`; `record` is never a noun; `backend` is the store's vector backend and, outside `src/store/`, appears only as `vector backend`; a deprecated alias keeps its old name until it is removed (`test/static/domain-terms.test.ts`, decision record 24);
+- one term per concept in every module-level name in `src`: a DynamoDB row is a `row`; `item` names the LangGraph store's `Item` and appears only under `src/store/`; `record` is never a noun; `backend` is the store's vector backend and, outside `src/store/`, appears only as `vector backend` (`test/static/domain-terms.test.ts`, decision record 24);
 - no re-exports outside `src/index.ts`, no import cycles, no dead `ErrorCode` member;
 - no module imports from a layer above its own or from another feature; the layer table is `test/static/guards/layers.ts` (`test/static/layer-direction.test.ts`);
 - a key is composed, and a key attribute named, only in `src/shared/dynamodb/table-schema.ts` and the three `src/<feature>/internal/rows.ts`; `messageCount` is read or written only in `src/history/internal/session.ts`; a `VectorBackend` is called only from `src/store/internal/vector-index.ts`; a paged read is resumed (`ExclusiveStartKey`) only by `src/shared/dynamodb/paginate.ts`, the recency index's per-shard cursors and the backfill's operator cursor (`test/static/owners.test.ts`, decision record 22);

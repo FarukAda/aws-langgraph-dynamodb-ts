@@ -20,6 +20,7 @@ function context(client: StoreContext['client']): StoreContext {
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    maxIterations: 1000,
     vectorScoreDirection: 'relevance',
   };
 }
@@ -126,6 +127,11 @@ describe('getItem racing a concurrent overwrite', () => {
   const fresh = (): Promise<Uint8Array> =>
     Promise.resolve(new TextEncoder().encode(JSON.stringify({ name: 'fresh' })));
 
+  /** Without s3:ListBucket, S3 reports the released object as 403 rather than 404. */
+  const refused = (): Promise<Uint8Array> => {
+    throw s3Failure('AccessDenied');
+  };
+
   async function records(ctx: StoreContext) {
     const old = await buildStoreRow(
       ctx,
@@ -222,6 +228,31 @@ describe('getItem racing a concurrent overwrite', () => {
       code: ErrorCode.S3_OFFLOAD_FAILED,
     });
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
+  });
+
+  it('re-reads the row when the download is refused, as S3 answers a released object without s3:ListBucket', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const downloads: Record<string, () => Promise<Uint8Array>> = {};
+    const ctx = { ...context(client), offloader: offloaderFor(downloads) as never };
+    const { old, replaced } = await records(ctx);
+    downloads[keyOf(old)] = refused;
+    downloads[keyOf(replaced)] = fresh;
+    mock.on(GetCommand).resolvesOnce({ Item: old }).resolvesOnce({ Item: replaced });
+    const item = await getItem(ctx, parseStoreAddress(['users', 'u1'], 'p'));
+    expect(item?.value).toEqual({ name: 'fresh' });
+  });
+
+  it('rethrows a refused download when the re-read finds the same row, a real permission failure', async () => {
+    const { client, mock } = createStrictDocumentMock();
+    const downloads: Record<string, () => Promise<Uint8Array>> = {};
+    const ctx = { ...context(client), offloader: offloaderFor(downloads) as never };
+    const { old } = await records(ctx);
+    downloads[keyOf(old)] = refused;
+    mock.on(GetCommand).resolves({ Item: old });
+    await expect(getItem(ctx, parseStoreAddress(['users', 'u1'], 'p'))).rejects.toMatchObject({
+      code: ErrorCode.S3_OFFLOAD_FAILED,
+    });
+    expect(mock.commandCalls(GetCommand)).toHaveLength(2);
   });
 });
 

@@ -63,7 +63,9 @@ describe('fetchTargetMeta', () => {
     const meta = await fetchTargetMeta(context(client), threadAddress('t', ''));
     expect(meta?.checkpointId).toBe('newest');
     const input = mock.commandCalls(QueryCommand)[0].args[0].input;
-    expect(input.Limit).toBeGreaterThan(1);
+    // `context(client)` sets no ttl, so no row at the head can have aged out:
+    // see read-page-size.test.ts for the page size a ttl-bearing context gets.
+    expect(input.Limit).toBe(1);
     expect(input.ScanIndexForward).toBe(false);
     expect(input.ConsistentRead).toBe(true);
   });

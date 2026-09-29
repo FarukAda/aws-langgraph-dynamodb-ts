@@ -3,7 +3,7 @@
  *
  * A caller gives days or seconds. The one-unit rule, the five-year cap, the
  * epoch second DynamoDB's TTL attribute takes, and the S3 lifecycle days that
- * keep an offloaded object alive past its row's sweep lag are all derived
+ * keep an offloaded object from expiring before its row are all derived
  * here, so the two spellings of the `ttl` option are accepted or rejected
  * alike and no reader re-derives one unit from the other itself. A stored
  * row's own epoch-second `ttl` is converted to milliseconds for `Date` where
@@ -23,9 +23,14 @@ export const MAX_TTL_DAYS = 365 * 5;
 export const MAX_TTL_SECONDS = MAX_TTL_DAYS * 24 * 60 * 60;
 
 /**
- * Extra days an S3 lifecycle rule adds over the TTL it backs. DynamoDB's TTL
- * sweep can lag up to ~48 h past the `ttl` timestamp; the offloaded object
- * must outlive its row, never the other way round.
+ * Extra days an S3 lifecycle rule adds over the TTL it backs, so the offloaded
+ * object is never removed before the row that names it expires, never the
+ * other way round. The rule expires an object by age, at or after creation +
+ * ceil(ttl) + this margin, which is at or after the `ttl` of any row naming
+ * it, so DynamoDB's physical-deletion lag (typically within a few days of the
+ * `ttl`, with no fixed bound:
+ * https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html)
+ * does not matter. The margin is headroom, not a bound on that lag.
  */
 export const S3_LIFECYCLE_SWEEP_MARGIN_DAYS = 2;
 
@@ -136,11 +141,23 @@ export function calculateTtlTimestamp(ttl: TtlOption, now: () => number = Date.n
  *
  * Throws: whatever {@link resolveTtlSeconds} throws.
  *
- * Guarantees: the object outlives the row that points at it. S3 expires an
- * object at the first midnight UTC at least `Days` after creation, while
- * DynamoDB may keep an expired item for up to 48 hours past its `ttl`
- * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/howitworks-ttl.html);
- * the margin covers that lag, which a bare `{ days: N }` did not.
+ * Guarantees: the object outlives the row that points at it, for every row
+ * written under the `ttl` this rule was computed from. S3 expires an object at
+ * the first midnight UTC at least `Days` after creation, while DynamoDB
+ * deletes an expired item typically within a few days of its `ttl`, with no
+ * fixed bound
+ * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html).
+ * Every row naming the object carries a `ttl` no later than its creation plus
+ * `ttl`, so the object, expiring at or after that, is not removed before its
+ * row expires; readers hide a metadata, store or history row by its own `ttl`,
+ * and serve a checkpoint's payload and pending-write rows only while its
+ * metadata row is live. The margin is headroom, not a bound on the lag.
+ *
+ * The rule expires by age every object under its prefix, including objects
+ * named by rows written under an earlier `ttl`. After a rule is rewritten for
+ * a smaller `ttl`, the guarantee therefore holds only once every row written
+ * under the old, longer value has expired; until then such a row can outlive
+ * its object. Rewriting it for a larger `ttl` keeps the guarantee.
  */
 export function lifecycleExpirationDays(ttl: TtlOption): number {
   return Math.ceil(resolveTtlSeconds(ttl) / SECONDS_PER_DAY) + S3_LIFECYCLE_SWEEP_MARGIN_DAYS;

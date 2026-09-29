@@ -53,10 +53,6 @@ describe('termViolation', () => {
       `history/session-adapter.ts: SESSION_BACKEND_MEMBERS — "backend" is the store's vector backend`,
     );
   });
-
-  it('lets a deprecated alias keep the old term until the major that removes it', () => {
-    expect(termViolation('history/session-adapter.ts', 'SessionBackend')).toBeUndefined();
-  });
 });
 
 describe('the source tree', () => {

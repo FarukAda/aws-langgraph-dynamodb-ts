@@ -39,9 +39,10 @@ interface QueryInput {
  * A `Query` double that bills like DynamoDB: `Limit` bounds the rows
  * **evaluated** on a page, and the server-side ttl filter drops expired rows
  * from that page afterwards — so a page of nothing but expired rows comes back
- * empty with a `LastEvaluatedKey`, which is the shape that made the old
- * one-row page issue one request per expired row. `n` is the count of rows
- * already evaluated, the double's stand-in for a real key.
+ * empty with a `LastEvaluatedKey`. That is the shape that turns a one-row page
+ * into one request per expired row, and a fifty-row page into one request per
+ * fifty. `n` is the count of rows already evaluated, the double's stand-in for
+ * a real key.
  */
 function answerMetaQueries(
   mock: ReturnType<typeof createStrictDocumentMock>['mock'],
@@ -67,6 +68,7 @@ function answerMetaQueries(
 /** A thread whose `expiredAhead` newest META rows have aged out under a `ttl`. */
 async function seedThread(
   expiredAhead: number,
+  ttl?: CheckpointerContext['ttl'],
 ): Promise<{ saver: DynamoDBSaver; metaQueries: () => number }> {
   const { client, mock } = createStrictDocumentMock();
   const context: CheckpointerContext = { client, tableName: 'ckpt', serde, logger: SILENT_LOGGER };
@@ -80,12 +82,15 @@ async function seedThread(
   rows.push(meta);
   const metaQueries = answerMetaQueries(mock, rows);
   mock.on(GetCommand).resolves({ Item: payload });
-  return { saver: new DynamoDBSaver({ tableName: 'ckpt', client, serde }), metaQueries };
+  return {
+    saver: new DynamoDBSaver({ tableName: 'ckpt', client, serde, ...(ttl ? { ttl } : {}) }),
+    metaQueries,
+  };
 }
 
 describe('the latest-checkpoint read pages past expired head rows', () => {
-  it('spends one Query on a thread whose 25 newest META rows have expired', async () => {
-    const { saver, metaQueries } = await seedThread(25);
+  it('spends one Query on a thread whose 25 newest META rows have expired under an active ttl', async () => {
+    const { saver, metaQueries } = await seedThread(25, { days: 1 });
     const tuple = await saver.getTuple({ configurable: { thread_id: 't' } });
     expect(tuple?.checkpoint.id).toBe('live');
     expect(metaQueries()).toBe(1);
@@ -98,11 +103,18 @@ describe('the latest-checkpoint read pages past expired head rows', () => {
     expect(metaQueries()).toBe(1);
   });
 
-  it('keeps paging when the expired run outruns one page, and still finds the live row', async () => {
-    const { saver, metaQueries } = await seedThread(120);
+  it('keeps paging when the expired run outruns one page under an active ttl, and still finds the live row', async () => {
+    const { saver, metaQueries } = await seedThread(120, { days: 1 });
     const tuple = await saver.getTuple({ configurable: { thread_id: 't' } });
     expect(tuple?.checkpoint.id).toBe('live');
     expect(metaQueries()).toBeGreaterThan(1);
     expect(metaQueries()).toBeLessThan(120);
+  });
+
+  it('steps over a leftover-ttl head row one at a time when the adapter itself sets no ttl, and still returns the live row beneath it', async () => {
+    const { saver, metaQueries } = await seedThread(1);
+    const tuple = await saver.getTuple({ configurable: { thread_id: 't' } });
+    expect(tuple?.checkpoint.id).toBe('live');
+    expect(metaQueries()).toBe(2);
   });
 });

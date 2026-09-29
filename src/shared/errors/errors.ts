@@ -9,9 +9,12 @@
  * than inside the factory are decided here once per code, on the one error
  * class (record 19). `FORMAT_UNSUPPORTED`, `PAYLOAD_CORRUPT`,
  * `COMPRESSION_LIMIT`, `S3_OFFLOAD_FAILED` and `ANCESTOR_EXPIRED` are raised
- * with `new DynamoDBLangGraphError` at their own call sites instead, and
- * every AWS-classified code is wrapped once, by `wrapForeignError` in the
- * error boundary, not per code here.
+ * with `new DynamoDBLangGraphError` at their own call sites instead; so is
+ * `CONTENTION` when `ensureLifecycleRule` gives up on a lifecycle write that
+ * never stays, which is this package's own verdict rather than an AWS
+ * rejection. Every other occurrence of an AWS-classified code, `CONTENTION`
+ * included, is wrapped once, by `wrapForeignError` in the error boundary, not
+ * per code here.
  */
 
 import type { WriteRequest } from '../dynamodb/client';
@@ -22,6 +25,7 @@ import {
   type ErrorContext,
   type ErrorDetailsFor,
 } from './base-error';
+import { awsDiagnostics } from './classify';
 import { ErrorCode } from './error-code';
 
 /**
@@ -94,14 +98,29 @@ export function conflictError(
 }
 
 /**
+ * Non-enumerable carrier, on a `RETRY_EXHAUSTED` error, of whether *some*
+ * attempt of the spent budget — not only the last, which `cause` alone
+ * reports — left DynamoDB free to apply it later. Read only by
+ * {@link retryBudgetMayStillLand}; never enumerable, so it never reaches a log
+ * or a JSON serialization the way `context` and `details` are meant to.
+ */
+const MAY_STILL_LAND = Symbol('retryExhaustedError.mayStillLand');
+
+/**
  * The error for a retried operation that exhausted its attempt budget.
  *
  * Accepts: `attempts` — how many were made before the budget ran out.
  * `cause` — the last failure, kept so a caller can classify what actually
- * went wrong.
+ * went wrong. `mayStillLand` — whether any attempt of the budget, not only the
+ * last, left DynamoDB free to apply it later; read back by
+ * {@link retryBudgetMayStillLand}. Defaults to false, which is what a caller
+ * outside `withRetry` — one built by an older release, or a test double — gets
+ * for not recording one.
  *
  * Returns: a `RETRY_EXHAUSTED` error, with `context.attempts` when `attempts`
- * was given. It says the attempts are spent, **not** that the operation did
+ * was given, and the `awsErrorName`, `httpStatusCode` and `requestId` of the
+ * last failure when that failure was AWS's, so a count by status needs no walk
+ * of `cause`. It says the attempts are spent, **not** that the operation did
  * not happen: a write whose response was lost is reported this way too, which
  * is why every caller that would delete something reads the row back first.
  *
@@ -111,13 +130,38 @@ export function retryExhaustedError(
   message: string,
   attempts?: number,
   cause?: Error,
+  mayStillLand = false,
 ): DynamoDBLangGraphError<ErrorCode.RETRY_EXHAUSTED> {
-  return build(retryExhaustedError, {
+  const error = build(retryExhaustedError, {
     message,
     code: ErrorCode.RETRY_EXHAUSTED,
-    context: attempts === undefined ? {} : { attempts },
+    context: {
+      ...(attempts === undefined ? {} : { attempts }),
+      ...(cause === undefined ? {} : awsDiagnostics(cause)),
+    },
     cause,
   });
+  Object.defineProperty(error, MAY_STILL_LAND, { value: mayStillLand, enumerable: false });
+  return error;
+}
+
+/**
+ * Whether some attempt of a spent retry budget — recorded by
+ * {@link retryExhaustedError} across every attempt `withRetry` made, not
+ * re-derived from `cause`, which is only the last one — left DynamoDB free to
+ * apply it later.
+ *
+ * Accepts: `error` — any error; only one `retryExhaustedError` built carries
+ * the record.
+ *
+ * Returns: the flag recorded when the error was built; false for any other
+ * error, including a `RETRY_EXHAUSTED` error built without passing one.
+ *
+ * Throws: nothing, for any value.
+ */
+export function retryBudgetMayStillLand(error: Error): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  return (error as object as Record<symbol, boolean>)[MAY_STILL_LAND] === true;
 }
 
 /**
@@ -298,5 +342,48 @@ export function compensationFailedError(
     context: {},
     cause: trigger,
     details: { rollbackError: rollback },
+  });
+}
+
+/**
+ * The error for an append-saga chunk whose own outcome could not be
+ * established, raised once every chunk this call *could* confirm has already
+ * been undone — the rollback itself did not fail; this chunk alone could not
+ * be read back, or its write may still be applied after the read.
+ *
+ * Accepts: `cause` — the failing chunk's own failure. `unsettledBecause` —
+ * why its outcome is unknown: the read-back's own failure, or the write's
+ * own failure, when some attempt of it may still be applied. Both are built
+ * from a `catch`, so either may be whatever a `throw` produced rather than
+ * an `Error`.
+ *
+ * Returns: a `COMPENSATION_FAILED` error carrying `cause` as `cause` and
+ * `unsettledBecause` as `details.rollbackError`, each normalised through
+ * `toError` so both are always error-shaped. Its message says the chunk's
+ * own fate could not be established — never that a rollback failed, since
+ * every chunk this call could confirm was already rolled back before this is
+ * raised. The session's `messageCount` may have drifted, which
+ * `reconcileMessageCount` repairs; the quoted text of both errors is
+ * redacted before it is embedded.
+ *
+ * Throws: nothing; building an error may not fail. Reading `.message` off a
+ * thrown `null` or `undefined` would throw here, which is why `toError`
+ * normalises both `cause` and `unsettledBecause` before anything reads off
+ * them.
+ */
+export function unsettledAppendError(
+  cause: Error,
+  unsettledBecause: Error,
+): DynamoDBLangGraphError<ErrorCode.COMPENSATION_FAILED> {
+  const trigger = toError(cause);
+  const unsettled = toError(unsettledBecause);
+  return build(unsettledAppendError, {
+    message:
+      `an append chunk could not be settled after ${redactedMessage(trigger)} ` +
+      `(unsettled because: ${redactedMessage(unsettled)})`,
+    code: ErrorCode.COMPENSATION_FAILED,
+    context: {},
+    cause: trigger,
+    details: { rollbackError: unsettled },
   });
 }

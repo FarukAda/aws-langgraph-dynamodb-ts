@@ -7,7 +7,9 @@ import {
   compensationFailedError,
   conflictError,
   resultTruncatedError,
+  retryBudgetMayStillLand,
   retryExhaustedError,
+  unsettledAppendError,
   validationError,
 } from '../../../../src/shared/errors/errors';
 
@@ -24,6 +26,7 @@ const EVERY_FACTORY = [
     () => batchWriteAllIncompleteError({ succeeded: 0, total: 1, failures: [] }),
   ],
   ['compensationFailedError', () => compensationFailedError(new Error('t'), new Error('r'))],
+  ['unsettledAppendError', () => unsettledAppendError(new Error('t'), new Error('u'))],
 ] as const;
 
 describe('every factory', () => {
@@ -96,6 +99,48 @@ describe('retryExhaustedError', () => {
 
   it('omits attempts from context when none is given', () => {
     expect(retryExhaustedError('exhausted').context).toEqual({});
+  });
+
+  it('defaults the mayStillLand record to false', () => {
+    expect(retryBudgetMayStillLand(retryExhaustedError('exhausted'))).toBe(false);
+  });
+
+  it('carries the AWS diagnostics of the last failure', () => {
+    const last = Object.assign(new Error('throttled'), {
+      name: 'ThrottlingException',
+      $metadata: { httpStatusCode: 400, requestId: 'r9' },
+    });
+    expect(retryExhaustedError('spent', 5, last).context).toEqual({
+      attempts: 5,
+      awsErrorName: 'ThrottlingException',
+      httpStatusCode: 400,
+      requestId: 'r9',
+    });
+  });
+
+  it('carries only the attempts when the last failure was not AWS-shaped', () => {
+    expect(retryExhaustedError('spent', 5, new Error('x')).context).toEqual({ attempts: 5 });
+  });
+});
+
+describe('retryBudgetMayStillLand', () => {
+  it('reads back what retryExhaustedError recorded', () => {
+    expect(retryBudgetMayStillLand(retryExhaustedError('exhausted', 3, undefined, true))).toBe(
+      true,
+    );
+    expect(retryBudgetMayStillLand(retryExhaustedError('exhausted', 3, undefined, false))).toBe(
+      false,
+    );
+  });
+
+  it('is false for any error that is not one this factory built', () => {
+    expect(retryBudgetMayStillLand(new Error('plain'))).toBe(false);
+    expect(retryBudgetMayStillLand(validationError('bad'))).toBe(false);
+  });
+
+  it('is false for a value that cannot carry a property', () => {
+    expect(retryBudgetMayStillLand(null as never)).toBe(false);
+    expect(retryBudgetMayStillLand('not an error' as never)).toBe(false);
   });
 });
 
@@ -252,6 +297,37 @@ describe('compensationFailedError', () => {
 
   it('normalises a trigger and a rollback that are not errors through toError', () => {
     const error = compensationFailedError('trigger blew up' as never, null as never);
+    expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
+    expect(error.message).toContain('trigger blew up');
+    expect((error.cause as Error).message).toBe('trigger blew up');
+    expect(error.details.rollbackError.message).toBe('null was thrown');
+  });
+});
+
+describe('unsettledAppendError', () => {
+  it('carries the trigger as cause and why the chunk is unsettled in details', () => {
+    const trigger = new Error('append failed');
+    const unsettledBecause = new Error('read-back timed out');
+    const error = unsettledAppendError(trigger, unsettledBecause);
+    expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
+    expect(error.cause).toBe(trigger);
+    expect(error.details).toEqual({ rollbackError: unsettledBecause });
+    expect(error.message).toMatch(/append failed/);
+    expect(error.message).toMatch(/read-back timed out/);
+  });
+
+  /**
+   * The rollback that undid every other chunk did not fail here — it is
+   * this one chunk's own fate that could not be established. A message that
+   * says "rollback" would tell an operator the wrong thing happened.
+   */
+  it('never claims a failed rollback, unlike compensationFailedError', () => {
+    const error = unsettledAppendError(new Error('append failed'), new Error('unsettled'));
+    expect(error.message).not.toContain('rollback');
+  });
+
+  it('normalises a trigger and an unsettled reason that are not errors through toError', () => {
+    const error = unsettledAppendError('trigger blew up' as never, null as never);
     expect(error.code).toBe(ErrorCode.COMPENSATION_FAILED);
     expect(error.message).toContain('trigger blew up');
     expect((error.cause as Error).message).toBe('trigger blew up');

@@ -1,6 +1,6 @@
 /**
  * Global determinism harness applied before every test (wired via
- * jest.config.ts `setupFilesAfterEnv`). Freezes the wall clock and seeds the
+ * jest.config.mjs `setupFilesAfterEnv`). Freezes the wall clock and seeds the
  * RNG so TTL timestamps and full-jitter backoff schedules are exactly
  * assertable. Real timers are left intact so `sleep()` resolves normally.
  */

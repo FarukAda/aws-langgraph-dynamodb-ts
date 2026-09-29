@@ -1,4 +1,7 @@
-import { assertBackfillOptions } from '../../../src/backfill/backfill';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+
+import { assertBackfillOptions, backfillRecencyIndex } from '../../../src/backfill/backfill';
 import { ErrorCode } from '../../../src/shared/errors/error-code';
 import {
   assertRetryBounds,
@@ -55,5 +58,15 @@ describe('the validators backfillRecencyIndex is built from', () => {
       }),
     );
     expect(() => assertRetryBounds({ maxAttempts: 3 })).not.toThrow();
+  });
+
+  it('refuses a client that wraps numbers, naming client', async () => {
+    const client = DynamoDBDocument.from(new DynamoDBClient({ region: 'us-east-1' }), {
+      unmarshallOptions: { wrapNumbers: true },
+    });
+    await expect(backfillRecencyIndex({ tableName: TABLE, client })).rejects.toMatchObject({
+      code: 'VALIDATION',
+      context: { field: 'client' },
+    });
   });
 });

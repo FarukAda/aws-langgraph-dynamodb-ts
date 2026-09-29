@@ -3,18 +3,19 @@
  *
  * The public class holds only what it resolved from its options and routes
  * each read and write to the action that implements it, through
- * `guardPublic`. Each asynchronous method is the error boundary, so no error
- * but the library's own reaches a caller (record 13); the synchronous
- * `destroy` and `forSession` are the exceptions — the latter is also the
- * one route from it to LangChain's single-session history. Where an action
- * lives, how it reads or writes, and which client or offloader it uses can
- * change without touching this surface.
+ * `guardPublic`. Every method is the error boundary, so no error but the
+ * library's own reaches a caller (record 13) — an asynchronous one through
+ * `guardPublic`, and the synchronous `destroy` and `forSession` through
+ * `guardPublicSync`; `forSession` is also the one route from it to
+ * LangChain's single-session history. Where an action lives, how it reads or
+ * writes, and which client or offloader it uses can change without touching
+ * this surface.
  */
 
 import type { BaseMessage } from '@langchain/core/messages';
 
 import type { AdapterShell } from '../shared/adapter';
-import { guardPublic } from '../shared/errors/boundary';
+import { guardPublic, guardPublicSync } from '../shared/errors/boundary';
 import type { CancelOptions } from '../shared/options';
 import { assertCancelOptions } from '../shared/validation/collaborators';
 import { addMessages as addMessagesAction } from './actions/add-messages';
@@ -79,6 +80,8 @@ export class DynamoDBChatMessageHistory {
    * session's own path, and naming `message` for a row in this session's
    * message key space that this adapter did not write, both whatever the
    * corruption policy;
+   * `COMPRESSION_LIMIT` for a payload larger than this reader's
+   * `compression.maxDecompressedBytes`, whatever the corruption policy too;
    * `FORMAT_UNSUPPORTED` for a row, or a payload, a newer release wrote;
    * a classified AWS failure;
    * `ABORTED`; and, under `onCorruptMessage: 'throw'`, the decode error of a
@@ -89,8 +92,10 @@ export class DynamoDBChatMessageHistory {
    * @remarks One query page plus one S3 download per offloaded message.
    */
   getMessages(sessionId: string, options?: GetMessagesOptions): Promise<BaseMessage[]> {
-    return guardPublic('history.getMessages', () =>
-      getMessagesAction(this.context, sessionId, options),
+    return guardPublic(
+      'history.getMessages',
+      () => getMessagesAction(this.context, sessionId, options),
+      this.context.tableName,
     );
   }
 
@@ -105,22 +110,33 @@ export class DynamoDBChatMessageHistory {
    *
    * Throws: `VALIDATION` naming `messages`, for a value that is not itself
    * an array, or, with the offending index, for an element that is not a
-   * message or one that could never be read back; or naming `signal` or
+   * message or one that could never be read back; naming `payload` for a
+   * message too large to store inline without `s3`, or, once offloaded,
+   * larger than `s3.maxDownloadBytes`; or naming `signal` or
    * `options.<key>` for a key this package does not read;
-   * `COMPENSATION_FAILED` when a later chunk fails and the rollback fails
-   * too; `RETRY_EXHAUSTED` after 18 contended attempts; a classified AWS failure;
+   * `COMPENSATION_FAILED` when a chunk fails and either the rollback fails
+   * too or that chunk's own outcome could not be established;
+   * `RETRY_EXHAUSTED` after 18 contended attempts; a classified AWS failure;
    * `ABORTED`.
    *
-   * Guarantees: a caller observes all messages or none. One transaction per
-   * chunk of up to 99 keeps `messageCount` exact. Lock-free and safe under
-   * concurrent appends to one session; every message shares the session's TTL
-   * when one is configured.
+   * Guarantees: a caller observes all messages or none — except the one
+   * chunk a failed call could not settle: an `ABORTED` append whose in-flight
+   * chunk commits after the call returns, or a `COMPENSATION_FAILED` append
+   * whose failing chunk's own outcome could not be established. Read the
+   * session back before deciding whether to resend those messages. One
+   * transaction per chunk of up to 99 keeps `messageCount` exact. Lock-free
+   * and safe under concurrent appends to one session; every message shares
+   * the session's TTL when one is configured.
    */
   addMessages(sessionId: string, messages: BaseMessage[], options?: CancelOptions): Promise<void> {
-    return guardPublic('history.addMessages', () => {
-      assertCancelOptions(options);
-      return addMessagesAction(this.context, sessionId, messages, options?.signal);
-    });
+    return guardPublic(
+      'history.addMessages',
+      () => {
+        assertCancelOptions(options);
+        return addMessagesAction(this.context, sessionId, messages, options?.signal);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -133,10 +149,14 @@ export class DynamoDBChatMessageHistory {
    * Throws: as {@link addMessages}.
    */
   addMessage(sessionId: string, message: BaseMessage, options?: CancelOptions): Promise<void> {
-    return guardPublic('history.addMessage', () => {
-      assertCancelOptions(options);
-      return addMessagesAction(this.context, sessionId, [message], options?.signal);
-    });
+    return guardPublic(
+      'history.addMessage',
+      () => {
+        assertCancelOptions(options);
+        return addMessagesAction(this.context, sessionId, [message], options?.signal);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -164,10 +184,14 @@ export class DynamoDBChatMessageHistory {
    * row then over-counts until `reconcileMessageCount` repairs it.
    */
   clear(sessionId: string, options?: CancelOptions): Promise<void> {
-    return guardPublic('history.clear', () => {
-      assertCancelOptions(options);
-      return clearSession(this.context, sessionId, options);
-    });
+    return guardPublic(
+      'history.clear',
+      () => {
+        assertCancelOptions(options);
+        return clearSession(this.context, sessionId, options);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -207,7 +231,11 @@ export class DynamoDBChatMessageHistory {
    * whatever the table holds.
    */
   listSessions(options?: ListSessionsOptions): Promise<SessionPage> {
-    return guardPublic('history.listSessions', () => listSessionsAction(this.context, options));
+    return guardPublic(
+      'history.listSessions',
+      () => listSessionsAction(this.context, options),
+      this.context.tableName,
+    );
   }
 
   /**
@@ -234,10 +262,14 @@ export class DynamoDBChatMessageHistory {
    * recount instead of clobbering the increment.
    */
   reconcileMessageCount(sessionId: string, options?: CancelOptions): Promise<number> {
-    return guardPublic('history.reconcileMessageCount', () => {
-      assertCancelOptions(options);
-      return reconcileMessageCountAction(this.context, sessionId, options?.signal);
-    });
+    return guardPublic(
+      'history.reconcileMessageCount',
+      () => {
+        assertCancelOptions(options);
+        return reconcileMessageCountAction(this.context, sessionId, options?.signal);
+      },
+      this.context.tableName,
+    );
   }
 
   /**
@@ -257,7 +289,11 @@ export class DynamoDBChatMessageHistory {
    * here rather than on first use.
    */
   forSession(sessionId: string, window?: AdapterWindow): DynamoDBSessionChatMessageHistory {
-    return new DynamoDBSessionChatMessageHistory(this, sessionId, window);
+    return guardPublicSync(
+      'history.forSession',
+      () => new DynamoDBSessionChatMessageHistory(this, sessionId, window),
+      this.context.tableName,
+    );
   }
 
   /**
@@ -268,12 +304,13 @@ export class DynamoDBChatMessageHistory {
    * Returns: nothing. Idempotent, and a no-op for a client the caller injected
    * — that one is theirs to close.
    *
-   * Throws: whatever a resource's own `destroy` raises — but only after every
-   * other one has been released, so a client that fails to close never strands
-   * the one behind it.
+   * Throws: the first failure a resource's own `destroy` raised, as a
+   * `DynamoDBLangGraphError` (`UNEXPECTED_ERROR` unless the failure was AWS's)
+   * with it as `cause` — raised only after every other resource has been
+   * released, and only by the first call: `destroy()` is idempotent.
    */
   destroy(): void {
-    this.shell.release();
+    guardPublicSync('history.destroy', () => this.shell.release(), this.context.tableName);
   }
 
   /**
@@ -284,15 +321,33 @@ export class DynamoDBChatMessageHistory {
    * without both.
    *
    * Returns: nothing. Installing a rule that is already there is a no-op too.
+   * When it writes the rules but cannot confirm within its polling window
+   * that a re-read shows them — S3 documents that a lifecycle configuration
+   * can take minutes to propagate — it logs a `warn` and returns rather than
+   * throwing: the rules were written, and a later call can confirm them.
    *
    * Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
-   * a classified AWS failure when the bucket's lifecycle cannot be read or written.
+   * a classified AWS failure when the bucket's lifecycle cannot be read or
+   * written; `CONTENTION` when every one of the five rounds this call polls
+   * needs a write — a competing writer replacing the configuration on every
+   * single re-read.
    * @remarks Requires the bucket-level `s3:GetLifecycleConfiguration` /
    * `s3:PutLifecycleConfiguration` permissions, broader than the object-level
    * CRUD the rest of S3 offload needs — call it once during provisioning, not
-   * per request.
+   * per request. When several adapters or processes provision the same
+   * bucket, call them one at a time and run each again after a few minutes
+   * once every one of them has run.
+   *
+   * Lowering the `ttl` and calling this again shortens the rule for every
+   * object under the prefix, including those that rows written under the old
+   * value still name, so do that only once those rows have expired; raising
+   * the `ttl` is safe.
    */
   async ensureS3LifecycleRule(): Promise<void> {
-    return guardPublic('history.ensureS3LifecycleRule', () => this.shell.ensureLifecycleRule());
+    return guardPublic(
+      'history.ensureS3LifecycleRule',
+      () => this.shell.ensureLifecycleRule(),
+      this.context.tableName,
+    );
   }
 }

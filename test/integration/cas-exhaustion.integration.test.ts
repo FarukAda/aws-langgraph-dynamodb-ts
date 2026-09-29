@@ -149,7 +149,7 @@ async function releaseWriteRows(threadId: string, checkpointId: string): Promise
 function loseAcknowledgement(base: DynamoDBClient, hook: () => Promise<void>): void {
   afterResponse(base, 'TransactWriteItemsCommand', async () => {
     await hook();
-    throw Object.assign(new Error('simulated lost response'), { name: 'ETIMEDOUT' });
+    throw Object.assign(new Error('simulated lost response'), { name: 'TimeoutError' });
   });
 }
 

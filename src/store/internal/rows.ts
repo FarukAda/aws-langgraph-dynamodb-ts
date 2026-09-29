@@ -4,9 +4,8 @@
  * An item's namespace root is its partition and the rest of its namespace,
  * with its key, is its sort key, so a prefix search is a key-range query. How
  * those keys are composed, which attributes a row carries — its revision token,
- * timestamps, embeddings, recency-index keys — how a value is encoded into one
- * and decoded out, and which rows a read admits as this adapter's items are
- * decided here.
+ * timestamps, embeddings — how a value is encoded into one and decoded out,
+ * and which rows a read admits as this adapter's items are decided here.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -22,12 +21,6 @@ import {
   type PayloadDescriptor,
 } from '../../shared/codec/codec';
 import type { AttributeMap } from '../../shared/dynamodb/client';
-import {
-  backfilledAt,
-  DEFAULT_INDEX_SHARDS,
-  indexKeys,
-  type IndexTarget,
-} from '../../shared/dynamodb/recency-index';
 import { withDynamoDBRetry } from '../../shared/dynamodb/retry';
 import {
   ADAPTER_TAGS,
@@ -331,9 +324,6 @@ export interface StoreItemRow {
   SK: string;
   /** Row format version; absent on rows written before it existed (see `table-schema.ts`). */
   v?: number;
-  /** Recency-index keys; absent on rows written before the index existed. */
-  gsi1pk?: string;
-  gsi1sk?: string;
   namespace: string[];
   key: string;
   value: PayloadDescriptor;
@@ -450,13 +440,15 @@ export interface BuildRowOptions {
  * reads back, and an offloaded value's key ends in; absent, a fresh UUID is
  * drawn, before the value is encoded.
  *
- * Returns: the complete row, including the recency-index attributes: a store
- * item is listed across partitions by a rootless search, so it is indexed.
+ * Returns: the complete row. It carries no recency-index keys: no store read
+ * uses that index.
  *
  * Throws: `VALIDATION` naming `value` for a value with no JSON
- * representation; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be
- * uploaded. Encoding happens before any write, so a value that cannot be stored
- * never half-writes a row.
+ * representation, or `payload` for one too large to store inline without
+ * `s3`, or, once offloaded, larger than `s3.maxDownloadBytes`;
+ * `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded. Encoding
+ * happens before any write, so a value that cannot be stored never
+ * half-writes a row.
  */
 export async function buildStoreRow(
   context: StoreContext,
@@ -473,18 +465,10 @@ export async function buildStoreRow(
     objectId: rev,
     row: { pk, sk },
   });
-  // Store items are listed across partitions by a rootless search, so they are indexed.
-  const index = indexKeys(
-    'STORE',
-    sk,
-    options.updatedAt,
-    context.indexShards ?? DEFAULT_INDEX_SHARDS,
-  );
   const record: StoreItemRow = {
     PK: pk,
     SK: sk,
     v: ROW_FORMAT_VERSION,
-    ...index,
     namespace,
     key,
     value: descriptor,
@@ -531,22 +515,4 @@ export async function readStoreItem(
     createdAt: new Date(record.createdAt),
     updatedAt: new Date(record.updatedAt),
   };
-}
-
-/**
- * Where a store row sits in the recency index, for a row written before the
- * index existed.
- *
- * Accepts: `row` — any row of the table.
- *
- * Returns: an item row's identity — its sort key, at its own `updatedAt` — or
- * `undefined` for a row of another adapter.
- *
- * Throws: nothing.
- */
-export function storeIndexTarget(row: AttributeMap): IndexTarget | undefined {
-  const pk = typeof row.PK === 'string' ? row.PK : '';
-  const sk = typeof row.SK === 'string' ? row.SK : '';
-  if (!pk.startsWith(storePartitionPrefix())) return undefined;
-  return { tag: 'STORE', id: sk, at: backfilledAt(row.updatedAt) };
 }

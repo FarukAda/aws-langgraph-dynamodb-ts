@@ -9,7 +9,17 @@ import {
   isDynamoDBLangGraphError,
 } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
-import { abortError } from '../../../../src/shared/errors/errors';
+import { abortError, retryBudgetMayStillLand } from '../../../../src/shared/errors/errors';
+
+/** A definite, answered failure: retryable (a throttle), but not ambiguous. */
+const answeredThrottle = (): Error =>
+  Object.assign(new Error('throttled'), {
+    name: 'ThrottlingException',
+    $metadata: { httpStatusCode: 400 },
+  });
+
+/** A genuine transport cut: retryable, and DynamoDB may still apply it. */
+const transportTimeout = (): Error => Object.assign(new Error('timeout'), { name: 'TimeoutError' });
 
 const retryable = (): Error =>
   Object.assign(new Error('throttled'), { name: 'ThrottlingException' });
@@ -85,6 +95,44 @@ describe('withRetry', () => {
         throw 'plain string failure';
       }),
     ).rejects.toThrow('plain string failure');
+  });
+});
+
+describe("withRetry's RETRY_EXHAUSTED records whether any attempt may still land", () => {
+  it("is true from an earlier attempt even though the budget's last attempt was answered definitely", async () => {
+    // Attempt 1 is a genuine transport cut; attempt 2 — whose error becomes
+    // `cause` — is a throttle DynamoDB answers outright. Judging only the
+    // last attempt, as `cause` alone would, misses that the first may still
+    // land.
+    let calls = 0;
+    let thrown: Error | undefined;
+    try {
+      await withRetry(
+        () => {
+          calls += 1;
+          throw calls === 1 ? transportTimeout() : answeredThrottle();
+        },
+        { maxAttempts: 2, rng: () => 0, baseDelayMs: 0 },
+      );
+    } catch (error) {
+      thrown = error as Error;
+    }
+    expect(calls).toBe(2);
+    expect(retryBudgetMayStillLand(thrown as Error)).toBe(true);
+  });
+
+  it('is false when every attempt of the budget was answered definitely', async () => {
+    let thrown: Error | undefined;
+    try {
+      await withRetry(() => Promise.reject(answeredThrottle()), {
+        maxAttempts: 2,
+        rng: () => 0,
+        baseDelayMs: 0,
+      });
+    } catch (error) {
+      thrown = error as Error;
+    }
+    expect(retryBudgetMayStillLand(thrown as Error)).toBe(false);
   });
 });
 

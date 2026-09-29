@@ -120,7 +120,7 @@ describe('the checkpoint pair under its own request token', () => {
     const base = new DynamoDBClient({ ...DDB_LOCAL_CONFIG, maxAttempts: 1 });
     afterResponse(base, 'TransactWriteItemsCommand', async () => {
       await saver.deleteThread(threadId);
-      throw Object.assign(new Error('simulated lost response'), { name: 'ETIMEDOUT' });
+      throw Object.assign(new Error('simulated lost response'), { name: 'TimeoutError' });
     });
     const faulted = saverOn(base);
 

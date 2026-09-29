@@ -7,6 +7,7 @@ import {
   encodePayload,
   isMissingObjectError,
   isPermanentPayloadLoss,
+  isRefusedObjectError,
 } from '../../../../src/shared/codec/codec';
 import { DynamoDBLangGraphError } from '../../../../src/shared/errors/base-error';
 import { ErrorCode } from '../../../../src/shared/errors/error-code';
@@ -204,10 +205,20 @@ describe('isMissingObjectError', () => {
   });
 });
 
+describe('isRefusedObjectError', () => {
+  it('is true only for a download S3 refused', () => {
+    expect(isRefusedObjectError(s3Failure('AccessDenied'))).toBe(true);
+    expect(isRefusedObjectError(s3Failure('NoSuchKey'))).toBe(false);
+    expect(isRefusedObjectError(Object.assign(new Error('x'), { name: 'AccessDenied' }))).toBe(
+      false,
+    );
+  });
+});
+
 describe('isPermanentPayloadLoss', () => {
-  it('is true for a decompression-guard trip and a missing object, false otherwise', () => {
+  it('is true for a missing object, and false for a decompression limit and everything else', () => {
     const bomb = new DynamoDBLangGraphError('bomb', ErrorCode.COMPRESSION_LIMIT);
-    expect(isPermanentPayloadLoss(bomb)).toBe(true);
+    expect(isPermanentPayloadLoss(bomb)).toBe(false);
     expect(isPermanentPayloadLoss(s3Failure('NoSuchKey'))).toBe(true);
     expect(isPermanentPayloadLoss(s3Failure('ServiceUnavailable'))).toBe(false);
     expect(isPermanentPayloadLoss(validationError('v'))).toBe(false);

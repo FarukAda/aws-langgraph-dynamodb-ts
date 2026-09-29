@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Its description of a class hierarchy and of UpstreamError is superseded by [19](0019-raise-one-error-class-and-classify-aws-failures-in-one-place.md); the boundary rule stands.
+Accepted. Its description of a class hierarchy and of UpstreamError is superseded by [19](0019-raise-one-error-class-and-classify-aws-failures-in-one-place.md); the boundary rule stands. Extended: a synchronous form, `guardPublicSync`, now covers `destroy` and `forSession`, and the boundary stamps `context.operation` and `context.tableName`, independently, onto an already-branded error that does not already carry them, in place, rather than passing every branded error through completely untouched.
 
 ## Context
 

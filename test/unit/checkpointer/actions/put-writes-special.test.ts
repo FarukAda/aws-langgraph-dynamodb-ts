@@ -220,7 +220,7 @@ describe('putWrites special (negative-index) writes', () => {
       const written = rows[rows.length - 1] as { writeGroup: string; value: unknown };
       return { Item: { value: written.value, writeGroup: written.writeGroup } };
     });
-    rejectRowWrites(mock, Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' }));
+    rejectRowWrites(mock, Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }));
     const offloader = trackingOffloader();
     const ctx = { ...context(client), offloader: offloader as never };
     await expect(

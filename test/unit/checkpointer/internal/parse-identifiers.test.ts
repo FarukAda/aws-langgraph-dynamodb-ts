@@ -48,11 +48,9 @@ describe('the checkpointer identifier parsers', () => {
     expectValidationError(() => parseTaskId('task\u007f'));
   });
 
-  it('bounds thread_id at 1024 bytes and every sort-key segment at 256 bytes', () => {
+  it('bounds thread_id at 1024 bytes and checkpoint_id/taskId at 256 bytes — checkpoint_ns has its own, wider cap (see below)', () => {
     expect(() => parseThreadId('t'.repeat(1024))).not.toThrow();
     expectValidationError(() => parseThreadId('t'.repeat(1025)));
-    expect(() => parseCheckpointNs('n'.repeat(256))).not.toThrow();
-    expectValidationError(() => parseCheckpointNs('n'.repeat(257)));
     expect(() => parseCheckpointId('c'.repeat(256))).not.toThrow();
     expectValidationError(() => parseCheckpointId('c'.repeat(257)));
     expect(() => parseTaskId('k'.repeat(256))).not.toThrow();
@@ -132,5 +130,21 @@ describe('parseCheckpointNs applies every rule except non-blank', () => {
 
   it('rejects an ill-formed namespace, which reaches both the sort key and the object key', () => {
     expect(() => parseCheckpointNs(`child${HIGH}`)).toThrow(/checkpoint_ns/);
+  });
+});
+
+describe('parseCheckpointNs length', () => {
+  it('accepts a namespace up to 512 bytes, the depth LangGraph subgraphs reach', () => {
+    expect(parseCheckpointNs('a'.repeat(512))).toBe('a'.repeat(512));
+  });
+
+  it('refuses one over 512 bytes, naming checkpoint_ns', () => {
+    let refusal: unknown;
+    try {
+      parseCheckpointNs('a'.repeat(513));
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toMatchObject({ code: 'VALIDATION', context: { field: 'checkpoint_ns' } });
   });
 });

@@ -43,7 +43,7 @@ function trackingOffloader(offloadMetadata = true) {
 }
 
 function transientTimeout(): Error {
-  return Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
+  return Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' });
 }
 
 type DocumentMock = ReturnType<typeof createStrictDocumentMock>['mock'];
@@ -174,7 +174,11 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
     expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
-  it("cleans up its own uploads when the rows hold another attempt's descriptors after retry exhaustion", async () => {
+  it("keeps its own uploads when the rows hold another attempt's descriptors after a genuine transport timeout exhausts the retries", async () => {
+    // A real transport timeout on every attempt: DynamoDB may still apply
+    // whichever attempt it received, so a row naming someone else's key
+    // proves nothing about *this* attempt, and the uploads are kept rather
+    // than released.
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(transientTimeout());
     answerBySortKey(
@@ -187,9 +191,7 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
     await expect(
       putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
     ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED });
-    const own = attempted(mock);
-    expect(offloader.deleteBatch).toHaveBeenCalledTimes(1);
-    expect(offloader.deleteBatch).toHaveBeenCalledWith([own.metadata.s3Key, own.checkpoint.s3Key]);
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
   });
 
   /**
@@ -197,14 +199,16 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
    *
    * 1. Another put committed this checkpoint id with the same checkpoint bytes
    *    and different metadata. Its rows name objects under its own id.
-   * 2. This call's transaction spends its retries.
-   * 3. The META row it reads back holds the other put's key, so this call did
-   *    not land, and it releases both of its uploads.
+   * 2. This call's transaction spends its retries, every attempt a genuine
+   *    transport timeout.
+   * 3. The META row it reads back holds the other put's key. That is not proof
+   *    this call's own attempt is dead — a genuine timeout leaves DynamoDB
+   *    free to still apply it — so nothing is released.
    *
-   * The invariant is that the other put's committed objects are never released,
-   * and the PAYLOAD row is not read to learn that.
+   * The invariant is that the other put's committed objects are never
+   * released, and the PAYLOAD row is not read to learn that.
    */
-  it("releases both of its own uploads, never the objects another put's committed rows name", async () => {
+  it("releases none of its own uploads, and never the objects another put's committed rows name, after a genuine transport timeout", async () => {
     const other = await committedRows({ ...metadata, source: 'update' });
     const { client, mock } = createStrictDocumentMock();
     mock.on(TransactWriteCommand).rejects(transientTimeout());
@@ -214,11 +218,7 @@ describe('putCheckpoint after a failed transaction, with S3 offload', () => {
     await expect(
       putCheckpoint(context, { configurable: { thread_id: 't1' } }, checkpoint, metadata),
     ).rejects.toMatchObject({ code: ErrorCode.RETRY_EXHAUSTED, name: 'DynamoDBLangGraphError' });
-    const own = attempted(mock);
-    const deleted = offloader.deleteBatch.mock.calls.flatMap(([keys]) => keys as string[]);
-    expect(deleted).toEqual([own.metadata.s3Key, own.checkpoint.s3Key]);
-    expect(deleted).not.toContain(other.metadata.s3Key);
-    expect(deleted).not.toContain(other.checkpoint.s3Key);
+    expect(offloader.deleteBatch).not.toHaveBeenCalled();
     expect(mock.commandCalls(GetCommand)).toHaveLength(1);
   });
 

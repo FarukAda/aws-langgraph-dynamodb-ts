@@ -124,13 +124,13 @@ jobs:
           # (curl without `-f`, exit 0 on 4xx/5xx) as "up". Using -f here, as
           # we did previously, caused the poll to hang for all 30 attempts
           # because DDB Local never returns 2xx on a curl-unsigned request.
-          for _ in $(seq 1 60); do
+          for attempt in $(seq 1 60); do
             if curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/ \
                 2>/dev/null | grep -qE '^[1-5][0-9][0-9]$'; then
               echo "DynamoDB Local is up."
               exit 0
             fi
-            echo "Waiting for DynamoDB Local... ($i/60)"
+            echo "Waiting for DynamoDB Local... ($attempt/60)"
             sleep 2
           done
           echo "DynamoDB Local never came up." >&2

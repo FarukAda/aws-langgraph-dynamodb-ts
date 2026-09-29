@@ -13,6 +13,7 @@ import {
   S3_RELEASE_GRACE_DAYS,
 } from '../../../../../src/shared/codec/s3/lifecycle';
 import { ErrorCode } from '../../../../../src/shared/errors/error-code';
+import { lifecycleBucket } from '../../../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 
@@ -75,8 +76,7 @@ describe('buildMarkerRuleId', () => {
 
 describe('the noncurrent-version grace on the ttl rule', () => {
   it('keeps a released version for the grace, which is not the ttl', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, {});
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     const rule = writtenRule(TTL_ID);
     expect(rule?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(S3_RELEASE_GRACE_DAYS);
@@ -89,7 +89,7 @@ describe('the noncurrent-version grace on the ttl rule', () => {
    * else's recovery window, so the value written is the larger of the two.
    */
   it('keeps a longer noncurrent retention the bucket already carries', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+    lifecycleBucket(s3Mock, {
       Rules: [
         {
           ID: TTL_ID,
@@ -100,14 +100,13 @@ describe('the noncurrent-version grace on the ttl rule', () => {
         },
       ],
     });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     expect(writtenRule(TTL_ID)?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(32);
   });
 
   /** A rule the grace has never been written onto is rewritten to carry it. */
   it('adds the grace to a rule that expires current versions only', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+    lifecycleBucket(s3Mock, {
       Rules: [
         {
           ID: TTL_ID,
@@ -117,7 +116,6 @@ describe('the noncurrent-version grace on the ttl rule', () => {
         },
       ],
     });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     expect(writtenRule(TTL_ID)?.NoncurrentVersionExpiration?.NoncurrentDays).toBe(
       S3_RELEASE_GRACE_DAYS,
@@ -126,10 +124,9 @@ describe('the noncurrent-version grace on the ttl rule', () => {
 
   /** A rule carrying this id but no expiration at all still scopes this prefix. */
   it('rewrites a rule that carries no expiration at all', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+    lifecycleBucket(s3Mock, {
       Rules: [{ ID: TTL_ID, Filter: { Prefix: PREFIX }, Status: 'Enabled' }],
     });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     expect(writtenRule(TTL_ID)?.Expiration?.Days).toBe(TTL_DAYS);
   });
@@ -143,8 +140,7 @@ describe('the marker-reclaim rule', () => {
    * therefore hold its own half and nothing of the other's.
    */
   it('is a second rule whose expiration reclaims markers and nothing else', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, {});
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     const marker = writtenRule(MARKER_ID);
     expect(marker?.Expiration).toEqual({ ExpiredObjectDeleteMarker: true });
@@ -154,35 +150,32 @@ describe('the marker-reclaim rule', () => {
   });
 
   it('leaves the ttl rule expiring current versions by days only', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({});
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, {});
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     expect(writtenRule(TTL_ID)?.Expiration).toEqual({ Days: TTL_DAYS });
   });
 
   it('adds itself beside a ttl rule that is otherwise already correct', async () => {
-    s3Mock
-      .on(GetBucketLifecycleConfigurationCommand)
-      .resolves({ Rules: [correctRules()[0], { ID: 'user-rule', Status: 'Enabled' }] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, {
+      Rules: [correctRules()[0], { ID: 'user-rule', Status: 'Enabled' }],
+    });
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     expect(written().map((rule) => rule.ID)).toEqual([TTL_ID, 'user-rule', MARKER_ID]);
   });
 
   it('corrects a rule holding its id that reclaims nothing', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+    lifecycleBucket(s3Mock, {
       Rules: [
         correctRules()[0],
         { ID: MARKER_ID, Filter: { Prefix: PREFIX }, Status: 'Enabled', Expiration: {} },
       ],
     });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     expect(writtenRule(MARKER_ID)?.Expiration).toEqual({ ExpiredObjectDeleteMarker: true });
   });
 
   it('corrects a rule holding its id that is disabled', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({
+    lifecycleBucket(s3Mock, {
       Rules: [
         correctRules()[0],
         {
@@ -193,7 +186,6 @@ describe('the marker-reclaim rule', () => {
         },
       ],
     });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     expect(writtenRule(MARKER_ID)?.Status).toBe('Enabled');
   });
@@ -234,15 +226,13 @@ describe('a second call over both rules', () => {
   });
 
   it('writes when only the ttl rule is right', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [correctRules()[0]] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [correctRules()[0]] });
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     expect(written().map((rule) => rule.ID)).toEqual([TTL_ID, MARKER_ID]);
   });
 
   it('writes when only the marker rule is right', async () => {
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [correctRules()[1]] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [correctRules()[1]] });
     await ensureLifecycleRule(client(), { bucket: 'b', prefix: PREFIX, days: TTL_DAYS }, silent());
     expect(written().map((rule) => rule.ID)).toEqual([MARKER_ID, TTL_ID]);
   });

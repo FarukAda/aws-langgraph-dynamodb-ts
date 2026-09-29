@@ -17,7 +17,7 @@ import {
   isDynamoDBLangGraphError,
   toError,
 } from '../errors/base-error';
-import { isMissingObject } from '../errors/classify';
+import { classifyAwsError, isMissingObject } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
 import { validationError } from '../errors/errors';
 import { truncateForLog } from '../logging/truncate';
@@ -434,13 +434,14 @@ function assertSerialisedToBytes(raw: Uint8Array): void {
  *
  * Throws: whatever `serde.dumpsTyped` throws; `ABORTED` when the signal
  * fires during the upload; `S3_OFFLOAD_FAILED` from the upload; and two
- * distinguishable `VALIDATION` errors. One names `payload` — the bytes are too
- * large to store inline — and is raised only when there is **no** offloader
- * and they exceed `MAX_INLINE_PAYLOAD_BYTES`. With an offloader that
- * cell cannot arise: `s3.thresholdBytes` is itself capped at that limit
- * (`src/shared/validation/options.ts`, `assertS3`), so bytes too large
- * to store inline are always at or above the threshold and offload instead.
- * The other names `value` — it serialises to nothing (see
+ * distinguishable `VALIDATION` errors. One names `payload`, raised either
+ * way a payload can turn out unstorable: with **no** offloader, the bytes
+ * exceed `MAX_INLINE_PAYLOAD_BYTES`; with one, `s3.thresholdBytes` is itself
+ * capped at that limit (`src/shared/validation/options.ts`, `assertS3`), so
+ * bytes too large to store inline are always at or above the threshold and
+ * offload instead — where they are refused if they exceed
+ * `s3.maxDownloadBytes`, before the upload ({@link S3Offloader.upload}). The
+ * other names `value` — it serialises to nothing (see
  * {@link assertSerialisedToBytes}) — and is raised for an offloaded payload
  * and an inline one alike, before either is stored.
  */
@@ -539,6 +540,27 @@ export function isMissingObjectError(error: Error): boolean {
 }
 
 /**
+ * True when S3 refused to answer a download rather than answering it.
+ *
+ * Accepts: `error` — any error; only `S3_OFFLOAD_FAILED` whose cause the
+ * classifier codes `ACCESS_DENIED` matches.
+ *
+ * Returns: whether S3 declined to say anything about the object. Without
+ * `s3:ListBucket` on the bucket, S3 answers a GET of a key that does not exist
+ * with 403 rather than 404, so this is what a released object looks like to
+ * such a role — and equally what a missing `s3:GetObject` looks like. A caller
+ * settles which by other means before treating it as either.
+ *
+ * Throws: **nothing**, for any value.
+ */
+export function isRefusedObjectError(error: Error): boolean {
+  return (
+    hasErrorCode(error, ErrorCode.S3_OFFLOAD_FAILED) &&
+    classifyAwsError(error.cause as Error) === ErrorCode.ACCESS_DENIED
+  );
+}
+
+/**
  * True when a row's payload descriptor is not one *any* reader could make sense
  * of: it is absent, it is not an object, or it names a location no release of
  * this library ever wrote at the schema it declares. The row condemns its own
@@ -565,17 +587,18 @@ function isUnreadableDescriptor(error: Error): boolean {
  *
  * Accepts: `error` — any error. Permanent are: its object is gone
  * ({@link isMissingObjectError}), its bytes are not the form the row declares
- * (`PAYLOAD_CORRUPT`), it trips the decompression guard (`COMPRESSION_LIMIT`),
- * or the row's own descriptor is unreadable ({@link isUnreadableDescriptor}).
- * Everything else is false, including an error that carries no code at all, and
- * including three refusals that look like loss and are not. The `s3Key` scope
- * refusal: a row pointing outside its own path is a configuration or tenancy
- * fault to report, not a payload to write off. The `serde` refusal, on the same
- * reasoning: the bytes are checked against the form the row declares before
- * that code is chosen, so reaching it means they are undamaged and a serializer
- * declining to reconstruct the class they name says what *this* reader may do,
- * not what the payload is (see `loadPayloadValue`). And `FORMAT_UNSUPPORTED`,
- * on a row or on a payload: newer is not lost.
+ * (`PAYLOAD_CORRUPT`), or the row's own descriptor is unreadable
+ * ({@link isUnreadableDescriptor}). Everything else is false, including an
+ * error that carries no code at all, and including four refusals that look
+ * like loss and are not. The `s3Key` scope refusal: a row pointing outside
+ * its own path is a configuration or tenancy fault to report, not a payload
+ * to write off. The `serde` refusal, on the same reasoning (see
+ * `loadPayloadValue`). `FORMAT_UNSUPPORTED`, on a row or on a payload: newer
+ * is not lost. And `COMPRESSION_LIMIT`: a payload larger than this reader
+ * inflates is intact, and a reader with a larger cap reads it. From this
+ * release on, this package never compresses a payload past its writer's own
+ * cap; a payload an earlier release compressed — which did not check it —
+ * can still trip a smaller one here.
  *
  * Returns: whether a caller should report rather than retry.
  *
@@ -585,7 +608,6 @@ function isUnreadableDescriptor(error: Error): boolean {
  */
 export function isPermanentPayloadLoss(error: Error): boolean {
   return (
-    hasErrorCode(error, ErrorCode.COMPRESSION_LIMIT) ||
     hasErrorCode(error, ErrorCode.PAYLOAD_CORRUPT) ||
     isMissingObjectError(error) ||
     isUnreadableDescriptor(error)

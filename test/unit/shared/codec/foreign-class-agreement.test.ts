@@ -119,6 +119,7 @@ async function readStore(serde: SerializerProtocol): Promise<unknown> {
     logger: SILENT_LOGGER,
     maxSearchCandidates: 1000,
     maxScanItems: 10000,
+    maxIterations: 1000,
     vectorScoreDirection: 'relevance',
   };
   mock.on(GetCommand).resolves({

@@ -1,5 +1,4 @@
 import {
-  GetBucketLifecycleConfigurationCommand,
   GetBucketVersioningCommand,
   PutBucketLifecycleConfigurationCommand,
   S3Client,
@@ -17,6 +16,7 @@ import {
   observableRow,
   resolveRowDeletes,
 } from '../../shared/helpers/ddb-mock';
+import { fastLifecyclePoll, lifecycleBucket } from '../../shared/helpers/lifecycle-bucket';
 
 const s3Mock = mockClient(S3Client);
 afterEach(() => s3Mock.reset());
@@ -116,8 +116,7 @@ describe('DynamoDBStore', () => {
 
   it('ensureS3LifecycleRule provisions the rule when both s3 and ttl are configured', async () => {
     const { client } = createStrictDocumentMock();
-    s3Mock.on(GetBucketLifecycleConfigurationCommand).resolves({ Rules: [] });
-    s3Mock.on(PutBucketLifecycleConfigurationCommand).resolves({});
+    lifecycleBucket(s3Mock, { Rules: [] });
     s3Mock.on(GetBucketVersioningCommand).resolves({ Status: 'Enabled' });
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
     const store = new DynamoDBStore({
@@ -130,7 +129,7 @@ describe('DynamoDBStore', () => {
     /** The injected client has maxAttempts > 1, triggering a warning asynchronously during setup. */
     await new Promise((resolve) => setImmediate(resolve));
     logger.warn.mockClear();
-    await store.ensureS3LifecycleRule();
+    await fastLifecyclePoll(() => store.ensureS3LifecycleRule());
     expect(s3Mock.commandCalls(PutBucketLifecycleConfigurationCommand)).toHaveLength(1);
     /** A warn here would mean the versioning stub above was not the one consumed. */
     expect(logger.warn).not.toHaveBeenCalled();

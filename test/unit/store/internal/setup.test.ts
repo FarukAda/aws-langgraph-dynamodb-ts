@@ -128,6 +128,24 @@ describe('setUpStore', () => {
   });
 });
 
+describe('maxIterations', () => {
+  it('defaults to 1000 pages', () => {
+    const { context } = setUpStore({ tableName: 'tbl' });
+    expect(context.maxIterations).toBe(1000);
+  });
+
+  it('takes an integer of at least 1, or Infinity', () => {
+    expect(setUpStore({ tableName: 'tbl', maxIterations: 5 }).context.maxIterations).toBe(5);
+    expect(setUpStore({ tableName: 'tbl', maxIterations: Infinity }).context.maxIterations).toBe(
+      Infinity,
+    );
+  });
+
+  it.each([0, -1, 1.5, Number.NaN])('refuses %p, naming maxIterations', (value) => {
+    expect(() => setUpStore({ tableName: 'tbl', maxIterations: value })).toThrow(/maxIterations/);
+  });
+});
+
 describe('collaborator shape', () => {
   it('refuses a raw DynamoDBClient where a DynamoDBDocument is required', () => {
     const raw = { send: () => undefined };

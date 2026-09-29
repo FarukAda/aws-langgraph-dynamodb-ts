@@ -245,7 +245,7 @@ async function raceOnSpecialRow(racerValue: object | null) {
   const client: ClientStub = {
     get: () => Promise.resolve(reads.shift() ?? {}),
     put: () => {
-      throw Object.assign(new Error('timeout'), { name: 'ETIMEDOUT' });
+      throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' });
     },
   };
   const offloader = trackingOffloader();

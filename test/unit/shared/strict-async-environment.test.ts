@@ -27,7 +27,7 @@ function runFixtures(): Map<string, AssertionResult> {
     [
       require.resolve('jest/bin/jest'),
       '--config',
-      join(repoRoot, 'jest.config.ts'),
+      join(repoRoot, 'jest.config.mjs'),
       '--testMatch',
       '<rootDir>/test/shared/fixtures/strict-async/*.fixture.ts',
       '--coverage=false',

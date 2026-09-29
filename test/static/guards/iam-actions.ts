@@ -78,6 +78,15 @@ export function documentedActions(readme: string): string[] {
   return [...actions].sort();
 }
 
+/**
+ * Actions the README grants although no call site sends them, each for what it
+ * changes about an answer the library does get. `s3:ListBucket`: without it S3
+ * answers a GET of a missing key with 403 instead of 404
+ * (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html), so a
+ * released object is indistinguishable from a denied one.
+ */
+export const BEHAVIOURAL_ACTIONS: readonly string[] = ['s3:ListBucket'];
+
 /** The README at the repository root. */
 export function readReadme(): string {
   return readFileSync(resolve(SRC_ROOT, '..', 'README.md'), 'utf8');

@@ -6,7 +6,7 @@
 
 # Class: DynamoDBSaver
 
-Defined in: [checkpointer/saver.ts:46](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L46)
+Defined in: [checkpointer/saver.ts:47](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L47)
 
 DynamoDB-backed LangGraph checkpoint saver. Every public method rejects only
 with this library's error, whose `code` says what failed — an AWS failure
@@ -22,7 +22,7 @@ included.
 
 > **new DynamoDBSaver**(`options`): `DynamoDBSaver`
 
-Defined in: [checkpointer/saver.ts:64](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L64)
+Defined in: [checkpointer/saver.ts:65](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L65)
 
 Accepts: `options` — validated here, so a misconfiguration surfaces at
 construction rather than on the first request. `options.serde` reaches the
@@ -57,7 +57,7 @@ at module scope and in a Lambda's init phase.
 
 > **deleteThread**(`threadId`, `options?`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:252](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L252)
+Defined in: [checkpointer/saver.ts:268](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L268)
 
 Delete every checkpoint, payload and pending write of a thread.
 
@@ -110,7 +110,7 @@ no object this call could have released.
 
 > **destroy**(): `void`
 
-Defined in: [checkpointer/saver.ts:321](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L321)
+Defined in: [checkpointer/saver.ts:346](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L346)
 
 Release owned resources.
 
@@ -119,9 +119,10 @@ Accepts: nothing.
 Returns: nothing. Idempotent, and a no-op for a client the caller injected
 — that one is theirs to close.
 
-Throws: whatever a resource's own `destroy` raises — but only after every
-other one has been released, so a client that fails to close never strands
-the one behind it.
+Throws: the first failure a resource's own `destroy` raised, as a
+`DynamoDBLangGraphError` (`UNEXPECTED_ERROR` unless the failure was AWS's)
+with it as `cause` — raised only after every other resource has been
+released, and only by the first call: `destroy()` is idempotent.
 
 #### Returns
 
@@ -133,7 +134,7 @@ the one behind it.
 
 > **ensureS3LifecycleRule**(): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:343](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L343)
+Defined in: [checkpointer/saver.ts:382](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L382)
 
 Provision an S3 lifecycle expiration rule matching the configured TTL, so
 offloaded payloads don't outlive the items that point at them.
@@ -143,10 +144,17 @@ without both, since there would be no bucket to rule over or no expiry to
 match.
 
 Returns: nothing. Installing a rule that is already there is a no-op too,
-so calling it on every deploy is safe.
+so calling it on every deploy is safe. When it writes the rules but
+cannot confirm within its polling window that a re-read shows them — S3
+documents that a lifecycle configuration can take minutes to propagate —
+it logs a `warn` and returns rather than throwing: the rules were
+written, and a later call can confirm them.
 
 Throws: `VALIDATION` naming `s3.keyPrefix` on a rule-id collision;
-a classified AWS failure when the bucket's lifecycle cannot be read or written.
+a classified AWS failure when the bucket's lifecycle cannot be read or
+written; `CONTENTION` when every one of the five rounds this call polls
+needs a write — a competing writer replacing the configuration on every
+single re-read.
 
 #### Returns
 
@@ -157,7 +165,14 @@ a classified AWS failure when the bucket's lifecycle cannot be read or written.
 Needs the bucket-level `s3:GetLifecycleConfiguration` and
 `s3:PutLifecycleConfiguration` permissions, which are broader than the
 object-level CRUD the rest of S3 offload needs. Call it once at deployment,
-not per request.
+not per request — and when several adapters or processes provision the
+same bucket, call them one at a time and run each again after a few
+minutes once every one of them has run.
+
+Lowering the `ttl` and calling this again shortens the rule for every
+object under the prefix, including those that rows written under the old
+value still name, so do that only once those rows have expired; raising
+the `ttl` is safe.
 
 ***
 
@@ -165,7 +180,7 @@ not per request.
 
 > **getDeltaChannelHistory**(`options`): `Promise`\<`Record`\<`string`, `DeltaChannelHistory`\>\>
 
-Defined in: [checkpointer/saver.ts:295](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L295)
+Defined in: [checkpointer/saver.ts:315](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L315)
 
 Walk a checkpoint's ancestors for the delta channels named, returning each
 channel's on-path writes oldest-first and its nearest stored value.
@@ -222,7 +237,7 @@ snapshot.
 
 > **getTuple**(`config`): `Promise`\<`CheckpointTuple` \| `undefined`\>
 
-Defined in: [checkpointer/saver.ts:103](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L103)
+Defined in: [checkpointer/saver.ts:104](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L104)
 
 Read one checkpoint with its metadata and pending writes.
 
@@ -275,7 +290,7 @@ seen.
 
 > **list**(`config`, `options?`): `AsyncGenerator`\<`CheckpointTuple`\>
 
-Defined in: [checkpointer/saver.ts:142](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L142)
+Defined in: [checkpointer/saver.ts:147](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L147)
 
 Stream checkpoints newest first.
 
@@ -338,7 +353,7 @@ yielded tuple (see the README cost table).
 
 > **put**(`config`, `checkpoint`, `metadata`, `newVersions?`): `Promise`\<`RunnableConfig`\<`Record`\<`string`, `any`\>\>\>
 
-Defined in: [checkpointer/saver.ts:175](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L175)
+Defined in: [checkpointer/saver.ts:185](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L185)
 
 Store a checkpoint and its metadata in one transaction.
 
@@ -358,9 +373,10 @@ config of the wrong shape, `thread_id` for a missing or malformed thread
 id, `checkpoint_ns`, `checkpoint_id` or `thread_ts` for a malformed
 identifier, `checkpoint` for a `null` or `undefined` checkpoint,
 `checkpoint_id` for a malformed `checkpoint.id`, `payload` for a payload
-too large to store inline without `s3`, or `s3Key` for an offloaded
-object's key over S3's cap; `S3_OFFLOAD_FAILED` when an offloaded payload
-cannot be uploaded; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
+too large to store inline without `s3`, or, once offloaded, larger than
+`s3.maxDownloadBytes`; `s3Key` for an offloaded object's key over S3's
+cap; `S3_OFFLOAD_FAILED` when an offloaded payload cannot be uploaded;
+a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
 
 Guarantees: both rows land or neither does. Writing the same
 `checkpoint.id` again replaces both, so a retry is safe. Each put uploads
@@ -400,15 +416,16 @@ rows named are not deleted with them: they are left to the lifecycle rule
 
 > **putWrites**(`config`, `writes`, `taskId`): `Promise`\<`void`\>
 
-Defined in: [checkpointer/saver.ts:218](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L218)
+Defined in: [checkpointer/saver.ts:232](https://github.com/FarukAda/aws-langgraph-dynamodb-ts/blob/main/src/checkpointer/saver.ts#L232)
 
 Store a task's pending writes for the checkpoint `config` names.
 
 Accepts: `config` — shaped as [getTuple](#gettuple) requires, naming a
 `thread_id` and a `checkpoint_id`, since writes attach to a checkpoint.
 `config.signal` — aborts the writes. `writes` — an array of
-`[channel, value]` arrays, one row each, written in parallel; an empty list
-writes nothing. `taskId` — validated as the key segment it becomes.
+`[channel, value]` arrays, one row each: a special channel's row is
+written alongside the rest, a regular row at most 32 at a time; an empty
+list writes nothing. `taskId` — validated as the key segment it becomes.
 
 Returns: nothing. Losing a first-write-wins race is a normal outcome, not
 a failure.
@@ -420,8 +437,9 @@ identifier, and `checkpoint_id` when the config names none; `writes` for
 writes that is not an array, or holds an entry that is not one; `channel`
 for a malformed channel; `sortKey` for identifiers composing a sort key
 over DynamoDB's cap; `payload` for a value too large to store inline
-without `s3`; or `s3Key` for an offloaded object's key over S3's cap.
-`S3_OFFLOAD_FAILED`; a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
+without `s3`, or, once offloaded, larger than `s3.maxDownloadBytes`; or
+`s3Key` for an offloaded object's key over S3's cap. `S3_OFFLOAD_FAILED`;
+a classified AWS failure; `RETRY_EXHAUSTED`; `ABORTED`.
 
 Guarantees: regular writes are first-write-wins; special channels
 (`__interrupt__`, `__resume__`, `__error__`, `__scheduled__`) overwrite,

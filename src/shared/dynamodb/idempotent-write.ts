@@ -19,8 +19,11 @@ import { unmarshall } from '@aws-sdk/util-dynamodb';
 
 import { nowMs } from '../clock';
 import { type PayloadDescriptor, PayloadLocation, type DescriptorRef } from '../codec/codec';
-import { classifyAwsError } from '../errors/classify';
+import { hasErrorCode } from '../errors/base-error';
+import { classifyAwsError, mayStillBeInFlight } from '../errors/classify';
 import { ErrorCode } from '../errors/error-code';
+import { retryBudgetMayStillLand } from '../errors/errors';
+import { isAbortError } from './abort';
 import { conditionalCheckFailure } from './cancellation';
 import type { DynamoDBDocumentLike, AttributeMap, TransactAction } from './client';
 import { MAX_WRITE_LIFETIME_MS, withDynamoDBRetry, retryFor } from './retry';
@@ -618,6 +621,62 @@ export function identityOf(probe: RowProbe, row: AttributeMap | undefined): stri
  */
 export function verdictFor(probe: RowProbe, row: AttributeMap | undefined): WriteVerdict {
   return identityOf(probe, row) === probe.expected ? 'landed' : 'not-landed';
+}
+
+/**
+ * Whether a write that failed may still commit after its failure was reported.
+ *
+ * A write the service answered with a definite refusal or a throttle is
+ * finished: a strongly consistent read after that answer sees whatever it
+ * did. A write is not finished while *any* attempt of it left DynamoDB free to
+ * apply it later — not only its last attempt: `TransactWriteItems` is sent
+ * under one `ClientRequestToken` for the whole retry budget, and DynamoDB
+ * answers a re-send that arrives while an earlier attempt under that same
+ * token is still being processed with `TransactionInProgressException` —
+ * itself proof that the earlier attempt reached the service and may still
+ * land — while the very next attempt can be answered normally. A cancel is
+ * the same story from the caller's own side: it stops the client waiting, not
+ * the service applying a request it had already received.
+ *
+ * Accepts: `failure` — what the write threw.
+ *
+ * Returns: true for `ABORTED`; for a spent retry budget, the record
+ * `withRetry` kept across every attempt it made (`retryBudgetMayStillLand`),
+ * or — when that record does not say so — the last attempt's own failure
+ * judged by itself (`mayStillBeInFlight`), which is what a `RETRY_EXHAUSTED`
+ * error built outside `withRetry` falls back to, carrying no record of its
+ * own; for any other failure, judged by itself (`mayStillBeInFlight`).
+ *
+ * Throws: nothing, for any value.
+ */
+export function mayStillLand(failure: Error): boolean {
+  if (isAbortError(failure)) return true;
+  if (hasErrorCode(failure, ErrorCode.RETRY_EXHAUSTED)) {
+    return (
+      retryBudgetMayStillLand(failure) || mayStillBeInFlight(failure.cause as Error | undefined)
+    );
+  }
+  return mayStillBeInFlight(failure);
+}
+
+/**
+ * The verdict a read-back licenses once the write it judges may still be in flight.
+ *
+ * Accepts: `verdict` — what the read found. `failure` — what the write threw.
+ *
+ * Returns: `'unverified'` in place of `'not-landed'` when the write may still
+ * commit ({@link mayStillLand}): an absent row is exactly what an attempt still
+ * on its way can fill, so the upload it names is not yet dead. Every other
+ * verdict is returned unchanged. A caller whose write is pinned to a state the
+ * row has already left may skip this, since such a write can no longer apply
+ * (the pending-writes verification does); `persistRow` asks it unconditionally,
+ * so its upload is kept whether the read found the row absent or holding
+ * another revision.
+ *
+ * Throws: nothing.
+ */
+export function settledVerdict(verdict: WriteVerdict, failure: Error): WriteVerdict {
+  return verdict === 'not-landed' && mayStillLand(failure) ? 'unverified' : verdict;
 }
 
 /**

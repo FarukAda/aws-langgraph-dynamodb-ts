@@ -96,6 +96,7 @@ function namespaceSource(context: StoreContext, op: ParsedList, now: number) {
       client: context.client,
       params: withoutExpired(projectKeys(scopedQuery(context.tableName, root)), now),
       maxItems: context.maxScanItems,
+      maxIterations: context.maxIterations,
     });
   }
   return paginateScan({
@@ -103,6 +104,7 @@ function namespaceSource(context: StoreContext, op: ParsedList, now: number) {
     client: context.client,
     params: withoutExpired(projectKeys(storeScan(context.tableName)), now),
     maxItems: context.maxScanItems,
+    maxIterations: context.maxIterations,
   });
 }
 
@@ -163,9 +165,9 @@ function compareNamespaces(a: string[], b: string[]): number {
  *
  * Returns: the namespaces, sorted, then `limit` of them from `offset`.
  *
- * Throws: `RESULT_TRUNCATED` when `maxScanItems` is reached while rows
- * remain, so a partial listing is never returned as a complete one;
- * `FORMAT_UNSUPPORTED` for a store item a newer release wrote.
+ * Throws: `RESULT_TRUNCATED` when `maxScanItems` or `maxIterations` is
+ * reached while rows remain, so a partial listing is never returned as a
+ * complete one; `FORMAT_UNSUPPORTED` for a store item a newer release wrote.
  *
  * Guarantees: every live row is read — the answer is about which namespaces
  * exist, and paging over it must not depend on which rows were read first. That

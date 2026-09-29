@@ -35,10 +35,21 @@ export const SORT_KEY_ATTRIBUTE = 'SK';
 export const MAX_PARTITION_ID_BYTES = 1024;
 
 /**
- * Sort-key segments: `checkpoint_ns`, `checkpoint_id`, `taskId`, a pending-write
- * channel, a store namespace element and a store `key`.
+ * Sort-key segments other than the checkpoint namespace: `checkpoint_id`,
+ * `taskId`, a pending-write channel, a store namespace element and a store
+ * `key`.
  */
 export const MAX_KEY_SEGMENT_BYTES = 256;
+
+/**
+ * The checkpoint namespace's own cap. LangGraph names a subgraph's namespace
+ * after its parent's, a separator, the node's name and a 36-character task id
+ * (`${parent}|${node}:${taskId}`), so each level of nesting adds roughly forty
+ * bytes plus the node name; 256 bytes stopped a graph at its fifth or sixth
+ * level. Twice that keeps the rows a namespace composes inside DynamoDB's
+ * sort-key cap, which the composed-key checks enforce either way.
+ */
+export const MAX_CHECKPOINT_NS_BYTES = 512;
 
 /**
  * DynamoDB cap on a whole sort key; composed keys are checked against it too.
@@ -165,9 +176,10 @@ export function withRowVersion<T extends AttributeMap>(item: T): T & { v: number
  *
  * Throws: nothing.
  *
- * Guarantees: an expired row is absent to every reader even while DynamoDB's
- * own sweep lags, which it may by up to 48 hours
- * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/howitworks-ttl.html).
+ * Guarantees: a caller that applies this hides an expired row even while
+ * DynamoDB's own sweep lags, which AWS documents as typically within a few days of the
+ * `ttl`, with no fixed bound
+ * (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html).
  */
 export function isExpiredRow(row: { ttl?: number }, nowSeconds: number): boolean {
   return row.ttl !== undefined && row.ttl <= nowSeconds;

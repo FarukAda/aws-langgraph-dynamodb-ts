@@ -170,4 +170,14 @@ describe('the CLI', () => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /usage: node scripts\/run-with-timeout\.mjs/);
   });
+
+  it('says why and exits nonzero when the command cannot be started', () => {
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT, '5', '--', 'aws-langgraph-no-such-command'],
+      { encoding: 'utf8' },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /could not start "aws-langgraph-no-such-command"/);
+  });
 });

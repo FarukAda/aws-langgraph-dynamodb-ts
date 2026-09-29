@@ -24,18 +24,21 @@ export type DynamoDBChatMessageHistoryOptions = BaseAdapterOptions &
      */
     serde?: SerializerProtocol;
     /**
-     * What `getMessages` does when a stored message cannot be decoded — a
-     * decompression-guard trip, bytes that no longer parse as the form the row
-     * declares, or a decoded message LangChain cannot rebuild. A serializer
-     * declining intact bytes is not one of these and this option does not
-     * govern it: a `serdeType` the configured serializer has no grammar for
-     * after a config change, like an `lc` record naming a class outside its
-     * allow-list, is reported under **both** policies, because a payload this
-     * reader merely may not rebuild is not a payload that is gone. `'skip'`
-     * (the default) drops the item, logs it at `error` with its sort key so an
-     * operator can locate it, and returns the rest; `'throw'` fails the whole
-     * read, which is all-or-nothing but leaves the session unreadable until
-     * the bad row is removed out of band.
+     * What `getMessages` does when a stored message cannot be decoded. It
+     * covers a payload nobody can read — bytes that are no longer the form
+     * the row declares, a gone S3 object, a descriptor that is not one — and
+     * a stored message LangChain cannot rebuild. It does not govern a
+     * payload larger than this reader's `compression.maxDecompressedBytes`
+     * or `s3.maxDownloadBytes` (a limit of this reader's, not a lost
+     * payload), nor a serializer declining intact bytes: a `serdeType` the
+     * configured serializer has no grammar for after a config change, like
+     * an `lc` record naming a class outside its allow-list, is reported
+     * under **both** policies, because a payload this reader merely may not
+     * rebuild is not a payload that is gone. `'skip'` (the default) drops
+     * the item, logs it at `error` with its sort key so an operator can
+     * locate it, and returns the rest; `'throw'` fails the whole read, which
+     * is all-or-nothing but leaves the session unreadable until the bad row
+     * is removed out of band.
      */
     onCorruptMessage?: CorruptMessagePolicy;
   };
